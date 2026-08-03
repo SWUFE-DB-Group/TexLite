@@ -32,6 +32,7 @@ export interface Project {
   engine: "pdflatex" | "xelatex" | "lualatex";
   permission: "read" | "edit" | "owner";
   tags: ProjectTag[];
+  archived?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +43,13 @@ export interface ProjectTag {
   id: string;
   name: string;
   color: TagColor;
+}
+
+export interface ProjectListPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }
 
 export interface FileEntry {

@@ -329,6 +329,103 @@ It works.
     ]));
   });
 
+  it("keeps project archives private to each user", async () => {
+    const username = `archive-reader-${randomUUID().slice(0, 8)}`;
+    const createdUser = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username, displayName: "Archive Reader", password: "reader-password" }
+    });
+    expect(createdUser.statusCode).toBe(201);
+    const readerId = createdUser.json().user.id as string;
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "reader-password" } });
+    expect(login.statusCode).toBe(200);
+    const readerCookie = login.headers["set-cookie"]!.split(";")[0];
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Private archive" } });
+    const projectId = created.json().project.id as string;
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${readerId}`, headers: { cookie }, payload: { permission: "read" } });
+
+    const archivedByAdmin = await app.inject({ method: "PUT", url: `/api/projects/${projectId}/archive`, headers: { cookie } });
+    expect(archivedByAdmin.statusCode).toBe(200);
+    expect(archivedByAdmin.json()).toMatchObject({ ok: true, archived: true });
+    const adminActive = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie } });
+    expect(adminActive.json().projects.some((project: { id: string }) => project.id === projectId)).toBe(false);
+    const adminArchived = await app.inject({ method: "GET", url: "/api/projects?archived=1", headers: { cookie } });
+    expect(adminArchived.json().projects).toContainEqual(expect.objectContaining({ id: projectId, archived: true }));
+
+    const readerActive = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie: readerCookie } });
+    expect(readerActive.json().projects).toContainEqual(expect.objectContaining({ id: projectId, archived: false, permission: "read" }));
+    const archivedByReader = await app.inject({ method: "PUT", url: `/api/projects/${projectId}/archive`, headers: { cookie: readerCookie } });
+    expect(archivedByReader.statusCode).toBe(200);
+    const readerAfterArchive = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie: readerCookie } });
+    expect(readerAfterArchive.json().projects.some((project: { id: string }) => project.id === projectId)).toBe(false);
+    const readerArchived = await app.inject({ method: "GET", url: "/api/projects?archived=true", headers: { cookie: readerCookie } });
+    expect(readerArchived.json().projects).toContainEqual(expect.objectContaining({ id: projectId, archived: true, permission: "read" }));
+
+    const restoredByAdmin = await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/archive`, headers: { cookie } });
+    expect(restoredByAdmin.statusCode).toBe(200);
+    const adminRestored = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie } });
+    expect(adminRestored.json().projects).toContainEqual(expect.objectContaining({ id: projectId, archived: false }));
+    const readerStillArchived = await app.inject({ method: "GET", url: "/api/projects?archived=1", headers: { cookie: readerCookie } });
+    expect(readerStillArchived.json().projects).toContainEqual(expect.objectContaining({ id: projectId, archived: true }));
+  });
+
+  it("paginates project lists with twenty projects per page by default", async () => {
+    const prefix = `Pagination ${randomUUID().slice(0, 8)}`;
+    for (let index = 1; index <= 21; index += 1) {
+      const created = await app.inject({
+        method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: `${prefix} ${index}` }
+      });
+      expect(created.statusCode).toBe(201);
+    }
+    const firstPage = await app.inject({
+      method: "GET", url: `/api/projects?search=${encodeURIComponent(prefix)}`, headers: { cookie }
+    });
+    expect(firstPage.statusCode).toBe(200);
+    expect(firstPage.json().projects).toHaveLength(20);
+    expect(firstPage.json().pagination).toMatchObject({ page: 1, pageSize: 20, total: 21, totalPages: 2 });
+    const secondPage = await app.inject({
+      method: "GET", url: `/api/projects?search=${encodeURIComponent(prefix)}&page=2`, headers: { cookie }
+    });
+    expect(secondPage.json().projects).toHaveLength(1);
+    expect(secondPage.json().pagination).toMatchObject({ page: 2, pageSize: 20, total: 21, totalPages: 2 });
+    const smallerPage = await app.inject({
+      method: "GET", url: `/api/projects?search=${encodeURIComponent(prefix)}&page=2&pageSize=5`, headers: { cookie }
+    });
+    expect(smallerPage.json().projects).toHaveLength(5);
+    expect(smallerPage.json().pagination).toMatchObject({ page: 2, pageSize: 5, total: 21, totalPages: 5 });
+  });
+
+  it("duplicates project sources without copying collaboration or build output", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Duplicate source" } });
+    const source = created.json().project;
+    const sourceContent = String.raw`\documentclass{article}
+\begin{document}
+Copied source.
+\end{document}
+`;
+    await app.inject({ method: "PUT", url: `/api/projects/${source.id}/file`, headers: { cookie }, payload: { path: "main.tex", content: sourceContent } });
+    await app.inject({ method: "PUT", url: `/api/projects/${source.id}/file`, headers: { cookie }, payload: { path: "assets/data.txt", content: "resource" } });
+    await app.inject({ method: "PUT", url: `/api/projects/${source.id}/file`, headers: { cookie }, payload: { path: ".latexmkrc", content: "$silent = 1;\n" } });
+    await app.inject({ method: "PATCH", url: `/api/projects/${source.id}`, headers: { cookie }, payload: { latexmkrc: ".latexmkrc", engine: "xelatex" } });
+    await app.inject({
+      method: "POST", url: `/api/projects/${source.id}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "Source-only comment" }
+    });
+
+    const duplicated = await app.inject({ method: "POST", url: `/api/projects/${source.id}/duplicate`, headers: { cookie }, payload: {} });
+    expect(duplicated.statusCode, duplicated.body).toBe(201);
+    const copy = duplicated.json().project;
+    expect(copy).toMatchObject({ name: "Duplicate source (1)", ownerUsername: "admin", mainFile: "main.tex", latexmkrc: ".latexmkrc", engine: "xelatex" });
+    expect(copy.id).not.toBe(source.id);
+    const copiedMain = await app.inject({ method: "GET", url: `/api/projects/${copy.id}/file?path=main.tex`, headers: { cookie } });
+    expect(copiedMain.json().content).toBe(sourceContent);
+    const copiedResource = await app.inject({ method: "GET", url: `/api/projects/${copy.id}/file?path=assets%2Fdata.txt`, headers: { cookie } });
+    expect(copiedResource.json().content).toBe("resource");
+    const copiedComments = await app.inject({ method: "GET", url: `/api/projects/${copy.id}/comments?path=main.tex`, headers: { cookie } });
+    expect(copiedComments.json().comments).toEqual([]);
+    expect(fs.readdirSync(path.join(config.projectsDir, copy.id, "output"))).toEqual([]);
+  });
+
   it("manages an owner-only encrypted GitHub backup with commit, diff, checkout and push", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Git backup paper" } });
     const projectId = created.json().project.id as string;

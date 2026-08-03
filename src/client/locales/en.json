@@ -20,9 +20,9 @@
     "emptyRestricted": "Projects shared with you will appear here.", "noMatches": "No projects match the current search or tag filter.",
     "upload": "Upload project", "uploadDescription": "Upload a ZIP archive. A single top-level folder is removed automatically. Maximum file size: {{size}} MB.",
     "zipFile": "ZIP archive", "import": "Import project", "importing": "Importing…", "search": "Search projects…",
-    "grid": "Grid", "list": "List", "allTags": "All tags", "sortBy": "Sort", "sortModified": "Last modified", "sortCreated": "Created",
+    "grid": "Grid", "list": "List", "scope": "Project status", "active": "Active", "archived": "Archived", "archive": "Archive", "unarchive": "Restore", "noArchived": "No archived projects.", "allTags": "All tags", "sortBy": "Sort", "sortModified": "Last modified", "sortCreated": "Created", "pagination": "Project pages", "pageOf": "Page {{page}} of {{totalPages}} · {{count}} projects", "previousPage": "Previous", "nextPage": "Next",
     "owner": "Owner", "created": "Created", "modified": "Last modified",
-    "modifiedBy": "Modified by", "byUser": "By {{user}}", "modifiedByUser": "{{time}} · By {{user}}", "deletedUser": "Deleted user", "filterTags": "Filter by tag", "rename": "Rename", "renameTitle": "Rename project",
+    "modifiedBy": "Modified by", "byUser": "By {{user}}", "modifiedByUser": "{{time}} · By {{user}}", "deletedUser": "Deleted user", "filterTags": "Filter by tag", "rename": "Rename", "renameTitle": "Rename project", "duplicate": "Duplicate", "duplicating": "Duplicating…", "duplicateTitle": "Duplicate project", "duplicateDescription": "Create an independent copy of {{project}}. Files and project settings are copied; members, comments, Git history and compile output are not.",
     "download": "Download", "deleteTitle": "Delete project", "deleteDescription": "Permanently delete {{project}} and all of its files? This cannot be undone.",
     "chooseZip": "Choose a ZIP project", "dropZip": "Drag and drop a ZIP archive here", "browse": "Browse files",
     "selectedFileSize": "Selected · {{size}}", "clearFile": "Clear selected file"

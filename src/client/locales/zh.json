@@ -17,9 +17,9 @@
     "emptyRestricted": "共享给你的项目会显示在这里。", "noMatches": "没有符合当前搜索或标签筛选条件的项目。",
     "upload": "上传项目", "uploadDescription": "上传 ZIP 压缩包；若只有一个顶层目录会自动去除。单文件最大 {{size}} MB。", "zipFile": "ZIP 压缩包",
     "import": "导入项目", "importing": "正在导入…", "search": "搜索项目…", "grid": "网格", "list": "列表", "allTags": "全部标签",
-    "sortBy": "排序", "sortModified": "最后修改时间", "sortCreated": "创建时间",
+    "sortBy": "排序", "sortModified": "最后修改时间", "sortCreated": "创建时间", "scope": "项目状态", "active": "活跃项目", "archived": "已归档", "archive": "归档", "unarchive": "取消归档", "noArchived": "还没有归档项目。", "pagination": "项目分页", "pageOf": "第 {{page}} / {{totalPages}} 页 · 共 {{count}} 个项目", "previousPage": "上一页", "nextPage": "下一页",
     "owner": "所有者", "created": "创建时间", "modified": "最后修改", "modifiedBy": "最后修改人", "byUser": "由 {{user}} 修改", "modifiedByUser": "{{time}} · 由 {{user}} 修改", "deletedUser": "已删除用户",
-    "filterTags": "按标签过滤", "rename": "重命名", "renameTitle": "重命名项目", "download": "下载",
+    "filterTags": "按标签过滤", "rename": "重命名", "renameTitle": "重命名项目", "duplicate": "复制项目", "duplicating": "正在复制…", "duplicateTitle": "复制项目", "duplicateDescription": "创建“{{project}}”的独立副本。会复制文件和项目设置，但不会复制成员、批注、Git 历史和编译产物。", "download": "下载",
     "deleteTitle": "删除项目", "deleteDescription": "确定永久删除“{{project}}”及其全部文件吗？此操作不可撤销。",
     "chooseZip": "选择 ZIP 项目", "dropZip": "将 ZIP 压缩包拖放到这里", "browse": "浏览文件",
     "selectedFileSize": "已选择 · {{size}}", "clearFile": "清除已选文件"

@@ -43,6 +43,21 @@ Start writing here.
   );
 }
 
+export function duplicateProjectFiles(config: Config, sourceProjectId: string, targetProjectId: string): void {
+  const source = sourceRoot(config, sourceProjectId);
+  const target = sourceRoot(config, targetProjectId);
+  fs.mkdirSync(target, { recursive: true, mode: 0o700 });
+  if (fs.existsSync(source)) {
+    for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+      if (entry.name === ".git") continue;
+      fs.cpSync(path.join(source, entry.name), path.join(target, entry.name), {
+        recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true
+      });
+    }
+  }
+  fs.mkdirSync(outputRoot(config, targetProjectId), { recursive: true, mode: 0o700 });
+}
+
 export function safeRelativePath(input: string): string {
   if (!input || input.includes("\0") || path.isAbsolute(input)) {
     throw new Error("无效的文件路径");

@@ -120,6 +120,14 @@ function migrate(db: DatabaseConnection): void {
     );
     CREATE INDEX IF NOT EXISTS user_project_tag_links_tag_id ON user_project_tag_links(tag_id);
 
+    CREATE TABLE IF NOT EXISTS user_project_archives (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      archived_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, project_id)
+    );
+    CREATE INDEX IF NOT EXISTS user_project_archives_project_id ON user_project_archives(project_id);
+
     CREATE TABLE IF NOT EXISTS project_members (
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

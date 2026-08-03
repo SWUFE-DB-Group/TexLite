@@ -4,12 +4,12 @@ import { api, ApiError, localizedResponseError } from "./api";
 import { LatexEditor, type SpellCheckIssue } from "./LatexEditor";
 import type { PdfTarget } from "./PdfPreview";
 import { ConfirmDialog, Modal } from "./Dialog";
-import type { Comment, FileEntry, LatexCompletionIndex, Project, ProjectTag, SiteConfig, TagColor, User } from "./types";
+import type { Comment, FileEntry, LatexCompletionIndex, Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "./types";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { GitDialog } from "./GitDialog";
 import i18n from "./i18n";
 import {
-  AlertTriangle, ArrowDownUp, ArrowLeft, BookOpen, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Columns2, Dices, Download, FileArchive, FilePlus2, FileText,
+  AlertTriangle, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, BookOpen, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Columns2, Copy, Dices, Download, FileArchive, FilePlus2, FileText,
   Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, ListTree, LoaderCircle, MessageSquare, MessageSquarePlus, PackageOpen,
   Move, PanelLeft, PanelLeftClose, PanelLeftOpen, PanelRight, Pencil, Play, Reply, RotateCcw, Save, ScrollText, Send,
   Settings, Sparkles, SpellCheck2, Tags, Trash2, Type, Upload, UserPlus, Users, WrapText, X, XCircle
@@ -37,7 +37,7 @@ export function App() {
   const [site, setSite] = useState<SiteConfig>({ siteName: "TexLite", adminEmail: "" });
   const [user, setUser] = useState<User | null | undefined>();
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [dashboardCache, setDashboardCache] = useState<{ userId: string; projects: Project[]; tags: ProjectTag[] } | null>(null);
+  const [dashboardCache, setDashboardCache] = useState<{ userId: string; projects: Project[]; tags: ProjectTag[]; pagination: ProjectListPagination } | null>(null);
 
   useEffect(() => {
     void api<SiteConfig>("/api/config").then((config) => {
@@ -58,8 +58,8 @@ export function App() {
   }
   const cachedDashboard = dashboardCache?.userId === user.id ? dashboardCache : null;
   return <Dashboard site={site} user={user}
-    initialData={cachedDashboard ? { projects: cachedDashboard.projects, tags: cachedDashboard.tags } : null}
-    onDataChange={(projects, tags) => setDashboardCache({ userId: user.id, projects, tags })}
+    initialData={cachedDashboard ? { projects: cachedDashboard.projects, tags: cachedDashboard.tags, pagination: cachedDashboard.pagination } : null}
+    onDataChange={(projects, tags, pagination) => setDashboardCache({ userId: user.id, projects, tags, pagination })}
     onUser={(next) => { if (!next || next.id !== user.id) setDashboardCache(null); setUser(next); }}
     onOpenProject={setProjectId} />;
 }
@@ -132,14 +132,17 @@ function Login({ site, onLogin }: { site: SiteConfig; onLogin: (user: User) => v
 function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProject }: {
   site: SiteConfig;
   user: User;
-  initialData: { projects: Project[]; tags: ProjectTag[] } | null;
-  onDataChange: (projects: Project[], tags: ProjectTag[]) => void;
+  initialData: { projects: Project[]; tags: ProjectTag[]; pagination: ProjectListPagination } | null;
+  onDataChange: (projects: Project[], tags: ProjectTag[], pagination: ProjectListPagination) => void;
   onUser: (user: User | null) => void;
   onOpenProject: (id: string) => void;
 }) {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>(() => initialData?.projects ?? []);
   const [tags, setTags] = useState<ProjectTag[]>(() => initialData?.tags ?? []);
+  const [pagination, setPagination] = useState<ProjectListPagination>(() => initialData?.pagination ?? {
+    page: 1, pageSize: 20, total: initialData?.projects.length ?? 0, totalPages: initialData?.projects.length ? 1 : 0
+  });
   const [hasLoaded, setHasLoaded] = useState(Boolean(initialData));
   const [adminOpen, setAdminOpen] = useState(false);
   const [error, setError] = useState("");
@@ -159,28 +162,52 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   const [tagProject, setTagProject] = useState<Project | null>(null);
   const [renameProject, setRenameProject] = useState<Project | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [duplicateProject, setDuplicateProject] = useState<Project | null>(null);
+  const [duplicateValue, setDuplicateValue] = useState("");
+  const [duplicating, setDuplicating] = useState(false);
   const [deleteProject, setDeleteProject] = useState<Project | null>(null);
   const [view, setView] = useState<"grid" | "list">(() => localStorage.getItem("texlite-project-view") === "list" ? "list" : "grid");
   const [sort, setSort] = useState<"updated" | "created">(() => localStorage.getItem("texlite-project-sort") === "created" ? "created" : "updated");
-  const load = () => Promise.all([
-    api<{ projects: Project[] }>("/api/projects"),
-    api<{ tags: ProjectTag[] }>("/api/tags")
-  ]).then(([projectResult, tagResult]) => {
-    setProjects(projectResult.projects); setTags(tagResult.tags); setHasLoaded(true);
-  }).catch((e) => setError(errorMessage(e)));
-  useEffect(() => { void load(); }, []);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState("");
+  const [page, setPage] = useState(1);
+  const [loadedKey, setLoadedKey] = useState("");
+  const requestSequence = useRef(0);
+  const requestKey = (archived: boolean, pageNumber: number, search: string, tag: string, order: "updated" | "created") =>
+    `${archived ? "archived" : "active"}|${pageNumber}|${search}|${tag}|${order}`;
+  const currentRequestKey = requestKey(showArchived, page, query, tagFilter, sort);
+  const load = (archived: boolean, pageNumber: number, search: string, tag: string, order: "updated" | "created") => {
+    const params = new URLSearchParams({ page: String(pageNumber), pageSize: "20", sort: order });
+    if (archived) params.set("archived", "1");
+    if (search.trim()) params.set("search", search.trim());
+    if (tag) params.set("tag", tag);
+    const key = requestKey(archived, pageNumber, search, tag, order);
+    const sequence = ++requestSequence.current;
+    return Promise.all([
+      api<{ projects: Project[]; pagination: ProjectListPagination }>(`/api/projects?${params.toString()}`),
+      api<{ tags: ProjectTag[] }>("/api/tags")
+    ]).then(([projectResult, tagResult]) => {
+      if (sequence !== requestSequence.current) return;
+      setProjects(projectResult.projects); setTags(tagResult.tags); setPagination(projectResult.pagination); setPage(projectResult.pagination.page);
+      setHasLoaded(true); setLoadedKey(key);
+    }).catch((e) => { if (sequence === requestSequence.current) setError(errorMessage(e)); });
+  };
+  useEffect(() => { void load(showArchived, page, query, tagFilter, sort); }, [showArchived, page, query, tagFilter, sort]);
   useEffect(() => {
-    if (hasLoaded) onDataChange(projects, tags);
-  }, [projects, tags, hasLoaded]);
+    if (hasLoaded && !showArchived && loadedKey === currentRequestKey) onDataChange(projects, tags, pagination);
+  }, [projects, tags, pagination, hasLoaded, loadedKey, currentRequestKey, showArchived]);
   const changeView = (next: "grid" | "list") => { setView(next); localStorage.setItem("texlite-project-view", next); };
-  const changeSort = (next: "updated" | "created") => { setSort(next); localStorage.setItem("texlite-project-sort", next); };
+  const changeSort = (next: "updated" | "created") => { setSort(next); setPage(1); localStorage.setItem("texlite-project-sort", next); };
+  const changeScope = (archived: boolean) => { setShowArchived(archived); setPage(1); };
+  const changeTagFilter = (next: string) => { setTagFilter(next); setPage(1); };
   const createProject = async () => {
     if (!newProjectName.trim()) return;
     try {
       const { project } = await api<{ project: Project }>("/api/projects", { method: "POST", body: JSON.stringify({ name: newProjectName }) });
       setCreateOpen(false); setNewProjectName("");
-      const nextProjects = [project, ...projects];
-      setProjects(nextProjects); onDataChange(nextProjects, tags);
+      const nextProjects = showArchived || page !== 1 ? projects : [project, ...projects].slice(0, pagination.pageSize);
+      const nextPagination = showArchived ? pagination : { ...pagination, total: pagination.total + 1, totalPages: Math.ceil((pagination.total + 1) / pagination.pageSize) };
+      setProjects(nextProjects); setPagination(nextPagination); if (!showArchived) onDataChange(nextProjects, tags, nextPagination);
       onOpenProject(project.id);
     } catch (e) { setError(errorMessage(e)); }
   };
@@ -195,8 +222,9 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
       const result = await response.json();
       if (!response.ok) throw new Error(localizedResponseError(result, response.status, "errors.upload"));
       const project = result.project as Project;
-      const nextProjects = [project, ...projects];
-      setProjects(nextProjects); onDataChange(nextProjects, tags);
+      const nextProjects = showArchived || page !== 1 ? projects : [project, ...projects].slice(0, pagination.pageSize);
+      const nextPagination = showArchived ? pagination : { ...pagination, total: pagination.total + 1, totalPages: Math.ceil((pagination.total + 1) / pagination.pageSize) };
+      setProjects(nextProjects); setPagination(nextPagination); if (!showArchived) onDataChange(nextProjects, tags, nextPagination);
       setImportOpen(false); setImportFile(null); setImportName(""); onOpenProject(project.id);
     } catch (e) { setImportError(errorMessage(e)); }
     finally { setImporting(false); }
@@ -250,26 +278,55 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
     } catch (e) { setError(errorMessage(e)); }
   };
 
+  const duplicate = async () => {
+    if (!duplicateProject || !duplicateValue.trim()) return;
+    setDuplicating(true); setError("");
+    try {
+      await api(`/api/projects/${duplicateProject.id}/duplicate`, {
+        method: "POST", body: JSON.stringify({ name: duplicateValue })
+      });
+      setDuplicateProject(null); setDuplicateValue("");
+      void load(showArchived, page, query, tagFilter, sort);
+    } catch (e) { setError(errorMessage(e)); }
+    finally { setDuplicating(false); }
+  };
+
   const removeProject = async () => {
     if (!deleteProject) return;
     try {
       await api(`/api/projects/${deleteProject.id}`, { method: "DELETE" });
       setProjects((current) => current.filter((project) => project.id !== deleteProject.id));
+      const nextTotal = Math.max(0, pagination.total - 1);
+      const nextTotalPages = Math.ceil(nextTotal / pagination.pageSize);
+      const nextPage = nextTotalPages === 0 ? 1 : Math.min(page, nextTotalPages);
+      const nextPagination = { ...pagination, page: nextPage, total: nextTotal, totalPages: nextTotalPages };
+      setPagination(nextPagination);
       setDeleteProject(null);
+      if (nextPage !== page) setPage(nextPage);
+      else void load(showArchived, page, query, tagFilter, sort);
     } catch (e) { setError(errorMessage(e)); }
   };
 
-  const filtered = projects.filter((project) => {
-    const needle = query.trim().toLocaleLowerCase();
-    const matchesText = !needle || [project.name, project.ownerDisplayName, project.ownerUsername]
-      .some((value) => value?.toLocaleLowerCase().includes(needle));
-    const matchesTag = !tagFilter || project.tags?.some((tag) => tag.id === tagFilter);
-    return matchesText && matchesTag;
-  }).sort((left, right) => {
-    const leftTime = sort === "created" ? left.createdAt : left.updatedAt;
-    const rightTime = sort === "created" ? right.createdAt : right.updatedAt;
-    return rightTime.localeCompare(leftTime) || left.name.localeCompare(right.name);
-  });
+  const toggleArchive = async (project: Project) => {
+    const archive = !showArchived;
+    setArchiveBusy(project.id); setError("");
+    try {
+      await api(`/api/projects/${project.id}/archive`, { method: archive ? "PUT" : "DELETE" });
+      const nextProjects = projects.filter((item) => item.id !== project.id);
+      setProjects(nextProjects);
+      const nextTotal = Math.max(0, pagination.total - 1);
+      const nextTotalPages = Math.ceil(nextTotal / pagination.pageSize);
+      const nextPage = nextTotalPages === 0 ? 1 : Math.min(page, nextTotalPages);
+      const nextPagination = { ...pagination, page: nextPage, total: nextTotal, totalPages: nextTotalPages };
+      setPagination(nextPagination);
+      if (!showArchived) onDataChange(nextProjects, tags, nextPagination);
+      if (nextPage !== page) setPage(nextPage);
+      else void load(showArchived, page, query, tagFilter, sort);
+    } catch (e) { setError(errorMessage(e)); }
+    finally { setArchiveBusy(""); }
+  };
+
+  const filtered = projects;
   const colors: TagColor[] = ["red", "orange", "yellow", "green", "blue", "purple", "gray"];
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
 
@@ -284,7 +341,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
     {adminOpen ? <AdminUsers currentUser={user} /> : <main className="dashboard">
       <div className="section-title"><div><h1>{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => setTagCreateOpen(true)}>{t("tags.create")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}>{t("projects.upload")}</button><button className="primary" onClick={() => setCreateOpen(true)}>{t("projects.new")}</button></>}</div></div>
       {error && <p className="error">{error}</p>}
-      <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => setQuery(event.target.value)} /><div className="tag-filters"><button className={!tagFilter ? "active" : ""} onClick={() => setTagFilter("")}>{t("projects.allTags")}</button>{tags.map((tag) => <button key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => setTagFilter(tagFilter === tag.id ? "" : tag.id)}><TagDot color={tag.color} />{tag.name}</button>)}</div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
+      <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="tablist" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} role="tab" aria-selected={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} role="tab" aria-selected={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><div className="tag-filters"><button className={!tagFilter ? "active" : ""} onClick={() => changeTagFilter("")}>{t("projects.allTags")}</button>{tags.map((tag) => <button key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => changeTagFilter(tagFilter === tag.id ? "" : tag.id)}><TagDot color={tag.color} />{tag.name}</button>)}</div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
       <div className={`project-grid ${view === "list" ? "list-view" : ""}`}>
         {filtered.map((project) => <article className="project-card" key={project.id}>
           <button className="project-card-open" onClick={() => onOpenProject(project.id)}>
@@ -298,14 +355,17 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
           <div className="project-card-actions">
             <button onClick={() => setTagProject(project)}><Tags aria-hidden size={14} />{t("tags.assign")}</button>
             {project.permission === "owner" && <button onClick={() => { setRenameProject(project); setRenameValue(project.name); }}><Pencil aria-hidden size={14} />{t("projects.rename")}</button>}
+            {(user.role === "admin" || user.canCreateProjects) && <button onClick={() => { setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}><Copy aria-hidden size={14} />{t("projects.duplicate")}</button>}
             <a href={`/api/projects/${project.id}/download`} download><Download aria-hidden size={14} />{t("projects.download")}</a>
+            <button disabled={archiveBusy === project.id} onClick={() => void toggleArchive(project)}>{showArchived ? <ArchiveRestore aria-hidden size={14} /> : <Archive aria-hidden size={14} />}{showArchived ? t("projects.unarchive") : t("projects.archive")}</button>
             {project.permission === "owner" && <button className="danger-text" onClick={() => setDeleteProject(project)}><Trash2 aria-hidden size={14} />{t("common.delete")}</button>}
           </div>
         </article>)}
         {filtered.length === 0 && (projects.length === 0
-          ? <div className="project-empty"><span className="project-empty-icon"><Sparkles size={28} /></span><h2>{t("projects.emptyTitle")}</h2><p>{user.canCreateProjects ? t("projects.emptyDescription") : t("projects.emptyRestricted")}</p></div>
+          ? showArchived ? <div className="empty">{t("projects.noArchived")}</div> : <div className="project-empty"><span className="project-empty-icon"><Sparkles size={28} /></span><h2>{t("projects.emptyTitle")}</h2><p>{user.canCreateProjects ? t("projects.emptyDescription") : t("projects.emptyRestricted")}</p></div>
           : <div className="empty">{t("projects.noMatches")}</div>)}
       </div>
+      {pagination.totalPages > 1 && <nav className="project-pagination" aria-label={t("projects.pagination")}><button disabled={pagination.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} title={t("projects.previousPage")}><ChevronLeft size={15} />{t("projects.previousPage")}</button><span>{t("projects.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}</span><button disabled={pagination.page >= pagination.totalPages} onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} title={t("projects.nextPage")}><ChevronRight size={15} />{t("projects.nextPage")}</button></nav>}
       <Modal open={createOpen} title={t("projects.new")} description={t("projects.newDescription")} onOpenChange={setCreateOpen} footer={<><button onClick={() => setCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createProject()}>{t("common.create")}</button></>}>
         <label className="form-field">{t("projects.name")}<input autoFocus value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createProject(); }} /></label>
       </Modal>
@@ -313,6 +373,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
       <Modal open={tagCreateOpen} title={t("tags.create")} description={t("tags.createDescription")} onOpenChange={setTagCreateOpen} footer={<><button onClick={() => setTagCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createTag()}>{t("common.create")}</button></>}><div className="form-stack"><label className="form-field">{t("tags.name")}<input autoFocus value={tagName} onChange={(event) => setTagName(event.target.value)} /></label><fieldset className="color-picker"><legend>{t("tags.color")}</legend>{colors.map((color) => <label key={color} className={tagColor === color ? "active" : ""}><input type="radio" name="dashboard-tag-color" checked={tagColor === color} onChange={() => setTagColor(color)} /><TagDot color={color} />{t(`tags.${color}`)}</label>)}</fieldset></div></Modal>
       <Modal open={Boolean(tagProject)} title={t("tags.assignTitle", { project: tagProject?.name ?? "" })} description={t("tags.assignDescription")} onOpenChange={(open) => { if (!open) setTagProject(null); }} footer={<button onClick={() => setTagProject(null)}>{t("common.close")}</button>}><div className="tag-assignment-list">{tags.map((tag) => <label key={tag.id}><input type="checkbox" checked={Boolean(tagProject?.tags.some((item) => item.id === tag.id))} onChange={() => void toggleProjectTag(tag)} /><TagDot color={tag.color} /><span>{tag.name}</span></label>)}{tags.length === 0 && <p className="muted">{t("tags.empty")}</p>}</div></Modal>
       <Modal open={Boolean(renameProject)} title={t("projects.renameTitle")} onOpenChange={(open) => { if (!open) setRenameProject(null); }} footer={<><button onClick={() => setRenameProject(null)}>{t("common.cancel")}</button><button className="primary" onClick={() => void rename()}>{t("projects.rename")}</button></>}><label className="form-field">{t("projects.name")}<input autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void rename(); }} /></label></Modal>
+      <Modal open={Boolean(duplicateProject)} title={t("projects.duplicateTitle")} description={t("projects.duplicateDescription", { project: duplicateProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !duplicating) { setDuplicateProject(null); setDuplicateValue(""); } }} footer={<><button disabled={duplicating} onClick={() => { setDuplicateProject(null); setDuplicateValue(""); }}>{t("common.cancel")}</button><button className="primary" disabled={duplicating || !duplicateValue.trim()} onClick={() => void duplicate()}>{duplicating ? t("projects.duplicating") : t("projects.duplicate")}</button></>}><label className="form-field">{t("projects.name")}<input autoFocus value={duplicateValue} onChange={(event) => setDuplicateValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void duplicate(); }} /></label></Modal>
       <ConfirmDialog open={Boolean(deleteProject)} title={t("projects.deleteTitle")} description={t("projects.deleteDescription", { project: deleteProject?.name ?? "" })} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteProject(null)} onConfirm={() => void removeProject()} />
     </main>}<SiteFooter />
   </div>;

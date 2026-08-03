@@ -14,6 +14,7 @@ import { currentUser, publicUser, requireAdmin, requireUser } from "./auth.js";
 import { accessibleProject, canEdit } from "./projects.js";
 import {
   createProjectFiles,
+  duplicateProjectFiles,
   listProjectFiles,
   outputRoot,
   removeProjectDirectory,
@@ -91,6 +92,7 @@ function projectJson(project: ProjectRow & {
   owner_display_name?: string;
   last_modified_username?: string | null;
   last_modified_display_name?: string | null;
+  archived?: boolean | number;
 }, tags: ProjectTag[] = []) {
   return {
     id: project.id,
@@ -106,6 +108,7 @@ function projectJson(project: ProjectRow & {
     engine: project.engine,
     permission: project.permission,
     tags,
+    archived: Boolean(project.archived),
     createdAt: project.created_at,
     updatedAt: project.updated_at
   };
@@ -521,26 +524,64 @@ export async function buildApp(
   app.get("/api/projects", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const rows = user.role === "admin"
-      ? db.prepare(`SELECT p.*, 'owner' AS permission, owner.username AS owner_username,
+    const query = request.query as { archived?: string; page?: string; pageSize?: string; search?: string; tag?: string; sort?: string };
+    const archivedOnly = query.archived === "1" || query.archived === "true";
+    const requestedPage = Number.parseInt(query.page ?? "1", 10);
+    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const requestedPageSize = Number.parseInt(query.pageSize ?? "20", 10);
+    const pageSize = Math.min(100, Math.max(1, Number.isFinite(requestedPageSize) && requestedPageSize > 0 ? requestedPageSize : 20));
+    const search = typeof query.search === "string" ? query.search.trim() : "";
+    const tagId = typeof query.tag === "string" ? query.tag.trim() : "";
+    const sortColumn = query.sort === "created" ? "p.created_at" : "p.updated_at";
+    const archiveCondition = archivedOnly
+      ? "EXISTS (SELECT 1 FROM user_project_archives archive WHERE archive.project_id = p.id AND archive.user_id = :userId)"
+      : "NOT EXISTS (SELECT 1 FROM user_project_archives archive WHERE archive.project_id = p.id AND archive.user_id = :userId)";
+    const from = user.role === "admin"
+      ? `FROM projects p JOIN users owner ON owner.id = p.owner_id
+          LEFT JOIN users modifier ON modifier.id = p.last_modified_by`
+      : `FROM projects p JOIN users owner ON owner.id = p.owner_id
+          LEFT JOIN users modifier ON modifier.id = p.last_modified_by
+          LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = :userId`;
+    const conditions = [
+      ...(user.role === "admin" ? [] : ["(p.owner_id = :userId OR pm.user_id = :userId)"]),
+      archiveCondition
+    ];
+    const params: Record<string, string | number> = { userId: user.id };
+    if (search) {
+      conditions.push("(p.name LIKE :search OR owner.username LIKE :search OR owner.display_name LIKE :search)");
+      params.search = `%${search}%`;
+    }
+    if (tagId) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM user_project_tag_links tag_link
+        JOIN user_tags tag ON tag.id = tag_link.tag_id
+        WHERE tag_link.project_id = p.id AND tag.user_id = :userId AND tag.id = :tagId
+      )`);
+      params.tagId = tagId;
+    }
+    const where = `WHERE ${conditions.join(" AND ")}`;
+    const countRow = db.prepare(`SELECT COUNT(DISTINCT p.id) AS total ${from} ${where}`).get(params) as { total: number };
+    const total = Number(countRow.total);
+    const totalPages = Math.ceil(total / pageSize);
+    const currentPage = totalPages === 0 ? 1 : Math.min(page, totalPages);
+    const rowsParams = { ...params, limit: pageSize, offset: (currentPage - 1) * pageSize };
+    const select = user.role === "admin"
+      ? `SELECT p.*, 'owner' AS permission, owner.username AS owner_username,
           owner.display_name AS owner_display_name,
-          modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name
-          FROM projects p JOIN users owner ON owner.id = p.owner_id
-          LEFT JOIN users modifier ON modifier.id = p.last_modified_by
-          ORDER BY p.updated_at DESC`).all()
-      : db.prepare(`
-          SELECT DISTINCT p.*,
-            CASE WHEN p.owner_id = ? THEN 'owner' ELSE pm.permission END AS permission,
-            owner.username AS owner_username, owner.display_name AS owner_display_name,
-            modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name
-          FROM projects p JOIN users owner ON owner.id = p.owner_id
-          LEFT JOIN users modifier ON modifier.id = p.last_modified_by
-          LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
-          WHERE p.owner_id = ? OR pm.user_id = ? ORDER BY p.updated_at DESC
-        `).all(user.id, user.id, user.id, user.id);
+          modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name`
+      : `SELECT DISTINCT p.*,
+          CASE WHEN p.owner_id = :userId THEN 'owner' ELSE pm.permission END AS permission,
+          owner.username AS owner_username, owner.display_name AS owner_display_name,
+          modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name`;
+    const rows = db.prepare(`${select} ${from} ${where}
+      ORDER BY ${sortColumn} DESC, p.name COLLATE NOCASE ASC
+      LIMIT :limit OFFSET :offset`).all(rowsParams);
     const projects = rows as unknown as Array<ProjectRow & { permission: string }>;
     const projectTags = tagsForProjects(db, projects.map((project) => project.id), user.id);
-    return { projects: projects.map((project) => projectJson(project, projectTags.get(project.id) ?? [])) };
+    return {
+      projects: projects.map((project) => projectJson({ ...project, archived: archivedOnly }, projectTags.get(project.id) ?? [])),
+      pagination: { page: currentPage, pageSize, total, totalPages }
+    };
   });
 
   app.post("/api/projects", async (request, reply) => {
@@ -602,6 +643,36 @@ export async function buildApp(
     }) });
   });
 
+  app.post("/api/projects/:id/duplicate", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    if (user.role !== "admin" && !user.can_create_projects) {
+      return reply.code(403).send({ error: "管理员尚未授予你创建项目的权限" });
+    }
+    const { id } = request.params as { id: string };
+    const source = accessibleProject(db, id, user);
+    if (!source) return reply.code(404).send({ error: "项目不存在" });
+    const body = request.body as { name?: unknown } | undefined;
+    const requestedName = typeof body?.name === "string" && body.name.trim() ? body.name : `${source.name.slice(0, 115)} (1)`;
+    const project: ProjectRow = {
+      id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(requestedName, "项目名称", 120),
+      main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, created_at: now(), updated_at: now()
+    };
+    try {
+      duplicateProjectFiles(config, source.id, project.id);
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.created_at, project.updated_at);
+    } catch (error) {
+      removeProjectDirectory(config, project.id);
+      throw error;
+    }
+    return reply.code(201).send({ project: projectJson({
+      ...project, permission: "owner", owner_username: user.username, owner_display_name: user.display_name,
+      last_modified_username: user.username, last_modified_display_name: user.display_name
+    }) });
+  });
+
   app.get("/api/projects/:id", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
@@ -609,6 +680,25 @@ export async function buildApp(
     const project = accessibleProject(db, id, user);
     if (!project) return reply.code(404).send({ error: "项目不存在" });
     return { project: projectJson(project, tagsForProject(db, id, user.id)) };
+  });
+
+  app.put("/api/projects/:id/archive", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return reply.code(404).send({ error: "项目不存在" });
+    db.prepare(`INSERT OR IGNORE INTO user_project_archives (user_id, project_id, archived_at) VALUES (?, ?, ?)`)
+      .run(user.id, id, now());
+    return { ok: true, archived: true };
+  });
+
+  app.delete("/api/projects/:id/archive", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return reply.code(404).send({ error: "项目不存在" });
+    db.prepare("DELETE FROM user_project_archives WHERE user_id = ? AND project_id = ?").run(user.id, id);
+    return { ok: true, archived: false };
   });
 
   app.get("/api/projects/:id/dictionary", async (request, reply) => {
