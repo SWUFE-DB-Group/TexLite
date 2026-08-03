@@ -2,12 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/server/config.js";
 import {
   CompileQueue,
   ProjectCompileCoordinator,
   captureCompileSnapshot,
+  compileProject,
   publishCompileArtifacts,
   publishedCompileArtifacts,
   type CoordinatedCompileJob,
@@ -98,6 +100,68 @@ describe("reliable project compilation", () => {
     });
     expect(publishedCompileArtifacts(config, projectId)).toMatchObject({ runId: second.runId, pdf: secondPdf, synctex: null });
     expect(fs.existsSync(first.root)).toBe(true);
+  });
+
+  it("reuses a stable latexmk work directory and publishes immutable run artifacts", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-cache-"));
+    temporaryRoots.push(root);
+    const config = testConfig(root);
+    const fakeLatexmk = path.join(root, "fake-latexmk.mjs");
+    fs.writeFileSync(fakeLatexmk, `#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+import { gzipSync } from "node:zlib";
+const outputArgument = process.argv.find((argument) => argument.startsWith("-outdir="));
+const output = outputArgument.slice("-outdir=".length);
+const main = process.argv.at(-1);
+const basename = path.basename(main, ".tex");
+fs.mkdirSync(output, { recursive: true });
+const counterPath = path.join(output, ".fake-invocations");
+const count = fs.existsSync(counterPath) ? Number(fs.readFileSync(counterPath, "utf8")) + 1 : 1;
+const source = fs.readFileSync(path.resolve(main), "utf8");
+fs.writeFileSync(counterPath, String(count));
+fs.writeFileSync(path.join(output, basename + ".pdf"), "%PDF-1.4\\n" + count + "\\n" + source);
+fs.writeFileSync(path.join(output, basename + ".synctex.gz"), gzipSync("SyncTeX Version:1\\nInput:1:" + path.resolve(main) + "\\n"));
+console.log(JSON.stringify({ count, cwd: process.cwd() }));
+`);
+    fs.chmodSync(fakeLatexmk, 0o700);
+    config.latexmk = fakeLatexmk;
+    const projectId = randomUUID();
+    const liveSource = path.join(config.projectsDir, projectId, "source");
+    fs.mkdirSync(liveSource, { recursive: true });
+    fs.writeFileSync(path.join(liveSource, "main.tex"), "first revision\n");
+
+    const first = captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const firstResult = await compileProject(config, first, "main.tex", "pdflatex", null);
+    expect(firstResult.ok, firstResult.log).toBe(true);
+    expect(fs.readFileSync(firstResult.pdfPath!, "utf8")).toContain("1\nfirst revision");
+    expect(gunzipSync(fs.readFileSync(firstResult.synctexPath!)).toString("utf8")).toContain(first.sourceDir);
+
+    fs.writeFileSync(path.join(liveSource, "main.tex"), "second revision\n");
+    const second = captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const secondResult = await compileProject(config, second, "main.tex", "pdflatex", null);
+    expect(secondResult.ok, secondResult.log).toBe(true);
+    expect(fs.readFileSync(path.join(first.outputDir, ".fake-invocations"), "utf8")).toBe("1");
+    expect(fs.readFileSync(path.join(second.outputDir, ".fake-invocations"), "utf8")).toBe("2");
+    expect(fs.readFileSync(firstResult.pdfPath!, "utf8")).toContain("1\nfirst revision");
+    expect(fs.readFileSync(secondResult.pdfPath!, "utf8")).toContain("2\nsecond revision");
+    expect(gunzipSync(fs.readFileSync(secondResult.synctexPath!)).toString("utf8")).toContain(second.sourceDir);
+    expect(secondResult.timings).toMatchObject({ cacheSyncMs: expect.any(Number), latexmkMs: expect.any(Number) });
+    const cacheDirectory = path.join(config.projectsDir, projectId, "output", ".texlite", "cache");
+    expect(fs.readdirSync(cacheDirectory)).toHaveLength(1);
+
+    const differentEngine = captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "xelatex", latexmkrc: null, extraArgs: []
+    });
+    const differentEngineResult = await compileProject(config, differentEngine, "main.tex", "xelatex", null);
+    expect(differentEngineResult.ok, differentEngineResult.log).toBe(true);
+    expect(fs.readFileSync(path.join(differentEngine.outputDir, ".fake-invocations"), "utf8")).toBe("1");
+    expect(fs.readFileSync(secondResult.pdfPath!, "utf8")).toContain("2\nsecond revision");
+    expect(fs.readdirSync(cacheDirectory)).toHaveLength(1);
   });
 });
 

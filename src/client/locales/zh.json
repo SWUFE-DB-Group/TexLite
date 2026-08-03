@@ -125,7 +125,7 @@
     "red": "红色", "orange": "橙色", "yellow": "黄色", "green": "绿色", "blue": "蓝色", "purple": "紫色", "gray": "灰色"
   },
   "errors": { "generic": "操作失败", "request": "请求失败（{{status}}）", "upload": "上传失败", "fileTooLarge": "文件超过 {{size}} MB 限制。", "zipOnly": "请选择 ZIP 压缩包。", "collaborationUnavailable": "实时协作尚未连接，请在重新连接后保存或编译。" },
-  "footer": { "copyright": "© {{year}} {{siteName}}。保留所有权利。", "credit": "Designed and developed by CHEN Zhongpu" },
+  "footer": { "copyright": "© {{year}}", "credit": "Designed and developed by CHEN Zhongpu" },
   "completions": {
     "section": "章节", "subsection": "小节", "bold": "粗体", "emphasis": "强调", "citation": "引用文献", "reference": "交叉引用",
     "label": "标签", "image": "插入图片", "unordered": "无序列表", "ordered": "有序列表", "equation": "公式", "figure": "图片环境",

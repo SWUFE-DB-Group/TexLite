@@ -70,9 +70,10 @@ function SiteLogo({ siteName, compact = false, auth = false }: { siteName: strin
   </span>;
 }
 
-function SiteFooter({ siteName }: { siteName: string }) {
+function SiteFooter() {
   const { t } = useTranslation();
-  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear(), siteName })}</span><span>{t("footer.credit")}</span></footer>;
+  const repositoryUrl = "https://github.com/SWUFE-DB-Group/TexLite";
+  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite</a></span><span>{t("footer.credit")}</span></footer>;
 }
 
 function ChangePassword({ site, user, onChanged }: { site: SiteConfig; user: User; onChanged: (user: User) => void }) {
@@ -96,7 +97,7 @@ function ChangePassword({ site, user, onChanged }: { site: SiteConfig; user: Use
     <label>{t("auth.newPassword")}<input type="password" minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /><small className="field-hint">{t("auth.passwordMinimum", { count: MIN_PASSWORD_LENGTH })}</small></label>
     <label>{t("auth.confirmPassword")}<input type="password" minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
     {error && <p className="error">{error}</p>}<button className="primary">{t("auth.updatePassword")}</button>
-  </form><SiteFooter siteName={site.siteName} /></main>;
+  </form><SiteFooter /></main>;
 }
 
 function Login({ site, onLogin }: { site: SiteConfig; onLogin: (user: User) => void }) {
@@ -124,7 +125,7 @@ function Login({ site, onLogin }: { site: SiteConfig; onLogin: (user: User) => v
       {error && <p className="error">{error}</p>}
       <button className="primary" type="submit">{t("auth.login")}</button>
       {site.adminEmail && <small className="support">{t("auth.contact", { email: site.adminEmail })}</small>}
-    </form><SiteFooter siteName={site.siteName} />
+    </form><SiteFooter />
   </main>;
 }
 
@@ -313,7 +314,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
       <Modal open={Boolean(tagProject)} title={t("tags.assignTitle", { project: tagProject?.name ?? "" })} description={t("tags.assignDescription")} onOpenChange={(open) => { if (!open) setTagProject(null); }} footer={<button onClick={() => setTagProject(null)}>{t("common.close")}</button>}><div className="tag-assignment-list">{tags.map((tag) => <label key={tag.id}><input type="checkbox" checked={Boolean(tagProject?.tags.some((item) => item.id === tag.id))} onChange={() => void toggleProjectTag(tag)} /><TagDot color={tag.color} /><span>{tag.name}</span></label>)}{tags.length === 0 && <p className="muted">{t("tags.empty")}</p>}</div></Modal>
       <Modal open={Boolean(renameProject)} title={t("projects.renameTitle")} onOpenChange={(open) => { if (!open) setRenameProject(null); }} footer={<><button onClick={() => setRenameProject(null)}>{t("common.cancel")}</button><button className="primary" onClick={() => void rename()}>{t("projects.rename")}</button></>}><label className="form-field">{t("projects.name")}<input autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void rename(); }} /></label></Modal>
       <ConfirmDialog open={Boolean(deleteProject)} title={t("projects.deleteTitle")} description={t("projects.deleteDescription", { project: deleteProject?.name ?? "" })} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteProject(null)} onConfirm={() => void removeProject()} />
-    </main>}<SiteFooter siteName={site.siteName} />
+    </main>}<SiteFooter />
   </div>;
 }
 

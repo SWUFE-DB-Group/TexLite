@@ -26,7 +26,7 @@ texLite is a lightweight, local-first web workspace for writing, compiling, prev
 - CodeMirror LaTeX editing with syntax highlighting, folding, completion, outline navigation, search/replace, and configurable appearance.
 - Yjs CRDT collaboration with active-session avatars, remote cursors, and a practical limit of about ten concurrent sessions per project.
 - Source-range comments with replies, resolved state, user/time metadata, and anchor remapping after edits.
-- Host-side latexmk compilation with pdflatex, xelatex, and lualatex options, project-level latexmkrc, serialized project jobs, immutable compile snapshots, retained PDFs, SyncTeX navigation, logs, warnings, errors, and downloadable artifacts such as .bbl files.
+- Host-side latexmk compilation with pdflatex, xelatex, and lualatex options, project-level latexmkrc, serialized project jobs, persistent incremental caches, immutable published snapshots, retained PDFs, SyncTeX navigation, logs, warnings, errors, and downloadable artifacts such as .bbl files.
 - Project sharing with read-only or read/write access. Read-only users can still add and reply to comments.
 - Owner-only local Git history and GitHub backup: commit, push, diff, checkout, and restore tracked changes.
 - Optional PM2 process management for automatic restart, status, and logs.
@@ -204,11 +204,12 @@ The editor uses a Yjs CRDT document for concurrent editing. Each active browser 
 Compilation is isolated from editing:
 
 1. The server captures an immutable source snapshot.
-2. The snapshot is compiled in a unique run directory.
-3. LaTeX output, logs, SyncTeX, and artifacts are collected from that run only.
-4. A successful PDF and SyncTeX file are published atomically as the latest retained result.
+2. Changed files are synchronized into a persistent compile workspace keyed by project and compiler settings.
+3. latexmk reuses its dependency database and auxiliary files; jobs for the same project remain serialized.
+4. The resulting PDF, logs, SyncTeX, and other artifacts are copied into an immutable run bundle.
+5. A successful bundle is published atomically as the latest retained result.
 
-This prevents concurrent users from sharing .aux, .log, .bbl, or SyncTeX files. A user can continue viewing the previous PDF while a new compile is running. latexmk handles the necessary repeated passes for BibTeX-based documents.
+The mutable cache is never used concurrently, while published artifacts are never modified in place. A user can continue viewing the previous PDF while a new compile is running. latexmk handles the necessary repeated passes for BibTeX-based documents and avoids rerunning BibTeX when its inputs have not changed. Compile responses expose a Server-Timing header for snapshot, cache synchronization, latexmk, artifact-copy, and total request time.
 
 ## GitHub backup
 

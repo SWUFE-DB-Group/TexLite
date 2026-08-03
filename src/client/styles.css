@@ -44,6 +44,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .language-switcher.compact option { color: #202421; }
 .dashboard { width: 100%; max-width: 1180px; flex: 1; margin: 0 auto; padding: 52px 34px; }
 .site-footer { width: 100%; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 7px 16px; padding: 18px 24px; border-top: 1px solid #dfe3df; background: #eef0ed; color: #737b75; font-size: 11px; text-align: center; }
+.site-footer a { color: #176b44; text-decoration: none; }
+.site-footer a:hover { text-decoration: underline; }
 .login-page > .site-footer { align-self: end; background: #ffffff50; }
 .section-title { display: flex; justify-content: space-between; align-items: end; margin-bottom: 28px; }
 .section-title h1 { margin: 0; font-size: 30px; letter-spacing: -.04em; }

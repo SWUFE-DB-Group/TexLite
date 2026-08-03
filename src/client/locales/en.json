@@ -136,7 +136,7 @@
     "red": "Red", "orange": "Orange", "yellow": "Yellow", "green": "Green", "blue": "Blue", "purple": "Purple", "gray": "Gray"
   },
   "errors": { "generic": "Operation failed", "request": "Request failed ({{status}})", "upload": "Upload failed", "fileTooLarge": "The file exceeds the {{size}} MB limit.", "zipOnly": "Please choose a ZIP archive.", "collaborationUnavailable": "Live collaboration is not connected. Reconnect before saving or compiling." },
-  "footer": { "copyright": "© {{year}} {{siteName}}. All rights reserved.", "credit": "Designed and developed by CHEN Zhongpu" },
+  "footer": { "copyright": "© {{year}}", "credit": "Designed and developed by CHEN Zhongpu" },
   "completions": {
     "section": "Section", "subsection": "Subsection", "bold": "Bold", "emphasis": "Emphasis", "citation": "Citation",
     "reference": "Cross-reference", "label": "Label", "image": "Image", "unordered": "Unordered list", "ordered": "Ordered list",

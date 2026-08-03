@@ -2,22 +2,43 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
+import { performance } from "node:perf_hooks";
+import { gunzipSync, gzipSync } from "node:zlib";
 import type { Config } from "./config.js";
 import { listProjectFiles, outputRoot, safeRelativePath, sourceRoot } from "./files.js";
+
+export interface CompileTimings {
+  cacheSyncMs: number;
+  latexmkMs: number;
+  artifactCopyMs: number;
+  publishMs?: number;
+  totalMs: number;
+}
 
 export interface CompileResult {
   ok: boolean;
   log: string;
   pdfPath: string | null;
   synctexPath: string | null;
+  timings?: CompileTimings;
+}
+
+interface CompileSnapshotFile {
+  path: string;
+  digest: string;
+  size: number;
+  mtimeMs: number;
 }
 
 export interface CompileSnapshot {
+  projectId: string;
   runId: string;
   revision: string;
   root: string;
   sourceDir: string;
   outputDir: string;
+  files: CompileSnapshotFile[];
+  directories: string[];
 }
 
 export interface PublishedCompileArtifacts {
@@ -173,6 +194,8 @@ export function captureCompileSnapshot(
   fs.mkdirSync(snapshotSource, { recursive: true, mode: 0o700 });
   fs.mkdirSync(snapshotOutput, { recursive: true, mode: 0o700 });
   const hash = createHash("sha256");
+  const files: CompileSnapshotFile[] = [];
+  const directories: string[] = [];
   hash.update(JSON.stringify(settings));
   try {
     for (const entry of listProjectFiles(config, projectId).sort((left, right) => left.path.localeCompare(right.path))) {
@@ -180,14 +203,27 @@ export function captureCompileSnapshot(
       hash.update(`\0${entry.type}\0${entry.path}\0`);
       if (entry.type === "directory") {
         fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
+        directories.push(entry.path);
         continue;
       }
-      const content = fs.readFileSync(path.join(sourceRoot(config, projectId), entry.path));
+      const liveFile = path.join(sourceRoot(config, projectId), entry.path);
+      const stat = fs.statSync(liveFile);
+      const content = fs.readFileSync(liveFile);
       hash.update(content);
       fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
       fs.writeFileSync(destination, content, { mode: 0o600 });
+      fs.utimesSync(destination, stat.atime, stat.mtime);
+      files.push({
+        path: entry.path,
+        digest: createHash("sha256").update(content).digest("hex"),
+        size: content.length,
+        mtimeMs: stat.mtimeMs
+      });
     }
-    return { runId, revision: hash.digest("hex"), root, sourceDir: snapshotSource, outputDir: snapshotOutput };
+    return {
+      projectId, runId, revision: hash.digest("hex"), root,
+      sourceDir: snapshotSource, outputDir: snapshotOutput, files, directories
+    };
   } catch (error) {
     fs.rmSync(root, { recursive: true, force: true });
     throw error;
@@ -263,6 +299,179 @@ function compileRunRoot(config: Config, projectId: string, runId: string): strin
   return path.join(compileDataRoot(config, projectId), "runs", runId);
 }
 
+interface CompileCacheFileState {
+  digest: string;
+  size: number;
+  mtimeMs: number;
+}
+
+interface CompileCacheState {
+  version: 1;
+  files: Record<string, CompileCacheFileState>;
+}
+
+interface PreparedCompileCache {
+  sourceDir: string;
+  outputDir: string;
+}
+
+function compileCacheKey(
+  config: Config,
+  snapshot: CompileSnapshot,
+  mainFile: string,
+  engine: "pdflatex" | "xelatex" | "lualatex",
+  latexmkrc: string | null
+): string {
+  const hash = createHash("sha256");
+  hash.update(JSON.stringify({
+    version: 1,
+    latexmk: config.latexmk,
+    engine,
+    mainFile,
+    latexmkrc,
+    extraArgs: config.extraArgs
+  }));
+  if (latexmkrc) hash.update(fs.readFileSync(path.join(snapshot.sourceDir, latexmkrc)));
+  return hash.digest("hex").slice(0, 24);
+}
+
+function prepareCompileCache(
+  config: Config,
+  snapshot: CompileSnapshot,
+  mainFile: string,
+  engine: "pdflatex" | "xelatex" | "lualatex",
+  latexmkrc: string | null
+): PreparedCompileCache {
+  const cacheDirectory = path.join(compileDataRoot(config, snapshot.projectId), "cache");
+  const key = compileCacheKey(config, snapshot, mainFile, engine, latexmkrc);
+  const root = path.join(cacheDirectory, key);
+  const cacheSource = path.join(root, "source");
+  const cacheOutput = path.join(root, "output");
+  const statePath = path.join(root, "state.json");
+  fs.mkdirSync(cacheSource, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(cacheOutput, { recursive: true, mode: 0o700 });
+  // A settings change intentionally starts cold. Published run bundles are
+  // self-contained, so older mutable caches can be removed without affecting
+  // the PDF currently visible to users.
+  for (const entry of fs.readdirSync(cacheDirectory, { withFileTypes: true })) {
+    if (entry.name !== key) fs.rmSync(path.join(cacheDirectory, entry.name), { recursive: true, force: true });
+  }
+
+  const previous = readCompileCacheState(statePath);
+  const validFiles = new Set(snapshot.files.map((file) => file.path));
+  const validDirectories = new Set(snapshot.directories);
+  for (const file of snapshot.files) {
+    for (let parent = path.posix.dirname(file.path); parent !== "."; parent = path.posix.dirname(parent)) {
+      validDirectories.add(parent);
+    }
+  }
+  pruneCompileSource(cacheSource, "", validFiles, validDirectories);
+
+  const nextFiles: Record<string, CompileCacheFileState> = {};
+  for (const directory of [...validDirectories].sort()) {
+    fs.mkdirSync(path.join(cacheSource, directory), { recursive: true, mode: 0o700 });
+  }
+  for (const file of snapshot.files) {
+    const source = path.join(snapshot.sourceDir, file.path);
+    const destination = path.join(cacheSource, file.path);
+    const previousFile = previous?.files[file.path];
+    const destinationStat = regularFileStat(destination);
+    if (!previousFile || previousFile.digest !== file.digest || previousFile.size !== file.size
+      || !destinationStat || destinationStat.size !== file.size) {
+      fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
+      const temporary = `${destination}.texlite-${process.pid}-${Date.now()}`;
+      try {
+        fs.copyFileSync(source, temporary);
+        fs.chmodSync(temporary, 0o600);
+        // A changed file must be newer than both its cached predecessor and the
+        // last generated output.  Unchanged files are never rewritten, so their
+        // stable mtimes let latexmk reuse its dependency database.
+        const mtimeMs = Math.max(file.mtimeMs, destinationStat ? destinationStat.mtimeMs + 1 : 0, Date.now());
+        fs.utimesSync(temporary, new Date(mtimeMs), new Date(mtimeMs));
+        fs.renameSync(temporary, destination);
+      } finally {
+        if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true });
+      }
+    }
+    const cachedStat = fs.statSync(destination);
+    nextFiles[file.path] = { digest: file.digest, size: file.size, mtimeMs: cachedStat.mtimeMs };
+  }
+  writeCompileCacheState(statePath, { version: 1, files: nextFiles });
+  return { sourceDir: cacheSource, outputDir: cacheOutput };
+}
+
+function readCompileCacheState(statePath: string): CompileCacheState | null {
+  if (!fs.existsSync(statePath)) return null;
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as CompileCacheState;
+    if (state.version !== 1 || typeof state.files !== "object" || state.files === null) return null;
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function writeCompileCacheState(statePath: string, state: CompileCacheState): void {
+  const temporary = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(state), { encoding: "utf8", mode: 0o600 });
+  fs.renameSync(temporary, statePath);
+}
+
+function regularFileStat(file: string): fs.Stats | null {
+  try {
+    const stat = fs.lstatSync(file);
+    return stat.isFile() ? stat : null;
+  } catch {
+    return null;
+  }
+}
+
+function pruneCompileSource(root: string, prefix: string, validFiles: Set<string>, validDirectories: Set<string>): void {
+  for (const entry of fs.readdirSync(path.join(root, prefix), { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolute = path.join(root, relative);
+    if (entry.isDirectory()) {
+      if (!validDirectories.has(relative)) fs.rmSync(absolute, { recursive: true, force: true });
+      else pruneCompileSource(root, relative, validFiles, validDirectories);
+    } else if (!entry.isFile() || !validFiles.has(relative)) {
+      fs.rmSync(absolute, { force: true });
+    }
+  }
+}
+
+function materializeCompileArtifacts(cache: PreparedCompileCache, snapshot: CompileSnapshot, basename: string): {
+  pdfPath: string;
+  synctexPath: string | null;
+} {
+  fs.rmSync(snapshot.outputDir, { recursive: true, force: true });
+  fs.mkdirSync(snapshot.outputDir, { recursive: true, mode: 0o700 });
+  copyCompileArtifacts(cache.outputDir, snapshot.outputDir);
+  const pdfPath = path.join(snapshot.outputDir, `${basename}.pdf`);
+  const synctexPath = path.join(snapshot.outputDir, `${basename}.synctex.gz`);
+  if (fs.existsSync(synctexPath)) rewriteSynctexSource(synctexPath, cache.sourceDir, snapshot.sourceDir);
+  return { pdfPath, synctexPath: fs.existsSync(synctexPath) ? synctexPath : null };
+}
+
+function copyCompileArtifacts(source: string, destination: string): void {
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    const from = path.join(source, entry.name);
+    const to = path.join(destination, entry.name);
+    if (entry.isDirectory()) {
+      fs.mkdirSync(to, { recursive: true, mode: 0o700 });
+      copyCompileArtifacts(from, to);
+    } else if (entry.isFile()) {
+      fs.copyFileSync(from, to);
+      fs.chmodSync(to, 0o600);
+    }
+  }
+}
+
+function rewriteSynctexSource(synctexPath: string, cacheSource: string, snapshotSource: string): void {
+  const original = gunzipSync(fs.readFileSync(synctexPath)).toString("utf8");
+  const rewritten = original.replaceAll(path.resolve(cacheSource), path.resolve(snapshotSource));
+  if (rewritten !== original) fs.writeFileSync(synctexPath, gzipSync(Buffer.from(rewritten)), { mode: 0o600 });
+}
+
 export async function compileProject(
   config: Config,
   snapshot: CompileSnapshot,
@@ -272,9 +481,20 @@ export async function compileProject(
 ): Promise<CompileResult> {
   const mainFile = safeRelativePath(mainFileInput);
   if (!mainFile.endsWith(".tex")) throw new Error("主文件必须是 .tex 文件");
-  const cwd = snapshot.sourceDir;
-  const outDir = snapshot.outputDir;
-  fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
+  const startedAt = performance.now();
+  let latexmkrc: string | null = null;
+  if (config.allowProjectLatexmkrc && latexmkrcInput) {
+    latexmkrc = safeRelativePath(latexmkrcInput);
+    const absoluteRc = path.join(snapshot.sourceDir, latexmkrc);
+    if (!fs.existsSync(absoluteRc) || !fs.statSync(absoluteRc).isFile()) {
+      throw new Error(`项目 latexmkrc 不存在：${latexmkrc}`);
+    }
+  }
+  const cacheStartedAt = performance.now();
+  const cache = prepareCompileCache(config, snapshot, mainFile, engine, latexmkrc);
+  const cacheSyncMs = performance.now() - cacheStartedAt;
+  const cwd = cache.sourceDir;
+  const outDir = cache.outputDir;
 
   const engineFlag = engine === "xelatex" ? "-xelatex" : engine === "lualatex" ? "-lualatex" : "-pdf";
   const args = [
@@ -286,17 +506,11 @@ export async function compileProject(
     "-no-shell-escape",
     `-outdir=${outDir}`
   ];
-  if (config.allowProjectLatexmkrc && latexmkrcInput) {
-    const latexmkrc = safeRelativePath(latexmkrcInput);
-    const absoluteRc = path.join(cwd, latexmkrc);
-    if (!fs.existsSync(absoluteRc) || !fs.statSync(absoluteRc).isFile()) {
-      throw new Error(`项目 latexmkrc 不存在：${latexmkrc}`);
-    }
-    args.push("-r", latexmkrc);
-  }
+  if (latexmkrc) args.push("-r", latexmkrc);
   args.push(...config.extraArgs, mainFile);
 
-  return await new Promise<CompileResult>((resolve, reject) => {
+  const latexmkStartedAt = performance.now();
+  const processResult = await new Promise<{ code: number | null; log: string }>((resolve, reject) => {
     const child = spawn(config.latexmk, args, {
       cwd,
       shell: false,
@@ -319,14 +533,24 @@ export async function compileProject(
 
     child.on("close", (code) => {
       clearTimeout(timeout);
-      const pdfPath = path.join(outDir, `${path.basename(mainFile, ".tex")}.pdf`);
-      const synctexPath = path.join(outDir, `${path.basename(mainFile, ".tex")}.synctex.gz`);
-      const ok = code === 0 && fs.existsSync(pdfPath);
-      resolve({
-        ok, log,
-        pdfPath: ok ? pdfPath : null,
-        synctexPath: ok && fs.existsSync(synctexPath) ? synctexPath : null
-      });
+      resolve({ code, log });
     });
   });
+  const latexmkMs = performance.now() - latexmkStartedAt;
+  const basename = path.basename(mainFile, ".tex");
+  const cachedPdf = path.join(outDir, `${basename}.pdf`);
+  const ok = processResult.code === 0 && fs.existsSync(cachedPdf);
+  if (!ok) {
+    return {
+      ok: false, log: processResult.log, pdfPath: null, synctexPath: null,
+      timings: { cacheSyncMs, latexmkMs, artifactCopyMs: 0, totalMs: performance.now() - startedAt }
+    };
+  }
+  const artifactStartedAt = performance.now();
+  const artifacts = materializeCompileArtifacts(cache, snapshot, basename);
+  const artifactCopyMs = performance.now() - artifactStartedAt;
+  return {
+    ok: true, log: processResult.log, ...artifacts,
+    timings: { cacheSyncMs, latexmkMs, artifactCopyMs, totalMs: performance.now() - startedAt }
+  };
 }

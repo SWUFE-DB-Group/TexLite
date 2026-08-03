@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import Fastify, { type FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
@@ -39,6 +40,7 @@ import { buildLatexCompletionIndex } from "./latexCompletion.js";
 import { checkSpelling } from "./spellCheck.js";
 
 const now = (): string => new Date().toISOString();
+const timingDuration = (milliseconds: number): number => Math.round(milliseconds * 10) / 10;
 
 function text(value: unknown, name: string, max = 200): string {
   if (typeof value !== "string" || !value.trim() || value.length > max) {
@@ -112,51 +114,6 @@ function projectJson(project: ProjectRow & {
 function touchProject(db: DatabaseConnection, projectId: string, userId: string): void {
   db.prepare("UPDATE projects SET updated_at = ?, last_modified_by = ? WHERE id = ?")
     .run(now(), userId, projectId);
-}
-
-/**
- * Return the newest mtime of a file in the project's working tree.
- *
- * The repository metadata is deliberately excluded: a git commit changes
- * files under .git, but does not change the source that the compiler sees.
- * Directory mtimes are included so that creating, removing, or renaming a
- * source file is detected even when the removed file is no longer available
- * to stat.
- */
-function latestProjectSourceMtime(config: Config, projectId: string): number | null {
-  const root = sourceRoot(config, projectId);
-  if (!fs.existsSync(root)) return null;
-  let latest: number | null = null;
-  const visit = (directory: string): void => {
-    try {
-      const directoryMtime = fs.statSync(directory).mtimeMs;
-      latest = latest === null ? directoryMtime : Math.max(latest, directoryMtime);
-    } catch {
-      return;
-    }
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(directory, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.name === ".git") continue;
-      const absolute = path.join(directory, entry.name);
-      try {
-        if (entry.isDirectory()) {
-          visit(absolute);
-        } else if (entry.isFile()) {
-          const mtime = fs.statSync(absolute).mtimeMs;
-          latest = latest === null ? mtime : Math.max(latest, mtime);
-        }
-      } catch {
-        // A file can disappear while a collaboration flush is completing.
-      }
-    }
-  };
-  visit(root);
-  return latest;
 }
 
 function projectTextSnapshot(config: Config, projectId: string): Map<string, string> {
@@ -1366,6 +1323,7 @@ export async function buildApp(
   });
 
   app.post("/api/projects/:id/compile", async (request, reply) => {
+    const requestStartedAt = performance.now();
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
@@ -1373,9 +1331,19 @@ export async function buildApp(
     if (!project || !canEdit(project)) return reply.code(403).send({ error: "没有编译权限" });
     collaboration.flushProject(id);
 
-    // Reuse the last published PDF when the working tree has not changed
-    // since that successful compile.  A failed/newer run, or an active run,
-    // deliberately prevents this fast path so that users can retry a build.
+    const runId = randomUUID();
+    const snapshotStartedAt = performance.now();
+    const snapshot = captureCompileSnapshot(config, id, runId, {
+      mainFile: project.main_file,
+      engine: project.engine,
+      latexmkrc: project.latexmkrc,
+      extraArgs: config.extraArgs
+    });
+    const snapshotMs = performance.now() - snapshotStartedAt;
+
+    // Reuse the last published PDF only when the complete source and compiler
+    // settings revision is identical. A failed/newer run, or an active run,
+    // deliberately prevents this fast path so users can retry a build.
     const published = publishedCompileArtifacts(config, id);
     const publishedRun = published ? db.prepare(`SELECT id, status, log, finished_at
       FROM compile_runs WHERE id = ? AND project_id = ?`).get(published.runId, id) as {
@@ -1387,28 +1355,22 @@ export async function buildApp(
       } | undefined;
     const activeRun = db.prepare(`SELECT 1 AS active FROM compile_runs
       WHERE project_id = ? AND status IN ('queued', 'running') LIMIT 1`).get(id);
-    const sourceMtime = latestProjectSourceMtime(config, id);
-    const publishedAt = publishedRun?.finished_at ? Date.parse(publishedRun.finished_at) : Number.NaN;
     if (!activeRun && published && publishedRun?.status === "succeeded"
-      && latestRun?.id === publishedRun.id && sourceMtime !== null
-      && Number.isFinite(publishedAt) && sourceMtime <= publishedAt) {
+      && latestRun?.id === publishedRun.id && snapshot.revision === published.revision) {
+      discardCompileSnapshot(snapshot);
+      const requestMs = performance.now() - requestStartedAt;
+      reply.header("Server-Timing", `snapshot;dur=${timingDuration(snapshotMs)}, total;dur=${timingDuration(requestMs)}`);
       return {
         runId: published.runId,
         ok: true,
         skipped: true,
         log: publishedRun.log ?? "",
         pdfUrl: `/api/projects/${id}/pdf?run=${encodeURIComponent(published.runId)}`,
-        pdfCompiledAt: publishedRun.finished_at
+        pdfCompiledAt: publishedRun.finished_at,
+        timings: { snapshotMs, requestMs }
       };
     }
 
-    const runId = randomUUID();
-    const snapshot = captureCompileSnapshot(config, id, runId, {
-      mainFile: project.main_file,
-      engine: project.engine,
-      latexmkrc: project.latexmkrc,
-      extraArgs: config.extraArgs
-    });
     db.prepare("INSERT INTO compile_runs (id, project_id, requested_by, status, created_at) VALUES (?, ?, ?, 'queued', ?)")
       .run(runId, id, user.id, now());
     const requestedBy = { id: user.id, username: user.username, name: user.display_name };
@@ -1433,7 +1395,12 @@ export async function buildApp(
           compiled = await compileProject(config, snapshot, project.main_file, project.engine, project.latexmkrc);
           if (compiled.ok && compiled.pdfPath) {
             if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)) throw new Error("项目已被删除");
+            const publishStartedAt = performance.now();
             publishCompileArtifacts(config, id, snapshot, compiled);
+            if (compiled.timings) {
+              compiled.timings.publishMs = performance.now() - publishStartedAt;
+              compiled.timings.totalMs += compiled.timings.publishMs;
+            }
           } else {
             discardCompileSnapshot(snapshot);
           }
@@ -1456,10 +1423,21 @@ export async function buildApp(
     const completed = db.prepare("SELECT finished_at FROM compile_runs WHERE id = ?").get(result.runId) as {
       finished_at: string | null;
     } | undefined;
+    const requestMs = performance.now() - requestStartedAt;
+    const timings = result.timings ? { snapshotMs, ...result.timings, requestMs } : { snapshotMs, requestMs };
+    reply.header("Server-Timing", [
+      `snapshot;dur=${timingDuration(snapshotMs)}`,
+      result.timings ? `cache;dur=${timingDuration(result.timings.cacheSyncMs)}` : "",
+      result.timings ? `latexmk;dur=${timingDuration(result.timings.latexmkMs)}` : "",
+      result.timings ? `artifacts;dur=${timingDuration(result.timings.artifactCopyMs)}` : "",
+      result.timings?.publishMs !== undefined ? `publish;dur=${timingDuration(result.timings.publishMs)}` : "",
+      `total;dur=${timingDuration(requestMs)}`
+    ].filter(Boolean).join(", "));
     return {
       runId: result.runId, ok: result.ok, skipped: false, log: result.log,
       pdfUrl: result.ok ? `/api/projects/${id}/pdf?run=${result.runId}` : null,
-      pdfCompiledAt: result.ok ? completed?.finished_at ?? null : null
+      pdfCompiledAt: result.ok ? completed?.finished_at ?? null : null,
+      timings
     };
   });
 

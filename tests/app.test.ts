@@ -193,6 +193,11 @@ It works.
     ]);
     expect(compiled.statusCode).toBe(200);
     expect(compiled.json().ok, compiled.json().log).toBe(true);
+    expect(compiled.headers["server-timing"]).toContain("latexmk;dur=");
+    expect(compiled.json().timings).toMatchObject({
+      snapshotMs: expect.any(Number), cacheSyncMs: expect.any(Number),
+      latexmkMs: expect.any(Number), artifactCopyMs: expect.any(Number), requestMs: expect.any(Number)
+    });
     expect(new Date(compiled.json().pdfCompiledAt).toISOString()).toBe(compiled.json().pdfCompiledAt);
     expect(duplicateCompile.json()).toMatchObject({ ok: true, runId: compiled.json().runId });
     expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(1);
@@ -202,16 +207,33 @@ It works.
     expect(upToDateCompile.statusCode).toBe(200);
     expect(upToDateCompile.json()).toMatchObject({ ok: true, skipped: true, runId: compiled.json().runId });
     expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(1);
+
+    const incrementalSource = `${withoutAnchor}\n% incremental compile\n`;
+    const incrementalSave = await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "main.tex", content: incrementalSource }
+    });
+    expect(incrementalSave.statusCode).toBe(200);
+    const incrementalCompile = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/compile`, headers: { cookie }
+    });
+    expect(incrementalCompile.statusCode).toBe(200);
+    expect(incrementalCompile.json().ok, incrementalCompile.json().log).toBe(true);
+    expect(incrementalCompile.json().runId).not.toBe(compiled.json().runId);
+    expect(incrementalCompile.headers["server-timing"]).toContain("cache;dur=");
+    expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(2);
+    const cacheRoot = path.join(config.projectsDir, project.id, "output", ".texlite", "cache");
+    expect(fs.readdirSync(cacheRoot)).toHaveLength(1);
     const manifestPath = path.join(config.projectsDir, project.id, "output", ".texlite", "latest.json");
     expect(fs.existsSync(manifestPath)).toBe(true);
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    expect(manifest).toMatchObject({ runId: compiled.json().runId, version: 1 });
+    expect(manifest).toMatchObject({ runId: incrementalCompile.json().runId, version: 1 });
     const latestCompile = await app.inject({
       method: "GET", url: `/api/projects/${project.id}/compile/latest`, headers: { cookie }
     });
     expect(latestCompile.json()).toMatchObject({
       pdfUrl: expect.stringContaining(`/api/projects/${project.id}/pdf`),
-      pdfCompiledAt: compiled.json().pdfCompiledAt
+      pdfCompiledAt: incrementalCompile.json().pdfCompiledAt
     });
     const artifactDirectory = path.join(config.projectsDir, project.id, "output", ".texlite", "runs", manifest.runId, "output");
     expect(fs.existsSync(path.join(artifactDirectory, manifest.pdf))).toBe(true);
