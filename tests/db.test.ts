@@ -1,0 +1,63 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import Database from "better-sqlite3";
+import { describe, expect, it } from "vitest";
+import type { Config } from "../src/server/config.js";
+import { openDatabase } from "../src/server/db.js";
+
+describe("database migrations", () => {
+  it("preserves legacy project tags and initializes modification metadata", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-migration-"));
+    const databasePath = path.join(root, "texlite.db");
+    const legacy = new Database(databasePath);
+    legacy.exec(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
+        password_hash TEXT NOT NULL, role TEXT NOT NULL, disabled INTEGER NOT NULL DEFAULT 0,
+        must_change_password INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
+      );
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL,
+        main_file TEXT NOT NULL DEFAULT 'main.tex', latexmkrc TEXT, engine TEXT NOT NULL DEFAULT 'xelatex',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE project_tags (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL COLLATE NOCASE, color TEXT NOT NULL, created_at TEXT NOT NULL,
+        UNIQUE (project_id, name)
+      );
+      INSERT INTO users VALUES ('user-1', 'owner', 'Owner', 'hash', 'admin', 0, 0, '2025-01-01T00:00:00.000Z');
+      INSERT INTO projects VALUES ('project-1', 'user-1', 'Legacy', 'main.tex', NULL, 'xelatex',
+        '2025-01-01T00:00:00.000Z', '2025-01-02T00:00:00.000Z');
+      INSERT INTO project_tags VALUES ('tag-1', 'project-1', 'Research', 'purple', '2025-01-01T00:00:00.000Z');
+    `);
+    legacy.close();
+
+    const config: Config = {
+      configPath: path.join(root, "config.json"), siteName: "Migration", adminEmail: "",
+      host: "127.0.0.1", port: 3000, dataDir: root, databasePath,
+      projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
+      compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
+      allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
+      maxUploadBytes: 50 * 1024 * 1024, git: "git", gitOperationTimeoutMs: 30_000,
+      githubApiBaseUrl: "https://api.github.com"
+    };
+    const migrated = openDatabase(config);
+    try {
+      expect(migrated.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
+        .toEqual({ last_modified_by: "user-1" });
+      expect(migrated.prepare(`SELECT tag.name, tag.color FROM tags tag
+        JOIN project_tag_links link ON link.tag_id = tag.id WHERE link.project_id = 'project-1'`).get())
+        .toEqual({ name: "Research", color: "purple" });
+      expect(migrated.prepare(`SELECT tag.name, tag.color, tag.user_id FROM user_tags tag
+        JOIN user_project_tag_links link ON link.tag_id = tag.id WHERE link.project_id = 'project-1'`).get())
+        .toEqual({ name: "Research", color: "purple", user_id: "user-1" });
+      expect(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project_git_settings'").get())
+        .toEqual({ name: "project_git_settings" });
+    } finally {
+      migrated.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

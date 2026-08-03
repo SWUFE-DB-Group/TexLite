@@ -1,0 +1,136 @@
+{
+  "common": {
+    "cancel": "取消", "create": "创建", "add": "添加", "remove": "移除", "delete": "删除", "close": "关闭", "user": "用户",
+    "permission": "权限", "readOnly": "只读", "readWrite": "读写", "settings": "设置", "comments": "批注", "files": "文件",
+    "outline": "大纲", "loading": "正在载入…", "enabled": "允许", "disabled": "禁止", "normal": "正常", "admin": "管理员", "language": "语言",
+    "languageEnglish": "English", "languageChinese": "中文"
+  },
+  "auth": {
+    "tagline": "轻量 LaTeX 写作环境", "username": "用户名", "password": "密码", "login": "登录",
+    "contact": "需要账号？请联系 {{email}}", "firstLogin": "首次登录，请修改初始密码", "currentPassword": "当前密码",
+    "newPassword": "新密码", "confirmPassword": "确认新密码", "updatePassword": "更新密码", "mismatch": "两次输入的新密码不一致", "passwordMinimum": "至少 {{count}} 位", "logout": "退出"
+  },
+  "projects": {
+    "title": "项目", "subtitle": "创建、编辑和分享 LaTeX 文档", "restricted": "你可以访问别人共享给你的项目；创建权限由管理员授予",
+    "new": "新建项目", "newDescription": "项目会使用配置文件中的默认 LaTeX 引擎。", "name": "项目名称",
+    "emptyTitle": "一起创造出色的作品", "emptyDescription": "创建新项目，或上传已有的 LaTeX 压缩包开始写作。",
+    "emptyRestricted": "共享给你的项目会显示在这里。", "noMatches": "没有符合当前搜索或标签筛选条件的项目。",
+    "upload": "上传项目", "uploadDescription": "上传 ZIP 压缩包；若只有一个顶层目录会自动去除。单文件最大 {{size}} MB。", "zipFile": "ZIP 压缩包",
+    "import": "导入项目", "importing": "正在导入…", "search": "搜索项目…", "grid": "网格", "list": "列表", "allTags": "全部标签",
+    "sortBy": "排序", "sortModified": "最后修改时间", "sortCreated": "创建时间",
+    "owner": "所有者", "created": "创建时间", "modified": "最后修改", "modifiedBy": "最后修改人", "byUser": "由 {{user}} 修改", "modifiedByUser": "{{time}} · 由 {{user}} 修改", "deletedUser": "已删除用户",
+    "filterTags": "按标签过滤", "rename": "重命名", "renameTitle": "重命名项目", "download": "下载",
+    "deleteTitle": "删除项目", "deleteDescription": "确定永久删除“{{project}}”及其全部文件吗？此操作不可撤销。",
+    "chooseZip": "选择 ZIP 项目", "dropZip": "将 ZIP 压缩包拖放到这里", "browse": "浏览文件",
+    "selectedFileSize": "已选择 · {{size}}", "clearFile": "清除已选文件"
+  },
+  "users": {
+    "manage": "用户管理", "back": "返回项目", "onlyAdmin": "仅管理员可以创建用户", "add": "添加用户", "role": "角色",
+    "createProjects": "创建项目", "ownedProjects": "拥有项目", "status": "状态", "actions": "操作", "allow": "允许", "deny": "禁止",
+    "enable": "启用", "disable": "禁用", "promote": "设为管理员", "demote": "降为用户", "allowCreate": "允许创建", "denyCreate": "禁止创建",
+    "resetPassword": "重置密码", "initialPassword": "登录密码", "displayName": "显示名称", "addDescription": "设置登录密码，或生成一个安全的随机密码。",
+    "createUser": "创建用户", "randomPassword": "随机密码", "generatePassword": "生成随机密码",
+    "resetDescription": "为 {{username}} 设置初始密码；其现有会话会被注销。", "reset": "重置",
+    "deleteTitle": "删除用户", "deleteDescription": "确认删除 {{username}}？此操作不可撤销。", "ownedChoice": "其拥有的 {{count}} 个项目",
+    "transferProjects": "转移给当前管理员", "deleteProjects": "永久删除项目及全部文件"
+  },
+  "editor": {
+    "saved": "已保存", "loading": "载入中", "pending": "等待保存", "saving": "保存中", "saveFailed": "保存失败",
+    "compile": "编译 · {{engine}}", "compiling": "编译中…", "upToDate": "文件已是最新，无需重新编译。", "addComment": "添加批注", "sourceComments": "源码批注",
+    "projectSettings": "项目设置", "uploadAttachment": "上传附件", "newFile": "新建文本文件", "binary": "二进制附件已保存，但不能在文本编辑器中打开。",
+    "noOutline": "当前文件没有章节", "preview": "PDF 预览", "previewHint": "点击“编译”生成文档", "pdfCompiledAt": "成功编译于 {{time}}", "deletedUser": "已删除用户",
+    "orphaned": "锚点已丢失", "line": "第 {{line}} 行", "reopen": "重新打开", "resolve": "标记为已解决", "noComments": "当前文件没有批注",
+    "newFileDescription": "可以包含目录，例如 chapters/introduction.tex。", "filePath": "文件路径", "commentDescription": "已选择 {{count}} 个字符",
+    "pointComment": "未选择文本，将在当前光标位置添加批注。", "commentContent": "批注内容", "backToProjects": "返回项目列表",
+    "outputTabs": "编译输出", "log": "日志", "warnings": "警告", "errors": "错误", "artifacts": "产物", "noLog": "编译后将在此显示日志。",
+    "noWarnings": "最近一次编译没有警告。", "noErrors": "最近一次编译没有错误。", "projectRoot": "项目根目录",
+    "uploadTo": "上传到 {{folder}}", "dropFiles": "拖放文件以上传", "newFolder": "新建文件夹", "folderName": "文件夹名称", "folderDestination": "文件夹将创建在 {{folder}} 中。",
+    "noArtifacts": "编译后将在此显示输出产物。", "selectArtifact": "选择一个文本产物进行预览。", "viewArtifact": "查看产物", "downloadArtifact": "下载产物", "downloadToView": "该产物需要下载后查看",
+    "collapseFiles": "折叠文件面板", "move": "移动", "moveTitle": "移动 {{name}}", "moveDescription": "选择目标文件夹；源码、批注和项目路径会保持关联。",
+    "destinationFolder": "目标文件夹", "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "reply": "回复",
+    "replyPlaceholder": "输入回复内容…", "sendReply": "发送回复", "editComment": "编辑批注", "deleteComment": "删除批注",
+    "saveChanges": "保存修改", "deleteCommentTitle": "删除批注", "deleteCommentDescription": "确定删除这条批注及其 {{count}} 条回复吗？此操作不可撤销。",
+    "editReply": "编辑回复", "deleteReply": "删除回复", "deleteReplyTitle": "删除回复",
+    "deleteReplyDescription": "确定删除这条回复吗？此操作不可撤销。", "editedAt": "编辑于 {{time}}",
+    "outlineJump": "跳转到源码第 {{line}} 行并定位 PDF", "showInSource": "在源码中显示当前 PDF 位置",
+    "showInPdf": "在 PDF 中显示当前源码光标位置", "pdfLoadFailed": "无法载入 PDF 预览",
+    "pdfZoomControls": "PDF 缩放控件", "downloadPdf": "下载 PDF", "downloadResource": "下载文件", "resourceTooLarge": "该文件大小为 {{size}}，超过 {{limit}} 的直接预览上限。", "resourceTooLargeTitle": "文件过大，无法直接预览", "resourceTooLargeDescription": "请下载文件后在本地打开。", "resourceUnsupportedTitle": "无法预览", "resourceUnsupportedDescription": "浏览器不能直接渲染此文件类型，请下载后在本地打开。",
+    "resourcePreview": { "image": "图片预览", "pdf": "PDF 预览", "text": "文本预览", "unsupported": "文件预览" }, "pdfZoomOut": "缩小", "pdfZoomIn": "放大", "pdfFitWidth": "适合宽度",
+    "layout": {
+      "label": "布局", "choose": "选择布局", "current": "当前布局：{{layout}}",
+      "editor-pdf": { "name": "编辑器与 PDF", "description": "并排显示源码编辑器和 PDF 预览" },
+      "editor-only": { "name": "仅编辑器", "description": "将工作区用于源码编辑" },
+      "pdf-only": { "name": "仅 PDF", "description": "将工作区用于 PDF 和编译输出" }
+    },
+    "collaboration": {
+      "connecting": "正在连接协作服务…", "connected": "实时协作已连接", "disconnected": "实时协作连接已断开",
+      "editing": "正在编辑", "viewing": "正在查看", "joining": "正在进入项目",
+      "activeSessions": "{{count}} 个活跃会话",
+      "showMoreSessions": "展开另外 {{count}} 个会话", "showFewerSessions": "收起会话列表",
+      "sessionTooltip": "{{name}}（@{{username}}）· {{file}} · {{activity}} · {{permission}}"
+    },
+    "search": {
+      "button": "查找", "title": "查找和替换（Ctrl+F / Cmd+F）", "find": "查找", "replace": "替换为",
+      "next": "下一个", "previous": "上一个", "all": "选择全部", "matchCase": "区分大小写", "regexp": "正则表达式",
+      "wholeWord": "全字匹配", "replaceNext": "替换", "replaceAll": "全部替换", "currentMatch": "当前匹配",
+      "onLine": "位于行", "replacedMatchOnLine": "已替换第 $ 行的匹配项", "replacedMatches": "已替换 $ 个匹配项",
+      "goToLine": "跳转到行", "go": "跳转", "matchCount": "共 {{count}} 个匹配", "noMatches": "没有匹配项",
+      "invalidQuery": "正则表达式无效"
+    }
+  },
+  "projectSettings": {
+    "mainFile": "主文档", "engine": "编译引擎", "latexmkrc": "项目 latexmkrc", "save": "保存项目设置", "members": "共享成员",
+    "recentLog": "最近编译日志", "share": "共享项目", "shareDescription": "仅可共享给管理员已创建的用户。", "chooseUser": "请选择用户",
+    "latexmkrcPlaceholder": "# 留空表示不使用项目 rc 文件\n$pdf_mode = 1;",
+    "addMember": "添加成员", "noMembers": "该项目尚未分享给其他成员。", "removeTitle": "移除共享成员", "removeDescription": "确认移除 {{username}}？其账号和其他项目不会受到影响。",
+    "editorTab": "编辑器外观", "compilerTab": "LaTeX 编译器", "compilerDescription": "选择本项目的主文档和 LaTeX 编译选项。",
+    "editorAppearance": "编辑器外观", "editorAppearanceDescription": "保存后，这些偏好会应用到当前浏览器中的编辑器。",
+    "saveAppearance": "保存外观设置", "saveCompiler": "保存编译器设置",
+    "projectConfiguration": "项目配置", "fontFamily": "英文字体", "fontSize": "字体大小", "lineHeight": "行间距",
+    "dictionary": "项目词典", "dictionaryDescription": "添加到这里的词不会在本项目的拼写检查中标记；具有编辑权限的用户可以维护此列表。", "dictionaryPlaceholder": "添加自定义词", "addWord": "添加词", "dictionaryEmpty": "暂未添加自定义词。",
+    "lineWrapping": "自动换行", "spellCheck": "单词拼写检查", "spellingIssues": "发现 {{count}} 个拼写问题（去重后 {{uniqueCount}} 个）", "noSpellingIssues": "未发现拼写问题。",
+    "fontJetBrains": "JetBrains Mono", "fontSourceCode": "Source Code Pro",
+    "fontIbmPlex": "IBM Plex Mono", "fontFiraCode": "Fira Code", "fontIosevka": "Iosevka", "lineHeightCompact": "紧凑",
+    "lineHeightNormal": "标准", "lineHeightRelaxed": "宽松"
+  },
+  "git": {
+    "title": "Git 备份", "description": "管理本地 Git 历史及 GitHub 备份；只有项目创建者可以执行这些操作。",
+    "authentication": "GitHub 身份验证", "authenticationHint": "token 需要仓库 Administration 与 Contents 写权限；它会加密保存，不会写入项目仓库或远程地址。",
+    "recommendedAccessTitle": "建议的仓库访问范围：All repositories（所有仓库）",
+    "recommendedAccess": "texLite 面向相互信任的用户。请选择 All repositories，使该 token 能创建仓库，并访问之后新建的仓库；同时授予 Administration 和 Contents 的 Read and write 权限。",
+    "token": "个人访问 token", "replaceToken": "替换个人访问 token", "saveToken": "保存并验证 token",
+    "createToken": "创建细粒度 token", "connectedAs": "已连接为 @{{login}}", "removeToken": "移除 token",
+    "tokenSaved": "GitHub token 已保存，本地仓库已就绪。", "tokenRemoved": "GitHub token 已移除。",
+    "repository": "仓库", "localReady": "项目源码已由本地 Git 仓库管理。", "localPending": "保存有效 token 后将自动初始化本地 Git 仓库。",
+    "repositoryName": "GitHub 仓库名称", "privateRepository": "创建为私有仓库", "createRepository": "创建 GitHub 仓库", "repositoryCreated": "GitHub 仓库创建成功。",
+    "origin": "远程仓库", "openGitHub": "打开 GitHub", "clean": "工作区干净", "changedFiles": "{{count}} 个文件有修改",
+    "commitAndPush": "提交与推送", "identity": "本次提交临时使用 {{username}} <{{username}}@texlite.com>，不会写入 Git 配置。",
+    "detachedHead": "当前处于 detached HEAD；请先返回默认分支再提交或推送。", "detachedAt": "detached 于 {{revision}}", "commitMessage": "提交说明",
+    "commitPlaceholder": "说明本次备份的内容…", "commit": "提交", "committed": "修改已提交。", "noChangesToCommit": "当前没有新的修改可以提交。",
+    "push": "推送", "pushed": "推送成功，GitHub 备份已是最新。", "pushFailed": "推送失败",
+    "workingDiff": "当前差异", "refresh": "刷新", "diffTitle": "差异", "diffTruncated": "输出已截断", "diffFontSize": "差异字体大小", "diffFontDecrease": "减小差异字体", "diffFontIncrease": "增大差异字体", "fullscreenDiff": "全屏查看差异", "exitFullscreenDiff": "退出全屏", "noChanges": "没有可显示的差异。",
+    "history": "提交历史", "historyHint": "最多显示最近 100 次提交", "noCommits": "尚无提交。", "viewCommitDiff": "查看该提交的差异",
+    "checkoutVersion": "checkout 到该版本", "checkoutTitle": "Checkout 版本", "checkout": "Checkout",
+    "checkoutDescription": "将 checkout 到 {{revision}} — {{message}}。默认由 Git 保留兼容的未提交修改，发生冲突时拒绝操作。",
+    "forceCheckout": "强制覆盖", "forceCheckoutDescription": "明确丢弃所有已跟踪及未跟踪的工作区修改后再 checkout；此操作不可撤销。",
+    "returnToBranch": "返回 {{branch}}", "returnTitle": "返回默认分支",
+    "returnDescription": "将 checkout 到 {{branch}}。默认由 Git 保留兼容的未提交修改，发生冲突时拒绝操作。",
+    "discardChanges": "撤销修改", "noChangesToDiscard": "当前没有可以撤销的修改。", "discardTitle": "撤销未提交修改",
+    "discardDescription": "把所有已跟踪文件恢复到当前 HEAD（上次 commit）。未跟踪文件不受影响。", "discardConfirm": "确认撤销"
+  },
+  "tags": {
+    "title": "标签", "add": "添加标签", "create": "新建标签", "createDescription": "创建仅自己可见的可复用彩色标签，用于整理项目。",
+    "assign": "标签", "assignTitle": "“{{project}}”的标签", "assignDescription": "勾选你为此项目设置的私有标签；其他用户拥有各自的标签。",
+    "empty": "请先创建标签。", "allAssigned": "所有可用标签均已添加。", "name": "标签名称", "color": "颜色", "filter": "筛选",
+    "red": "红色", "orange": "橙色", "yellow": "黄色", "green": "绿色", "blue": "蓝色", "purple": "紫色", "gray": "灰色"
+  },
+  "errors": { "generic": "操作失败", "request": "请求失败（{{status}}）", "upload": "上传失败", "fileTooLarge": "文件超过 {{size}} MB 限制。", "zipOnly": "请选择 ZIP 压缩包。", "collaborationUnavailable": "实时协作尚未连接，请在重新连接后保存或编译。" },
+  "footer": { "copyright": "© {{year}} {{siteName}}。保留所有权利。", "credit": "Designed and developed by CHEN Zhongpu" },
+  "completions": {
+    "section": "章节", "subsection": "小节", "bold": "粗体", "emphasis": "强调", "citation": "引用文献", "reference": "交叉引用",
+    "label": "标签", "image": "插入图片", "unordered": "无序列表", "ordered": "有序列表", "equation": "公式", "figure": "图片环境",
+    "projectCommand": "项目命令", "projectMacro": "项目宏", "expl3Command": "Expl3 项目命令", "mathOperator": "项目数学算子",
+    "mathDelimiter": "项目数学定界符", "projectEnvironment": "项目环境", "projectFile": "项目文件", "package": "宏包",
+    "documentClass": "文档类", "currentFile": "当前文件", "project": "项目", "latex": "LaTeX", "standard": "LaTeX 命令"
+  }
+}

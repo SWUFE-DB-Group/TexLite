@@ -1,0 +1,29 @@
+{
+  "siteName": "texLite",
+  "adminEmail": "admin@example.com",
+  "sessionDays": 14,
+  "server": {
+    "host": "127.0.0.1",
+    "port": 3000
+  },
+  "storage": {
+    "dataDir": ".texlite"
+  },
+  "uploads": {
+    "maxFileSizeMB": 50
+  },
+  "git": {
+    "binary": "git",
+    "operationTimeoutSeconds": 30,
+    "githubApiBaseUrl": "https://api.github.com"
+  },
+  "latex": {
+    "latexmk": "latexmk",
+    "defaultEngine": "xelatex",
+    "allowedEngines": ["pdflatex", "xelatex", "lualatex"],
+    "extraArgs": [],
+    "allowProjectLatexmkrc": true,
+    "compileTimeoutSeconds": 60,
+    "maxCompileJobs": 2
+  }
+}
