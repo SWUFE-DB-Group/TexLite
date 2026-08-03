@@ -39,7 +39,7 @@ export function loadConfig(): Config {
   if (!allowedEngines.includes(defaultEngine)) allowedEngines.push(defaultEngine);
   return {
     configPath,
-    siteName: process.env.TEXLITE_SITE_NAME ?? fileConfig.siteName ?? "texLite",
+    siteName: process.env.TEXLITE_SITE_NAME ?? fileConfig.siteName ?? "TexLite",
     adminEmail: process.env.TEXLITE_ADMIN_EMAIL ?? fileConfig.adminEmail ?? "",
     host: process.env.TEXLITE_HOST ?? fileConfig.server?.host ?? "127.0.0.1",
     port: intFromValue(process.env.TEXLITE_PORT, fileConfig.server?.port, 3000),

@@ -14,7 +14,7 @@ async function initialize(): Promise<void> {
   const rl = interactive ? createInterface({ input: stdin, output: stdout }) : null;
   try {
     if (!fs.existsSync(configPath)) {
-      const siteName = rl ? (await rl.question("网站名称 [texLite]: ")).trim() || "texLite" : "texLite";
+      const siteName = rl ? (await rl.question("网站名称 [TexLite]: ")).trim() || "TexLite" : "TexLite";
       const adminEmail = rl ? (await rl.question("管理员联系邮箱（可留空）: ")).trim() : "";
       const configFile = {
         siteName,

@@ -6,11 +6,14 @@ import { loadConfig } from "../src/server/config.js";
 
 describe("configuration", () => {
   const originalConfig = process.env.TEXLITE_CONFIG;
+  const originalSiteName = process.env.TEXLITE_SITE_NAME;
   let root = "";
 
   afterEach(() => {
     if (originalConfig === undefined) delete process.env.TEXLITE_CONFIG;
     else process.env.TEXLITE_CONFIG = originalConfig;
+    if (originalSiteName === undefined) delete process.env.TEXLITE_SITE_NAME;
+    else process.env.TEXLITE_SITE_NAME = originalSiteName;
     if (root) fs.rmSync(root, { recursive: true, force: true });
   });
 
@@ -36,5 +39,14 @@ describe("configuration", () => {
     expect(config.git).toBe("/usr/local/bin/git");
     expect(config.gitOperationTimeoutMs).toBe(45_000);
     expect(config.githubApiBaseUrl).toBe("https://github.example/api/v3");
+  });
+
+  it("uses TexLite as the default site name", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-default-"));
+    const configPath = path.join(root, "texlite.config.json");
+    fs.writeFileSync(configPath, JSON.stringify({}));
+    process.env.TEXLITE_CONFIG = configPath;
+    delete process.env.TEXLITE_SITE_NAME;
+    expect(loadConfig().siteName).toBe("TexLite");
   });
 });

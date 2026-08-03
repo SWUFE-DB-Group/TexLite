@@ -115,7 +115,7 @@ npm start
 
 ~~~json
 {
-  "siteName": "texLite",
+  "siteName": "TexLite",
   "adminEmail": "admin@example.com",
   "sessionDays": 14,
   "server": { "host": "127.0.0.1", "port": 3000 },

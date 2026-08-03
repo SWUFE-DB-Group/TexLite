@@ -34,7 +34,7 @@ function errorMessage(error: unknown): string {
 
 export function App() {
   const { t } = useTranslation();
-  const [site, setSite] = useState<SiteConfig>({ siteName: "texLite", adminEmail: "" });
+  const [site, setSite] = useState<SiteConfig>({ siteName: "TexLite", adminEmail: "" });
   const [user, setUser] = useState<User | null | undefined>();
   const [projectId, setProjectId] = useState<string | null>(null);
   const [dashboardCache, setDashboardCache] = useState<{ userId: string; projects: Project[]; tags: ProjectTag[] } | null>(null);
