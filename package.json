@@ -1,6 +1,6 @@
 {
   "name": "texlite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -37,6 +37,7 @@
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.3.0",
     "@radix-ui/react-dialog": "^1.1.15",
+    "@replit/codemirror-vim": "^6.4.0",
     "better-sqlite3": "^13.0.2",
     "dictionary-en": "^4.0.0",
     "diff-match-patch": "^1.0.5",

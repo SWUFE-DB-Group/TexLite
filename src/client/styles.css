@@ -122,6 +122,8 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .back { color: white; border: 0; background: #ffffff10; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; }
 .project-heading { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
 .project-heading small { color: #b9d0c2; font-size: 11px; margin-top: 2px; }
+.vim-status-badge { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; border: 1px solid #7fd39e80; border-radius: 999px; padding: 5px 9px; background: #1d6b4638; color: #d7ffe3; font-size: 10px; font-weight: 750; letter-spacing: .04em; white-space: nowrap; }
+.vim-status-badge svg { color: #9df0b5; }
 .collaboration-presence { min-width: 0; display: flex; align-items: center; gap: 7px; padding-left: 8px; }
 .collaboration-status-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #efb84b; box-shadow: 0 0 0 2px #efb84b2e; }
 .collaboration-connected .collaboration-status-dot { background: #69d391; box-shadow: 0 0 0 2px #69d3912e; }
@@ -207,12 +209,18 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .resource-pdf { width: 100%; height: min(650px, 68vh); border: 1px solid #d9dfda; border-radius: 6px; background: #69706c; }
 .resource-text { max-height: min(650px, 68vh); overflow: auto; margin: 0; padding: 14px; border: 1px solid #d9dfda; border-radius: 6px; background: #f7f9f7; color: #26352c; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .source-panel { overflow: hidden; }
-.editor-host, .cm-editor { height: 100%; }
+.editor-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.editor-shell .editor-host { height: auto; min-height: 0; flex: 1 1 auto; }
+.editor-host, .cm-editor { height: 100%; min-height: 0; }
 .editor-host .cm-editor { font-family: inherit; font-size: inherit; line-height: inherit; }
 .editor-host .cm-editor { font-variant-ligatures: contextual; font-feature-settings: "liga" 1, "calt" 1; }
-.editor-host .cm-scroller { overflow: auto; font-family: inherit; line-height: inherit; }
+.editor-host .cm-scroller { min-height: 0; height: auto; flex: 1 1 auto; overflow: auto; font-family: inherit; line-height: inherit; }
+.editor-host .cm-panels { flex: none; }
+.editor-host .cm-vim-panel { min-height: 25px; display: flex; align-items: center; box-sizing: border-box; width: 100%; border-top: 1px solid #cbd8ce; padding: 3px 10px; background: #f1f6f2; color: #31523e; font: 11px/1.3 "SFMono-Regular", Consolas, monospace; }
+.vim-editor-status { min-height: 25px; flex: 0 0 25px; display: flex; align-items: center; box-sizing: border-box; border-top: 1px solid #cbd8ce; padding: 3px 10px; background: #f1f6f2; color: #31523e; font: 11px/1.3 "SFMono-Regular", Consolas, monospace; }
 .editor-host .cm-content, .editor-host .cm-gutters { font-family: inherit; font-size: inherit; }
 .cm-editor.cm-focused { outline: none; }
+.editor-host .cm-spell-error-active { border-radius: 2px; background: #f6d66f; box-shadow: 0 0 0 1px #c99324; color: #3f3010; text-decoration: underline wavy #9b6715 1.5px; text-decoration-skip-ink: none; }
 .editor-host .cm-panel.cm-search { padding: 8px 38px 8px 10px; border-bottom: 1px solid #ccd5cf; background: #f7f9f7; color: #35443a; box-shadow: 0 3px 10px #1f382710; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 12px; line-height: 1.4; }
 .editor-host .cm-panel.cm-search .cm-textfield { min-width: 170px; height: 29px; margin: 2px 6px 2px 0; border: 1px solid #bcc8c0; border-radius: 5px; padding: 4px 8px; background: white; color: #202b24; outline: none; font-family: inherit; font-size: 12px; }
 .editor-host .cm-panel.cm-search .cm-textfield:focus { border-color: #3d8a60; box-shadow: 0 0 0 2px #3d8a6025; }
@@ -346,7 +354,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .settings-tab:hover { background: #eaf1eb !important; color: #31523e; }
 .settings-tab.active { border-color: #c8d9cb !important; background: white !important; color: #176b44; box-shadow: 0 1px 2px #233c2a12; }
 .settings-tab:focus-visible { outline: 2px solid #176b44; outline-offset: 1px; }
-.settings-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
+.settings-actions { display: flex; width: 100%; justify-content: flex-end; padding-top: 2px; }
 .settings-section-title { display: flex; align-items: center; gap: 7px; color: #31523e; font-size: 13px; }
 .settings-section-title.project-configuration { margin-top: 4px; padding-top: 15px; border-top: 1px solid #e1e5e2; }
 .settings-description { margin: 0; color: #7b837e; font-size: 11px; line-height: 1.45; }
@@ -354,11 +362,16 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .settings .editor-checkbox input { width: auto; margin: 0; accent-color: #176b44; }
 .spell-check-result { display: inline-flex; align-items: center; gap: 6px; color: #66716a; font-size: 11px; }
 .spell-check-result.has-issues { color: #a3342c; font-weight: 650; }
+.spell-check-controls { display: inline-flex; align-items: center; gap: 2px; margin-left: 3px; color: #6f4a45; font-weight: 500; }
+.spell-check-controls button { width: 24px; height: 24px; display: inline-grid; place-items: center; border: 1px solid #d7b8b4; border-radius: 4px; padding: 0; background: #fff8f7; color: #8e4a42; }
+.spell-check-controls button:hover:not(:disabled) { border-color: #b98279; background: #fce9e6; }
+.spell-check-controls button:disabled { cursor: not-allowed; opacity: .35; }
+.spell-check-position { min-width: 34px; text-align: center; color: #825850; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .password-generator { display: flex; align-items: stretch; gap: 7px; }
 .password-generator input { min-width: 0; flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .password-generator button { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border: 1px solid #c9d0ca; border-radius: 6px; background: #f6f8f6; color: #31523e; font-size: 11px; white-space: nowrap; }
 .password-generator button:hover { border-color: #8eaa98; background: #edf3ef; }
-.settings-save { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.settings-save { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .latexmkrc-editor { resize: vertical; min-height: 160px; font: 12px/1.5 "SFMono-Regular", Consolas, monospace !important; }
 .dictionary-add { display: flex; align-items: stretch; gap: 7px; }
 .dictionary-add input { min-width: 0; flex: 1; }

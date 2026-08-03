@@ -54,7 +54,7 @@
     "noArtifacts": "Compile to see generated artifacts.", "selectArtifact": "Select a text artifact to preview it.", "viewArtifact": "View artifact", "downloadArtifact": "Download artifact", "downloadToView": "Download this artifact to view it",
     "folderDestination": "The folder will be created in {{folder}}.", "collapseFiles": "Collapse file panel", "move": "Move",
     "moveTitle": "Move {{name}}", "moveDescription": "Choose a destination folder. Files, comments and project paths stay linked.",
-    "destinationFolder": "Destination folder", "compileShortcut": "Save and compile (Ctrl+S / Cmd+S)", "compilingBy": "{{name}} is compiling",
+    "destinationFolder": "Destination folder", "compileShortcut": "Save and compile (Ctrl+S / Cmd+S)", "compilingBy": "{{name}} is compiling", "vimOn": "Vim ON", "vimOnHint": "Vim keybindings are enabled for this editor.",
     "reply": "Reply", "replyPlaceholder": "Write a reply…", "sendReply": "Send reply",
     "editComment": "Edit comment", "deleteComment": "Delete comment", "saveChanges": "Save changes",
     "deleteCommentTitle": "Delete comment", "deleteCommentDescription": "Delete this comment and its {{count}} replies? This cannot be undone.",
@@ -93,12 +93,12 @@
     "latexmkrcPlaceholder": "# Empty disables the project rc file\n$pdf_mode = 1;",
     "addMember": "Add member", "noMembers": "This project has not been shared with anyone.", "removeTitle": "Remove shared member",
     "removeDescription": "Remove {{username}}? Their account and other projects are unaffected.",
-    "editorTab": "Editor appearance", "compilerTab": "LaTeX compiler", "compilerDescription": "Choose the main document and compiler options for this project.",
-    "editorAppearance": "Editor appearance", "editorAppearanceDescription": "These preferences apply to this browser after you save them.",
+    "editorTab": "Editor appearance", "compilerTab": "LaTeX compiler", "compilerDescription": "Choose the main document and compiler options shared by everyone in this project.",
+    "editorAppearance": "Editor appearance", "editorAppearanceDescription": "These preferences are private to this user and project on this browser. The project dictionary is shared.",
     "saveAppearance": "Save appearance", "saveCompiler": "Save compiler settings",
     "projectConfiguration": "Project configuration", "fontFamily": "English font", "fontSize": "Font size", "lineHeight": "Line spacing",
     "dictionary": "Project dictionary", "dictionaryDescription": "Words added here are ignored by spell checking for this project. Editors can maintain this list.", "dictionaryPlaceholder": "Add a custom word", "addWord": "Add word", "dictionaryEmpty": "No custom words yet.",
-    "lineWrapping": "Wrap long lines", "spellCheck": "Spell checking", "spellingIssues": "{{count}} spelling issues ({{uniqueCount}} unique words)", "noSpellingIssues": "No spelling issues found.",
+    "lineWrapping": "Wrap long lines", "spellCheck": "Spell checking", "vimMode": "Vim keybindings", "vimModeDescription": "Use Vim normal/insert/visual modes in this editor.", "vimHelp": "View help", "spellingIssues": "{{count}} spelling issues ({{uniqueCount}} unique words)", "noSpellingIssues": "No spelling issues found.", "spellCheckFirst": "First spelling issue", "spellCheckPrevious": "Previous spelling issue", "spellCheckNext": "Next spelling issue", "spellCheckLast": "Last spelling issue", "spellCheckPosition": "{{current}}/{{total}}",
     "fontJetBrains": "JetBrains Mono", "fontSourceCode": "Source Code Pro",
     "fontIbmPlex": "IBM Plex Mono", "fontFiraCode": "Fira Code", "fontIosevka": "Iosevka", "lineHeightCompact": "Compact",
     "lineHeightNormal": "Normal", "lineHeightRelaxed": "Relaxed"
@@ -140,7 +140,7 @@
   "completions": {
     "section": "Section", "subsection": "Subsection", "bold": "Bold", "emphasis": "Emphasis", "citation": "Citation",
     "reference": "Cross-reference", "label": "Label", "image": "Image", "unordered": "Unordered list", "ordered": "Ordered list",
-    "equation": "Equation", "figure": "Figure", "projectCommand": "Project command", "projectMacro": "Project macro",
+    "equation": "Equation", "figure": "Figure", "projectCommand": "Project command", "projectCommandArgs": "Project command ({{count}} arguments)", "projectMacro": "Project macro",
     "expl3Command": "Expl3 project command", "mathOperator": "Project math operator", "mathDelimiter": "Project math delimiter",
     "projectEnvironment": "Project environment", "projectFile": "Project file", "package": "Package", "documentClass": "Document class",
     "currentFile": "Current file", "project": "Project", "latex": "LaTeX", "standard": "LaTeX command"

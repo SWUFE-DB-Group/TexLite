@@ -6,6 +6,7 @@ export interface EditorPreferences {
   lineHeight: number;
   lineWrapping: boolean;
   spellCheck: boolean;
+  vimMode: boolean;
 }
 
 export const editorFonts: Array<{ id: EditorFont; labelKey: string; stack: string }> = [
@@ -21,30 +22,36 @@ export const defaultEditorPreferences: EditorPreferences = {
   fontSize: 14,
   lineHeight: 1.65,
   lineWrapping: true,
-  spellCheck: true
+  spellCheck: true,
+  vimMode: false
 };
 
-const storageKey = "texlite-editor-preferences";
+const storageKeyPrefix = "texlite-editor-preferences";
+
+function storageKey(userId: string, projectId: string): string {
+  return `${storageKeyPrefix}:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`;
+}
 
 export function editorFontStack(font: EditorFont): string {
   return editorFonts.find((option) => option.id === font)?.stack ?? editorFonts[0].stack;
 }
 
-export function loadEditorPreferences(): EditorPreferences {
+export function loadEditorPreferences(userId: string, projectId: string): EditorPreferences {
   try {
-    const stored = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as Partial<EditorPreferences>;
+    const stored = JSON.parse(localStorage.getItem(storageKey(userId, projectId)) ?? "{}") as Partial<EditorPreferences>;
     return {
       font: editorFonts.some((option) => option.id === stored.font) ? stored.font! : defaultEditorPreferences.font,
       fontSize: [12, 13, 14, 15, 16, 18, 20].includes(Number(stored.fontSize)) ? Number(stored.fontSize) : defaultEditorPreferences.fontSize,
       lineHeight: [1.45, 1.65, 1.85].includes(Number(stored.lineHeight)) ? Number(stored.lineHeight) : defaultEditorPreferences.lineHeight,
       lineWrapping: typeof stored.lineWrapping === "boolean" ? stored.lineWrapping : defaultEditorPreferences.lineWrapping,
-      spellCheck: typeof stored.spellCheck === "boolean" ? stored.spellCheck : defaultEditorPreferences.spellCheck
+      spellCheck: typeof stored.spellCheck === "boolean" ? stored.spellCheck : defaultEditorPreferences.spellCheck,
+      vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode
     };
   } catch {
     return defaultEditorPreferences;
   }
 }
 
-export function saveEditorPreferences(preferences: EditorPreferences): void {
-  localStorage.setItem(storageKey, JSON.stringify(preferences));
+export function saveEditorPreferences(userId: string, projectId: string, preferences: EditorPreferences): void {
+  localStorage.setItem(storageKey(userId, projectId), JSON.stringify(preferences));
 }

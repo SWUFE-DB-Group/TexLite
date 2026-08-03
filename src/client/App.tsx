@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError, localizedResponseError } from "./api";
-import { LatexEditor, type SpellCheckIssue } from "./LatexEditor";
+import { LatexEditor, type SpellCheckIssue, type SpellCheckJump } from "./LatexEditor";
 import type { PdfTarget } from "./PdfPreview";
 import { ConfirmDialog, Modal } from "./Dialog";
 import type { Comment, FileEntry, LatexCompletionIndex, Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "./types";
@@ -9,7 +9,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { GitDialog } from "./GitDialog";
 import i18n from "./i18n";
 import {
-  AlertTriangle, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, BookOpen, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Columns2, Copy, Dices, Download, FileArchive, FilePlus2, FileText,
+  AlertTriangle, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, BookOpen, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Columns2, Copy, Dices, Download, FileArchive, FilePlus2, FileText, Keyboard,
   Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, ListTree, LoaderCircle, MessageSquare, MessageSquarePlus, PackageOpen,
   Move, PanelLeft, PanelLeftClose, PanelLeftOpen, PanelRight, Pencil, Play, Reply, RotateCcw, Save, ScrollText, Send,
   Settings, Sparkles, SpellCheck2, Tags, Trash2, Type, Upload, UserPlus, Users, WrapText, X, XCircle
@@ -73,7 +73,7 @@ function SiteLogo({ siteName, compact = false, auth = false }: { siteName: strin
 function SiteFooter() {
   const { t } = useTranslation();
   const repositoryUrl = "https://github.com/SWUFE-DB-Group/TexLite";
-  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite</a></span><span>{t("footer.credit")}</span></footer>;
+  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite v0.1.1</a></span><span>{t("footer.credit")}</span></footer>;
 }
 
 function ChangePassword({ site, user, onChanged }: { site: SiteConfig; user: User; onChanged: (user: User) => void }) {
@@ -480,12 +480,15 @@ interface CompileArtifact { path: string; size: number; viewable: boolean }
 type ResourcePreviewKind = "image" | "pdf" | "text" | "unsupported" | "large";
 interface ResourcePreview { path: string; kind: ResourcePreviewKind; size: number; url: string; content?: string }
 
-const WORKSPACE_LAYOUT_KEY = "texlite.workspaceLayout";
 const MAX_DIRECT_RESOURCE_PREVIEW_BYTES = 10 * 1024 * 1024;
 
-function loadWorkspaceLayout(): WorkspaceLayout {
+function workspaceLayoutStorageKey(userId: string, projectId: string): string {
+  return `texlite.workspaceLayout:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`;
+}
+
+function loadWorkspaceLayout(userId: string, projectId: string): WorkspaceLayout {
   try {
-    const saved = window.localStorage.getItem(WORKSPACE_LAYOUT_KEY);
+    const saved = window.localStorage.getItem(workspaceLayoutStorageKey(userId, projectId));
     if (saved === "editor-pdf" || saved === "editor-only" || saved === "pdf-only") return saved;
   } catch { /* Browser storage can be unavailable in private/restricted contexts. */ }
   return "editor-pdf";
@@ -501,6 +504,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [spellCheckIssues, setSpellCheckIssues] = useState<SpellCheckIssue[]>([]);
   const [spellCheckSource, setSpellCheckSource] = useState("");
   const [spellCheckFile, setSpellCheckFile] = useState("");
+  const [spellCheckIndex, setSpellCheckIndex] = useState(0);
+  const [spellCheckJump, setSpellCheckJump] = useState<SpellCheckJump | null>(null);
   const [completionIndex, setCompletionIndex] = useState<LatexCompletionIndex | null>(null);
   const [activeFile, setActiveFile] = useState("");
   const [content, setContent] = useState("");
@@ -516,7 +521,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [compileLog, setCompileLog] = useState("");
   const [compileOutcome, setCompileOutcome] = useState<"succeeded" | "failed" | null>(null);
   const [previewTab, setPreviewTab] = useState<PreviewTab>("pdf");
-  const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(loadWorkspaceLayout);
+  const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(() => loadWorkspaceLayout(user.id, projectId));
   const [artifacts, setArtifacts] = useState<CompileArtifact[]>([]);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; content: string } | null>(null);
   const [artifactLoading, setArtifactLoading] = useState(false);
@@ -542,7 +547,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [commentText, setCommentText] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
-  const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(loadEditorPreferences);
+  const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(() => loadEditorPreferences(user.id, projectId));
   const [collaboration] = useState(() => new ProjectCollaboration(projectId, user));
   const [collaborationStatus, setCollaborationStatus] = useState<CollaborationStatus>("connecting");
   const [collaborationSynced, setCollaborationSynced] = useState(false);
@@ -560,12 +565,18 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const activeFileRef = useRef("");
   const spellCheckRequest = useRef(0);
 
+  useEffect(() => {
+    setWorkspaceLayout(loadWorkspaceLayout(user.id, projectId));
+    setEditorPreferences(loadEditorPreferences(user.id, projectId));
+  }, [user.id, projectId]);
+
   const updateEditorContent = (next: string) => {
     contentRef.current = next;
     setContent(next);
     setSpellCheckIssues((current) => current.length ? [] : current);
     setSpellCheckSource((current) => current ? "" : current);
     setSpellCheckFile((current) => current ? "" : current);
+    setSpellCheckJump(null);
   };
 
   useEffect(() => {
@@ -573,13 +584,19 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     setSpellCheckIssues([]);
     setSpellCheckSource("");
     setSpellCheckFile("");
+    setSpellCheckJump(null);
   }, [activeFile]);
 
   useEffect(() => {
     setSpellCheckIssues([]);
     setSpellCheckSource("");
     setSpellCheckFile("");
+    setSpellCheckJump(null);
   }, [dictionaryWords]);
+
+  useEffect(() => {
+    setSpellCheckIndex((current) => spellCheckIssues.length ? Math.min(current, spellCheckIssues.length - 1) : 0);
+  }, [spellCheckIssues]);
 
   useEffect(() => {
     const request = ++spellCheckRequest.current;
@@ -587,6 +604,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       setSpellCheckIssues([]);
       setSpellCheckSource("");
       setSpellCheckFile("");
+      setSpellCheckJump(null);
       return;
     }
     const source = content;
@@ -599,6 +617,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
         setSpellCheckIssues(result.issues);
         setSpellCheckSource(source);
         setSpellCheckFile(file);
+        setSpellCheckIndex(0);
+        setSpellCheckJump(null);
       }).catch(() => undefined);
     }, 700);
     return () => window.clearTimeout(timer);
@@ -668,7 +688,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   };
   useEffect(() => {
     let cancelled = false;
-    setPdfUrl(""); setPdfCompiledAt(null); setPdfViewport(null); setCompileOutcome(null); setCompletionIndex(null); setDictionaryWords([]); setDictionaryRevision(""); setSpellCheckIssues([]); setSpellCheckSource(""); setSpellCheckFile("");
+    setPdfUrl(""); setPdfCompiledAt(null); setPdfViewport(null); setCompileOutcome(null); setCompletionIndex(null); setDictionaryWords([]); setDictionaryRevision(""); setSpellCheckIssues([]); setSpellCheckSource(""); setSpellCheckFile(""); setSpellCheckIndex(0); setSpellCheckJump(null);
     void loadPdfPreview();
     void Promise.all([
       api<{ project: Project }>(`/api/projects/${projectId}`),
@@ -838,7 +858,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     return () => window.removeEventListener("keydown", handleCompileShortcut, true);
   }, []);
   const updateEditorPreferences = (next: EditorPreferences) => {
-    setEditorPreferences(next); saveEditorPreferences(next);
+    setEditorPreferences(next); saveEditorPreferences(user.id, projectId, next);
   };
   const createFile = async () => {
     if (!newFilePath.trim() || newFilePath.trim().endsWith("/")) return;
@@ -1034,6 +1054,13 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const syncVisiblePdfToSource = () => {
     if (pdfViewport) void syncPdfToSource(pdfViewport.page, pdfViewport.x, pdfViewport.y);
   };
+  const jumpToSpellCheckIssue = (index: number) => {
+    if (!spellCheckIssues.length) return;
+    const nextIndex = Math.max(0, Math.min(index, spellCheckIssues.length - 1));
+    const issue = spellCheckIssues[nextIndex];
+    setSpellCheckIndex(nextIndex);
+    setSpellCheckJump({ from: issue.from, to: issue.to, nonce: ++syncNonce.current });
+  };
 
   const outline = useMemo(() => parseOutline(content), [content]);
   const compileMessages = useMemo(() => classifyCompileLog(compileLog, compileOutcome), [compileLog, compileOutcome]);
@@ -1049,7 +1076,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const changeWorkspaceLayout = (next: WorkspaceLayout) => {
     setWorkspaceLayout(next);
     if (next === "pdf-only") setPreviewTab("pdf");
-    try { window.localStorage.setItem(WORKSPACE_LAYOUT_KEY, next); } catch { /* Keep the in-memory choice. */ }
+    try { window.localStorage.setItem(workspaceLayoutStorageKey(user.id, projectId), next); } catch { /* Keep the in-memory choice. */ }
   };
   const directoryEntries = files.filter((entry) => entry.type === "directory");
   const visibleEntries = files.filter((entry) => parentFolders(entry.path).every((folder) => expandedFolders.has(folder)));
@@ -1066,6 +1093,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     <header className="editor-topbar">
       <button className="back" title={t("editor.backToProjects")} aria-label={t("editor.backToProjects")} onClick={onBack}><ArrowLeft size={18} /></button><SiteLogo siteName={site.siteName} compact />
       <div className="project-heading"><strong>{project.name}</strong><small>{activeFile} · {t(saveState)}</small></div>
+      {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
       <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
       <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : compiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
     </header>
@@ -1088,7 +1116,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       </Panel>}
       {showEditor && <PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle>}
       {showEditor && <Panel id="source" order={2} defaultSize={42} minSize={22}>
-        <main className="source-panel"><LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckWords={dictionaryWords} spellCheckIssues={spellCheckFile === activeFile && spellCheckSource === content ? spellCheckIssues : []} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onCursor={(line, column) => setSourceCursor({ line, column })} /></main>
+        <main className="source-panel"><LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckWords={dictionaryWords} spellCheckIssues={spellCheckFile === activeFile && spellCheckSource === content ? spellCheckIssues : []} spellCheckJump={spellCheckFile === activeFile && spellCheckSource === content ? spellCheckJump : null} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onCursor={(line, column) => setSourceCursor({ line, column })} /></main>
       </Panel>}
       {showEditor && showPreview && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport} title={t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={syncVisiblePdfToSource}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl} title={t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={() => void syncSourceToPdf(activeFile, sourceCursor.line, sourceCursor.column)}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
       {showPreview && <Panel id="preview" order={3} defaultSize={42} minSize={22}>
@@ -1111,7 +1139,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       </Panel>}
       {sidePanel && <><PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle><Panel id="context" order={4} defaultSize={20} minSize={15} maxSize={38}><aside className="context-panel"><div className="drawer-title"><strong>{sidePanel === "comments" ? t("editor.sourceComments") : t("editor.projectSettings")}</strong><button aria-label={t("common.close")} onClick={() => setSidePanel(null)}><X size={17} /></button></div>
           {sidePanel === "comments" && <div className="comments">{comments.map((comment) => <CommentThread key={comment.id} comment={comment} currentUserId={user.id} onFocus={() => setFocusComment({ ...comment })} onToggle={() => void toggleComment(comment)} onReply={(content) => replyToComment(comment, content)} onEdit={(content) => editComment(comment, content)} onDelete={() => deleteComment(comment)} onEditReply={(replyId, content) => editCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => deleteCommentReply(comment, replyId)} />)}{comments.length === 0 && <p className="muted padded">{t("editor.noComments")}</p>}</div>}
-          {sidePanel === "settings" && <ProjectSettings project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={setDictionaryWords} editorPreferences={editorPreferences} onEditorPreferences={updateEditorPreferences} spellCheckCount={spellCheckSummary?.total ?? null} spellCheckUniqueCount={spellCheckSummary?.unique ?? null} onProject={setProject} />}
+          {sidePanel === "settings" && <ProjectSettings project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={setDictionaryWords} editorPreferences={editorPreferences} onEditorPreferences={updateEditorPreferences} spellCheckCount={spellCheckSummary?.total ?? null} spellCheckUniqueCount={spellCheckSummary?.unique ?? null} spellCheckIndex={spellCheckSummary ? spellCheckIndex : -1} onSpellCheckNavigate={jumpToSpellCheckIssue} onProject={setProject} />}
         </aside></Panel></>}
     </PanelGroup>
     <Modal open={Boolean(resourcePreview)} extraWide={resourcePreview?.kind === "image" || resourcePreview?.kind === "pdf" || resourcePreview?.kind === "text"} title={resourcePreview?.path ?? ""} description={resourcePreview?.kind === "large" ? t("editor.resourceTooLarge", { size: formatFileSize(resourcePreview.size), limit: "10 MB" }) : t(`editor.resourcePreview.${resourcePreview?.kind ?? "text"}`)} onOpenChange={(open) => { if (!open) { setResourcePreview(null); setResourcePreviewLoading(false); } }} footer={resourcePreview && <a className="primary resource-download" href={`${resourcePreview.url}&download=1`} download><Download size={14} />{t("editor.downloadResource")}</a>}>
@@ -1315,11 +1343,12 @@ function ShareDialog({ open, onOpenChange, project, projectId }: {
   </Modal><ConfirmDialog open={Boolean(removeTarget)} title={t("projectSettings.removeTitle")} description={t("projectSettings.removeDescription", { username: removeTarget?.username ?? "" })} confirmLabel={t("common.remove")} danger onCancel={() => setRemoveTarget(null)} onConfirm={() => void removeMember()} /></>;
 }
 
-function ProjectSettings({ project, projectId, site, files, dictionaryWords, onDictionaryChange, editorPreferences, onEditorPreferences, spellCheckCount, spellCheckUniqueCount, onProject }: {
+function ProjectSettings({ project, projectId, site, files, dictionaryWords, onDictionaryChange, editorPreferences, onEditorPreferences, spellCheckCount, spellCheckUniqueCount, spellCheckIndex, onSpellCheckNavigate, onProject }: {
   project: Project; projectId: string; site: SiteConfig; files: FileEntry[]; dictionaryWords: string[];
   onDictionaryChange: (words: string[]) => void;
   editorPreferences: EditorPreferences; onEditorPreferences: (preferences: EditorPreferences) => void;
-  spellCheckCount: number | null; spellCheckUniqueCount: number | null;
+  spellCheckCount: number | null; spellCheckUniqueCount: number | null; spellCheckIndex: number;
+  onSpellCheckNavigate: (index: number) => void;
   onProject: (p: Project) => void;
 }) {
   const { t } = useTranslation();
@@ -1391,7 +1420,9 @@ function ProjectSettings({ project, projectId, site, files, dictionaryWords, onD
       <label>{t("projectSettings.lineHeight")}<select value={appearancePreferences.lineHeight} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineHeight: Number(event.target.value) })}><option value={1.45}>{t("projectSettings.lineHeightCompact")}</option><option value={1.65}>{t("projectSettings.lineHeightNormal")}</option><option value={1.85}>{t("projectSettings.lineHeightRelaxed")}</option></select></label>
       <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.lineWrapping} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineWrapping: event.target.checked })} /><WrapText size={15} /><span>{t("projectSettings.lineWrapping")}</span></label>
       <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><span>{t("projectSettings.spellCheck")}</span></label>
-      {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} />{spellCheckCount ? t("projectSettings.spellingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("projectSettings.noSpellingIssues")}</div>}
+      <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><span>{t("projectSettings.vimMode")}</span></label>
+      <p className="field-hint">{t("projectSettings.vimModeDescription")} <a href="https://replit-codemirror-vim.mintlify.app/" target="_blank" rel="noreferrer">{t("projectSettings.vimHelp")}</a></p>
+      {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.spellingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("projectSettings.noSpellingIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
       <div className="settings-section-title"><BookOpen size={15} /><strong>{t("projectSettings.dictionary")}</strong></div>
       <p className="settings-description">{t("projectSettings.dictionaryDescription")}</p>
       {dictionaryError && <p className="error dictionary-error">{dictionaryError}</p>}

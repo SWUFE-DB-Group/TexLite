@@ -47,7 +47,7 @@
     "uploadTo": "上传到 {{folder}}", "dropFiles": "拖放文件以上传", "newFolder": "新建文件夹", "folderName": "文件夹名称", "folderDestination": "文件夹将创建在 {{folder}} 中。",
     "noArtifacts": "编译后将在此显示输出产物。", "selectArtifact": "选择一个文本产物进行预览。", "viewArtifact": "查看产物", "downloadArtifact": "下载产物", "downloadToView": "该产物需要下载后查看",
     "collapseFiles": "折叠文件面板", "move": "移动", "moveTitle": "移动 {{name}}", "moveDescription": "选择目标文件夹；源码、批注和项目路径会保持关联。",
-    "destinationFolder": "目标文件夹", "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "reply": "回复",
+    "destinationFolder": "目标文件夹", "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
     "replyPlaceholder": "输入回复内容…", "sendReply": "发送回复", "editComment": "编辑批注", "deleteComment": "删除批注",
     "saveChanges": "保存修改", "deleteCommentTitle": "删除批注", "deleteCommentDescription": "确定删除这条批注及其 {{count}} 条回复吗？此操作不可撤销。",
     "editReply": "编辑回复", "deleteReply": "删除回复", "deleteReplyTitle": "删除回复",
@@ -83,12 +83,12 @@
     "recentLog": "最近编译日志", "share": "共享项目", "shareDescription": "仅可共享给管理员已创建的用户。", "chooseUser": "请选择用户",
     "latexmkrcPlaceholder": "# 留空表示不使用项目 rc 文件\n$pdf_mode = 1;",
     "addMember": "添加成员", "noMembers": "该项目尚未分享给其他成员。", "removeTitle": "移除共享成员", "removeDescription": "确认移除 {{username}}？其账号和其他项目不会受到影响。",
-    "editorTab": "编辑器外观", "compilerTab": "LaTeX 编译器", "compilerDescription": "选择本项目的主文档和 LaTeX 编译选项。",
-    "editorAppearance": "编辑器外观", "editorAppearanceDescription": "保存后，这些偏好会应用到当前浏览器中的编辑器。",
+    "editorTab": "编辑器外观", "compilerTab": "LaTeX 编译器", "compilerDescription": "选择本项目所有成员共享的主文档和 LaTeX 编译选项。",
+    "editorAppearance": "编辑器外观", "editorAppearanceDescription": "这些偏好仅作用于当前浏览器中的当前用户和项目；项目词典是共享的。",
     "saveAppearance": "保存外观设置", "saveCompiler": "保存编译器设置",
     "projectConfiguration": "项目配置", "fontFamily": "英文字体", "fontSize": "字体大小", "lineHeight": "行间距",
     "dictionary": "项目词典", "dictionaryDescription": "添加到这里的词不会在本项目的拼写检查中标记；具有编辑权限的用户可以维护此列表。", "dictionaryPlaceholder": "添加自定义词", "addWord": "添加词", "dictionaryEmpty": "暂未添加自定义词。",
-    "lineWrapping": "自动换行", "spellCheck": "单词拼写检查", "spellingIssues": "发现 {{count}} 个拼写问题（去重后 {{uniqueCount}} 个）", "noSpellingIssues": "未发现拼写问题。",
+    "lineWrapping": "自动换行", "spellCheck": "单词拼写检查", "vimMode": "Vim 键位", "vimModeDescription": "在当前编辑器中使用 Vim 的普通、插入和可视模式。", "vimHelp": "查看帮助", "spellingIssues": "发现 {{count}} 个拼写问题（去重后 {{uniqueCount}} 个）", "noSpellingIssues": "未发现拼写问题。", "spellCheckFirst": "第一个拼写问题", "spellCheckPrevious": "上一个拼写问题", "spellCheckNext": "下一个拼写问题", "spellCheckLast": "最后一个拼写问题", "spellCheckPosition": "第 {{current}}/{{total}} 个",
     "fontJetBrains": "JetBrains Mono", "fontSourceCode": "Source Code Pro",
     "fontIbmPlex": "IBM Plex Mono", "fontFiraCode": "Fira Code", "fontIosevka": "Iosevka", "lineHeightCompact": "紧凑",
     "lineHeightNormal": "标准", "lineHeightRelaxed": "宽松"
@@ -129,7 +129,7 @@
   "completions": {
     "section": "章节", "subsection": "小节", "bold": "粗体", "emphasis": "强调", "citation": "引用文献", "reference": "交叉引用",
     "label": "标签", "image": "插入图片", "unordered": "无序列表", "ordered": "有序列表", "equation": "公式", "figure": "图片环境",
-    "projectCommand": "项目命令", "projectMacro": "项目宏", "expl3Command": "Expl3 项目命令", "mathOperator": "项目数学算子",
+    "projectCommand": "项目命令", "projectCommandArgs": "项目命令（{{count}} 个参数）", "projectMacro": "项目宏", "expl3Command": "Expl3 项目命令", "mathOperator": "项目数学算子",
     "mathDelimiter": "项目数学定界符", "projectEnvironment": "项目环境", "projectFile": "项目文件", "package": "宏包",
     "documentClass": "文档类", "currentFile": "当前文件", "project": "项目", "latex": "LaTeX", "standard": "LaTeX 命令"
   }

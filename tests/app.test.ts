@@ -92,6 +92,8 @@ It works.
       method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
       payload: { path: "paper.sty", content: String.raw`\ProvidesPackage{paper}
 \newcommand{\reviewnote}[1]{\textbf{#1}}
+\NewDocumentCommand{\reviewpair}{m o}{#1 #2}
+\def\macroPair#1#2{#1#2}
 \newenvironment{reviewblock}{\begin{quote}}{\end{quote}}
 \DeclareMathOperator{\argmax}{arg\,max}
 ` }
@@ -103,7 +105,9 @@ It works.
     const completionIndex = await app.inject({ method: "GET", url: `/api/projects/${project.id}/completions`, headers: { cookie } });
     expect(completionIndex.statusCode).toBe(200);
     expect(completionIndex.json().index.commands).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: "\\reviewnote", source: "paper.sty" }),
+      expect.objectContaining({ label: "\\reviewnote", source: "paper.sty", apply: "\\reviewnote{${1}}" }),
+      expect.objectContaining({ label: "\\reviewpair", source: "paper.sty", apply: "\\reviewpair{${1}}{${2}}" }),
+      expect.objectContaining({ label: "\\macroPair", source: "paper.sty", apply: "\\macroPair{${1}}{${2}}" }),
       expect.objectContaining({ label: "\\argmax", source: "paper.sty" })
     ]));
     expect(completionIndex.json().index.environments).toEqual(expect.arrayContaining([

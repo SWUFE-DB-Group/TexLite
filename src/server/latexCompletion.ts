@@ -127,7 +127,22 @@ function withoutComments(content: string): string {
 function commandItem(index: MutableIndex, name: string, detail: string, source: string, apply?: string): void {
   if (!name.startsWith("\\")) name = `\\${name}`;
   if (!/^\\[A-Za-z@][A-Za-z@0-9:_]*$/.test(name)) return;
-  if (!index.commands.has(name)) index.commands.set(name, item(name, detail, "function", source, apply));
+  const existing = index.commands.get(name);
+  // A project definition is more useful than the generic built-in entry: it
+  // carries the actual argument count and therefore the right snippet.
+  if (!existing || (existing.source === "LaTeX" && source !== "LaTeX")) index.commands.set(name, item(name, detail, "function", source, apply));
+}
+
+function commandSnippet(name: string, argumentCount: number): string | undefined {
+  if (argumentCount <= 0) return undefined;
+  const placeholder = (index: number) => `\${${index}}`;
+  return name + Array.from({ length: argumentCount }, (_, index) => `{${placeholder(index + 1)}}`).join("");
+}
+
+function xparseArgumentCount(specification: string): number {
+  // The common xparse argument types all consume one user supplied value.
+  // Modifiers such as `+` and argument delimiters are intentionally ignored.
+  return [...specification.matchAll(/[moOrRdDsStvb]/g)].length;
 }
 
 function extractSymbols(index: MutableIndex, filePath: string, original: string): void {
@@ -135,23 +150,32 @@ function extractSymbols(index: MutableIndex, filePath: string, original: string)
   const source = filePath;
   for (const match of content.matchAll(/\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\s*\*?\s*(?:\{\s*)?\\([A-Za-z@][A-Za-z@0-9:_]*)\s*(?:\})?\s*(?:\[(\d+)\])?/g)) {
     const args = Number.parseInt(match[2] ?? "0", 10);
-    commandItem(index, `\\${match[1]}`, `Project command (${args} argument${args === 1 ? "" : "s"})`, source);
+    commandItem(index, `\\${match[1]}`, `Project command (${args} argument${args === 1 ? "" : "s"})`, source, commandSnippet(`\\${match[1]}`, args));
   }
   for (const match of content.matchAll(/\\(?:NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|DeclareExpandableDocumentCommand|RenewExpandableDocumentCommand|ProvideExpandableDocumentCommand)\s*\{\s*\\([A-Za-z@][A-Za-z@0-9:_]*)\s*\}\s*\{([^}]*)\}/g)) {
-    const args = [...match[2].matchAll(/[moO]/g)].length;
-    commandItem(index, `\\${match[1]}`, `Project command (${args} argument${args === 1 ? "" : "s"})`, source);
+    const args = xparseArgumentCount(match[2]);
+    commandItem(index, `\\${match[1]}`, `Project command (${args} argument${args === 1 ? "" : "s"})`, source, commandSnippet(`\\${match[1]}`, args));
   }
-  for (const match of content.matchAll(/\\(?:def|gdef|edef|xdef)\s*\\([A-Za-z@][A-Za-z@0-9:_]*)/g)) commandItem(index, `\\${match[1]}`, "Project macro", source);
+  for (const match of content.matchAll(/\\(?:def|gdef|edef|xdef)\s*\\([A-Za-z@][A-Za-z@0-9:_]*)((?:\s*#\d+)*)/g)) {
+    const args = [...(match[2] ?? "").matchAll(/#\d+/g)].length;
+    commandItem(index, `\\${match[1]}`, "Project macro", source, commandSnippet(`\\${match[1]}`, args));
+  }
   for (const match of content.matchAll(/\\DeclareMathOperator\s*\*?\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) commandItem(index, `\\${match[1]}`, "Project math operator", source);
   for (const match of content.matchAll(/\\DeclarePairedDelimiter\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) commandItem(index, `\\${match[1]}`, "Project math delimiter", source);
   for (const match of content.matchAll(/\\cs_(?:new|set|gset|provide|generate)(?:_protected)?\:[A-Za-z]+\s+\\([A-Za-z@][A-Za-z@0-9:_]*)/g)) commandItem(index, `\\${match[1]}`, "Expl3 project command", source);
   for (const match of content.matchAll(/\\(?:newenvironment|renewenvironment|NewDocumentEnvironment|RenewDocumentEnvironment|DeclareDocumentEnvironment)\s*\*?\s*\{([^}]+)\}/g)) {
     const name = match[1].trim();
-    if (/^[A-Za-z][A-Za-z0-9*_-]*$/.test(name) && !index.environments.has(name)) index.environments.set(name, item(name, "Project environment", "keyword", source));
+    const existing = index.environments.get(name);
+    if (/^[A-Za-z][A-Za-z0-9*_-]*$/.test(name) && (!existing || (existing.source === "LaTeX" && source !== "LaTeX"))) {
+      index.environments.set(name, item(name, "Project environment", "keyword", source));
+    }
   }
   for (const match of content.matchAll(/\\(?:newtheorem|declaretheorem)\s*\*?\s*\{([^}]+)\}/g)) {
     const name = match[1].trim();
-    if (/^[A-Za-z][A-Za-z0-9*_-]*$/.test(name) && !index.environments.has(name)) index.environments.set(name, item(name, "Theorem environment", "keyword", source));
+    const existing = index.environments.get(name);
+    if (/^[A-Za-z][A-Za-z0-9*_-]*$/.test(name) && (!existing || (existing.source === "LaTeX" && source !== "LaTeX"))) {
+      index.environments.set(name, item(name, "Theorem environment", "keyword", source));
+    }
   }
   for (const match of content.matchAll(/\\(?:label|hypertarget)\s*\{([^}]+)\}/g)) {
     const label = match[1].trim();
