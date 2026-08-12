@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { loadConfig } from "./config.js";
+import { CONFIG_DEFAULTS, loadConfig } from "./config.js";
 import { activeAdminCount, openDatabase } from "./db.js";
 import { hashPassword } from "./security.js";
 import { assertEnvironment } from "./environment.js";
@@ -14,24 +14,24 @@ async function initialize(): Promise<void> {
   const rl = interactive ? createInterface({ input: stdin, output: stdout }) : null;
   try {
     if (!fs.existsSync(configPath)) {
-      const siteName = rl ? (await rl.question("网站名称 [TexLite]: ")).trim() || "TexLite" : "TexLite";
+      const siteName = rl ? (await rl.question(`网站名称 [${CONFIG_DEFAULTS.siteName}]: `)).trim() || CONFIG_DEFAULTS.siteName : CONFIG_DEFAULTS.siteName;
       const adminEmail = rl ? (await rl.question("管理员联系邮箱（可留空）: ")).trim() : "";
       const configFile = {
         siteName,
         adminEmail,
-        sessionDays: 14,
-        server: { host: "127.0.0.1", port: 3000 },
-        storage: { dataDir: ".texlite" },
-        uploads: { maxFileSizeMB: 50 },
-        git: { binary: "git", operationTimeoutSeconds: 30, githubApiBaseUrl: "https://api.github.com" },
+        sessionDays: CONFIG_DEFAULTS.sessionDays,
+        server: { host: CONFIG_DEFAULTS.host, port: CONFIG_DEFAULTS.port },
+        storage: { dataDir: CONFIG_DEFAULTS.dataDir },
+        uploads: { maxFileSizeMB: CONFIG_DEFAULTS.maxFileSizeMB },
+        git: { binary: CONFIG_DEFAULTS.git, operationTimeoutSeconds: CONFIG_DEFAULTS.gitOperationTimeoutSeconds, githubApiBaseUrl: CONFIG_DEFAULTS.githubApiBaseUrl },
         latex: {
-          latexmk: "latexmk",
-          defaultEngine: "xelatex",
-          allowedEngines: ["pdflatex", "xelatex", "lualatex"],
-          extraArgs: [],
-          allowProjectLatexmkrc: true,
-          compileTimeoutSeconds: 60,
-          maxCompileJobs: 2
+          latexmk: CONFIG_DEFAULTS.latexmk,
+          defaultEngine: CONFIG_DEFAULTS.defaultEngine,
+          allowedEngines: CONFIG_DEFAULTS.allowedEngines,
+          extraArgs: CONFIG_DEFAULTS.extraArgs,
+          allowProjectLatexmkrc: CONFIG_DEFAULTS.allowProjectLatexmkrc,
+          compileTimeoutSeconds: CONFIG_DEFAULTS.compileTimeoutSeconds,
+          maxCompileJobs: CONFIG_DEFAULTS.maxCompileJobs
         }
       };
       fs.writeFileSync(configPath, `${JSON.stringify(configFile, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });

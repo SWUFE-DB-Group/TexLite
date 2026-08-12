@@ -44,7 +44,7 @@ export function requireUser(
 ): UserRow | null {
   const user = currentUser(request, db);
   if (!user) {
-    void reply.code(401).send({ error: "请先登录" });
+    void reply.code(401).send({ code: "AUTH_REQUIRED", error: "请先登录" });
     return null;
   }
   return user;
@@ -58,7 +58,7 @@ export function requireAdmin(
   const user = requireUser(request, reply, db);
   if (!user) return null;
   if (user.role !== "admin") {
-    void reply.code(403).send({ error: "需要管理员权限" });
+    void reply.code(403).send({ code: "ADMIN_REQUIRED", error: "需要管理员权限" });
     return null;
   }
   return user;

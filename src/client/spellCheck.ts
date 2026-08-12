@@ -1,5 +1,6 @@
 import nspell from "nspell";
-import dictionary from "dictionary-en";
+import aff from "../../node_modules/dictionary-en/index.aff?raw";
+import dic from "../../node_modules/dictionary-en/index.dic?raw";
 
 export interface SpellCheckIssue {
   from: number;
@@ -12,7 +13,9 @@ interface Span {
   to: number;
 }
 
-const checker = nspell(dictionary);
+// Keep the Hunspell dictionary in the browser bundle.  No source text is sent
+// to the server for spelling checks.
+const checker = nspell(aff, dic);
 const wordPattern = /[A-Za-z][A-Za-z0-9]*(?:['’][A-Za-z0-9]+)*/g;
 const keyTokenPattern = /([A-Za-z][A-Za-z0-9_.:/-]*(?:\s+[A-Za-z][A-Za-z0-9_.:/-]*){0,7})\s*$/;
 const tableEnvironments = new Set(["tabular", "tabularx", "tabulary", "longtable", "array", "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix"]);
@@ -147,8 +150,6 @@ function ignoredRanges(source: string): Span[] {
     index = commandEnd - 1;
   }
 
-  // Keep key/value handling as a general fallback for package settings that
-  // are not attached directly to a command.
   addKeyValueRanges(source, ranges);
   for (const match of source.matchAll(/(?:https?|ftp):\/\/[^\s]+/gi)) {
     if (match.index !== undefined) addRange(ranges, match.index, match.index + match[0].length);
@@ -181,9 +182,6 @@ export function checkSpelling(source: string, customWords: string[] = []): Spell
     const from = match.index;
     const to = from + word.length;
     if (isInside(ignored, from, ignoredCursor)) continue;
-    // Identifiers, acronyms, numbers, and title-case words are not natural-language
-    // prose for this editor. Hyphenated words are intentionally tokenized into
-    // separate words by `wordPattern`.
     if (word.length < 2 || /\d/.test(word) || /^[A-Z]/.test(word)) continue;
     if (custom.has(word.toLocaleLowerCase("en-US")) || checker.correct(word)) continue;
     issues.push({ from, to, word });

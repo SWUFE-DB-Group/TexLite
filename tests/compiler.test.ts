@@ -43,7 +43,7 @@ describe("reliable project compilation", () => {
         maximumActiveForProject = Math.max(maximumActiveForProject, activeForProject);
         await gate;
         activeForProject -= 1;
-        return { runId, revision, ok: true, log: runId, pdfPath: `${runId}.pdf`, synctexPath: null };
+        return { runId, revision, ok: true, log: runId, diagnostics: { warnings: [], errors: [] }, pdfPath: `${runId}.pdf`, synctexPath: null };
       }
     });
 
@@ -83,7 +83,7 @@ describe("reliable project compilation", () => {
     fs.writeFileSync(firstPdf, "first pdf");
     fs.writeFileSync(firstSync, "first sync");
     publishCompileArtifacts(config, projectId, first, {
-      ok: true, log: "", pdfPath: firstPdf, synctexPath: firstSync
+      ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: firstPdf, synctexPath: firstSync
     });
     expect(publishedCompileArtifacts(config, projectId)).toMatchObject({
       runId: first.runId, revision: first.revision, source: first.sourceDir, pdf: firstPdf, synctex: firstSync
@@ -96,7 +96,7 @@ describe("reliable project compilation", () => {
     const secondPdf = path.join(second.outputDir, "main.pdf");
     fs.writeFileSync(secondPdf, "second pdf");
     publishCompileArtifacts(config, projectId, second, {
-      ok: true, log: "", pdfPath: secondPdf, synctexPath: null
+      ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: secondPdf, synctexPath: null
     });
     expect(publishedCompileArtifacts(config, projectId)).toMatchObject({ runId: second.runId, pdf: secondPdf, synctex: null });
     expect(fs.existsSync(first.root)).toBe(true);

@@ -12,6 +12,7 @@ button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 .muted { color: #737a75; }
 .error { color: #b3261e; font-size: 14px; }
+.dialog-error { margin: 0; padding: 8px 10px; border: 1px solid #e9b6b0; border-radius: 6px; background: #fff3f1; }
 .field-hint { color: #778179; font-size: 11px; font-weight: 400; }
 .primary, .compile { border: 0; border-radius: 8px; background: #176b44; color: white; padding: 10px 18px; font-weight: 650; }
 .ghost { border: 0; background: transparent; color: inherit; }
@@ -141,6 +142,11 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .collaboration-avatar-tooltip span { color: #526158; }
 .collaboration-avatar-tooltip small { margin-top: 3px; color: #77837b; font-size: 11px; }
 .collaboration-avatar:hover .collaboration-avatar-tooltip, .collaboration-avatar:focus-visible .collaboration-avatar-tooltip { display: block; }
+.collaboration-recovery { min-width: 0; display: inline-flex; align-items: center; gap: 7px; margin: 0 8px; border: 1px solid #e0716780; border-radius: 999px; padding: 4px 6px 4px 9px; background: #6f2b2b66; color: #ffe0dd; font-size: 10px; white-space: nowrap; }
+.collaboration-recovery button { border: 1px solid #ffffff55; border-radius: 999px; padding: 3px 7px; background: #ffffff18; color: inherit; font-size: 10px; }
+.collaboration-recovery button:hover { background: #ffffff2c; }
+.compile-status-strip { min-height: 31px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 6px 14px; background: #fff6dc; color: #72530d; border-bottom: 1px solid #e8cd7d; font-size: 11px; }
+.compile-status-strip.failed { background: #fff0ee; color: #9a3028; border-bottom-color: #e8aaa4; }
 .editor-actions { display: flex; gap: 8px; }
 .editor-actions button { padding: 8px 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid #ffffff28; color: white; background: #ffffff0d; font-size: 12px; white-space: nowrap; }
 .editor-actions .compile { background: #f3b943; border-color: #f3b943; color: #193023; font-weight: 700; }

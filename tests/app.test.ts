@@ -67,8 +67,18 @@ describe("texLite application", () => {
   it("requires authentication and exposes only public site config", async () => {
     const unauthenticated = await app.inject({ method: "GET", url: "/api/projects" });
     expect(unauthenticated.statusCode).toBe(401);
+    expect(unauthenticated.json()).toMatchObject({ code: "AUTH_REQUIRED" });
     const publicConfig = await app.inject({ method: "GET", url: "/api/config" });
     expect(publicConfig.json()).toMatchObject({ siteName: "Test texLite", adminEmail: "admin@example.test" });
+  });
+
+  it("does not expose a server-side spellcheck endpoint", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Client spellcheck" } });
+    const response = await app.inject({
+      method: "POST", url: `/api/projects/${created.json().project.id}/spellcheck`, headers: { cookie },
+      payload: { source: "This wrng source must stay in the browser." }
+    });
+    expect(response.statusCode).toBe(404);
   });
 
   it("creates, edits, compiles and comments on a project", async () => {
@@ -197,6 +207,7 @@ It works.
     ]);
     expect(compiled.statusCode).toBe(200);
     expect(compiled.json().ok, compiled.json().log).toBe(true);
+    expect(compiled.json().diagnostics).toMatchObject({ warnings: expect.any(Array), errors: [] });
     expect(compiled.headers["server-timing"]).toContain("latexmk;dur=");
     expect(compiled.json().timings).toMatchObject({
       snapshotMs: expect.any(Number), cacheSyncMs: expect.any(Number),
@@ -237,7 +248,8 @@ It works.
     });
     expect(latestCompile.json()).toMatchObject({
       pdfUrl: expect.stringContaining(`/api/projects/${project.id}/pdf`),
-      pdfCompiledAt: incrementalCompile.json().pdfCompiledAt
+      pdfCompiledAt: incrementalCompile.json().pdfCompiledAt,
+      latestRun: { diagnostics: { warnings: expect.any(Array), errors: expect.any(Array) } }
     });
     const artifactDirectory = path.join(config.projectsDir, project.id, "output", ".texlite", "runs", manifest.runId, "output");
     expect(fs.existsSync(path.join(artifactDirectory, manifest.pdf))).toBe(true);
@@ -331,6 +343,48 @@ It works.
     expect(files.json().files.map((entry: { path: string }) => entry.path)).toEqual(expect.arrayContaining([
       "archive", "archive/chapters", "archive/chapters/intro.tex", "archive/chapters/main.tex"
     ]));
+  });
+
+  it("does not overwrite same-named files during creation or upload", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "No Overwrite" } });
+    const project = created.json().project;
+    await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "notes.txt", content: "original" }
+    });
+
+    const duplicate = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "notes.txt", content: "replacement" }
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({ code: "FILE_EXISTS", path: "notes.txt" });
+    const unchanged = await app.inject({ method: "GET", url: `/api/projects/${project.id}/file?path=notes.txt`, headers: { cookie } });
+    expect(unchanged.json().content).toBe("original");
+
+    const firstUpload = multipartBody("upload.txt", Buffer.from("first"));
+    const uploaded = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/upload`, headers: {
+        cookie, "content-type": `multipart/form-data; boundary=${firstUpload.boundary}`
+      }, payload: firstUpload.body
+    });
+    expect(uploaded.statusCode).toBe(201);
+    const secondUpload = multipartBody("upload.txt", Buffer.from("second"));
+    const collision = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/upload`, headers: {
+        cookie, "content-type": `multipart/form-data; boundary=${secondUpload.boundary}`
+      }, payload: secondUpload.body
+    });
+    expect(collision.statusCode).toBe(409);
+    expect(collision.json()).toMatchObject({ code: "FILE_EXISTS", path: "upload.txt" });
+    const overwritten = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/upload?overwrite=1`, headers: {
+        cookie, "content-type": `multipart/form-data; boundary=${secondUpload.boundary}`
+      }, payload: secondUpload.body
+    });
+    expect(overwritten.statusCode).toBe(201);
+    const uploadedContent = await app.inject({ method: "GET", url: `/api/projects/${project.id}/file?path=upload.txt`, headers: { cookie } });
+    expect(uploadedContent.json().content).toBe("second");
   });
 
   it("keeps project archives private to each user", async () => {
@@ -816,6 +870,19 @@ Second version.
     expect(fs.existsSync(path.join(root, "main.tex"))).toBe(false);
   });
 
+  it("rejects duplicate ZIP entries instead of replacing an extracted file", async () => {
+    const multipart = multipartBody("duplicates.zip", makeZipEntries([
+      ["project/main.tex", "first"], ["project/main.tex", "second"]
+    ]));
+    const response = await app.inject({
+      method: "POST", url: "/api/projects/import", headers: {
+        cookie, "content-type": `multipart/form-data; boundary=${multipart.boundary}`
+      }, payload: multipart.body
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("重复文件名");
+  });
+
   it("rejects a multi-tex ZIP without a documentclass candidate", async () => {
     const multipart = multipartBody("fragments.zip", makeZip({
       "fragments/chapter.tex": "\\section{Chapter}",
@@ -850,10 +917,14 @@ function multipartBody(filename: string, file: Buffer): { boundary: string; body
 }
 
 function makeZip(entries: Record<string, string>): Buffer {
+  return makeZipEntries(Object.entries(entries));
+}
+
+function makeZipEntries(entries: Array<[string, string]>): Buffer {
   const localParts: Buffer[] = [];
   const centralParts: Buffer[] = [];
   let offset = 0;
-  for (const [nameText, contentText] of Object.entries(entries)) {
+  for (const [nameText, contentText] of entries) {
     const name = Buffer.from(nameText);
     const content = Buffer.from(contentText);
     const crc = crc32(content);
@@ -871,8 +942,8 @@ function makeZip(entries: Record<string, string>): Buffer {
   }
   const centralSize = centralParts.reduce((total, part) => total + part.length, 0);
   const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(Object.keys(entries).length, 8);
-  end.writeUInt16LE(Object.keys(entries).length, 10); end.writeUInt32LE(centralSize, 12); end.writeUInt32LE(offset, 16);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(centralSize, 12); end.writeUInt32LE(offset, 16);
   return Buffer.concat([...localParts, ...centralParts, end]);
 }
 

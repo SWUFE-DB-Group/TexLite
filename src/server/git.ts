@@ -420,6 +420,12 @@ function decryptToken(config: Config, encoded: string): string {
   }
 }
 
-function httpError(statusCode: number, message: string): Error & { statusCode: number } {
-  return Object.assign(new Error(message), { statusCode });
+function httpError(statusCode: number, message: string): Error & { statusCode: number; code: string } {
+  const code = statusCode === 400 ? "GIT_INVALID"
+    : statusCode === 404 ? "GIT_REVISION_NOT_FOUND"
+      : statusCode === 409 ? "GIT_CONFLICT"
+        : statusCode === 413 ? "GIT_OUTPUT_TOO_LARGE"
+          : statusCode === 504 ? "GIT_TIMEOUT"
+            : statusCode >= 500 ? "GIT_OPERATION_FAILED" : "REQUEST_INVALID";
+  return Object.assign(new Error(message), { statusCode, code });
 }

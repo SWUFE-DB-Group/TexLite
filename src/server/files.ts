@@ -60,14 +60,14 @@ export function duplicateProjectFiles(config: Config, sourceProjectId: string, t
 
 export function safeRelativePath(input: string): string {
   if (!input || input.includes("\0") || path.isAbsolute(input)) {
-    throw new Error("无效的文件路径");
+    throw Object.assign(new Error("无效的文件路径"), { code: "INVALID_PATH" });
   }
   const normalized = path.posix.normalize(input.replaceAll("\\", "/"));
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
-    throw new Error("无效的文件路径");
+    throw Object.assign(new Error("无效的文件路径"), { code: "INVALID_PATH" });
   }
   if (normalized.split("/").some((segment) => segment.toLocaleLowerCase() === ".git")) {
-    throw new Error(".git 是系统保留目录");
+    throw Object.assign(new Error(".git 是系统保留目录"), { code: "RESERVED_PATH" });
   }
   return normalized;
 }

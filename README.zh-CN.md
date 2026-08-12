@@ -148,6 +148,43 @@ npm start
 - latex.maxCompileJobs：全局 LaTeX 进程并发上限。同一个项目始终串行编译；多个源码版本排队时只保留最新请求。
 - latex.allowProjectLatexmkrc：是否允许项目提供多行 latexmkrc。该文件是可执行的 Perl 配置，只建议对可信用户开启。
 
+### 生效默认值和启动校验
+
+如果没有设置某项，texLite 使用以下内置默认值（自动生成的示例配置
+可以显式写出例如管理员邮箱这样的值）：
+
+| 配置项 | 生效默认值 |
+| --- | --- |
+| `siteName` | `TexLite` |
+| `adminEmail` | 空 |
+| `server.host` / `server.port` | `127.0.0.1` / `3000` |
+| `storage.dataDir` | `.texlite`（相对于配置文件） |
+| `clientDir` | `dist/client`（相对于工作目录） |
+| `sessionDays` | `14` 天 |
+| `uploads.maxFileSizeMB` | `50` MB |
+| `latex.latexmk` | `latexmk` |
+| `latex.defaultEngine` | `xelatex` |
+| `latex.allowedEngines` | `pdflatex`、`xelatex`、`lualatex` |
+| `latex.extraArgs` | `[]` |
+| `latex.allowProjectLatexmkrc` | `true` |
+| `latex.compileTimeoutSeconds` | `60` 秒 |
+| `latex.maxCompileJobs` | `2` |
+| `git.binary` / `git.operationTimeoutSeconds` | `git` / `30` 秒 |
+| `git.githubApiBaseUrl` | `https://api.github.com` |
+
+配置会在环境检查、打开数据库和启动 HTTP 监听之前完成校验。显式设置的
+非法值不会静默回退到默认值。允许范围为：端口 `1–65535`，会话有效期
+`1–3650` 天，单文件大小 `1–2048` MB，编译超时 `1–3600` 秒，编译并发数
+`1–32`，Git 超时 `1–3600` 秒。引擎名称必须受支持且不能重复；允许引擎
+列表必须包含选中的默认引擎。数据目录和项目目录不能指向文件，数据目录
+不能是文件系统根目录；数据目录不存在时，其父目录必须已经存在且可写。
+GitHub API 地址必须是 `http://` 或 `https://` URL。
+
+JSON 类型错误、必填字符串为空、整数格式错误（包括带小数或非数字的环境
+变量）、不支持的引擎、非法 URL 和不可用路径都会停止启动，并显示配置项、
+期望格式及修复提示。`npm run init` 也执行同样的校验，因此可以在创建第一个
+管理员前先发现配置问题。
+
 环境变量会覆盖配置文件中的对应值：
 
 ~~~text

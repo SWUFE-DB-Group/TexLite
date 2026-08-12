@@ -148,6 +148,47 @@ Important settings:
 - latex.maxCompileJobs: global number of concurrent LaTeX processes. Jobs for one project are always serialized; newer source versions supersede older queued requests.
 - latex.allowProjectLatexmkrc: allow a project to supply a multi-line latexmkrc. A project rc file is executable Perl configuration and should only be enabled for trusted users.
 
+### Effective defaults and startup validation
+
+When a setting is omitted, texLite uses the following built-in defaults (the
+generated example file may choose to show an explicit value such as an admin
+email):
+
+| Setting | Effective default |
+| --- | --- |
+| `siteName` | `TexLite` |
+| `adminEmail` | empty |
+| `server.host` / `server.port` | `127.0.0.1` / `3000` |
+| `storage.dataDir` | `.texlite` (relative to the config file) |
+| `clientDir` | `dist/client` (relative to the working directory) |
+| `sessionDays` | `14` |
+| `uploads.maxFileSizeMB` | `50` MB |
+| `latex.latexmk` | `latexmk` |
+| `latex.defaultEngine` | `xelatex` |
+| `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` |
+| `latex.extraArgs` | `[]` |
+| `latex.allowProjectLatexmkrc` | `true` |
+| `latex.compileTimeoutSeconds` | `60` seconds |
+| `latex.maxCompileJobs` | `2` |
+| `git.binary` / `git.operationTimeoutSeconds` | `git` / `30` seconds |
+| `git.githubApiBaseUrl` | `https://api.github.com` |
+
+Configuration is validated before environment checks, database opening, or
+the HTTP listener starts. Explicit values are never silently replaced by a
+default. The accepted ranges are: port `1–65535`, sessions `1–3650` days,
+upload size `1–2048` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
+and Git timeout `1–3600` seconds. Engine names must be supported, unique, and
+the allowed-engine list must include the selected default engine. Data and
+project paths must not point at files (the data directory cannot be the
+filesystem root); a missing data directory must have an existing writable
+parent. The GitHub API endpoint must be an `http://` or `https://` URL.
+
+Invalid JSON types, empty required strings, malformed integers (including
+decimal or non-numeric environment overrides), unsupported engines, invalid
+URLs, and unusable paths stop startup with the setting name, expected value,
+and a remediation hint. The same validation runs during `npm run init`, so a
+configuration can be checked before creating the first administrator.
+
 Environment variables override the corresponding file values:
 
 ~~~text

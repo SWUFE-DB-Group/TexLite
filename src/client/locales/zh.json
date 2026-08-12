@@ -8,7 +8,7 @@
   "auth": {
     "tagline": "轻量 LaTeX 写作环境", "username": "用户名", "password": "密码", "login": "登录",
     "contact": "需要账号？请联系 {{email}}", "firstLogin": "首次登录，请修改初始密码", "currentPassword": "当前密码",
-    "newPassword": "新密码", "confirmPassword": "确认新密码", "updatePassword": "更新密码", "mismatch": "两次输入的新密码不一致", "passwordMinimum": "至少 {{count}} 位", "logout": "退出"
+    "newPassword": "新密码", "confirmPassword": "确认新密码", "updatePassword": "更新密码", "mismatch": "两次输入的新密码不一致", "passwordMinimum": "至少 {{count}} 位", "sessionExpired": "登录状态已过期，请重新登录。", "logout": "退出"
   },
   "projects": {
     "title": "项目", "subtitle": "创建、编辑和分享 LaTeX 文档", "restricted": "你可以访问别人共享给你的项目；创建权限由管理员授予",
@@ -26,7 +26,7 @@
   },
   "users": {
     "manage": "用户管理", "back": "返回项目", "onlyAdmin": "仅管理员可以创建用户", "add": "添加用户", "role": "角色",
-    "createProjects": "创建项目", "ownedProjects": "拥有项目", "status": "状态", "actions": "操作", "allow": "允许", "deny": "禁止",
+    "createProjects": "创建项目", "ownedProjects": "拥有项目", "status": "状态", "actions": "操作", "adminRequired": "需要管理员权限。", "allow": "允许", "deny": "禁止",
     "enable": "启用", "disable": "禁用", "promote": "设为管理员", "demote": "降为用户", "allowCreate": "允许创建", "denyCreate": "禁止创建",
     "resetPassword": "重置密码", "initialPassword": "登录密码", "displayName": "显示名称", "addDescription": "设置登录密码，或生成一个安全的随机密码。",
     "createUser": "创建用户", "randomPassword": "随机密码", "generatePassword": "生成随机密码",
@@ -36,7 +36,7 @@
   },
   "editor": {
     "saved": "已保存", "loading": "载入中", "pending": "等待保存", "saving": "保存中", "saveFailed": "保存失败",
-    "compile": "编译 · {{engine}}", "compiling": "编译中…", "upToDate": "文件已是最新，无需重新编译。", "addComment": "添加批注", "sourceComments": "源码批注",
+    "compile": "编译 · {{engine}}", "compiling": "编译中…", "compileQueued": "编译已排队…", "compileFailedRetained": "编译失败，当前显示上一次成功生成的 PDF（{{time}}）。", "compileFailedNoPdf": "编译失败，且没有可用的成功 PDF。", "upToDate": "文件已是最新，无需重新编译。", "addComment": "添加批注", "sourceComments": "源码批注",
     "projectSettings": "项目设置", "uploadAttachment": "上传附件", "newFile": "新建文本文件", "binary": "二进制附件已保存，但不能在文本编辑器中打开。",
     "noOutline": "当前文件没有章节", "preview": "PDF 预览", "previewHint": "点击“编译”生成文档", "pdfCompiledAt": "成功编译于 {{time}}", "deletedUser": "已删除用户",
     "orphaned": "锚点已丢失", "line": "第 {{line}} 行", "reopen": "重新打开", "resolve": "标记为已解决", "noComments": "当前文件没有批注",
@@ -44,7 +44,7 @@
     "pointComment": "未选择文本，将在当前光标位置添加批注。", "commentContent": "批注内容", "backToProjects": "返回项目列表",
     "outputTabs": "编译输出", "log": "日志", "warnings": "警告", "errors": "错误", "artifacts": "产物", "noLog": "编译后将在此显示日志。",
     "noWarnings": "最近一次编译没有警告。", "noErrors": "最近一次编译没有错误。", "projectRoot": "项目根目录",
-    "uploadTo": "上传到 {{folder}}", "dropFiles": "拖放文件以上传", "newFolder": "新建文件夹", "folderName": "文件夹名称", "folderDestination": "文件夹将创建在 {{folder}} 中。",
+    "uploadTo": "上传到 {{folder}}", "dropFiles": "拖放文件以上传", "newFolder": "新建文件夹", "folderName": "文件夹名称", "folderDestination": "文件夹将创建在 {{folder}} 中。", "uploadOverwriteTitle": "文件已存在", "uploadOverwriteDescription": "以下文件已经存在：{{files}}。要覆盖它们吗？", "uploadOverwrite": "覆盖文件",
     "noArtifacts": "编译后将在此显示输出产物。", "selectArtifact": "选择一个文本产物进行预览。", "viewArtifact": "查看产物", "downloadArtifact": "下载产物", "downloadToView": "该产物需要下载后查看",
     "collapseFiles": "折叠文件面板", "move": "移动", "moveTitle": "移动 {{name}}", "moveDescription": "选择目标文件夹；源码、批注和项目路径会保持关联。",
     "destinationFolder": "目标文件夹", "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
@@ -64,7 +64,7 @@
     },
     "collaboration": {
       "connecting": "正在连接协作服务…", "connected": "实时协作已连接", "disconnected": "实时协作连接已断开",
-      "editing": "正在编辑", "viewing": "正在查看", "joining": "正在进入项目",
+      "editing": "正在编辑", "viewing": "正在查看", "joining": "正在进入项目", "reconnect": "重新连接",
       "activeSessions": "{{count}} 个活跃会话",
       "showMoreSessions": "展开另外 {{count}} 个会话", "showFewerSessions": "收起会话列表",
       "sessionTooltip": "{{name}}（@{{username}}）· {{file}} · {{activity}} · {{permission}}"
@@ -124,7 +124,7 @@
     "empty": "请先创建标签。", "allAssigned": "所有可用标签均已添加。", "name": "标签名称", "color": "颜色", "filter": "筛选",
     "red": "红色", "orange": "橙色", "yellow": "黄色", "green": "绿色", "blue": "蓝色", "purple": "紫色", "gray": "灰色"
   },
-  "errors": { "generic": "操作失败", "request": "请求失败（{{status}}）", "upload": "上传失败", "fileTooLarge": "文件超过 {{size}} MB 限制。", "zipOnly": "请选择 ZIP 压缩包。", "collaborationUnavailable": "实时协作尚未连接，请在重新连接后保存或编译。" },
+  "errors": { "generic": "操作失败", "request": "请求失败（{{status}}）", "upload": "上传失败", "fileExists": "同名文件或文件夹已经存在。", "pathConflict": "目标路径已经被文件或文件夹占用。", "duplicateUploadNames": "所选文件中存在重复名称：{{files}}。", "fileTooLarge": "文件超过 {{size}} MB 限制。", "zipOnly": "请选择 ZIP 压缩包。", "collaborationUnavailable": "实时协作尚未连接，请在重新连接后保存或编译。", "codes": { "AUTH_INVALID": "用户名或密码错误。", "CURRENT_PASSWORD_INVALID": "当前密码错误。", "USER_NOT_FOUND": "用户不存在或已被删除。", "LAST_ADMIN": "系统必须保留至少一名可用管理员。", "SELF_DELETE_FORBIDDEN": "不能删除当前登录的管理员。", "PROJECT_CREATE_FORBIDDEN": "管理员尚未授予你创建项目的权限。", "PROJECT_NOT_FOUND": "项目不存在或你已无法访问。", "PROJECT_OWNER_ONLY": "只有项目所有者可以修改此设置。", "PROJECT_EDIT_FORBIDDEN": "你没有此项目的编辑权限。", "DICTIONARY_EDIT_FORBIDDEN": "你没有维护本项目词典的权限。", "TAG_NOT_FOUND": "所选标签不存在。", "GIT_TOKEN_INVALID": "请输入 GitHub token。", "GIT_REPOSITORY_NAME_INVALID": "请输入 GitHub 仓库名称。", "GIT_REVISION_INVALID": "请选择要 checkout 的 Git 版本。", "PROJECT_DELETE_FORBIDDEN": "只有项目所有者可以删除项目。", "MEMBERS_MANAGE_FORBIDDEN": "只有项目所有者可以管理项目成员。", "OWNER_MEMBER_FORBIDDEN": "项目所有者不能作为成员添加。", "INVALID_PATH": "文件路径无效。", "RESERVED_PATH": "此路径由 TexLite 保留。", "PATH_EXISTS": "目标路径已被文件或文件夹占用。", "FILE_EXISTS": "同名文件已经存在。", "PATH_NOT_FOUND": "文件或文件夹不存在。", "FILE_NOT_FOUND": "文件不存在。", "DIRECTORY_NOT_FOUND": "目标文件夹不存在。", "MOVE_INTO_SELF": "不能把文件夹移动到自身内部。", "MAIN_FILE_DELETE_FORBIDDEN": "不能删除主文档。", "FILE_TOO_LARGE": "文件过大，无法打开或上传。", "UPLOAD_EMPTY": "没有选择要上传的文件。", "COMMENT_FILE_NOT_FOUND": "批注对应的文件不存在。", "COMMENT_RANGE_INVALID": "批注的源码区间无效。", "COMMENT_NOT_FOUND": "批注不存在。", "COMMENT_EDIT_FORBIDDEN": "只能编辑自己的批注。", "COMMENT_DELETE_FORBIDDEN": "只能删除自己的批注。", "REPLY_NOT_FOUND": "回复不存在。", "REPLY_EDIT_FORBIDDEN": "只能编辑自己的回复。", "REPLY_DELETE_FORBIDDEN": "只能删除自己的回复。", "COMMENT_UPDATE_EMPTY": "没有可更新的批注内容。", "MAIN_FILE_NOT_FOUND": "所选主文档不存在。", "LATEXMKRC_DISABLED": "管理员已禁用项目级 latexmkrc。", "LATEXMKRC_NOT_FOUND": "所选 latexmkrc 文件不存在。", "COMPILE_ARTIFACTS_NOT_FOUND": "尚无可用的编译产物。", "COMPILE_ARTIFACT_NOT_FOUND": "编译产物不存在。", "ARTIFACT_PREVIEW_UNSUPPORTED": "该产物不能作为文本预览，请下载后查看。", "SYNC_SOURCE_INVALID": "源码位置无效。", "SOURCE_FILE_NOT_FOUND": "源码文件不存在。", "SYNCTEX_NOT_AVAILABLE": "尚无可用的 SyncTeX 数据，请重新编译。", "SYNC_PDF_INVALID": "PDF 位置无效。", "SYNCTEX_EXTERNAL_PATH": "SyncTeX 返回了项目外部的源码路径。", "COMPILE_FORBIDDEN": "你没有编译此项目的权限。", "PDF_NOT_FOUND": "尚未生成 PDF。", "API_NOT_FOUND": "接口不存在。", "SERVER_ERROR": "服务器无法完成请求。", "REQUEST_INVALID": "请求格式无效。" } },
   "footer": { "copyright": "© {{year}}", "credit": "Designed and developed by CHEN Zhongpu" },
   "completions": {
     "section": "章节", "subsection": "小节", "bold": "粗体", "emphasis": "强调", "citation": "引用文献", "reference": "交叉引用",

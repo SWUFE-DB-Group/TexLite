@@ -34,6 +34,7 @@ async function inspectZip(buffer: Buffer, maxFileBytes: number, maxTotalBytes: n
   const zip = await openZip(buffer);
   return await new Promise<EntryInfo[]>((resolve, reject) => {
     const entries: EntryInfo[] = [];
+    const seenPaths = new Set<string>();
     let totalBytes = 0;
     const fail = (error: Error): void => { zip.close(); reject(error); };
     zip.on("error", reject);
@@ -44,7 +45,14 @@ async function inspectZip(buffer: Buffer, maxFileBytes: number, maxTotalBytes: n
         totalBytes += entry.uncompressedSize;
         if (entry.uncompressedSize > maxFileBytes) throw new Error(`ZIP 中存在超过 ${formatMB(maxFileBytes)} MB 的单个文件`);
         if (totalBytes > maxTotalBytes) throw new Error(`ZIP 解压后总体积不能超过 ${formatMB(maxTotalBytes)} MB`);
-        entries.push({ fileName: normalizedEntryName(entry.fileName), uncompressedSize: entry.uncompressedSize, directory: /\/$/.test(entry.fileName) });
+        const normalized = normalizedEntryName(entry.fileName);
+        // ZIP archives can contain duplicate entries.  Extraction of the
+        // second entry would otherwise silently replace the first one (and a
+        // `name`/`name/` pair would collide on disk as well).
+        const collisionKey = safeRelativePath(normalized.replace(/\/+$/, ""));
+        if (seenPaths.has(collisionKey)) throw new Error(`ZIP 包含重复文件名：${collisionKey}`);
+        seenPaths.add(collisionKey);
+        entries.push({ fileName: normalized, uncompressedSize: entry.uncompressedSize, directory: /\/$/.test(entry.fileName) });
         zip.readEntry();
       } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); }
     });

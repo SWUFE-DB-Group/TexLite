@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError, localizedResponseError } from "./api";
-import { LatexEditor, type SpellCheckIssue, type SpellCheckJump } from "./LatexEditor";
+import { LatexEditor, type SpellCheckJump } from "./LatexEditor";
+import type { SpellCheckIssue } from "./spellCheck";
 import type { PdfTarget } from "./PdfPreview";
 import { ConfirmDialog, Modal } from "./Dialog";
 import type { Comment, FileEntry, LatexCompletionIndex, Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "./types";
@@ -19,10 +20,12 @@ import {
   editorFonts, loadEditorPreferences, saveEditorPreferences, type EditorPreferences
 } from "./editorPreferences";
 import { classifyCompileLog } from "./compileLog";
+import { formatCompileDiagnostic, type CompileDiagnostics } from "./compileDiagnostics";
 import {
   ProjectCollaboration, avatarInitial, sharedCompileState, type ActiveSession, type CollaborationStatus,
   type FilesEvent, type SharedCompileState
 } from "./collaboration";
+import { isProjectHistoryState, projectIdFromPath, projectPath, type TexLiteHistoryState } from "./routes";
 
 const loadPdfPreview = () => import("./PdfPreview");
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
@@ -32,12 +35,59 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : i18n.t("errors.generic");
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 export function App() {
   const { t } = useTranslation();
   const [site, setSite] = useState<SiteConfig>({ siteName: "TexLite", adminEmail: "" });
   const [user, setUser] = useState<User | null | undefined>();
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(() => typeof window === "undefined" ? null : projectIdFromPath(window.location.pathname));
   const [dashboardCache, setDashboardCache] = useState<{ userId: string; projects: Project[]; tags: ProjectTag[]; pagination: ProjectListPagination } | null>(null);
+
+  useEffect(() => {
+    const initialProjectId = projectIdFromPath(window.location.pathname);
+    if (initialProjectId && window.location.pathname !== projectPath(initialProjectId)) {
+      const state: TexLiteHistoryState = { texliteRoute: "project", projectId: initialProjectId, fromDashboard: false };
+      window.history.replaceState(state, "", projectPath(initialProjectId));
+    }
+    const handlePopState = () => setProjectId(projectIdFromPath(window.location.pathname));
+    const handleSessionExpired = () => {
+      setDashboardCache(null);
+      setUser(null);
+      if (projectIdFromPath(window.location.pathname)) {
+        const state: TexLiteHistoryState = { texliteRoute: "dashboard" };
+        window.history.replaceState(state, "", "/");
+        setProjectId(null);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("texlite:session-expired", handleSessionExpired);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("texlite:session-expired", handleSessionExpired);
+    };
+  }, []);
+
+  const openProject = (id: string) => {
+    const nextPath = projectPath(id);
+    if (window.location.pathname !== nextPath) {
+      const state: TexLiteHistoryState = { texliteRoute: "project", projectId: id, fromDashboard: true };
+      window.history.pushState(state, "", nextPath);
+    }
+    setProjectId(id);
+  };
+  const leaveProject = () => {
+    const state = window.history.state;
+    if (isProjectHistoryState(state) && state.fromDashboard) {
+      window.history.back();
+      return;
+    }
+    const dashboardState: TexLiteHistoryState = { texliteRoute: "dashboard" };
+    window.history.replaceState(dashboardState, "", "/");
+    setProjectId(null);
+  };
 
   useEffect(() => {
     void api<SiteConfig>("/api/config").then((config) => {
@@ -54,14 +104,14 @@ export function App() {
   if (!user) return <Login site={site} onLogin={setUser} />;
   if (user.mustChangePassword) return <ChangePassword site={site} user={user} onChanged={(updated) => setUser(updated)} />;
   if (projectId) {
-    return <ProjectWorkspace site={site} user={user} projectId={projectId} onBack={() => setProjectId(null)} />;
+    return <ProjectWorkspace key={projectId} site={site} user={user} projectId={projectId} onBack={leaveProject} />;
   }
   const cachedDashboard = dashboardCache?.userId === user.id ? dashboardCache : null;
   return <Dashboard site={site} user={user}
     initialData={cachedDashboard ? { projects: cachedDashboard.projects, tags: cachedDashboard.tags, pagination: cachedDashboard.pagination } : null}
     onDataChange={(projects, tags, pagination) => setDashboardCache({ userId: user.id, projects, tags, pagination })}
-    onUser={(next) => { if (!next || next.id !== user.id) setDashboardCache(null); setUser(next); }}
-    onOpenProject={setProjectId} />;
+    onUser={(next) => { if (!next || next.id !== user.id) setDashboardCache(null); setUser(next); if (!next) leaveProject(); }}
+    onOpenProject={openProject} />;
 }
 
 function SiteLogo({ siteName, compact = false, auth = false }: { siteName: string; compact?: boolean; auth?: boolean }) {
@@ -73,7 +123,7 @@ function SiteLogo({ siteName, compact = false, auth = false }: { siteName: strin
 function SiteFooter() {
   const { t } = useTranslation();
   const repositoryUrl = "https://github.com/SWUFE-DB-Group/TexLite";
-  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite v0.1.1</a></span><span>{t("footer.credit")}</span></footer>;
+  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite v0.2.0</a></span><span>{t("footer.credit")}</span></footer>;
 }
 
 function ChangePassword({ site, user, onChanged }: { site: SiteConfig; user: User; onChanged: (user: User) => void }) {
@@ -173,6 +223,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   const [page, setPage] = useState(1);
   const [loadedKey, setLoadedKey] = useState("");
   const requestSequence = useRef(0);
+  const loadController = useRef<AbortController | null>(null);
   const requestKey = (archived: boolean, pageNumber: number, search: string, tag: string, order: "updated" | "created") =>
     `${archived ? "archived" : "active"}|${pageNumber}|${search}|${tag}|${order}`;
   const currentRequestKey = requestKey(showArchived, page, query, tagFilter, sort);
@@ -183,16 +234,23 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
     if (tag) params.set("tag", tag);
     const key = requestKey(archived, pageNumber, search, tag, order);
     const sequence = ++requestSequence.current;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
     return Promise.all([
-      api<{ projects: Project[]; pagination: ProjectListPagination }>(`/api/projects?${params.toString()}`),
-      api<{ tags: ProjectTag[] }>("/api/tags")
+      api<{ projects: Project[]; pagination: ProjectListPagination }>(`/api/projects?${params.toString()}`, { signal: controller.signal }),
+      api<{ tags: ProjectTag[] }>("/api/tags", { signal: controller.signal })
     ]).then(([projectResult, tagResult]) => {
       if (sequence !== requestSequence.current) return;
       setProjects(projectResult.projects); setTags(tagResult.tags); setPagination(projectResult.pagination); setPage(projectResult.pagination.page);
       setHasLoaded(true); setLoadedKey(key);
-    }).catch((e) => { if (sequence === requestSequence.current) setError(errorMessage(e)); });
+    }).catch((e) => { if (!isAbortError(e) && sequence === requestSequence.current) setError(errorMessage(e)); })
+      .finally(() => { if (loadController.current === controller) loadController.current = null; });
   };
-  useEffect(() => { void load(showArchived, page, query, tagFilter, sort); }, [showArchived, page, query, tagFilter, sort]);
+  useEffect(() => {
+    void load(showArchived, page, query, tagFilter, sort);
+    return () => loadController.current?.abort();
+  }, [showArchived, page, query, tagFilter, sort]);
   useEffect(() => {
     if (hasLoaded && !showArchived && loadedKey === currentRequestKey) onDataChange(projects, tags, pagination);
   }, [projects, tags, pagination, hasLoaded, loadedKey, currentRequestKey, showArchived]);
@@ -479,6 +537,8 @@ interface SourceJump { path: string; line: number; column: number; nonce: number
 interface CompileArtifact { path: string; size: number; viewable: boolean }
 type ResourcePreviewKind = "image" | "pdf" | "text" | "unsupported" | "large";
 interface ResourcePreview { path: string; kind: ResourcePreviewKind; size: number; url: string; content?: string }
+interface PendingUpload { files: File[]; directory: string; collisions: string[] }
+interface LoadOptions { signal?: AbortSignal; isCurrent?: () => boolean }
 
 const MAX_DIRECT_RESOURCE_PREVIEW_BYTES = 10 * 1024 * 1024;
 
@@ -519,6 +579,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [sourceJump, setSourceJump] = useState<SourceJump | null>(null);
   const [sourceCursor, setSourceCursor] = useState({ line: 1, column: 1 });
   const [compileLog, setCompileLog] = useState("");
+  const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostics | null>(null);
   const [compileOutcome, setCompileOutcome] = useState<"succeeded" | "failed" | null>(null);
   const [previewTab, setPreviewTab] = useState<PreviewTab>("pdf");
   const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(() => loadWorkspaceLayout(user.id, projectId));
@@ -538,6 +599,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [resourcePreviewLoading, setResourcePreviewLoading] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [fileDialogError, setFileDialogError] = useState("");
   const [selectedFolder, setSelectedFolder] = useState("");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [moveEntry, setMoveEntry] = useState<FileEntry | null>(null);
@@ -557,6 +619,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [commentsRevision, setCommentsRevision] = useState("");
   const [dictionaryRevision, setDictionaryRevision] = useState("");
   const [fileDragActive, setFileDragActive] = useState(false);
+  const [uploadConflict, setUploadConflict] = useState<PendingUpload | null>(null);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const uploadInput = useRef<HTMLInputElement>(null);
   const filesPanel = useRef<ImperativePanelHandle>(null);
   const compileAction = useRef<() => void>(() => undefined);
@@ -564,6 +628,19 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const contentRef = useRef("");
   const activeFileRef = useRef("");
   const spellCheckRequest = useRef(0);
+  const projectLoadSequence = useRef(0);
+  const filesRequest = useRef<AbortController | null>(null);
+  const completionRequest = useRef<AbortController | null>(null);
+  const dictionaryRequest = useRef<AbortController | null>(null);
+  const artifactsRequest = useRef<AbortController | null>(null);
+  const commentsRequest = useRef<AbortController | null>(null);
+  const resourceRequest = useRef<AbortController | null>(null);
+  const syncRequest = useRef<AbortController | null>(null);
+  const latestRunRequest = useRef<AbortController | null>(null);
+  const refreshRequest = useRef<AbortController | null>(null);
+  const compileRequest = useRef<AbortController | null>(null);
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
 
   useEffect(() => {
     setWorkspaceLayout(loadWorkspaceLayout(user.id, projectId));
@@ -610,11 +687,11 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     const source = content;
     const file = activeFile;
     const timer = window.setTimeout(() => {
-      void api<{ issues: SpellCheckIssue[]; count: number }>(`/api/projects/${projectId}/spellcheck`, {
-        method: "POST", body: JSON.stringify({ source })
-      }).then((result) => {
+      void import("./spellCheck").then(({ checkSpelling }) => {
         if (request !== spellCheckRequest.current || contentRef.current !== source || activeFileRef.current !== file) return;
-        setSpellCheckIssues(result.issues);
+        const issues = checkSpelling(source, dictionaryWords);
+        if (request !== spellCheckRequest.current || contentRef.current !== source || activeFileRef.current !== file) return;
+        setSpellCheckIssues(issues);
         setSpellCheckSource(source);
         setSpellCheckFile(file);
         setSpellCheckIndex(0);
@@ -626,11 +703,26 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
 
   useEffect(() => {
     const refreshSessions = () => setActiveSessions(collaboration.sessions());
+    const clearDisconnectedState = () => {
+      setCollaborationSynced(false);
+      setActiveSessions([]);
+      setCompileState(null);
+      setFilesEvent(null);
+      setCommentsRevision("");
+      setDictionaryRevision("");
+    };
     const handleStatus = ({ status }: { status: CollaborationStatus }) => {
       setCollaborationStatus(status);
-      if (status !== "connected") setCollaborationSynced(false);
+      if (status !== "connected") clearDisconnectedState();
     };
-    const handleSync = (synced: boolean) => setCollaborationSynced(synced);
+    const handleSync = (synced: boolean) => {
+      setCollaborationSynced(synced);
+      if (!synced) clearDisconnectedState();
+    };
+    const handleConnectionFailure = () => {
+      setCollaborationStatus("disconnected");
+      clearDisconnectedState();
+    };
     const handleMeta = () => {
       const nextFilesEvent = collaboration.meta.get("filesEvent");
       if (isFilesEvent(nextFilesEvent)) setFilesEvent(nextFilesEvent);
@@ -643,6 +735,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     collaboration.awareness.on("change", refreshSessions);
     collaboration.provider.on("status", handleStatus);
     collaboration.provider.on("sync", handleSync);
+    collaboration.provider.on("connection-close", handleConnectionFailure);
+    collaboration.provider.on("connection-error", handleConnectionFailure);
     collaboration.meta.observe(handleMeta);
     refreshSessions(); handleMeta();
     setCollaborationStatus(collaboration.connected ? "connected" : "connecting");
@@ -651,59 +745,124 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       collaboration.awareness.off("change", refreshSessions);
       collaboration.provider.off("status", handleStatus);
       collaboration.provider.off("sync", handleSync);
+      collaboration.provider.off("connection-close", handleConnectionFailure);
+      collaboration.provider.off("connection-error", handleConnectionFailure);
       collaboration.meta.unobserve(handleMeta);
       collaboration.destroy();
     };
   }, [collaboration]);
 
-  const loadFiles = async () => {
-    const result = await api<{ files: FileEntry[] }>(`/api/projects/${projectId}/files`);
-    setFiles(result.files);
-  };
-  const loadCompletionIndex = async () => {
+  useEffect(() => {
+    if (collaborationStatus !== "disconnected") return;
+    const controller = new AbortController();
+    void api<{ project: Project }>(`/api/projects/${projectId}`, { signal: controller.signal })
+      .then(({ project: currentProject }) => {
+        if (!controller.signal.aborted) {
+          setProject(currentProject);
+          setError("");
+        }
+      })
+      .catch((error) => {
+        if (isAbortError(error)) return;
+        if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
+          setError(errorMessage(error));
+          onBackRef.current();
+          return;
+        }
+        setError(t("errors.collaborationUnavailable"));
+      });
+    return () => controller.abort();
+  }, [collaborationStatus, projectId, t]);
+
+  const loadFiles = async (options: LoadOptions = {}) => {
+    filesRequest.current?.abort();
+    filesRequest.current = null;
+    const controller = options.signal ? null : new AbortController();
+    if (controller) filesRequest.current = controller;
     try {
-      const result = await api<{ index: LatexCompletionIndex }>(`/api/projects/${projectId}/completions`);
-      setCompletionIndex(result.index);
-    } catch {
-      setCompletionIndex(null);
+      const result = await api<{ files: FileEntry[] }>(`/api/projects/${projectId}/files`, { signal: options.signal ?? controller?.signal });
+      if (!options.isCurrent || options.isCurrent()) setFiles(result.files);
+    } catch (error) {
+      if (!isAbortError(error)) throw error;
+    } finally {
+      if (controller && filesRequest.current === controller) filesRequest.current = null;
     }
   };
-  const loadDictionary = async () => {
+  const loadCompletionIndex = async (options: LoadOptions = {}) => {
+    completionRequest.current?.abort();
+    completionRequest.current = null;
+    const controller = options.signal ? null : new AbortController();
+    if (controller) completionRequest.current = controller;
     try {
-      const result = await api<{ words: string[] }>(`/api/projects/${projectId}/dictionary`);
-      setDictionaryWords(result.words);
-    } catch {
-      setDictionaryWords([]);
+      const result = await api<{ index: LatexCompletionIndex }>(`/api/projects/${projectId}/completions`, { signal: options.signal ?? controller?.signal });
+      if (!options.isCurrent || options.isCurrent()) setCompletionIndex(result.index);
+    } catch (error) {
+      if (isAbortError(error)) return;
+      if (!options.isCurrent || options.isCurrent()) setCompletionIndex(null);
+    } finally {
+      if (controller && completionRequest.current === controller) completionRequest.current = null;
     }
   };
-  const loadArtifacts = async () => {
+  const loadDictionary = async (options: LoadOptions = {}) => {
+    dictionaryRequest.current?.abort();
+    dictionaryRequest.current = null;
+    const controller = options.signal ? null : new AbortController();
+    if (controller) dictionaryRequest.current = controller;
     try {
-      const result = await api<{ artifacts: CompileArtifact[] }>(`/api/projects/${projectId}/compile/artifacts`);
-      setArtifacts(result.artifacts);
-      setArtifactPreview(null);
-    } catch {
-      setArtifacts([]);
-      setArtifactPreview(null);
+      const result = await api<{ words: string[] }>(`/api/projects/${projectId}/dictionary`, { signal: options.signal ?? controller?.signal });
+      if (!options.isCurrent || options.isCurrent()) setDictionaryWords(result.words);
+    } catch (error) {
+      if (isAbortError(error)) return;
+      if (!options.isCurrent || options.isCurrent()) setDictionaryWords([]);
+    } finally {
+      if (controller && dictionaryRequest.current === controller) dictionaryRequest.current = null;
+    }
+  };
+  const loadArtifacts = async (options: LoadOptions = {}) => {
+    artifactsRequest.current?.abort();
+    artifactsRequest.current = null;
+    const controller = options.signal ? null : new AbortController();
+    if (controller) artifactsRequest.current = controller;
+    try {
+      const result = await api<{ artifacts: CompileArtifact[] }>(`/api/projects/${projectId}/compile/artifacts`, { signal: options.signal ?? controller?.signal });
+      if (!options.isCurrent || options.isCurrent()) {
+        setArtifacts(result.artifacts);
+        setArtifactPreview(null);
+      }
+    } catch (error) {
+      if (isAbortError(error)) return;
+      if (!options.isCurrent || options.isCurrent()) {
+        setArtifacts([]);
+        setArtifactPreview(null);
+      }
+    } finally {
+      if (controller && artifactsRequest.current === controller) artifactsRequest.current = null;
     }
   };
   useEffect(() => {
     let cancelled = false;
+    const sequence = ++projectLoadSequence.current;
+    const controller = new AbortController();
+    const isCurrent = () => !cancelled && projectLoadSequence.current === sequence;
+    let projectLoaded = false;
+    setProject(null); setFiles([]); setActiveFile(""); setContent(""); setLoadedFile(""); setCompileLog(""); setCompileDiagnostics(null); setArtifacts([]); setArtifactPreview(null); setCompileState(null);
     setPdfUrl(""); setPdfCompiledAt(null); setPdfViewport(null); setCompileOutcome(null); setCompletionIndex(null); setDictionaryWords([]); setDictionaryRevision(""); setSpellCheckIssues([]); setSpellCheckSource(""); setSpellCheckFile(""); setSpellCheckIndex(0); setSpellCheckJump(null);
     void loadPdfPreview();
-    void Promise.all([
-      api<{ project: Project }>(`/api/projects/${projectId}`),
-      api<{ files: FileEntry[] }>(`/api/projects/${projectId}/files`)
-    ]).then(([p, f]) => {
-      if (cancelled) return;
-      setProject(p.project); setFiles(f.files); setActiveFile(p.project.mainFile);
-      setExpandedFolders(new Set(parentFolders(p.project.mainFile)));
-    }).catch((e) => { if (!cancelled) setError(errorMessage(e)); });
-    void loadCompletionIndex();
-    void loadDictionary();
-    void api<{ latestRun: { id: string; status: string; log: string; requestedBy: { id: string; username: string; name: string } | null } | null; pdfUrl: string | null; pdfCompiledAt: string | null }>(`/api/projects/${projectId}/compile/latest`)
+    const projectRequest = api<{ project: Project }>(`/api/projects/${projectId}`, { signal: controller.signal }).then((result) => {
+      if (!isCurrent()) return;
+      projectLoaded = true;
+      setProject(result.project);
+      setActiveFile(result.project.mainFile);
+      setExpandedFolders(new Set(parentFolders(result.project.mainFile)));
+    }).catch((e) => { if (isCurrent()) setError(errorMessage(e)); });
+    const filesLoadRequest = api<{ files: FileEntry[] }>(`/api/projects/${projectId}/files`, { signal: controller.signal })
+      .then((result) => { if (isCurrent()) setFiles(result.files); })
+      .catch((e) => { if (isCurrent()) setError(errorMessage(e)); });
+    const latestRequest = api<{ latestRun: { id: string; status: string; log: string; diagnostics: CompileDiagnostics; requestedBy: { id: string; username: string; name: string } | null } | null; pdfUrl: string | null; pdfCompiledAt: string | null }>(`/api/projects/${projectId}/compile/latest`, { signal: controller.signal })
       .then((latest) => {
-        if (cancelled) return;
+        if (!isCurrent()) return;
         setCompileLog(latest.latestRun?.log ?? "");
+        setCompileDiagnostics(latest.latestRun?.diagnostics ?? null);
         setCompileOutcome(latest.latestRun?.status === "succeeded" || latest.latestRun?.status === "failed"
           ? latest.latestRun.status
           : null);
@@ -721,10 +880,33 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
           setPreviewTab("pdf");
         }
       })
-      .catch(() => { if (!cancelled) { setCompileLog(""); setCompileOutcome(null); } });
-    void loadArtifacts();
+      .catch(() => { if (isCurrent()) { setCompileLog(""); setCompileDiagnostics(null); setCompileOutcome(null); } });
+    void Promise.allSettled([projectRequest, filesLoadRequest, latestRequest]).then(() => {
+      if (!isCurrent() || !projectLoaded) return;
+      // Completion indexing reads the whole project. Let the critical editor
+      // and retained-PDF requests finish and paint before starting these.
+      window.setTimeout(() => {
+        if (!isCurrent()) return;
+        void Promise.all([
+          loadCompletionIndex({ signal: controller.signal, isCurrent }),
+          loadDictionary({ signal: controller.signal, isCurrent }),
+          loadArtifacts({ signal: controller.signal, isCurrent })
+        ]);
+      }, 0);
+    });
     return () => {
       cancelled = true;
+      controller.abort();
+      filesRequest.current?.abort(); filesRequest.current = null;
+      completionRequest.current?.abort(); completionRequest.current = null;
+      dictionaryRequest.current?.abort(); dictionaryRequest.current = null;
+      artifactsRequest.current?.abort(); artifactsRequest.current = null;
+      commentsRequest.current?.abort(); commentsRequest.current = null;
+      resourceRequest.current?.abort(); resourceRequest.current = null;
+      syncRequest.current?.abort(); syncRequest.current = null;
+      latestRunRequest.current?.abort(); latestRunRequest.current = null;
+      refreshRequest.current?.abort(); refreshRequest.current = null;
+      compileRequest.current?.abort(); compileRequest.current = null;
     };
   }, [projectId]);
 
@@ -735,10 +917,14 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   useEffect(() => {
     if (!compileState || (compileState.status !== "succeeded" && compileState.status !== "failed")) return;
     let cancelled = false;
-    void api<{ latestRun: { id: string; status: string; log: string } | null; pdfUrl: string | null; pdfCompiledAt: string | null }>(`/api/projects/${projectId}/compile/latest`)
+    latestRunRequest.current?.abort();
+    const controller = new AbortController();
+    latestRunRequest.current = controller;
+    void api<{ latestRun: { id: string; status: string; log: string; diagnostics: CompileDiagnostics } | null; pdfUrl: string | null; pdfCompiledAt: string | null }>(`/api/projects/${projectId}/compile/latest`, { signal: controller.signal })
       .then((latest) => {
         if (cancelled || latest.latestRun?.id !== compileState.runId) return;
         setCompileLog(latest.latestRun.log);
+        setCompileDiagnostics(latest.latestRun.diagnostics);
         setCompileOutcome(compileState.status === "succeeded" ? "succeeded" : "failed");
         if (compileState.status === "succeeded" && latest.pdfUrl) {
           setPdfViewport(null);
@@ -747,10 +933,14 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
           setPreviewTab("pdf");
           void loadArtifacts();
         } else if (compileState.status === "failed") {
-          setPreviewTab(classifyCompileLog(latest.latestRun.log, "failed").errors.length ? "errors" : "log");
+          setPreviewTab(latest.latestRun.diagnostics.errors.length ? "errors" : "log");
         }
-      }).catch(() => undefined);
-    return () => { cancelled = true; };
+      }).catch((error) => { if (!isAbortError(error) && !cancelled) setError(errorMessage(error)); });
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (latestRunRequest.current === controller) latestRunRequest.current = null;
+    };
   }, [compileState?.runId, compileState?.status, projectId]);
 
   useEffect(() => {
@@ -769,14 +959,17 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       setActiveFile((current) => remap(current));
       setSelectedFolder((current) => current ? remap(current) : current);
     }
+    refreshRequest.current?.abort();
+    const controller = new AbortController();
+    refreshRequest.current = controller;
     void Promise.all([
-      api<{ files: FileEntry[] }>(`/api/projects/${projectId}/files`),
-      api<{ project: Project }>(`/api/projects/${projectId}`)
-    ]).then(([fileResult, projectResult]) => {
-      setFiles(fileResult.files);
+      loadFiles({ signal: controller.signal }),
+      api<{ project: Project }>(`/api/projects/${projectId}`, { signal: controller.signal })
+    ]).then(([, projectResult]) => {
       setProject(projectResult.project);
-      void loadCompletionIndex();
-    }).catch(() => undefined);
+      void loadCompletionIndex({ signal: controller.signal });
+    }).catch((error) => { if (!isAbortError(error)) return; })
+      .finally(() => { if (refreshRequest.current === controller) refreshRequest.current = null; });
   }, [filesEvent?.revision]);
 
   useEffect(() => {
@@ -797,7 +990,13 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     sharedText.observe(updateContent);
     if (collaborationSynced) updateContent();
     void loadComments(activeFile);
-    return () => sharedText.unobserve(updateContent);
+    return () => {
+      sharedText.unobserve(updateContent);
+      commentsRequest.current?.abort();
+      commentsRequest.current = null;
+      resourceRequest.current?.abort();
+      resourceRequest.current = null;
+    };
   }, [activeFile, collaboration, collaborationSynced, project?.permission]);
 
   useEffect(() => {
@@ -815,7 +1014,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   }, [content, dirty, activeFile]);
 
   const save = async (): Promise<boolean> => {
-    if (!project || project.permission === "read" || !activeFile) return false;
+    if (!project || project.permission === "read" || !collaborationSynced || !activeFile) return false;
     setSaveState("editor.saving");
     try {
       await collaboration.flush();
@@ -827,25 +1026,41 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     }
   };
   async function loadComments(file: string) {
+    commentsRequest.current?.abort();
+    const controller = new AbortController();
+    commentsRequest.current = controller;
     try {
-      const result = await api<{ comments: Comment[] }>(`/api/projects/${projectId}/comments?path=${encodeURIComponent(file)}`);
-      setComments(result.comments);
-    } catch { setComments([]); }
+      const result = await api<{ comments: Comment[] }>(`/api/projects/${projectId}/comments?path=${encodeURIComponent(file)}`, { signal: controller.signal });
+      if (activeFileRef.current === file) setComments(result.comments);
+    } catch (error) {
+      if (!isAbortError(error) && activeFileRef.current === file) setComments([]);
+    } finally {
+      if (commentsRequest.current === controller) commentsRequest.current = null;
+    }
   }
   const compile = async () => {
     if (!project || project.permission === "read" || compiling
       || compileState?.status === "queued" || compileState?.status === "running") return;
-    setCompiling(true); setError(""); setNotice(""); setCompileLog(""); setCompileOutcome(null); setPreviewTab(pdfUrl ? "pdf" : "log");
+    setCompiling(true); setError(""); setNotice(""); setCompileLog(""); setCompileDiagnostics(null); setCompileOutcome(null); setPreviewTab(pdfUrl ? "pdf" : "log");
+    compileRequest.current?.abort();
+    const controller = new AbortController();
+    compileRequest.current = controller;
     try {
       if (!(await save())) return;
-      const result = await api<{ ok: boolean; skipped?: boolean; log: string; pdfUrl: string | null; pdfCompiledAt: string | null }>(`/api/projects/${projectId}/compile`, { method: "POST" });
+      const result = await api<{ ok: boolean; skipped?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null }>(`/api/projects/${projectId}/compile`, { method: "POST", signal: controller.signal });
       setCompileLog(result.log);
+      setCompileDiagnostics(result.diagnostics);
       setCompileOutcome(result.ok ? "succeeded" : "failed");
       if (result.skipped) setNotice(t("editor.upToDate"));
       if (result.pdfUrl) { setPdfViewport(null); setPdfUrl(result.pdfUrl); setPdfCompiledAt(result.pdfCompiledAt); setPreviewTab("pdf"); }
-      else setPreviewTab(classifyCompileLog(result.log, "failed").errors.length ? "errors" : "log");
-    } catch (e) { setError(errorMessage(e)); }
-    finally { setCompiling(false); }
+      else setPreviewTab(result.diagnostics.errors.length ? "errors" : "log");
+    } catch (e) { if (!isAbortError(e)) setError(errorMessage(e)); }
+    finally {
+      if (compileRequest.current === controller) {
+        compileRequest.current = null;
+        setCompiling(false);
+      }
+    }
   };
   compileAction.current = () => void compile();
   useEffect(() => {
@@ -862,15 +1077,17 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   };
   const createFile = async () => {
     if (!newFilePath.trim() || newFilePath.trim().endsWith("/")) return;
+    setFileDialogError("");
     try {
-      await api(`/api/projects/${projectId}/file`, { method: "PUT", body: JSON.stringify({ path: newFilePath, content: "" }) });
+      await api(`/api/projects/${projectId}/file`, { method: "POST", body: JSON.stringify({ path: newFilePath, content: "" }) });
       await loadFiles(); setActiveFile(newFilePath);
       setExpandedFolders((current) => new Set([...current, ...parentFolders(newFilePath)]));
       setNewFileOpen(false); setNewFilePath("");
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setFileDialogError(errorMessage(e)); }
   };
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
+    setFileDialogError("");
     const folderPath = selectedFolder ? `${selectedFolder}/${newFolderName.trim()}` : newFolderName.trim();
     try {
       const result = await api<{ path: string }>(`/api/projects/${projectId}/folders`, {
@@ -879,27 +1096,56 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       await loadFiles();
       setExpandedFolders((current) => new Set([...current, ...parentFolders(result.path), result.path]));
       setSelectedFolder(result.path); setNewFolderOpen(false); setNewFolderName("");
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setFileDialogError(errorMessage(e)); }
   };
-  const uploadFiles = async (filesToUpload: File[]) => {
+  const uploadFiles = async (filesToUpload: File[], overwritePaths: ReadonlySet<string> = new Set(), directoryOverride = selectedFolder) => {
     if (!filesToUpload.length) return;
     const maxSize = site.maxUploadSizeMB ?? 50;
     const oversized = filesToUpload.find((file) => file.size > maxSize * 1024 * 1024);
     if (oversized) return setError(t("errors.fileTooLarge", { size: maxSize }));
+    const directory = directoryOverride;
+    const uploadPaths = filesToUpload.map((file) => directory ? `${directory}/${file.name}` : file.name);
+    const pathCounts = new Map<string, number>();
+    for (const uploadPath of uploadPaths) pathCounts.set(uploadPath, (pathCounts.get(uploadPath) ?? 0) + 1);
+    const duplicateNames = [...pathCounts.entries()].filter(([, count]) => count > 1).map(([uploadPath]) => uploadPath);
+    if (duplicateNames.length) {
+      return setError(t("errors.duplicateUploadNames", { files: duplicateNames.join(", ") }));
+    }
+    const existingPaths = new Set(files.map((entry) => entry.path));
+    const collisions = [...new Set(uploadPaths.filter((uploadPath) => existingPaths.has(uploadPath) && !overwritePaths.has(uploadPath)))];
+    if (collisions.length) {
+      setUploadConflict({ files: filesToUpload, directory, collisions });
+      return;
+    }
+    setUploadConflict(null);
+    setUploadingFiles(true);
     try {
-      const destination = selectedFolder ? `?directory=${encodeURIComponent(selectedFolder)}` : "";
+      const query = new URLSearchParams();
+      if (directory) query.set("directory", directory);
       let lastTextPath = "";
-      for (const file of filesToUpload) {
+      for (const [index, file] of filesToUpload.entries()) {
+        const uploadPath = uploadPaths[index];
+        query.delete("overwrite");
+        if (overwritePaths.has(uploadPath)) query.set("overwrite", "1");
+        const destination = query.toString() ? `?${query.toString()}` : "";
         const data = new FormData();
         data.append("file", file);
         const response = await fetch(`/api/projects/${projectId}/upload${destination}`, { method: "POST", body: data });
-        const result = await response.json();
-        if (!response.ok) throw new Error(localizedResponseError(result, response.status, "errors.upload"));
-        if (isEditableTextFile(result.path)) lastTextPath = result.path;
+        const result = await response.json().catch(() => ({})) as { code?: unknown; path?: unknown };
+        if (!response.ok) {
+          if (response.status === 409 && !overwritePaths.has(uploadPath) && result.code === "FILE_EXISTS") {
+            if (index > 0) await loadFiles();
+            setUploadConflict({ files: filesToUpload.slice(index), directory, collisions: [typeof result.path === "string" ? result.path : uploadPath] });
+            return;
+          }
+          throw new Error(response.status === 409 ? t("errors.pathConflict") : localizedResponseError(result, response.status, "errors.upload"));
+        }
+        if (typeof result.path === "string" && isEditableTextFile(result.path)) lastTextPath = result.path;
       }
       await loadFiles();
       if (lastTextPath) setActiveFile(lastTextPath);
     } catch (e) { setError(errorMessage(e)); }
+    finally { setUploadingFiles(false); }
   };
   const upload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     await uploadFiles(Array.from(event.target.files ?? []));
@@ -915,6 +1161,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     finally { setArtifactLoading(false); }
   };
   const previewFile = async (entry: FileEntry) => {
+    resourceRequest.current?.abort();
+    resourceRequest.current = null;
     setResourcePreviewLoading(false);
     const url = rawFileUrl(projectId, entry.path);
     if ((entry.size ?? 0) > MAX_DIRECT_RESOURCE_PREVIEW_BYTES) {
@@ -928,16 +1176,23 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     }
     setResourcePreview({ path: entry.path, kind, size: entry.size ?? 0, url, content: "" });
     setResourcePreviewLoading(true);
+    const controller = new AbortController();
+    resourceRequest.current = controller;
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: controller.signal });
       const text = await response.text();
       if (!response.ok) throw new Error(text || t("errors.request", { status: response.status }));
       setResourcePreview((current) => current?.path === entry.path ? { ...current, content: text } : current);
     } catch (e) {
-      setResourcePreview(null);
-      setError(errorMessage(e));
+      if (!isAbortError(e)) {
+        setResourcePreview(null);
+        setError(errorMessage(e));
+      }
     } finally {
-      setResourcePreviewLoading(false);
+      if (resourceRequest.current === controller) {
+        resourceRequest.current = null;
+        setResourcePreviewLoading(false);
+      }
     }
   };
   const openFile = (entry: FileEntry) => {
@@ -947,6 +1202,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   };
   const movePath = async () => {
     if (!moveEntry) return;
+    setFileDialogError("");
     try {
       if (!(await save())) return;
       const result = await api<{ path: string }>(`/api/projects/${projectId}/path`, {
@@ -964,7 +1220,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       setFiles(fileResult.files); setProject(projectResult.project);
       setExpandedFolders((current) => new Set([...current, ...parentFolders(result.path), moveDestination].filter(Boolean)));
       setMoveEntry(null); setMoveDestination("");
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setFileDialogError(errorMessage(e)); }
   };
   const toggleFilesPanel = () => {
     if (filesPanel.current?.isCollapsed()) filesPanel.current.expand();
@@ -1035,21 +1291,33 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     if (activeFile !== path) setActiveFile(path);
   };
   const syncSourceToPdf = async (path: string, line: number, column: number) => {
+    syncRequest.current?.abort();
+    const controller = new AbortController();
+    syncRequest.current = controller;
     try {
       const location = await api<{ page: number; x: number; y: number }>(
-        `/api/projects/${projectId}/sync/pdf?path=${encodeURIComponent(path)}&line=${line}&column=${column}`
+        `/api/projects/${projectId}/sync/pdf?path=${encodeURIComponent(path)}&line=${line}&column=${column}`,
+        { signal: controller.signal }
       );
+      if (syncRequest.current !== controller) return;
       setPdfTarget({ ...location, nonce: ++syncNonce.current });
       setPreviewTab("pdf");
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { if (!isAbortError(e)) setError(errorMessage(e)); }
+    finally { if (syncRequest.current === controller) syncRequest.current = null; }
   };
   const syncPdfToSource = async (page: number, x: number, y: number) => {
+    syncRequest.current?.abort();
+    const controller = new AbortController();
+    syncRequest.current = controller;
     try {
       const location = await api<{ path: string; line: number; column: number }>(
-        `/api/projects/${projectId}/sync/source?page=${page}&x=${x}&y=${y}`
+        `/api/projects/${projectId}/sync/source?page=${page}&x=${x}&y=${y}`,
+        { signal: controller.signal }
       );
+      if (syncRequest.current !== controller) return;
       jumpToSource(location.path, location.line, location.column);
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { if (!isAbortError(e)) setError(errorMessage(e)); }
+    finally { if (syncRequest.current === controller) syncRequest.current = null; }
   };
   const syncVisiblePdfToSource = () => {
     if (pdfViewport) void syncPdfToSource(pdfViewport.page, pdfViewport.x, pdfViewport.y);
@@ -1063,7 +1331,10 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   };
 
   const outline = useMemo(() => parseOutline(content), [content]);
-  const compileMessages = useMemo(() => classifyCompileLog(compileLog, compileOutcome), [compileLog, compileOutcome]);
+  const compileMessages = useMemo(() => compileDiagnostics ? {
+    warnings: compileDiagnostics.warnings.map(formatCompileDiagnostic),
+    errors: compileDiagnostics.errors.map(formatCompileDiagnostic)
+  } : classifyCompileLog(compileLog, compileOutcome), [compileDiagnostics, compileLog, compileOutcome]);
   const spellCheckSummary = useMemo(() => {
     if (spellCheckFile !== activeFile || spellCheckSource !== content) return null;
     return {
@@ -1078,16 +1349,30 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     if (next === "pdf-only") setPreviewTab("pdf");
     try { window.localStorage.setItem(workspaceLayoutStorageKey(user.id, projectId), next); } catch { /* Keep the in-memory choice. */ }
   };
+  const reconnectCollaboration = () => {
+    setCollaborationStatus("connecting");
+    setCollaborationSynced(false);
+    setActiveSessions([]);
+    setCompileState(null);
+    collaboration.reconnect();
+  };
   const directoryEntries = files.filter((entry) => entry.type === "directory");
   const visibleEntries = files.filter((entry) => parentFolders(entry.path).every((folder) => expandedFolders.has(folder)));
-  if (!project) return <div className="center-card">{error || t("common.loading")}</div>;
-  const readOnly = project.permission === "read";
+  if (!project) return <div className="center-card"><p>{error || t("common.loading")}</p>{error && <button className="primary" onClick={onBack}>{t("editor.backToProjects")}</button>}</div>;
+  const readOnly = project.permission === "read" || !collaborationSynced;
   const sharedCompiling = compileState?.status === "queued" || compileState?.status === "running";
   const compileBusy = compiling || sharedCompiling;
   const collaborativeText = activeFile ? collaboration.getText(activeFile) : null;
   const pdfCompiledLabel = pdfCompiledAt ? new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage, {
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
   }) : "";
+  const compileStatusMessage = compileBusy
+    ? compileState?.status === "queued" ? t("editor.compileQueued") : t("editor.compilingBy", { name: compileState?.requestedBy.name ?? t("common.user") })
+    : compileOutcome === "failed"
+      ? pdfUrl && pdfCompiledAt
+        ? t("editor.compileFailedRetained", { time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) })
+        : t("editor.compileFailedNoPdf")
+      : "";
 
   return <div className="workspace">
     <header className="editor-topbar">
@@ -1095,13 +1380,15 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       <div className="project-heading"><strong>{project.name}</strong><small>{activeFile} · {t(saveState)}</small></div>
       {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
       <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
+      {collaborationStatus === "disconnected" && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
       <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : compiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
     </header>
+    {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
     <PanelGroup autoSaveId="texlite-workspace-layout" direction="horizontal" className="work-grid">
       {showEditor && <Panel id="files" order={1} ref={filesPanel} defaultSize={16} minSize={12} maxSize={30} collapsible collapsedSize={0} onCollapse={() => setFilesCollapsed(true)} onExpand={() => setFilesCollapsed(false)}>
-        <aside className="left-panel"><section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly) setFileDragActive(true); }} onDragOver={(event) => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { event.preventDefault(); setFileDragActive(false); if (!readOnly) void uploadFiles(Array.from(event.dataTransfer.files)); }}><div className="panel-title"><span><FileText size={14} />{t("common.files")}</span><span className="file-tools">{!readOnly && <><button aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} /></button><button aria-label={t("editor.newFolder")} title={t("editor.newFolder")} onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}><FolderPlus size={15} /></button><button aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} /></button><input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} /></>}<button aria-label={t("editor.collapseFiles")} title={t("editor.collapseFiles")} onClick={toggleFilesPanel}><PanelLeftClose size={15} /></button></span></div>
+        <aside className="left-panel"><section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly && !uploadingFiles) setFileDragActive(true); }} onDragOver={(event) => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly || uploadingFiles ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { event.preventDefault(); setFileDragActive(false); if (!readOnly && !uploadingFiles) void uploadFiles(Array.from(event.dataTransfer.files)); }}><div className="panel-title"><span><FileText size={14} />{t("common.files")}</span><span className="file-tools">{!readOnly && <><button disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} /></button><button aria-label={t("editor.newFolder")} title={t("editor.newFolder")} onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}><FolderPlus size={15} /></button><button aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} /></button><input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} /></>}<button aria-label={t("editor.collapseFiles")} title={t("editor.collapseFiles")} onClick={toggleFilesPanel}><PanelLeftClose size={15} /></button></span></div>
           {fileDragActive && <div className="file-drop-overlay"><Upload size={24} /><strong>{t("editor.dropFiles")}</strong><span>{t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })}</span></div>}
           <div className="folder-target" title={selectedFolder || t("editor.projectRoot")}><FolderOpen size={13} /><span>{selectedFolder || t("editor.projectRoot")}</span></div>
           <div className="file-list" style={{ fontSize: `${editorPreferences.fontSize}px` }}><div className={`file-entry folder-entry root-entry${selectedFolder === "" ? " selected" : ""}`}><button className="file-entry-main" onClick={() => setSelectedFolder("")}><FolderOpen size={15} /><span>{t("editor.projectRoot")}</span></button></div>{visibleEntries.map((entry) => {
@@ -1149,9 +1436,10 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       {resourcePreview?.kind === "pdf" && <iframe className="resource-pdf" src={resourcePreview.url} title={resourcePreview.path} />}
       {resourcePreview?.kind === "text" && (resourcePreviewLoading ? <div className="resource-preview-message"><LoaderCircle className="spin" size={24} /><span>{t("common.loading")}</span></div> : <pre className="resource-text">{resourcePreview.content}</pre>)}
     </Modal>
-    <Modal open={newFileOpen} title={t("editor.newFile")} description={t("editor.newFileDescription")} onOpenChange={setNewFileOpen} footer={<><button onClick={() => setNewFileOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFile()}>{t("common.create")}</button></>}><label className="form-field">{t("editor.filePath")}<input autoFocus value={newFilePath} onChange={(event) => setNewFilePath(event.target.value)} /></label></Modal>
-    <Modal open={newFolderOpen} title={t("editor.newFolder")} description={t("editor.folderDestination", { folder: selectedFolder || t("editor.projectRoot") })} onOpenChange={setNewFolderOpen} footer={<><button onClick={() => setNewFolderOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFolder()}>{t("common.create")}</button></>}><label className="form-field">{t("editor.folderName")}<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></label></Modal>
-    <Modal open={Boolean(moveEntry)} title={t("editor.moveTitle", { name: moveEntry?.path.split("/").at(-1) ?? "" })} description={t("editor.moveDescription")} onOpenChange={(open) => { if (!open) setMoveEntry(null); }} footer={<><button onClick={() => setMoveEntry(null)}>{t("common.cancel")}</button><button className="primary" onClick={() => void movePath()}>{t("editor.move")}</button></>}><label className="form-field">{t("editor.destinationFolder")}<select value={moveDestination} onChange={(event) => setMoveDestination(event.target.value)}><option value="">{t("editor.projectRoot")}</option>{directoryEntries.filter((directory) => moveEntry?.type !== "directory" || (directory.path !== moveEntry.path && !directory.path.startsWith(`${moveEntry.path}/`))).map((directory) => <option value={directory.path} key={directory.path}>{directory.path}</option>)}</select></label></Modal>
+    <ConfirmDialog open={Boolean(uploadConflict)} title={t("editor.uploadOverwriteTitle")} description={t("editor.uploadOverwriteDescription", { files: uploadConflict?.collisions.join(", ") ?? "" })} confirmLabel={t("editor.uploadOverwrite")} danger onCancel={() => setUploadConflict(null)} onConfirm={() => { const pending = uploadConflict; setUploadConflict(null); if (pending) void uploadFiles(pending.files, new Set(pending.collisions), pending.directory); }} />
+    <Modal open={newFileOpen} title={t("editor.newFile")} description={t("editor.newFileDescription")} onOpenChange={(open) => { setNewFileOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFileOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFile()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.filePath")}<input autoFocus value={newFilePath} onChange={(event) => setNewFilePath(event.target.value)} /></label></></Modal>
+    <Modal open={newFolderOpen} title={t("editor.newFolder")} description={t("editor.folderDestination", { folder: selectedFolder || t("editor.projectRoot") })} onOpenChange={(open) => { setNewFolderOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFolderOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFolder()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.folderName")}<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></label></></Modal>
+    <Modal open={Boolean(moveEntry)} title={t("editor.moveTitle", { name: moveEntry?.path.split("/").at(-1) ?? "" })} description={t("editor.moveDescription")} onOpenChange={(open) => { if (!open) { setMoveEntry(null); setFileDialogError(""); } }} footer={<><button onClick={() => setMoveEntry(null)}>{t("common.cancel")}</button><button className="primary" onClick={() => void movePath()}>{t("editor.move")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.destinationFolder")}<select value={moveDestination} onChange={(event) => setMoveDestination(event.target.value)}><option value="">{t("editor.projectRoot")}</option>{directoryEntries.filter((directory) => moveEntry?.type !== "directory" || (directory.path !== moveEntry.path && !directory.path.startsWith(`${moveEntry.path}/`))).map((directory) => <option value={directory.path} key={directory.path}>{directory.path}</option>)}</select></label></></Modal>
     <Modal open={commentOpen} title={t("editor.addComment")} description={selection.selectedText ? t("editor.commentDescription", { count: selection.endOffset - selection.startOffset }) : t("editor.pointComment")} onOpenChange={setCommentOpen} footer={<><button onClick={() => setCommentOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void addComment()}>{t("editor.addComment")}</button></>}><label className="form-field">{t("editor.commentContent")}<textarea autoFocus rows={5} value={commentText} onChange={(event) => setCommentText(event.target.value)} /></label>{selection.selectedText && <blockquote className="selection-preview">{selection.selectedText}</blockquote>}</Modal>
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} />
     {project.ownerId === user.id && <GitDialog open={gitOpen} onOpenChange={setGitOpen} project={project} onBeforeMutation={save} />}

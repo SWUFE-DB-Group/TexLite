@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkSpelling } from "../src/server/spellCheck";
+import { checkSpelling } from "../src/client/spellCheck";
 
 describe("LaTeX spell checking", () => {
   it("ignores environment names and key/value option identifiers", () => {

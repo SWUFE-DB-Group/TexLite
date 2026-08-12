@@ -64,6 +64,7 @@ export class ProjectCollaboration {
   private permission: Project["permission"] = "read";
   private activeFile = "";
   private epoch: string | null = null;
+  private destroyed = false;
   private readonly flushRequests = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: number }>();
 
   constructor(readonly projectId: string, private readonly user: User) {
@@ -105,6 +106,9 @@ export class ProjectCollaboration {
       encoding.writeVarUint8Array(awareness, encodeAwarenessUpdate(this.awareness, [this.doc.clientID]));
       socket.send(encoding.toUint8Array(awareness));
     };
+    this.provider.on("status", ({ status }) => {
+      if (status === "disconnected") this.rejectFlushes(new Error("Collaboration connection closed"));
+    });
     this.updateLocalAwareness();
   }
 
@@ -176,14 +180,28 @@ export class ProjectCollaboration {
     });
   }
 
+  /** Retry a failed websocket handshake without discarding the local Yjs doc. */
+  reconnect(): void {
+    if (this.destroyed) return;
+    this.rejectFlushes(new Error("Collaboration connection reset"));
+    this.provider.disconnect();
+    this.provider.connect();
+    this.updateLocalAwareness();
+  }
+
   destroy(): void {
-    for (const pending of this.flushRequests.values()) {
-      window.clearTimeout(pending.timer);
-      pending.reject(new Error("Collaboration connection closed"));
-    }
-    this.flushRequests.clear();
+    this.destroyed = true;
+    this.rejectFlushes(new Error("Collaboration connection closed"));
     this.provider.destroy();
     this.doc.destroy();
+  }
+
+  private rejectFlushes(error: Error): void {
+    for (const pending of this.flushRequests.values()) {
+      window.clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.flushRequests.clear();
   }
 
   private updateLocalAwareness(): void {

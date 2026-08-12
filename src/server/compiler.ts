@@ -6,6 +6,7 @@ import { performance } from "node:perf_hooks";
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { Config } from "./config.js";
 import { listProjectFiles, outputRoot, safeRelativePath, sourceRoot } from "./files.js";
+import { parseCompileDiagnostics, type CompileDiagnostics } from "./compileDiagnostics.js";
 
 export interface CompileTimings {
   cacheSyncMs: number;
@@ -18,6 +19,7 @@ export interface CompileTimings {
 export interface CompileResult {
   ok: boolean;
   log: string;
+  diagnostics: CompileDiagnostics;
   pdfPath: string | null;
   synctexPath: string | null;
   timings?: CompileTimings;
@@ -540,9 +542,10 @@ export async function compileProject(
   const basename = path.basename(mainFile, ".tex");
   const cachedPdf = path.join(outDir, `${basename}.pdf`);
   const ok = processResult.code === 0 && fs.existsSync(cachedPdf);
+  const diagnostics = parseCompileDiagnostics(processResult.log, ok ? "succeeded" : "failed");
   if (!ok) {
     return {
-      ok: false, log: processResult.log, pdfPath: null, synctexPath: null,
+      ok: false, log: processResult.log, diagnostics, pdfPath: null, synctexPath: null,
       timings: { cacheSyncMs, latexmkMs, artifactCopyMs: 0, totalMs: performance.now() - startedAt }
     };
   }
@@ -550,7 +553,7 @@ export async function compileProject(
   const artifacts = materializeCompileArtifacts(cache, snapshot, basename);
   const artifactCopyMs = performance.now() - artifactStartedAt;
   return {
-    ok: true, log: processResult.log, ...artifacts,
+    ok: true, log: processResult.log, diagnostics, ...artifacts,
     timings: { cacheSyncMs, latexmkMs, artifactCopyMs, totalMs: performance.now() - startedAt }
   };
 }

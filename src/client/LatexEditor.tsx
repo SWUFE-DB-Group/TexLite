@@ -24,6 +24,8 @@ import type { Comment, LatexCompletionIndex, LatexCompletionItem } from "./types
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
 import { countSearchMatches, searchQuerySignature } from "./editorSearch";
 import { latexLanguage } from "./latexLanguage";
+import type { SpellCheckIssue } from "./spellCheck";
+export type { SpellCheckIssue } from "./spellCheck";
 
 interface Props {
   value: string;
@@ -42,12 +44,6 @@ interface Props {
   onSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onCommentClick: (commentId: string) => void;
   onCursor: (line: number, column: number) => void;
-}
-
-export interface SpellCheckIssue {
-  from: number;
-  to: number;
-  word: string;
 }
 
 export interface SpellCheckJump {
