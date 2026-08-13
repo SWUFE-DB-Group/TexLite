@@ -57,6 +57,7 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
     if (!open) {
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
       setDiffFullscreen(false);
+      setToken("");
       return;
     }
     setError(""); setNotice(""); setDiff(null);
@@ -180,7 +181,8 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
             <div className="git-token-guidance"><strong>{t("git.recommendedAccessTitle")}</strong><span>{t("git.recommendedAccess")}</span></div>
             {status.tokenConfigured && <div className="git-account"><Github size={17} /><span>{t("git.connectedAs", { login: status.githubLogin })}</span><button className="danger-text" disabled={Boolean(busy)} onClick={removeToken}><Trash2 size={14} />{t("git.removeToken")}</button></div>}
             <label className="form-field">{status.tokenConfigured ? t("git.replaceToken") : t("git.token")}
-              <input type="password" autoComplete="off" value={token} placeholder="github_pat_…" onChange={(event) => setToken(event.target.value)} />
+              <input type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" autoCorrect="off"
+                value={token} placeholder={t("git.tokenPlaceholder")} onChange={(event) => setToken(event.target.value)} />
             </label>
             <div className="git-inline-actions"><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">{t("git.createToken")}<ExternalLink size={12} /></a><button disabled={Boolean(busy) || token.trim().length < 20} onClick={saveToken}>{busy === "token" && <LoaderCircle className="spin" size={13} />}{t("git.saveToken")}</button></div>
           </div>}

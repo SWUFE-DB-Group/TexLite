@@ -9,6 +9,7 @@ describe("configuration", () => {
     "TEXLITE_CONFIG", "TEXLITE_SITE_NAME", "TEXLITE_ADMIN_EMAIL", "TEXLITE_HOST", "TEXLITE_PORT",
     "TEXLITE_DATA_DIR", "TEXLITE_CLIENT_DIR", "TEXLITE_SESSION_DAYS", "TEXLITE_COMPILE_TIMEOUT",
     "TEXLITE_MAX_COMPILE_JOBS", "TEXLITE_LATEXMK", "TEXLITE_DEFAULT_ENGINE", "TEXLITE_MAX_UPLOAD_SIZE_MB",
+    "TEXLITE_HISTORY_MAX_VERSIONS", "TEXLITE_HISTORY_MAX_STORAGE_MB",
     "TEXLITE_GIT", "TEXLITE_GIT_TIMEOUT", "TEXLITE_GITHUB_API_URL"
   ] as const;
   const originalEnvironment = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -32,6 +33,7 @@ describe("configuration", () => {
       adminEmail: "latex@example.test",
       storage: { dataDir: "data" },
       uploads: { maxFileSizeMB: 25 },
+      history: { maxVersions: 120, maxStorageMB: 256 },
       git: { binary: "/usr/local/bin/git", operationTimeoutSeconds: 45, githubApiBaseUrl: "https://github.example/api/v3/" },
       latex: { defaultEngine: "lualatex", allowedEngines: ["lualatex"], allowProjectLatexmkrc: false }
     }));
@@ -43,6 +45,8 @@ describe("configuration", () => {
     expect(config.allowedEngines).toEqual(["lualatex"]);
     expect(config.allowProjectLatexmkrc).toBe(false);
     expect(config.maxUploadBytes).toBe(25 * 1024 * 1024);
+    expect(config.historyMaxVersions).toBe(120);
+    expect(config.historyMaxStorageBytes).toBe(256 * 1024 * 1024);
     expect(config.git).toBe("/usr/local/bin/git");
     expect(config.gitOperationTimeoutMs).toBe(45_000);
     expect(config.githubApiBaseUrl).toBe("https://github.example/api/v3");
@@ -59,6 +63,7 @@ describe("configuration", () => {
       siteName: "TexLite", host: "127.0.0.1", port: 3000, sessionDays: 14,
       compileTimeoutMs: 60_000, maxCompileJobs: 2, defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
+      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
       git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
     });
   });
@@ -69,6 +74,14 @@ describe("configuration", () => {
     fs.writeFileSync(configPath, JSON.stringify({ latex: { compileTimeoutSeconds: 0 } }));
     process.env.TEXLITE_CONFIG = configPath;
     expect(() => loadConfig()).toThrow(/latex\.compileTimeoutSeconds.*1 to 3600/);
+  });
+
+  it("validates history retention limits", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-history-"));
+    const configPath = path.join(root, "texlite.config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ history: { maxVersions: 9, maxStorageMB: 15 } }));
+    process.env.TEXLITE_CONFIG = configPath;
+    expect(() => loadConfig()).toThrow(/history\.maxVersions.*10 to 5000/);
   });
 
   it("rejects invalid environment overrides with the variable context", () => {

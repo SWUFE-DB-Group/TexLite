@@ -160,8 +160,24 @@ function discoverMainFile(root: string, files: string[]): string {
   if (texFiles.length === 1) return texFiles[0];
   return texFiles.find((file) => {
     const source = fs.readFileSync(path.join(root, file), "utf8");
-    return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{/.test(source);
+    return hasDocumentClass(source);
   }) ?? "";
+}
+
+export function hasDocumentClass(source: string): boolean {
+  const withoutComments = source.split(/(?<=\n)/).map((line) => {
+    for (let index = 0; index < line.length; index += 1) {
+      if (line[index] !== "%") continue;
+      let slashes = 0;
+      for (let cursor = index - 1; cursor >= 0 && line[cursor] === "\\"; cursor -= 1) slashes += 1;
+      if (slashes % 2 === 0) return `${line.slice(0, index)}${line.endsWith("\n") ? "\n" : ""}`;
+    }
+    return line;
+  }).join("");
+  const withoutVerbatim = withoutComments
+    .replace(/\\verb\*?([^\s]).*?\1/g, "")
+    .replace(/\\begin\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}[\s\S]*?\\end\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}/g, "");
+  return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{/.test(withoutVerbatim);
 }
 
 function formatMB(bytes: number): number {

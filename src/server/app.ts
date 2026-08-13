@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { performance } from "node:perf_hooks";
+import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import Fastify, { type FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
@@ -25,28 +25,24 @@ import {
 import {
   CompileQueue,
   ProjectCompileCoordinator,
-  captureCompileSnapshot,
-  compileProject,
-  discardCompileSnapshot,
-  publishCompileArtifacts,
-  publishedCompileArtifacts
+  listPublishedCompileArtifacts,
+  pruneOrphanedCompileRuns
 } from "./compiler.js";
 import { createSourceAnchor, offsetToLine, reanchorFileComments } from "./anchors.js";
 import { extractProjectZip } from "./zip.js";
 import { createProjectArchive } from "./archive.js";
-import { pdfToSource, sourceToPdf } from "./synctex.js";
 import { CollaborationService } from "./collaboration.js";
 import { ProjectGitService } from "./git.js";
-import { buildLatexCompletionIndex } from "./latexCompletion.js";
-import { parseCompileDiagnostics } from "./compileDiagnostics.js";
+import { LatexCompletionService } from "./latexCompletion.js";
+import { ProjectHistoryService, type HistoryReason } from "./history.js";
+import { buildProjectOutline } from "./projectOutline.js";
+import { replaceProject, searchProject } from "./projectSearch.js";
+import { MetricRegistry } from "./metrics.js";
+import { compileMainFile } from "./compileArtifacts.js";
+import { apiError, contentDisposition } from "./http.js";
+import { registerCompileRoutes } from "./routes/compile.js";
 
 const now = (): string => new Date().toISOString();
-const timingDuration = (milliseconds: number): number => Math.round(milliseconds * 10) / 10;
-
-function apiError(reply: { code: (status: number) => { send: (payload: unknown) => unknown } }, status: number, code: string, message: string, details: Record<string, unknown> = {}): unknown {
-  return reply.code(status).send({ code, error: message, ...details });
-}
-
 function text(value: unknown, name: string, max = 200): string {
   if (typeof value !== "string" || !value.trim() || value.length > max) {
     throw new Error(`${name}格式不正确`);
@@ -143,96 +139,6 @@ function movedProjectPath(value: string | null, source: string, destination: str
   return value.startsWith(`${source}/`) ? `${destination}${value.slice(source.length)}` : value;
 }
 
-function contentDisposition(filename: string, mode: "inline" | "attachment"): string {
-  const fallback = filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
-  return `${mode}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
-
-function pdfDownloadTimestamp(date = new Date()): string {
-  return date.toISOString().slice(0, 19).replace("T", "-").replaceAll(":", "");
-}
-
-type ByteRange = { start: number; end: number };
-
-function parseByteRange(value: string | undefined, size: number): ByteRange | "invalid" | null {
-  if (!value) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
-  if (!match || (!match[1] && !match[2]) || size < 1) return "invalid";
-  if (!match[1]) {
-    const suffixLength = Number(match[2]);
-    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return "invalid";
-    return { start: Math.max(0, size - suffixLength), end: size - 1 };
-  }
-  const start = Number(match[1]);
-  const requestedEnd = match[2] ? Number(match[2]) : size - 1;
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd) || start >= size || requestedEnd < start) {
-    return "invalid";
-  }
-  return { start, end: Math.min(requestedEnd, size - 1) };
-}
-
-function retainedPdfPath(config: Config, projectId: string): string {
-  return path.join(outputRoot(config, projectId), ".texlite", "latest.pdf");
-}
-
-function retainedSynctexPath(config: Config, projectId: string): string {
-  return path.join(outputRoot(config, projectId), ".texlite", "latest.synctex.gz");
-}
-
-function availablePdf(config: Config, projectId: string, mainFile: string): { path: string; version: string } | null {
-  const published = publishedCompileArtifacts(config, projectId);
-  if (published) return { path: published.pdf, version: published.runId };
-  const retained = retainedPdfPath(config, projectId);
-  if (fs.existsSync(retained)) return { path: retained, version: String(fs.statSync(retained).mtimeMs) };
-  const legacy = path.join(outputRoot(config, projectId), `${path.basename(mainFile, ".tex")}.pdf`);
-  return fs.existsSync(legacy) ? { path: legacy, version: String(fs.statSync(legacy).mtimeMs) } : null;
-}
-
-function syncArtifacts(config: Config, projectId: string, mainFile: string): { source: string; pdf: string; synctex: string } | null {
-  const published = publishedCompileArtifacts(config, projectId);
-  if (published?.synctex) return { source: published.source, pdf: published.pdf, synctex: published.synctex };
-  const retained = {
-    source: sourceRoot(config, projectId),
-    pdf: retainedPdfPath(config, projectId),
-    synctex: retainedSynctexPath(config, projectId)
-  };
-  if (fs.existsSync(retained.pdf) && fs.existsSync(retained.synctex)) return retained;
-  const basename = path.basename(mainFile, ".tex");
-  const legacy = {
-    source: sourceRoot(config, projectId),
-    pdf: path.join(outputRoot(config, projectId), `${basename}.pdf`),
-    synctex: path.join(outputRoot(config, projectId), `${basename}.synctex.gz`)
-  };
-  return fs.existsSync(legacy.pdf) && fs.existsSync(legacy.synctex) ? legacy : null;
-}
-
-interface CompileArtifact {
-  path: string;
-  size: number;
-  viewable: boolean;
-}
-
-function listCompileArtifacts(directory: string): CompileArtifact[] {
-  const artifacts: CompileArtifact[] = [];
-  const visit = (current: string, prefix: string): void => {
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const absolute = path.join(current, entry.name);
-      if (entry.isDirectory()) visit(absolute, relative);
-      else if (entry.isFile()) {
-        const size = fs.statSync(absolute).size;
-        artifacts.push({ path: relative, size, viewable: size <= 2 * 1024 * 1024 && isTextCompileArtifact(relative) });
-      }
-    }
-  };
-  visit(directory, "");
-  return artifacts.sort((left, right) => left.path.localeCompare(right.path));
-}
-
-function isTextCompileArtifact(filePath: string): boolean {
-  return /(?:\.aux|\.bbl|\.bcf|\.blg|\.fls|\.log|\.lof|\.lot|\.nav|\.out|\.run\.xml|\.snm|\.toc|\.vrb|\.fdb_latexmk)$/i.test(filePath);
-}
-
 interface CommentRow {
   id: string;
   author_id: string | null;
@@ -315,15 +221,65 @@ export async function buildApp(
   });
   const queue = new CompileQueue(config.maxCompileJobs);
   const compileCoordinator = new ProjectCompileCoordinator(queue);
-  const collaboration = new CollaborationService(config, db);
+  const metrics = new MetricRegistry(200);
+  const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+  eventLoopDelay.enable();
+  const history = new ProjectHistoryService(config, db);
+  const latexCompletions = new LatexCompletionService(config);
+  const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => {
+    try { return history.record(projectId, userId, reason, paths); }
+    catch (error) {
+      app.log.error({ err: error, projectId }, "Failed to record project history");
+      return null;
+    }
+  };
+  const collaboration = new CollaborationService(config, db, ({ projectId, userId, paths, durationMs }) => {
+    metrics.record("collaboration.persist", durationMs);
+    recordHistory(projectId, userId, "autosave", paths);
+  });
   const projectGit = new ProjectGitService(config, db, options.githubFetch);
   db.prepare(`UPDATE compile_runs SET status = 'failed',
     log = CASE WHEN log = '' THEN 'Server restarted before compilation finished.' ELSE log END,
     finished_at = ? WHERE status IN ('queued', 'running')`).run(now());
+  const pruneCompileRuns = (projectId: string): void => {
+    const keep = new Set(listPublishedCompileArtifacts(config, projectId).map((artifact) => artifact.runId));
+    const completed = db.prepare(`SELECT id, main_file FROM compile_runs
+      WHERE project_id = ? AND status NOT IN ('queued', 'running')
+      ORDER BY created_at DESC, rowid DESC`).all(projectId) as Array<{ id: string; main_file: string }>;
+    const latestTargets = new Set<string>();
+    for (const run of completed) {
+      if (!latestTargets.has(run.main_file)) {
+        latestTargets.add(run.main_file);
+        keep.add(run.id);
+      }
+    }
+    const remove = db.prepare("DELETE FROM compile_runs WHERE id = ?");
+    for (const run of completed) if (!keep.has(run.id)) remove.run(run.id);
+  };
+  for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
+    history.enforceRetention(row.id);
+    pruneCompileRuns(row.id);
+    pruneOrphanedCompileRuns(config, row.id);
+  }
+  app.addHook("onClose", async () => { eventLoopDelay.disable(); });
   await app.register(cookie, { hook: "onRequest" });
   await app.register(websocket, { options: { maxPayload: 6 * 1024 * 1024 } });
   await app.register(multipart, {
     limits: { files: 1, fileSize: config.maxUploadBytes }
+  });
+  const requestStarts = new WeakMap<object, number>();
+  app.addHook("onRequest", async (request) => { requestStarts.set(request, performance.now()); });
+  app.addHook("onResponse", async (request) => {
+    const startedAt = requestStarts.get(request);
+    if (startedAt === undefined) return;
+    const route = request.routeOptions.url;
+    if (!route) return;
+    const metric = ({
+      "/api/projects/:id": "workspace.project",
+      "/api/projects/:id/files": "workspace.files",
+      "/api/projects/:id/compile/latest": "workspace.compileState"
+    } as Record<string, string>)[route];
+    if (metric) metrics.record(metric, performance.now() - startedAt);
   });
 
   app.setErrorHandler((error, _request, reply) => {
@@ -345,6 +301,22 @@ export async function buildApp(
     allowProjectLatexmkrc: config.allowProjectLatexmkrc
   }));
   app.get("/api/health", async () => ({ ok: true, latexmk: config.latexmk }));
+  app.get("/api/health/metrics", async (request, reply) => {
+    if (!requireAdmin(request, reply, db)) return;
+    const memory = process.memoryUsage();
+    return {
+      uptimeSeconds: Math.round(process.uptime()),
+      memory: { rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal },
+      eventLoopDelay: {
+        p50Ms: Math.round(eventLoopDelay.percentile(50) / 100_000) / 10,
+        p95Ms: Math.round(eventLoopDelay.percentile(95) / 100_000) / 10,
+        maxMs: Math.round(eventLoopDelay.max / 100_000) / 10
+      },
+      compileQueue: queue.stats(),
+      collaboration: collaboration.stats(),
+      durationsMs: metrics.summaries()
+    };
+  });
   app.get("/api/collaboration/:id", { websocket: true }, (socket, request) => {
     const user = currentUser(request, db);
     if (!user) {
@@ -352,7 +324,9 @@ export async function buildApp(
       return;
     }
     const { id } = request.params as { id: string };
-    collaboration.connect(socket, id, user);
+    const startedAt = performance.now();
+    try { collaboration.connect(socket, id, user); }
+    finally { metrics.record("collaboration.connect", performance.now() - startedAt); }
   });
 
   app.post("/api/auth/login", async (request, reply) => {
@@ -478,6 +452,10 @@ export async function buildApp(
       return apiError(reply, 400, "LAST_ADMIN", "不能删除最后一个管理员");
     }
     const owned = db.prepare("SELECT id FROM projects WHERE owner_id = ?").all(id) as Array<{ id: string }>;
+    for (const project of owned) {
+      if (body.deleteProjects) collaboration.closeProject(project.id);
+      else collaboration.flushProject(project.id);
+    }
     db.exec("BEGIN IMMEDIATE");
     try {
       if (body.deleteProjects) {
@@ -485,6 +463,8 @@ export async function buildApp(
       } else {
         db.prepare("UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE project_id IN (SELECT id FROM projects WHERE owner_id = ?)")
           .run(now(), id);
+        db.prepare("DELETE FROM project_members WHERE user_id = ? AND project_id IN (SELECT id FROM projects WHERE owner_id = ?)")
+          .run(admin.id, id);
         db.prepare("UPDATE projects SET owner_id = ?, last_modified_by = ?, updated_at = ? WHERE owner_id = ?")
           .run(admin.id, admin.id, now(), id);
       }
@@ -496,6 +476,8 @@ export async function buildApp(
     }
     if (body.deleteProjects) {
       for (const project of owned) removeProjectDirectory(config, project.id);
+    } else {
+      for (const project of owned) collaboration.resetProject(project.id);
     }
     return { ok: true, deletedProjects: body.deleteProjects ? owned.length : 0 };
   });
@@ -609,6 +591,7 @@ export async function buildApp(
       removeProjectDirectory(config, project.id);
       throw error;
     }
+    recordHistory(project.id, user.id, "initial");
     return reply.code(201).send({ project: projectJson({
       ...project, permission: "owner", owner_username: user.username, owner_display_name: user.display_name,
       last_modified_username: user.username, last_modified_display_name: user.display_name
@@ -643,6 +626,7 @@ export async function buildApp(
       removeProjectDirectory(config, project.id);
       throw error;
     }
+    recordHistory(project.id, user.id, "initial");
     return reply.code(201).send({ project: projectJson({
       ...project, permission: "owner", owner_username: user.username, owner_display_name: user.display_name,
       last_modified_username: user.username, last_modified_display_name: user.display_name
@@ -673,6 +657,7 @@ export async function buildApp(
       removeProjectDirectory(config, project.id);
       throw error;
     }
+    recordHistory(project.id, user.id, "initial");
     return reply.code(201).send({ project: projectJson({
       ...project, permission: "owner", owner_username: user.username, owner_display_name: user.display_name,
       last_modified_username: user.username, last_modified_display_name: user.display_name
@@ -686,6 +671,110 @@ export async function buildApp(
     const project = accessibleProject(db, id, user);
     if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     return { project: projectJson(project, tagsForProject(db, id, user.id)) };
+  });
+
+  app.get("/api/projects/:id/history", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    const { limit: limitInput } = request.query as { limit?: string };
+    const limit = Number.parseInt(limitInput ?? "100", 10);
+    return {
+      versions: history.list(id, Number.isFinite(limit) ? limit : 100),
+      stats: project.permission === "owner" ? history.stats(id) : null
+    };
+  });
+
+  app.get("/api/projects/:id/history/:versionId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id, versionId } = request.params as { id: string; versionId: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    const version = history.version(versionId, id);
+    const manifest = history.manifest(id, versionId);
+    if (!version || !manifest) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND", "历史版本不存在");
+    return {
+      version,
+      settings: manifest.settings,
+      files: Object.entries(manifest.files).map(([filePath, file]) => ({ path: filePath, size: file.size })).sort((left, right) => left.path.localeCompare(right.path))
+    };
+  });
+
+  app.get("/api/projects/:id/history/:versionId/file", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id, versionId } = request.params as { id: string; versionId: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    const query = request.query as { path?: string; against?: string };
+    const filePath = safeRelativePath(query.path ?? "");
+    const historical = history.readTextFile(id, versionId, filePath);
+    if (historical === null) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", "该历史文件不存在或不能作为文本比较", { path: filePath });
+    let comparison = "";
+    if (query.against) {
+      comparison = history.readTextFile(id, query.against, filePath) ?? "";
+    } else {
+      const current = resolveSourcePath(config, id, filePath);
+      if (fs.existsSync(current) && fs.statSync(current).isFile() && fs.statSync(current).size <= 2 * 1024 * 1024) {
+        comparison = fs.readFileSync(current, "utf8");
+      }
+    }
+    return { path: filePath, historical, comparison, against: query.against ?? "current" };
+  });
+
+  app.patch("/api/projects/:id/history/:versionId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id, versionId } = request.params as { id: string; versionId: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
+    const body = request.body as { label?: unknown };
+    const label = body.label === null || body.label === "" ? null : text(body.label, "版本标签", 80);
+    const version = history.setLabel(id, versionId, label);
+    if (!version) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND", "历史版本不存在");
+    return { version, stats: project.permission === "owner" ? history.stats(id) : null };
+  });
+
+  app.delete("/api/projects/:id/history/:versionId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id, versionId } = request.params as { id: string; versionId: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以删除历史版本");
+    collaboration.flushProject(id);
+    if (!history.deleteVersion(id, versionId)) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND", "历史版本不存在");
+    return { ok: true, stats: history.stats(id) };
+  });
+
+  app.delete("/api/projects/:id/history", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以清空历史版本");
+    collaboration.flushProject(id);
+    history.clear(id);
+    return { ok: true, stats: history.stats(id) };
+  });
+
+  app.post("/api/projects/:id/history/:versionId/restore", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id, versionId } = request.params as { id: string; versionId: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
+    const body = request.body as { path?: unknown } | undefined;
+    const filePath = typeof body?.path === "string" ? safeRelativePath(body.path) : undefined;
+    collaboration.flushProject(id);
+    recordHistory(id, user.id, "checkpoint");
+    const before = projectTextSnapshot(config, id);
+    const restored = history.restore(id, versionId, filePath);
+    reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
+    touchProject(db, id, user.id);
+    recordHistory(id, user.id, "restore", filePath ? [filePath] : undefined);
+    collaboration.resetProject(id);
+    return { ok: true, restoredPaths: restored.restoredPaths, project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id)) };
   });
 
   app.put("/api/projects/:id/archive", async (request, reply) => {
@@ -768,6 +857,7 @@ export async function buildApp(
     if (latexmkrc && !fs.existsSync(resolveSourcePath(config, id, latexmkrc))) return apiError(reply, 400, "LATEXMKRC_NOT_FOUND", "latexmkrc 文件不存在", { path: latexmkrc });
     db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
       .run(name, mainFile, latexmkrc, engine, now(), user.id, id);
+    recordHistory(id, user.id, "settings", []);
     return { project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id)) };
   });
 
@@ -884,10 +974,12 @@ export async function buildApp(
     const body = request.body as { revision?: unknown; force?: unknown };
     if (body.revision !== null && typeof body.revision !== "string") return apiError(reply, 400, "GIT_REVISION_INVALID", "请选择要 checkout 的 Git 版本");
     collaboration.flushProject(id);
+    recordHistory(id, user.id, "checkpoint");
     const before = projectTextSnapshot(config, id);
     const revision = await projectGit.checkout(project, body.revision, body.force === true);
     reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
     touchProject(db, id, user.id);
+    recordHistory(id, user.id, "git");
     collaboration.resetProject(id);
     return { revision, status: await projectGit.status(project) };
   });
@@ -898,10 +990,12 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     const project = requireGitOwner(id, user);
     collaboration.flushProject(id);
+    recordHistory(id, user.id, "checkpoint");
     const before = projectTextSnapshot(config, id);
     await projectGit.discardChanges(project);
     reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
     touchProject(db, id, user.id);
+    recordHistory(id, user.id, "git");
     collaboration.resetProject(id);
     return { status: await projectGit.status(project) };
   });
@@ -940,13 +1034,76 @@ export async function buildApp(
     return { files: listProjectFiles(config, id) };
   });
 
+  app.get("/api/projects/:id/outline", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    const query = request.query as { mainFile?: string };
+    const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    collaboration.flushProject(id);
+    const startedAt = performance.now();
+    try { return { outline: buildProjectOutline(config, id, mainFile), mainFile }; }
+    finally { metrics.record("outline.build", performance.now() - startedAt); }
+  });
+
+  app.get("/api/projects/:id/search", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    const query = request.query as { q?: string; caseSensitive?: string; wholeWord?: string };
+    collaboration.flushProject(id);
+    const startedAt = performance.now();
+    try {
+      return await searchProject(config, id, {
+        query: query.q ?? "",
+        caseSensitive: query.caseSensitive === "1",
+        wholeWord: query.wholeWord === "1"
+      });
+    } finally { metrics.record("search.project", performance.now() - startedAt); }
+  });
+
+  app.post("/api/projects/:id/search/replace", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
+    const body = request.body as { query?: unknown; replacement?: unknown; caseSensitive?: unknown; wholeWord?: unknown };
+    if (typeof body.query !== "string" || typeof body.replacement !== "string" || body.replacement.length > 100_000) {
+      return apiError(reply, 400, "SEARCH_QUERY_INVALID", "搜索或替换内容格式不正确");
+    }
+    collaboration.flushProject(id);
+    const changed = await replaceProject(config, id, {
+      query: body.query,
+      caseSensitive: body.caseSensitive === true,
+      wholeWord: body.wholeWord === true
+    }, body.replacement);
+    let replacements = 0;
+    for (const file of changed) {
+      reanchorFileComments(db, id, file.path, file.previous, file.content);
+      collaboration.updateFile(id, file.path, file.content, user.id);
+      replacements += file.count;
+    }
+    if (changed.length) {
+      touchProject(db, id, user.id);
+      recordHistory(id, user.id, "file", changed.map((file) => file.path));
+    }
+    return { ok: true, replacements, files: changed.map((file) => file.path) };
+  });
+
   app.get("/api/projects/:id/completions", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     collaboration.flushProject(id);
-    return { index: buildLatexCompletionIndex(config, id) };
+    const startedAt = performance.now();
+    try { return { index: await latexCompletions.build(id) }; }
+    finally { metrics.record("completions.build", performance.now() - startedAt); }
   });
 
   app.post("/api/projects/:id/folders", async (request, reply) => {
@@ -1015,6 +1172,7 @@ export async function buildApp(
       throw error;
     }
     collaboration.movePath(id, source, destination, user.id);
+    recordHistory(id, user.id, "file", [source, destination]);
     return { ok: true, path: destination };
   });
 
@@ -1088,6 +1246,7 @@ export async function buildApp(
     }
     touchProject(db, id, user.id);
     collaboration.updateFile(id, filePath, body.content, user.id);
+    recordHistory(id, user.id, "file", [filePath]);
     return reply.code(201).send({ ok: true, path: filePath, comments: commentsForFile(db, config, id, filePath) });
   });
 
@@ -1110,6 +1269,7 @@ export async function buildApp(
     fs.writeFileSync(absolute, body.content, { encoding: "utf8", mode: 0o600 });
     touchProject(db, id, user.id);
     collaboration.updateFile(id, filePath, body.content, user.id);
+    recordHistory(id, user.id, "file", [filePath]);
     return { ok: true, comments: commentsForFile(db, config, id, filePath) };
   });
 
@@ -1121,11 +1281,14 @@ export async function buildApp(
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const relative = safeRelativePath(filePath ?? "");
-    if (relative === project.main_file) return apiError(reply, 400, "MAIN_FILE_DELETE_FORBIDDEN", "不能删除当前主文件", { path: relative });
+    if (relative === project.main_file || project.main_file.startsWith(`${relative}/`)) {
+      return apiError(reply, 400, "MAIN_FILE_DELETE_FORBIDDEN", "不能删除当前主文件或包含主文件的目录", { path: relative });
+    }
     if (!fs.existsSync(resolveSourcePath(config, id, relative))) return apiError(reply, 404, "PATH_NOT_FOUND", "文件或目录不存在", { path: relative });
     fs.rmSync(resolveSourcePath(config, id, relative), { recursive: true, force: true });
     touchProject(db, id, user.id);
     collaboration.removePath(id, relative);
+    recordHistory(id, user.id, "file", [relative]);
     return { ok: true };
   });
 
@@ -1163,6 +1326,7 @@ export async function buildApp(
     }
     touchProject(db, id, user.id);
     collaboration.updateFile(id, relative, uploaded.toString("utf8"), user.id);
+    recordHistory(id, user.id, "file", [relative]);
     return reply.code(201).send({ ok: true, path: relative });
   });
 
@@ -1174,6 +1338,53 @@ export async function buildApp(
     const members = db.prepare(`SELECT pm.user_id AS id, u.username, u.display_name AS displayName, pm.permission
       FROM project_members pm JOIN users u ON u.id = pm.user_id WHERE pm.project_id = ? ORDER BY u.username`).all(id);
     return { members };
+  });
+
+  app.put("/api/projects/:id/owner", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || project.owner_id !== user.id) {
+      return apiError(reply, 403, "PROJECT_TRANSFER_FORBIDDEN", "只有当前项目所有者可以转让项目");
+    }
+    const body = (request.body ?? {}) as { userId?: unknown };
+    if (typeof body.userId !== "string" || !body.userId) {
+      return apiError(reply, 400, "PROJECT_TRANSFER_TARGET_INVALID", "请选择新的项目所有者");
+    }
+    if (body.userId === user.id) {
+      return apiError(reply, 400, "PROJECT_TRANSFER_SELF", "当前用户已经是项目所有者");
+    }
+    const target = db.prepare("SELECT id FROM users WHERE id = ? AND disabled = 0").get(body.userId) as { id: string } | undefined;
+    if (!target) return apiError(reply, 404, "USER_NOT_FOUND", "用户不存在或已被禁用");
+
+    collaboration.flushProject(id);
+    const changedAt = now();
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      // The new owner may already be a shared member. The previous owner keeps
+      // edit access so a transfer does not unexpectedly lock them out.
+      db.prepare("DELETE FROM project_members WHERE project_id = ? AND user_id = ?").run(id, target.id);
+      db.prepare(`INSERT INTO project_members (project_id, user_id, permission, created_at)
+        VALUES (?, ?, 'edit', ?)
+        ON CONFLICT(project_id, user_id) DO UPDATE SET permission = 'edit'`)
+        .run(id, user.id, changedAt);
+      db.prepare("UPDATE projects SET owner_id = ?, last_modified_by = ?, updated_at = ? WHERE id = ?")
+        .run(target.id, user.id, changedAt, id);
+      // A project token belongs to the account that supplied it. Preserve the
+      // local repository/remote metadata, but require the new owner to add
+      // their own credential before the next GitHub operation.
+      db.prepare("UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE project_id = ?")
+        .run(changedAt, id);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    collaboration.resetProject(id);
+    return {
+      project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id))
+    };
   });
 
   app.put("/api/projects/:id/members/:userId", async (request, reply) => {
@@ -1343,284 +1554,7 @@ export async function buildApp(
     return { ok: true };
   });
 
-  app.get("/api/projects/:id/compile/latest", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const latest = db.prepare(`SELECT run.id, run.status, run.log, run.created_at, run.finished_at,
-      run.requested_by, user.username AS requested_by_username, user.display_name AS requested_by_name
-      FROM compile_runs run LEFT JOIN users user ON user.id = run.requested_by
-      WHERE run.project_id = ?
-      ORDER BY CASE run.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END, run.created_at DESC LIMIT 1`).get(id) as {
-        id: string; status: string; log: string; created_at: string; finished_at: string | null;
-        requested_by: string | null; requested_by_username: string | null; requested_by_name: string | null;
-      } | undefined;
-    const latestSuccess = db.prepare(`SELECT id, finished_at FROM compile_runs
-      WHERE project_id = ? AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1`).get(id) as {
-        id: string; finished_at: string | null;
-      } | undefined;
-    const pdf = availablePdf(config, id, project.main_file);
-    const published = publishedCompileArtifacts(config, id);
-    const publishedRun = published ? db.prepare(`SELECT id, finished_at FROM compile_runs
-      WHERE id = ? AND project_id = ? AND status = 'succeeded'`).get(published.runId, id) as {
-        id: string; finished_at: string | null;
-      } | undefined : undefined;
-    const pdfVersion = published?.runId ?? latestSuccess?.id ?? pdf?.version;
-    return {
-      latestRun: latest ? {
-        id: latest.id, status: latest.status, log: latest.log,
-        diagnostics: parseCompileDiagnostics(
-          latest.log,
-          latest.status === "succeeded" || latest.status === "failed" ? latest.status : null
-        ),
-        createdAt: latest.created_at, finishedAt: latest.finished_at,
-        requestedBy: latest.requested_by ? {
-          id: latest.requested_by,
-          username: latest.requested_by_username ?? "deleted-user",
-          name: latest.requested_by_name ?? "Deleted User"
-        } : null
-      } : null,
-      hasPdf: Boolean(pdf),
-      pdfUrl: pdf ? `/api/projects/${id}/pdf?run=${encodeURIComponent(pdfVersion ?? pdf.version)}` : null,
-      pdfCompiledAt: publishedRun?.finished_at ?? latestSuccess?.finished_at ?? null
-    };
-  });
-
-  app.get("/api/projects/:id/compile/artifacts", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const published = publishedCompileArtifacts(config, id);
-    const query = request.query as { path?: string; download?: string };
-    if (!query.path) return { runId: published?.runId ?? null, artifacts: published ? listCompileArtifacts(published.output) : [] };
-    if (!published) return apiError(reply, 404, "COMPILE_ARTIFACTS_NOT_FOUND", "尚无可用的编译产物");
-    const relative = safeRelativePath(query.path);
-    const absolute = path.join(published.output, relative);
-    const outputDirectory = path.resolve(published.output);
-    const resolved = path.resolve(absolute);
-    if (!resolved.startsWith(`${outputDirectory}${path.sep}`)
-      || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-      return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
-    }
-    const stat = fs.statSync(resolved);
-    if (query.download === "1") {
-      reply.header("Content-Type", "application/octet-stream");
-      reply.header("Content-Disposition", contentDisposition(path.basename(relative), "attachment"));
-      reply.header("Content-Length", stat.size);
-      return reply.send(fs.createReadStream(resolved));
-    }
-    if (stat.size > 2 * 1024 * 1024 || !isTextCompileArtifact(relative)) {
-      return apiError(reply, 415, "ARTIFACT_PREVIEW_UNSUPPORTED", "该产物不能作为文本预览，请下载后查看");
-    }
-    return { path: relative, content: fs.readFileSync(resolved, "utf8") };
-  });
-
-  app.get("/api/projects/:id/sync/pdf", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const query = request.query as { path?: string; line?: string; column?: string };
-    const sourcePath = safeRelativePath(query.path ?? "");
-    const line = Number(query.line);
-    const column = Number(query.column ?? 1);
-    if (!Number.isInteger(line) || line < 1 || !Number.isInteger(column) || column < 1) {
-      return apiError(reply, 400, "SYNC_SOURCE_INVALID", "源码位置无效");
-    }
-    if (!fs.existsSync(resolveSourcePath(config, id, sourcePath))) {
-      return apiError(reply, 404, "SOURCE_FILE_NOT_FOUND", "源码文件不存在");
-    }
-    const artifacts = syncArtifacts(config, id, project.main_file);
-    if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE", "项目尚无可用的 SyncTeX 数据，请重新编译");
-    return await sourceToPdf(artifacts.source, artifacts.pdf, sourcePath, line, column);
-  });
-
-  app.get("/api/projects/:id/sync/source", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const query = request.query as { page?: string; x?: string; y?: string };
-    const page = Number(query.page);
-    const x = Number(query.x);
-    const y = Number(query.y);
-    if (!Number.isInteger(page) || page < 1 || !Number.isFinite(x) || x < 0 || !Number.isFinite(y) || y < 0) {
-      return apiError(reply, 400, "SYNC_PDF_INVALID", "PDF 位置无效");
-    }
-    const artifacts = syncArtifacts(config, id, project.main_file);
-    if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE", "项目尚无可用的 SyncTeX 数据，请重新编译");
-    const location = await pdfToSource(artifacts.source, artifacts.pdf, page, x, y);
-    const sourceDirectory = path.resolve(artifacts.source);
-    const relative = path.relative(sourceDirectory, path.resolve(location.input));
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-      return apiError(reply, 400, "SYNCTEX_EXTERNAL_PATH", "SyncTeX 返回了项目外部的源码路径");
-    }
-    return { path: safeRelativePath(relative.replaceAll(path.sep, "/")), line: location.line, column: location.column };
-  });
-
-  app.post("/api/projects/:id/compile", async (request, reply) => {
-    const requestStartedAt = performance.now();
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    const project = accessibleProject(db, id, user);
-    if (!project || !canEdit(project)) return apiError(reply, 403, "COMPILE_FORBIDDEN", "没有编译权限");
-    collaboration.flushProject(id);
-
-    const runId = randomUUID();
-    const snapshotStartedAt = performance.now();
-    const snapshot = captureCompileSnapshot(config, id, runId, {
-      mainFile: project.main_file,
-      engine: project.engine,
-      latexmkrc: project.latexmkrc,
-      extraArgs: config.extraArgs
-    });
-    const snapshotMs = performance.now() - snapshotStartedAt;
-
-    // Reuse the last published PDF only when the complete source and compiler
-    // settings revision is identical. A failed/newer run, or an active run,
-    // deliberately prevents this fast path so users can retry a build.
-    const published = publishedCompileArtifacts(config, id);
-    const publishedRun = published ? db.prepare(`SELECT id, status, log, finished_at
-      FROM compile_runs WHERE id = ? AND project_id = ?`).get(published.runId, id) as {
-        id: string; status: string; log: string; finished_at: string | null;
-      } | undefined : undefined;
-    const latestRun = db.prepare(`SELECT id, status FROM compile_runs
-      WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`).get(id) as {
-        id: string; status: string;
-      } | undefined;
-    const activeRun = db.prepare(`SELECT 1 AS active FROM compile_runs
-      WHERE project_id = ? AND status IN ('queued', 'running') LIMIT 1`).get(id);
-    if (!activeRun && published && publishedRun?.status === "succeeded"
-      && latestRun?.id === publishedRun.id && snapshot.revision === published.revision) {
-      discardCompileSnapshot(snapshot);
-      const requestMs = performance.now() - requestStartedAt;
-      reply.header("Server-Timing", `snapshot;dur=${timingDuration(snapshotMs)}, total;dur=${timingDuration(requestMs)}`);
-      return {
-        runId: published.runId,
-        ok: true,
-        skipped: true,
-        log: publishedRun.log ?? "",
-        diagnostics: parseCompileDiagnostics(publishedRun.log ?? "", "succeeded"),
-        pdfUrl: `/api/projects/${id}/pdf?run=${encodeURIComponent(published.runId)}`,
-        pdfCompiledAt: publishedRun.finished_at,
-        timings: { snapshotMs, requestMs }
-      };
-    }
-
-    db.prepare("INSERT INTO compile_runs (id, project_id, requested_by, status, created_at) VALUES (?, ?, ?, 'queued', ?)")
-      .run(runId, id, user.id, now());
-    const requestedBy = { id: user.id, username: user.username, name: user.display_name };
-    let phase: "queued" | "running" | "succeeded" | "failed" = "queued";
-    const broadcast = () => collaboration.signalCompileState(id, { runId, status: phase, requestedBy, updatedAt: now() });
-    const result = await compileCoordinator.request({
-      projectId: id,
-      runId,
-      revision: snapshot.revision,
-      onQueued: broadcast,
-      onSelected: broadcast,
-      onDiscarded: () => {
-        db.prepare("DELETE FROM compile_runs WHERE id = ? AND status = 'queued'").run(runId);
-        discardCompileSnapshot(snapshot);
-      },
-      execute: async () => {
-        phase = "running";
-        db.prepare("UPDATE compile_runs SET status = 'running' WHERE id = ?").run(runId);
-        broadcast();
-        let compiled;
-        try {
-          compiled = await compileProject(config, snapshot, project.main_file, project.engine, project.latexmkrc);
-          if (compiled.ok && compiled.pdfPath) {
-            if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)) throw new Error("项目已被删除");
-            const publishStartedAt = performance.now();
-            publishCompileArtifacts(config, id, snapshot, compiled);
-            if (compiled.timings) {
-              compiled.timings.publishMs = performance.now() - publishStartedAt;
-              compiled.timings.totalMs += compiled.timings.publishMs;
-            }
-          } else {
-            discardCompileSnapshot(snapshot);
-          }
-        } catch (error) {
-          discardCompileSnapshot(snapshot);
-          compiled = {
-            ok: false,
-            log: error instanceof Error ? error.message : String(error),
-            diagnostics: parseCompileDiagnostics(error instanceof Error ? error.message : String(error), "failed"),
-            pdfPath: null,
-            synctexPath: null
-          };
-        }
-        phase = compiled.ok ? "succeeded" : "failed";
-        db.prepare("UPDATE compile_runs SET status = ?, log = ?, finished_at = ? WHERE id = ?")
-          .run(phase, compiled.log, now(), runId);
-        broadcast();
-        return { ...compiled, runId, revision: snapshot.revision };
-      }
-    });
-    const completed = db.prepare("SELECT finished_at FROM compile_runs WHERE id = ?").get(result.runId) as {
-      finished_at: string | null;
-    } | undefined;
-    const requestMs = performance.now() - requestStartedAt;
-    const timings = result.timings ? { snapshotMs, ...result.timings, requestMs } : { snapshotMs, requestMs };
-    reply.header("Server-Timing", [
-      `snapshot;dur=${timingDuration(snapshotMs)}`,
-      result.timings ? `cache;dur=${timingDuration(result.timings.cacheSyncMs)}` : "",
-      result.timings ? `latexmk;dur=${timingDuration(result.timings.latexmkMs)}` : "",
-      result.timings ? `artifacts;dur=${timingDuration(result.timings.artifactCopyMs)}` : "",
-      result.timings?.publishMs !== undefined ? `publish;dur=${timingDuration(result.timings.publishMs)}` : "",
-      `total;dur=${timingDuration(requestMs)}`
-    ].filter(Boolean).join(", "));
-    return {
-      runId: result.runId, ok: result.ok, skipped: false, log: result.log, diagnostics: result.diagnostics,
-      pdfUrl: result.ok ? `/api/projects/${id}/pdf?run=${result.runId}` : null,
-      pdfCompiledAt: result.ok ? completed?.finished_at ?? null : null,
-      timings
-    };
-  });
-
-  app.get("/api/projects/:id/pdf", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const query = request.query as { download?: string };
-    const downloading = query.download === "1";
-    const artifact = availablePdf(config, id, project.main_file);
-    if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
-    const pdf = artifact.path;
-    const stat = fs.statSync(pdf);
-    const etag = `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`;
-    reply.header("Content-Type", "application/pdf");
-    const filename = downloading ? `${project.name}-${pdfDownloadTimestamp()}.pdf` : `${project.name}.pdf`;
-    reply.header("Content-Disposition", contentDisposition(filename, downloading ? "attachment" : "inline"));
-    reply.header("Cache-Control", "private, no-cache");
-    reply.header("Accept-Ranges", "bytes");
-    reply.header("ETag", etag);
-    reply.header("Last-Modified", stat.mtime.toUTCString());
-    if (request.headers["if-none-match"]?.split(",").some((candidate) => candidate.trim() === etag)) {
-      return reply.code(304).send();
-    }
-    const range = parseByteRange(request.headers.range, stat.size);
-    if (range === "invalid") {
-      reply.header("Content-Range", `bytes */${stat.size}`);
-      return reply.code(416).send();
-    }
-    if (range) {
-      reply.header("Content-Range", `bytes ${range.start}-${range.end}/${stat.size}`);
-      reply.header("Content-Length", range.end - range.start + 1);
-      return reply.code(206).send(fs.createReadStream(pdf, range));
-    }
-    reply.header("Content-Length", stat.size);
-    return reply.send(fs.createReadStream(pdf));
-  });
+  registerCompileRoutes(app, { config, db, collaboration, compileCoordinator, metrics, pruneCompileRuns });
 
   app.addHook("onRequest", async (request) => {
     if (request.url.startsWith("/api/") && request.url !== "/api/auth/login" && request.url !== "/api/health" && request.url !== "/api/config") {

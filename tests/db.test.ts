@@ -27,10 +27,17 @@ describe("database migrations", () => {
         name TEXT NOT NULL COLLATE NOCASE, color TEXT NOT NULL, created_at TEXT NOT NULL,
         UNIQUE (project_id, name)
       );
+      CREATE TABLE compile_runs (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        requested_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+        status TEXT NOT NULL, log TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, finished_at TEXT
+      );
       INSERT INTO users VALUES ('user-1', 'owner', 'Owner', 'hash', 'admin', 0, 0, '2025-01-01T00:00:00.000Z');
       INSERT INTO projects VALUES ('project-1', 'user-1', 'Legacy', 'main.tex', NULL, 'xelatex',
         '2025-01-01T00:00:00.000Z', '2025-01-02T00:00:00.000Z');
       INSERT INTO project_tags VALUES ('tag-1', 'project-1', 'Research', 'purple', '2025-01-01T00:00:00.000Z');
+      INSERT INTO compile_runs VALUES ('run-1', 'project-1', 'user-1', 'succeeded', '',
+        '2025-01-02T00:00:00.000Z', '2025-01-02T00:00:01.000Z');
     `);
     legacy.close();
 
@@ -40,7 +47,8 @@ describe("database migrations", () => {
       projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
-      maxUploadBytes: 50 * 1024 * 1024, git: "git", gitOperationTimeoutMs: 30_000,
+      maxUploadBytes: 50 * 1024 * 1024, historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
+      git: "git", gitOperationTimeoutMs: 30_000,
       githubApiBaseUrl: "https://api.github.com"
     };
     const migrated = openDatabase(config);
@@ -55,6 +63,10 @@ describe("database migrations", () => {
         .toEqual({ name: "Research", color: "purple", user_id: "user-1" });
       expect(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project_git_settings'").get())
         .toEqual({ name: "project_git_settings" });
+      expect(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project_history_state'").get())
+        .toEqual({ name: "project_history_state" });
+      expect(migrated.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
+        .toEqual({ main_file: "main.tex" });
     } finally {
       migrated.close();
       fs.rmSync(root, { recursive: true, force: true });

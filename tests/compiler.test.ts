@@ -12,6 +12,7 @@ import {
   compileProject,
   publishCompileArtifacts,
   publishedCompileArtifacts,
+  pruneOrphanedCompileRuns,
   type CoordinatedCompileJob,
   type CoordinatedCompileResult
 } from "../src/server/compiler.js";
@@ -64,7 +65,7 @@ describe("reliable project compilation", () => {
     expect(events).toContain("superseded:run-2");
   });
 
-  it("compiles from an immutable snapshot and atomically selects a complete artifact set", () => {
+  it("compiles from an immutable snapshot and atomically selects a complete artifact set", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-"));
     temporaryRoots.push(root);
     const config = testConfig(root);
@@ -73,7 +74,7 @@ describe("reliable project compilation", () => {
     fs.mkdirSync(liveSource, { recursive: true });
     fs.writeFileSync(path.join(liveSource, "main.tex"), "first revision\n");
 
-    const first = captureCompileSnapshot(config, projectId, randomUUID(), {
+    const first = await captureCompileSnapshot(config, projectId, randomUUID(), {
       mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
     });
     fs.writeFileSync(path.join(liveSource, "main.tex"), "second revision\n");
@@ -89,7 +90,7 @@ describe("reliable project compilation", () => {
       runId: first.runId, revision: first.revision, source: first.sourceDir, pdf: firstPdf, synctex: firstSync
     });
 
-    const second = captureCompileSnapshot(config, projectId, randomUUID(), {
+    const second = await captureCompileSnapshot(config, projectId, randomUUID(), {
       mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
     });
     expect(second.revision).not.toBe(first.revision);
@@ -99,10 +100,25 @@ describe("reliable project compilation", () => {
       ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: secondPdf, synctexPath: null
     });
     expect(publishedCompileArtifacts(config, projectId)).toMatchObject({ runId: second.runId, pdf: secondPdf, synctex: null });
+    fs.writeFileSync(path.join(liveSource, "appendix.tex"), "appendix revision\n");
+    const appendix = await captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "appendix.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const appendixPdf = path.join(appendix.outputDir, "appendix.pdf");
+    fs.writeFileSync(appendixPdf, "appendix pdf");
+    publishCompileArtifacts(config, projectId, appendix, {
+      ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: appendixPdf, synctexPath: null
+    });
+    expect(publishedCompileArtifacts(config, projectId, "main.tex")).toMatchObject({ runId: second.runId, mainFile: "main.tex" });
+    expect(publishedCompileArtifacts(config, projectId, "appendix.tex")).toMatchObject({ runId: appendix.runId, mainFile: "appendix.tex" });
     expect(fs.existsSync(first.root)).toBe(true);
+    pruneOrphanedCompileRuns(config, projectId);
+    expect(fs.existsSync(first.root)).toBe(false);
+    expect(fs.existsSync(second.root)).toBe(true);
+    expect(fs.existsSync(appendix.root)).toBe(true);
   });
 
-  it("reuses a stable latexmk work directory and publishes immutable run artifacts", async () => {
+  it("reuses a stable latexmk work directory and isolates caches by compile target", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-cache-"));
     temporaryRoots.push(root);
     const config = testConfig(root);
@@ -131,7 +147,7 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     fs.mkdirSync(liveSource, { recursive: true });
     fs.writeFileSync(path.join(liveSource, "main.tex"), "first revision\n");
 
-    const first = captureCompileSnapshot(config, projectId, randomUUID(), {
+    const first = await captureCompileSnapshot(config, projectId, randomUUID(), {
       mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
     });
     const firstResult = await compileProject(config, first, "main.tex", "pdflatex", null);
@@ -140,7 +156,7 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     expect(gunzipSync(fs.readFileSync(firstResult.synctexPath!)).toString("utf8")).toContain(first.sourceDir);
 
     fs.writeFileSync(path.join(liveSource, "main.tex"), "second revision\n");
-    const second = captureCompileSnapshot(config, projectId, randomUUID(), {
+    const second = await captureCompileSnapshot(config, projectId, randomUUID(), {
       mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
     });
     const secondResult = await compileProject(config, second, "main.tex", "pdflatex", null);
@@ -153,8 +169,10 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     expect(secondResult.timings).toMatchObject({ cacheSyncMs: expect.any(Number), latexmkMs: expect.any(Number) });
     const cacheDirectory = path.join(config.projectsDir, projectId, "output", ".texlite", "cache");
     expect(fs.readdirSync(cacheDirectory)).toHaveLength(1);
+    const mainCacheDirectory = path.join(cacheDirectory, fs.readdirSync(cacheDirectory)[0]);
+    expect(fs.readdirSync(mainCacheDirectory)).toHaveLength(1);
 
-    const differentEngine = captureCompileSnapshot(config, projectId, randomUUID(), {
+    const differentEngine = await captureCompileSnapshot(config, projectId, randomUUID(), {
       mainFile: "main.tex", engine: "xelatex", latexmkrc: null, extraArgs: []
     });
     const differentEngineResult = await compileProject(config, differentEngine, "main.tex", "xelatex", null);
@@ -162,6 +180,42 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     expect(fs.readFileSync(path.join(differentEngine.outputDir, ".fake-invocations"), "utf8")).toBe("1");
     expect(fs.readFileSync(secondResult.pdfPath!, "utf8")).toContain("2\nsecond revision");
     expect(fs.readdirSync(cacheDirectory)).toHaveLength(1);
+    expect(fs.readdirSync(mainCacheDirectory)).toHaveLength(1);
+
+    fs.writeFileSync(path.join(liveSource, "appendix.tex"), "appendix revision\n");
+    const appendix = await captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "appendix.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const appendixResult = await compileProject(config, appendix, "appendix.tex", "pdflatex", null);
+    expect(appendixResult.ok, appendixResult.log).toBe(true);
+    expect(fs.readdirSync(cacheDirectory)).toHaveLength(2);
+  });
+
+  it("coordinates different root documents independently", async () => {
+    const coordinator = new ProjectCompileCoordinator(new CompileQueue(2));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const active = new Set<string>();
+    let overlapped = false;
+    const job = (target: string): CoordinatedCompileJob => ({
+      projectId: "project-a", target, runId: target, revision: `revision:${target}`,
+      onQueued: () => undefined,
+      onSelected: () => undefined,
+      onDiscarded: () => undefined,
+      execute: async () => {
+        active.add(target);
+        if (active.size === 2) overlapped = true;
+        await gate;
+        active.delete(target);
+        return { runId: target, revision: `revision:${target}`, ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: `${target}.pdf`, synctexPath: null };
+      }
+    });
+    const main = coordinator.request(job("main.tex"));
+    const appendix = coordinator.request(job("appendix.tex"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(overlapped).toBe(true);
+    release();
+    await expect(Promise.all([main, appendix])).resolves.toHaveLength(2);
   });
 });
 
@@ -172,6 +226,7 @@ function testConfig(root: string): Config {
     projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
     compileTimeoutMs: 30_000, maxCompileJobs: 3, latexmk: "latexmk", defaultEngine: "pdflatex",
     allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
-    maxUploadBytes: 50 * 1024 * 1024
+    maxUploadBytes: 50 * 1024 * 1024, historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
+    git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
   };
 }

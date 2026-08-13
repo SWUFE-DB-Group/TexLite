@@ -54,6 +54,7 @@
     "react-resizable-panels": "^2.1.9",
     "ws": "^8.21.1",
     "y-codemirror.next": "^0.3.5",
+    "y-indexeddb": "^9.0.12",
     "y-protocols": "^1.0.7",
     "y-websocket": "^3.0.0",
     "yauzl": "^3.2.0",

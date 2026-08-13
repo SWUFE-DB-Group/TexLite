@@ -21,6 +21,8 @@ export const CONFIG_DEFAULTS = {
   extraArgs: [] as string[],
   allowProjectLatexmkrc: true,
   maxFileSizeMB: 50,
+  historyMaxVersions: 200,
+  historyMaxStorageMB: 512,
   git: "git",
   gitOperationTimeoutSeconds: 30,
   githubApiBaseUrl: "https://api.github.com"
@@ -32,6 +34,8 @@ const CONFIG_LIMITS = {
   compileTimeoutSeconds: [1, 3_600],
   maxCompileJobs: [1, 32],
   maxFileSizeMB: [1, 2_048],
+  historyMaxVersions: [10, 5_000],
+  historyMaxStorageMB: [16, 102_400],
   gitOperationTimeoutSeconds: [1, 3_600]
 } as const;
 
@@ -54,6 +58,8 @@ export interface Config {
   extraArgs: string[];
   allowProjectLatexmkrc: boolean;
   maxUploadBytes: number;
+  historyMaxVersions: number;
+  historyMaxStorageBytes: number;
   git: string;
   gitOperationTimeoutMs: number;
   githubApiBaseUrl: string;
@@ -96,6 +102,14 @@ export function loadConfig(): Config {
     "uploads.maxFileSizeMB", process.env.TEXLITE_MAX_UPLOAD_SIZE_MB,
     fileConfig.uploads?.maxFileSizeMB, CONFIG_DEFAULTS.maxFileSizeMB, CONFIG_LIMITS.maxFileSizeMB
   );
+  const historyMaxVersions = integerSetting(
+    "history.maxVersions", process.env.TEXLITE_HISTORY_MAX_VERSIONS,
+    fileConfig.history?.maxVersions, CONFIG_DEFAULTS.historyMaxVersions, CONFIG_LIMITS.historyMaxVersions
+  );
+  const historyMaxStorageMB = integerSetting(
+    "history.maxStorageMB", process.env.TEXLITE_HISTORY_MAX_STORAGE_MB,
+    fileConfig.history?.maxStorageMB, CONFIG_DEFAULTS.historyMaxStorageMB, CONFIG_LIMITS.historyMaxStorageMB
+  );
   const gitOperationTimeoutSeconds = integerSetting(
     "git.operationTimeoutSeconds", process.env.TEXLITE_GIT_TIMEOUT,
     fileConfig.git?.operationTimeoutSeconds, CONFIG_DEFAULTS.gitOperationTimeoutSeconds, CONFIG_LIMITS.gitOperationTimeoutSeconds
@@ -120,6 +134,8 @@ export function loadConfig(): Config {
     extraArgs: fileConfig.latex?.extraArgs === undefined ? [] : [...fileConfig.latex.extraArgs],
     allowProjectLatexmkrc: fileConfig.latex?.allowProjectLatexmkrc ?? CONFIG_DEFAULTS.allowProjectLatexmkrc,
     maxUploadBytes: maxFileSizeMB * 1024 * 1024,
+    historyMaxVersions,
+    historyMaxStorageBytes: historyMaxStorageMB * 1024 * 1024,
     git: stringSetting("git.binary", process.env.TEXLITE_GIT, fileConfig.git?.binary, CONFIG_DEFAULTS.git, { min: 1, max: 256 }),
     gitOperationTimeoutMs: gitOperationTimeoutSeconds * 1000,
     githubApiBaseUrl: stringSetting("git.githubApiBaseUrl", process.env.TEXLITE_GITHUB_API_URL, fileConfig.git?.githubApiBaseUrl, CONFIG_DEFAULTS.githubApiBaseUrl, { min: 1, max: 2_048 }).replace(/\/+$/, "")
@@ -153,6 +169,8 @@ export function validateConfig(config: Config): void {
   validateInteger("latex.compileTimeoutSeconds", config.compileTimeoutMs / 1000, CONFIG_LIMITS.compileTimeoutSeconds);
   validateInteger("latex.maxCompileJobs", config.maxCompileJobs, CONFIG_LIMITS.maxCompileJobs);
   validateInteger("uploads.maxFileSizeMB", config.maxUploadBytes / (1024 * 1024), CONFIG_LIMITS.maxFileSizeMB);
+  validateInteger("history.maxVersions", config.historyMaxVersions, CONFIG_LIMITS.historyMaxVersions);
+  validateInteger("history.maxStorageMB", config.historyMaxStorageBytes / (1024 * 1024), CONFIG_LIMITS.historyMaxStorageMB);
   validateInteger("git.operationTimeoutSeconds", config.gitOperationTimeoutMs / 1000, CONFIG_LIMITS.gitOperationTimeoutSeconds);
 }
 
@@ -172,6 +190,7 @@ interface FileConfig {
     allowProjectLatexmkrc?: boolean;
   };
   uploads?: { maxFileSizeMB?: number };
+  history?: { maxVersions?: number; maxStorageMB?: number };
   git?: { binary?: string; operationTimeoutSeconds?: number; githubApiBaseUrl?: string };
 }
 
@@ -204,6 +223,9 @@ function validateFileConfig(config: FileConfig): void {
   optionalString(storage?.dataDir, "storage.dataDir", { min: 1, max: 4_096 });
   const uploads = optionalSection(config.uploads, "uploads");
   optionalInteger(uploads?.maxFileSizeMB, "uploads.maxFileSizeMB", CONFIG_LIMITS.maxFileSizeMB);
+  const history = optionalSection(config.history, "history");
+  optionalInteger(history?.maxVersions, "history.maxVersions", CONFIG_LIMITS.historyMaxVersions);
+  optionalInteger(history?.maxStorageMB, "history.maxStorageMB", CONFIG_LIMITS.historyMaxStorageMB);
 
   const latex = optionalSection(config.latex, "latex");
   optionalString(latex?.latexmk, "latex.latexmk", { min: 1, max: 256 });

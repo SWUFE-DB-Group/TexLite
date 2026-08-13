@@ -27,7 +27,19 @@ export function localizedResponseError(body: unknown, status: number, fallbackKe
     ? body.error : "";
   const code = responseErrorCode(body);
   if (code) {
-    const key = ({ AUTH_REQUIRED: "auth.sessionExpired", ADMIN_REQUIRED: "users.adminRequired" } as Record<string, string>)[code] ?? `errors.codes.${code}`;
+    const key = ({
+      AUTH_REQUIRED: "auth.sessionExpired",
+      ADMIN_REQUIRED: "users.adminRequired",
+      HISTORY_VERSION_NOT_FOUND: "apiErrors.historyVersionNotFound",
+      HISTORY_FILE_NOT_FOUND: "apiErrors.historyFileNotFound",
+      HISTORY_FILE_PREVIEW_UNSUPPORTED: "apiErrors.historyPreviewUnsupported",
+      SEARCH_QUERY_INVALID: "apiErrors.searchInvalid",
+      GIT_UNAVAILABLE: "apiErrors.gitUnavailable",
+      PROJECT_TRANSFER_FORBIDDEN: "projects.transferForbidden",
+      PROJECT_TRANSFER_TARGET_INVALID: "projects.transferTargetInvalid",
+      PROJECT_TRANSFER_SELF: "projects.transferSelf",
+      MAIN_DOCUMENT_INVALID: "apiErrors.mainDocumentInvalid",
+    } as Record<string, string>)[code] ?? `errors.codes.${code}`;
     if (i18n.exists(key)) return i18n.t(key, { status, ...(typeof body === "object" && body !== null ? body : {}) });
   }
   if (i18n.resolvedLanguage?.startsWith("zh") && serverMessage) return serverMessage;

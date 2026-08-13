@@ -11,7 +11,7 @@ import * as decoding from "lib0/decoding";
 import * as syncProtocol from "y-protocols/sync";
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
 import { buildApp } from "../src/server/app.js";
-import { collaborationStatePath } from "../src/server/collaboration.js";
+import { collaborationEpochPath, collaborationStatePath } from "../src/server/collaboration.js";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { hashPassword } from "../src/server/security.js";
@@ -38,7 +38,8 @@ describe("project collaboration", () => {
       projectsDir: path.join(root, "projects"), clientDir: path.join(root, "missing-client"), sessionDays: 1,
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "pdflatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
-      maxUploadBytes: 50 * 1024 * 1024
+      maxUploadBytes: 50 * 1024 * 1024, historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
+      git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
     };
     db = openDatabase(config);
     adminId = randomUUID();
@@ -74,6 +75,17 @@ describe("project collaboration", () => {
       method: "PUT", url: `/api/projects/${projectId}/members/${reader.id}`,
       headers: { cookie: adminCookie }, payload: { permission: "read" }
     });
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie: adminCookie },
+      payload: { path: "appendix.tex", content: "\\section{Appendix}\n" }
+    });
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie: adminCookie },
+      payload: {
+        path: "standalone.tex",
+        content: "\\documentclass{article}\n\\begin{document}\nStandalone.\n\\end{document}\n"
+      }
+    });
 
     const peers = await Promise.all([
       TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" }),
@@ -105,7 +117,9 @@ describe("project collaboration", () => {
       expect(ownerText.toString()).toContain("% owner session");
       expect(ownerText.toString()).toContain("% editor session");
 
-      await owner.flush();
+      const receipt = await owner.flush();
+      expect(receipt.revision).toBeGreaterThan(0);
+      expect(new Date(receipt.persistedAt).toISOString()).toBe(receipt.persistedAt);
       const diskContent = fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8");
       expect(diskContent).toBe(ownerText.toString());
       const persistedDoc = new Y.Doc();
@@ -119,6 +133,18 @@ describe("project collaboration", () => {
       expect(ownerText.toString()).toBe(acceptedContent);
       expect(editingPeer.doc.getText("source:main.tex").toString()).toBe(acceptedContent);
 
+      const staleAppendix = owner.doc.getText("source:appendix.tex");
+      expect(staleAppendix.toString()).toContain("Appendix");
+      const deleted = await app.inject({
+        method: "DELETE", url: `/api/projects/${projectId}/file?path=appendix.tex`, headers: { cookie: adminCookie }
+      });
+      expect(deleted.statusCode).toBe(200);
+      await waitFor(() => staleAppendix.toString() === "");
+      staleAppendix.insert(0, "% late edit after deletion\n");
+      await waitFor(() => staleAppendix.toString() === "");
+      await owner.flush();
+      expect(fs.existsSync(path.join(config.projectsDir, projectId, "source", "appendix.tex"))).toBe(false);
+
       const [ownerCompile, editorCompile] = await Promise.all([
         app.inject({ method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie: adminCookie } }),
         app.inject({ method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie: editorCookie } })
@@ -126,12 +152,47 @@ describe("project collaboration", () => {
       expect(ownerCompile.json()).toMatchObject({ ok: true });
       expect(editorCompile.json()).toMatchObject({ ok: true, runId: ownerCompile.json().runId });
       await waitFor(() => {
-        const state = owner.doc.getMap("texlite:meta").get("compileState") as { status?: string; runId?: string } | undefined;
+        const states = owner.doc.getMap("texlite:meta").get("compileStates") as Record<string, { status?: string; runId?: string }> | undefined;
+        const state = states?.["main.tex"];
         return state?.status === "succeeded" && state.runId === ownerCompile.json().runId;
+      });
+      const standaloneCompile = await app.inject({
+        method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie: editorCookie },
+        payload: { mainFile: "standalone.tex" }
+      });
+      expect(standaloneCompile.json()).toMatchObject({ ok: true, mainFile: "standalone.tex" });
+      await waitFor(() => {
+        const states = owner.doc.getMap("texlite:meta").get("compileStates") as Record<string, { status?: string; runId?: string }> | undefined;
+        return states?.["main.tex"]?.runId === ownerCompile.json().runId
+          && states?.["standalone.tex"]?.status === "succeeded"
+          && states["standalone.tex"].runId === standaloneCompile.json().runId;
       });
     } finally {
       for (const peer of peers) peer.destroy();
     }
+  });
+
+  it("recovers a Yjs update that was durable before its source-file rename", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Crash recovery paper" }
+    });
+    const projectId = created.json().project.id as string;
+    const recoveredContent = "\\documentclass{article}\n\\begin{document}\nRecovered draft.\n\\end{document}\n";
+    const persisted = new Y.Doc();
+    persisted.getText("source:main.tex").insert(0, recoveredContent);
+    const statePath = collaborationStatePath(config, projectId);
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(statePath, Y.encodeStateAsUpdate(persisted));
+    fs.writeFileSync(collaborationEpochPath(config, projectId), randomUUID());
+    persisted.destroy();
+
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      await waitFor(() => peer.doc.getText("source:main.tex").toString() === recoveredContent);
+      await waitFor(() => fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8") === recoveredContent);
+      const receipt = await peer.flush();
+      expect(receipt.revision).toBeGreaterThan(0);
+    } finally { peer.destroy(); }
   });
 });
 
@@ -145,7 +206,7 @@ class TestPeer {
   private readonly queuedUpdates: Uint8Array[] = [];
   private syncResolve: (() => void) | null = null;
   private readonly synced = new Promise<void>((resolve) => { this.syncResolve = resolve; });
-  private readonly flushRequests = new Map<string, () => void>();
+  private readonly flushRequests = new Map<string, (receipt: { revision: number; persistedAt: string }) => void>();
 
   private constructor(private readonly user: PeerUser) {
     this.doc.on("update", (update, origin) => {
@@ -182,14 +243,14 @@ class TestPeer {
     for (const update of this.queuedUpdates.splice(0)) this.send(syncUpdate(update));
   }
 
-  flush(): Promise<void> {
+  flush(): Promise<{ revision: number; persistedAt: string }> {
     const requestId = randomUUID();
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_FLUSH);
     encoding.writeVarString(encoder, requestId);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("flush timeout")), 2000);
-      this.flushRequests.set(requestId, () => { clearTimeout(timer); resolve(); });
+      this.flushRequests.set(requestId, (receipt) => { clearTimeout(timer); resolve(receipt); });
       this.send(encoding.toUint8Array(encoder));
     });
   }
@@ -230,7 +291,9 @@ class TestPeer {
       applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(decoder), REMOTE_ORIGIN);
     } else if (messageType === MESSAGE_FLUSH) {
       const requestId = decoding.readVarString(decoder);
-      this.flushRequests.get(requestId)?.();
+      const revision = decoding.hasContent(decoder) ? decoding.readVarUint(decoder) : 0;
+      const persistedAt = decoding.hasContent(decoder) ? decoding.readVarString(decoder) : new Date(0).toISOString();
+      this.flushRequests.get(requestId)?.({ revision, persistedAt });
       this.flushRequests.delete(requestId);
     } else if (messageType === MESSAGE_PROTOCOL) {
       const epoch = decoding.readVarString(decoder);

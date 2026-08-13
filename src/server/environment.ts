@@ -9,7 +9,6 @@ export interface EnvironmentCommand {
 
 export async function assertEnvironment(config: Config): Promise<EnvironmentCommand[]> {
   const commands = [
-    { name: "Git", command: config.git },
     { name: "latexmk", command: config.latexmk },
     ...config.allowedEngines.map((command) => ({ name: command, command }))
   ];
@@ -18,7 +17,7 @@ export async function assertEnvironment(config: Config): Promise<EnvironmentComm
   for (const item of commands) {
     if (seen.has(item.command)) continue;
     seen.add(item.command);
-    const result = await commandVersion(item.command, Math.min(config.gitOperationTimeoutMs, 10_000));
+    const result = await commandVersion(item.command, 10_000);
     if (result.error || result.status !== 0) {
       const detail = result.error || result.stderr.trim() || `exit ${result.status ?? "unknown"}`;
       throw new Error(`环境检查失败：无法运行 ${item.name} 命令“${item.command}”（${detail}）。初始化/启动已停止。`);
@@ -27,6 +26,20 @@ export async function assertEnvironment(config: Config): Promise<EnvironmentComm
     checked.push({ ...item, version });
   }
   return checked;
+}
+
+export async function assertGitAvailable(config: Config): Promise<EnvironmentCommand> {
+  const item = { name: "Git", command: config.git };
+  const result = await commandVersion(item.command, Math.min(config.gitOperationTimeoutMs, 10_000));
+  if (result.error || result.status !== 0) {
+    const detail = result.error || result.stderr.trim() || `exit ${result.status ?? "unknown"}`;
+    throw Object.assign(
+      new Error(`Git 集成功能不可用：无法运行配置的命令“${item.command}”（${detail}）。请安装 Git，或修正 git.binary 后重试。`),
+      { statusCode: 503, code: "GIT_UNAVAILABLE" }
+    );
+  }
+  const version = `${result.stdout || result.stderr}`.trim().split("\n")[0]?.slice(0, 160) || "available";
+  return { ...item, version };
 }
 
 function commandVersion(command: string, timeoutMs: number): Promise<{

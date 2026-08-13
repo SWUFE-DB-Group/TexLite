@@ -23,13 +23,15 @@ texLite is a lightweight, local-first web workspace for writing, compiling, prev
 - List/grid project views, search, sorting by last modification or creation time, and private Finder-style color tags.
 - Project rename, source ZIP download, deletion, owner and modification metadata.
 - English and Chinese UI with browser-language detection and a language switcher.
-- CodeMirror LaTeX editing with syntax highlighting, folding, completion, outline navigation, search/replace, and configurable appearance.
-- Yjs CRDT collaboration with active-session avatars, remote cursors, and a practical limit of about ten concurrent sessions per project.
+- CodeMirror LaTeX editing with syntax highlighting, folding, completion, quick file opening, current-file and project-wide search/replace, a cross-file outline, and configurable appearance.
+- Yjs CRDT collaboration with active-session avatars, remote cursors, acknowledged server saves, and a browser-local IndexedDB draft for reconnect recovery; the practical limit is about ten concurrent sessions per project.
+- Automatic content-addressed project history with labels, file comparison, single-file restore, and full-project restore checkpoints.
 - Source-range comments with replies, resolved state, user/time metadata, and anchor remapping after edits.
-- Host-side latexmk compilation with pdflatex, xelatex, and lualatex options, project-level latexmkrc, serialized project jobs, persistent incremental caches, immutable published snapshots, retained PDFs, SyncTeX navigation, logs, warnings, errors, and downloadable artifacts such as .bbl files.
+- Host-side latexmk compilation with pdflatex, xelatex, and lualatex options, project-level latexmkrc, serialized project jobs, persistent incremental caches, immutable published snapshots, retained PDFs, SyncTeX navigation, structured clickable diagnostics, and downloadable artifacts such as .bbl files.
 - Project sharing with read-only or read/write access. Read-only users can still add and reply to comments.
 - Owner-only local Git history and GitHub backup: commit, push, diff, checkout, and restore tracked changes.
 - Optional PM2 process management for automatic restart, status, and logs.
+- Administrator-only live system metrics for compile queues, collaboration sessions, event-loop delay, memory, and recent operation latency.
 
 ## Architecture
 
@@ -49,7 +51,7 @@ texLite is designed as a single Node.js process. Do not run multiple application
 
 - Node.js 24 or newer
 - npm
-- git
+- git (optional; required only for the project-owner Git/GitHub integration)
 - latexmk
 - At least one configured engine: pdflatex, xelatex, or lualatex
 
@@ -58,12 +60,13 @@ Check the host before initialization:
 ~~~bash
 node --version
 npm --version
-git --version
 latexmk --version
 xelatex --version
+# Optional, when Git/GitHub integration is needed:
+git --version
 ~~~
 
-npm run init performs the same environment check for git, latexmk, and every engine in latex.allowedEngines. Initialization and startup stop with a clear error when a required command is unavailable.
+npm run init and application startup check latexmk and every engine in latex.allowedEngines. Git is deliberately excluded from this core check, so a host without Git can initialize and run TexLite normally. When a project owner opens the Git panel or invokes a Git/GitHub operation, TexLite checks git.binary on demand and shows an actionable error if Git is unavailable.
 
 ## Quick start
 
@@ -121,6 +124,7 @@ The example configuration is intentionally complete:
   "server": { "host": "127.0.0.1", "port": 3000 },
   "storage": { "dataDir": ".texlite" },
   "uploads": { "maxFileSizeMB": 50 },
+  "history": { "maxVersions": 200, "maxStorageMB": 512 },
   "git": {
     "binary": "git",
     "operationTimeoutSeconds": 30,
@@ -143,9 +147,11 @@ Important settings:
 - server.host and server.port: network bind address and port. Keep the host at 127.0.0.1 unless a separately secured deployment is intended.
 - storage.dataDir: SQLite database, project sources, compile output, and the Git token encryption key.
 - uploads.maxFileSizeMB: maximum size for a project upload, a ZIP entry, project files, and attachments. The default is 50 MB.
+- history.maxVersions: maximum number of ordinary, unlabeled versions retained per project. Initial and labeled versions are protected.
+- history.maxStorageMB: soft per-project limit for deduplicated history objects. The oldest ordinary versions are removed first; protected versions and the current internal baseline can exceed this limit.
 - latex.defaultEngine, latex.allowedEngines, latex.extraArgs: compile choices available in the UI.
 - latex.compileTimeoutSeconds: timeout for one compile job.
-- latex.maxCompileJobs: global number of concurrent LaTeX processes. Jobs for one project are always serialized; newer source versions supersede older queued requests.
+- latex.maxCompileJobs: global number of concurrent LaTeX processes. Jobs for the same project and root document are serialized; newer source versions supersede older queued requests. Different root documents use independent workspaces and may compile concurrently within this global limit.
 - latex.allowProjectLatexmkrc: allow a project to supply a multi-line latexmkrc. A project rc file is executable Perl configuration and should only be enabled for trusted users.
 
 ### Effective defaults and startup validation
@@ -163,6 +169,8 @@ email):
 | `clientDir` | `dist/client` (relative to the working directory) |
 | `sessionDays` | `14` |
 | `uploads.maxFileSizeMB` | `50` MB |
+| `history.maxVersions` | `200` ordinary versions per project |
+| `history.maxStorageMB` | `512` MB per project (soft limit) |
 | `latex.latexmk` | `latexmk` |
 | `latex.defaultEngine` | `xelatex` |
 | `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` |
@@ -176,7 +184,8 @@ email):
 Configuration is validated before environment checks, database opening, or
 the HTTP listener starts. Explicit values are never silently replaced by a
 default. The accepted ranges are: port `1–65535`, sessions `1–3650` days,
-upload size `1–2048` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
+upload size `1–2048` MB, history versions `10–5000`, history storage
+`16–102400` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
 and Git timeout `1–3600` seconds. Engine names must be supported, unique, and
 the allowed-engine list must include the selected default engine. Data and
 project paths must not point at files (the data directory cannot be the
@@ -197,6 +206,7 @@ TEXLITE_SITE_NAME             TEXLITE_ADMIN_EMAIL
 TEXLITE_HOST                  TEXLITE_PORT
 TEXLITE_DATA_DIR              TEXLITE_CLIENT_DIR
 TEXLITE_SESSION_DAYS          TEXLITE_MAX_UPLOAD_SIZE_MB
+TEXLITE_HISTORY_MAX_VERSIONS TEXLITE_HISTORY_MAX_STORAGE_MB
 TEXLITE_LATEXMK               TEXLITE_DEFAULT_ENGINE
 TEXLITE_COMPILE_TIMEOUT       TEXLITE_MAX_COMPILE_JOBS
 TEXLITE_GIT                   TEXLITE_GIT_TIMEOUT
@@ -240,17 +250,27 @@ Useful lifecycle commands are pm2 stop texlite, pm2 restart texlite, pm2 delete 
 
 ## Collaboration and compilation model
 
-The editor uses a Yjs CRDT document for concurrent editing. Each active browser session is shown in the project header, and remote cursor colors identify editors. The intended scale is up to roughly ten active sessions on one project.
+The editor uses a Yjs CRDT document for concurrent editing. Each active browser session is shown in the project header, and remote cursor colors identify editors. The intended scale is up to roughly ten active sessions on one project. The save indicator changes to “saved” only after the server acknowledges durable source persistence. Unsynchronized updates are also retained in browser IndexedDB and replayed after a transient disconnect; a history restore or Git checkout rotates the collaboration epoch so an obsolete local draft cannot overwrite the restored tree. Deleting or moving a file rejects late edits from sessions that still held its old editor binding.
+
+The main document saved in project settings is the default root. When a user opens another `.tex` file containing `\documentclass`, that file becomes the compile root for that browser session; opening an included fragment does not change the current root. Only the current root is compiled. Compile status, logs, retained PDF, artifacts, outline, and SyncTeX state are keyed by root document, so collaborators working on different roots do not see each other's compile notification or replace each other's PDF.
 
 Compilation is isolated from editing:
 
 1. The server captures an immutable source snapshot.
-2. Changed files are synchronized into a persistent compile workspace keyed by project and compiler settings.
-3. latexmk reuses its dependency database and auxiliary files; jobs for the same project remain serialized.
+2. Changed files are synchronized into a persistent compile workspace keyed by project, root document, and compiler settings.
+3. latexmk reuses its dependency database and auxiliary files; jobs for the same root remain serialized.
 4. The resulting PDF, logs, SyncTeX, and other artifacts are copied into an immutable run bundle.
 5. A successful bundle is published atomically as the latest retained result.
 
-The mutable cache is never used concurrently, while published artifacts are never modified in place. A user can continue viewing the previous PDF while a new compile is running. latexmk handles the necessary repeated passes for BibTeX-based documents and avoids rerunning BibTeX when its inputs have not changed. Compile responses expose a Server-Timing header for snapshot, cache synchronization, latexmk, artifact-copy, and total request time.
+The mutable cache for one root is never used concurrently, while different roots have separate caches and published artifacts are never modified in place. A user can continue viewing the previous PDF while a new compile is running. latexmk handles the necessary repeated passes for BibTeX-based documents and avoids rerunning BibTeX when its inputs have not changed. Compile responses expose a Server-Timing header for snapshot, cache synchronization, latexmk, artifact-copy, and total request time. TexLite does not retain a browsable compile history: it keeps only the latest attempt state and, when needed, the last successful result currently published for each root document. Older database rows and immutable artifact bundles are removed automatically.
+
+## History, navigation, and diagnostics
+
+Automatic history records source/file operations, compiler-setting changes, Git operations, restores, and acknowledged collaborative saves. Collaborative saves use fixed two-minute version windows, so continuous editing still creates useful recovery points without recording every keystroke. TexLite retains the latest 200 ordinary versions by default, plus every labeled and initial version. File contents are stored as complete SHA-256-addressed objects: unchanged data is reused, while a changed file creates a new complete object. A 512 MB soft per-project limit removes the oldest ordinary versions first; protected versions and the current internal baseline may exceed it. Project owners can see history storage usage and delete one version or clear all history without changing current project files. Unreferenced objects are garbage-collected. History is useful for correcting writing mistakes, but it is not a replacement for backing up the complete data directory.
+
+Use Ctrl/Cmd+P to open a project file quickly and Ctrl/Cmd+Shift+F for literal project-wide search and replace. Project replacement is staged as one operation and creates a history version. The outline follows `\\input`, `\\include`, and `\\subfile` references from the main document. Structured warning/error entries resolve project-relative file names and jump directly to the matching source line; the raw latexmk transcript remains available.
+
+Administrators can open **System status** on the project list. It reports only counts and timings—never source text, passwords, Git tokens, or comments. The same data is available at authenticated endpoint `GET /api/health/metrics`.
 
 ## GitHub backup
 
@@ -279,6 +299,7 @@ The default data directory is:
     └── <project-id>/
         ├── source/
         └── output/
+            └── .texlite/   # compile cache/runs and history objects
 ~~~
 
 Back up texlite.db, git-token.key, and projects/ together. The encryption key is required to recover saved GitHub tokens. SQLite WAL files should be included when taking a live filesystem backup, or use a SQLite-aware backup procedure.

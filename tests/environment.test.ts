@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Config } from "../src/server/config.js";
-import { assertEnvironment } from "../src/server/environment.js";
+import { assertEnvironment, assertGitAvailable } from "../src/server/environment.js";
 
 function testConfig(): Config {
   const root = path.join(os.tmpdir(), "texlite-environment-test");
@@ -12,16 +12,20 @@ function testConfig(): Config {
     projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
     compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: process.execPath, defaultEngine: "xelatex",
     allowedEngines: [], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024,
+    historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
     git: process.execPath, gitOperationTimeoutMs: 10_000, githubApiBaseUrl: "https://api.github.com"
   };
 }
 
 describe("startup environment checks", () => {
-  it("checks configured commands and stops on a missing dependency", async () => {
-    const available = await assertEnvironment(testConfig());
+  it("requires LaTeX commands but treats Git as an on-demand dependency", async () => {
+    const config = testConfig();
+    const available = await assertEnvironment({ ...config, git: "/definitely/missing/texlite-git" });
     expect(available).toHaveLength(1);
     expect(available[0].version).toMatch(/^v\d+/);
-    await expect(assertEnvironment({ ...testConfig(), git: "/definitely/missing/texlite-git" }))
+    await expect(assertEnvironment({ ...config, latexmk: "/definitely/missing/texlite-latexmk" }))
       .rejects.toThrow("初始化/启动已停止");
+    await expect(assertGitAvailable({ ...config, git: "/definitely/missing/texlite-git" }))
+      .rejects.toMatchObject({ code: "GIT_UNAVAILABLE", statusCode: 503 });
   });
 });

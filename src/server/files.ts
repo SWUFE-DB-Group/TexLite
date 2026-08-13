@@ -6,6 +6,7 @@ export interface FileEntry {
   path: string;
   type: "file" | "directory";
   size?: number;
+  mtimeMs?: number;
 }
 
 export function projectRoot(config: Config, projectId: string): string {
@@ -93,6 +94,30 @@ export function listProjectFiles(config: Config, projectId: string): FileEntry[]
     }
   };
   if (fs.existsSync(root)) visit(root, "");
+  return result;
+}
+
+export async function listProjectFilesAsync(config: Config, projectId: string): Promise<FileEntry[]> {
+  const root = sourceRoot(config, projectId);
+  const result: FileEntry[] = [];
+  const visit = async (directory: string, prefix: string): Promise<void> => {
+    const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === ".git") continue;
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        result.push({ path: relative, type: "directory" });
+        await visit(absolute, relative);
+      } else if (entry.isFile()) {
+        const stat = await fs.promises.stat(absolute);
+        result.push({ path: relative, type: "file", size: stat.size, mtimeMs: stat.mtimeMs });
+      }
+    }
+  };
+  try { await visit(root, ""); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   return result;
 }
 

@@ -172,10 +172,31 @@ function migrate(db: DatabaseConnection): void {
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       requested_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      main_file TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
       log TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
       finished_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS compile_runs_project_created ON compile_runs(project_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS project_history_versions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      author_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      reason TEXT NOT NULL CHECK (reason IN ('initial', 'autosave', 'file', 'settings', 'git', 'restore', 'checkpoint')),
+      label TEXT,
+      manifest_json TEXT NOT NULL,
+      changed_paths_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS project_history_versions_project_created
+      ON project_history_versions(project_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS project_history_state (
+      project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+      manifest_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS project_dictionary_words (
@@ -229,9 +250,18 @@ function migrate(db: DatabaseConnection): void {
   if (!userColumns.some((column) => column.name === "can_create_projects")) {
     db.exec("ALTER TABLE users ADD COLUMN can_create_projects INTEGER NOT NULL DEFAULT 0");
   }
+  const compileRunColumns = db.prepare("PRAGMA table_info(compile_runs)").all() as Array<{ name: string }>;
+  if (!compileRunColumns.some((column) => column.name === "main_file")) {
+    db.exec("ALTER TABLE compile_runs ADD COLUMN main_file TEXT NOT NULL DEFAULT ''");
+  }
   db.exec(`
     UPDATE users SET can_create_projects = 1 WHERE role = 'admin';
     UPDATE projects SET last_modified_by = owner_id WHERE last_modified_by IS NULL;
+    UPDATE compile_runs SET main_file = COALESCE(
+      (SELECT project.main_file FROM projects project WHERE project.id = compile_runs.project_id), ''
+    ) WHERE main_file = '';
+    CREATE INDEX IF NOT EXISTS compile_runs_project_main_created
+      ON compile_runs(project_id, main_file, created_at DESC);
 
     INSERT OR IGNORE INTO tags (id, name, color, created_by, created_at, updated_at)
     SELECT legacy.id, legacy.name, legacy.color, p.owner_id, legacy.created_at, legacy.created_at

@@ -23,13 +23,15 @@ texLite 是一个轻量、以本机为中心的 LaTeX 网页工作区，用于�
 - 项目列表/网格视图、搜索、按最后修改时间或创建时间排序，以及每个用户私有的 Finder 风格彩色标签。
 - 项目重命名、源码 ZIP 下载、删除，以及所有者和修改信息展示。
 - 中文和英文界面，自动识别浏览器语言，并可手动切换。
-- 基于 CodeMirror 的 LaTeX 编辑器：语法高亮、折叠、补全、大纲跳转、查找/替换和外观设置。
-- 基于 Yjs CRDT 的协作编辑，显示活动会话头像、远程光标；单个项目建议不超过约 10 个并发会话。
+- 基于 CodeMirror 的 LaTeX 编辑器：语法高亮、折叠、补全、快速打开文件、当前文件及全项目搜索/替换、跨文件大纲和外观设置。
+- 基于 Yjs CRDT 的协作编辑，显示活动会话头像、远程光标，保存状态以服务端持久化确认为准，并用浏览器 IndexedDB 保留断线草稿；单个项目建议不超过约 10 个并发会话。
+- 内容寻址的自动项目历史：可添加版本标签、比较文件、恢复单个文件或带安全检查点地恢复整个项目。
 - 源码范围批注、回复、resolved 状态、用户/时间信息，以及源码变化后的批注锚点重映射。
-- 使用宿主机 latexmk 编译，支持 pdflatex、xelatex、lualatex、项目级 latexmkrc、项目编译串行化、持久增量缓存、不可变发布快照、最新 PDF 保留、SyncTeX 跳转、日志/警告/错误和 .bbl 等编译产物下载。
+- 使用宿主机 latexmk 编译，支持 pdflatex、xelatex、lualatex、项目级 latexmkrc、项目编译串行化、持久增量缓存、不可变发布快照、最新 PDF 保留、SyncTeX 跳转、可点击的结构化诊断和 .bbl 等编译产物下载。
 - 项目共享支持只读和读写权限；只读用户仍然可以添加和回复批注。
 - 项目所有者专用的本地 Git 历史和 GitHub 备份：commit、push、diff、checkout 和恢复已跟踪修改。
 - 可选 PM2 进程管理，支持异常重启、状态查看和日志管理。
+- 仅管理员可查看的系统状态：编译队列、协作会话、事件循环延迟、内存和近期操作耗时。
 
 ## 技术结构
 
@@ -49,7 +51,7 @@ texLite 按单个 Node.js 进程设计。不要让多个应用实例同时使用
 
 - Node.js 24 或更高版本
 - npm
-- git
+- git（可选；仅项目所有者使用 Git/GitHub 集成时需要）
 - latexmk
 - 至少一个配置好的引擎：pdflatex、xelatex 或 lualatex
 
@@ -58,12 +60,13 @@ texLite 按单个 Node.js 进程设计。不要让多个应用实例同时使用
 ~~~bash
 node --version
 npm --version
-git --version
 latexmk --version
 xelatex --version
+# 可选，仅在需要 Git/GitHub 集成时检查：
+git --version
 ~~~
 
-npm run init 会检查 git、latexmk 以及 latex.allowedEngines 中列出的每个引擎。如果命令不可用，初始化和启动都会停止并给出错误。
+npm run init 和应用启动会检查 latexmk 以及 latex.allowedEngines 中列出的每个引擎。Git 不参与这项核心检查，因此未安装 Git 的宿主机仍可正常初始化并运行 TexLite。项目所有者打开 Git 面板或执行 Git/GitHub 操作时，TexLite 才会按需检查 git.binary；如果 Git 不可用，界面会给出可操作的错误提示。
 
 ## 快速开始
 
@@ -121,6 +124,7 @@ npm start
   "server": { "host": "127.0.0.1", "port": 3000 },
   "storage": { "dataDir": ".texlite" },
   "uploads": { "maxFileSizeMB": 50 },
+  "history": { "maxVersions": 200, "maxStorageMB": 512 },
   "git": {
     "binary": "git",
     "operationTimeoutSeconds": 30,
@@ -143,9 +147,11 @@ npm start
 - server.host、server.port：监听地址和端口。除非已经准备好安全部署，否则保持 127.0.0.1。
 - storage.dataDir：SQLite 数据库、项目源码、编译输出和 Git token 加密密钥的位置。
 - uploads.maxFileSizeMB：项目上传、ZIP 条目、项目文件和资源的最大大小，默认 50 MB。
+- history.maxVersions：每个项目最多保留的普通、未标记版本数；初始版本和已标记版本受保护。
+- history.maxStorageMB：每个项目去重历史对象的软上限。超过后优先删除最旧的普通版本；受保护版本和当前内部基线可使实际用量超过上限。
 - latex.defaultEngine、latex.allowedEngines、latex.extraArgs：界面中可选择的编译方式。
 - latex.compileTimeoutSeconds：单次编译超时时间。
-- latex.maxCompileJobs：全局 LaTeX 进程并发上限。同一个项目始终串行编译；多个源码版本排队时只保留最新请求。
+- latex.maxCompileJobs：全局 LaTeX 进程并发上限。同一项目的同一主文档串行编译；多个源码版本排队时只保留最新请求。不同主文档使用独立工作区，可在该全局上限内并行编译。
 - latex.allowProjectLatexmkrc：是否允许项目提供多行 latexmkrc。该文件是可执行的 Perl 配置，只建议对可信用户开启。
 
 ### 生效默认值和启动校验
@@ -162,6 +168,8 @@ npm start
 | `clientDir` | `dist/client`（相对于工作目录） |
 | `sessionDays` | `14` 天 |
 | `uploads.maxFileSizeMB` | `50` MB |
+| `history.maxVersions` | 每项目 `200` 个普通版本 |
+| `history.maxStorageMB` | 每项目 `512` MB（软上限） |
 | `latex.latexmk` | `latexmk` |
 | `latex.defaultEngine` | `xelatex` |
 | `latex.allowedEngines` | `pdflatex`、`xelatex`、`lualatex` |
@@ -174,8 +182,9 @@ npm start
 
 配置会在环境检查、打开数据库和启动 HTTP 监听之前完成校验。显式设置的
 非法值不会静默回退到默认值。允许范围为：端口 `1–65535`，会话有效期
-`1–3650` 天，单文件大小 `1–2048` MB，编译超时 `1–3600` 秒，编译并发数
-`1–32`，Git 超时 `1–3600` 秒。引擎名称必须受支持且不能重复；允许引擎
+`1–3650` 天，单文件大小 `1–2048` MB，历史版本数 `10–5000`，历史存储
+`16–102400` MB，编译超时 `1–3600` 秒，编译并发数 `1–32`，Git 超时
+`1–3600` 秒。引擎名称必须受支持且不能重复；允许引擎
 列表必须包含选中的默认引擎。数据目录和项目目录不能指向文件，数据目录
 不能是文件系统根目录；数据目录不存在时，其父目录必须已经存在且可写。
 GitHub API 地址必须是 `http://` 或 `https://` URL。
@@ -193,6 +202,7 @@ TEXLITE_SITE_NAME             TEXLITE_ADMIN_EMAIL
 TEXLITE_HOST                  TEXLITE_PORT
 TEXLITE_DATA_DIR              TEXLITE_CLIENT_DIR
 TEXLITE_SESSION_DAYS          TEXLITE_MAX_UPLOAD_SIZE_MB
+TEXLITE_HISTORY_MAX_VERSIONS TEXLITE_HISTORY_MAX_STORAGE_MB
 TEXLITE_LATEXMK               TEXLITE_DEFAULT_ENGINE
 TEXLITE_COMPILE_TIMEOUT       TEXLITE_MAX_COMPILE_JOBS
 TEXLITE_GIT                   TEXLITE_GIT_TIMEOUT
@@ -236,17 +246,27 @@ pm2 save
 
 ## 协作和编译模型
 
-编辑器使用 Yjs CRDT 支持并发编辑。项目顶部显示活动浏览器会话，远程光标使用不同颜色；单个项目的目标规模约为 10 个活动会话。
+编辑器使用 Yjs CRDT 支持并发编辑。项目顶部显示活动浏览器会话，远程光标使用不同颜色；单个项目的目标规模约为 10 个活动会话。只有服务端确认源码已经持久化后，保存状态才会显示“已保存”。尚未同步的更新也会保留在浏览器 IndexedDB 中，并在临时断线后恢复；恢复历史版本或 Git checkout 会轮换协作 epoch，避免旧的本地草稿覆盖刚恢复的源码树。删除或移动文件后，其他会话仍绑定旧编辑器时产生的迟到修改会被拒绝。
+
+项目设置中保存的主文档是默认主文档。用户打开另一个包含 `\documentclass` 的 `.tex` 文件后，该文件仅在当前浏览器会话中成为编译主文档；打开被引用的普通片段不会切换主文档。系统只编译当前主文档。编译状态、日志、保留的 PDF、编译产物、大纲和 SyncTeX 均按主文档隔离，因此查看不同主文档的协作者不会看到彼此的编译提示，也不会覆盖彼此的 PDF。
 
 编译与编辑相互隔离：
 
 1. 服务端捕获不可变源码快照。
-2. 将有变化的文件增量同步到按项目和编译设置区分的持久编译工作区。
-3. latexmk 复用依赖数据库和辅助文件；同一项目的任务仍然串行执行。
+2. 将有变化的文件增量同步到按项目、主文档和编译设置区分的持久编译工作区。
+3. latexmk 复用依赖数据库和辅助文件；同一主文档的任务仍然串行执行。
 4. 将 PDF、日志、SyncTeX 和其他产物复制到不可变的运行快照。
 5. 编译成功后，以原子方式发布最新产物快照。
 
-可变缓存不会被并发使用，已经发布的产物也不会被原地修改。编译时仍可查看旧 PDF；BibTeX 文档所需的多轮编译由 latexmk 自动处理，参考文献输入未变化时不会重复运行 BibTeX。编译响应提供 Server-Timing 响应头，可以分别查看快照、缓存同步、latexmk、产物复制和请求总耗时。
+同一主文档的可变缓存不会被并发使用，不同主文档使用独立缓存，已经发布的产物也不会被原地修改。编译时仍可查看旧 PDF；BibTeX 文档所需的多轮编译由 latexmk 自动处理，参考文献输入未变化时不会重复运行 BibTeX。编译响应提供 Server-Timing 响应头，可以分别查看快照、缓存同步、latexmk、产物复制和请求总耗时。TexLite 不保留可浏览的编译历史：仅按主文档保存最近一次尝试的状态，以及仍用于 PDF 预览的最近成功结果（如果需要）。更早的数据库记录和不可变产物包会自动清理。
+
+## 历史、导航和诊断
+
+自动历史会记录源码/文件操作、编译器设置、Git 操作、恢复操作和服务端确认的协作保存。协作保存采用固定的两分钟版本窗口，因此连续编辑仍会形成有用的恢复点，同时不会按每次按键记录。TexLite 默认保留最近 200 个普通版本，以及全部已标记版本和初始版本。文件内容以完整的 SHA-256 对象保存：未变化内容会复用，变化文件则产生一个新的完整对象。默认每个项目设置 512 MB 软上限，超过后优先删除最旧的普通版本；受保护版本和当前内部基线可能使实际用量超过上限。项目所有者可以查看历史存储用量、删除单个版本或清空全部历史，而不会改变当前项目文件。不再被引用的对象会被清理。历史功能适合修正写作误操作，但不能替代对完整数据目录的备份。
+
+Ctrl/Cmd+P 用于快速打开项目文件，Ctrl/Cmd+Shift+F 用于全项目纯文本搜索和替换。全项目替换按一次操作暂存，并自动创建历史版本。大纲从主文档开始跟随 `\\input`、`\\include` 和 `\\subfile`。结构化警告/错误会解析项目内文件名，点击后直接跳到源码行；完整 latexmk 原始日志仍然保留。
+
+管理员可在项目列表打开“系统状态”。指标只包含数量和耗时，绝不包含源码、密码、Git token 或批注；也可通过需要管理员登录的 `GET /api/health/metrics` 获取。
 
 ## GitHub 备份
 
@@ -275,6 +295,7 @@ user.email = <username>@texlite.com
     └── <project-id>/
         ├── source/
         └── output/
+            └── .texlite/   # 编译缓存/运行和历史对象
 ~~~
 
 请同时备份 texlite.db、git-token.key 和 projects/。恢复已保存的 GitHub token 必须保留加密密钥。在线备份 SQLite 文件时也要包含 WAL 文件，或者使用 SQLite 感知的备份方式。

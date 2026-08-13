@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import type { Config } from "./config.js";
-import { listProjectFiles, resolveSourcePath } from "./files.js";
+import { listProjectFiles, listProjectFilesAsync, resolveSourcePath } from "./files.js";
 
 export type LatexCompletionKind = "keyword" | "function" | "class" | "constant" | "text";
 
@@ -210,12 +210,17 @@ function sorted(map: Map<string, LatexCompletionItem>): LatexCompletionItem[] {
   return [...map.values()].sort((left, right) => left.label.localeCompare(right.label));
 }
 
-export function buildLatexCompletionIndex(config: Config, projectId: string): LatexCompletionIndex {
+function standardIndex(): MutableIndex {
   const index = createIndex();
   for (const [label, detail, apply] of standardCommands) commandItem(index, label, detail, "LaTeX", apply);
   for (const [label, detail, apply] of standardEnvironments) index.environments.set(label, item(label, detail, "keyword", "LaTeX", apply));
   for (const packageName of standardPackages) index.packages.set(packageName.trim(), item(packageName.trim(), "Package", "text", "LaTeX"));
   for (const className of standardClasses) index.files.set(className, item(className, "Document class", "class", "LaTeX"));
+  return index;
+}
+
+export function buildLatexCompletionIndex(config: Config, projectId: string): LatexCompletionIndex {
+  const index = standardIndex();
   const allEntries = listProjectFiles(config, projectId).filter((entry) => entry.type === "file").slice(0, maxIndexedFiles);
   for (const entry of allEntries) index.files.set(entry.path, item(entry.path, "Project file", "text", "Project"));
   const entries = allEntries.filter((entry) => textExtensions.test(entry.path));
@@ -237,4 +242,74 @@ export function buildLatexCompletionIndex(config: Config, projectId: string): La
     commands: sorted(index.commands), environments: sorted(index.environments), labels: sorted(index.labels),
     citations: sorted(index.citations), packages: sorted(index.packages), files: sorted(index.files)
   };
+}
+
+interface CachedSymbols {
+  signature: string;
+  index: MutableIndex;
+}
+
+/** Reuses extracted symbols for files whose mtime and size did not change. */
+export class LatexCompletionService {
+  private readonly cache = new Map<string, Map<string, CachedSymbols>>();
+  private readonly pending = new Map<string, Promise<LatexCompletionIndex>>();
+
+  constructor(private readonly config: Config) {}
+
+  build(projectId: string): Promise<LatexCompletionIndex> {
+    const existing = this.pending.get(projectId);
+    if (existing) return existing;
+    const request = this.buildIncremental(projectId).finally(() => {
+      if (this.pending.get(projectId) === request) this.pending.delete(projectId);
+    });
+    this.pending.set(projectId, request);
+    return request;
+  }
+
+  invalidate(projectId: string): void {
+    this.cache.delete(projectId);
+  }
+
+  private async buildIncremental(projectId: string): Promise<LatexCompletionIndex> {
+    const index = standardIndex();
+    const projectCache = this.cache.get(projectId) ?? new Map<string, CachedSymbols>();
+    this.cache.set(projectId, projectCache);
+    const allEntries = (await listProjectFilesAsync(this.config, projectId)).filter((entry) => entry.type === "file").slice(0, maxIndexedFiles);
+    const livePaths = new Set(allEntries.map((entry) => entry.path));
+    for (const cachedPath of [...projectCache.keys()]) if (!livePaths.has(cachedPath)) projectCache.delete(cachedPath);
+    for (const entry of allEntries) index.files.set(entry.path, item(entry.path, "Project file", "text", "Project"));
+
+    let indexedBytes = 0;
+    for (const entry of allEntries.filter((candidate) => textExtensions.test(candidate.path))) {
+      const size = entry.size ?? 0;
+      if (size > maxIndexedFileBytes || indexedBytes + size > maxIndexedBytes) continue;
+      indexedBytes += size;
+      const signature = `${size}:${entry.mtimeMs ?? 0}`;
+      let cached = projectCache.get(entry.path);
+      if (!cached || cached.signature !== signature) {
+        let content: string;
+        try { content = await fs.promises.readFile(resolveSourcePath(this.config, projectId, entry.path), "utf8"); }
+        catch { projectCache.delete(entry.path); continue; }
+        const fileIndex = createIndex();
+        if (definitionExtensions.test(entry.path) || /\.bib$/i.test(entry.path)) extractSymbols(fileIndex, entry.path, content);
+        cached = { signature, index: fileIndex };
+        projectCache.set(entry.path, cached);
+      }
+      mergeIndex(index, cached.index);
+    }
+    return {
+      commands: sorted(index.commands), environments: sorted(index.environments), labels: sorted(index.labels),
+      citations: sorted(index.citations), packages: sorted(index.packages), files: sorted(index.files)
+    };
+  }
+}
+
+function mergeIndex(target: MutableIndex, source: MutableIndex): void {
+  for (const value of source.commands.values()) commandItem(target, value.label, value.detail, value.source ?? "Project", value.apply);
+  for (const key of ["environments", "labels", "citations", "packages", "files"] as const) {
+    for (const [label, value] of source[key]) {
+      const existing = target[key].get(label);
+      if (!existing || (existing.source === "LaTeX" && value.source !== "LaTeX")) target[key].set(label, value);
+    }
+  }
 }

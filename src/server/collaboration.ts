@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { WebSocket, type RawData } from "ws";
 import * as Y from "yjs";
 import * as encoding from "lib0/encoding";
@@ -30,8 +31,8 @@ const MAX_COLLABORATIVE_FILE_BYTES = 5 * 1024 * 1024;
 const DISK_ORIGIN = Symbol("disk");
 const HTTP_ORIGIN = Symbol("http");
 const META_ORIGIN = Symbol("meta");
-const SAVE_DELAY_MS = 250;
-const STATE_SAVE_DELAY_MS = 100;
+const SAVE_DELAY_MS = 750;
+const STATE_SAVE_DELAY_MS = 750;
 const ROOM_IDLE_MS = 30_000;
 const COLORS = [
   ["#1677c8", "#1677c833"], ["#d65745", "#d6574533"], ["#16866a", "#16866a33"],
@@ -57,14 +58,31 @@ interface Room {
   awarenessOwners: Map<number, Connection>;
   allowedPaths: Set<string>;
   persistedContent: Map<string, string>;
+  dirtyPaths: Set<string>;
+  textObservers: Map<string, (event: Y.YTextEvent, transaction: Y.Transaction) => void>;
   saveTimer: NodeJS.Timeout | null;
   stateSaveTimer: NodeJS.Timeout | null;
   cleanupTimer: NodeJS.Timeout | null;
   lastModifiedUserId: string | null;
   epoch: string;
+  persistedRevision: number;
+  persistedAt: string;
+}
+
+export interface CollaborationSaveReceipt {
+  revision: number;
+  persistedAt: string;
+}
+
+export interface CollaborationPersistEvent {
+  projectId: string;
+  userId: string | null;
+  paths: string[];
+  durationMs: number;
 }
 
 export interface SharedCompileState {
+  mainFile: string;
   runId: string;
   status: "queued" | "running" | "succeeded" | "failed";
   requestedBy: { id: string; username: string; name: string };
@@ -74,7 +92,11 @@ export interface SharedCompileState {
 export class CollaborationService {
   private readonly rooms = new Map<string, Room>();
 
-  constructor(private readonly config: Config, private readonly db: DatabaseConnection) {}
+  constructor(
+    private readonly config: Config,
+    private readonly db: DatabaseConnection,
+    private readonly onPersist?: (event: CollaborationPersistEvent) => void
+  ) {}
 
   connect(socket: WebSocket, projectId: string, user: UserRow): void {
     const project = accessibleProject(this.db, projectId, user);
@@ -116,13 +138,23 @@ export class CollaborationService {
     if (room) this.flushRoom(room);
   }
 
+  stats(): { rooms: number; sessions: number; dirtyFiles: number } {
+    let sessions = 0;
+    let dirtyFiles = 0;
+    for (const room of this.rooms.values()) {
+      sessions += room.connections.size;
+      dirtyFiles += room.dirtyPaths.size;
+    }
+    return { rooms: this.rooms.size, sessions, dirtyFiles };
+  }
+
   updateFile(projectId: string, filePathInput: string, content: string, userId: string): void {
     const room = this.rooms.get(projectId);
     if (!room || !isCollaborativeTextFile(filePathInput)) return;
     const filePath = safeRelativePath(filePathInput);
     room.allowedPaths.add(filePath);
     room.persistedContent.set(filePath, content);
-    room.doc.transact(() => replaceText(room.doc.getText(typeName(filePath)), content), HTTP_ORIGIN);
+    room.doc.transact(() => replaceText(this.trackedText(room, filePath), content), HTTP_ORIGIN);
     room.lastModifiedUserId = userId;
     this.bumpFiles(room, { kind: "update", path: filePath });
   }
@@ -137,9 +169,9 @@ export class CollaborationService {
     room.doc.transact(() => {
       for (const oldPath of moved) {
         const nextPath = oldPath === source ? destination : `${destination}${oldPath.slice(source.length)}`;
-        const content = room.doc.getText(typeName(oldPath)).toString();
-        replaceText(room.doc.getText(typeName(nextPath)), content);
-        replaceText(room.doc.getText(typeName(oldPath)), "");
+        const content = this.trackedText(room, oldPath).toString();
+        replaceText(this.trackedText(room, nextPath), content);
+        replaceText(this.trackedText(room, oldPath), "");
         room.allowedPaths.delete(oldPath);
         room.allowedPaths.add(nextPath);
         room.persistedContent.delete(oldPath);
@@ -157,9 +189,10 @@ export class CollaborationService {
     const removed = [...room.allowedPaths].filter((candidate) => candidate === filePath || candidate.startsWith(`${filePath}/`));
     room.doc.transact(() => {
       for (const candidate of removed) {
-        replaceText(room.doc.getText(typeName(candidate)), "");
+        replaceText(this.trackedText(room, candidate), "");
         room.allowedPaths.delete(candidate);
         room.persistedContent.delete(candidate);
+        room.dirtyPaths.delete(candidate);
       }
     }, HTTP_ORIGIN);
     this.bumpFiles(room, { kind: "delete", path: filePath });
@@ -180,7 +213,15 @@ export class CollaborationService {
   signalCompileState(projectId: string, state: SharedCompileState): void {
     const room = this.rooms.get(projectId);
     if (!room) return;
-    room.doc.transact(() => room.meta.set("compileState", state), META_ORIGIN);
+    const current = room.meta.get("compileStates");
+    const states = current && typeof current === "object" && !Array.isArray(current)
+      ? { ...current as Record<string, SharedCompileState> }
+      : {};
+    states[state.mainFile] = state;
+    const retained = Object.fromEntries(Object.entries(states)
+      .sort((left, right) => Date.parse(right[1].updatedAt) - Date.parse(left[1].updatedAt))
+      .slice(0, 20));
+    room.doc.transact(() => room.meta.set("compileStates", retained), META_ORIGIN);
   }
 
   closeProject(projectId: string): void {
@@ -217,15 +258,20 @@ export class CollaborationService {
       awarenessOwners: new Map(),
       allowedPaths: new Set(),
       persistedContent: new Map(),
+      dirtyPaths: new Set(),
+      textObservers: new Map(),
       saveTimer: null,
       stateSaveTimer: null,
       cleanupTimer: null,
       lastModifiedUserId: null,
-      epoch: ""
+      epoch: "",
+      persistedRevision: 0,
+      persistedAt: new Date().toISOString()
     };
     room.awareness.setLocalState(null);
     const persistedState = collaborationStatePath(this.config, projectId);
     let recoveredState = false;
+    let recoveredDirty = false;
     if (fs.existsSync(persistedState)) {
       try {
         Y.applyUpdate(doc, fs.readFileSync(persistedState), DISK_ORIGIN);
@@ -243,12 +289,23 @@ export class CollaborationService {
         diskPaths.add(entry.path);
         room.allowedPaths.add(entry.path);
         room.persistedContent.set(entry.path, content);
-        replaceText(doc.getText(typeName(entry.path)), content);
+        const name = typeName(entry.path);
+        // Yjs decodes top-level shared types lazily as AbstractType instances;
+        // the stable source: namespace identifies text more reliably than
+        // instanceof before getText() materializes the public type.
+        const hasRecoveredText = recoveredState && doc.share.has(name);
+        const text = this.trackedText(room, entry.path);
+        if (hasRecoveredText && text.toString() !== content) {
+          room.dirtyPaths.add(entry.path);
+          recoveredDirty = true;
+        } else {
+          replaceText(text, content);
+        }
       }
-      for (const [name, sharedType] of doc.share) {
-        if (!name.startsWith(SOURCE_PREFIX) || !(sharedType instanceof Y.Text)) continue;
+      for (const name of doc.share.keys()) {
+        if (!name.startsWith(SOURCE_PREFIX)) continue;
         const filePath = name.slice(SOURCE_PREFIX.length);
-        if (!diskPaths.has(filePath)) replaceText(sharedType, "");
+        if (!diskPaths.has(filePath)) replaceText(doc.getText(name), "");
       }
     }, DISK_ORIGIN);
     doc.on("update", (update, origin) => {
@@ -276,8 +333,29 @@ export class CollaborationService {
       }
     });
     this.rooms.set(projectId, room);
-    this.persistRoomState(room);
+    if (recoveredDirty) this.flushRoom(room);
+    else this.persistRoomState(room);
     return room;
+  }
+
+  private trackedText(room: Room, filePath: string): Y.Text {
+    const text = room.doc.getText(typeName(filePath));
+    if (room.textObservers.has(filePath)) return text;
+    const observer = (_event: Y.YTextEvent, transaction: Y.Transaction): void => {
+      if (transaction.origin === DISK_ORIGIN || transaction.origin === HTTP_ORIGIN || transaction.origin === META_ORIGIN) return;
+      if (!room.allowedPaths.has(filePath)) {
+        // A client can still have the old Y.Text bound briefly after another
+        // session deletes or moves a file. Correct any late update immediately;
+        // otherwise the editor would appear writable even though the content
+        // can no longer be persisted to a source path.
+        room.doc.transact(() => replaceText(text, ""), DISK_ORIGIN);
+        return;
+      }
+      room.dirtyPaths.add(filePath);
+    };
+    text.observe(observer);
+    room.textObservers.set(filePath, observer);
+    return text;
   }
 
   private handleMessage(room: Room, connection: Connection, bytes: Uint8Array): void {
@@ -324,10 +402,12 @@ export class CollaborationService {
     if (messageType === MESSAGE_FLUSH) {
       const requestId = decoding.readVarString(decoder).slice(0, 128);
       if (!canEdit(current)) return;
-      this.flushRoom(room);
+      const receipt = this.flushRoom(room);
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MESSAGE_FLUSH);
       encoding.writeVarString(encoder, requestId);
+      encoding.writeVarUint(encoder, receipt.revision);
+      encoding.writeVarString(encoder, receipt.persistedAt);
       send(connection.socket, encoding.toUint8Array(encoder));
       return;
     }
@@ -387,12 +467,18 @@ export class CollaborationService {
 
   private scheduleSave(room: Room): void {
     if (room.saveTimer) clearTimeout(room.saveTimer);
-    room.saveTimer = setTimeout(() => this.flushRoom(room), SAVE_DELAY_MS);
+    room.saveTimer = setTimeout(() => {
+      try { this.flushRoom(room); }
+      catch { room.saveTimer = null; /* The Yjs state remains durable and the next client flush retries. */ }
+    }, SAVE_DELAY_MS);
   }
 
   private scheduleStateSave(room: Room): void {
     if (room.stateSaveTimer) clearTimeout(room.stateSaveTimer);
-    room.stateSaveTimer = setTimeout(() => this.persistRoomState(room), STATE_SAVE_DELAY_MS);
+    room.stateSaveTimer = setTimeout(() => {
+      try { this.persistRoomState(room); }
+      catch { room.stateSaveTimer = null; /* A later source flush will retry state persistence. */ }
+    }, STATE_SAVE_DELAY_MS);
   }
 
   private persistRoomState(room: Room): void {
@@ -405,28 +491,55 @@ export class CollaborationService {
     fs.renameSync(temporary, target);
   }
 
-  private flushRoom(room: Room): void {
+  private flushRoom(room: Room): CollaborationSaveReceipt {
+    const startedAt = performance.now();
     if (room.saveTimer) clearTimeout(room.saveTimer);
     room.saveTimer = null;
     this.persistRoomState(room);
     let changed = false;
-    for (const filePath of room.allowedPaths) {
-      const next = room.doc.getText(typeName(filePath)).toString();
+    const changedPaths: string[] = [];
+    const dirtyPaths = [...room.dirtyPaths];
+    for (const filePath of dirtyPaths) {
+      if (!room.allowedPaths.has(filePath)) {
+        room.dirtyPaths.delete(filePath);
+        continue;
+      }
+      const next = this.trackedText(room, filePath).toString();
       const previous = room.persistedContent.get(filePath) ?? "";
-      if (next === previous || Buffer.byteLength(next, "utf8") > this.config.maxUploadBytes) continue;
+      if (next === previous) {
+        room.dirtyPaths.delete(filePath);
+        continue;
+      }
+      if (Buffer.byteLength(next, "utf8") > this.config.maxUploadBytes) throw new Error(`Collaborative file exceeds upload limit: ${filePath}`);
       const absolute = resolveSourcePath(this.config, room.projectId, filePath);
-      if (!fs.existsSync(absolute)) continue;
-      reanchorFileComments(this.db, room.projectId, filePath, previous, next);
-      fs.writeFileSync(absolute, next, { encoding: "utf8", mode: 0o600 });
+      if (!fs.existsSync(absolute)) throw new Error(`Collaborative source path disappeared: ${filePath}`);
+      const temporary = `${absolute}.collaboration-${process.pid}-${randomUUID()}.tmp`;
+      try {
+        fs.writeFileSync(temporary, next, { encoding: "utf8", mode: 0o600 });
+        fs.renameSync(temporary, absolute);
+      } catch (error) {
+        fs.rmSync(temporary, { force: true });
+        throw error;
+      }
       room.persistedContent.set(filePath, next);
+      room.dirtyPaths.delete(filePath);
+      try { reanchorFileComments(this.db, room.projectId, filePath, previous, next); }
+      catch { /* Source durability is primary; comments can still be re-anchored by a later edit. */ }
       changed = true;
+      changedPaths.push(filePath);
     }
-    if (!changed) return;
-    if (room.lastModifiedUserId) {
+    if (changed && room.lastModifiedUserId) {
       this.db.prepare("UPDATE projects SET updated_at = ?, last_modified_by = ? WHERE id = ?")
         .run(new Date().toISOString(), room.lastModifiedUserId, room.projectId);
     }
-    this.signalComments(room.projectId);
+    if (changed) this.signalComments(room.projectId);
+    if (changed && this.onPersist) {
+      try { this.onPersist({ projectId: room.projectId, userId: room.lastModifiedUserId, paths: changedPaths, durationMs: performance.now() - startedAt }); }
+      catch { /* Source durability must not depend on optional history bookkeeping. */ }
+    }
+    room.persistedRevision += 1;
+    room.persistedAt = new Date().toISOString();
+    return { revision: room.persistedRevision, persistedAt: room.persistedAt };
   }
 
   private bumpFiles(room: Room, event: Record<string, string>): void {
@@ -441,11 +554,14 @@ export class CollaborationService {
       connection.protocolTimer = null;
     }
     if (persist) {
-      this.flushRoom(room);
-      this.persistRoomState(room);
+      try { this.flushRoom(room); }
+      catch { try { this.persistRoomState(room); } catch { /* Keep shutdown best-effort. */ } }
     } else {
       if (room.saveTimer) clearTimeout(room.saveTimer);
       if (room.stateSaveTimer) clearTimeout(room.stateSaveTimer);
+    }
+    for (const [filePath, observer] of room.textObservers) {
+      room.doc.getText(typeName(filePath)).unobserve(observer);
     }
     room.awareness.destroy();
     room.doc.destroy();

@@ -4,6 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import type { Config } from "./config.js";
 import type { DatabaseConnection, ProjectRow, UserRow } from "./db.js";
+import { assertGitAvailable } from "./environment.js";
 import { sourceRoot } from "./files.js";
 
 const MAX_COMMAND_OUTPUT = 8 * 1024 * 1024;
@@ -56,6 +57,7 @@ type GitHubFetch = (input: string | URL | Request, init?: RequestInit) => Promis
 
 export class ProjectGitService {
   private readonly locks = new Map<string, Promise<void>>();
+  private gitAvailability: Promise<void> | null = null;
 
   constructor(
     private readonly config: Config,
@@ -64,6 +66,7 @@ export class ProjectGitService {
   ) {}
 
   async status(project: ProjectRow): Promise<ProjectGitStatus> {
+    await this.ensureGitAvailable();
     const settings = this.settings(project.id);
     const initialized = fs.existsSync(path.join(sourceRoot(this.config, project.id), ".git"));
     if (!initialized) return {
@@ -108,6 +111,7 @@ export class ProjectGitService {
   async configureToken(project: ProjectRow, tokenInput: string): Promise<ProjectGitStatus> {
     const token = tokenInput.trim();
     if (token.length < 20 || token.length > 500) throw httpError(400, "GitHub token 格式不正确");
+    await this.ensureGitAvailable();
     return this.exclusive(project.id, async () => {
       const account = await this.githubRequest<{ login?: unknown }>(token, "/user", { method: "GET" });
       if (typeof account.login !== "string" || !account.login) throw httpError(502, "GitHub 没有返回有效的用户信息");
@@ -133,6 +137,7 @@ export class ProjectGitService {
 
   async createGitHubRepository(project: ProjectRow, name: string, isPrivate: boolean): Promise<ProjectGitStatus> {
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) throw httpError(400, "GitHub 仓库名称只能包含字母、数字、点、横线或下划线");
+    await this.ensureGitAvailable();
     return this.exclusive(project.id, async () => {
       const settings = this.requireTokenSettings(project.id);
       if (settings.remote_url) throw httpError(409, "该项目已经配置远程仓库");
@@ -332,7 +337,20 @@ export class ProjectGitService {
     };
   }
 
-  private git(cwd: string, args: string[], allowedCodes: number[] = [], env: NodeJS.ProcessEnv = process.env): Promise<CommandResult> {
+  private ensureGitAvailable(): Promise<void> {
+    if (!this.gitAvailability) {
+      this.gitAvailability = assertGitAvailable(this.config)
+        .then(() => undefined)
+        .catch((error) => {
+          this.gitAvailability = null;
+          throw error;
+        });
+    }
+    return this.gitAvailability;
+  }
+
+  private async git(cwd: string, args: string[], allowedCodes: number[] = [], env: NodeJS.ProcessEnv = process.env): Promise<CommandResult> {
+    await this.ensureGitAvailable();
     return new Promise((resolve, reject) => {
       const child = spawn(this.config.git, args, { cwd, env, shell: false, stdio: ["ignore", "pipe", "pipe"] });
       const stdout: Buffer[] = [];

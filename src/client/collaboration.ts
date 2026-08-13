@@ -4,6 +4,7 @@ import { encodeAwarenessUpdate, type Awareness } from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import * as syncProtocol from "y-protocols/sync";
+import { IndexeddbPersistence } from "y-indexeddb";
 import type { Project, User } from "./types";
 
 const COLORS = [
@@ -39,17 +40,23 @@ export interface FilesEvent {
 }
 
 export interface SharedCompileState {
+  mainFile: string;
   runId: string;
   status: "queued" | "running" | "succeeded" | "failed";
   requestedBy: { id: string; username: string; name: string };
   updatedAt: string;
 }
 
+export interface CollaborationSaveReceipt {
+  revision: number;
+  persistedAt: string;
+}
+
 export function sharedCompileState(value: unknown): SharedCompileState | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<SharedCompileState>;
   const requestedBy = candidate.requestedBy;
-  if (typeof candidate.runId !== "string"
+  if (typeof candidate.mainFile !== "string" || typeof candidate.runId !== "string"
     || !["queued", "running", "succeeded", "failed"].includes(candidate.status ?? "")
     || typeof candidate.updatedAt !== "string"
     || !requestedBy || typeof requestedBy.id !== "string"
@@ -57,18 +64,36 @@ export function sharedCompileState(value: unknown): SharedCompileState | null {
   return candidate as SharedCompileState;
 }
 
+export function sharedCompileStates(value: unknown): Record<string, SharedCompileState> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, SharedCompileState> = {};
+  for (const [mainFile, state] of Object.entries(value)) {
+    const parsed = sharedCompileState(state);
+    if (parsed && parsed.mainFile === mainFile) result[mainFile] = parsed;
+  }
+  return result;
+}
+
 export class ProjectCollaboration {
   readonly doc = new Y.Doc();
   readonly provider: WebsocketProvider;
   readonly awareness: Awareness;
+  readonly persistence: IndexeddbPersistence;
   private permission: Project["permission"] = "read";
   private activeFile = "";
   private epoch: string | null = null;
   private destroyed = false;
-  private readonly flushRequests = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: number }>();
+  private localDraftReady = false;
+  private readonly draftListeners = new Set<() => void>();
+  private readonly flushRequests = new Map<string, { resolve: (receipt: CollaborationSaveReceipt) => void; reject: (error: Error) => void; timer: number }>();
 
   constructor(readonly projectId: string, private readonly user: User) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    this.persistence = new IndexeddbPersistence(`texlite:${user.id}:${projectId}`, this.doc);
+    this.persistence.on("synced", () => {
+      this.localDraftReady = true;
+      for (const listener of this.draftListeners) listener();
+    });
     this.provider = new WebsocketProvider(
       `${protocol}//${window.location.host}/api/collaboration`,
       projectId,
@@ -80,17 +105,27 @@ export class ProjectCollaboration {
       const requestId = decoding.readVarString(decoder);
       const pending = this.flushRequests.get(requestId);
       if (!pending) return;
+      const revision = decoding.readVarUint(decoder);
+      const persistedAt = decoding.readVarString(decoder);
       window.clearTimeout(pending.timer);
       this.flushRequests.delete(requestId);
-      pending.resolve();
+      pending.resolve({ revision, persistedAt });
     };
     this.provider.messageHandlers[MESSAGE_PROTOCOL] = (_encoder, decoder) => {
       const epoch = decoding.readVarString(decoder);
-      if (this.epoch && this.epoch !== epoch) {
-        window.location.reload();
+      const epochKey = this.epochStorageKey();
+      const storedEpoch = safeLocalStorageGet(epochKey);
+      if ((this.epoch && this.epoch !== epoch) || (storedEpoch && storedEpoch !== epoch)) {
+        this.provider.disconnect();
+        this.rejectFlushes(new Error("Collaboration state changed"));
+        void this.persistence.clearData().then(() => {
+          safeLocalStorageSet(epochKey, epoch);
+          window.location.reload();
+        });
         return;
       }
       this.epoch = epoch;
+      safeLocalStorageSet(epochKey, epoch);
       const socket = this.provider.ws;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
       const acknowledgement = encoding.createEncoder();
@@ -128,6 +163,16 @@ export class ProjectCollaboration {
     return this.provider.wsconnected;
   }
 
+  get draftReady(): boolean {
+    return this.localDraftReady;
+  }
+
+  onDraftReady(listener: () => void): () => void {
+    this.draftListeners.add(listener);
+    if (this.localDraftReady) listener();
+    return () => this.draftListeners.delete(listener);
+  }
+
   setPermission(permission: Project["permission"]): void {
     this.permission = permission;
     this.updateLocalAwareness();
@@ -161,7 +206,7 @@ export class ProjectCollaboration {
     return sessions.sort((left, right) => Number(right.local) - Number(left.local) || left.name.localeCompare(right.name));
   }
 
-  flush(): Promise<void> {
+  flush(): Promise<CollaborationSaveReceipt> {
     const socket = this.provider.ws;
     if (!this.provider.synced || !socket || socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Collaboration connection is unavailable"));
@@ -193,6 +238,8 @@ export class ProjectCollaboration {
     this.destroyed = true;
     this.rejectFlushes(new Error("Collaboration connection closed"));
     this.provider.destroy();
+    this.persistence.destroy();
+    this.draftListeners.clear();
     this.doc.destroy();
   }
 
@@ -217,6 +264,18 @@ export class ProjectCollaboration {
     });
     this.awareness.setLocalStateField("filePath", this.activeFile);
   }
+
+  private epochStorageKey(): string {
+    return `texlite:collaboration-epoch:${this.user.id}:${this.projectId}`;
+  }
+}
+
+function safeLocalStorageGet(key: string): string | null {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+
+function safeLocalStorageSet(key: string, value: string): void {
+  try { window.localStorage.setItem(key, value); } catch { /* IndexedDB still retains the draft. */ }
 }
 
 export function avatarInitial(name: string, username: string): string {

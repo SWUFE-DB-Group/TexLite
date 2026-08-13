@@ -12,6 +12,10 @@
   "uploads": {
     "maxFileSizeMB": 50
   },
+  "history": {
+    "maxVersions": 200,
+    "maxStorageMB": 512
+  },
   "git": {
     "binary": "git",
     "operationTimeoutSeconds": 30,

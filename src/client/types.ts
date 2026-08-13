@@ -58,6 +58,36 @@ export interface FileEntry {
   size?: number;
 }
 
+export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
+
+export interface HistoryVersion {
+  id: string;
+  reason: HistoryReason;
+  label: string | null;
+  createdAt: string;
+  author: { id: string; username: string; name: string } | null;
+  changedPaths: string[];
+  fileCount: number;
+  totalSize: number;
+}
+
+export interface HistoryVersionDetail {
+  version: HistoryVersion;
+  settings: { mainFile: string; engine: Project["engine"]; latexmkrc: string | null };
+  files: Array<{ path: string; size: number }>;
+}
+
+export interface HistoryStats {
+  versionCount: number;
+  ordinaryVersionCount: number;
+  labeledVersionCount: number;
+  objectCount: number;
+  objectBytes: number;
+  maxVersions: number;
+  maxStorageBytes: number;
+  storageLimitExceeded: boolean;
+}
+
 export interface GitCommit {
   sha: string;
   shortSha: string;

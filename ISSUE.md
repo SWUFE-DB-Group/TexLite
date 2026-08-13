@@ -74,9 +74,11 @@ regression test where practical.
 - [ ] **Accessibility pass.** Review focus restoration for dialogs, keyboard
   navigation in the file tree/editor controls, status announcements and labels
   for icon-only actions.
-- [ ] **Observability.** Expose bounded server timing/queue metrics for project
+- [x] **Observability.** Expose bounded server timing/queue metrics for project
   loading, collaboration connection and compilation without logging source
-  contents or credentials.
+  contents or credentials. Administrators now have a live system-status panel
+  backed by a bounded in-memory timing window, queue/session counts, memory and
+  event-loop latency. Compile responses also retain detailed Server-Timing.
 - [x] **Configuration validation.** Validate configuration values at startup
   with actionable messages (paths, limits, engines, compile timeout and queue
   size) and document the effective defaults. `loadConfig()` now rejects
@@ -107,3 +109,8 @@ regression test where practical.
 - 2026-08-04: Added strict startup configuration validation for paths, limits,
   engines, URLs, compile timeout and queue size. Documented effective defaults,
   ranges, and environment override behavior in both READMEs.
+- 2026-08-13: Added acknowledged collaborative saves with IndexedDB reconnect
+  drafts, late-update rejection for deleted paths, bounded automatic project
+  history and file/project restore, project search/replace, quick open,
+  cross-file outlines, clickable latest-compile diagnostics,
+  compile/collaboration metrics, and lazy-loaded editor/tooling bundles.

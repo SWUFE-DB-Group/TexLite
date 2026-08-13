@@ -3,9 +3,11 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
+import { pipeline } from "node:stream/promises";
+import { Transform } from "node:stream";
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { Config } from "./config.js";
-import { listProjectFiles, outputRoot, safeRelativePath, sourceRoot } from "./files.js";
+import { listProjectFilesAsync, outputRoot, safeRelativePath, sourceRoot } from "./files.js";
 import { parseCompileDiagnostics, type CompileDiagnostics } from "./compileDiagnostics.js";
 
 export interface CompileTimings {
@@ -35,6 +37,7 @@ interface CompileSnapshotFile {
 export interface CompileSnapshot {
   projectId: string;
   runId: string;
+  mainFile: string;
   revision: string;
   root: string;
   sourceDir: string;
@@ -44,6 +47,7 @@ export interface CompileSnapshot {
 }
 
 export interface PublishedCompileArtifacts {
+  mainFile: string;
   runId: string;
   revision: string;
   source: string;
@@ -59,6 +63,7 @@ export interface CoordinatedCompileResult extends CompileResult {
 
 export interface CoordinatedCompileJob {
   projectId: string;
+  target?: string;
   runId: string;
   revision: string;
   onQueued: () => void;
@@ -88,6 +93,10 @@ export class CompileQueue {
     });
   }
 
+  stats(): { concurrency: number; running: number; pending: number } {
+    return { concurrency: this.concurrency, running: this.running, pending: this.pending.length };
+  }
+
   private drain(): void {
     while (this.running < this.concurrency && this.pending.length > 0) {
       const task = this.pending.shift();
@@ -115,13 +124,14 @@ interface ProjectCompileState {
 
 /** Serializes each project while still respecting the server-wide LaTeX process limit. */
 export class ProjectCompileCoordinator {
-  private readonly projects = new Map<string, ProjectCompileState>();
+  private readonly targets = new Map<string, ProjectCompileState>();
 
   constructor(private readonly queue: CompileQueue) {}
 
   request(input: CoordinatedCompileJob): Promise<CoordinatedCompileResult> {
-    const state = this.projects.get(input.projectId) ?? { active: null, pending: null };
-    this.projects.set(input.projectId, state);
+    const targetKey = `${input.projectId}\0${input.target ?? ""}`;
+    const state = this.targets.get(targetKey) ?? { active: null, pending: null };
+    this.targets.set(targetKey, state);
 
     if (state.active?.input.revision === input.revision) {
       if (state.pending) {
@@ -148,12 +158,12 @@ export class ProjectCompileCoordinator {
     } else {
       state.active = managed;
       input.onQueued();
-      this.start(input.projectId, state, managed);
+      this.start(targetKey, state, managed);
     }
     return managed.promise;
   }
 
-  private start(projectId: string, state: ProjectCompileState, job: ManagedCompileJob): void {
+  private start(targetKey: string, state: ProjectCompileState, job: ManagedCompileJob): void {
     void this.queue.add(job.input.execute).then(job.resolve, job.reject).finally(() => {
       if (state.active !== job) return;
       state.active = null;
@@ -162,9 +172,9 @@ export class ProjectCompileCoordinator {
       if (next) {
         state.active = next;
         next.input.onQueued();
-        this.start(projectId, state, next);
+        this.start(targetKey, state, next);
       } else {
-        this.projects.delete(projectId);
+        this.targets.delete(targetKey);
       }
     });
   }
@@ -184,52 +194,70 @@ function deferredJob(input: CoordinatedCompileJob): ManagedCompileJob {
   return { input, promise, resolve, reject };
 }
 
-export function captureCompileSnapshot(
+export async function captureCompileSnapshot(
   config: Config,
   projectId: string,
   runId: string,
   settings: { mainFile: string; engine: string; latexmkrc: string | null; extraArgs: string[] }
-): CompileSnapshot {
+): Promise<CompileSnapshot> {
   const root = compileRunRoot(config, projectId, runId);
   const snapshotSource = path.join(root, "source");
   const snapshotOutput = path.join(root, "output");
-  fs.mkdirSync(snapshotSource, { recursive: true, mode: 0o700 });
-  fs.mkdirSync(snapshotOutput, { recursive: true, mode: 0o700 });
+  await fs.promises.mkdir(snapshotSource, { recursive: true, mode: 0o700 });
+  await fs.promises.mkdir(snapshotOutput, { recursive: true, mode: 0o700 });
   const hash = createHash("sha256");
   const files: CompileSnapshotFile[] = [];
   const directories: string[] = [];
   hash.update(JSON.stringify(settings));
   try {
-    for (const entry of listProjectFiles(config, projectId).sort((left, right) => left.path.localeCompare(right.path))) {
+    const entries = (await listProjectFilesAsync(config, projectId)).sort((left, right) => left.path.localeCompare(right.path));
+    const fileEntries = entries.filter((entry) => entry.type === "file");
+    for (const entry of entries) {
       const destination = path.join(snapshotSource, entry.path);
       hash.update(`\0${entry.type}\0${entry.path}\0`);
       if (entry.type === "directory") {
-        fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
+        await fs.promises.mkdir(destination, { recursive: true, mode: 0o700 });
         directories.push(entry.path);
-        continue;
       }
-      const liveFile = path.join(sourceRoot(config, projectId), entry.path);
-      const stat = fs.statSync(liveFile);
-      const content = fs.readFileSync(liveFile);
-      hash.update(content);
-      fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(destination, content, { mode: 0o600 });
-      fs.utimesSync(destination, stat.atime, stat.mtime);
-      files.push({
-        path: entry.path,
-        digest: createHash("sha256").update(content).digest("hex"),
-        size: content.length,
-        mtimeMs: stat.mtimeMs
-      });
     }
+    // Four concurrent streams improve snapshot latency for typical papers with
+    // many figures without creating unbounded disk pressure on a shared host.
+    for (let offset = 0; offset < fileEntries.length; offset += 4) {
+      const batch = fileEntries.slice(offset, offset + 4);
+      const settled = await Promise.allSettled(batch.map(async (entry): Promise<CompileSnapshotFile> => {
+        const destination = path.join(snapshotSource, entry.path);
+        const liveFile = path.join(sourceRoot(config, projectId), entry.path);
+        const stat = await fs.promises.stat(liveFile);
+        await fs.promises.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
+        const digest = await copyAndDigest(liveFile, destination);
+        await fs.promises.utimes(destination, stat.atime, stat.mtime);
+        return { path: entry.path, digest, size: stat.size, mtimeMs: stat.mtimeMs };
+      }));
+      const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (failed) throw failed.reason;
+      files.push(...settled.map((result) => (result as PromiseFulfilledResult<CompileSnapshotFile>).value));
+    }
+    for (const file of files) hash.update(file.digest);
     return {
-      projectId, runId, revision: hash.digest("hex"), root,
+      projectId, runId, mainFile: safeRelativePath(settings.mainFile), revision: hash.digest("hex"), root,
       sourceDir: snapshotSource, outputDir: snapshotOutput, files, directories
     };
   } catch (error) {
-    fs.rmSync(root, { recursive: true, force: true });
+    await fs.promises.rm(root, { recursive: true, force: true });
     throw error;
   }
+}
+
+async function copyAndDigest(source: string, destination: string): Promise<string> {
+  const digest = createHash("sha256");
+  const hasher = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      digest.update(chunk);
+      callback(null, chunk);
+    }
+  });
+  await pipeline(fs.createReadStream(source), hasher, fs.createWriteStream(destination, { mode: 0o600 }));
+  return digest.digest("hex");
 }
 
 export function discardCompileSnapshot(snapshot: CompileSnapshot): void {
@@ -243,10 +271,11 @@ export function publishCompileArtifacts(
   result: CompileResult
 ): PublishedCompileArtifacts {
   if (!result.ok || !result.pdfPath) throw new Error("无法发布失败的编译结果");
-  const manifestDirectory = compileDataRoot(config, projectId);
-  const previous = publishedCompileArtifacts(config, projectId);
+  const manifestDirectory = compileTargetRoot(config, projectId, snapshot.mainFile);
+  const previous = publishedCompileArtifacts(config, projectId, snapshot.mainFile);
   const manifest = {
-    version: 1,
+    version: 2,
+    mainFile: snapshot.mainFile,
     runId: snapshot.runId,
     revision: snapshot.revision,
     pdf: path.basename(result.pdfPath),
@@ -265,17 +294,59 @@ export function publishCompileArtifacts(
     }, 60_000);
     cleanup.unref();
   }
-  return publishedCompileArtifacts(config, projectId)!;
+  return publishedCompileArtifacts(config, projectId, snapshot.mainFile)!;
 }
 
-export function publishedCompileArtifacts(config: Config, projectId: string): PublishedCompileArtifacts | null {
-  const manifestPath = path.join(compileDataRoot(config, projectId), "latest.json");
+export function publishedCompileArtifacts(
+  config: Config,
+  projectId: string,
+  mainFile?: string,
+  allowLegacy = false
+): PublishedCompileArtifacts | null {
+  if (mainFile !== undefined) {
+    const normalized = safeRelativePath(mainFile);
+    const targeted = readPublishedManifest(config, projectId, path.join(compileTargetRoot(config, projectId, normalized), "latest.json"), normalized);
+    if (targeted) return targeted;
+    return allowLegacy ? readPublishedManifest(config, projectId, path.join(compileDataRoot(config, projectId), "latest.json"), normalized, true) : null;
+  }
+  const legacy = readPublishedManifest(config, projectId, path.join(compileDataRoot(config, projectId), "latest.json"), "", true);
+  if (legacy) return legacy;
+  return listPublishedCompileArtifacts(config, projectId)
+    .sort((left, right) => fs.statSync(right.pdf).mtimeMs - fs.statSync(left.pdf).mtimeMs)[0] ?? null;
+}
+
+export function listPublishedCompileArtifacts(config: Config, projectId: string): PublishedCompileArtifacts[] {
+  const result: PublishedCompileArtifacts[] = [];
+  const targetsRoot = path.join(compileDataRoot(config, projectId), "targets");
+  if (fs.existsSync(targetsRoot)) {
+    for (const entry of fs.readdirSync(targetsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const artifact = readPublishedManifest(config, projectId, path.join(targetsRoot, entry.name, "latest.json"));
+      if (artifact) result.push(artifact);
+    }
+  }
+  const legacy = readPublishedManifest(config, projectId, path.join(compileDataRoot(config, projectId), "latest.json"), "", true);
+  if (legacy && !result.some((artifact) => artifact.runId === legacy.runId)) result.push(legacy);
+  return result;
+}
+
+function readPublishedManifest(
+  config: Config,
+  projectId: string,
+  manifestPath: string,
+  expectedMainFile?: string,
+  legacy = false
+): PublishedCompileArtifacts | null {
   if (!fs.existsSync(manifestPath)) return null;
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
-      version?: unknown; runId?: unknown; revision?: unknown; pdf?: unknown; synctex?: unknown;
+      version?: unknown; mainFile?: unknown; runId?: unknown; revision?: unknown; pdf?: unknown; synctex?: unknown;
     };
-    if (manifest.version !== 1 || typeof manifest.runId !== "string" || !/^[a-f0-9-]{36}$/i.test(manifest.runId)
+    const mainFile = manifest.version === 2 && typeof manifest.mainFile === "string"
+      ? safeRelativePath(manifest.mainFile)
+      : legacy && manifest.version === 1 ? expectedMainFile ?? "" : null;
+    if (mainFile === null || (expectedMainFile !== undefined && mainFile !== expectedMainFile)
+      || typeof manifest.runId !== "string" || !/^[a-f0-9-]{36}$/i.test(manifest.runId)
       || typeof manifest.revision !== "string" || typeof manifest.pdf !== "string"
       || path.basename(manifest.pdf) !== manifest.pdf
       || (manifest.synctex !== null && (typeof manifest.synctex !== "string" || path.basename(manifest.synctex) !== manifest.synctex))) {
@@ -287,14 +358,33 @@ export function publishedCompileArtifacts(config: Config, projectId: string): Pu
     const pdf = path.join(output, manifest.pdf);
     const synctex = manifest.synctex ? path.join(output, manifest.synctex) : null;
     if (!fs.existsSync(source) || !fs.existsSync(output) || !fs.existsSync(pdf) || (synctex && !fs.existsSync(synctex))) return null;
-    return { runId: manifest.runId, revision: manifest.revision, source, output, pdf, synctex };
+    return { mainFile, runId: manifest.runId, revision: manifest.revision, source, output, pdf, synctex };
   } catch {
     return null;
   }
 }
 
+/** Remove run bundles left by an interrupted process, preserving the published PDF. */
+export function pruneOrphanedCompileRuns(config: Config, projectId: string): void {
+  const runsRoot = path.join(compileDataRoot(config, projectId), "runs");
+  const publishedRunIds = new Set(listPublishedCompileArtifacts(config, projectId).map((artifact) => artifact.runId));
+  if (!fs.existsSync(runsRoot)) return;
+  for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || publishedRunIds.has(entry.name)) continue;
+    fs.rmSync(path.join(runsRoot, entry.name), { recursive: true, force: true });
+  }
+}
+
 function compileDataRoot(config: Config, projectId: string): string {
   return path.join(outputRoot(config, projectId), ".texlite");
+}
+
+function compileTargetRoot(config: Config, projectId: string, mainFile: string): string {
+  return path.join(compileDataRoot(config, projectId), "targets", compileTargetKey(mainFile));
+}
+
+function compileTargetKey(mainFile: string): string {
+  return createHash("sha256").update(safeRelativePath(mainFile)).digest("hex").slice(0, 24);
 }
 
 function compileRunRoot(config: Config, projectId: string, runId: string): string {
@@ -344,7 +434,9 @@ function prepareCompileCache(
   engine: "pdflatex" | "xelatex" | "lualatex",
   latexmkrc: string | null
 ): PreparedCompileCache {
-  const cacheDirectory = path.join(compileDataRoot(config, snapshot.projectId), "cache");
+  const cacheDirectory = path.join(
+    compileDataRoot(config, snapshot.projectId), "cache", compileTargetKey(mainFile)
+  );
   const key = compileCacheKey(config, snapshot, mainFile, engine, latexmkrc);
   const root = path.join(cacheDirectory, key);
   const cacheSource = path.join(root, "source");
@@ -352,11 +444,13 @@ function prepareCompileCache(
   const statePath = path.join(root, "state.json");
   fs.mkdirSync(cacheSource, { recursive: true, mode: 0o700 });
   fs.mkdirSync(cacheOutput, { recursive: true, mode: 0o700 });
-  // A settings change intentionally starts cold. Published run bundles are
-  // self-contained, so older mutable caches can be removed without affecting
-  // the PDF currently visible to users.
+  // Jobs for this root are serialized, so stale compiler-setting variants can
+  // be removed safely. Sibling root caches live in other directories and may
+  // be in use by another session.
   for (const entry of fs.readdirSync(cacheDirectory, { withFileTypes: true })) {
-    if (entry.name !== key) fs.rmSync(path.join(cacheDirectory, entry.name), { recursive: true, force: true });
+    if (entry.isDirectory() && entry.name !== key) {
+      fs.rmSync(path.join(cacheDirectory, entry.name), { recursive: true, force: true });
+    }
   }
 
   const previous = readCompileCacheState(statePath);

@@ -28,7 +28,7 @@ describe("texLite application", () => {
       projectsDir: path.join(root, "projects"), clientDir: path.join(root, "missing-client"), sessionDays: 1,
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "pdflatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
-      maxUploadBytes: 50 * 1024 * 1024
+      maxUploadBytes: 50 * 1024 * 1024, historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024
       , git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
     };
     db = openDatabase(config);
@@ -236,13 +236,14 @@ It works.
     expect(incrementalCompile.json().ok, incrementalCompile.json().log).toBe(true);
     expect(incrementalCompile.json().runId).not.toBe(compiled.json().runId);
     expect(incrementalCompile.headers["server-timing"]).toContain("cache;dur=");
-    expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(2);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(1);
     const cacheRoot = path.join(config.projectsDir, project.id, "output", ".texlite", "cache");
     expect(fs.readdirSync(cacheRoot)).toHaveLength(1);
-    const manifestPath = path.join(config.projectsDir, project.id, "output", ".texlite", "latest.json");
+    const targetRoot = path.join(config.projectsDir, project.id, "output", ".texlite", "targets");
+    const manifestPath = path.join(targetRoot, fs.readdirSync(targetRoot)[0], "latest.json");
     expect(fs.existsSync(manifestPath)).toBe(true);
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    expect(manifest).toMatchObject({ runId: incrementalCompile.json().runId, version: 1 });
+    expect(manifest).toMatchObject({ runId: incrementalCompile.json().runId, version: 2, mainFile: "main.tex" });
     const latestCompile = await app.inject({
       method: "GET", url: `/api/projects/${project.id}/compile/latest`, headers: { cookie }
     });
@@ -304,6 +305,52 @@ It works.
     expect(downloadedPdf.statusCode).toBe(200);
     expect(downloadedPdf.headers["content-disposition"]).toMatch(/^attachment;.*Paper-\d{4}-\d{2}-\d{2}-\d{6}\.pdf/);
   }, 40_000);
+
+  it("compiles only the currently selected LaTeX root document", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Multiple roots" }
+    });
+    const projectId = created.json().project.id as string;
+    const standalone = String.raw`\documentclass{article}
+\begin{document}
+Standalone document.
+\end{document}
+`;
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "standalone.tex", content: standalone }
+    });
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "chapter.tex", content: "\\section{A chapter}\n" }
+    });
+
+    const compiled = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie },
+      payload: { mainFile: "standalone.tex" }
+    });
+    expect(compiled.statusCode).toBe(200);
+    expect(compiled.json()).toMatchObject({ ok: true, mainFile: "standalone.tex" });
+    expect(compiled.json().pdfUrl).toContain("mainFile=standalone.tex");
+    expect(db.prepare("SELECT main_file FROM compile_runs WHERE project_id = ?").all(projectId))
+      .toEqual([{ main_file: "standalone.tex" }]);
+
+    const [defaultLatest, standaloneLatest, project] = await Promise.all([
+      app.inject({ method: "GET", url: `/api/projects/${projectId}/compile/latest?mainFile=main.tex`, headers: { cookie } }),
+      app.inject({ method: "GET", url: `/api/projects/${projectId}/compile/latest?mainFile=standalone.tex`, headers: { cookie } }),
+      app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } })
+    ]);
+    expect(defaultLatest.json()).toMatchObject({ mainFile: "main.tex", latestRun: null, hasPdf: false });
+    expect(standaloneLatest.json()).toMatchObject({ mainFile: "standalone.tex", hasPdf: true, latestRun: { status: "succeeded" } });
+    expect(project.json().project.mainFile).toBe("main.tex");
+
+    const invalid = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie },
+      payload: { mainFile: "chapter.tex" }
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: "MAIN_DOCUMENT_INVALID" });
+  }, 30_000);
 
   it("creates folders and moves files and directories while preserving linked paths", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Organized" } });
@@ -481,7 +528,122 @@ Copied source.
     expect(copiedResource.json().content).toBe("resource");
     const copiedComments = await app.inject({ method: "GET", url: `/api/projects/${copy.id}/comments?path=main.tex`, headers: { cookie } });
     expect(copiedComments.json().comments).toEqual([]);
-    expect(fs.readdirSync(path.join(config.projectsDir, copy.id, "output"))).toEqual([]);
+    expect(fs.readdirSync(path.join(config.projectsDir, copy.id, "output"))).toEqual([".texlite"]);
+    expect(fs.existsSync(path.join(config.projectsDir, copy.id, "output", ".texlite", "history"))).toBe(true);
+  });
+
+  it("searches included files and restores automatic project history", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "History paper" } });
+    const projectId = created.json().project.id as string;
+    const main = String.raw`\documentclass{article}
+\begin{document}
+\section{Main result}
+UniqueTerm in the main document.
+\input{sections/intro}
+\end{document}
+`;
+    const intro = String.raw`\section{Introduction and
+Motivation}
+Another UniqueTerm appears here.
+`;
+    expect((await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie }, payload: { path: "main.tex", content: main } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie }, payload: { path: "sections/intro.tex", content: intro } })).statusCode).toBe(200);
+
+    const versions = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie } });
+    expect(versions.statusCode).toBe(200);
+    expect(versions.json().versions.length).toBeGreaterThanOrEqual(3);
+    expect(versions.json().stats).toMatchObject({
+      versionCount: expect.any(Number), ordinaryVersionCount: expect.any(Number),
+      objectBytes: expect.any(Number), maxVersions: 200, maxStorageBytes: 512 * 1024 * 1024
+    });
+    const selectedVersion = versions.json().versions[0];
+    expect(selectedVersion.changedPaths).toContain("sections/intro.tex");
+
+    const outline = await app.inject({ method: "GET", url: `/api/projects/${projectId}/outline`, headers: { cookie } });
+    expect(outline.json().outline).toEqual([
+      expect.objectContaining({ path: "main.tex", line: 3, title: "Main result" }),
+      expect.objectContaining({ path: "sections/intro.tex", line: 1, title: "Introduction and\nMotivation" })
+    ]);
+    const search = await app.inject({ method: "GET", url: `/api/projects/${projectId}/search?q=UniqueTerm&wholeWord=1`, headers: { cookie } });
+    expect(search.json()).toMatchObject({ total: 2, truncated: false });
+    expect(search.json().matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "main.tex", line: 4, column: 1 }),
+      expect.objectContaining({ path: "sections/intro.tex", line: 3, column: 9 })
+    ]));
+
+    const replaced = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/search/replace`, headers: { cookie },
+      payload: { query: "UniqueTerm", replacement: "ChangedTerm", wholeWord: true }
+    });
+    expect(replaced.statusCode, replaced.body).toBe(200);
+    expect(replaced.json()).toMatchObject({ replacements: 2, files: ["main.tex", "sections/intro.tex"] });
+
+    const comparison = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/history/${selectedVersion.id}/file?path=main.tex`, headers: { cookie }
+    });
+    expect(comparison.json().historical).toContain("UniqueTerm");
+    expect(comparison.json().comparison).toContain("ChangedTerm");
+    const labeled = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie }, payload: { label: "Before terminology update" }
+    });
+    expect(labeled.json().version.label).toBe("Before terminology update");
+
+    const restoredFile = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/history/${selectedVersion.id}/restore`, headers: { cookie }, payload: { path: "main.tex" }
+    });
+    expect(restoredFile.statusCode, restoredFile.body).toBe(200);
+    expect(fs.readFileSync(path.join(sourceRoot(config, projectId), "main.tex"), "utf8")).toContain("UniqueTerm");
+    expect(fs.readFileSync(path.join(sourceRoot(config, projectId), "sections/intro.tex"), "utf8")).toContain("ChangedTerm");
+
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie }, payload: { path: "transient.txt", content: "remove on restore" } });
+    const restoredProject = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/history/${selectedVersion.id}/restore`, headers: { cookie }, payload: {}
+    });
+    expect(restoredProject.statusCode, restoredProject.body).toBe(200);
+    expect(fs.existsSync(path.join(sourceRoot(config, projectId), "transient.txt"))).toBe(false);
+    expect(fs.readFileSync(path.join(sourceRoot(config, projectId), "sections/intro.tex"), "utf8")).toContain("UniqueTerm");
+
+    const suffix = randomUUID().slice(0, 8);
+    const username = `history-reader-${suffix}`;
+    const reader = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username, displayName: "History Reader", password: "reader-password" }
+    });
+    const readerId = reader.json().user.id as string;
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${readerId}`, headers: { cookie }, payload: { permission: "read" } });
+    const readerLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "reader-password" } });
+    const readerCookie = readerLogin.headers["set-cookie"]!.split(";")[0];
+    const readerHistory = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie: readerCookie } });
+    expect(readerHistory.statusCode).toBe(200);
+    expect(readerHistory.json().stats).toBeNull();
+    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/search?q=UniqueTerm`, headers: { cookie: readerCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "POST", url: `/api/projects/${projectId}/history/${selectedVersion.id}/restore`, headers: { cookie: readerCookie }, payload: { path: "main.tex" } })).statusCode).toBe(403);
+    expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie: readerCookie } })).statusCode).toBe(403);
+
+    const currentBeforeDelete = fs.readFileSync(path.join(sourceRoot(config, projectId), "main.tex"), "utf8");
+    const deletedVersion = await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie } });
+    expect(deletedVersion.statusCode).toBe(200);
+    expect(fs.readFileSync(path.join(sourceRoot(config, projectId), "main.tex"), "utf8")).toBe(currentBeforeDelete);
+    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie } })).statusCode).toBe(404);
+    const clearedHistory = await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/history`, headers: { cookie } });
+    expect(clearedHistory.statusCode).toBe(200);
+    expect(clearedHistory.json().stats).toMatchObject({ versionCount: 0, objectCount: 0, objectBytes: 0 });
+    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie } })).json().versions).toEqual([]);
+  });
+
+  it("exposes operational metrics only to administrators", async () => {
+    const adminMetrics = await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie } });
+    expect(adminMetrics.statusCode).toBe(200);
+    expect(adminMetrics.json()).toMatchObject({
+      compileQueue: { concurrency: 1 },
+      collaboration: expect.objectContaining({ rooms: expect.any(Number), sessions: expect.any(Number) }),
+      durationsMs: expect.any(Object)
+    });
+    const username = `metrics-user-${randomUUID().slice(0, 8)}`;
+    await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: { username, displayName: "Metrics User", password: "metrics-password" } });
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "metrics-password" } });
+    const userCookie = login.headers["set-cookie"]!.split(";")[0];
+    expect((await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie: userCookie } })).statusCode).toBe(403);
   });
 
   it("manages an owner-only encrypted GitHub backup with commit, diff, checkout and push", async () => {
@@ -711,14 +873,14 @@ Second version.
     const successfulRunId = randomUUID();
     const compiledAt = new Date(Date.now() - 1_000).toISOString();
     db.prepare(`INSERT INTO compile_runs
-      (id, project_id, requested_by, status, log, created_at, finished_at)
-      VALUES (?, ?, ?, 'succeeded', 'Successful compile', ?, ?)`)
+      (id, project_id, requested_by, main_file, status, log, created_at, finished_at)
+      VALUES (?, ?, ?, 'main.tex', 'succeeded', 'Successful compile', ?, ?)`)
       .run(successfulRunId, projectId, comment.json().comment.authorId, compiledAt, compiledAt);
     const failedRunId = randomUUID();
     const failedAt = new Date().toISOString();
     db.prepare(`INSERT INTO compile_runs
-      (id, project_id, requested_by, status, log, created_at, finished_at)
-      VALUES (?, ?, ?, 'failed', 'Latest compile failed', ?, ?)`)
+      (id, project_id, requested_by, main_file, status, log, created_at, finished_at)
+      VALUES (?, ?, ?, 'main.tex', 'failed', 'Latest compile failed', ?, ?)`)
       .run(failedRunId, projectId, comment.json().comment.authorId, failedAt, failedAt);
     const outputDirectory = path.join(config.projectsDir, projectId, "output");
     fs.mkdirSync(outputDirectory, { recursive: true });
@@ -729,7 +891,7 @@ Second version.
     });
     expect(latestCompile.statusCode).toBe(200);
     expect(latestCompile.json()).toMatchObject({
-      hasPdf: true, pdfUrl: `/api/projects/${projectId}/pdf?run=${successfulRunId}`,
+      hasPdf: true, pdfUrl: `/api/projects/${projectId}/pdf?mainFile=main.tex&run=${successfulRunId}`,
       latestRun: { id: failedRunId, status: "failed", log: "Latest compile failed" }
     });
     const retainedPdf = await app.inject({
@@ -785,15 +947,91 @@ Second version.
     expect(download.rawPayload.subarray(0, 2).toString()).toBe("PK");
   });
 
-  it("deletes a project and its source files", async () => {
+  it("deletes a project together with its source files and history", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Disposable" } });
     const project = created.json().project;
+    const historyDirectory = path.join(config.projectsDir, project.id, "output", ".texlite", "history");
     expect(fs.existsSync(path.join(config.projectsDir, project.id, "source", "main.tex"))).toBe(true);
+    expect(fs.existsSync(historyDirectory)).toBe(true);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(project.id) as { count: number }).count).toBeGreaterThan(0);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_state WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(1);
     const deleted = await app.inject({ method: "DELETE", url: `/api/projects/${project.id}`, headers: { cookie } });
     expect(deleted.statusCode).toBe(200);
     expect(fs.existsSync(path.join(config.projectsDir, project.id))).toBe(false);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_state WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(0);
     const missing = await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } });
     expect(missing.statusCode).toBe(404);
+  });
+
+  it("transfers ownership while retaining the former owner as an editor", async () => {
+    const createdUser = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "project-recipient", displayName: "Project Recipient", password: "recipient-password" }
+    });
+    const recipient = createdUser.json().user;
+    expect(recipient.canCreateProjects).toBe(false);
+    const recipientLogin = await app.inject({
+      method: "POST", url: "/api/auth/login", payload: { username: "project-recipient", password: "recipient-password" }
+    });
+    const recipientCookie = recipientLogin.headers["set-cookie"]!.split(";")[0];
+    const me = await app.inject({ method: "GET", url: "/api/me", headers: { cookie } });
+    const formerOwnerId = me.json().user.id as string;
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Transferred paper" } });
+    const project = created.json().project;
+    await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/members/${recipient.id}`, headers: { cookie }, payload: { permission: "read" }
+    });
+    const historyCount = (db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(project.id) as { count: number }).count;
+    const timestamp = new Date().toISOString();
+    db.prepare(`INSERT INTO project_git_settings
+      (project_id, token_ciphertext, github_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(project.id, "former-owner-token", "former-owner", timestamp, timestamp);
+
+    const transferred = await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/owner`, headers: { cookie }, payload: { userId: recipient.id }
+    });
+    expect(transferred.statusCode).toBe(200);
+    expect(transferred.json().project.ownerId).toBe(recipient.id);
+    const recipientProject = await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie: recipientCookie } });
+    expect(recipientProject.json().project).toMatchObject({ ownerId: recipient.id, permission: "owner" });
+    expect(db.prepare("SELECT permission FROM project_members WHERE project_id = ? AND user_id = ?").get(project.id, formerOwnerId)).toEqual({ permission: "edit" });
+    expect(db.prepare("SELECT permission FROM project_members WHERE project_id = ? AND user_id = ?").get(project.id, recipient.id)).toBeUndefined();
+    expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(historyCount);
+    expect(db.prepare("SELECT token_ciphertext, github_login FROM project_git_settings WHERE project_id = ?").get(project.id)).toEqual({
+      token_ciphertext: null, github_login: null
+    });
+    expect((await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/owner`, headers: { cookie }, payload: { userId: formerOwnerId }
+    })).statusCode).toBe(403);
+  });
+
+  it("deletes a user's owned projects together with their histories", async () => {
+    const createdUser = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "disposable-owner", displayName: "Disposable Owner", password: "owner-password", canCreateProjects: true }
+    });
+    const ownerId = createdUser.json().user.id as string;
+    const ownerLogin = await app.inject({
+      method: "POST", url: "/api/auth/login", payload: { username: "disposable-owner", password: "owner-password" }
+    });
+    const ownerCookie = ownerLogin.headers["set-cookie"]!.split(";")[0];
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: ownerCookie }, payload: { name: "Delete with owner" }
+    });
+    const projectId = created.json().project.id as string;
+    expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(projectId) as { count: number }).count).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(config.projectsDir, projectId, "output", ".texlite", "history"))).toBe(true);
+
+    const deleted = await app.inject({
+      method: "DELETE", url: `/api/admin/users/${ownerId}`, headers: { cookie }, payload: { deleteProjects: true }
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toMatchObject({ ok: true, deletedProjects: 1 });
+    expect(fs.existsSync(path.join(config.projectsDir, projectId))).toBe(false);
+    expect(db.prepare("SELECT id FROM projects WHERE id = ?").get(projectId)).toBeUndefined();
+    expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(projectId) as { count: number }).count).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_state WHERE project_id = ?").get(projectId) as { count: number }).count).toBe(0);
   });
 
   it("records the shared user who last changed project source", async () => {

@@ -23,6 +23,10 @@ async function initialize(): Promise<void> {
         server: { host: CONFIG_DEFAULTS.host, port: CONFIG_DEFAULTS.port },
         storage: { dataDir: CONFIG_DEFAULTS.dataDir },
         uploads: { maxFileSizeMB: CONFIG_DEFAULTS.maxFileSizeMB },
+        history: {
+          maxVersions: CONFIG_DEFAULTS.historyMaxVersions,
+          maxStorageMB: CONFIG_DEFAULTS.historyMaxStorageMB
+        },
         git: { binary: CONFIG_DEFAULTS.git, operationTimeoutSeconds: CONFIG_DEFAULTS.gitOperationTimeoutSeconds, githubApiBaseUrl: CONFIG_DEFAULTS.githubApiBaseUrl },
         latex: {
           latexmk: CONFIG_DEFAULTS.latexmk,
