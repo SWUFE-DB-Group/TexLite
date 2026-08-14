@@ -597,6 +597,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [saveState, setSaveState] = useState("editor.saved");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [sourceCursor, setSourceCursor] = useState({ line: 1, column: 1 });
+  const sourceCursorRef = useRef(sourceCursor);
   const [previewTab, setPreviewTab] = useState<PreviewSurface>("pdf");
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticTab>("log");
   const selectPreviewTab = (next: PreviewTab): void => {
@@ -644,6 +645,12 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   onBackRef.current = onBack;
   activeMainFileRef.current = activeMainFile;
 
+  const updateSourceCursor = (line: number, column: number) => {
+    const next = { line, column };
+    sourceCursorRef.current = next;
+    setSourceCursor(next);
+  };
+
   const {
     collaboration,
     status: collaborationStatus,
@@ -688,6 +695,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
 
   useEffect(() => {
     activeFileRef.current = activeFile;
+    sourceCursorRef.current = { line: 1, column: 1 };
+    setSourceCursor({ line: 1, column: 1 });
     setSelection({ selectedText: "", startOffset: 0, endOffset: 0 });
   }, [activeFile]);
 
@@ -1071,6 +1080,10 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     onPreviewTab: selectPreviewTab,
     onError: setError,
     onCompileStart: () => { setError(""); setNotice(""); },
+    onCompileSuccess: () => {
+      const path = activeFileRef.current;
+      if (path) void syncSourceToPdf(path, sourceCursorRef.current.line, sourceCursorRef.current.column, { silent: true });
+    },
     onPdfChanged: clearPdfViewport
   });
   useEffect(() => {
@@ -1162,7 +1175,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       </Panel>}
       {showEditor && <PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle>}
       {showEditor && <Panel id="source" order={2} defaultSize={42} minSize={22}>
-        <main className="source-panel"><Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}><LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckWords={dictionaryWords} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onCursor={(line, column) => setSourceCursor({ line, column })} /></Suspense>{editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}</main>
+        <main className="source-panel"><Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}><LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckWords={dictionaryWords} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onCursor={updateSourceCursor} /></Suspense>{editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}</main>
       </Panel>}
       {showEditor && showPreview && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport} title={t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={syncVisiblePdfToSource}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl} title={t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={() => void syncSourceToPdf(activeFile, sourceCursor.line, sourceCursor.column)}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
       {showPreview && <Panel id="preview" order={3} defaultSize={42} minSize={22}>

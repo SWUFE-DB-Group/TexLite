@@ -52,7 +52,7 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
     if (activeFileRef.current !== path) onActiveFileRef.current(path);
   };
 
-  const syncSourceToPdf = async (path: string, line: number, column: number) => {
+  const syncSourceToPdf = async (path: string, line: number, column: number, options: { silent?: boolean } = {}) => {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -65,7 +65,7 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
       setPdfTarget({ ...location, nonce: ++nonce.current });
       onShowPdfRef.current();
     } catch (error) {
-      if (!isAbortError(error)) onErrorRef.current(errorMessage(error));
+      if (!isAbortError(error) && !options.silent) onErrorRef.current(errorMessage(error));
     } finally {
       if (request.current === controller) request.current = null;
     }

@@ -36,6 +36,7 @@ interface UseProjectCompilationOptions {
   onPreviewTab: (tab: PreviewTab) => void;
   onError: (message: string) => void;
   onCompileStart: () => void;
+  onCompileSuccess: () => void;
   onPdfChanged: () => void;
 }
 
@@ -45,7 +46,7 @@ function isAbortError(error: unknown): boolean {
 
 export function useProjectCompilation({
   projectId, project, mainFile, collaborationSynced, sharedState, onSharedState, save,
-  loadOutline, onPreviewTab, onError, onCompileStart, onPdfChanged
+  loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged
 }: UseProjectCompilationOptions) {
   const { t } = useTranslation();
   const [pdfUrl, setPdfUrl] = useState("");
@@ -62,10 +63,17 @@ export function useProjectCompilation({
   const latestRequest = useRef<AbortController | null>(null);
   const artifactsRequest = useRef<AbortController | null>(null);
   const compileRequests = useRef(new Map<string, AbortController>());
+  const focusedCompileRun = useRef<string | null>(null);
   const compileAction = useRef<() => void>(() => undefined);
-  const callbacks = useRef({ onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onPdfChanged });
+  const callbacks = useRef({ onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged });
   mainFileRef.current = mainFile;
-  callbacks.current = { onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onPdfChanged };
+  callbacks.current = { onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged };
+
+  const focusPdfAfterCompile = (runId: string) => {
+    if (focusedCompileRun.current === runId) return;
+    focusedCompileRun.current = runId;
+    callbacks.current.onCompileSuccess();
+  };
 
   const loadArtifacts = async (requestedMainFile: string, signal?: AbortSignal) => {
     if (!signal) {
@@ -168,6 +176,7 @@ export function useProjectCompilation({
         setPdfUrl(latest.pdfUrl);
         setPdfCompiledAt(latest.pdfCompiledAt);
         callbacks.current.onPreviewTab("pdf");
+        focusPdfAfterCompile(sharedState.runId);
         void loadArtifacts(mainFile);
       } else if (sharedState.status === "failed") {
         callbacks.current.onPreviewTab(latest.latestRun.diagnostics.errors.length ? "errors" : "log");
@@ -198,7 +207,7 @@ export function useProjectCompilation({
     compileRequests.current.set(requestedMainFile, controller);
     try {
       if (!(await callbacks.current.save())) return;
-      const result = await api<{ mainFile: string; ok: boolean; skipped?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null }>(
+      const result = await api<{ runId: string; mainFile: string; ok: boolean; skipped?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null }>(
         `/api/projects/${projectId}/compile`,
         { method: "POST", signal: controller.signal, body: JSON.stringify({ mainFile: requestedMainFile }) }
       );
@@ -212,6 +221,13 @@ export function useProjectCompilation({
         setPdfUrl(result.pdfUrl);
         setPdfCompiledAt(result.pdfCompiledAt);
         callbacks.current.onPreviewTab("pdf");
+        if (result.ok) {
+          // A skipped request reuses the published run id and is not
+          // broadcast as a new shared compile state, so it must always move
+          // the local PDF to the current source cursor.
+          if (result.skipped) callbacks.current.onCompileSuccess();
+          else focusPdfAfterCompile(result.runId);
+        }
       } else {
         callbacks.current.onPreviewTab(result.diagnostics.errors.length ? "errors" : "log");
       }
