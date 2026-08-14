@@ -62,10 +62,10 @@ describe("configuration", () => {
     const config = loadConfig();
     expect(config).toMatchObject({
       siteName: "TexLite", host: "127.0.0.1", port: 3000, sessionDays: 14,
-      compileTimeoutMs: 60_000, maxCompileJobs: 2, defaultEngine: "xelatex",
+      compileTimeoutMs: 600_000, maxCompileJobs: 10, defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
       historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
-      git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
+      git: "git", gitOperationTimeoutMs: 120_000, githubApiBaseUrl: "https://api.github.com"
     });
   });
 

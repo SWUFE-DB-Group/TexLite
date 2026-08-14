@@ -191,7 +191,7 @@ The example configuration is intentionally complete:
   "history": { "maxVersions": 200, "maxStorageMB": 512 },
   "git": {
     "binary": "git",
-    "operationTimeoutSeconds": 30,
+    "operationTimeoutSeconds": 120,
     "githubApiBaseUrl": "https://api.github.com"
   },
   "latex": {
@@ -200,8 +200,8 @@ The example configuration is intentionally complete:
     "allowedEngines": ["pdflatex", "xelatex", "lualatex"],
     "extraArgs": [],
     "allowProjectLatexmkrc": true,
-    "compileTimeoutSeconds": 60,
-    "maxCompileJobs": 2
+    "compileTimeoutSeconds": 600,
+    "maxCompileJobs": 10
   }
 }
 ~~~
@@ -244,9 +244,9 @@ email):
 | `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` |
 | `latex.extraArgs` | `[]` |
 | `latex.allowProjectLatexmkrc` | `true` |
-| `latex.compileTimeoutSeconds` | `60` seconds |
-| `latex.maxCompileJobs` | `2` |
-| `git.binary` / `git.operationTimeoutSeconds` | `git` / `30` seconds |
+| `latex.compileTimeoutSeconds` | `600` seconds |
+| `latex.maxCompileJobs` | `10` |
+| `git.binary` / `git.operationTimeoutSeconds` | `git` / `120` seconds |
 | `git.githubApiBaseUrl` | `https://api.github.com` |
 
 Configuration is validated before environment checks, database opening, or

@@ -22,22 +22,27 @@ export interface CliOptions {
 
 const HELP = `TexLite ${packageVersion()}
 
-用法：
-  texlite init [--config PATH]
-  texlite serve [--config PATH]
-  texlite start [--config PATH]
-  texlite status [--config PATH]
-  texlite stop [--config PATH]
-  texlite restart [--config PATH]
-  texlite logs [--config PATH]
-  texlite doctor [--config PATH] [--git]
-  texlite config [--config PATH]
+Usage:
+  texlite <command> [options]
 
-选项：
-  --config PATH  使用指定配置文件；否则使用 TEXLITE_CONFIG 或 XDG 默认路径
-  --git          doctor 中额外检查 Git
-  -h, --help     显示帮助
-  -v, --version  显示版本
+Commands:
+  init       Create the configuration, initialize storage, and create the first administrator.
+  serve      Run the server in the foreground for debugging, Docker, or systemd.
+  start      Start the server in the background under PM2.
+  status     Show the status of the PM2-managed server.
+  stop       Stop the PM2-managed server.
+  restart    Restart (or start) the PM2-managed server.
+  logs       Stream logs from the PM2-managed server.
+  doctor     Validate configuration, paths, LaTeX, and the administrator.
+  config     Print the effective configuration as JSON without changing it.
+  help       Show this help message.
+  version    Print the installed TexLite version.
+
+Options:
+  --config PATH  Use this configuration file instead of TEXLITE_CONFIG or the XDG default.
+  --git          Make doctor check the optional Git integration as well.
+  -h, --help     Show this help message.
+  -v, --version  Print the installed TexLite version.
 `;
 
 export function parseArgs(args: string[]): CliOptions {
@@ -52,18 +57,18 @@ export function parseArgs(args: string[]): CliOptions {
     if (argument === "--git") { checkGit = true; continue; }
     if (argument === "--config") {
       const value = args[++index];
-      if (!value) throw new Error("--config 需要一个配置文件路径");
+      if (!value) throw new Error("--config requires a configuration file path");
       configPath = value;
       continue;
     }
     if (argument.startsWith("--config=")) {
       const value = argument.slice("--config=".length);
-      if (!value) throw new Error("--config 需要一个配置文件路径");
+      if (!value) throw new Error("--config requires a configuration file path");
       configPath = value;
       continue;
     }
-    if (argument.startsWith("-")) throw new Error(`未知选项：${argument}`);
-    if (command !== "help") throw new Error(`只能指定一个命令（已经指定 ${command}）`);
+    if (argument.startsWith("-")) throw new Error(`Unknown option: ${argument}`);
+    if (command !== "help") throw new Error(`Only one command may be specified (already received ${command})`);
     command = argument;
   }
   return { command, configPath, checkGit };
@@ -129,36 +134,36 @@ async function initialize(options: CliOptions): Promise<void> {
   try {
     if (!fs.existsSync(configPath)) {
       const siteName = rl
-        ? (await rl.question(`网站名称 [${CONFIG_DEFAULTS.siteName}]: `)).trim() || CONFIG_DEFAULTS.siteName
+        ? (await rl.question(`Site name [${CONFIG_DEFAULTS.siteName}]: `)).trim() || CONFIG_DEFAULTS.siteName
         : CONFIG_DEFAULTS.siteName;
-      const adminEmail = rl ? (await rl.question("管理员联系邮箱（可留空）: ")).trim() : "";
+      const adminEmail = rl ? (await rl.question("Administrator contact email (optional): ")).trim() : "";
       writeInitialConfig(configPath, siteName, adminEmail);
-      output(`已创建配置文件：${configPath}`);
+      output(`Created configuration file: ${configPath}`);
     } else {
-      output(`使用已有配置文件：${configPath}`);
+      output(`Using existing configuration file: ${configPath}`);
     }
 
     const config = loadConfig(configPath);
     const environment = await assertEnvironment(config);
-    output(`环境检查通过：${environment.map((item) => `${item.name} ${item.version}`).join("；")}`);
+    output(`Environment checks passed: ${environment.map((item) => `${item.name} ${item.version}`).join("; ")}`);
     db = openDatabase(config);
     if (activeAdminCount(db) > 0) {
-      throw new Error("系统中已经存在有效管理员；请在管理页面添加其他管理员");
+      throw new Error("An active administrator already exists. Add additional administrators from the administration page.");
     }
     const username = process.env.TEXLITE_INIT_USERNAME
-      ?? (rl ? (await rl.question("管理员用户名 [admin]: ")).trim() || "admin" : "admin");
+      ?? (rl ? (await rl.question("Administrator username [admin]: ")).trim() || "admin" : "admin");
     const displayName = process.env.TEXLITE_INIT_DISPLAY_NAME
-      ?? (rl ? (await rl.question("管理员显示名称 [Administrator]: ")).trim() || "Administrator" : "Administrator");
+      ?? (rl ? (await rl.question("Administrator display name [Administrator]: ")).trim() || "Administrator" : "Administrator");
     const password = process.env.TEXLITE_INIT_PASSWORD
-      ?? (rl ? await rl.question("管理员密码（至少 8 个字符，输入可见）: ") : "");
-    if (!password) throw new Error("非交互初始化需要设置 TEXLITE_INIT_PASSWORD");
+      ?? (rl ? await rl.question("Administrator password (at least 8 characters; input is visible): ") : "");
+    if (!password) throw new Error("Non-interactive initialization requires TEXLITE_INIT_PASSWORD to be set.");
     const timestamp = new Date().toISOString();
     db.prepare(`INSERT INTO users
       (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
       VALUES (?, ?, ?, ?, 'admin', 0, 0, 1, ?)`)
       .run(randomUUID(), username, displayName, await hashPassword(password), timestamp);
-    output(`管理员 ${username} 已创建。配置文件：${config.configPath}`);
-    output(`数据目录：${config.dataDir}`);
+    output(`Administrator ${username} created. Configuration file: ${config.configPath}`);
+    output(`Data directory: ${config.dataDir}`);
   } finally {
     db?.close();
     rl?.close();
@@ -174,7 +179,7 @@ async function loadValidatedConfig(options: CliOptions) {
 async function assertAdmin(config: Awaited<ReturnType<typeof loadValidatedConfig>>["config"]): Promise<void> {
   const db = openDatabase(config);
   try {
-    if (activeAdminCount(db) === 0) throw new Error("没有有效管理员。请先运行 `texlite init`，服务未启动。");
+    if (activeAdminCount(db) === 0) throw new Error("No active administrator found. Run `texlite init` first; the server will not start.");
   } finally {
     db.close();
   }
@@ -184,12 +189,12 @@ async function doctor(options: CliOptions): Promise<void> {
   const { config, configPath } = await loadValidatedConfig(options);
   const environment = await assertEnvironment(config);
   await assertAdmin(config);
-  output(`配置有效：${configPath}`);
-  output(`数据目录：${config.dataDir}`);
-  output(`静态资源：${config.clientDir}`);
-  output(`环境：${environment.map((item) => `${item.name} ${item.version}`).join("；")}`);
-  if (options.checkGit) output(`Git：${(await assertGitAvailable(config)).version}`);
-  else output("Git：未检查（Git 集成为可选功能；使用 --git 检查）");
+  output(`Configuration is valid: ${configPath}`);
+  output(`Data directory: ${config.dataDir}`);
+  output(`Client assets: ${config.clientDir}`);
+  output(`Environment: ${environment.map((item) => `${item.name} ${item.version}`).join("; ")}`);
+  if (options.checkGit) output(`Git: ${(await assertGitAvailable(config)).version}`);
+  else output("Git: not checked (Git integration is optional; use --git to check it)");
 }
 
 async function printConfig(options: CliOptions): Promise<void> {
@@ -223,10 +228,10 @@ async function start(options: CliOptions, restart = false): Promise<void> {
   restart ? await restartManaged(config) : await startManaged(config);
   const managed = await waitForOnline(config);
   const status = managed.description?.pm2_env?.status ?? "unknown";
-  output(`TexLite ${status}：${config.siteName}`);
-  output(`地址：http://${config.host}:${config.port}`);
-  output(`配置文件：${configPath}`);
-  output(`PM2 名称：${managed.name}`);
+  output(`TexLite ${status}: ${config.siteName}`);
+  output(`Address: http://${config.host}:${config.port}`);
+  output(`Configuration file: ${configPath}`);
+  output(`PM2 process: ${managed.name}`);
 }
 
 async function status(options: CliOptions): Promise<void> {
@@ -239,7 +244,7 @@ async function status(options: CliOptions): Promise<void> {
 async function stop(options: CliOptions): Promise<void> {
   const { config } = await loadValidatedConfig(options);
   const managed = await stopManaged(config.configPath);
-  output(managed.description ? `TexLite 已停止：${managed.name}` : `TexLite 未运行：${managed.name}`);
+  output(managed.description ? `TexLite stopped: ${managed.name}` : `TexLite is not running: ${managed.name}`);
 }
 
 async function run(options: CliOptions): Promise<void> {
@@ -259,7 +264,7 @@ async function run(options: CliOptions): Promise<void> {
       await streamLogs(config);
       return;
     }
-    default: throw new Error(`未知命令：${options.command}\n\n${HELP}`);
+    default: throw new Error(`Unknown command: ${options.command}\n\n${HELP}`);
   }
 }
 

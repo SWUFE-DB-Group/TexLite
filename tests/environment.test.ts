@@ -24,7 +24,7 @@ describe("startup environment checks", () => {
     expect(available).toHaveLength(1);
     expect(available[0].version).toMatch(/^v\d+/);
     await expect(assertEnvironment({ ...config, latexmk: "/definitely/missing/texlite-latexmk" }))
-      .rejects.toThrow("初始化/启动已停止");
+      .rejects.toThrow("Initialization/startup has been stopped");
     await expect(assertGitAvailable({ ...config, git: "/definitely/missing/texlite-git" }))
       .rejects.toMatchObject({ code: "GIT_UNAVAILABLE", statusCode: 503 });
   });

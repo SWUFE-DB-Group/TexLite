@@ -20,7 +20,7 @@ export async function assertEnvironment(config: Config): Promise<EnvironmentComm
     const result = await commandVersion(item.command, 10_000);
     if (result.error || result.status !== 0) {
       const detail = result.error || result.stderr.trim() || `exit ${result.status ?? "unknown"}`;
-      throw new Error(`环境检查失败：无法运行 ${item.name} 命令“${item.command}”（${detail}）。初始化/启动已停止。`);
+      throw new Error(`Environment check failed: could not run the ${item.name} command "${item.command}" (${detail}). Initialization/startup has been stopped.`);
     }
     const version = `${result.stdout || result.stderr}`.trim().split("\n")[0]?.slice(0, 160) || "available";
     checked.push({ ...item, version });
@@ -34,7 +34,7 @@ export async function assertGitAvailable(config: Config): Promise<EnvironmentCom
   if (result.error || result.status !== 0) {
     const detail = result.error || result.stderr.trim() || `exit ${result.status ?? "unknown"}`;
     throw Object.assign(
-      new Error(`Git 集成功能不可用：无法运行配置的命令“${item.command}”（${detail}）。请安装 Git，或修正 git.binary 后重试。`),
+      new Error(`Git integration is unavailable: could not run the configured command "${item.command}" (${detail}). Install Git or correct git.binary and try again.`),
       { statusCode: 503, code: "GIT_UNAVAILABLE" }
     );
   }
@@ -63,6 +63,6 @@ function commandVersion(command: string, timeoutMs: number): Promise<{
     child.stdout.on("data", (chunk: Buffer) => { if (Buffer.concat(stdout).length < 64 * 1024) stdout.push(chunk); });
     child.stderr.on("data", (chunk: Buffer) => { if (Buffer.concat(stderr).length < 64 * 1024) stderr.push(chunk); });
     child.once("error", (error) => finish({ status: null, error: error.message }));
-    child.once("close", (status) => finish({ status, error: timedOut ? "命令超时" : null }));
+    child.once("close", (status) => finish({ status, error: timedOut ? "command timed out" : null }));
   });
 }

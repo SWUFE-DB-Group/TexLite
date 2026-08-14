@@ -19,6 +19,6 @@ describe("CLI argument parsing", () => {
   });
 
   it("rejects an option without its value", () => {
-    expect(() => parseArgs(["init", "--config"])).toThrow(/--config 需要一个配置文件路径/);
+    expect(() => parseArgs(["init", "--config"])).toThrow(/--config requires a configuration file path/);
   });
 });

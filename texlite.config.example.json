@@ -18,7 +18,7 @@
   },
   "git": {
     "binary": "git",
-    "operationTimeoutSeconds": 30,
+    "operationTimeoutSeconds": 120,
     "githubApiBaseUrl": "https://api.github.com"
   },
   "latex": {
@@ -27,7 +27,7 @@
     "allowedEngines": ["pdflatex", "xelatex", "lualatex"],
     "extraArgs": [],
     "allowProjectLatexmkrc": true,
-    "compileTimeoutSeconds": 60,
-    "maxCompileJobs": 2
+    "compileTimeoutSeconds": 600,
+    "maxCompileJobs": 10
   }
 }

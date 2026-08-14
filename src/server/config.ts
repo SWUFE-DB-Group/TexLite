@@ -14,8 +14,8 @@ export const CONFIG_DEFAULTS = {
   dataDir: defaultDataDirectory(),
   clientDir: packageClientDirectory(),
   sessionDays: 14,
-  compileTimeoutSeconds: 60,
-  maxCompileJobs: 2,
+  compileTimeoutSeconds: 600,
+  maxCompileJobs: 10,
   latexmk: "latexmk",
   defaultEngine: "xelatex" as LatexEngine,
   allowedEngines: [...LATEX_ENGINES] as LatexEngine[],
@@ -25,7 +25,7 @@ export const CONFIG_DEFAULTS = {
   historyMaxVersions: 200,
   historyMaxStorageMB: 512,
   git: "git",
-  gitOperationTimeoutSeconds: 30,
+  gitOperationTimeoutSeconds: 120,
   githubApiBaseUrl: "https://api.github.com"
 } as const;
 
@@ -208,8 +208,8 @@ function readConfigFile(configPath: string): FileConfig {
     }
     return parsed as FileConfig;
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("配置无效")) throw error;
-    throw new Error(`无法读取配置文件 ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+    if (error instanceof Error && error.message.startsWith("Invalid configuration")) throw error;
+    throw new Error(`Unable to read configuration file ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -357,7 +357,7 @@ function validateFileTarget(name: string, target: string): void {
   try {
     if (fs.statSync(target).isDirectory()) throw configurationError(name, `points to a directory, but must be a file: ${target}`);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("配置无效")) throw error;
+    if (error instanceof Error && error.message.startsWith("Invalid configuration")) throw error;
     throw configurationError(name, `cannot be inspected: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -392,7 +392,7 @@ function displayValue(value: unknown): string {
 }
 
 function configurationError(name: string, detail: string): Error {
-  return new Error(`配置无效（${name}）：${detail}。请修改 texlite.config.json 或对应的 TEXLITE_* 环境变量后重试。`);
+  return new Error(`Invalid configuration (${name}): ${detail}. Update texlite.config.json or the corresponding TEXLITE_* environment variable and try again.`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

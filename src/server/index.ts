@@ -17,7 +17,7 @@ export async function startServer(configPath?: string): Promise<RunningServer> {
   const db = openDatabase(config);
   if (activeAdminCount(db) === 0) {
     db.close();
-    throw new Error("没有有效管理员。请先运行 `texlite init`（源码部署可运行 `npm run init`），服务未启动。");
+    throw new Error("No active administrator found. Run `texlite init` first (or `npm run init` from a source checkout); the server will not start.");
   }
   let app: FastifyInstance;
   try {

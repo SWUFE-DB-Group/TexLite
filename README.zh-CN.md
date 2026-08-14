@@ -187,7 +187,7 @@ npm start
   "history": { "maxVersions": 200, "maxStorageMB": 512 },
   "git": {
     "binary": "git",
-    "operationTimeoutSeconds": 30,
+    "operationTimeoutSeconds": 120,
     "githubApiBaseUrl": "https://api.github.com"
   },
   "latex": {
@@ -196,8 +196,8 @@ npm start
     "allowedEngines": ["pdflatex", "xelatex", "lualatex"],
     "extraArgs": [],
     "allowProjectLatexmkrc": true,
-    "compileTimeoutSeconds": 60,
-    "maxCompileJobs": 2
+    "compileTimeoutSeconds": 600,
+    "maxCompileJobs": 10
   }
 }
 ~~~
@@ -238,9 +238,9 @@ npm start
 | `latex.allowedEngines` | `pdflatex`、`xelatex`、`lualatex` |
 | `latex.extraArgs` | `[]` |
 | `latex.allowProjectLatexmkrc` | `true` |
-| `latex.compileTimeoutSeconds` | `60` 秒 |
-| `latex.maxCompileJobs` | `2` |
-| `git.binary` / `git.operationTimeoutSeconds` | `git` / `30` 秒 |
+| `latex.compileTimeoutSeconds` | `600` 秒 |
+| `latex.maxCompileJobs` | `10` |
+| `git.binary` / `git.operationTimeoutSeconds` | `git` / `120` 秒 |
 | `git.githubApiBaseUrl` | `https://api.github.com` |
 
 配置会在环境检查、打开数据库和启动 HTTP 监听之前完成校验。显式设置的

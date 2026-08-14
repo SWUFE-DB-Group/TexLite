@@ -204,13 +204,13 @@ export async function waitForOnline(config: Config, timeoutMs = 15_000): Promise
     const status = latest.description?.pm2_env?.status;
     if (status === "online") return latest;
     if (status === "errored" || status === "stopped") {
-      throw new Error(`PM2 未能启动 TexLite（当前状态：${status}）。请运行 texlite logs 查看日志。`);
+      throw new Error(`PM2 could not start TexLite (current status: ${status}). Run texlite logs to inspect the logs.`);
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
     latest = await managedProcess(config.configPath);
   }
   const status = latest.description?.pm2_env?.status ?? "missing";
-  throw new Error(`等待 TexLite 启动超时（当前状态：${status}）。请运行 texlite status 或 texlite logs 检查。`);
+  throw new Error(`Timed out waiting for TexLite to start (current status: ${status}). Run texlite status or texlite logs to investigate.`);
 }
 
 export async function streamLogs(config: Config): Promise<void> {
@@ -219,7 +219,7 @@ export async function streamLogs(config: Config): Promise<void> {
     && environmentOf(process).TEXLITE_CONFIG === path.resolve(config.configPath));
   if (!managed) {
     disconnect();
-    throw new Error("TexLite 当前没有由 PM2 管理的进程。请先运行 texlite start。");
+    throw new Error("TexLite is not currently managed by PM2. Run texlite start first.");
   }
   const bus = await callback<{ on: (event: string, listener: (packet: unknown) => void) => void }>((done) => {
     pm2Client!.launchBus((error, value) => done(error ?? null, value as never));
@@ -256,6 +256,6 @@ function assertNameAvailable(processes: ProcessDescription[], name: string, conf
   const collision = processes.find((process) => process.name === name
     && environmentOf(process).TEXLITE_CONFIG !== configPath);
   if (collision) {
-    throw new Error(`PM2 名称 ${name} 已被另一个配置占用；请删除旧进程或使用不同的配置路径后重试。`);
+    throw new Error(`The PM2 name ${name} is already used by another configuration. Remove the old process or use a different configuration path and try again.`);
   }
 }
