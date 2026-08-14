@@ -254,22 +254,30 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .cm-source-comment-resolved { background: #dce5de99; border-bottom-color: #829087; }
 .cm-comment-pin { color: #d68b00; font-size: 9px; padding: 0 2px; }
 .preview-panel { display: flex; flex-direction: column; background: #6f7471; }
-.preview-tabs { height: 42px; flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 5px 6px 0; background: #4d544f; }
+.preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 5px 6px 0; background: #4d544f; }
+.preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(120px, 1fr); gap: 3px; }
 .preview-tabs button { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 6px 6px 0 0; background: transparent; color: #d7dcd8; font-size: 11px; }
 .preview-tabs button.active { background: #f3f4f1; color: #184f36; font-weight: 700; }
 .preview-tabs button span { min-width: 17px; padding: 1px 4px; border-radius: 999px; background: #ffffff20; font-size: 9px; }
 .preview-tabs button.active span { background: #dfe8e2; }
-.preview-tabs button .pdf-tab-label { min-width: 0; padding: 0; border-radius: 0; background: transparent; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1; }
+.preview-tabs .pdf-tab { justify-content: flex-start; padding: 0 12px; font-size: 12px; }
+.preview-tabs button .pdf-tab-label { min-width: 0; overflow: hidden; padding: 0; border-radius: 0; background: transparent; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 12px; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
 .preview-tabs button.active .pdf-tab-label { background: transparent; }
 .preview-tabs .pdf-tab small { max-width: 100%; overflow: hidden; color: #bcc4bf; font-size: 8px; font-weight: 400; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
 .preview-tabs .pdf-tab.active small { color: #65756c; }
+.pdf-download-top { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; padding: 0 11px; border: 0; border-radius: 6px 6px 0 0; color: #d7dcd8; font-size: 10px; text-decoration: none; white-space: nowrap; }
+.pdf-download-top:hover { background: #ffffff1b; color: white; }
+.preview-subtabs { height: 36px; flex: none; display: flex; align-items: center; gap: 3px; padding: 4px 7px; border-bottom: 1px solid #cfd6d1; background: #e4e9e5; }
+.preview-subtabs button { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: #58665d; font-size: 10px; }
+.preview-subtabs button:hover { background: #d8e3db; color: #205c40; }
+.preview-subtabs button.active { background: #fff; color: #184f36; font-weight: 700; box-shadow: 0 1px 3px #26312b22; }
+.preview-subtabs button span { min-width: 16px; padding: 1px 4px; border-radius: 999px; background: #d5ded7; font-size: 9px; text-align: center; }
+.preview-subtabs button.active span { background: #dfe8e2; }
 .preview-content { min-height: 0; flex: 1; }
 .preview-pdf { overflow: hidden; }
 .pdf-viewer { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .pdf-toolbar { height: 36px; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 3px; padding: 4px 8px; border-bottom: 1px solid #343a36; background: #414843; color: #e4e8e5; font: 11px/1 Inter, ui-sans-serif, system-ui, sans-serif; }
 .pdf-toolbar button { height: 27px; min-width: 27px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #ffffff24; border-radius: 5px; padding: 0 6px; background: #ffffff0b; color: inherit; }
-.pdf-toolbar .pdf-download { height: 27px; min-width: 27px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #ffffff24; border-radius: 5px; padding: 0 6px; color: inherit; text-decoration: none; }
-.pdf-toolbar .pdf-download:hover { border-color: #ffffff48; background: #ffffff1b; }
 .pdf-toolbar button:hover:not(:disabled) { border-color: #ffffff48; background: #ffffff1b; }
 .pdf-toolbar button:disabled { opacity: .3; }
 .pdf-zoom-value { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }

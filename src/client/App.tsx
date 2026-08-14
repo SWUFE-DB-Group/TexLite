@@ -575,6 +575,8 @@ function AdminUsers({ currentUser }: { currentUser: User }) {
 }
 
 type PreviewTab = "pdf" | "log" | "warnings" | "errors" | "artifacts";
+type PreviewSurface = "pdf" | "diagnostics";
+type DiagnosticTab = Exclude<PreviewTab, "pdf">;
 interface ProjectOutlineItem { path: string; line: number; level: number; title: string }
 interface LoadOptions { signal?: AbortSignal; isCurrent?: () => boolean }
 
@@ -595,7 +597,16 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [saveState, setSaveState] = useState("editor.saved");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [sourceCursor, setSourceCursor] = useState({ line: 1, column: 1 });
-  const [previewTab, setPreviewTab] = useState<PreviewTab>("pdf");
+  const [previewTab, setPreviewTab] = useState<PreviewSurface>("pdf");
+  const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticTab>("log");
+  const selectPreviewTab = (next: PreviewTab): void => {
+    if (next === "pdf") {
+      setPreviewTab("pdf");
+      return;
+    }
+    setDiagnosticTab(next);
+    setPreviewTab("diagnostics");
+  };
   const { workspaceLayout, setWorkspaceLayout } = useWorkspaceLayout(user.id, projectId);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -656,7 +667,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     activeFile,
     onActiveFile: setActiveFile,
     onError: setError,
-    onShowPdf: () => setPreviewTab("pdf")
+    onShowPdf: () => selectPreviewTab("pdf")
   });
 
   const spellCheck = useSpellCheck({
@@ -1057,7 +1068,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     onSharedState: setCompileState,
     save: saveForCompile,
     loadOutline: (signal, mainFile) => loadProjectOutline({ signal }, mainFile),
-    onPreviewTab: setPreviewTab,
+    onPreviewTab: selectPreviewTab,
     onError: setError,
     onCompileStart: () => { setError(""); setNotice(""); },
     onPdfChanged: clearPdfViewport
@@ -1089,7 +1100,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const showPreview = workspaceLayout !== "editor-only";
   const changeWorkspaceLayout = (next: WorkspaceLayout) => {
     setWorkspaceLayout(next);
-    if (next === "pdf-only") setPreviewTab("pdf");
+    if (next === "pdf-only") selectPreviewTab("pdf");
   };
   const deleteActiveSessions = deleteEntry
     ? activeSessions.filter((session) => session.filePath && pathContains(deleteEntry.path, session.filePath))
@@ -1104,6 +1115,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
   }) : "";
   const pdfTargetLabel = activeMainFile.split("/").at(-1) ?? activeMainFile;
+  const diagnosticCount = compileMessages.warnings.length + compileMessages.errors.length + artifacts.length;
+  const pdfDownloadUrl = pdfUrl ? `${pdfUrl}${pdfUrl.includes("?") ? "&" : "?"}download=1` : "";
   const compileStatusMessage = compileBusy
     ? sharedCompiling
       ? compileState?.status === "queued" ? t("editor.compileQueued") : t("editor.compilingBy", { name: compileState?.requestedBy.name ?? t("common.user") })
@@ -1154,23 +1167,29 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       {showEditor && showPreview && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport} title={t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={syncVisiblePdfToSource}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl} title={t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={() => void syncSourceToPdf(activeFile, sourceCursor.line, sourceCursor.column)}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
       {showPreview && <Panel id="preview" order={3} defaultSize={42} minSize={22}>
         <section className="preview-panel">
-          <div className="preview-tabs" role="tablist" aria-label={t("editor.outputTabs")}>
-            <button className={`pdf-tab${previewTab === "pdf" ? " active" : ""}`} onClick={() => setPreviewTab("pdf")} title={pdfCompiledAt ? t("editor.pdfCompiledAtFor", { file: activeMainFile, time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) }) : t("editor.currentMainDocument", { path: activeMainFile })}><FileText size={14} /><span className="pdf-tab-label">PDF · {pdfTargetLabel}{pdfCompiledLabel && <small>{pdfCompiledLabel}</small>}</span></button>
-            <button className={previewTab === "log" ? "active" : ""} onClick={() => setPreviewTab("log")}><ScrollText size={14} />{t("editor.log")}</button>
-            <button className={previewTab === "warnings" ? "active" : ""} onClick={() => setPreviewTab("warnings")}><AlertTriangle size={14} />{t("editor.warnings")}<span>{compileMessages.warnings.length}</span></button>
-            <button className={previewTab === "errors" ? "active" : ""} onClick={() => setPreviewTab("errors")}><XCircle size={14} />{t("editor.errors")}<span>{compileMessages.errors.length}</span></button>
-            <button className={previewTab === "artifacts" ? "active" : ""} onClick={() => setPreviewTab("artifacts")}><PackageOpen size={14} />{t("editor.artifacts")}<span>{artifacts.length}</span></button>
+          <div className="preview-tabs">
+            <div className="preview-tab-list" role="tablist" aria-label={t("editor.outputTabs")}>
+              <button role="tab" aria-selected={previewTab === "pdf"} className={`pdf-tab${previewTab === "pdf" ? " active" : ""}`} onClick={() => selectPreviewTab("pdf")} title={pdfCompiledAt ? t("editor.pdfCompiledAtFor", { file: activeMainFile, time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) }) : t("editor.currentMainDocument", { path: activeMainFile })}><FileText size={16} /><span className="pdf-tab-label">PDF · {pdfTargetLabel}{pdfCompiledLabel && <small>{pdfCompiledLabel}</small>}</span></button>
+              <button role="tab" aria-selected={previewTab === "diagnostics"} className={`diagnostics-tab${previewTab === "diagnostics" ? " active" : ""}`} onClick={() => setPreviewTab("diagnostics")}><ScrollText size={14} />{t("editor.outputTabs")}<span>{diagnosticCount}</span></button>
+            </div>
+            {pdfDownloadUrl && <a className="pdf-download-top" href={pdfDownloadUrl} download title={t("editor.downloadPdf")} aria-label={t("editor.downloadPdf")}><Download size={15} /><span>{t("editor.downloadPdf")}</span></a>}
           </div>
-          <div className={`preview-content preview-${previewTab}`}>
+          {previewTab === "diagnostics" && <div className="preview-subtabs" role="tablist" aria-label={t("editor.outputTabs")}>
+            <button role="tab" aria-selected={diagnosticTab === "log"} className={diagnosticTab === "log" ? "active" : ""} onClick={() => selectPreviewTab("log")}><ScrollText size={13} />{t("editor.log")}</button>
+            <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{compileMessages.warnings.length}</span></button>
+            <button role="tab" aria-selected={diagnosticTab === "errors"} className={diagnosticTab === "errors" ? "active" : ""} onClick={() => selectPreviewTab("errors")}><XCircle size={13} />{t("editor.errors")}<span>{compileMessages.errors.length}</span></button>
+            <button role="tab" aria-selected={diagnosticTab === "artifacts"} className={diagnosticTab === "artifacts" ? "active" : ""} onClick={() => selectPreviewTab("artifacts")}><PackageOpen size={13} />{t("editor.artifacts")}<span>{artifacts.length}</span></button>
+          </div>}
+          <div className={`preview-content preview-${previewTab} ${previewTab === "diagnostics" ? `preview-${diagnosticTab}` : ""}`}>
             {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="preview-empty"><span>{t("common.loading")}</span></div>}><PdfPreview url={pdfUrl} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} /></Suspense> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
-            {previewTab === "log" && <CompileOutput lines={compileLog ? compileLog.split("\n") : []} empty={localCompiling ? t("editor.compiling") : t("editor.noLog")} />}
-            {previewTab === "warnings" && (compileDiagnostics
+            {previewTab === "diagnostics" && diagnosticTab === "log" && <CompileOutput lines={compileLog ? compileLog.split("\n") : []} empty={localCompiling ? t("editor.compiling") : t("editor.noLog")} />}
+            {previewTab === "diagnostics" && diagnosticTab === "warnings" && (compileDiagnostics
               ? <CompileDiagnosticOutput tone="warning" diagnostics={compileDiagnostics.warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />
               : <CompileOutput tone="warning" lines={compileMessages.warnings} empty={t("editor.noWarnings")} />)}
-            {previewTab === "errors" && (compileDiagnostics
+            {previewTab === "diagnostics" && diagnosticTab === "errors" && (compileDiagnostics
               ? <CompileDiagnosticOutput tone="error" diagnostics={compileDiagnostics.errors} files={files} empty={t("editor.noErrors")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />
               : <CompileOutput tone="error" lines={compileMessages.errors} empty={t("editor.noErrors")} />)}
-            {previewTab === "artifacts" && <CompileArtifacts projectId={projectId} mainFile={activeMainFile} artifacts={artifacts} preview={artifactPreview} loading={artifactLoading} onView={(artifact) => void viewArtifact(artifact)} />}
+            {previewTab === "diagnostics" && diagnosticTab === "artifacts" && <CompileArtifacts projectId={projectId} mainFile={activeMainFile} artifacts={artifacts} preview={artifactPreview} loading={artifactLoading} onView={(artifact) => void viewArtifact(artifact)} />}
           </div>
         </section>
       </Panel>}

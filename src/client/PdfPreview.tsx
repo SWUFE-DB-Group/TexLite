@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type WheelEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { getDocument, GlobalWorkerOptions, PDFWorker, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
-import { Download, LoaderCircle, Maximize2, Minus, Plus } from "lucide-react";
+import { LoaderCircle, Maximize2, Minus, Plus } from "lucide-react";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
@@ -94,11 +94,8 @@ export function PdfPreview({ url, target, compiling = false, onViewportLocation 
     event.currentTarget.scrollLeft += event.deltaY;
     reportViewport();
   };
-  const downloadUrl = `${url}${url.includes("?") ? "&" : "?"}download=1`;
-
   return <div className="pdf-viewer">
     <div className="pdf-toolbar" role="toolbar" aria-label={t("editor.pdfZoomControls")}>
-      <a className="pdf-download" href={downloadUrl} download title={t("editor.downloadPdf")} aria-label={t("editor.downloadPdf")}><Download size={14} /></a>
       <button disabled={zoom <= 50} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
       <span className="pdf-zoom-value" aria-live="polite">{zoom}%</span>
       <button disabled={zoom >= 200} title={t("editor.pdfZoomIn")} aria-label={t("editor.pdfZoomIn")} onClick={() => changeZoom(10)}><Plus size={14} /></button>
