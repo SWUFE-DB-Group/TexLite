@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpen, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Save, Settings, SpellCheck2, Type, WrapText, X } from "lucide-react";
+import { AlignLeft, BookOpen, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Save, Settings, SpellCheck2, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
 import { errorMessage } from "../errors";
@@ -25,6 +25,7 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
   const [settingsTab, setSettingsTab] = useState<"appearance" | "compiler">("appearance");
   const [appearancePreferences, setAppearancePreferences] = useState(editorPreferences);
   const canManage = project.permission === "owner";
+  const canEdit = project.permission !== "read";
   const canManageDictionary = project.permission !== "read";
   useEffect(() => setAppearancePreferences(editorPreferences), [editorPreferences]);
   useEffect(() => {
@@ -85,6 +86,8 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
       <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><span>{t("projectSettings.spellCheck")}</span></label>
       <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><span>{t("projectSettings.vimMode")}</span></label>
       <p className="field-hint">{t("projectSettings.vimModeDescription")} <a href="https://replit-codemirror-vim.mintlify.app/" target="_blank" rel="noreferrer">{t("projectSettings.vimHelp")}</a></p>
+      <label className="editor-checkbox"><input type="checkbox" disabled={!canEdit} checked={appearancePreferences.formatOnCompile} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, formatOnCompile: event.target.checked })} /><AlignLeft size={15} /><span>{t("projectSettings.formatOnCompile")}</span></label>
+      <p className="field-hint">{t(canEdit ? "projectSettings.formatOnCompileDescription" : "projectSettings.formatRequiresWrite")} {t("projectSettings.formatterDescription")} <a href="https://github.com/wgunderwood/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a></p>
       {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.spellingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("projectSettings.noSpellingIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
       <div className="settings-section-title"><BookOpen size={15} /><strong>{t("projectSettings.dictionary")}</strong></div>
       <p className="settings-description">{t("projectSettings.dictionaryDescription")}</p>

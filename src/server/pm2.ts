@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import type { ProcessDescription, StartOptions } from "pm2";
 import type { Config } from "./config.js";
@@ -15,8 +16,11 @@ export interface ProcessStatus {
   name: string;
   configPath: string;
   status: string;
+  pm2Status: string;
+  healthy: boolean;
   pid: number | null;
-  uptime: number | null;
+  startedAt: string | null;
+  uptimeSeconds: number | null;
   restarts: number;
   version: string;
   address: string;
@@ -24,6 +28,12 @@ export interface ProcessStatus {
   cwd: string;
   outputLog: string | null;
   errorLog: string | null;
+}
+
+interface HealthProbe {
+  ok: boolean;
+  pid: number | null;
+  error: string | null;
 }
 
 type Pm2Api = typeof import("pm2");
@@ -67,7 +77,10 @@ function environmentOf(process: ProcessDescription): Record<string, unknown> {
 
 export function processName(configPath: string): string {
   const absoluteConfigPath = path.resolve(configPath);
-  if (absoluteConfigPath === defaultConfigPath()) return "texlite";
+  // Reserve the short conventional name for the standard fallback path only.
+  // If XDG_CONFIG_HOME points elsewhere, the absolute path must participate in
+  // the name or every isolated/test installation would collide on `texlite`.
+  if (absoluteConfigPath === defaultConfigPath({})) return "texlite";
   const digest = crypto.createHash("sha256").update(absoluteConfigPath).digest("hex").slice(0, 8);
   return `texlite-${digest}`;
 }
@@ -104,10 +117,27 @@ function startOptions(config: Config): StartOptions {
     instances: 1,
     autorestart: true,
     watch: false,
+    wait_ready: true,
+    listen_timeout: 45_000,
+    min_uptime: 10_000,
+    max_restarts: 5,
+    restart_delay: 500,
     max_memory_restart: "512M",
     kill_timeout: 10_000,
     env: environment
   };
+}
+
+function launch(config: Config): Promise<ProcessDescription> {
+  return callback<ProcessDescription>((done) => {
+    pm2Client!.start(startOptions(config), (error, process) => done(error ?? null, process));
+  });
+}
+
+async function replaceProcess(existing: ProcessDescription, config: Config): Promise<ProcessDescription> {
+  await callback<void>((done) => pm2Client!.delete(processId(existing), (error) => done(error ?? null)));
+  const started = await launch(config);
+  return Array.isArray(started) ? started[0]! : started;
 }
 
 export async function startManaged(config: Config): Promise<ManagedProcess> {
@@ -121,12 +151,17 @@ export async function startManaged(config: Config): Promise<ManagedProcess> {
       && environmentOf(process).TEXLITE_CONFIG === absoluteConfigPath);
     if (existing) {
       const status = existing.pm2_env?.status;
-      if (status === "online" || status === "launching") return { name, configPath: config.configPath, description: existing };
-      await callback<void>((done) => pm2Client!.restart(processId(existing), (error) => done(error ?? null)));
-      const refreshed = (await list()).find((process) => process.name === name) ?? existing;
+      if (status === "launching") return { name, configPath: config.configPath, description: existing };
+      if (status === "online") {
+        const probe = await probeService(config);
+        if (probe.ok && probe.pid === existing.pid) {
+          return { name, configPath: config.configPath, description: existing };
+        }
+      }
+      const refreshed = await replaceProcess(existing, config);
       return { name, configPath: config.configPath, description: refreshed };
     }
-    const started = await callback<ProcessDescription>((done) => pm2Client!.start(startOptions(config), (error, process) => done(error ?? null, process)));
+    const started = await launch(config);
     const description = Array.isArray(started) ? started[0] : started;
     return { name, configPath: config.configPath, description };
   } finally {
@@ -164,11 +199,10 @@ export async function restartManaged(config: Config): Promise<ManagedProcess> {
     const existing = processes.find((process) => process.name === name
       && environmentOf(process).TEXLITE_CONFIG === absoluteConfigPath);
     if (!existing) {
-      const started = await callback<ProcessDescription>((done) => pm2Client!.start(startOptions(config), (error, process) => done(error ?? null, process)));
+      const started = await launch(config);
       return { name, configPath: config.configPath, description: Array.isArray(started) ? started[0] : started };
     }
-    await callback<void>((done) => pm2Client!.restart(processId(existing), (error) => done(error ?? null)));
-    const description = (await list()).find((process) => process.name === name) ?? existing;
+    const description = await replaceProcess(existing, config);
     return { name, configPath: config.configPath, description };
   } finally {
     disconnect();
@@ -179,12 +213,20 @@ export async function processStatus(config: Config): Promise<ProcessStatus> {
   const managed = await managedProcess(config.configPath);
   const description = managed.description;
   const env = description ? description.pm2_env : undefined;
+  const pm2Status = env?.status ?? "missing";
+  const probe = pm2Status === "online" ? await probeService(config) : { ok: false, pid: null, error: null };
+  const healthy = Boolean(description?.pid && probe.ok && probe.pid === description.pid);
+  const active = pm2Status === "online" || pm2Status === "launching";
+  const startedAt = active && typeof env?.pm_uptime === "number" ? env.pm_uptime : null;
   return {
     name: managed.name,
     configPath: managed.configPath,
-    status: env?.status ?? "missing",
+    status: pm2Status === "online" && !healthy ? "unhealthy" : pm2Status,
+    pm2Status,
+    healthy,
     pid: description?.pid ?? null,
-    uptime: env?.pm_uptime ?? null,
+    startedAt: startedAt === null ? null : new Date(startedAt).toISOString(),
+    uptimeSeconds: startedAt === null ? null : Math.max(0, Math.floor((Date.now() - startedAt) / 1000)),
     restarts: env?.restart_time ?? 0,
     version: packageVersion(),
     address: `http://${config.host}:${config.port}`,
@@ -195,22 +237,90 @@ export async function processStatus(config: Config): Promise<ProcessStatus> {
   };
 }
 
-/** Wait until PM2 has actually launched the service, rather than reporting
- * success while it is still in the `launching` state. */
-export async function waitForOnline(config: Config, timeoutMs = 15_000): Promise<ManagedProcess> {
+/** Wait for both PM2 and the HTTP service. The health response PID prevents a
+ * foreground `texlite serve` process on the same port from being mistaken for
+ * the newly launched managed process. */
+export async function waitForOnline(config: Config, timeoutMs = 50_000): Promise<ManagedProcess> {
   const deadline = Date.now() + timeoutMs;
   let latest = await managedProcess(config.configPath);
+  let consecutiveHealthyChecks = 0;
+  let healthyPid: number | null = null;
+  let latestProbe: HealthProbe = { ok: false, pid: null, error: null };
   while (Date.now() < deadline) {
     const status = latest.description?.pm2_env?.status;
-    if (status === "online") return latest;
+    if (status === "online") {
+      latestProbe = await probeService(config);
+      if (latestProbe.ok && latestProbe.pid === latest.description?.pid) {
+        consecutiveHealthyChecks = healthyPid === latestProbe.pid ? consecutiveHealthyChecks + 1 : 1;
+        healthyPid = latestProbe.pid;
+        if (consecutiveHealthyChecks >= 2) return latest;
+      } else {
+        consecutiveHealthyChecks = 0;
+        healthyPid = null;
+      }
+    } else {
+      consecutiveHealthyChecks = 0;
+      healthyPid = null;
+    }
     if (status === "errored" || status === "stopped") {
       throw new Error(`PM2 could not start TexLite (current status: ${status}). Run texlite logs to inspect the logs.`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 250));
     latest = await managedProcess(config.configPath);
   }
   const status = latest.description?.pm2_env?.status ?? "missing";
-  throw new Error(`Timed out waiting for TexLite to start (current status: ${status}). Run texlite status or texlite logs to investigate.`);
+  const expectedPid = latest.description?.pid ?? "none";
+  const probeDetail = latestProbe.pid !== null
+    ? `health endpoint belongs to PID ${latestProbe.pid}, expected PM2 PID ${expectedPid}`
+    : latestProbe.error ?? "health endpoint did not respond";
+  throw new Error(`Timed out waiting for TexLite to become healthy at ${healthUrl(config)} (PM2 status: ${status}; ${probeDetail}). Run texlite logs to investigate.`);
+}
+
+function probeHost(host: string): string {
+  if (host === "0.0.0.0") return "127.0.0.1";
+  if (host === "::" || host === "[::]") return "::1";
+  return host;
+}
+
+function healthUrl(config: Config): string {
+  const host = probeHost(config.host);
+  const formattedHost = host.includes(":") ? `[${host}]` : host;
+  return `http://${formattedHost}:${config.port}/api/health`;
+}
+
+function probeService(config: Config, timeoutMs = 1_500): Promise<HealthProbe> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: HealthProbe) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const request = http.get(healthUrl(config), { timeout: timeoutMs }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => {
+        if (Buffer.concat(chunks).length < 16 * 1024) chunks.push(chunk);
+      });
+      response.once("end", () => {
+        if (response.statusCode !== 200) {
+          finish({ ok: false, pid: null, error: `health endpoint returned HTTP ${response.statusCode ?? "unknown"}` });
+          return;
+        }
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { ok?: unknown; pid?: unknown };
+          finish({
+            ok: body.ok === true && Number.isInteger(body.pid),
+            pid: Number.isInteger(body.pid) ? body.pid as number : null,
+            error: body.ok === true && Number.isInteger(body.pid) ? null : "health endpoint returned an invalid response"
+          });
+        } catch {
+          finish({ ok: false, pid: null, error: "health endpoint returned invalid JSON" });
+        }
+      });
+    });
+    request.once("timeout", () => request.destroy(new Error("health check timed out")));
+    request.once("error", (error) => finish({ ok: false, pid: null, error: error.message }));
+  });
 }
 
 export async function streamLogs(config: Config): Promise<void> {

@@ -34,6 +34,7 @@ export async function startServer(configPath?: string): Promise<RunningServer> {
   }
   app.log.info(`Environment ready: ${environment.map((item) => `${item.name} ${item.version}`).join(", ")}`);
   app.log.info(`${config.siteName} running at http://${config.host}:${config.port}`);
+  if (typeof process.send === "function") process.send("ready");
   return {
     address: `http://${config.host}:${config.port}`,
     close: async () => {
@@ -68,7 +69,7 @@ export async function main(): Promise<void> {
 if (isMainModule()) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
+    process.exit(1);
   });
 }
 

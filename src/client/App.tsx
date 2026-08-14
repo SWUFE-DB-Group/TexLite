@@ -1,18 +1,20 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { version as texliteVersion } from "../../package.json";
 import { api, ApiError, localizedResponseError } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import type { FileEntry, LatexCompletionIndex, Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "./types";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import i18n from "./i18n";
 import {
-  Activity, AlertTriangle, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Dices, Download, FileArchive, FilePlus2, FileText, Keyboard,
+  Activity, AlertTriangle, AlignLeft, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Dices, Download, FileArchive, FilePlus2, FileText, Keyboard,
   FileSearch, Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, ListTree, LoaderCircle, MessageSquare, MessageSquarePlus, PackageOpen,
   Move, PanelLeftClose, PanelLeftOpen, Pencil, Play, ScrollText,
-  Search, Settings, Sparkles, Tags, Trash2, Upload, Users, X, XCircle
+  Search, Settings, Sparkles, Tags, Trash2, Upload, UserPlus, Users, X, XCircle
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "./editorPreferences";
+import { createLatexTextEdits, isFormattableLatexFile, reindentLatexSelection } from "./latexFormatter";
 import { classifyCompileLog } from "./compileLog";
 import type { CollaborationSaveReceipt } from "./collaboration";
 import { isProjectHistoryState, projectIdFromPath, projectPath, type TexLiteHistoryState } from "./routes";
@@ -128,7 +130,7 @@ function SiteLogo({ siteName, compact = false, auth = false }: { siteName: strin
 function SiteFooter() {
   const { t } = useTranslation();
   const repositoryUrl = "https://github.com/SWUFE-DB-Group/TexLite";
-  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite v0.2.0</a></span><span>{t("footer.credit")}</span></footer>;
+  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite v{texliteVersion}</a></span><span>{t("footer.credit")}</span></footer>;
 }
 
 function ChangePassword({ site, user, onChanged }: { site: SiteConfig; user: User; onChanged: (user: User) => void }) {
@@ -431,12 +433,12 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
     <header className="topbar">
       <span className="site-title">{site.siteName}</span><SiteLogo siteName={site.siteName} />
       <div className="top-actions">
-        {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity size={14} />{t("metrics.title")}</button><button className="ghost" onClick={() => setAdminOpen(!adminOpen)}>{adminOpen ? t("users.back") : t("users.manage")}</button></>}
+        {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className="ghost" onClick={() => setAdminOpen(!adminOpen)}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
         <LanguageSwitcher compact /><span className="top-user-identity"><strong>{user.displayName}</strong><small>@{user.username}</small></span><button className="ghost" onClick={logout}>{t("auth.logout")}</button>
       </div>
     </header>
     {adminOpen ? <AdminUsers currentUser={user} /> : <main className="dashboard">
-      <div className="section-title"><div><h1>{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => setTagCreateOpen(true)}>{t("tags.create")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}>{t("projects.upload")}</button><button className="primary" onClick={() => setCreateOpen(true)}>{t("projects.new")}</button></>}</div></div>
+      <div className="section-title"><div><h1><FolderOpen aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => setTagCreateOpen(true)}><Tags aria-hidden size={15} />{t("tags.create")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} />{t("projects.upload")}</button><button className="primary" onClick={() => setCreateOpen(true)}><FolderPlus aria-hidden size={15} />{t("projects.new")}</button></>}</div></div>
       {error && <p className="error">{error}</p>}
       <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="tablist" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} role="tab" aria-selected={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} role="tab" aria-selected={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><div className="tag-filters"><button className={!tagFilter ? "active" : ""} onClick={() => changeTagFilter("")}>{t("projects.allTags")}</button>{tags.map((tag) => <button key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => changeTagFilter(tagFilter === tag.id ? "" : tag.id)}><TagDot color={tag.color} />{tag.name}</button>)}</div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
       <div className={`project-grid ${view === "list" ? "list-view" : ""}`}>
@@ -550,7 +552,7 @@ function AdminUsers({ currentUser }: { currentUser: User }) {
     } catch (e) { setError(errorMessage(e)); }
   };
   return <main className="dashboard">
-    <div className="section-title"><div><h1>{t("users.manage")}</h1><p className="muted">{t("users.onlyAdmin")}</p></div><button className="primary" onClick={() => setCreateOpen(true)}>{t("users.add")}</button></div>
+    <div className="section-title"><div><h1><Users aria-hidden size={25} />{t("users.manage")}</h1><p className="muted">{t("users.onlyAdmin")}</p></div><button className="primary icon-button" onClick={() => setCreateOpen(true)}><UserPlus aria-hidden size={15} />{t("users.add")}</button></div>
     {error && <p className="error">{error}</p>}
     <div className="table-card"><table><thead><tr><th>{t("common.user")}</th><th>{t("users.role")}</th><th>{t("users.createProjects")}</th><th>{t("users.ownedProjects")}</th><th>{t("users.status")}</th><th>{t("users.actions")}</th></tr></thead>
       <tbody>{users.map((target) => <tr key={target.id}><td><strong>{target.displayName}</strong><small>@{target.username}</small></td><td>{target.role === "admin" ? t("common.admin") : t("common.user")}</td><td>{target.canCreateProjects ? t("users.allow") : t("users.deny")}</td><td>{target.ownedProjects}</td><td>{target.disabled ? t("common.disabled") : t("common.normal")}</td><td>
@@ -597,7 +599,12 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const { workspaceLayout, setWorkspaceLayout } = useWorkspaceLayout(user.id, projectId);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [selection, setSelection] = useState<SourceSelection>({ selectedText: "", startOffset: 0, endOffset: 0 });
+  const [selection, setSelectionState] = useState<SourceSelection>({ selectedText: "", startOffset: 0, endOffset: 0 });
+  const selectionRef = useRef<SourceSelection>({ selectedText: "", startOffset: 0, endOffset: 0 });
+  const setSelection = (next: SourceSelection): void => {
+    selectionRef.current = next;
+    setSelectionState(next);
+  };
   const [sidePanel, setSidePanel] = useState<"comments" | "settings" | null>(null);
   const [filesCollapsed, setFilesCollapsed] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -605,6 +612,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
+  const [formatting, setFormatting] = useState(false);
   const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(() => loadEditorPreferences(user.id, projectId));
   const uploadInput = useRef<HTMLInputElement>(null);
   const filesPanel = useRef<ImperativePanelHandle>(null);
@@ -619,6 +627,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const outlineRequest = useRef<AbortController | null>(null);
   const dictionaryRequest = useRef<AbortController | null>(null);
   const refreshRequest = useRef<AbortController | null>(null);
+  const formattingRef = useRef(false);
+  const formattingTaskRef = useRef<Promise<void> | null>(null);
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
   activeMainFileRef.current = activeMainFile;
@@ -667,6 +677,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
 
   useEffect(() => {
     activeFileRef.current = activeFile;
+    setSelection({ selectedText: "", startOffset: 0, endOffset: 0 });
   }, [activeFile]);
 
   useEffect(() => {
@@ -921,6 +932,79 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       setSaveState("editor.saveFailed"); setError(t("errors.collaborationUnavailable")); return false;
     }
   };
+  const formatWithHostFormatter = async (filePath: string, source: string): Promise<string> => {
+    const result = await api<{ formatter: "tex-fmt"; formatted: string }>(
+      `/api/projects/${projectId}/format`,
+      { method: "POST", body: JSON.stringify({ path: filePath, source }) }
+    );
+    return result.formatted;
+  };
+  const formatBeforeCompile = async (): Promise<void> => {
+    if (!editorPreferences.formatOnCompile || !project || project.permission === "read"
+      || !collaborationSynced || !isFormattableLatexFile(activeFileRef.current) || formattingRef.current) return;
+    const filePath = activeFileRef.current;
+    const sharedText = collaboration.getText(filePath);
+    const source = sharedText.toString();
+    formattingRef.current = true;
+    setFormatting(true);
+    try {
+      const formatted = await formatWithHostFormatter(filePath, source);
+      const edits = await createLatexTextEdits(source, formatted);
+      if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
+        throw new Error(t("editor.formatSourceChanged"));
+      }
+      if (edits.length) collaboration.applyTextEdits(filePath, edits);
+    } catch (formatError) {
+      setError(t("editor.formatFailedContinue", { message: errorMessage(formatError) }));
+    } finally {
+      formattingRef.current = false;
+      setFormatting(false);
+    }
+  };
+  const saveForCompile = async (): Promise<boolean> => {
+    if (formattingTaskRef.current) await formattingTaskRef.current;
+    await formatBeforeCompile();
+    return save();
+  };
+  const formatSelectedSource = async (): Promise<void> => {
+    if (!project || project.permission === "read" || !collaborationSynced || formattingRef.current
+      || !isFormattableLatexFile(activeFileRef.current)) return;
+    const currentSelection = selectionRef.current;
+    if (!currentSelection.selectedText.trim()) {
+      setNotice(t("editor.formatSelectionRequired"));
+      return;
+    }
+    const filePath = activeFileRef.current;
+    const { startOffset, endOffset, selectedText } = currentSelection;
+    const sharedText = collaboration.getText(filePath);
+    if (sharedText.toString().slice(startOffset, endOffset) !== selectedText) {
+      setError(t("editor.formatSelectionChanged"));
+      return;
+    }
+    formattingRef.current = true;
+    setFormatting(true);
+    let finishFormattingTask: () => void = () => {};
+    const formattingTask = new Promise<void>((resolve) => { finishFormattingTask = resolve; });
+    formattingTaskRef.current = formattingTask;
+    try {
+      const formatted = reindentLatexSelection(selectedText, await formatWithHostFormatter(filePath, selectedText));
+      const edits = await createLatexTextEdits(selectedText, formatted, startOffset);
+      if (activeFileRef.current !== filePath || sharedText.toString().slice(startOffset, endOffset) !== selectedText) {
+        setError(t("editor.formatSelectionChanged"));
+        return;
+      }
+      if (edits.length) collaboration.applyTextEdits(filePath, edits);
+      setError("");
+      setNotice(t("editor.formatSelectionComplete"));
+    } catch (formatError) {
+      setError(t("editor.formatFailed", { message: errorMessage(formatError) }));
+    } finally {
+      formattingRef.current = false;
+      setFormatting(false);
+      finishFormattingTask();
+      if (formattingTaskRef.current === formattingTask) formattingTaskRef.current = null;
+    }
+  };
   const {
     files, setFiles, loadFiles,
     newFileOpen, setNewFileOpen, newFilePath, setNewFilePath,
@@ -971,7 +1055,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     collaborationSynced,
     sharedState: compileState,
     onSharedState: setCompileState,
-    save,
+    save: saveForCompile,
     loadOutline: (signal, mainFile) => loadProjectOutline({ signal }, mainFile),
     onPreviewTab: setPreviewTab,
     onError: setError,
@@ -1040,7 +1124,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
       <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
       {collaborationStatus === "disconnected" && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
-      <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setHistoryOpen(true)}><History size={15} />{t("history.title")}</button><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
+      <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setHistoryOpen(true)}><History size={15} />{t("history.title")}</button><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}{showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <button title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || !collaborationSynced}>{formatting ? <LoaderCircle className="spin" size={15} /> : <AlignLeft size={15} />}{formatting ? t("editor.formatting") : t("editor.formatSelection")}</button>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
     </header>
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}

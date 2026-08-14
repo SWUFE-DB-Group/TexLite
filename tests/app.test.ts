@@ -65,6 +65,9 @@ describe("texLite application", () => {
   });
 
   it("requires authentication and exposes only public site config", async () => {
+    const health = await app.inject({ method: "GET", url: "/api/health" });
+    expect(health.statusCode).toBe(200);
+    expect(health.json()).toMatchObject({ ok: true, pid: process.pid, latexmk: "latexmk" });
     const unauthenticated = await app.inject({ method: "GET", url: "/api/projects" });
     expect(unauthenticated.statusCode).toBe(401);
     expect(unauthenticated.json()).toMatchObject({ code: "AUTH_REQUIRED" });
@@ -79,6 +82,18 @@ describe("texLite application", () => {
       payload: { source: "This wrng source must stay in the browser." }
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("formats supported LaTeX files with the optional host formatter", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Host formatter" } });
+    const projectId = created.json().project.id as string;
+    const response = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/format`, headers: { cookie },
+      payload: { path: "main.tex", source: "\\documentclass{article}\n\\begin{document}\n\\section{Title}\n\\end{document}\n" }
+    });
+    expect([200, 503]).toContain(response.statusCode);
+    if (response.statusCode === 200) expect(response.json()).toMatchObject({ formatter: "tex-fmt" });
+    else expect(response.json()).toMatchObject({ code: "FORMATTER_UNAVAILABLE" });
   });
 
   it("creates, edits, compiles and comments on a project", async () => {

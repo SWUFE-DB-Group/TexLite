@@ -11,13 +11,14 @@ import { activeAdminCount, openDatabase } from "./db.js";
 import { hashPassword } from "./security.js";
 import { assertEnvironment, assertGitAvailable } from "./environment.js";
 import { serve } from "./index.js";
-import { processStatus, restartManaged, startManaged, stopManaged, streamLogs, waitForOnline } from "./pm2.js";
+import { processStatus, restartManaged, startManaged, stopManaged, streamLogs, waitForOnline, type ProcessStatus } from "./pm2.js";
 import { defaultDataDirectory, resolveConfigPath } from "./runtimePaths.js";
 
 export interface CliOptions {
   command: string;
   configPath?: string;
   checkGit: boolean;
+  json: boolean;
 }
 
 const HELP = `TexLite ${packageVersion()}
@@ -41,6 +42,7 @@ Commands:
 Options:
   --config PATH  Use this configuration file instead of TEXLITE_CONFIG or the XDG default.
   --git          Make doctor check the optional Git integration as well.
+  --json         Print status as JSON for scripts instead of the terminal view.
   -h, --help     Show this help message.
   -v, --version  Print the installed TexLite version.
 `;
@@ -49,12 +51,14 @@ export function parseArgs(args: string[]): CliOptions {
   let command = "help";
   let configPath: string | undefined;
   let checkGit = false;
+  let json = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (!argument) continue;
-    if (argument === "-h" || argument === "--help") return { command: "help", configPath, checkGit };
-    if (argument === "-v" || argument === "--version") return { command: "version", configPath, checkGit };
+    if (argument === "-h" || argument === "--help") return { command: "help", configPath, checkGit, json };
+    if (argument === "-v" || argument === "--version") return { command: "version", configPath, checkGit, json };
     if (argument === "--git") { checkGit = true; continue; }
+    if (argument === "--json") { json = true; continue; }
     if (argument === "--config") {
       const value = args[++index];
       if (!value) throw new Error("--config requires a configuration file path");
@@ -71,7 +75,7 @@ export function parseArgs(args: string[]): CliOptions {
     if (command !== "help") throw new Error(`Only one command may be specified (already received ${command})`);
     command = argument;
   }
-  return { command, configPath, checkGit };
+  return { command, configPath, checkGit, json };
 }
 
 function output(message: string): void {
@@ -133,10 +137,18 @@ async function initialize(options: CliOptions): Promise<void> {
   let db: ReturnType<typeof openDatabase> | null = null;
   try {
     if (!fs.existsSync(configPath)) {
-      const siteName = rl
-        ? (await rl.question(`Site name [${CONFIG_DEFAULTS.siteName}]: `)).trim() || CONFIG_DEFAULTS.siteName
-        : CONFIG_DEFAULTS.siteName;
-      const adminEmail = rl ? (await rl.question("Administrator contact email (optional): ")).trim() : "";
+      const configuredSiteName = process.env.TEXLITE_SITE_NAME;
+      const siteName = configuredSiteName !== undefined
+        ? configuredSiteName.trim() || CONFIG_DEFAULTS.siteName
+        : rl
+          ? (await rl.question(`Site name [${CONFIG_DEFAULTS.siteName}]: `)).trim() || CONFIG_DEFAULTS.siteName
+          : CONFIG_DEFAULTS.siteName;
+      const configuredAdminEmail = process.env.TEXLITE_ADMIN_EMAIL;
+      const adminEmail = configuredAdminEmail !== undefined
+        ? configuredAdminEmail.trim()
+        : rl
+          ? (await rl.question("Administrator contact email (optional): ")).trim()
+          : "";
       writeInitialConfig(configPath, siteName, adminEmail);
       output(`Created configuration file: ${configPath}`);
     } else {
@@ -237,8 +249,85 @@ async function start(options: CliOptions, restart = false): Promise<void> {
 async function status(options: CliOptions): Promise<void> {
   const { config } = await loadValidatedConfig(options);
   const result = await processStatus(config);
-  output(JSON.stringify(result, null, 2));
+  output(options.json ? JSON.stringify(result, null, 2) : formatProcessStatus(result, terminalColorsEnabled()));
   if (result.status !== "online") process.exitCode = 2;
+}
+
+const ANSI = {
+  bold: "\u001b[1m",
+  green: "\u001b[32m",
+  yellow: "\u001b[33m",
+  red: "\u001b[31m",
+  gray: "\u001b[90m",
+  reset: "\u001b[0m"
+} as const;
+
+function terminalColorsEnabled(): boolean {
+  if (Object.hasOwn(process.env, "NO_COLOR")) return false;
+  if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== "0") return true;
+  return Boolean(stdout.isTTY);
+}
+
+function colorize(value: string, color: keyof Pick<typeof ANSI, "green" | "yellow" | "red" | "gray">, enabled: boolean): string {
+  return enabled ? `${ANSI[color]}${value}${ANSI.reset}` : value;
+}
+
+function duration(value: number | null): string {
+  if (value === null) return "n/a";
+  if (value < 60) return `${value}s`;
+  const minutes = Math.floor(value / 60);
+  const seconds = value % 60;
+  if (minutes < 60) return `${minutes}min ${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) return `${hours}h ${remainingMinutes}min`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
+function statusAppearance(status: string): {
+  color: "green" | "yellow" | "red" | "gray";
+  active: string;
+  health: string;
+} {
+  switch (status) {
+    case "online": return { color: "green", active: "active (running)", health: "healthy" };
+    case "unhealthy": return { color: "red", active: "failed (unhealthy)", health: "unhealthy" };
+    case "errored": return { color: "red", active: "failed (errored)", health: "unhealthy" };
+    case "launching": return { color: "yellow", active: "activating (starting)", health: "starting" };
+    case "stopped": return { color: "yellow", active: "inactive (stopped)", health: "not running" };
+    case "missing": return { color: "gray", active: "inactive (not managed)", health: "not running" };
+    default: return { color: "yellow", active: status, health: "unknown" };
+  }
+}
+
+export function formatProcessStatus(status: ProcessStatus, colors = false): string {
+  const appearance = statusAppearance(status.status);
+  const bullet = colorize("●", appearance.color, colors);
+  const title = colors ? `${ANSI.bold}TexLite${ANSI.reset}` : "TexLite";
+  const active = colorize(appearance.active, appearance.color, colors);
+  const health = colorize(appearance.health, appearance.color, colors);
+  const loaded = status.pm2Status === "missing"
+    ? colorize(`not-found (PM2 process: ${status.name})`, "gray", colors)
+    : `loaded (PM2 process: ${status.name})`;
+  const since = status.startedAt && status.uptimeSeconds !== null
+    ? ` since ${status.startedAt}; ${duration(status.uptimeSeconds)} ago`
+    : "";
+  return [
+    `${bullet} ${title} - Lightweight collaborative LaTeX editor`,
+    `     Loaded: ${loaded}`,
+    `     Active: ${active}${since}`,
+    `     Health: ${health} (PM2: ${status.pm2Status})`,
+    `   Main PID: ${status.pid ?? "n/a"}`,
+    `    Version: ${status.version}`,
+    `   Restarts: ${status.restarts}`,
+    `     Listen: ${status.address}`,
+    `     Config: ${status.configPath}`,
+    `       Data: ${status.dataDir}`,
+    `        CWD: ${status.cwd}`,
+    `     Stdout: ${status.outputLog ?? "n/a"}`,
+    `     Stderr: ${status.errorLog ?? "n/a"}`
+  ].join("\n");
 }
 
 async function stop(options: CliOptions): Promise<void> {

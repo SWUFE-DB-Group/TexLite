@@ -398,7 +398,9 @@ export function LatexEditor({
             if (element?.dataset.commentId) onCommentClickRef.current(element.dataset.commentId);
             return false;
           },
-          blur() {
+          blur(_event, editor) {
+            const range = editor.state.selection.main;
+            onSelectionRef.current(editor.state.sliceDoc(range.from, range.to), range.from, range.to);
             collaboration?.awareness.setLocalStateField("cursor", null);
             return false;
           }

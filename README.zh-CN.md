@@ -26,7 +26,7 @@ texLite 是一个轻量、以本机为中心的 LaTeX 网页工作区，用于�
 - 项目列表/网格视图、搜索、按最后修改时间或创建时间排序，以及每个用户私有的 Finder 风格彩色标签。
 - 项目重命名、源码 ZIP 下载、删除，以及所有者和修改信息展示。
 - 中文和英文界面，自动识别浏览器语言，并可手动切换。
-- 基于 CodeMirror 的 LaTeX 编辑器：语法高亮、折叠、补全、快速打开文件、当前文件及全项目搜索/替换、跨文件大纲和外观设置。
+- 基于 CodeMirror 的 LaTeX 编辑器：语法高亮、折叠、补全、快速打开文件、当前文件及全项目搜索/替换、跨文件大纲、外观设置，以及可选的宿主机 `tex-fmt` 选区格式化和编译前格式化。
 - 基于 Yjs CRDT 的协作编辑，显示活动会话头像、远程光标，保存状态以服务端持久化确认为准，并用浏览器 IndexedDB 保留断线草稿；单个项目建议不超过约 10 个并发会话。
 - 内容寻址的自动项目历史：可添加版本标签、比较文件、恢复单个文件或带安全检查点地恢复整个项目。
 - 源码范围批注、回复、resolved 状态、用户/时间信息，以及源码变化后的批注锚点重映射。
@@ -46,6 +46,7 @@ texLite 是一个轻量、以本机为中心的 LaTeX 网页工作区，用于�
 | 数据库 | better-sqlite3 访问 SQLite |
 | 文件 | 配置数据目录下的本地项目目录 |
 | 编译 | 宿主机 latexmk 和配置的 LaTeX 引擎 |
+| 格式化 | 可选的宿主机 `tex-fmt` 可执行文件 |
 | Git 备份 | 宿主机 git 和 GitHub REST API |
 
 texLite 按单个 Node.js 进程设计。不要让多个应用实例同时使用同一个 SQLite 数据库或项目目录；协作状态、编译队列和文件系统都是单进程资源。
@@ -57,6 +58,7 @@ texLite 按单个 Node.js 进程设计。不要让多个应用实例同时使用
 - git（可选；仅项目所有者使用 Git/GitHub 集成时需要）
 - latexmk
 - 至少一个配置好的引擎：pdflatex、xelatex 或 lualatex
+- `tex-fmt`（可选；仅使用 LaTeX 格式化功能时需要）
 
 初始化前可以检查：
 
@@ -65,11 +67,16 @@ node --version
 npm --version
 latexmk --version
 xelatex --version
+# 可选，仅在使用 LaTeX 格式化时检查：
+tex-fmt --version
 # 可选，仅在需要 Git/GitHub 集成时检查：
 git --version
 ~~~
 
 npm run init 和应用启动会检查 latexmk 以及 latex.allowedEngines 中列出的每个引擎。Git 不参与这项核心检查，因此未安装 Git 的宿主机仍可正常初始化并运行 TexLite。项目所有者打开 Git 面板或执行 Git/GitHub 操作时，TexLite 才会按需检查 git.binary；如果 Git 不可用，界面会给出可操作的错误提示。
+
+格式化功能同样是可选的。如果服务器的 `PATH` 中没有 `tex-fmt`，格式化控件会提示安装方法；TexLite 不会静默替换成其他格式化器。支持 `.tex`、`.bib`、`.cls` 和 `.sty`，项目中的 `tex-fmt.toml` 配置会自动生效。
+如果 PM2 使用了受限的 `PATH`，可以将 `TEXLITE_TEX_FMT` 设置为宿主机可执行文件的绝对路径。
 
 ## 快速开始
 
@@ -101,7 +108,10 @@ texlite logs
 指定其他配置文件。
 
 `texlite serve` 以前台方式运行，适合 Docker、systemd 和调试。
-`start`、`status`、`stop`、`restart` 和 `logs` 使用 npm 包内置的 PM2。
+`start`、`status`、`stop`、`restart` 和 `logs` 使用 npm 包内置的 PM2。后台启动会
+等待 HTTP 健康检查真正就绪；如果 PM2 进程存在但没有实际提供 TexLite 服务，
+`status` 会显示 `unhealthy`。`restart` 会重新创建 PM2 条目，确保 npm 升级后使用
+当前版本的包路径和环境变量。启动失败的重试次数是有限的，不会进入无限重启循环。
 
 升级时可以执行：
 
@@ -271,6 +281,7 @@ TEXLITE_HISTORY_MAX_VERSIONS TEXLITE_HISTORY_MAX_STORAGE_MB
 TEXLITE_LATEXMK               TEXLITE_DEFAULT_ENGINE
 TEXLITE_COMPILE_TIMEOUT       TEXLITE_MAX_COMPILE_JOBS
 TEXLITE_GIT                   TEXLITE_GIT_TIMEOUT
+TEXLITE_TEX_FMT
 TEXLITE_GITHUB_API_URL
 ~~~
 
@@ -287,6 +298,9 @@ texlite logs
 texlite restart
 texlite stop
 ~~~
+
+`texlite status` 默认使用带颜色的 systemctl 风格终端视图；脚本或监控集成可使用
+`texlite status --json` 获取结构化输出。
 
 `texlite doctor` 会校验配置、路径、LaTeX 和管理员；使用 `--git` 可以额外
 检查可选的 Git 集成。`texlite config` 显示生效的配置和路径。

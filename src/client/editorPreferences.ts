@@ -7,6 +7,7 @@ export interface EditorPreferences {
   lineWrapping: boolean;
   spellCheck: boolean;
   vimMode: boolean;
+  formatOnCompile: boolean;
 }
 
 export const editorFonts: Array<{ id: EditorFont; labelKey: string; stack: string }> = [
@@ -23,7 +24,8 @@ export const defaultEditorPreferences: EditorPreferences = {
   lineHeight: 1.65,
   lineWrapping: true,
   spellCheck: true,
-  vimMode: false
+  vimMode: false,
+  formatOnCompile: false
 };
 
 const storageKeyPrefix = "texlite-editor-preferences";
@@ -45,7 +47,8 @@ export function loadEditorPreferences(userId: string, projectId: string): Editor
       lineHeight: [1.45, 1.65, 1.85].includes(Number(stored.lineHeight)) ? Number(stored.lineHeight) : defaultEditorPreferences.lineHeight,
       lineWrapping: typeof stored.lineWrapping === "boolean" ? stored.lineWrapping : defaultEditorPreferences.lineWrapping,
       spellCheck: typeof stored.spellCheck === "boolean" ? stored.spellCheck : defaultEditorPreferences.spellCheck,
-      vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode
+      vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode,
+      formatOnCompile: typeof stored.formatOnCompile === "boolean" ? stored.formatOnCompile : defaultEditorPreferences.formatOnCompile
     };
   } catch {
     return defaultEditorPreferences;

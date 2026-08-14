@@ -7,8 +7,14 @@ describe("PM2 instance identity", () => {
     expect(processName("/tmp/texlite.json")).toBe(processName("/tmp/./texlite.json"));
   });
 
-  it("uses the conventional name for the XDG default configuration", () => {
-    expect(processName(defaultConfigPath())).toBe("texlite");
+  it("uses the conventional name for the standard fallback configuration", () => {
+    expect(processName(defaultConfigPath({}))).toBe("texlite");
+  });
+
+  it("isolates a configuration selected through XDG_CONFIG_HOME", () => {
+    const customDefault = defaultConfigPath({ XDG_CONFIG_HOME: "/tmp/texlite-package-test/config" });
+    expect(processName(customDefault)).toMatch(/^texlite-[0-9a-f]{8}$/);
+    expect(processName(customDefault)).not.toBe("texlite");
   });
 
   it("separates independent configuration paths", () => {

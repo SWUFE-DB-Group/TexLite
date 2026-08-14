@@ -56,5 +56,5 @@ export function packageClientDirectory(moduleUrl: string = import.meta.url): str
 }
 
 export function packageServerEntry(moduleUrl: string = import.meta.url): string {
-  return path.resolve(path.dirname(fileURLToPath(moduleUrl)), "index.js");
+  return path.resolve(path.dirname(fileURLToPath(moduleUrl)), "service.js");
 }

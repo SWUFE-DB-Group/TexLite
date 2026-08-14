@@ -151,6 +151,24 @@ export class ProjectCollaboration {
     return this.doc.getText(`source:${filePath}`);
   }
 
+  applyTextEdits(filePath: string, edits: ReadonlyArray<{ from: number; to: number; replacement: string }>): void {
+    if (this.permission === "read") throw new Error("Read-only collaborators cannot edit source files");
+    const text = this.getText(filePath);
+    let previousTo = 0;
+    for (const edit of edits) {
+      if (!Number.isInteger(edit.from) || !Number.isInteger(edit.to) || edit.from < previousTo
+        || edit.to < edit.from || edit.to > text.length) throw new RangeError("Invalid collaborative text edits");
+      previousTo = edit.to;
+    }
+    this.doc.transact(() => {
+      for (let index = edits.length - 1; index >= 0; index -= 1) {
+        const edit = edits[index];
+        if (edit.to > edit.from) text.delete(edit.from, edit.to - edit.from);
+        if (edit.replacement) text.insert(edit.from, edit.replacement);
+      }
+    });
+  }
+
   get meta(): Y.Map<unknown> {
     return this.doc.getMap("texlite:meta");
   }

@@ -4,6 +4,7 @@ import {
   defaultConfigPath,
   defaultDataDirectory,
   packageClientDirectory,
+  packageServerEntry,
   resolveConfigPath,
   texliteConfigDirectory,
   xdgConfigHome,
@@ -41,5 +42,9 @@ describe("runtime paths", () => {
 
   it("keeps source execution pointed at the repository build output", () => {
     expect(packageClientDirectory("file:///workspace/texlite/src/server/runtimePaths.ts")).toBe("/workspace/texlite/dist/client");
+  });
+
+  it("uses the dedicated service entry for managed processes", () => {
+    expect(packageServerEntry("file:///opt/texlite/dist/server/runtimePaths.js")).toBe("/opt/texlite/dist/server/service.js");
   });
 });
