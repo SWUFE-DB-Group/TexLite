@@ -656,7 +656,13 @@ function searchMatchCount(t: TFunction) {
 function editorAppearance(preferences: EditorPreferences) {
   return [
     EditorView.contentAttributes.of({
-      spellcheck: preferences.spellCheck ? "true" : "false",
+      // TexLite performs syntax-aware spelling checks itself. Keep the
+      // browser checker disabled so users do not get a second, LaTeX-unaware
+      // set of underlines or automatic corrections while editing source.
+      spellcheck: "false",
+      autocorrect: "off",
+      autocapitalize: "off",
+      autocomplete: "off",
       lang: "en-US"
     }),
     EditorView.theme({
