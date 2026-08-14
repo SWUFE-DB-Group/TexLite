@@ -5,6 +5,7 @@ texLite 是一个轻量、以本机为中心的 LaTeX 网页工作区，用于�
 **文档：** [English](README.md) · 简体中文（当前文件）
 
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)
 
 ![texLite 预览](preview.png)
 
