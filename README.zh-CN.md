@@ -4,6 +4,8 @@ texLite 是一个轻量、以本机为中心的 LaTeX 网页工作区，用于�
 
 **文档：** [English](README.md) · 简体中文（当前文件）
 
+[![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
+
 ![texLite 预览](preview.png)
 
 ## 设计目标
@@ -70,16 +72,63 @@ npm run init 和应用启动会检查 latexmk 以及 latex.allowedEngines 中列
 
 ## 快速开始
 
+### 全局 npm 安装
+
+发布后的 npm 包提供 `texlite` 命令，配置和项目数据不会写入全局 npm
+安装目录：
+
+~~~bash
+npm install --global texlite
+texlite init
+texlite start
+texlite status
+~~~
+
+打开 http://127.0.0.1:3000。可以从任意工作目录管理服务：
+
+~~~bash
+texlite stop
+texlite restart
+texlite logs
+~~~
+
+默认配置文件为
+`$XDG_CONFIG_HOME/texlite/texlite.config.json`；如果没有设置
+`XDG_CONFIG_HOME`，则为 `~/.config/texlite/texlite.config.json`。默认数据目录为
+`$XDG_DATA_HOME/texlite`；如果没有设置 `XDG_DATA_HOME`，则为
+`~/.local/share/texlite`。可以使用 `--config PATH` 或 `TEXLITE_CONFIG`
+指定其他配置文件。
+
+`texlite serve` 以前台方式运行，适合 Docker、systemd 和调试。
+`start`、`status`、`stop`、`restart` 和 `logs` 使用 npm 包内置的 PM2。
+
+升级时可以执行：
+
+~~~bash
+npm update --global texlite
+texlite restart
+~~~
+
+卸载 npm 包不会删除配置和项目数据：
+
+~~~bash
+npm uninstall --global texlite
+~~~
+
+### 从仓库/源码运行
+
 ~~~bash
 npm ci
 cp texlite.config.example.json texlite.config.json
+export TEXLITE_CONFIG="$PWD/texlite.config.json"
 # 按需要编辑 texlite.config.json
 npm run init
 npm run build
 npm start
 ~~~
 
-打开 http://127.0.0.1:3000。默认只监听 localhost，也不开放公众注册。初始化命令会要求创建第一个管理员；没有有效管理员时服务不会启动。
+默认只监听 localhost，也不开放公众注册。初始化命令会要求创建第一个
+管理员；没有有效管理员时服务不会启动。
 
 如果需要非交互初始化，可以只为该命令设置以下环境变量：
 
@@ -112,7 +161,18 @@ npm start
 
 ## 配置
 
-默认从当前工作目录读取 texlite.config.json。可以通过 TEXLITE_CONFIG 指定其他配置文件；配置中的相对路径以配置文件所在目录为基准。
+配置文件路径优先级如下：
+
+1. `texlite --config PATH`；
+2. `TEXLITE_CONFIG`；
+3. `$XDG_CONFIG_HOME/texlite/texlite.config.json`；
+4. `~/.config/texlite/texlite.config.json`。
+
+配置中的相对路径以配置文件所在目录为基准。`storage.dataDir` 默认使用
+`$XDG_DATA_HOME/texlite`；未设置时使用 `~/.local/share/texlite`。可以在配置中
+设置 `storage.dataDir`，或使用 `TEXLITE_DATA_DIR` 指定其他数据目录。生产环境
+的前端资源默认定位到 npm 包内部的 `dist/client`，开发或自定义部署可以用
+`TEXLITE_CLIENT_DIR` 覆盖。
 
 示例配置：
 
@@ -142,6 +202,9 @@ npm start
 }
 ~~~
 
+仓库中的示例为了方便源码开发，显式使用 `.texlite`。`texlite init` 自动生成
+的 npm 配置则使用前面所述的 XDG 数据目录默认值。
+
 重要配置：
 
 - server.host、server.port：监听地址和端口。除非已经准备好安全部署，否则保持 127.0.0.1。
@@ -164,8 +227,8 @@ npm start
 | `siteName` | `TexLite` |
 | `adminEmail` | 空 |
 | `server.host` / `server.port` | `127.0.0.1` / `3000` |
-| `storage.dataDir` | `.texlite`（相对于配置文件） |
-| `clientDir` | `dist/client`（相对于工作目录） |
+| `storage.dataDir` | `$XDG_DATA_HOME/texlite` 或 `~/.local/share/texlite` |
+| `clientDir` | npm 包内部的 `dist/client` |
 | `sessionDays` | `14` 天 |
 | `uploads.maxFileSizeMB` | `50` MB |
 | `history.maxVersions` | 每项目 `200` 个普通版本 |
@@ -198,6 +261,7 @@ JSON 类型错误、必填字符串为空、整数格式错误（包括带小数
 
 ~~~text
 TEXLITE_CONFIG
+XDG_CONFIG_HOME                 XDG_DATA_HOME
 TEXLITE_SITE_NAME             TEXLITE_ADMIN_EMAIL
 TEXLITE_HOST                  TEXLITE_PORT
 TEXLITE_DATA_DIR              TEXLITE_CLIENT_DIR
@@ -211,11 +275,25 @@ TEXLITE_GITHUB_API_URL
 
 texLite 不执行 tlmgr，也不会自动安装缺失宏包。宿主机更新 TeX Live 后，下一次编译会直接使用新环境。
 
-## 使用 PM2 部署
+## 服务管理
 
-对于单机部署，PM2 很合适：它可以保持一个 server 进程运行、崩溃后自动重启，并提供状态和日志。PM2 是可选的；临时 localhost 使用 npm start 就足够。
+通过全局 npm 安装时，生命周期命令使用包内置的 PM2，不需要额外全局安装：
 
-仓库提供了 ecosystem.config.cjs，明确使用一个 fork 实例（instances: 1）。不支持 cluster 模式，因为协作状态、编译队列、SQLite 连接和项目文件系统都属于单个进程。
+~~~bash
+texlite start
+texlite status
+texlite logs
+texlite restart
+texlite stop
+~~~
+
+`texlite doctor` 会校验配置、路径、LaTeX 和管理员；使用 `--git` 可以额外
+检查可选的 Git 集成。`texlite config` 显示生效的配置和路径。
+`texlite serve` 以前台方式运行，不启动 PM2。
+
+从仓库运行时仍可以使用 `ecosystem.config.cjs` 和 npm PM2 快捷命令。
+该配置明确使用一个 fork 实例（`instances: 1`）。不支持 cluster 模式，因为
+协作状态、编译队列、SQLite 连接和项目文件系统都属于单个进程。
 
 在服务器上安装一次 PM2，构建后启动：
 

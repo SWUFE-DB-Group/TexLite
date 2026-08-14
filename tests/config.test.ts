@@ -57,6 +57,7 @@ describe("configuration", () => {
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, JSON.stringify({}));
     process.env.TEXLITE_CONFIG = configPath;
+    process.env.TEXLITE_DATA_DIR = path.join(root, "data");
     delete process.env.TEXLITE_SITE_NAME;
     const config = loadConfig();
     expect(config).toMatchObject({

@@ -1,11 +1,40 @@
 {
   "name": "texlite",
   "version": "0.2.0",
-  "private": true,
-  "type": "module",
+  "description": "A lightweight local-first collaborative LaTeX workspace",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SWUFE-DB-Group/TexLite.git"
+  },
+  "homepage": "https://github.com/SWUFE-DB-Group/TexLite",
+  "bugs": {
+    "url": "https://github.com/SWUFE-DB-Group/TexLite/issues"
+  },
+  "keywords": [
+    "latex",
+    "overleaf",
+    "collaboration",
+    "tex"
+  ],
+  "bin": {
+    "texlite": "dist/server/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "preview.png",
+    "texlite.config.example.json"
+  ],
   "engines": {
     "node": ">=24"
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
   "scripts": {
     "dev": "tsx watch src/server/index.ts",
     "dev:web": "vite",
@@ -20,6 +49,7 @@
     "pm2:logs": "pm2 logs texlite",
     "pm2:save": "pm2 save",
     "init": "tsx src/server/cli.ts init",
+    "prepack": "npm run build",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
@@ -48,6 +78,7 @@
     "lucide-react": "^0.468.0",
     "nspell": "^2.1.5",
     "pdfjs-dist": "^6.2.108",
+    "pm2": "^6.0.14",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-i18next": "^15.6.1",

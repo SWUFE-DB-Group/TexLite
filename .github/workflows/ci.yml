@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Typecheck and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Check patch formatting
+        run: git diff --check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build browser and server bundles
+        run: npm run build
+
+      # This workflow intentionally does not install TeX Live or run the full
+      # integration suite. Those tests invoke the host's LaTeX installation.
+      - name: Inspect npm package contents
+        run: npm pack --dry-run --ignore-scripts

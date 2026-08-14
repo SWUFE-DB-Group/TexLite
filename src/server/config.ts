@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { defaultDataDirectory, packageClientDirectory, resolveConfigPath } from "./runtimePaths.js";
 
 export const LATEX_ENGINES = ["pdflatex", "xelatex", "lualatex"] as const;
 export type LatexEngine = typeof LATEX_ENGINES[number];
@@ -10,8 +11,8 @@ export const CONFIG_DEFAULTS = {
   adminEmail: "",
   host: "127.0.0.1",
   port: 3000,
-  dataDir: ".texlite",
-  clientDir: "dist/client",
+  dataDir: defaultDataDirectory(),
+  clientDir: packageClientDirectory(),
   sessionDays: 14,
   compileTimeoutSeconds: 60,
   maxCompileJobs: 2,
@@ -65,8 +66,8 @@ export interface Config {
   githubApiBaseUrl: string;
 }
 
-export function loadConfig(): Config {
-  const configPath = path.resolve(process.env.TEXLITE_CONFIG ?? "texlite.config.json");
+export function loadConfig(configPathOverride?: string): Config {
+  const configPath = resolveConfigPath(configPathOverride);
   const fileConfig = readConfigFile(configPath);
   validateFileConfig(fileConfig);
 
@@ -74,7 +75,7 @@ export function loadConfig(): Config {
   const configuredDataDir = setting("storage.dataDir", process.env.TEXLITE_DATA_DIR, fileConfig.storage?.dataDir, CONFIG_DEFAULTS.dataDir);
   const dataDir = resolveConfiguredPath("storage.dataDir", configuredDataDir, configDirectory);
   const configuredClientDir = setting("TEXLITE_CLIENT_DIR", process.env.TEXLITE_CLIENT_DIR, undefined, CONFIG_DEFAULTS.clientDir);
-  const clientDir = resolveConfiguredPath("TEXLITE_CLIENT_DIR", configuredClientDir, process.cwd());
+  const clientDir = resolveConfiguredPath("TEXLITE_CLIENT_DIR", configuredClientDir, configDirectory);
 
   const configuredEngine: unknown = setting("latex.defaultEngine", process.env.TEXLITE_DEFAULT_ENGINE, fileConfig.latex?.defaultEngine, CONFIG_DEFAULTS.defaultEngine);
   if (!isEngine(configuredEngine)) {
