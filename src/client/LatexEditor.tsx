@@ -791,9 +791,6 @@ function buildSpellCheckExclusions(source: string, words: string[]): DecorationS
     addRange(valueStart, valueEnd);
   }
   addMatches(/(?:https?|ftp):\/\/[^\s]+/gi);
-  // A leading capital is treated as a title/proper noun and left to the
-  // writer; browser spelling dictionaries vary widely on those words.
-  addMatches(/\b[A-Z][A-Za-z0-9']*\b/g);
   for (const word of words) {
     if (!word) continue;
     const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

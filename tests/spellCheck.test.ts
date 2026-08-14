@@ -14,6 +14,10 @@ This sentence has wrng spelling.`;
     expect(checkSpelling("LaTeX wrng", ["LaTeX"]).map((issue) => issue.word)).toEqual(["wrng"]);
   });
 
+  it("checks misspelled words that begin with a capital letter", () => {
+    expect(checkSpelling("Thiss sentence").map((issue) => issue.word)).toEqual(["Thiss"]);
+  });
+
   it("skips comments, references, options, and table column specifications", () => {
     const source = String.raw`% commment wrng
 anotherr wrng

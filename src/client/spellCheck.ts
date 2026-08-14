@@ -182,7 +182,7 @@ export function checkSpelling(source: string, customWords: string[] = []): Spell
     const from = match.index;
     const to = from + word.length;
     if (isInside(ignored, from, ignoredCursor)) continue;
-    if (word.length < 2 || /\d/.test(word) || /^[A-Z]/.test(word)) continue;
+    if (word.length < 2 || /\d/.test(word)) continue;
     if (custom.has(word.toLocaleLowerCase("en-US")) || checker.correct(word)) continue;
     issues.push({ from, to, word });
   }
