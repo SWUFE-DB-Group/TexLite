@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Annotation, Compartment, EditorState, Facet, StateEffect, StateField } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Facet, Prec, StateEffect, StateField, Transaction } from "@codemirror/state";
 import {
   Decoration, type DecorationSet, EditorView, keymap, lineNumbers,
   highlightActiveLine, drawSelection, highlightSpecialChars, ViewPlugin, WidgetType
@@ -13,7 +13,7 @@ import {
 } from "@codemirror/language";
 import {
   autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap,
-  snippetCompletion, type Completion, type CompletionContext
+  pickedCompletion, snippetCompletion, type Completion, type CompletionContext
 } from "@codemirror/autocomplete";
 import { getSearchQuery, openSearchPanel, search, searchKeymap, searchPanelOpen } from "@codemirror/search";
 import { getCM, Vim, vim } from "@replit/codemirror-vim";
@@ -24,6 +24,7 @@ import type { Comment, LatexCompletionIndex, LatexCompletionItem } from "./types
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
 import { countSearchMatches, searchQuerySignature } from "./editorSearch";
 import { latexLanguage } from "./latexLanguage";
+import { latexAutoPair, latexAutoPairAtCursor } from "./latexAutoPairs";
 import type { SpellCheckIssue } from "./spellCheck";
 export type { SpellCheckIssue } from "./spellCheck";
 
@@ -262,6 +263,13 @@ function contextCompletion(context: CompletionContext, pattern: RegExp): { from:
   return { from: context.pos - match[1].length, query: match[1] };
 }
 
+function environmentCompletionContext(context: CompletionContext): { from: number; query: string; command: "begin" | "end" } | null {
+  const before = context.state.sliceDoc(0, context.pos);
+  const match = before.match(/\\(begin|end)\{([^{}]*)$/);
+  if (!match || match.index === undefined) return null;
+  return { from: context.pos - match[2].length, query: match[2], command: match[1] as "begin" | "end" };
+}
+
 function isLatexComment(context: CompletionContext): boolean {
   const line = context.state.doc.lineAt(context.pos);
   let backslashes = 0;
@@ -277,6 +285,38 @@ function isLatexComment(context: CompletionContext): boolean {
   return false;
 }
 
+function environmentCompletion(entry: Completion): Completion {
+  return {
+    ...entry,
+    apply(view, completion, from, to) {
+      const line = view.state.doc.lineAt(from);
+      const indent = line.text.match(/^\s*/)?.[0] ?? "";
+      const name = completion.label;
+      const insert = name + "}\n" + indent + "\t\n" + indent + "\\end{" + name + "}";
+      const cursor = from + name.length + 1 + 1 + indent.length + 1;
+      const closingBrace = view.state.sliceDoc(to, to + 1) === "}" ? 1 : 0;
+      view.dispatch({
+        changes: { from, to: to + closingBrace, insert },
+        selection: { anchor: cursor },
+        annotations: [pickedCompletion.of(completion), Transaction.userEvent.of("input.complete")]
+      });
+    }
+  };
+}
+
+function latexAutoPairInput(view: EditorView, from: number, to: number, text: string, insert: () => Transaction): boolean {
+  const pair = latexAutoPair(view.state.doc.toString(), from, to, text);
+  if (!pair) return false;
+  view.dispatch(insert());
+  const cursor = from + text.length;
+  view.dispatch({
+    changes: { from: cursor, insert: pair.insert },
+    selection: { anchor: cursor + pair.cursorOffset },
+    annotations: Transaction.userEvent.of("input.complete")
+  });
+  return true;
+}
+
 function latexCompletions(context: CompletionContext, t: TFunction, index: LatexCompletionIndex | null) {
   if (isLatexComment(context)) return null;
   const local = localCompletionIndexForDocument(context);
@@ -284,8 +324,15 @@ function latexCompletions(context: CompletionContext, t: TFunction, index: Latex
   if (command || context.explicit) {
     return { from: command?.from ?? context.pos, options: withoutCompletionDetails(mergeCompletionItems(t, local.commands, index?.commands ?? [], completionOptions())), validFor: /^\\[A-Za-z@0-9:_]*$/ };
   }
-  const environment = contextCompletion(context, /\\(?:begin|end)\{([^{}]*)$/);
-  if (environment) return { from: environment.from, options: withoutCompletionDetails(mergeCompletionItems(t, withoutSnippets(local.environments), withoutSnippets(index?.environments ?? []))), validFor: /^[A-Za-z0-9*_-]*$/ };
+  const environment = environmentCompletionContext(context);
+  if (environment) {
+    const options = mergeCompletionItems(t, withoutSnippets(local.environments), withoutSnippets(index?.environments ?? []));
+    return {
+      from: environment.from,
+      options: withoutCompletionDetails(environment.command === "begin" ? options.map(environmentCompletion) : options),
+      validFor: /^[A-Za-z0-9*:_-]*$/
+    };
+  }
   const label = contextCompletion(context, /\\(?:ref|pageref|autoref|nameref|cref|Cref|eqref|vref)\s*(?:\[[^]]*\])?\{([^{}]*)$/)
     ?? contextCompletion(context, /\\hyperref\[([^\[\]]*)$/);
   if (label) return { from: label.from, options: mergeCompletionItems(t, local.labels, index?.labels ?? []), validFor: /^[^{}]*$/ };
@@ -379,7 +426,7 @@ export function LatexEditor({
       extensions: [
         lineNumbers(), foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
         latexLanguage, syntaxHighlighting(defaultHighlightStyle), bracketMatching(),
-        closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckExclusions, spellCheckIssueMarks, activeSpellCheckIssueMarks,
+        Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckExclusions, spellCheckIssueMarks, activeSpellCheckIssueMarks,
         search({ top: true }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
         autocompletion({ override: [(context) => latexCompletions(context, t, completionIndexRef.current)], activateOnTyping: true }),
         ...(collaborationUndoManager ? [vimHistoryCommands.of({
@@ -410,6 +457,15 @@ export function LatexEditor({
             (transaction) => transaction.annotation(externalDocumentUpdate)
           );
           if (update.docChanged && !loadedExternalDocument) onChangeRef.current(update.state.doc.toString());
+          if (update.selectionSet && !update.docChanged && update.transactions.some((transaction) => transaction.isUserEvent("input"))) {
+            const cursor = update.state.selection.main.head;
+            const pair = latexAutoPairAtCursor(update.state.doc.toString(), cursor);
+            if (pair) update.view.dispatch({
+              changes: { from: cursor, insert: pair.insert },
+              selection: { anchor: cursor + pair.cursorOffset },
+              annotations: Transaction.userEvent.of("input.complete")
+            });
+          }
           if (update.selectionSet || update.docChanged) {
             const range = update.state.selection.main;
             onSelectionRef.current(update.state.sliceDoc(range.from, range.to), range.from, range.to);
