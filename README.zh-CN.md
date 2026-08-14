@@ -2,54 +2,15 @@
 
 texLite 是一个轻量、以本机为中心的 LaTeX 网页工作区，用于编写、编译、预览和讨论 LaTeX 文档。它面向同一台服务器上的少量可信用户。texLite 使用服务器已经安装的 LaTeX 环境，不打包 LaTeX 镜像；其余技术栈也尽量保持简单。
 
-**文档：** [English](README.md) · 简体中文（当前文件）
+**文档：** [English](README.md) · [Design（英文）](DESIGN.md) · 简体中文（当前文件）
 
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)
 
 ![texLite 预览](preview.png)
 
-## 设计目标
-
-- 使用宿主机已有的 TeX Live/LaTeX，使 LaTeX 可以独立更新。
-- 默认不依赖 Redis、MongoDB、Caddy 或 Nginx，适合 localhost 部署。
-- 项目源码和编译产物保存在本地文件系统。
-- 使用 better-sqlite3 访问 SQLite，保存持久化应用数据。
-- 在不引入分布式部署的前提下，为少量并发会话提供实用的协作能力。
-
-## 功能
-
-- 管理员初始化和用户管理；不开放公众注册。
-- 用户独立的“创建项目”权限，新用户默认关闭。
-- 项目、文件夹、文件和资源管理，支持拖拽上传。
-- ZIP 项目导入、安全解压和主文档自动选择。
-- 项目列表/网格视图、搜索、按最后修改时间或创建时间排序，以及每个用户私有的 Finder 风格彩色标签。
-- 项目重命名、源码 ZIP 下载、删除，以及所有者和修改信息展示。
-- 中文和英文界面，自动识别浏览器语言，并可手动切换。
-- 基于 CodeMirror 的 LaTeX 编辑器：语法高亮、折叠、补全、快速打开文件、当前文件及全项目搜索/替换、跨文件大纲、外观设置，以及可选的宿主机 `tex-fmt` 选区格式化和编译前格式化。
-- 基于 Yjs CRDT 的协作编辑，显示活动会话头像、远程光标，保存状态以服务端持久化确认为准，并用浏览器 IndexedDB 保留断线草稿；单个项目建议不超过约 10 个并发会话。
-- 内容寻址的自动项目历史：可添加版本标签、比较文件、恢复单个文件或带安全检查点地恢复整个项目。
-- 源码范围批注、回复、resolved 状态、用户/时间信息，以及源码变化后的批注锚点重映射。
-- 使用宿主机 latexmk 编译，支持 pdflatex、xelatex、lualatex、项目级 latexmkrc、项目编译串行化、持久增量缓存、不可变发布快照、最新 PDF 保留、SyncTeX 跳转、可点击的结构化诊断和 .bbl 等编译产物下载。
-- 项目共享支持只读和读写权限；只读用户仍然可以添加和回复批注。
-- 项目所有者专用的本地 Git 历史和 GitHub 备份：commit、push、diff、checkout 和恢复已跟踪修改。
-- 可选 PM2 进程管理，支持异常重启、状态查看和日志管理。
-- 仅管理员可查看的系统状态：编译队列、协作会话、事件循环延迟、内存和近期操作耗时。
-
-## 技术结构
-
-| 部分 | 实现 |
-| --- | --- |
-| 浏览器界面 | React、Vite、CodeMirror、PDF.js |
-| API 和静态服务 | Fastify、WebSocket |
-| 协作 | Yjs、y-websocket、y-codemirror.next |
-| 数据库 | better-sqlite3 访问 SQLite |
-| 文件 | 配置数据目录下的本地项目目录 |
-| 编译 | 宿主机 latexmk 和配置的 LaTeX 引擎 |
-| 格式化 | 可选的宿主机 `tex-fmt` 可执行文件 |
-| Git 备份 | 宿主机 git 和 GitHub REST API |
-
-texLite 按单个 Node.js 进程设计。不要让多个应用实例同时使用同一个 SQLite 数据库或项目目录；协作状态、编译队列和文件系统都是单进程资源。
+设计目标、技术架构、协作与编译模型、历史与诊断、GitHub 备份以及数据管理
+请参阅英文文档 [DESIGN.md](DESIGN.md)。
 
 ## 环境要求
 

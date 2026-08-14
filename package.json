@@ -1,6 +1,6 @@
 {
   "name": "texlite",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A lightweight local-first collaborative LaTeX workspace",
   "license": "AGPL-3.0-only",
   "repository": {
