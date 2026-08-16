@@ -60,7 +60,7 @@
     "outlineJump": "跳转到源码第 {{line}} 行并定位 PDF", "lineNumber": "第 {{line}} 行", "showInSource": "在源码中显示当前 PDF 位置",
     "showInPdf": "在 PDF 中显示当前源码光标位置", "pdfLoadFailed": "无法载入 PDF 预览",
     "pdfZoomControls": "PDF 缩放控件", "downloadPdf": "下载 PDF", "downloadResource": "下载文件", "resourceTooLarge": "该文件大小为 {{size}}，超过 {{limit}} 的直接预览上限。", "resourceTooLargeTitle": "文件过大，无法直接预览", "resourceTooLargeDescription": "请下载文件后在本地打开。", "resourceUnsupportedTitle": "无法预览", "resourceUnsupportedDescription": "浏览器不能直接渲染此文件类型，请下载后在本地打开。",
-    "resourcePreview": { "image": "图片预览", "pdf": "PDF 预览", "text": "文本预览", "unsupported": "文件预览" }, "pdfZoomOut": "缩小", "pdfZoomIn": "放大", "pdfFitWidth": "适合宽度",
+    "resourcePreview": { "image": "图片预览", "pdf": "PDF 预览", "text": "文本预览", "unsupported": "文件预览" }, "pdfZoomOut": "缩小", "pdfZoomIn": "放大", "pdfFitWidth": "适合宽度", "pdfLink": "PDF 链接", "pdfLinks": "PDF 链接",
     "layout": {
       "label": "布局", "choose": "选择布局", "current": "当前布局：{{layout}}",
       "editor-pdf": { "name": "编辑器与 PDF", "description": "并排显示源码编辑器和 PDF 预览" },

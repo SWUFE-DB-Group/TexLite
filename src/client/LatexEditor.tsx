@@ -437,7 +437,7 @@ export function LatexEditor({
         lineNumbers(), foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
         latexLanguage, syntaxHighlighting(defaultHighlightStyle), bracketMatching(),
         Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
-        search({ top: true }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
+        search({ top: false }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
         autocompletion({ override: [(context) => latexCompletions(context, t, completionIndexRef.current)], activateOnTyping: true }),
         ...(collaborationUndoManager ? [vimHistoryCommands.of({
           undo: () => collaborationUndoManager.undo() !== null,

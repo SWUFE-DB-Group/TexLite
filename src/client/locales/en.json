@@ -68,7 +68,7 @@
     "outlineJump": "Go to source line {{line}} and locate it in the PDF", "lineNumber": "line {{line}}", "showInSource": "Show the visible PDF location in source",
     "showInPdf": "Show the source cursor location in PDF", "pdfLoadFailed": "The PDF preview could not be loaded",
     "pdfZoomControls": "PDF zoom controls", "downloadPdf": "Download PDF", "downloadResource": "Download file", "resourceTooLarge": "This file is {{size}} and exceeds the direct preview limit of {{limit}}.", "resourceTooLargeTitle": "File is too large to preview", "resourceTooLargeDescription": "Download the file to open it locally.", "resourceUnsupportedTitle": "Preview unavailable", "resourceUnsupportedDescription": "This file type cannot be rendered in the browser. Download it to open it locally.",
-    "resourcePreview": { "image": "Image preview", "pdf": "PDF preview", "text": "Text preview", "unsupported": "File preview" }, "pdfZoomOut": "Zoom out", "pdfZoomIn": "Zoom in", "pdfFitWidth": "Fit width",
+    "resourcePreview": { "image": "Image preview", "pdf": "PDF preview", "text": "Text preview", "unsupported": "File preview" }, "pdfZoomOut": "Zoom out", "pdfZoomIn": "Zoom in", "pdfFitWidth": "Fit width", "pdfLink": "PDF link", "pdfLinks": "PDF links",
     "layout": {
       "label": "Layout", "choose": "Choose layout", "current": "Current layout: {{layout}}",
       "editor-pdf": { "name": "Editor & PDF", "description": "Show the source editor and PDF preview side by side" },
