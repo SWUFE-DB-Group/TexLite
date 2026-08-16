@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,7 +10,10 @@ import {
   CompileQueue,
   ProjectCompileCoordinator,
   captureCompileSnapshot,
+  cleanCompileArtifacts,
+  cleanCompileCache,
   compileProject,
+  hasCompileCache,
   publishCompileArtifacts,
   publishedCompileArtifacts,
   pruneOrphanedCompileRuns,
@@ -216,6 +220,34 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     expect(overlapped).toBe(true);
     release();
     await expect(Promise.all([main, appendix])).resolves.toHaveLength(2);
+  });
+
+  it("cleans the incremental cache separately from published artifacts", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-clean-"));
+    temporaryRoots.push(root);
+    const config = testConfig(root);
+    const projectId = randomUUID();
+    const liveSource = path.join(config.projectsDir, projectId, "source");
+    fs.mkdirSync(liveSource, { recursive: true });
+    fs.writeFileSync(path.join(liveSource, "main.tex"), "source\n");
+    const snapshot = await captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const pdf = path.join(snapshot.outputDir, "main.pdf");
+    fs.writeFileSync(pdf, "%PDF-1.4\n");
+    publishCompileArtifacts(config, projectId, snapshot, {
+      ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: pdf, synctexPath: null
+    });
+    const cacheRoot = path.join(config.projectsDir, projectId, "output", ".texlite", "cache");
+    const targetKey = createHash("sha256").update("main.tex").digest("hex").slice(0, 24);
+    fs.mkdirSync(path.join(cacheRoot, targetKey, "settings"), { recursive: true });
+    expect(hasCompileCache(config, projectId, "main.tex")).toBe(true);
+    cleanCompileCache(config, projectId, "main.tex");
+    expect(hasCompileCache(config, projectId, "main.tex")).toBe(false);
+    expect(publishedCompileArtifacts(config, projectId, "main.tex")).toMatchObject({ runId: snapshot.runId });
+    cleanCompileArtifacts(config, projectId, "main.tex", "main.tex", [snapshot.runId]);
+    expect(publishedCompileArtifacts(config, projectId, "main.tex")).toBeNull();
+    expect(fs.existsSync(snapshot.root)).toBe(false);
   });
 });
 

@@ -8,6 +8,7 @@ import type { Project } from "../types";
 import type { CompileArtifact } from "./types";
 
 type PreviewTab = "pdf" | "log" | "warnings" | "errors" | "artifacts";
+export type CompileCleanMode = "cache" | "artifacts";
 
 interface LatestRun {
   id: string;
@@ -57,6 +58,7 @@ export function useProjectCompilation({
   const [artifacts, setArtifacts] = useState<CompileArtifact[]>([]);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; content: string } | null>(null);
   const [artifactLoading, setArtifactLoading] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [compilingMainFiles, setCompilingMainFiles] = useState<ReadonlySet<string>>(() => new Set());
   const [editorNotice, setEditorNotice] = useState("");
   const mainFileRef = useRef(mainFile);
@@ -157,6 +159,26 @@ export function useProjectCompilation({
   }, [project?.id, projectId, mainFile]);
 
   useEffect(() => {
+    if (!sharedState || sharedState.mainFile !== mainFile || sharedState.status !== "cleaned" || !sharedState.cleanMode) return;
+    latestRequest.current?.abort();
+    artifactsRequest.current?.abort();
+    if (sharedState.cleanMode === "artifacts") {
+      setCompileLog("");
+      setCompileDiagnostics(null);
+      setCompileOutcome(null);
+      setPdfUrl("");
+      setPdfCompiledAt(null);
+      setArtifacts([]);
+      setArtifactPreview(null);
+      callbacks.current.onPdfChanged();
+      callbacks.current.onPreviewTab("pdf");
+      setEditorNotice(t("editor.cleanArtifactsComplete"));
+    } else {
+      setEditorNotice(t("editor.cleanCacheComplete"));
+    }
+  }, [sharedState?.runId, sharedState?.status, sharedState?.cleanMode, sharedState?.mainFile, mainFile, t]);
+
+  useEffect(() => {
     if (!sharedState || sharedState.mainFile !== mainFile
       || (sharedState.status !== "succeeded" && sharedState.status !== "failed")) return;
     let cancelled = false;
@@ -245,6 +267,39 @@ export function useProjectCompilation({
     }
   };
 
+  const cleanCompile = async (mode: CompileCleanMode): Promise<void> => {
+    if (!project || !mainFile || project.permission === "read" || !collaborationSynced || cleaning
+      || compileRequests.current.has(mainFile)
+      || (sharedState?.mainFile === mainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
+    const requestedMainFile = mainFile;
+    setCleaning(true);
+    latestRequest.current?.abort();
+    artifactsRequest.current?.abort();
+    try {
+      const result = await api<{ ok: boolean; mode: CompileCleanMode; mainFile: string; retainedPdf: boolean }>(
+        `/api/projects/${projectId}/compile/clean`,
+        { method: "POST", body: JSON.stringify({ mainFile: requestedMainFile, mode }) }
+      );
+      if (result.mainFile !== mainFileRef.current) return;
+      callbacks.current.onSharedState(null);
+      if (mode === "artifacts") {
+        setCompileLog("");
+        setCompileDiagnostics(null);
+        setCompileOutcome(null);
+        setPdfUrl("");
+        setPdfCompiledAt(null);
+        setArtifacts([]);
+        setArtifactPreview(null);
+        callbacks.current.onPdfChanged();
+      }
+      setEditorNotice(mode === "cache" ? t("editor.cleanCacheComplete") : t("editor.cleanArtifactsComplete"));
+    } catch (error) {
+      if (!isAbortError(error) && mainFileRef.current === requestedMainFile) callbacks.current.onError(errorMessage(error));
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   compileAction.current = () => void compile();
 
   useEffect(() => {
@@ -297,7 +352,9 @@ export function useProjectCompilation({
     artifactLoading,
     editorNotice,
     localCompiling: compilingMainFiles.has(mainFile),
+    cleaning,
     compile,
+    cleanCompile,
     viewArtifact
   };
 }

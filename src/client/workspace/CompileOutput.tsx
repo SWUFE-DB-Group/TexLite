@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Download, FileText, LoaderCircle, PackageOpen, ScrollText, XCircle } from "lucide-react";
+import { AlertTriangle, Download, Eraser, FileText, LoaderCircle, PackageOpen, ScrollText, Trash2, XCircle } from "lucide-react";
 import type { CompileDiagnostic } from "../compileDiagnostics";
 import type { FileEntry } from "../types";
 import type { CompileArtifact } from "./types";
@@ -55,6 +55,23 @@ export function CompileArtifacts({ projectId, mainFile, artifacts, preview, load
       {loading ? <div className="compile-empty"><LoaderCircle className="spin" size={24} /><span>{t("common.loading")}</span></div>
         : preview ? <><header><strong>{preview.path}</strong><a href={downloadUrl(preview.path)}><Download size={13} />{t("projects.download")}</a></header><pre>{preview.content}</pre></>
           : <div className="compile-empty"><FileText size={24} /><span>{t("editor.selectArtifact")}</span></div>}
+    </div>
+  </div>;
+}
+
+export function CompileCleanup({ mainFile, disabled, cleaning, onCleanCache, onCleanArtifacts }: {
+  mainFile: string;
+  disabled: boolean;
+  cleaning: boolean;
+  onCleanCache: () => void;
+  onCleanArtifacts: () => void;
+}) {
+  const { t } = useTranslation();
+  return <div className="compile-clean-panel">
+    <div className="compile-clean-intro"><AlertTriangle size={28} /><div><strong>{t("editor.cleanTitle")}</strong><p>{t("editor.cleanDescription", { file: mainFile })}</p></div></div>
+    <div className="compile-clean-actions">
+      <article><div className="compile-clean-action-icon"><Eraser size={19} /></div><div><strong>{t("editor.cleanCache")}</strong><p>{t("editor.cleanCacheDescription")}</p><button type="button" disabled={disabled || cleaning} onClick={onCleanCache}>{cleaning ? <LoaderCircle className="spin" size={14} /> : <Eraser size={14} />}{t("editor.cleanCache")}</button></div></article>
+      <article className="danger"><div className="compile-clean-action-icon"><Trash2 size={19} /></div><div><strong>{t("editor.cleanArtifacts")}</strong><p>{t("editor.cleanArtifactsDescription")}</p><button type="button" className="danger" disabled={disabled || cleaning} onClick={onCleanArtifacts}>{cleaning ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}{t("editor.cleanArtifacts")}</button></div></article>
     </div>
   </div>;
 }

@@ -84,7 +84,8 @@ export interface CollaborationPersistEvent {
 export interface SharedCompileState {
   mainFile: string;
   runId: string;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: "queued" | "running" | "succeeded" | "failed" | "cleaned";
+  cleanMode?: "cache" | "artifacts";
   requestedBy: { id: string; username: string; name: string };
   updatedAt: string;
 }

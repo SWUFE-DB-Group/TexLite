@@ -1,11 +1,14 @@
-import nspell from "nspell";
-import aff from "../../node_modules/dictionary-en/index.aff?raw";
-import dic from "../../node_modules/dictionary-en/index.dic?raw";
+import type { Lint, Linter, Suggestion } from "harper.js";
+
+export type SpellCheckIssueKind = "spelling" | "grammar";
 
 export interface SpellCheckIssue {
   from: number;
   to: number;
   word: string;
+  kind: SpellCheckIssueKind;
+  message: string;
+  suggestions: string[];
 }
 
 interface Span {
@@ -13,14 +16,20 @@ interface Span {
   to: number;
 }
 
-// Keep the Hunspell dictionary in the browser bundle.  No source text is sent
-// to the server for spelling checks.
-const checker = nspell(aff, dic);
-const wordPattern = /[A-Za-z][A-Za-z0-9]*(?:['’][A-Za-z0-9]+)*/g;
 const keyTokenPattern = /([A-Za-z][A-Za-z0-9_.:/-]*(?:\s+[A-Za-z][A-Za-z0-9_.:/-]*){0,7})\s*$/;
 const tableEnvironments = new Set(["tabular", "tabularx", "tabulary", "longtable", "array", "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix"]);
-const optionCommands = new Set(["documentclass", "usepackage", "RequirePackage", "includegraphics", "tikzset", "pgfplotsset", "hypersetup", "lstset", "definecolor", "colorlet", "setlength", "setcounter", "draw", "path", "fill", "filldraw", "shade", "node", "addplot"]);
+const nonProseEnvironments = new Set([
+  "math", "displaymath", "equation", "equation*", "align", "align*", "alignat", "alignat*", "gather", "gather*", "multline", "multline*",
+  "flalign", "flalign*", "tikzpicture", "axis", "scope", "pgfonlayer", "pgfpicture", "tabular", "tabularx", "tabulary", "longtable", "array",
+  "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix", "verbatim", "Verbatim", "lstlisting", "minted", "comment", "algorithmic", "alignat"
+]);
+const optionCommands = new Set(["documentclass", "usepackage", "RequirePackage", "includegraphics", "tikzset", "pgfplotsset", "hypersetup", "lstset", "definecolor", "colorlet", "setlength", "setcounter", "draw", "path", "fill", "filldraw", "shade", "node", "addplot", "color", "textcolor", "colorbox", "pagecolor"]);
 const identifierCommands = new Set(["label", "hypertarget", "ref", "pageref", "autoref", "nameref", "hyperref", "index", "gls", "Gls", "glspl", "Glspl", "cite", "citep", "citet", "citeauthor", "citeyear", "citenum", "parencite", "textcite", "autocite", "footcite"]);
+const maxSuggestions = 5;
+
+let harperLinter: Linter | null = null;
+let harperOperation: Promise<void> = Promise.resolve();
+let harperDictionaryKey = "";
 
 function addRange(ranges: Span[], from: number, to: number): void {
   if (to > from) ranges.push({ from, to });
@@ -82,7 +91,35 @@ function addKeyValueRanges(source: string, ranges: Span[]): void {
   }
 }
 
-function ignoredRanges(source: string): Span[] {
+function matchingEnvironmentEnd(source: string, start: number, name: string): number | null {
+  const tokenPattern = /\\(begin|end)\s*\{\s*([^{}]+?)\s*\}/g;
+  tokenPattern.lastIndex = start;
+  let depth = 1;
+  for (let match = tokenPattern.exec(source); match; match = tokenPattern.exec(source)) {
+    if (match[2].trim() !== name) continue;
+    if (match[1] === "begin") depth += 1;
+    else if (--depth === 0) return tokenPattern.lastIndex;
+  }
+  return null;
+}
+
+function addMathRanges(source: string, ranges: Span[]): void {
+  for (const match of source.matchAll(/\\\((?:\\.|[^])*?\\\)|\\\[(?:\\.|[^])*?\\\]/g)) {
+    if (match.index !== undefined) addRange(ranges, match.index, match.index + match[0].length);
+  }
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] !== "$" || source[index - 1] === "\\") continue;
+    const delimiter = source[index + 1] === "$" ? "$$" : "$";
+    const end = source.indexOf(delimiter, index + delimiter.length);
+    if (end >= 0) {
+      addRange(ranges, index, end + delimiter.length);
+      index = end + delimiter.length - 1;
+    }
+  }
+}
+
+/** Return source ranges that contain LaTeX syntax or non-prose content. */
+export function ignoredRanges(source: string): Span[] {
   const ranges: Span[] = [];
   const commandPattern = /[A-Za-z@]/;
   for (let index = 0; index < source.length; index += 1) {
@@ -117,6 +154,14 @@ function ignoredRanges(source: string): Span[] {
             const columnSpec = balancedArgument(source, cursor, "{", "}");
             if (columnSpec) addRange(ranges, columnSpec.from, columnSpec.to);
           }
+          if (nonProseEnvironments.has(environmentName)) {
+            const end = matchingEnvironmentEnd(source, environment.end, environmentName);
+            if (end !== null) {
+              addRange(ranges, commandStart, end);
+              index = end - 1;
+              continue;
+            }
+          }
         }
       }
       index = commandEnd - 1;
@@ -150,6 +195,7 @@ function ignoredRanges(source: string): Span[] {
     index = commandEnd - 1;
   }
 
+  addMathRanges(source, ranges);
   addKeyValueRanges(source, ranges);
   for (const match of source.matchAll(/(?:https?|ftp):\/\/[^\s]+/gi)) {
     if (match.index !== undefined) addRange(ranges, match.index, match.index + match[0].length);
@@ -165,26 +211,136 @@ function ignoredRanges(source: string): Span[] {
   return merged;
 }
 
-function isInside(ranges: Span[], position: number, cursor: { index: number }): boolean {
-  while (cursor.index < ranges.length && ranges[cursor.index].to <= position) cursor.index += 1;
-  const range = ranges[cursor.index];
-  return Boolean(range && range.from <= position && position < range.to);
+/** Replace LaTeX syntax with spaces while preserving character positions. */
+export function maskLatexSource(source: string): string {
+  const ranges = ignoredRanges(source);
+  const chars: string[] = [];
+  let offset = 0;
+  let rangeIndex = 0;
+  for (const character of source) {
+    while (rangeIndex < ranges.length && ranges[rangeIndex].to <= offset) rangeIndex += 1;
+    const range = ranges[rangeIndex];
+    chars.push(range && range.from <= offset && offset < range.to && character !== "\n" && character !== "\r" ? " " : character);
+    offset += character.length;
+  }
+  return chars.join("");
 }
 
-export function checkSpelling(source: string, customWords: string[] = []): SpellCheckIssue[] {
-  const ignored = ignoredRanges(source);
-  const ignoredCursor = { index: 0 };
-  const custom = new Set(customWords.map((word) => word.toLocaleLowerCase("en-US")));
-  const issues: SpellCheckIssue[] = [];
-  for (const match of source.matchAll(wordPattern)) {
-    if (match.index === undefined) continue;
-    const word = match[0];
-    const from = match.index;
-    const to = from + word.length;
-    if (isInside(ignored, from, ignoredCursor)) continue;
-    if (word.length < 2 || /\d/.test(word)) continue;
-    if (custom.has(word.toLocaleLowerCase("en-US")) || checker.correct(word)) continue;
-    issues.push({ from, to, word });
+function scalarOffsets(source: string): number[] {
+  const offsets = [0];
+  let offset = 0;
+  for (const character of source) {
+    offset += character.length;
+    offsets.push(offset);
   }
-  return issues;
+  return offsets;
+}
+
+function dictionaryKey(words: string[]): string {
+  return [...new Set(words.map((word) => word.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right)).join("\u0000");
+}
+
+async function withHarper<T>(customWords: string[], operation: (linter: Linter) => Promise<T>): Promise<T> {
+  const next = harperOperation.then(async () => {
+    if (!harperLinter) {
+      try {
+        const [{ WorkerLinter, LocalLinter }, { binary }] = await Promise.all([
+          import("harper.js"),
+          import("harper.js/binary")
+        ]);
+        const useWorker = typeof Worker !== "undefined";
+        try {
+          harperLinter = new (useWorker ? WorkerLinter : LocalLinter)({ binary });
+          await harperLinter.setup();
+        } catch (error) {
+          const failedLinter = harperLinter;
+          harperLinter = null;
+          await failedLinter?.dispose().catch(() => undefined);
+          if (!useWorker) throw error;
+          // A strict CSP can block blob/data workers. Keep writing checks
+          // available with a main-thread fallback instead of failing silently.
+          harperLinter = new LocalLinter({ binary });
+          await harperLinter.setup();
+        }
+      } catch (error) {
+        harperLinter = null;
+        harperDictionaryKey = "";
+        throw error;
+      }
+    }
+    const key = dictionaryKey(customWords);
+    if (key !== harperDictionaryKey) {
+      await harperLinter.clearWords();
+      if (customWords.length) await harperLinter.importWords([...new Set(customWords.map((word) => word.trim()).filter(Boolean))]);
+      harperDictionaryKey = key;
+    }
+    return operation(harperLinter);
+  });
+  harperOperation = next.then(() => undefined, () => undefined);
+  return next;
+}
+
+function suggestionText(suggestion: Suggestion): string {
+  return suggestion.get_replacement_text();
+}
+
+function resolveLintSpan(source: string, masked: string, lint: Lint, span: { start: number; end: number }, scalarOffsetsMap: number[]): Span | null {
+  const direct = { from: span.start, to: span.end };
+  const scalar = {
+    from: scalarOffsetsMap[span.start] ?? -1,
+    to: scalarOffsetsMap[span.end] ?? -1
+  };
+  const candidates = [direct, scalar].filter((candidate, index, values) =>
+    candidate.from >= 0 && candidate.to > candidate.from && candidate.to <= source.length
+      && values.findIndex((value) => value.from === candidate.from && value.to === candidate.to) === index
+  );
+  if (candidates.length === 0) return null;
+
+  // Harper's documented span units are Unicode scalar values, while some
+  // released WASM builds expose JavaScript UTF-16 offsets. Prefer the range
+  // whose masked text matches Harper's own problem text so both forms remain
+  // correct for documents containing astral characters.
+  const problem = lint.get_problem_text();
+  return candidates.find((candidate) => masked.slice(candidate.from, candidate.to) === problem)
+    ?? candidates.find((candidate) => /[A-Za-z]/.test(masked.slice(candidate.from, candidate.to)))
+    ?? candidates[0]
+    ?? null;
+}
+
+function mapLint(source: string, masked: string, lint: Lint, offsets: number[]): SpellCheckIssue | null {
+  const span = lint.span();
+  try {
+    const resolved = resolveLintSpan(source, masked, lint, span, offsets);
+    if (!resolved) return null;
+    const { from, to } = resolved;
+    if (!/[A-Za-z]/.test(masked.slice(from, to))) return null;
+    const word = source.slice(from, to);
+    if (!word.trim() || /[\\%$]/.test(word)) return null;
+    const kind = lint.lint_kind() === "Spelling" || lint.lint_kind() === "Typo" ? "spelling" : "grammar";
+    const rawSuggestions = lint.suggestions();
+    const suggestions = rawSuggestions.map(suggestionText).filter((text, index, values) => index < maxSuggestions && values.indexOf(text) === index);
+    for (const suggestion of rawSuggestions) suggestion.free();
+    return { from, to, word, kind, message: lint.message(), suggestions };
+  } finally {
+    span.free();
+  }
+}
+
+/** Run Harper in a browser worker (or a local Node fallback) and return source-positioned diagnostics. */
+export function lintLatex(source: string, customWords: string[] = []): Promise<SpellCheckIssue[]> {
+  const masked = maskLatexSource(source);
+  const offsets = scalarOffsets(source);
+  return withHarper(customWords, async (linter) => {
+    // `isolateEnglish` is intentionally disabled: Harper's current heuristic
+    // can classify short, perfectly valid sentences as non-English. Its
+    // plaintext parser already ignores the Chinese text common in LaTeX files,
+    // while the syntax mask below keeps commands and data out of the input.
+    const lints = await linter.lint(masked, { language: "plaintext", dedup: true, isolateEnglish: false });
+    try {
+      return lints.map((lint) => mapLint(source, masked, lint, offsets)).filter((issue): issue is SpellCheckIssue => Boolean(issue))
+        .sort((left, right) => left.from - right.from || left.to - right.to);
+    } finally {
+      for (const lint of lints) lint.free();
+    }
+  });
 }

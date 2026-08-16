@@ -167,6 +167,24 @@ describe("project collaboration", () => {
           && states?.["standalone.tex"]?.status === "succeeded"
           && states["standalone.tex"].runId === standaloneCompile.json().runId;
       });
+      const cleanCache = await app.inject({
+        method: "POST", url: `/api/projects/${projectId}/compile/clean`, headers: { cookie: adminCookie },
+        payload: { mainFile: "main.tex", mode: "cache" }
+      });
+      expect(cleanCache.json()).toMatchObject({ ok: true, mode: "cache", retainedPdf: true });
+      await waitFor(() => {
+        const states = owner.doc.getMap("texlite:meta").get("compileStates") as Record<string, { status?: string; cleanMode?: string }> | undefined;
+        return states?.["main.tex"]?.status === "cleaned" && states["main.tex"]?.cleanMode === "cache";
+      });
+      const cleanArtifacts = await app.inject({
+        method: "POST", url: `/api/projects/${projectId}/compile/clean`, headers: { cookie: adminCookie },
+        payload: { mainFile: "main.tex", mode: "artifacts" }
+      });
+      expect(cleanArtifacts.json()).toMatchObject({ ok: true, mode: "artifacts", retainedPdf: false });
+      await waitFor(() => {
+        const states = owner.doc.getMap("texlite:meta").get("compileStates") as Record<string, { status?: string; cleanMode?: string }> | undefined;
+        return states?.["main.tex"]?.status === "cleaned" && states["main.tex"]?.cleanMode === "artifacts";
+      });
     } finally {
       for (const peer of peers) peer.destroy();
     }

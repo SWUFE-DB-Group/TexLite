@@ -45,15 +45,16 @@ export function useSpellCheck({ active, activeFile, content, dictionaryWords }: 
     const source = content;
     const file = activeFile;
     const timer = window.setTimeout(() => {
-      void import("../spellCheck").then(({ checkSpelling }) => {
+      void import("../spellCheck").then(({ lintLatex }) => {
         if (currentRequest !== request.current || contentRef.current !== source || activeFileRef.current !== file) return;
-        const nextIssues = checkSpelling(source, dictionaryWords);
-        if (currentRequest !== request.current || contentRef.current !== source || activeFileRef.current !== file) return;
-        setIssues(nextIssues);
-        setCheckedSource(source);
-        setCheckedFile(file);
-        setIndex(0);
-        setJump(null);
+        return lintLatex(source, dictionaryWords).then((nextIssues) => {
+          if (currentRequest !== request.current || contentRef.current !== source || activeFileRef.current !== file) return;
+          setIssues(nextIssues);
+          setCheckedSource(source);
+          setCheckedFile(file);
+          setIndex(0);
+          setJump(null);
+        });
       }).catch(() => undefined);
     }, 700);
     return () => window.clearTimeout(timer);
@@ -62,7 +63,7 @@ export function useSpellCheck({ active, activeFile, content, dictionaryWords }: 
   const visible = checkedFile === activeFile && checkedSource === content;
   const summary = useMemo(() => visible ? {
     total: issues.length,
-    unique: new Set(issues.map((issue) => issue.word.toLocaleLowerCase("en-US"))).size
+    unique: new Set(issues.map((issue) => `${issue.kind}:${issue.word.toLocaleLowerCase("en-US")}`)).size
   } : null, [visible, issues]);
 
   const jumpToIssue = (requestedIndex: number) => {

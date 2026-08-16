@@ -264,6 +264,56 @@ export function discardCompileSnapshot(snapshot: CompileSnapshot): void {
   fs.rmSync(snapshot.root, { recursive: true, force: true });
 }
 
+/**
+ * Returns whether the incremental latexmk cache for a root document exists.
+ * A missing cache is intentionally treated as a request for a full rebuild,
+ * even when a published PDF for the same source revision is still available.
+ */
+export function hasCompileCache(config: Config, projectId: string, mainFile: string): boolean {
+  const cacheRoot = compileCacheTargetRoot(config, projectId, mainFile);
+  try {
+    return fs.readdirSync(cacheRoot, { withFileTypes: true }).some((entry) => entry.isDirectory());
+  } catch {
+    return false;
+  }
+}
+
+/** Remove only incremental compiler state; the last published PDF remains available. */
+export function cleanCompileCache(config: Config, projectId: string, mainFile: string): void {
+  fs.rmSync(compileCacheTargetRoot(config, projectId, mainFile), { recursive: true, force: true });
+}
+
+/**
+ * Remove generated output for one root document without touching project
+ * source, settings, comments, history, or Git data.
+ */
+export function cleanCompileArtifacts(
+  config: Config,
+  projectId: string,
+  mainFile: string,
+  defaultMainFile: string,
+  runIds: readonly string[] = []
+): void {
+  const published = publishedCompileArtifacts(config, projectId, mainFile, mainFile === defaultMainFile);
+  cleanCompileCache(config, projectId, mainFile);
+  fs.rmSync(compileTargetRoot(config, projectId, mainFile), { recursive: true, force: true });
+  const runIdsToRemove = new Set(runIds);
+  if (published) runIdsToRemove.add(published.runId);
+  for (const runId of runIdsToRemove) {
+    if (/^[a-f0-9-]{36}$/i.test(runId)) fs.rmSync(compileRunRoot(config, projectId, runId), { recursive: true, force: true });
+  }
+  if (mainFile === defaultMainFile) {
+    const output = outputRoot(config, projectId);
+    for (const generated of [
+      path.join(output, ".texlite", "latest.json"),
+      path.join(output, ".texlite", "latest.pdf"),
+      path.join(output, ".texlite", "latest.synctex.gz"),
+      path.join(output, `${path.basename(mainFile, ".tex")}.pdf`),
+      path.join(output, `${path.basename(mainFile, ".tex")}.synctex.gz`)
+    ]) fs.rmSync(generated, { force: true });
+  }
+}
+
 export function publishCompileArtifacts(
   config: Config,
   projectId: string,
@@ -383,6 +433,10 @@ function compileTargetRoot(config: Config, projectId: string, mainFile: string):
   return path.join(compileDataRoot(config, projectId), "targets", compileTargetKey(mainFile));
 }
 
+function compileCacheTargetRoot(config: Config, projectId: string, mainFile: string): string {
+  return path.join(compileDataRoot(config, projectId), "cache", compileTargetKey(mainFile));
+}
+
 function compileTargetKey(mainFile: string): string {
   return createHash("sha256").update(safeRelativePath(mainFile)).digest("hex").slice(0, 24);
 }
@@ -434,9 +488,7 @@ function prepareCompileCache(
   engine: "pdflatex" | "xelatex" | "lualatex",
   latexmkrc: string | null
 ): PreparedCompileCache {
-  const cacheDirectory = path.join(
-    compileDataRoot(config, snapshot.projectId), "cache", compileTargetKey(mainFile)
-  );
+  const cacheDirectory = compileCacheTargetRoot(config, snapshot.projectId, mainFile);
   const key = compileCacheKey(config, snapshot, mainFile, engine, latexmkrc);
   const root = path.join(cacheDirectory, key);
   const cacheSource = path.join(root, "source");

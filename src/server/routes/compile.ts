@@ -10,8 +10,11 @@ import { accessibleProject, canEdit } from "../projects.js";
 import { resolveSourcePath, safeRelativePath } from "../files.js";
 import {
   captureCompileSnapshot,
+  cleanCompileArtifacts,
+  cleanCompileCache,
   compileProject,
   discardCompileSnapshot,
+  hasCompileCache,
   publishCompileArtifacts,
   publishedCompileArtifacts,
   type ProjectCompileCoordinator
@@ -127,6 +130,50 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     return { path: relative, content: fs.readFileSync(resolved, "utf8") };
   });
 
+  app.post("/api/projects/:id/compile/clean", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || !canEdit(project)) return apiError(reply, 403, "COMPILE_FORBIDDEN", "没有清理编译产物的权限");
+    const body = (request.body ?? {}) as { mainFile?: unknown; mode?: unknown };
+    const mainFile = compileMainFile(config, id, project.main_file, body.mainFile);
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    if (body.mode !== "cache" && body.mode !== "artifacts") {
+      return apiError(reply, 400, "REQUEST_INVALID", "清理模式无效");
+    }
+    const activeRun = db.prepare(`SELECT 1 AS active FROM compile_runs
+      WHERE project_id = ? AND main_file = ? AND status IN ('queued', 'running') LIMIT 1`).get(id, mainFile);
+    if (activeRun) return apiError(reply, 409, "COMPILE_CLEAN_BUSY", "当前主文档正在编译，请稍后再清理");
+    const requestedBy = { id: user.id, username: user.username, name: user.display_name };
+    if (body.mode === "cache") {
+      cleanCompileCache(config, id, mainFile);
+      collaboration.signalCompileState(id, {
+        mainFile,
+        runId: `clean-${randomUUID()}`,
+        status: "cleaned",
+        cleanMode: "cache",
+        requestedBy,
+        updatedAt: now()
+      });
+      return { ok: true, mode: "cache", mainFile, retainedPdf: true };
+    }
+    const runs = db.prepare(`SELECT id FROM compile_runs
+      WHERE project_id = ? AND main_file = ? AND status NOT IN ('queued', 'running')`).all(id, mainFile) as Array<{ id: string }>;
+    cleanCompileArtifacts(config, id, mainFile, project.main_file, runs.map((run) => run.id));
+    db.prepare("DELETE FROM compile_runs WHERE project_id = ? AND main_file = ? AND status NOT IN ('queued', 'running')").run(id, mainFile);
+    pruneCompileRuns(id);
+    collaboration.signalCompileState(id, {
+      mainFile,
+      runId: `clean-${randomUUID()}`,
+      status: "cleaned",
+      cleanMode: "artifacts",
+      requestedBy,
+      updatedAt: now()
+    });
+    return { ok: true, mode: "artifacts", mainFile, retainedPdf: false };
+  });
+
   app.get("/api/projects/:id/sync/pdf", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
@@ -211,7 +258,8 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const activeRun = db.prepare(`SELECT 1 AS active FROM compile_runs
       WHERE project_id = ? AND main_file = ? AND status IN ('queued', 'running') LIMIT 1`).get(id, mainFile);
     if (!activeRun && published && publishedRun?.status === "succeeded"
-      && latestRun?.id === publishedRun.id && snapshot.revision === published.revision) {
+      && latestRun?.id === publishedRun.id && snapshot.revision === published.revision
+      && hasCompileCache(config, id, mainFile)) {
       discardCompileSnapshot(snapshot);
       const requestMs = performance.now() - requestStartedAt;
       metrics.record("compile.request", requestMs);

@@ -7,7 +7,7 @@ import type { FileEntry, LatexCompletionIndex, Project, ProjectListPagination, P
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import i18n from "./i18n";
 import {
-  Activity, AlertTriangle, AlignLeft, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Dices, Download, FileArchive, FilePlus2, FileText, Keyboard,
+  Activity, AlertTriangle, AlignLeft, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Dices, Download, Eraser, FileArchive, FilePlus2, FileText, Keyboard,
   FileSearch, Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, ListTree, LoaderCircle, MessageSquare, MessageSquarePlus, PackageOpen,
   Move, PanelLeftClose, PanelLeftOpen, Pencil, Play, ScrollText,
   Search, Settings, Sparkles, Tags, Trash2, Upload, UserPlus, Users, X, XCircle
@@ -23,7 +23,8 @@ import type { WorkspaceLayout } from "./workspace/types";
 import { CollaborationPresence, WorkspaceLayoutMenu } from "./workspace/WorkspaceChrome";
 import { CommentThread, ShareDialog } from "./workspace/Comments";
 import { ProjectSettings } from "./workspace/ProjectSettings";
-import { CompileArtifacts, CompileDiagnosticOutput, CompileOutput } from "./workspace/CompileOutput";
+import { CompileArtifacts, CompileCleanup, CompileDiagnosticOutput, CompileOutput } from "./workspace/CompileOutput";
+import type { CompileCleanMode } from "./workspace/useProjectCompilation";
 import { useProjectComments, type SourceSelection } from "./workspace/useProjectComments";
 import { useProjectCollaboration } from "./workspace/useProjectCollaboration";
 import { useProjectCompilation } from "./workspace/useProjectCompilation";
@@ -31,6 +32,7 @@ import { isEditableTextFile, parentFolders, pathContains, useProjectFiles } from
 import { useSpellCheck } from "./workspace/useSpellCheck";
 import { useSyncTeX } from "./workspace/useSyncTeX";
 import { useWorkspaceLayout } from "./workspace/useWorkspaceLayout";
+import type { SpellCheckIssue } from "./spellCheck";
 
 const loadPdfPreview = () => import("./PdfPreview");
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
@@ -574,7 +576,7 @@ function AdminUsers({ currentUser }: { currentUser: User }) {
   </main>;
 }
 
-type PreviewTab = "pdf" | "log" | "warnings" | "errors" | "artifacts";
+type PreviewTab = "pdf" | "log" | "warnings" | "errors" | "artifacts" | "clean";
 type PreviewSurface = "pdf" | "diagnostics";
 type DiagnosticTab = Exclude<PreviewTab, "pdf">;
 interface ProjectOutlineItem { path: string; line: number; level: number; title: string }
@@ -622,6 +624,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [shareOpen, setShareOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [formatting, setFormatting] = useState(false);
@@ -1066,8 +1069,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   });
   const {
     pdfUrl, pdfCompiledAt, compileLog, compileDiagnostics, compileOutcome,
-    artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling,
-    compile, viewArtifact
+    artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cleaning,
+    compile, cleanCompile, viewArtifact
   } = useProjectCompilation({
     projectId,
     project,
@@ -1120,9 +1123,25 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     : [];
   if (!project) return <div className="center-card"><p>{error || t("common.loading")}</p>{error && <button className="primary" onClick={onBack}>{t("editor.backToProjects")}</button>}</div>;
   const readOnly = project.permission === "read" || !collaborationSynced;
+  const replaceSpellCheckIssue = (issue: SpellCheckIssue, replacement: string): void => {
+    if (readOnly) return;
+    const filePath = activeFileRef.current;
+    if (!filePath) return;
+    const sharedText = collaboration.getText(filePath);
+    const source = sharedText.toString();
+    if (source.slice(issue.from, issue.to) !== issue.word) {
+      setError(t("editor.spellCheckSourceChanged"));
+      return;
+    }
+    try {
+      collaboration.applyTextEdits(filePath, [{ from: issue.from, to: issue.to, replacement }]);
+    } catch (replaceError) {
+      setError(errorMessage(replaceError));
+    }
+  };
   const sharedCompiling = compileState?.mainFile === activeMainFile
     && (compileState.status === "queued" || compileState.status === "running");
-  const compileBusy = localCompiling || sharedCompiling;
+  const compileBusy = localCompiling || sharedCompiling || cleaning;
   const collaborativeText = activeFile ? collaboration.getText(activeFile) : null;
   const pdfCompiledLabel = pdfCompiledAt ? new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage, {
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
@@ -1175,7 +1194,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       </Panel>}
       {showEditor && <PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle>}
       {showEditor && <Panel id="source" order={2} defaultSize={42} minSize={22}>
-        <main className="source-panel"><Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}><LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckWords={dictionaryWords} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onCursor={updateSourceCursor} /></Suspense>{editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}</main>
+        <main className="source-panel"><Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}><LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor} /></Suspense>{editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}</main>
       </Panel>}
       {showEditor && showPreview && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport} title={t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={syncVisiblePdfToSource}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl} title={t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={() => void syncSourceToPdf(activeFile, sourceCursor.line, sourceCursor.column)}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
       {showPreview && <Panel id="preview" order={3} defaultSize={42} minSize={22}>
@@ -1192,6 +1211,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
             <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{compileMessages.warnings.length}</span></button>
             <button role="tab" aria-selected={diagnosticTab === "errors"} className={diagnosticTab === "errors" ? "active" : ""} onClick={() => selectPreviewTab("errors")}><XCircle size={13} />{t("editor.errors")}<span>{compileMessages.errors.length}</span></button>
             <button role="tab" aria-selected={diagnosticTab === "artifacts"} className={diagnosticTab === "artifacts" ? "active" : ""} onClick={() => selectPreviewTab("artifacts")}><PackageOpen size={13} />{t("editor.artifacts")}<span>{artifacts.length}</span></button>
+            <button role="tab" aria-selected={diagnosticTab === "clean"} className={diagnosticTab === "clean" ? "active" : ""} onClick={() => selectPreviewTab("clean")}><Eraser size={13} />{t("editor.clean")}</button>
           </div>}
           <div className={`preview-content preview-${previewTab} ${previewTab === "diagnostics" ? `preview-${diagnosticTab}` : ""}`}>
             {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="preview-empty"><span>{t("common.loading")}</span></div>}><PdfPreview url={pdfUrl} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} /></Suspense> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
@@ -1203,6 +1223,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
               ? <CompileDiagnosticOutput tone="error" diagnostics={compileDiagnostics.errors} files={files} empty={t("editor.noErrors")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />
               : <CompileOutput tone="error" lines={compileMessages.errors} empty={t("editor.noErrors")} />)}
             {previewTab === "diagnostics" && diagnosticTab === "artifacts" && <CompileArtifacts projectId={projectId} mainFile={activeMainFile} artifacts={artifacts} preview={artifactPreview} loading={artifactLoading} onView={(artifact) => void viewArtifact(artifact)} />}
+            {previewTab === "diagnostics" && diagnosticTab === "clean" && <CompileCleanup mainFile={activeMainFile} disabled={readOnly || !collaborationSynced || compileBusy} cleaning={cleaning} onCleanCache={() => setCleanMode("cache")} onCleanArtifacts={() => setCleanMode("artifacts")} />}
           </div>
         </section>
       </Panel>}
@@ -1219,6 +1240,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       {resourcePreview?.kind === "text" && (resourcePreviewLoading ? <div className="resource-preview-message"><LoaderCircle className="spin" size={24} /><span>{t("common.loading")}</span></div> : <pre className="resource-text">{resourcePreview.content}</pre>)}
     </Modal>
     <ConfirmDialog open={Boolean(uploadConflict)} title={t("editor.uploadOverwriteTitle")} description={t("editor.uploadOverwriteDescription", { files: uploadConflict?.collisions.join(", ") ?? "" })} confirmLabel={t("editor.uploadOverwrite")} danger onCancel={() => setUploadConflict(null)} onConfirm={() => { const pending = uploadConflict; setUploadConflict(null); if (pending) void uploadFiles(pending.files, new Set(pending.collisions), pending.directory); }} />
+    <ConfirmDialog open={Boolean(cleanMode)} title={cleanMode === "cache" ? t("editor.cleanCacheConfirmTitle") : t("editor.cleanArtifactsConfirmTitle")} description={cleanMode === "cache" ? t("editor.cleanCacheConfirmDescription") : t("editor.cleanArtifactsConfirmDescription")} confirmLabel={t("editor.cleanConfirm")} danger={cleanMode === "artifacts"} onCancel={() => setCleanMode(null)} onConfirm={() => { const mode = cleanMode; setCleanMode(null); if (mode) void cleanCompile(mode); }} />
     <Modal open={newFileOpen} title={t("editor.newFile")} description={t("editor.newFileDescription")} onOpenChange={(open) => { setNewFileOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFileOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFile()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.filePath")}<input autoFocus value={newFilePath} onChange={(event) => setNewFilePath(event.target.value)} /></label></></Modal>
     <Modal open={newFolderOpen} title={t("editor.newFolder")} description={t("editor.folderDestination", { folder: selectedFolder || t("editor.projectRoot") })} onOpenChange={(open) => { setNewFolderOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFolderOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFolder()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.folderName")}<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></label></></Modal>
     <Modal open={Boolean(moveEntry)} title={t("editor.moveTitle", { name: moveEntry?.path.split("/").at(-1) ?? "" })} description={t("editor.moveDescription")} onOpenChange={(open) => { if (!open) { setMoveEntry(null); setFileDialogError(""); } }} footer={<><button onClick={() => setMoveEntry(null)}>{t("common.cancel")}</button><button className="primary" onClick={() => void movePath()}>{t("editor.move")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.destinationFolder")}<select value={moveDestination} onChange={(event) => setMoveDestination(event.target.value)}><option value="">{t("editor.projectRoot")}</option>{directoryEntries.filter((directory) => moveEntry?.type !== "directory" || (directory.path !== moveEntry.path && !directory.path.startsWith(`${moveEntry.path}/`))).map((directory) => <option value={directory.path} key={directory.path}>{directory.path}</option>)}</select></label></></Modal>

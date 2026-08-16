@@ -1,6 +1,6 @@
 {
   "name": "texlite",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "A lightweight local-first collaborative LaTeX workspace",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -69,14 +69,13 @@
     "@radix-ui/react-dialog": "^1.1.15",
     "@replit/codemirror-vim": "^6.4.0",
     "better-sqlite3": "^13.0.2",
-    "dictionary-en": "^4.0.0",
     "diff-match-patch": "^1.0.5",
     "fastify": "^5.4.0",
+    "harper.js": "^2.7.0",
     "i18next": "^25.3.2",
     "i18next-browser-languagedetector": "^8.2.0",
     "lib0": "^0.2.117",
     "lucide-react": "^0.468.0",
-    "nspell": "^2.1.5",
     "pdfjs-dist": "^6.2.108",
     "pm2": "^6.0.14",
     "react": "^19.1.1",

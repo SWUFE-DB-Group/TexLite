@@ -130,6 +130,7 @@ It works.
     const completionIndex = await app.inject({ method: "GET", url: `/api/projects/${project.id}/completions`, headers: { cookie } });
     expect(completionIndex.statusCode).toBe(200);
     expect(completionIndex.json().index.commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "\\noindent", source: "LaTeX" }),
       expect.objectContaining({ label: "\\reviewnote", source: "paper.sty", apply: "\\reviewnote{${1}}" }),
       expect.objectContaining({ label: "\\reviewpair", source: "paper.sty", apply: "\\reviewpair{${1}}{${2}}" }),
       expect.objectContaining({ label: "\\macroPair", source: "paper.sty", apply: "\\macroPair{${1}}{${2}}" }),
@@ -319,6 +320,23 @@ It works.
     const downloadedPdf = await app.inject({ method: "GET", url: `/api/projects/${project.id}/pdf?download=1`, headers: { cookie } });
     expect(downloadedPdf.statusCode).toBe(200);
     expect(downloadedPdf.headers["content-disposition"]).toMatch(/^attachment;.*Paper-\d{4}-\d{2}-\d{2}-\d{6}\.pdf/);
+    const cleanCache = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/compile/clean`, headers: { cookie },
+      payload: { mainFile: "main.tex", mode: "cache" }
+    });
+    expect(cleanCache.statusCode).toBe(200);
+    expect(cleanCache.json()).toMatchObject({ ok: true, mode: "cache", retainedPdf: true });
+    const afterCacheClean = await app.inject({ method: "GET", url: `/api/projects/${project.id}/compile/latest?mainFile=main.tex`, headers: { cookie } });
+    expect(afterCacheClean.json()).toMatchObject({ hasPdf: true, latestRun: { status: "succeeded" } });
+    const cleanArtifacts = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/compile/clean`, headers: { cookie },
+      payload: { mainFile: "main.tex", mode: "artifacts" }
+    });
+    expect(cleanArtifacts.statusCode).toBe(200);
+    expect(cleanArtifacts.json()).toMatchObject({ ok: true, mode: "artifacts", retainedPdf: false });
+    const afterArtifactClean = await app.inject({ method: "GET", url: `/api/projects/${project.id}/compile/latest?mainFile=main.tex`, headers: { cookie } });
+    expect(afterArtifactClean.json()).toMatchObject({ hasPdf: false, latestRun: null });
+    expect((await app.inject({ method: "GET", url: `/api/projects/${project.id}/pdf`, headers: { cookie } })).statusCode).toBe(404);
   }, 40_000);
 
   it("compiles only the currently selected LaTeX root document", async () => {

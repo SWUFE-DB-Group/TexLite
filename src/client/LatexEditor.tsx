@@ -35,7 +35,6 @@ interface Props {
   focusComment: Comment | null;
   preferences: EditorPreferences;
   completionIndex: LatexCompletionIndex | null;
-  spellCheckWords: string[];
   spellCheckIssues: SpellCheckIssue[];
   spellCheckJump: SpellCheckJump | null;
   jumpTo: { line: number; column: number; nonce: number } | null;
@@ -44,7 +43,14 @@ interface Props {
   onChange: (value: string) => void;
   onSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onCommentClick: (commentId: string) => void;
+  onSpellCheckReplace: (issue: SpellCheckIssue, replacement: string) => void;
   onCursor: (line: number, column: number) => void;
+}
+
+interface SpellSuggestionMenu {
+  issue: SpellCheckIssue;
+  left: number;
+  top: number;
 }
 
 export interface SpellCheckJump {
@@ -95,20 +101,6 @@ const commentMarks = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field)
 });
 
-const setSpellCheckWords = StateEffect.define<string[]>();
-const spellCheckExclusions = StateField.define<{ words: string[]; decorations: DecorationSet }>({
-  create: (state) => ({ words: [], decorations: buildSpellCheckExclusions(state.doc.toString(), []) }),
-  update(value, transaction) {
-    let words = value.words;
-    for (const effect of transaction.effects) if (effect.is(setSpellCheckWords)) words = effect.value;
-    if (transaction.docChanged || words !== value.words) {
-      return { words, decorations: buildSpellCheckExclusions(transaction.state.doc.toString(), words) };
-    }
-    return value;
-  },
-  provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
-});
-
 const setSpellCheckIssues = StateEffect.define<SpellCheckIssue[]>();
 const spellCheckIssueMarks = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -142,7 +134,20 @@ const activeSpellCheckIssueMarks = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field)
 });
 
+const fallbackCommandLabels = [
+  "\\noindent", "\\indent", "\\par", "\\leavevmode", "\\newline", "\\linebreak", "\\nolinebreak", "\\pagebreak", "\\nopagebreak", "\\newpage", "\\clearpage", "\\cleardoublepage",
+  "\\smallskip", "\\medskip", "\\bigskip", "\\smallbreak", "\\medbreak", "\\bigbreak", "\\hfill", "\\hfil", "\\vfill", "\\vfil", "\\thinspace", "\\negthinspace", "\\quad", "\\qquad", "\\enspace", "\\enskip", "\\,", "\\:", "\\;", "\\!",
+  "\\centering", "\\raggedright", "\\raggedleft", "\\raggedbottom", "\\flushbottom", "\\maketitle", "\\tableofcontents", "\\listoffigures", "\\listoftables", "\\appendix",
+  "\\bfseries", "\\mdseries", "\\rmfamily", "\\sffamily", "\\ttfamily", "\\upshape", "\\itshape", "\\slshape", "\\scshape", "\\normalfont", "\\tiny", "\\scriptsize", "\\footnotesize", "\\small", "\\normalsize", "\\large", "\\Large", "\\LARGE", "\\huge", "\\Huge",
+  "\\displaystyle", "\\textstyle", "\\scriptstyle", "\\scriptscriptstyle", "\\limits", "\\nolimits", "\\sum", "\\prod", "\\coprod", "\\int", "\\iint", "\\iiint", "\\oint", "\\bigcap", "\\bigcup", "\\bigvee", "\\bigwedge",
+  "\\lim", "\\limsup", "\\liminf", "\\sin", "\\cos", "\\tan", "\\cot", "\\log", "\\ln", "\\exp", "\\max", "\\min", "\\sup", "\\inf", "\\det", "\\dim", "\\gcd", "\\ker", "\\Pr",
+  "\\ldots", "\\cdots", "\\vdots", "\\ddots", "\\dotsb", "\\dotsc", "\\dotsm", "\\dotso", "\\alpha", "\\beta", "\\gamma", "\\delta", "\\epsilon", "\\varepsilon", "\\theta", "\\vartheta", "\\lambda", "\\mu", "\\pi", "\\varpi", "\\rho", "\\sigma", "\\tau", "\\phi", "\\varphi", "\\omega", "\\Gamma", "\\Delta", "\\Theta", "\\Lambda", "\\Xi", "\\Pi", "\\Sigma", "\\Upsilon", "\\Phi", "\\Psi", "\\Omega",
+  "\\pm", "\\mp", "\\times", "\\div", "\\cdot", "\\leq", "\\geq", "\\neq", "\\approx", "\\equiv", "\\sim", "\\simeq", "\\propto", "\\in", "\\notin", "\\subset", "\\subseteq", "\\supset", "\\supseteq", "\\cup", "\\cap", "\\emptyset", "\\varnothing", "\\forall", "\\exists", "\\nexists", "\\infty", "\\partial", "\\nabla", "\\angle", "\\parallel", "\\perp", "\\mid",
+  "\\LaTeX", "\\TeX", "\\today", "\\protect", "\\nocite", "\\footnotemark", "\\hrule", "\\verb", "\\verb*"
+];
+
 function completionOptions() { return [
+  ...fallbackCommandLabels.map((label) => ({ label, type: "keyword" as const })),
   snippetCompletion("\\section{${title}}", { label: "\\section" }),
   snippetCompletion("\\subsection{${title}}", { label: "\\subsection" }),
   snippetCompletion("\\textbf{${text}}", { label: "\\textbf" }),
@@ -320,9 +325,9 @@ function latexAutoPairInput(view: EditorView, from: number, to: number, text: st
 function latexCompletions(context: CompletionContext, t: TFunction, index: LatexCompletionIndex | null) {
   if (isLatexComment(context)) return null;
   const local = localCompletionIndexForDocument(context);
-  const command = context.matchBefore(/\\[A-Za-z@0-9:_]*$/);
+  const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);
   if (command || context.explicit) {
-    return { from: command?.from ?? context.pos, options: withoutCompletionDetails(mergeCompletionItems(t, local.commands, index?.commands ?? [], completionOptions())), validFor: /^\\[A-Za-z@0-9:_]*$/ };
+    return { from: command?.from ?? context.pos, options: withoutCompletionDetails(mergeCompletionItems(t, local.commands, index?.commands ?? [], completionOptions())), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
   }
   const environment = environmentCompletionContext(context);
   if (environment) {
@@ -376,7 +381,7 @@ const latexFold = foldService.of((state, lineStart) => {
 
 export function LatexEditor({
   value, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
-  spellCheckWords, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onCommentClick, onCursor
+  spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onCommentClick, onSpellCheckReplace, onCursor
 }: Props) {
   const { t, i18n } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -384,17 +389,22 @@ export function LatexEditor({
   const onChangeRef = useRef(onChange);
   const onSelectionRef = useRef(onSelection);
   const onCommentClickRef = useRef(onCommentClick);
+  const onSpellCheckReplaceRef = useRef(onSpellCheckReplace);
   const onCursorRef = useRef(onCursor);
+  const spellCheckIssuesRef = useRef(spellCheckIssues);
   const handledSearchRequest = useRef(searchRequest);
   const completionIndexRef = useRef(completionIndex);
   const appearance = useRef(new Compartment());
   const vimMode = useRef(new Compartment());
   const vimStatusCleanup = useRef<(() => void) | null>(null);
   const [vimStatus, setVimStatus] = useState(preferences.vimMode ? "NORMAL" : "");
+  const [spellSuggestionMenu, setSpellSuggestionMenu] = useState<SpellSuggestionMenu | null>(null);
   onChangeRef.current = onChange;
   onSelectionRef.current = onSelection;
   onCommentClickRef.current = onCommentClick;
+  onSpellCheckReplaceRef.current = onSpellCheckReplace;
   onCursorRef.current = onCursor;
+  spellCheckIssuesRef.current = spellCheckIssues;
   completionIndexRef.current = completionIndex;
 
   const syncVimStatus = (editor: EditorView, enabled: boolean) => {
@@ -426,7 +436,7 @@ export function LatexEditor({
       extensions: [
         lineNumbers(), foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
         latexLanguage, syntaxHighlighting(defaultHighlightStyle), bracketMatching(),
-        Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckExclusions, spellCheckIssueMarks, activeSpellCheckIssueMarks,
+        Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
         search({ top: true }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
         autocompletion({ override: [(context) => latexCompletions(context, t, completionIndexRef.current)], activateOnTyping: true }),
         ...(collaborationUndoManager ? [vimHistoryCommands.of({
@@ -445,6 +455,23 @@ export function LatexEditor({
             if (element?.dataset.commentId) onCommentClickRef.current(element.dataset.commentId);
             return false;
           },
+          contextmenu(event) {
+            const element = (event.target as HTMLElement).closest<HTMLElement>("[data-spell-error]");
+            if (!element) return false;
+            const from = Number(element.dataset.spellFrom);
+            const to = Number(element.dataset.spellTo);
+            const issue = spellCheckIssuesRef.current.find((candidate) => candidate.from === from && candidate.to === to);
+            if (!issue) return false;
+            event.preventDefault();
+            const width = 250;
+            const height = Math.min(300, 100 + issue.suggestions.length * 34);
+            setSpellSuggestionMenu({
+              issue,
+              left: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
+              top: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8))
+            });
+            return true;
+          },
           blur(_event, editor) {
             const range = editor.state.selection.main;
             onSelectionRef.current(editor.state.sliceDoc(range.from, range.to), range.from, range.to);
@@ -457,6 +484,7 @@ export function LatexEditor({
             (transaction) => transaction.annotation(externalDocumentUpdate)
           );
           if (update.docChanged && !loadedExternalDocument) onChangeRef.current(update.state.doc.toString());
+          if (update.docChanged) setSpellSuggestionMenu(null);
           if (update.selectionSet && !update.docChanged && update.transactions.some((transaction) => transaction.isUserEvent("input"))) {
             const cursor = update.state.selection.main.head;
             const pair = latexAutoPairAtCursor(update.state.doc.toString(), cursor);
@@ -497,16 +525,33 @@ export function LatexEditor({
   }, [preferences]);
 
   useEffect(() => {
-    view.current?.dispatch({ effects: setSpellCheckWords.of(spellCheckWords) });
-  }, [spellCheckWords]);
-
-  useEffect(() => {
     const editor = view.current;
     if (!editor) return;
     const currentSource = editor.state.doc.toString();
     const validIssues = spellCheckIssues.filter((issue) => issue.from >= 0 && issue.to <= currentSource.length && issue.to > issue.from);
     editor.dispatch({ effects: [setSpellCheckIssues.of(validIssues), setActiveSpellCheckIssue.of(null)] });
   }, [spellCheckIssues]);
+
+  useEffect(() => {
+    setSpellSuggestionMenu(null);
+  }, [spellCheckIssues]);
+
+  useEffect(() => {
+    if (!spellSuggestionMenu) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest(".spell-suggestions-menu")) return;
+      setSpellSuggestionMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSpellSuggestionMenu(null);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick, true);
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick, true);
+      document.removeEventListener("keydown", closeOnEscape, true);
+    };
+  }, [spellSuggestionMenu]);
 
   useEffect(() => {
     const editor = view.current;
@@ -571,6 +616,13 @@ export function LatexEditor({
     lineHeight: preferences.lineHeight
   }}>
     <div className="editor-host" ref={host} />
+    {spellSuggestionMenu && <div className="spell-suggestions-menu" role="menu" aria-label={t("editor.writingSuggestions")} onMouseDown={(event) => event.stopPropagation()}>
+      <div className="spell-suggestions-title">{t("editor.writingSuggestions")}</div>
+      {spellSuggestionMenu.issue.message && <div className="spell-suggestions-message">{spellSuggestionMenu.issue.message}</div>}
+      {spellSuggestionMenu.issue.suggestions.map((suggestion, index) => <button key={`${suggestion}-${index}`} type="button" role="menuitem" disabled={readOnly} title={readOnly ? t("editor.spellCheckReadOnly") : t("editor.replaceWith", { word: suggestion || t("editor.removeText") })} onClick={() => { onSpellCheckReplaceRef.current(spellSuggestionMenu.issue, suggestion); setSpellSuggestionMenu(null); }}>{suggestion || t("editor.removeText")}</button>)}
+      {spellSuggestionMenu.issue.suggestions.length === 0 && <span className="spell-suggestions-empty">{t("editor.noWritingSuggestions")}</span>}
+      {readOnly && spellSuggestionMenu.issue.suggestions.length > 0 && <span className="spell-suggestions-readonly">{t("editor.spellCheckReadOnly")}</span>}
+    </div>}
     {preferences.vimMode && <div className="vim-editor-status" role="status" aria-live="polite"><span>--{vimStatus || "NORMAL"}--</span></div>}
   </div>;
 }
@@ -656,9 +708,9 @@ function searchMatchCount(t: TFunction) {
 function editorAppearance(preferences: EditorPreferences) {
   return [
     EditorView.contentAttributes.of({
-      // TexLite performs syntax-aware spelling checks itself. Keep the
-      // browser checker disabled so users do not get a second, LaTeX-unaware
-      // set of underlines or automatic corrections while editing source.
+      // Harper performs syntax-aware spelling and grammar checks itself. Keep
+      // the browser checker disabled so users do not get a second,
+      // LaTeX-unaware set of underlines or automatic corrections.
       spellcheck: "false",
       autocorrect: "off",
       autocapitalize: "off",
@@ -675,148 +727,21 @@ function editorAppearance(preferences: EditorPreferences) {
   ];
 }
 
-function balancedLatexArgument(source: string, start: number, open: string, close: string): { from: number; to: number; end: number } | null {
-  if (source[start] !== open) return null;
-  let depth = 0;
-  for (let index = start; index < source.length; index += 1) {
-    const escaped = source[index - 1] === "\\" && source[index - 2] !== "\\";
-    if (!escaped && source[index] === open) depth += 1;
-    if (!escaped && source[index] === close) {
-      depth -= 1;
-      if (depth === 0) return { from: start, to: index + 1, end: index + 1 };
-    }
-  }
-  return null;
-}
-
-function buildSpellCheckExclusions(source: string, words: string[]): DecorationSet {
-  const ranges: Array<{ from: number; to: number }> = [];
-  const addRange = (from: number, to: number): void => { if (to > from) ranges.push({ from, to }); };
-  const addMatches = (pattern: RegExp): void => {
-    for (const match of source.matchAll(pattern)) if (match.index !== undefined) addRange(match.index, match.index + match[0].length);
-  };
-  const tableEnvironments = new Set(["tabular", "tabularx", "tabulary", "longtable", "array", "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix"]);
-  const optionCommands = new Set(["documentclass", "usepackage", "RequirePackage", "includegraphics", "tikzset", "pgfplotsset", "hypersetup", "lstset", "definecolor", "colorlet", "setlength", "setcounter", "draw", "path", "fill", "filldraw", "shade", "node", "addplot", "color", "textcolor", "colorbox", "pagecolor"]);
-  const identifierCommands = new Set(["label", "hypertarget", "ref", "pageref", "autoref", "nameref", "hyperref", "index", "gls", "Gls", "glspl", "Glspl", "cite", "citep", "citet", "citeauthor", "citeyear", "citenum", "parencite", "textcite", "autocite", "footcite"]);
-  const optionLike = (value: string) => /[=,!/]/.test(value) || /\b(?:colorbar|legend|width|height|draw|fill|style|domain|samples|anchor|at|axis)\b/.test(value);
-  const isIdentifierCommand = (name: string) => identifierCommands.has(name) || /^cite[A-Za-z]*/.test(name);
-  const skipWhitespace = (start: number): number => {
-    let index = start;
-    while (index < source.length && /[ \t\r\n]/.test(source[index])) index += 1;
-    return index;
-  };
-  const commentStart = (position: number): boolean => {
-    if (source[position] !== "%") return false;
-    let slashes = 0;
-    for (let index = position - 1; index >= 0 && source[index] === "\\"; index -= 1) slashes += 1;
-    return slashes % 2 === 0;
-  };
-
-  for (let index = 0; index < source.length; index += 1) {
-    if (commentStart(index)) {
-      const end = source.indexOf("\n", index);
-      addRange(index, end < 0 ? source.length : end);
-      index = end < 0 ? source.length : end;
-      continue;
-    }
-    if (source[index] !== "\\") continue;
-    const commandStart = index;
-    let commandEnd = index + 1;
-    if (/[A-Za-z@]/.test(source[commandEnd] ?? "")) {
-      while (commandEnd < source.length && /[A-Za-z@0-9:_]/.test(source[commandEnd])) commandEnd += 1;
-    } else if (commandEnd < source.length) commandEnd += 1;
-    const name = source.slice(index + 1, commandEnd);
-    addRange(commandStart, commandEnd);
-    let cursor = skipWhitespace(commandEnd);
-    if (name === "begin" || name === "end") {
-      const environment = balancedLatexArgument(source, cursor, "{", "}");
-      if (environment) {
-        addRange(environment.from, environment.to);
-        const environmentName = source.slice(environment.from + 1, environment.to - 1).trim();
-        cursor = skipWhitespace(environment.end);
-        if (name === "begin") {
-          const options = balancedLatexArgument(source, cursor, "[", "]");
-          if (options) { addRange(options.from, options.to); cursor = skipWhitespace(options.end); }
-          if (tableEnvironments.has(environmentName)) {
-            const columnSpec = balancedLatexArgument(source, cursor, "{", "}");
-            if (columnSpec) addRange(columnSpec.from, columnSpec.to);
-          }
-        }
-      }
-      index = commandEnd - 1;
-      continue;
-    }
-    if (isIdentifierCommand(name)) {
-      if (source[cursor] === "*") cursor = skipWhitespace(cursor + 1);
-      while (true) {
-        const argument = balancedLatexArgument(source, cursor, "[", "]") ?? balancedLatexArgument(source, cursor, "{", "}");
-        if (!argument) break;
-        addRange(argument.from, argument.to);
-        cursor = skipWhitespace(argument.end);
-      }
-    } else {
-      const options = balancedLatexArgument(source, cursor, "[", "]");
-      if (options && (optionCommands.has(name) || optionLike(source.slice(options.from + 1, options.to - 1)))) {
-        addRange(options.from, options.to);
-        cursor = skipWhitespace(options.end);
-      }
-      if (optionCommands.has(name)) {
-        const argumentsToSkip = name === "definecolor" || name === "colorlet" ? 3 : 1;
-        for (let count = 0; count < argumentsToSkip; count += 1) {
-          const argument = balancedLatexArgument(source, cursor, "{", "}");
-          if (!argument) break;
-          addRange(argument.from, argument.to);
-          cursor = skipWhitespace(argument.end);
-        }
-      }
-    }
-    index = commandEnd - 1;
-  }
-
-  // General fallback for package key=value syntax not directly attached to
-  // a command, including multi-word keys and color values.
-  for (let equals = source.indexOf("="); equals >= 0; equals = source.indexOf("=", equals + 1)) {
-    const delimiters = ["\n", "[", "{", "]", "}", ",", ";"];
-    const segmentStart = Math.max(...delimiters.map((delimiter) => source.lastIndexOf(delimiter, equals - 1) + 1));
-    const segment = source.slice(segmentStart, equals);
-    const key = segment.match(/([A-Za-z][A-Za-z0-9_.:/-]*(?:\s+[A-Za-z][A-Za-z0-9_.:/-]*){0,7})\s*$/);
-    if (key?.index !== undefined) addRange(segmentStart + key.index, equals);
-    let valueStart = equals + 1;
-    while (valueStart < source.length && /\s/.test(source[valueStart])) valueStart += 1;
-    let valueEnd = valueStart;
-    if (source[valueStart] === "{") {
-      const argument = balancedLatexArgument(source, valueStart, "{", "}");
-      valueEnd = argument?.end ?? valueStart;
-    } else while (valueEnd < source.length && !/[,\]\}\n]/.test(source[valueEnd])) valueEnd += 1;
-    addRange(valueStart, valueEnd);
-  }
-  addMatches(/(?:https?|ftp):\/\/[^\s]+/gi);
-  for (const word of words) {
-    if (!word) continue;
-    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp(`(^|[^A-Za-z0-9_])(${escaped})(?=$|[^A-Za-z0-9_])`, "gi");
-    for (const match of source.matchAll(pattern)) {
-      if (match.index === undefined) continue;
-      const from = match.index + (match[1]?.length ?? 0);
-      ranges.push({ from, to: from + (match[2]?.length ?? 0) });
-    }
-  }
-  ranges.sort((left, right) => left.from - right.from || left.to - right.to);
-  const merged: Array<{ from: number; to: number }> = [];
-  for (const range of ranges) {
-    const previous = merged.at(-1);
-    if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
-    else merged.push({ ...range });
-  }
-  return Decoration.set(merged.map((range) => Decoration.mark({ attributes: { spellcheck: "false" } }).range(range.from, range.to)), true);
-}
-
 function buildSpellCheckIssueDecorations(issues: SpellCheckIssue[], documentLength: number): DecorationSet {
   const ranges = issues
-    .map((issue) => ({ from: Math.max(0, Math.min(documentLength, issue.from)), to: Math.max(0, Math.min(documentLength, issue.to)), word: issue.word }))
+    .map((issue) => ({ from: Math.max(0, Math.min(documentLength, issue.from)), to: Math.max(0, Math.min(documentLength, issue.to)), word: issue.word, kind: issue.kind, message: issue.message }))
     .filter((issue) => issue.to > issue.from)
     .sort((left, right) => left.from - right.from || left.to - right.to);
-  return Decoration.set(ranges.map((issue) => Decoration.mark({ class: "cm-spell-error", attributes: { title: issue.word } }).range(issue.from, issue.to)), true);
+  return Decoration.set(ranges.map((issue) => Decoration.mark({
+    class: issue.kind === "spelling" ? "cm-spell-error" : "cm-grammar-warning",
+    attributes: {
+      title: issue.message || issue.word,
+      "data-spell-error": "true",
+      "data-spell-kind": issue.kind,
+      "data-spell-from": String(issue.from),
+      "data-spell-to": String(issue.to)
+    }
+  }).range(issue.from, issue.to)), true);
 }
 
 function toMarks(comments: Comment[]): CommentMark[] {

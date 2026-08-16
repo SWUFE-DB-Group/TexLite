@@ -37,6 +37,29 @@ const maxIndexedFileBytes = 3 * 1024 * 1024;
 const maxIndexedBytes = 24 * 1024 * 1024;
 const maxIndexedFiles = 500;
 
+// Core LaTeX commands are kept in the completion index even when the project
+// has not loaded a package-specific definition yet.  Keep the catalogue
+// grouped by purpose so missing primitives are easy to spot and extend.
+const standardNoArgumentCommands: Array<[string, string]> = [
+  ["\\noindent", "Suppress paragraph indentation"], ["\\indent", "Insert paragraph indentation"], ["\\par", "End paragraph"],
+  ["\\leavevmode", "Leave vertical mode"], ["\\newline", "Line break"], ["\\linebreak", "Suggest line break"], ["\\nolinebreak", "Discourage line break"],
+  ["\\pagebreak", "Suggest page break"], ["\\nopagebreak", "Discourage page break"], ["\\newpage", "Page break"], ["\\clearpage", "Flush floats and page break"], ["\\cleardoublepage", "Flush floats to an odd page"],
+  ["\\smallskip", "Small vertical space"], ["\\medskip", "Medium vertical space"], ["\\bigskip", "Large vertical space"], ["\\smallbreak", "Small break"], ["\\medbreak", "Medium break"], ["\\bigbreak", "Large break"],
+  ["\\hfill", "Horizontal fill"], ["\\hfil", "Horizontal fill"], ["\\vfill", "Vertical fill"], ["\\vfil", "Vertical fill"], ["\\thinspace", "Thin space"], ["\\negthinspace", "Negative thin space"],
+  ["\\quad", "One em space"], ["\\qquad", "Two em spaces"], ["\\enspace", "En space"], ["\\enskip", "En space"], ["\\,", "Thin math space"], ["\\:", "Medium math space"], ["\\;", "Thick math space"], ["\\!", "Negative math space"],
+  ["\\centering", "Center contents"], ["\\raggedright", "Left align contents"], ["\\raggedleft", "Right align contents"], ["\\raggedbottom", "Ragged page bottoms"], ["\\flushbottom", "Align page bottoms"],
+  ["\\maketitle", "Render title"], ["\\tableofcontents", "Table of contents"], ["\\listoffigures", "List of figures"], ["\\listoftables", "List of tables"], ["\\appendix", "Appendix"],
+  ["\\bfseries", "Bold series"], ["\\mdseries", "Medium series"], ["\\rmfamily", "Roman family"], ["\\sffamily", "Sans-serif family"], ["\\ttfamily", "Monospace family"], ["\\upshape", "Upright shape"], ["\\itshape", "Italic shape"], ["\\slshape", "Slanted shape"], ["\\scshape", "Small caps shape"], ["\\normalfont", "Normal font"],
+  ["\\tiny", "Tiny font"], ["\\scriptsize", "Script-size font"], ["\\footnotesize", "Footnote-size font"], ["\\small", "Small font"], ["\\normalsize", "Normal font size"], ["\\large", "Large font"], ["\\Large", "Larger font"], ["\\LARGE", "Very large font"], ["\\huge", "Huge font"], ["\\Huge", "Largest font"],
+  ["\\displaystyle", "Display math style"], ["\\textstyle", "Text math style"], ["\\scriptstyle", "Script math style"], ["\\scriptscriptstyle", "Script-script math style"], ["\\limits", "Place limits below"], ["\\nolimits", "Place limits beside"],
+  ["\\sum", "Summation"], ["\\prod", "Product"], ["\\coprod", "Coproduct"], ["\\int", "Integral"], ["\\iint", "Double integral"], ["\\iiint", "Triple integral"], ["\\oint", "Contour integral"], ["\\bigcap", "Big intersection"], ["\\bigcup", "Big union"], ["\\bigvee", "Big logical or"], ["\\bigwedge", "Big logical and"],
+  ["\\lim", "Limit operator"], ["\\limsup", "Limit superior"], ["\\liminf", "Limit inferior"], ["\\sin", "Sine operator"], ["\\cos", "Cosine operator"], ["\\tan", "Tangent operator"], ["\\cot", "Cotangent operator"], ["\\log", "Logarithm operator"], ["\\ln", "Natural logarithm"], ["\\exp", "Exponential operator"], ["\\max", "Maximum operator"], ["\\min", "Minimum operator"], ["\\sup", "Supremum operator"], ["\\inf", "Infimum operator"], ["\\det", "Determinant operator"], ["\\dim", "Dimension operator"], ["\\gcd", "Greatest common divisor"], ["\\ker", "Kernel operator"], ["\\Pr", "Probability operator"],
+  ["\\ldots", "Ellipsis"], ["\\cdots", "Centered ellipsis"], ["\\vdots", "Vertical ellipsis"], ["\\ddots", "Diagonal ellipsis"], ["\\dotsb", "Binary ellipsis"], ["\\dotsc", "Punctuation ellipsis"], ["\\dotsm", "Math ellipsis"], ["\\dotso", "Other ellipsis"],
+  ["\\alpha", "Greek letter alpha"], ["\\beta", "Greek letter beta"], ["\\gamma", "Greek letter gamma"], ["\\delta", "Greek letter delta"], ["\\epsilon", "Greek letter epsilon"], ["\\varepsilon", "Variant epsilon"], ["\\theta", "Greek letter theta"], ["\\vartheta", "Variant theta"], ["\\lambda", "Greek letter lambda"], ["\\mu", "Greek letter mu"], ["\\pi", "Greek letter pi"], ["\\varpi", "Variant pi"], ["\\rho", "Greek letter rho"], ["\\sigma", "Greek letter sigma"], ["\\tau", "Greek letter tau"], ["\\phi", "Greek letter phi"], ["\\varphi", "Variant phi"], ["\\omega", "Greek letter omega"], ["\\Gamma", "Greek letter Gamma"], ["\\Delta", "Greek letter Delta"], ["\\Theta", "Greek letter Theta"], ["\\Lambda", "Greek letter Lambda"], ["\\Xi", "Greek letter Xi"], ["\\Pi", "Greek letter Pi"], ["\\Sigma", "Greek letter Sigma"], ["\\Upsilon", "Greek letter Upsilon"], ["\\Phi", "Greek letter Phi"], ["\\Psi", "Greek letter Psi"], ["\\Omega", "Greek letter Omega"],
+  ["\\pm", "Plus or minus"], ["\\mp", "Minus or plus"], ["\\times", "Multiplication sign"], ["\\div", "Division sign"], ["\\cdot", "Centered dot"], ["\\leq", "Less than or equal"], ["\\geq", "Greater than or equal"], ["\\neq", "Not equal"], ["\\approx", "Approximately equal"], ["\\equiv", "Equivalent"], ["\\sim", "Similar"], ["\\simeq", "Similar or equal"], ["\\propto", "Proportional"], ["\\in", "Set membership"], ["\\notin", "Not set membership"], ["\\subset", "Subset"], ["\\subseteq", "Subset or equal"], ["\\supset", "Superset"], ["\\supseteq", "Superset or equal"], ["\\cup", "Set union"], ["\\cap", "Set intersection"], ["\\emptyset", "Empty set"], ["\\varnothing", "Variant empty set"], ["\\forall", "For all"], ["\\exists", "There exists"], ["\\nexists", "There does not exist"], ["\\infty", "Infinity"], ["\\partial", "Partial derivative"], ["\\nabla", "Nabla"], ["\\angle", "Angle"], ["\\parallel", "Parallel"], ["\\perp", "Perpendicular"], ["\\mid", "Divides relation"], ["\\ldotp", "Low dot"],
+  ["\\LaTeX", "LaTeX logo"], ["\\TeX", "TeX logo"], ["\\today", "Current date"], ["\\protect", "Protect command"], ["\\nocite", "Include uncited reference"], ["\\footnotemark", "Footnote marker"], ["\\hrule", "Horizontal rule"], ["\\verb", "Verbatim text"], ["\\verb*", "Verbatim text"]
+];
+
 // This is deliberately kept as metadata rather than hard-coded in the editor,
 // so the same vocabulary is available to every client and can be extended later.
 const standardCommands: Array<[string, string, string?]> = [
@@ -54,13 +77,13 @@ const standardCommands: Array<[string, string, string?]> = [
   ["\\parencite", "Parenthetical citation", "\\parencite{${key}}"], ["\\textcite", "Textual citation", "\\textcite{${key}}"],
   ["\\footnote", "Footnote", "\\footnote{${text}}"], ["\\marginpar", "Margin note", "\\marginpar{${text}}"],
   ["\\textbf", "Bold text", "\\textbf{${text}}"], ["\\textit", "Italic text", "\\textit{${text}}"], ["\\texttt", "Monospace text", "\\texttt{${text}}"],
-  ["\\textrm", "Roman text", "\\textrm{${text}}"], ["\\textsf", "Sans-serif text", "\\textsf{${text}}"], ["\\textsc", "Small caps text", "\\textsc{${text}}"],
-  ["\\emph", "Emphasized text", "\\emph{${text}}"], ["\\underline", "Underlined text", "\\underline{${text}}"], ["\\mbox", "Unbreakable text", "\\mbox{${text}}"],
+  ["\\textrm", "Roman text", "\\textrm{${text}}"], ["\\textsf", "Sans-serif text", "\\textsf{${text}}"], ["\\textsc", "Small caps text", "\\textsc{${text}}"], ["\\textnormal", "Normal text", "\\textnormal{${text}}"], ["\\textup", "Upright text", "\\textup{${text}}"], ["\\textsl", "Slanted text", "\\textsl{${text}}"], ["\\textmd", "Medium text", "\\textmd{${text}}"],
+  ["\\textsuperscript", "Superscript", "\\textsuperscript{${text}}"], ["\\textsubscript", "Subscript", "\\textsubscript{${text}}"], ["\\emph", "Emphasized text", "\\emph{${text}}"], ["\\underline", "Underlined text", "\\underline{${text}}"], ["\\mbox", "Unbreakable text", "\\mbox{${text}}"], ["\\fbox", "Framed text", "\\fbox{${text}}"], ["\\makebox", "Fixed-width box", "\\makebox[${width}][${position}]{${text}}"], ["\\parbox", "Paragraph box", "\\parbox[${position}][${height}][${inner}]{${width}}{${text}}"],
   ["\\textwidth", "Text width"], ["\\linewidth", "Current line width"], ["\\columnwidth", "Column width"], ["\\paperwidth", "Paper width"],
   ["\\include", "Include LaTeX file", "\\include{${file}}"], ["\\input", "Input LaTeX file", "\\input{${file}}"], ["\\includeonly", "Limit included files", "\\includeonly{${file}}"],
   ["\\includegraphics", "Include image", "\\includegraphics[width=${0.8}\\textwidth]{${file}}"], ["\\graphicspath", "Image search path", "\\graphicspath{{${path}/}}"],
   ["\\caption", "Caption", "\\caption{${caption}}"], ["\\captionof", "Caption outside float", "\\captionof{${type}}{${caption}}"],
-  ["\\centering", "Center contents"], ["\\raggedright", "Left align contents"], ["\\raggedleft", "Right align contents"], ["\\newline", "Line break"],
+  ...standardNoArgumentCommands.map(([label, detail]) => [label, detail] as [string, string]),
   ["\\linebreak", "Suggest line break"], ["\\pagebreak", "Suggest page break"], ["\\clearpage", "Flush floats and page break"], ["\\newpage", "Page break"], ["\\vspace", "Vertical space", "\\vspace{${length}}"],
   ["\\hspace", "Horizontal space", "\\hspace{${length}}"], ["\\hfill", "Horizontal fill"], ["\\vfill", "Vertical fill"], ["\\rule", "Rule", "\\rule{${width}}{${height}}"],
   ["\\ldots", "Ellipsis"], ["\\dots", "Ellipsis"], ["\\LaTeX", "LaTeX logo"], ["\\TeX", "TeX logo"], ["\\today", "Current date"],
@@ -70,9 +93,10 @@ const standardCommands: Array<[string, string, string?]> = [
   ["\\newcounter", "Define counter", "\\newcounter{${name}}"], ["\\setcounter", "Set counter"], ["\\stepcounter", "Step counter"], ["\\value", "Counter value"],
   ["\\newtheorem", "Define theorem", "\\newtheorem{${name}}{${caption}}"], ["\\DeclareMathOperator", "Define math operator"], ["\\operatorname", "Math operator"],
   ["\\frac", "Fraction", "\\frac{${numerator}}{${denominator}}"], ["\\dfrac", "Display fraction", "\\dfrac{${numerator}}{${denominator}}"], ["\\tfrac", "Text fraction", "\\tfrac{${numerator}}{${denominator}}"],
-  ["\\sqrt", "Square root", "\\sqrt[${index}]{${radicand}}"], ["\\sum", "Summation"], ["\\prod", "Product"], ["\\int", "Integral"], ["\\lim", "Limit"],
-  ["\\mathbf", "Bold math", "\\mathbf{${symbol}}"], ["\\mathrm", "Roman math", "\\mathrm{${symbol}}"], ["\\mathit", "Italic math", "\\mathit{${symbol}}"],
-  ["\\left", "Scalable left delimiter"], ["\\right", "Scalable right delimiter"], ["\\text", "Text in math", "\\text{${text}}"],
+  ["\\sqrt", "Square root", "\\sqrt[${index}]{${radicand}}"], ["\\binom", "Binomial", "\\binom{${numerator}}{${denominator}}"], ["\\pmod", "Parenthesized modulo", "\\pmod{${modulus}}"], ["\\bmod", "Binary modulo", "\\bmod ${modulus}"], ["\\mod", "Modulo", "\\mod ${modulus}"],
+  ["\\mathbf", "Bold math", "\\mathbf{${symbol}}"], ["\\mathrm", "Roman math", "\\mathrm{${symbol}}"], ["\\mathit", "Italic math", "\\mathit{${symbol}}"], ["\\mathsf", "Sans-serif math", "\\mathsf{${symbol}}"], ["\\mathtt", "Monospace math", "\\mathtt{${symbol}}"], ["\\mathbb", "Blackboard math", "\\mathbb{${symbol}}"], ["\\mathcal", "Calligraphic math", "\\mathcal{${symbol}}"], ["\\mathscr", "Script math", "\\mathscr{${symbol}}"], ["\\boldsymbol", "Bold math symbol", "\\boldsymbol{${symbol}}"],
+  ["\\hat", "Math accent", "\\hat{${symbol}}"], ["\\widehat", "Wide math accent", "\\widehat{${symbol}}"], ["\\bar", "Math bar", "\\bar{${symbol}}"], ["\\overline", "Math overline", "\\overline{${symbol}}"], ["\\vec", "Math vector", "\\vec{${symbol}}"], ["\\tilde", "Math tilde", "\\tilde{${symbol}}"], ["\\widetilde", "Wide math tilde", "\\widetilde{${symbol}}"], ["\\dot", "Math dot", "\\dot{${symbol}}"], ["\\ddot", "Math double dot", "\\ddot{${symbol}}"], ["\\overset", "Math overset", "\\overset{${annotation}}{${symbol}}"], ["\\underset", "Math underset", "\\underset{${annotation}}{${symbol}}"], ["\\overbrace", "Math overbrace", "\\overbrace{${symbol}}"], ["\\underbrace", "Math underbrace", "\\underbrace{${symbol}}"],
+  ["\\left", "Scalable left delimiter"], ["\\right", "Scalable right delimiter"], ["\\middle", "Scalable middle delimiter"], ["\\text", "Text in math", "\\text{${text}}"],
   ["\\begin", "Begin environment", "\\begin{${environment}}"], ["\\end", "End environment", "\\end{${environment}}"],
   ["\\item", "List item", "\\item ${text}"],
   ["\\bibliography", "Bibliography database", "\\bibliography{${file}}"], ["\\bibliographystyle", "Bibliography style", "\\bibliographystyle{${style}}"],
@@ -126,7 +150,7 @@ function withoutComments(content: string): string {
 
 function commandItem(index: MutableIndex, name: string, detail: string, source: string, apply?: string): void {
   if (!name.startsWith("\\")) name = `\\${name}`;
-  if (!/^\\[A-Za-z@][A-Za-z@0-9:_]*$/.test(name)) return;
+  if (!/^\\(?:[A-Za-z@][A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/.test(name)) return;
   const existing = index.commands.get(name);
   // A project definition is more useful than the generic built-in entry: it
   // carries the actual argument count and therefore the right snippet.

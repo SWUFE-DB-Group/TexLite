@@ -42,7 +42,8 @@ export interface FilesEvent {
 export interface SharedCompileState {
   mainFile: string;
   runId: string;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: "queued" | "running" | "succeeded" | "failed" | "cleaned";
+  cleanMode?: "cache" | "artifacts";
   requestedBy: { id: string; username: string; name: string };
   updatedAt: string;
 }
@@ -57,7 +58,8 @@ export function sharedCompileState(value: unknown): SharedCompileState | null {
   const candidate = value as Partial<SharedCompileState>;
   const requestedBy = candidate.requestedBy;
   if (typeof candidate.mainFile !== "string" || typeof candidate.runId !== "string"
-    || !["queued", "running", "succeeded", "failed"].includes(candidate.status ?? "")
+    || !["queued", "running", "succeeded", "failed", "cleaned"].includes(candidate.status ?? "")
+    || (candidate.status === "cleaned" && candidate.cleanMode !== "cache" && candidate.cleanMode !== "artifacts")
     || typeof candidate.updatedAt !== "string"
     || !requestedBy || typeof requestedBy.id !== "string"
     || typeof requestedBy.username !== "string" || typeof requestedBy.name !== "string") return null;
