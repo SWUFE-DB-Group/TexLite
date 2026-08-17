@@ -4,6 +4,8 @@ texLite is a lightweight, local-first web workspace for writing, compiling, prev
 
 **Documentation:** English (this file) · [Design](DESIGN.md) · [简体中文](README.zh-CN.md)
 
+**Website:** [TexLite GitHub Pages](https://swufe-db-group.github.io/TexLite/)
+
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)
 
