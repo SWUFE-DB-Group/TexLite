@@ -1,0 +1,40 @@
+{
+  "meta": { "title": "TexLite · A lightweight collaborative LaTeX workspace" },
+  "nav": { "features": "Features", "why": "Positioning", "workflow": "Workflow", "deploy": "Deploy" },
+  "hero": {
+    "eyebrow": "A lightweight workspace for research writing",
+    "title": "Make LaTeX feel effortless.",
+    "lead": "TexLite brings editing, compilation, preview, and collaboration into a calm browser workspace while keeping the LaTeX environment you already trust.",
+    "primary": "Get started",
+    "secondary": "Explore TexLite",
+    "note": "Local-first · self-hosted · AGPL-3.0-only",
+    "previewLabel": "PDF PREVIEW",
+    "chipCompile": "compiled in 2.4s",
+    "chipCollab": "3 collaborators"
+  },
+  "highlights": {
+    "kicker": "Core highlights",
+    "title": "One workspace from source to paper",
+    "lead": "A concise view of TexLite's trade-offs: keep the LaTeX environment you know while bringing writing, compilation, and collaboration into one private space.",
+    "note": "One practical distinction: Overleaf's hosted service can queue, slow down, or time out during usage peaks; Overleaf's open-source Docker deployment requires a more involved service stack and does not include key collaboration features such as comments.",
+    "items": [
+      { "anchor": "features", "title": "Core capabilities", "body": "Edit, compile, preview, and collaborate in the browser with outline navigation, comments, SyncTeX, and structured diagnostics." },
+      { "anchor": "why", "title": "Why choose TexLite", "body": "Keep data on your server without sharing compilation resources with a public instance; keep the service small for teams that already have LaTeX." },
+      { "anchor": "workflow", "title": "From source to paper", "body": "Use the host's LaTeX directly, open the latest PDF when you return, and move between PDF, source, and comments as you work." }
+    ]
+  },
+  "deploy": {
+    "kicker": "Start on your server",
+    "title": "A few commands to own your writing space.",
+    "lead": "TexLite does not expose public registration. Create the administrator during initialization, then let the administrator add the team.",
+    "npm": "View the npm package",
+    "docs": "Read deployment docs"
+  },
+  "closing": {
+    "kicker": "Ready for the next paper",
+    "title": "Let's build something great.",
+    "lead": "TexLite is open source, self-hosted, and made for the way research teams actually write.",
+    "button": "View TexLite on GitHub"
+  },
+  "footer": { "tagline": "A lightweight, private, collaborative LaTeX workspace", "license": "AGPL-3.0-only" }
+}
