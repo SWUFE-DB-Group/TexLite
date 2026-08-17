@@ -4,6 +4,8 @@
   "hero": {
     "eyebrow": "为论文写作而生的轻量工作台",
     "title": "把 LaTeX 写作，变成一件顺手的事。",
+    "titlePrefix": "把 LaTeX 写作，",
+    "titleSuffix": "变成一件顺手的事。",
     "lead": "TexLite 将编辑、编译、预览和协作放进一个清爽的浏览器工作区，同时保留你熟悉的本机 LaTeX 环境。",
     "primary": "开始使用",
     "secondary": "了解 TexLite",
@@ -16,7 +18,7 @@
     "kicker": "核心亮点",
     "title": "一个工作区，覆盖从源码到成稿",
     "lead": "用简洁的方式了解 TexLite 的核心取舍：保留熟悉的 LaTeX 环境，同时把写作、编译和协作放在同一个私有空间。",
-    "note": "补充说明：Overleaf 在线服务在用户高峰时可能出现排队、卡顿或编译超时；Overleaf 开源 Docker 部署版本需要维护较复杂的服务栈，并不包含批注等关键协作功能。",
+    "note": "补充说明：Overleaf 在线服务在用户高峰时可能出现排队、卡顿或编译超时；Overleaf 开源 Docker 部署版本需要维护较复杂的服务栈，不包含批注等关键协作功能。",
     "items": [
       { "anchor": "features", "title": "核心能力", "body": "在浏览器中编辑、编译、预览和协作，支持大纲、批注、SyncTeX 与结构化诊断。" },
       { "anchor": "why", "title": "为什么选择 TexLite", "body": "数据留在自己的服务器，编译资源不与公共实例共享；服务保持轻量，适合已经拥有 LaTeX 环境的团队。" },

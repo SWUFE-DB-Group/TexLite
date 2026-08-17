@@ -4,6 +4,8 @@
   "hero": {
     "eyebrow": "A lightweight workspace for research writing",
     "title": "Make LaTeX feel effortless.",
+    "titlePrefix": "Make LaTeX",
+    "titleSuffix": "feel effortless.",
     "lead": "TexLite brings editing, compilation, preview, and collaboration into a calm browser workspace while keeping the LaTeX environment you already trust.",
     "primary": "Get started",
     "secondary": "Explore TexLite",
