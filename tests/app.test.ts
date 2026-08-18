@@ -300,9 +300,14 @@ It works.
     expect(pdf.statusCode).toBe(200);
     expect(pdf.headers["content-type"]).toContain("application/pdf");
     expect(pdf.headers["content-disposition"]).toContain("Paper.pdf");
-    expect(pdf.headers["cache-control"]).toBe("private, no-cache");
+    expect(pdf.headers["cache-control"]).toBe("private, max-age=60, must-revalidate");
     expect(pdf.headers["accept-ranges"]).toBe("bytes");
     expect(pdf.headers.etag).toBeTruthy();
+    const versionedPdf = await app.inject({
+      method: "GET", url: `/api/projects/${project.id}/pdf?mainFile=main.tex&run=${manifest.runId}`, headers: { cookie }
+    });
+    expect(versionedPdf.statusCode).toBe(200);
+    expect(versionedPdf.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
     const rawSource = await app.inject({ method: "GET", url: `/api/projects/${project.id}/file/raw?path=main.tex`, headers: { cookie } });
     expect(rawSource.statusCode).toBe(200);
     expect(rawSource.headers["content-disposition"]).toContain("inline");
@@ -319,6 +324,7 @@ It works.
     expect(partialPdf.rawPayload).toEqual(pdf.rawPayload.subarray(0, 8));
     const downloadedPdf = await app.inject({ method: "GET", url: `/api/projects/${project.id}/pdf?download=1`, headers: { cookie } });
     expect(downloadedPdf.statusCode).toBe(200);
+    expect(downloadedPdf.headers["cache-control"]).toBe("private, no-store");
     expect(downloadedPdf.headers["content-disposition"]).toMatch(/^attachment;.*Paper-\d{4}-\d{2}-\d{2}-\d{6}\.pdf/);
     const cleanCache = await app.inject({
       method: "POST", url: `/api/projects/${project.id}/compile/clean`, headers: { cookie },
@@ -924,7 +930,8 @@ Second version.
     });
     expect(latestCompile.statusCode).toBe(200);
     expect(latestCompile.json()).toMatchObject({
-      hasPdf: true, pdfUrl: `/api/projects/${projectId}/pdf?mainFile=main.tex&run=${successfulRunId}`,
+      hasPdf: true,
+      pdfUrl: expect.stringMatching(new RegExp(`^/api/projects/${projectId}/pdf\\?mainFile=main\\.tex&run=\\d+(?:\\.\\d+)?$`)),
       latestRun: { id: failedRunId, status: "failed", log: "Latest compile failed" }
     });
     const retainedPdf = await app.inject({

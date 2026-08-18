@@ -27,6 +27,20 @@ export function availablePdf(
   return fs.existsSync(legacy) ? { path: legacy, version: String(fs.statSync(legacy).mtimeMs) } : null;
 }
 
+/** Resolve the PDF bytes belonging to one successful compile run. */
+export function compileRunPdf(
+  config: Config,
+  projectId: string,
+  mainFile: string,
+  runId: string
+): { path: string; version: string } | null {
+  if (!/^[a-f0-9-]{36}$/i.test(runId)) return null;
+  const output = path.join(outputRoot(config, projectId), ".texlite", "runs", runId, "output");
+  const pdf = path.join(output, `${path.basename(mainFile, ".tex")}.pdf`);
+  if (!fs.existsSync(pdf) || !fs.statSync(pdf).isFile()) return null;
+  return { path: pdf, version: runId };
+}
+
 export function syncArtifacts(
   config: Config,
   projectId: string,

@@ -16,6 +16,7 @@ import {
   createProjectFiles,
   duplicateProjectFiles,
   listProjectFiles,
+  listProjectFilesAsync,
   outputRoot,
   removeProjectDirectory,
   resolveSourcePath,
@@ -1033,7 +1034,10 @@ export async function buildApp(
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    return { files: listProjectFiles(config, id) };
+    // Directory walks can be slow on external/project-mounted storage. Keep
+    // this request off the event loop so the retained-PDF metadata and PDF
+    // stream can be served while the file tree is being collected.
+    return { files: await listProjectFilesAsync(config, id) };
   });
 
   app.post("/api/projects/:id/format", async (request, reply) => {

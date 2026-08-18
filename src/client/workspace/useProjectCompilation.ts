@@ -45,12 +45,22 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+function prefetchPdf(url: string): void {
+  // Warm the browser's HTTP cache while the project metadata and collaboration
+  // room are still loading. The versioned run query makes this safe: a new
+  // successful compile produces a different URL.
+  void fetch(url, { credentials: "same-origin", cache: "force-cache" })
+    .then((response) => response.ok ? response.arrayBuffer() : undefined)
+    .catch(() => undefined);
+}
+
 export function useProjectCompilation({
   projectId, project, mainFile, collaborationSynced, sharedState, onSharedState, save,
   loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged
 }: UseProjectCompilationOptions) {
   const { t } = useTranslation();
   const [pdfUrl, setPdfUrl] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(true);
   const [pdfCompiledAt, setPdfCompiledAt] = useState<string | null>(null);
   const [compileLog, setCompileLog] = useState("");
   const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostics | null>(null);
@@ -62,6 +72,7 @@ export function useProjectCompilation({
   const [compilingMainFiles, setCompilingMainFiles] = useState<ReadonlySet<string>>(() => new Set());
   const [editorNotice, setEditorNotice] = useState("");
   const mainFileRef = useRef(mainFile);
+  const pdfMainFileRef = useRef("");
   const latestRequest = useRef<AbortController | null>(null);
   const artifactsRequest = useRef<AbortController | null>(null);
   const compileRequests = useRef(new Map<string, AbortController>());
@@ -107,16 +118,19 @@ export function useProjectCompilation({
     latestRequest.current?.abort();
     const controller = new AbortController();
     latestRequest.current = controller;
+    setPdfLoading(true);
     setCompileLog("");
     setCompileDiagnostics(null);
     setCompileOutcome(null);
-    setPdfUrl("");
-    setPdfCompiledAt(null);
+    const retainPrefetchedPdf = Boolean(pdfUrl && mainFile && pdfMainFileRef.current === mainFile);
+    if (!retainPrefetchedPdf) {
+      setPdfUrl("");
+      setPdfCompiledAt(null);
+    }
     setArtifacts([]);
     setArtifactPreview(null);
     callbacks.current.onPdfChanged();
-    if (!project || !mainFile) return () => controller.abort();
-    const query = `?mainFile=${encodeURIComponent(mainFile)}`;
+    const query = mainFile ? `?mainFile=${encodeURIComponent(mainFile)}` : "";
     // The retained PDF is the critical path when reopening a project. Do not
     // make it wait for the outline or the (potentially large) artifact scan.
     // The background requests are started after the PDF URL is published and
@@ -127,7 +141,7 @@ export function useProjectCompilation({
     );
     let backgroundStarted = false;
     const startBackgroundLoads = () => {
-      if (backgroundStarted || controller.signal.aborted) return;
+      if (backgroundStarted || controller.signal.aborted || !mainFile) return;
       backgroundStarted = true;
       // Start these only after the latest PDF URL has been published to React.
       // They then run in parallel with PDF.js network loading and rendering.
@@ -135,13 +149,13 @@ export function useProjectCompilation({
       void callbacks.current.loadOutline(controller.signal, mainFile).catch(() => undefined);
     };
     void latestRequestPromise.then((latest) => {
-      if (controller.signal.aborted || latest.mainFile !== mainFileRef.current) return;
+      if (controller.signal.aborted || (mainFile && latest.mainFile !== mainFileRef.current)) return;
       setCompileLog(latest.latestRun?.log ?? "");
       setCompileDiagnostics(latest.latestRun?.diagnostics ?? null);
       setCompileOutcome(latest.latestRun?.status === "succeeded" || latest.latestRun?.status === "failed"
         ? latest.latestRun.status
         : null);
-      if (latest.latestRun?.requestedBy && (latest.latestRun.status === "queued" || latest.latestRun.status === "running")) {
+      if (mainFile && latest.latestRun?.requestedBy && (latest.latestRun.status === "queued" || latest.latestRun.status === "running")) {
         callbacks.current.onSharedState({
           mainFile,
           runId: latest.latestRun.id,
@@ -151,14 +165,17 @@ export function useProjectCompilation({
         });
       }
       if (latest.pdfUrl) {
+        pdfMainFileRef.current = latest.mainFile;
         setPdfUrl(latest.pdfUrl);
         setPdfCompiledAt(latest.pdfCompiledAt);
         callbacks.current.onPreviewTab("pdf");
+        if (!project) prefetchPdf(latest.pdfUrl);
       }
     }).catch((error) => {
       if (!isAbortError(error) && mainFileRef.current === mainFile) callbacks.current.onError(errorMessage(error));
     }).finally(() => {
       if (latestRequest.current === controller) latestRequest.current = null;
+      if (!controller.signal.aborted) setPdfLoading(false);
       // Give React one turn to mount PdfPreview and start its PDF request
       // before the background scans begin.
       window.setTimeout(startBackgroundLoads, 0);
@@ -193,6 +210,7 @@ export function useProjectCompilation({
     latestRequest.current?.abort();
     const controller = new AbortController();
     latestRequest.current = controller;
+    setPdfLoading(true);
     void api<LatestCompileResponse>(
       `/api/projects/${projectId}/compile/latest?mainFile=${encodeURIComponent(mainFile)}`,
       { signal: controller.signal }
@@ -213,6 +231,8 @@ export function useProjectCompilation({
       }
     }).catch((error) => {
       if (!isAbortError(error) && !cancelled) callbacks.current.onError(errorMessage(error));
+    }).finally(() => {
+      if (!cancelled) setPdfLoading(false);
     });
     return () => {
       cancelled = true;
@@ -352,6 +372,7 @@ export function useProjectCompilation({
   return {
     pdfUrl,
     pdfCompiledAt,
+    pdfLoading,
     compileLog,
     compileDiagnostics,
     compileOutcome,

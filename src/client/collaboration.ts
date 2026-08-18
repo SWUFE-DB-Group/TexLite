@@ -100,7 +100,11 @@ export class ProjectCollaboration {
       `${protocol}//${window.location.host}/api/collaboration`,
       projectId,
       this.doc,
-      { disableBc: true, maxBackoffTime: 2500 }
+      // Project metadata and the retained PDF are loaded before opening the
+      // collaboration room. Rebuilding a cold Yjs room can read many source
+      // files synchronously on the server, so it must not delay the first
+      // preview request.
+      { connect: false, disableBc: true, maxBackoffTime: 2500 }
     );
     this.awareness = this.provider.awareness;
     this.provider.messageHandlers[MESSAGE_FLUSH] = (_encoder, decoder) => {
@@ -146,6 +150,12 @@ export class ProjectCollaboration {
     this.provider.on("status", ({ status }) => {
       if (status === "disconnected") this.rejectFlushes(new Error("Collaboration connection closed"));
     });
+    this.updateLocalAwareness();
+  }
+
+  connect(): void {
+    if (this.destroyed) return;
+    this.provider.connect();
     this.updateLocalAwareness();
   }
 

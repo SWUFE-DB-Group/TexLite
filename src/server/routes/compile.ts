@@ -25,6 +25,7 @@ import type { CollaborationService } from "../collaboration.js";
 import type { MetricRegistry } from "../metrics.js";
 import {
   availablePdf,
+  compileRunPdf,
   compileMainFile,
   compilePdfUrl,
   isTextCompileArtifact,
@@ -75,7 +76,9 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       WHERE id = ? AND project_id = ? AND status = 'succeeded'`).get(published.runId, id) as {
         id: string; finished_at: string | null;
       } | undefined : undefined;
-    const pdfVersion = published?.runId ?? latestSuccess?.id ?? pdf?.version;
+    // A retained legacy PDF has no run bundle, so its file version (mtime) is
+    // the only stable token that can be resolved back to those bytes.
+    const pdfVersion = published?.runId ?? pdf?.version;
     return {
       mainFile,
       latestRun: latest ? {
@@ -362,12 +365,29 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
     if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const query = request.query as { mainFile?: string; download?: string };
+    const query = request.query as { mainFile?: string; download?: string; run?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
     if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
     const downloading = query.download === "1";
-    const artifact = availablePdf(config, id, mainFile, project.main_file);
+    let artifact = availablePdf(config, id, mainFile, project.main_file);
     if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
+    let versioned = false;
+    if (query.run) {
+      if (/^[a-f0-9-]{36}$/i.test(query.run)) {
+        const run = db.prepare(`SELECT main_file, status FROM compile_runs
+          WHERE id = ? AND project_id = ?`).get(query.run, id) as {
+            main_file: string; status: string;
+          } | undefined;
+        if (!run || run.status !== "succeeded" || run.main_file !== mainFile) {
+          return apiError(reply, 404, "PDF_NOT_FOUND", "指定的编译 PDF 不存在");
+        }
+        artifact = compileRunPdf(config, id, mainFile, query.run);
+        if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND", "指定的编译 PDF 已被清理");
+        versioned = true;
+      } else if (artifact.version !== query.run) {
+        return apiError(reply, 404, "PDF_NOT_FOUND", "指定的编译 PDF 不存在");
+      }
+    }
     const pdf = artifact.path;
     const stat = fs.statSync(pdf);
     const etag = `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`;
@@ -375,7 +395,17 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const targetSuffix = mainFile === project.main_file ? "" : `-${path.basename(mainFile, ".tex")}`;
     const filename = downloading ? `${project.name}${targetSuffix}-${pdfDownloadTimestamp()}.pdf` : `${project.name}${targetSuffix}.pdf`;
     reply.header("Content-Disposition", contentDisposition(filename, downloading ? "attachment" : "inline"));
-    reply.header("Cache-Control", "private, no-cache");
+    // The run query identifies an immutable successful compile. Keep it in the
+    // browser's private cache so reopening a project does not re-download the
+    // same PDF; a new successful compile receives a new run URL.
+    reply.header(
+      "Cache-Control",
+      downloading
+        ? "private, no-store"
+        : versioned
+          ? "private, max-age=31536000, immutable"
+          : "private, max-age=60, must-revalidate"
+    );
     reply.header("Accept-Ranges", "bytes");
     reply.header("ETag", etag);
     reply.header("Last-Modified", stat.mtime.toUTCString());

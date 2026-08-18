@@ -142,6 +142,10 @@ export function PdfPreview({ url, target, compiling = false, onViewportLocation,
     {compiling && <div className="pdf-compiling-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={20} /><span>{t("editor.compiling")}</span></div>}
     <div className="pdf-document" ref={root} onScroll={reportViewport} onWheel={scrollHorizontally}>
       <div className="pdf-pages" style={{ width: `${Math.max(1, width - 28) * Math.max(1, zoom / 100)}px` }}>
+        {!document && !error && <div className="pdf-loading" role="status" aria-live="polite">
+          <LoaderCircle className="spin" size={24} />
+          <span>{t("editor.loadingPdf")}</span>
+        </div>}
         {error && <div className="preview-empty"><strong>{error}</strong></div>}
         {document && width > 0 && Array.from({ length: document.numPages }, (_item, index) =>
           <PdfPage key={index + 1} document={document} pageNumber={index + 1} availableWidth={width - 28} zoom={zoom / 100}

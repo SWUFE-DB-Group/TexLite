@@ -587,6 +587,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
 }) {
   const { t } = useTranslation();
   const [project, setProject] = useState<Project | null>(null);
+  const [collaborationReady, setCollaborationReady] = useState(false);
   const [dictionaryWords, setDictionaryWords] = useState<string[]>([]);
   const [completionIndex, setCompletionIndex] = useState<LatexCompletionIndex | null>(null);
   const [projectOutline, setProjectOutline] = useState<ProjectOutlineItem[]>([]);
@@ -666,7 +667,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     dictionaryRevision,
     localDraftReady,
     reconnect: reconnectCollaboration
-  } = useProjectCollaboration(projectId, user, activeMainFile, () => setSaveState("editor.offlineDraft"));
+  } = useProjectCollaboration(projectId, user, activeMainFile, collaborationReady, () => setSaveState("editor.offlineDraft"));
 
   const {
     pdfTarget, pdfViewport, sourceJump, setPdfViewport, clearPdfViewport,
@@ -1068,7 +1069,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     onAdded: () => setSidePanel("comments")
   });
   const {
-    pdfUrl, pdfCompiledAt, compileLog, compileDiagnostics, compileOutcome,
+    pdfUrl, pdfCompiledAt, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
     artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cleaning,
     compile, cleanCompile, viewArtifact
   } = useProjectCompilation({
@@ -1089,6 +1090,15 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     },
     onPdfChanged: clearPdfViewport
   });
+  useEffect(() => {
+    // Let the latest-PDF response render PdfPreview first. Its PDF request is
+    // the critical path; only then should a cold Yjs room be reconstructed.
+    if (!project || (!pdfUrl && pdfLoading)) return;
+    // Give the browser a short scheduling head start for the PDF fetch before
+    // opening the WebSocket that may trigger a cold room reconstruction.
+    const timer = window.setTimeout(() => setCollaborationReady(true), pdfUrl ? 150 : 0);
+    return () => window.clearTimeout(timer);
+  }, [project, pdfLoading, pdfUrl]);
   useEffect(() => {
     const openNavigation = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey)) return;
@@ -1214,7 +1224,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
             <button role="tab" aria-selected={diagnosticTab === "clean"} className={diagnosticTab === "clean" ? "active" : ""} onClick={() => selectPreviewTab("clean")}><Eraser size={13} />{t("editor.clean")}</button>
           </div>}
           <div className={`preview-content preview-${previewTab} ${previewTab === "diagnostics" ? `preview-${diagnosticTab}` : ""}`}>
-            {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="preview-empty"><span>{t("common.loading")}</span></div>}><PdfPreview url={pdfUrl} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} onDoubleClickLocation={(page, x, y) => { setPdfViewport({ page, x, y }); void syncPdfToSource(page, x, y); }} /></Suspense> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
+            {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}><PdfPreview url={pdfUrl} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} onDoubleClickLocation={(page, x, y) => { setPdfViewport({ page, x, y }); void syncPdfToSource(page, x, y); }} /></Suspense> : pdfLoading ? <div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
             {previewTab === "diagnostics" && diagnosticTab === "log" && <CompileOutput lines={compileLog ? compileLog.split("\n") : []} empty={localCompiling ? t("editor.compiling") : t("editor.noLog")} />}
             {previewTab === "diagnostics" && diagnosticTab === "warnings" && (compileDiagnostics
               ? <CompileDiagnosticOutput tone="warning" diagnostics={compileDiagnostics.warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />

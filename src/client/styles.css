@@ -294,6 +294,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .pdf-toolbar .pdf-fit-width { margin-left: 3px; padding: 0 8px; }
 .pdf-compiling-overlay { position: absolute; z-index: 4; inset: 36px 0 0; display: flex; align-items: flex-start; justify-content: center; gap: 8px; padding-top: 24px; background: #26312bb8; color: white; font-size: 13px; pointer-events: none; }
 .pdf-compiling-overlay span { padding: 3px 8px; border-radius: 5px; background: #17231cdd; }
+.pdf-loading-state { width: 100%; height: 100%; min-height: 220px; display: grid; place-items: center; align-content: center; gap: 10px; background: #6f7471; color: #eef2ef; font-size: 12px; }
 .pdf-document { position: relative; width: 100%; min-width: 0; min-height: 0; flex: 1; overflow-x: scroll; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: #aeb8b1 #4f5652; scrollbar-width: auto; scrollbar-gutter: stable; padding: 14px 14px 20px; background: #6f7471; }
 .pdf-document::-webkit-scrollbar { width: 12px; height: 12px; }
 .pdf-document::-webkit-scrollbar-track { background: #4f5652; }
@@ -301,6 +302,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .pdf-document::-webkit-scrollbar-thumb:hover { background: #d5dcd7; }
 .pdf-document::-webkit-scrollbar-corner { background: #4f5652; }
 .pdf-pages { min-width: 100%; }
+.pdf-loading { min-height: 220px; display: grid; place-items: center; align-content: center; gap: 10px; color: #eef2ef; font-size: 12px; }
 .pdf-page { position: relative; flex: none; max-width: none; overflow: hidden; margin: 0 auto 16px; background: white; box-shadow: 0 3px 14px #0004; }
 .pdf-page.loading { background: #f7f8f7; }
 .pdf-page canvas { display: block; width: 100% !important; max-width: 100%; height: auto !important; }

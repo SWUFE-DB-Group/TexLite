@@ -40,7 +40,7 @@
     "saved": "已保存", "savedAt": "已于 {{time}} 保存到服务器", "loading": "载入中", "pending": "等待保存", "saving": "正在保存到服务器", "saveFailed": "保存失败", "offlineDraft": "离线 · 本地草稿已保留",
     "compile": "编译 · {{engine}}", "compiling": "编译中…", "compileQueued": "编译已排队…", "compileFailedRetained": "编译失败，当前显示上一次成功生成的 PDF（{{time}}）。", "compileFailedNoPdf": "编译失败，且没有可用的成功 PDF。", "upToDate": "文件已是最新，无需重新编译。", "addComment": "添加批注", "sourceComments": "源码批注",
     "projectSettings": "项目设置", "uploadAttachment": "上传附件", "newFile": "新建文本文件", "binary": "二进制附件已保存，但不能在文本编辑器中打开。",
-    "noOutline": "当前文件没有章节", "preview": "PDF 预览", "previewHint": "点击“编译”生成文档", "pdfCompiledAt": "成功编译于 {{time}}", "pdfCompiledAtFor": "{{file}} 成功编译于 {{time}}", "currentMainDocument": "当前作为主文档编译：{{path}}", "mainDocumentCandidate": "LaTeX 主文档候选：{{path}}", "currentMainShort": "主文档", "deletedUser": "已删除用户",
+    "noOutline": "当前文件没有章节", "preview": "PDF 预览", "previewHint": "点击“编译”生成文档", "loadingPdf": "正在加载 PDF…", "pdfCompiledAt": "成功编译于 {{time}}", "pdfCompiledAtFor": "{{file}} 成功编译于 {{time}}", "currentMainDocument": "当前作为主文档编译：{{path}}", "mainDocumentCandidate": "LaTeX 主文档候选：{{path}}", "currentMainShort": "主文档", "deletedUser": "已删除用户",
     "orphaned": "锚点已丢失", "line": "第 {{line}} 行", "reopen": "重新打开", "resolve": "标记为已解决", "noComments": "当前文件没有批注",
     "newFileDescription": "可以包含目录，例如 chapters/introduction.tex。", "filePath": "文件路径", "commentDescription": "已选择 {{count}} 个字符",
     "pointComment": "未选择文本，将在当前光标位置添加批注。", "commentContent": "批注内容", "backToProjects": "返回项目列表",

@@ -20,6 +20,7 @@ export function useProjectCollaboration(
   projectId: string,
   user: User,
   activeMainFile: string,
+  ready: boolean,
   onDisconnected: () => void
 ) {
   const [collaboration] = useState(() => new ProjectCollaboration(projectId, user));
@@ -83,6 +84,11 @@ export function useProjectCollaboration(
     const stopDraftListener = collaboration.onDraftReady(() => setLocalDraftReady(true));
     refreshSessions();
     handleMeta();
+    // The provider starts disconnected intentionally. Once the caller marks
+    // the critical-path requests ready, the separate effect below calls
+    // connect(), and provider events update these values. Do not capture
+    // `ready` here: this listener is installed once and would otherwise keep
+    // the initial false value forever.
     setStatus(collaboration.connected ? "connected" : "connecting");
     setSynced(collaboration.synced);
     return () => {
@@ -96,6 +102,10 @@ export function useProjectCollaboration(
       collaboration.destroy();
     };
   }, [collaboration]);
+
+  useEffect(() => {
+    if (ready) collaboration.connect();
+  }, [collaboration, ready]);
 
   const reconnect = () => {
     setStatus("connecting");
