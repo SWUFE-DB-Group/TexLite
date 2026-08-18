@@ -260,9 +260,9 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .spell-suggestions-menu button:disabled { color: #78847d; cursor: not-allowed; opacity: .7; }
 .spell-suggestions-empty, .spell-suggestions-readonly { display: block; padding: 4px 6px; color: #78847d; font-size: 10px; line-height: 1.35; }
 .spell-suggestions-readonly { border-top: 1px solid #e2e8e3; margin-top: 3px; padding-top: 7px; }
-.cm-source-comment { background: #ffe49b99; border-bottom: 2px solid #d68b00; cursor: pointer; }
+.cm-source-comment { background: #ffe49b99; border-bottom: 2px solid #d68b00; cursor: text; }
 .cm-source-comment-resolved { background: #dce5de99; border-bottom-color: #829087; }
-.cm-comment-pin { color: #d68b00; font-size: 9px; padding: 0 2px; }
+.cm-comment-pin { color: #d68b00; font-size: 9px; padding: 0 2px; cursor: pointer; }
 .preview-panel { display: flex; flex-direction: column; background: #6f7471; }
 .preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 5px 6px 0; background: #4d544f; }
 .preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(120px, 1fr); gap: 3px; }
@@ -381,7 +381,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .outline-title { min-width: 0; overflow: hidden; color: #3f4942; text-overflow: ellipsis; white-space: nowrap; }
 .padded { padding: 14px; }
 .comments { padding: 9px; }
-.comments article { margin-bottom: 9px; padding: 10px; border: 1px solid #dde2de; border-radius: 7px; font-size: 12px; cursor: pointer; }
+.comments article { margin-bottom: 9px; padding: 10px; border: 1px solid #dde2de; border-radius: 7px; font-size: 12px; cursor: pointer; user-select: text; -webkit-user-select: text; }
 .comments article.resolved { opacity: .55; background: #f3f5f3; }
 .comments article.orphaned { border-color: #d8847d; background: #fff4f2; }
 .comments header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -393,7 +393,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .comment-author strong, .comment-author small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .comment-location { margin-top: 5px; color: #768079; font-size: 10px; }
 .comments blockquote { margin: 8px 0; padding: 6px 8px; border-left: 2px solid #85ad96; background: #f2f6f3; color: #657069; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.comments p { white-space: pre-wrap; }
+.comments p { white-space: pre-wrap; user-select: text; -webkit-user-select: text; cursor: text; }.comments blockquote, .comments .comment-content { user-select: text; -webkit-user-select: text; cursor: text; }
 .comments .resolve { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: #176b44; padding: 0; font-size: 11px; }
 .comment-replies { display: flex; flex-direction: column; gap: 7px; margin: 10px 0 8px; padding-left: 9px; border-left: 2px solid #d6dfd9; }
 .comment-reply { position: relative; padding: 7px 8px; border-radius: 6px; background: #f5f7f5; }
