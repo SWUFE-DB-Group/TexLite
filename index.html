@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10251d" />
-    <meta name="description" content="TexLite — a lightweight, local-first collaborative LaTeX workspace." />
+    <meta
+      name="description"
+      content="TexLite — a lightweight, local-first collaborative LaTeX workspace."
+    />
     <link rel="icon" type="image/svg+xml" href="./logo.svg" />
     <link rel="stylesheet" href="./styles.css" />
     <title>TexLite</title>
@@ -16,10 +19,16 @@
         <a class="brand" href="#top" aria-label="TexLite home">
           <img src="./logo.svg" alt="" />
           <span>TexLite</span>
-          <small>v0.5.4</small>
+          <small>v0.5.5</small>
         </a>
         <div class="header-actions">
-          <a class="header-github" href="https://github.com/SWUFE-DB-Group/TexLite" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+          <a
+            class="header-github"
+            href="https://github.com/SWUFE-DB-Group/TexLite"
+            target="_blank"
+            rel="noreferrer"
+            >GitHub <span aria-hidden="true">↗</span></a
+          >
           <div class="language-switcher" role="group" aria-label="Language">
             <button type="button" data-locale="zh" class="active">中文</button>
             <button type="button" data-locale="en">English</button>
@@ -30,14 +39,39 @@
       <main>
         <section class="hero" id="top">
           <div class="hero-copy">
-            <p class="eyebrow"><span class="eyebrow-dot"></span><span data-i18n="hero.eyebrow">为论文写作而生的轻量工作台</span></p>
-            <h1><span data-i18n="hero.titlePrefix">把 LaTeX 写作，</span><br /><span class="hero-title-suffix" data-i18n="hero.titleSuffix">变成一件顺手的事。</span></h1>
-            <p class="hero-lead" data-i18n="hero.lead">TexLite 将编辑、编译、预览和协作放进一个清爽的浏览器工作区，同时保留你熟悉的本机 LaTeX 环境。</p>
+            <p class="eyebrow">
+              <span class="eyebrow-dot"></span
+              ><span data-i18n="hero.eyebrow">为论文写作而生的轻量工作台</span>
+            </p>
+            <h1>
+              <span data-i18n="hero.titlePrefix">把 LaTeX 写作，</span
+              ><br /><span
+                class="hero-title-suffix"
+                data-i18n="hero.titleSuffix"
+                >变成一件顺手的事。</span
+              >
+            </h1>
+            <p class="hero-lead" data-i18n="hero.lead">
+              TexLite
+              将编辑、编译、预览和协作放进一个清爽的浏览器工作区，同时保留你熟悉的本机
+              LaTeX 环境。
+            </p>
             <div class="hero-actions">
-              <a class="button button-primary" href="#deploy"><span data-i18n="hero.primary">开始使用</span><span aria-hidden="true">↓</span></a>
-              <a class="button button-secondary" href="#highlights"><span data-i18n="hero.secondary">了解 TexLite</span><span aria-hidden="true">↓</span></a>
+              <a class="button button-primary" href="#deploy"
+                ><span data-i18n="hero.primary">开始使用</span
+                ><span aria-hidden="true">↓</span></a
+              >
+              <a class="button button-secondary" href="#highlights"
+                ><span data-i18n="hero.secondary">了解 TexLite</span
+                ><span aria-hidden="true">↓</span></a
+              >
             </div>
-            <div class="hero-note"><span class="status-pulse"></span><span data-i18n="hero.note">本地优先 · 自托管 · AGPL-3.0-only</span></div>
+            <div class="hero-note">
+              <span class="status-pulse"></span
+              ><span data-i18n="hero.note"
+                >本地优先 · 自托管 · AGPL-3.0-only</span
+              >
+            </div>
           </div>
           <div class="hero-visual" aria-label="TexLite workspace preview">
             <div class="visual-glow"></div>
@@ -62,19 +96,50 @@
                   <span class="outline-item">03&nbsp; Results</span>
                 </aside>
                 <div class="workspace-editor">
-                  <div class="code-line"><em>01</em><span class="command">\\documentclass</span><span>{article}</span></div>
-                  <div class="code-line"><em>02</em><span class="command">\\usepackage</span><span>{amsmath}</span></div>
+                  <div class="code-line">
+                    <em>01</em><span class="command">\\documentclass</span
+                    ><span>{article}</span>
+                  </div>
+                  <div class="code-line">
+                    <em>02</em><span class="command">\\usepackage</span
+                    ><span>{amsmath}</span>
+                  </div>
                   <div class="code-line blank"><em>03</em></div>
-                  <div class="code-line"><em>04</em><span class="command">\\section</span><span>{Introduction}</span></div>
-                  <div class="code-line"><em>05</em><span class="comment">% write, compile, review</span></div>
-                  <div class="code-line"><em>06</em><span class="command">\\begin</span><span>{document}</span></div>
-                  <div class="code-line"><em>07</em><span class="text">Your next paper starts here.</span></div>
-                  <div class="code-line cursor-line"><em>08</em><span class="text">Collaborate with your team<span class="cursor"></span></span></div>
-                  <div class="code-line"><em>09</em><span class="command">\\end</span><span>{document}</span></div>
-                  <div class="editor-status"><span>NORMAL</span><span>main.tex · 08:31</span></div>
+                  <div class="code-line">
+                    <em>04</em><span class="command">\\section</span
+                    ><span>{Introduction}</span>
+                  </div>
+                  <div class="code-line">
+                    <em>05</em
+                    ><span class="comment">% write, compile, review</span>
+                  </div>
+                  <div class="code-line">
+                    <em>06</em><span class="command">\\begin</span
+                    ><span>{document}</span>
+                  </div>
+                  <div class="code-line">
+                    <em>07</em
+                    ><span class="text">Your next paper starts here.</span>
+                  </div>
+                  <div class="code-line cursor-line">
+                    <em>08</em
+                    ><span class="text"
+                      >Collaborate with your team<span class="cursor"></span
+                    ></span>
+                  </div>
+                  <div class="code-line">
+                    <em>09</em><span class="command">\\end</span
+                    ><span>{document}</span>
+                  </div>
+                  <div class="editor-status">
+                    <span>NORMAL</span><span>main.tex · 08:31</span>
+                  </div>
                 </div>
                 <div class="workspace-pdf">
-                  <div class="pdf-label"><span data-i18n="hero.previewLabel">PDF 预览</span><span class="pdf-check">✓</span></div>
+                  <div class="pdf-label">
+                    <span data-i18n="hero.previewLabel">PDF 预览</span
+                    ><span class="pdf-check">✓</span>
+                  </div>
                   <div class="pdf-sheet">
                     <div class="pdf-heading"></div>
                     <div class="pdf-rule short"></div>
@@ -83,14 +148,23 @@
                     <div class="pdf-rule medium"></div>
                     <div class="pdf-gap"></div>
                     <div class="pdf-heading small"></div>
-                    <div class="pdf-columns"><div><i></i><i></i><i></i><i></i></div><div><i></i><i></i><i></i><i></i></div></div>
+                    <div class="pdf-columns">
+                      <div><i></i><i></i><i></i><i></i></div>
+                      <div><i></i><i></i><i></i><i></i></div>
+                    </div>
                     <span class="pdf-link-mark">↗</span>
                   </div>
                 </div>
               </div>
             </div>
-            <div class="floating-chip chip-compile"><span>✓</span> <span data-i18n="hero.chipCompile">编译耗时 2.4 秒</span></div>
-            <div class="floating-chip chip-collab"><span class="avatar">Z</span> <span data-i18n="hero.chipCollab">3 位协作者</span></div>
+            <div class="floating-chip chip-compile">
+              <span>✓</span>
+              <span data-i18n="hero.chipCompile">编译耗时 2.4 秒</span>
+            </div>
+            <div class="floating-chip chip-collab">
+              <span class="avatar">Z</span>
+              <span data-i18n="hero.chipCollab">3 位协作者</span>
+            </div>
           </div>
         </section>
 
@@ -98,26 +172,44 @@
           <div class="section-heading">
             <p class="section-kicker" data-i18n="highlights.kicker">核心亮点</p>
             <h2 data-i18n="highlights.title">一个工作区，覆盖从源码到成稿</h2>
-            <p data-i18n="highlights.lead">用简洁的方式了解 TexLite 的核心取舍：保留熟悉的 LaTeX 环境，同时把写作、编译和协作放在同一个私有空间。</p>
+            <p data-i18n="highlights.lead">
+              用简洁的方式了解 TexLite 的核心取舍：保留熟悉的 LaTeX
+              环境，同时把写作、编译和协作放在同一个私有空间。
+            </p>
           </div>
           <ul class="highlight-list" id="highlight-list">
             <li class="highlight-item" id="features">
               <span class="highlight-mark" aria-hidden="true">↗</span>
               <strong data-i18n="highlights.items.0.title">核心能力</strong>
-              <p data-i18n="highlights.items.0.body">在浏览器中编辑、编译、预览和协作，支持大纲、批注、SyncTeX 与结构化诊断。</p>
+              <p data-i18n="highlights.items.0.body">
+                在浏览器中编辑、编译、预览和协作，支持大纲、批注、SyncTeX
+                与结构化诊断。
+              </p>
             </li>
             <li class="highlight-item" id="why">
               <span class="highlight-mark" aria-hidden="true">↗</span>
-              <strong data-i18n="highlights.items.1.title">为什么选择 TexLite</strong>
-              <p data-i18n="highlights.items.1.body">数据留在自己的服务器，编译资源不与公共实例共享；服务保持轻量，适合已经拥有 LaTeX 环境的团队。</p>
+              <strong data-i18n="highlights.items.1.title"
+                >为什么选择 TexLite</strong
+              >
+              <p data-i18n="highlights.items.1.body">
+                数据留在自己的服务器，编译资源不与公共实例共享；服务保持轻量，适合已经拥有
+                LaTeX 环境的团队。
+              </p>
             </li>
             <li class="highlight-item" id="workflow">
               <span class="highlight-mark" aria-hidden="true">↗</span>
               <strong data-i18n="highlights.items.2.title">从源码到成稿</strong>
-              <p data-i18n="highlights.items.2.body">直接使用宿主机 LaTeX，打开项目即可查看最新 PDF，需要时编译并从 PDF、源码和批注之间继续工作。</p>
+              <p data-i18n="highlights.items.2.body">
+                直接使用宿主机 LaTeX，打开项目即可查看最新 PDF，需要时编译并从
+                PDF、源码和批注之间继续工作。
+              </p>
             </li>
           </ul>
-          <p class="highlight-note" data-i18n="highlights.note">补充说明：Overleaf 在线服务在用户高峰时可能出现排队、卡顿或编译超时；Overleaf 开源 Docker 部署版本需要维护较复杂的服务栈，不包含批注等关键协作功能。</p>
+          <p class="highlight-note" data-i18n="highlights.note">
+            补充说明：Overleaf
+            在线服务在用户高峰时可能出现排队、卡顿或编译超时；Overleaf 开源
+            Docker 部署版本需要维护较复杂的服务栈，不包含批注等关键协作功能。
+          </p>
         </section>
 
         <section class="section deploy-section" id="deploy">
@@ -125,14 +217,31 @@
             <div class="deploy-copy">
               <p class="section-kicker" data-i18n="deploy.kicker">从本机开始</p>
               <h2 data-i18n="deploy.title">几条命令，拥有自己的写作空间。</h2>
-              <p data-i18n="deploy.lead">TexLite 不开放公众注册。初始化时创建管理员，之后由管理员添加团队成员。</p>
+              <p data-i18n="deploy.lead">
+                TexLite
+                不开放公众注册。初始化时创建管理员，之后由管理员添加团队成员。
+              </p>
               <div class="deploy-links">
-                <a href="https://www.npmjs.com/package/texlite" target="_blank" rel="noreferrer"><span data-i18n="deploy.npm">查看 npm 包</span><span aria-hidden="true">↗</span></a>
-                <a href="https://github.com/SWUFE-DB-Group/TexLite/blob/main/README.md" target="_blank" rel="noreferrer"><span data-i18n="deploy.docs">阅读部署文档</span><span aria-hidden="true">↗</span></a>
+                <a
+                  href="https://www.npmjs.com/package/texlite"
+                  target="_blank"
+                  rel="noreferrer"
+                  ><span data-i18n="deploy.npm">查看 npm 包</span
+                  ><span aria-hidden="true">↗</span></a
+                >
+                <a
+                  href="https://github.com/SWUFE-DB-Group/TexLite/blob/main/README.md"
+                  target="_blank"
+                  rel="noreferrer"
+                  ><span data-i18n="deploy.docs">阅读部署文档</span
+                  ><span aria-hidden="true">↗</span></a
+                >
               </div>
             </div>
             <div class="terminal" aria-label="TexLite installation commands">
-              <div class="terminal-bar"><span></span><span></span><span></span><em>quick-start</em></div>
+              <div class="terminal-bar">
+                <span></span><span></span><span></span><em>quick-start</em>
+              </div>
               <pre><code><b>$</b> npm install -g texlite
 <b>$</b> texlite init
 <b>$</b> texlite start
@@ -144,19 +253,49 @@
 
         <section class="section closing-section">
           <div class="closing-mark"><img src="./logo.svg" alt="" /></div>
-          <p class="section-kicker" data-i18n="closing.kicker">为下一篇论文准备</p>
+          <p class="section-kicker" data-i18n="closing.kicker">
+            为下一篇论文准备
+          </p>
           <h2 data-i18n="closing.title">Let's build something great.</h2>
-          <p data-i18n="closing.lead">TexLite is open source, self-hosted, and made for the way research teams actually write.</p>
-          <a class="button button-primary" href="https://github.com/SWUFE-DB-Group/TexLite" target="_blank" rel="noreferrer"><span data-i18n="closing.button">在 GitHub 查看 TexLite</span><span aria-hidden="true">↗</span></a>
+          <p data-i18n="closing.lead">
+            TexLite is open source, self-hosted, and made for the way research
+            teams actually write.
+          </p>
+          <a
+            class="button button-primary"
+            href="https://github.com/SWUFE-DB-Group/TexLite"
+            target="_blank"
+            rel="noreferrer"
+            ><span data-i18n="closing.button">在 GitHub 查看 TexLite</span
+            ><span aria-hidden="true">↗</span></a
+          >
         </section>
       </main>
 
       <footer class="site-footer">
-        <div><strong>TexLite</strong><span data-i18n="footer.tagline">轻量、私有、可协作的 LaTeX 工作台</span></div>
-        <div class="footer-right"><span>© 2026 TexLite</span><a href="https://github.com/SWUFE-DB-Group/TexLite" target="_blank" rel="noreferrer">GitHub</a><span data-i18n="footer.license">AGPL-3.0-only</span></div>
+        <div>
+          <strong>TexLite</strong
+          ><span data-i18n="footer.tagline"
+            >轻量、私有、可协作的 LaTeX 工作台</span
+          >
+        </div>
+        <div class="footer-right">
+          <span>© 2026 TexLite</span
+          ><a
+            href="https://github.com/SWUFE-DB-Group/TexLite"
+            target="_blank"
+            rel="noreferrer"
+            >GitHub</a
+          ><span data-i18n="footer.license">AGPL-3.0-only</span>
+        </div>
       </footer>
     </div>
-    <noscript><div class="noscript-message">TexLite 的介绍页需要启用 JavaScript 才能切换语言。<br />This page needs JavaScript for language switching.</div></noscript>
+    <noscript
+      ><div class="noscript-message">
+        TexLite 的介绍页需要启用 JavaScript 才能切换语言。<br />This page needs
+        JavaScript for language switching.
+      </div></noscript
+    >
     <script type="module" src="./main.js?v=highlights-list"></script>
   </body>
 </html>
