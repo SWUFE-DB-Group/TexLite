@@ -37,14 +37,18 @@ export async function sourceToPdf(
   sourcePath: string,
   line: number,
   column: number
-): Promise<PdfSyncLocation> {
+): Promise<PdfSyncLocation | null> {
   const output = await runSynctex([
     "view", "-i", `${line}:${column}:${sourcePath}`, "-o", pdfPath
   ], sourceDirectory);
   const page = numericField(output, "Page");
   const x = numericField(output, "x");
   const y = numericField(output, "y");
-  if (!page || x === null || y === null) throw new Error("SyncTeX 没有找到对应的 PDF 位置");
+  // Comments, blank lines, and parts of the preamble may not have a
+  // typeset position. SyncTeX exits successfully but returns no result for
+  // those locations; that is a normal "nothing to jump to" outcome, not a
+  // malformed request.
+  if (!page || x === null || y === null) return null;
   return {
     page,
     x,

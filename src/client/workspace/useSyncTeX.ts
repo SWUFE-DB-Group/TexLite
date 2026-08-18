@@ -57,11 +57,11 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
     const controller = new AbortController();
     request.current = controller;
     try {
-      const location = await api<{ page: number; x: number; y: number }>(
+      const location = await api<{ page: number; x: number; y: number } | null>(
         `/api/projects/${projectId}/sync/pdf?mainFile=${encodeURIComponent(mainFile)}&path=${encodeURIComponent(path)}&line=${line}&column=${column}`,
         { signal: controller.signal }
       );
-      if (request.current !== controller) return;
+      if (request.current !== controller || !location) return;
       setPdfTarget({ ...location, nonce: ++nonce.current });
       onShowPdfRef.current();
     } catch (error) {

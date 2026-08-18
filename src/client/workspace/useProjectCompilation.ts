@@ -117,20 +117,25 @@ export function useProjectCompilation({
     callbacks.current.onPdfChanged();
     if (!project || !mainFile) return () => controller.abort();
     const query = `?mainFile=${encodeURIComponent(mainFile)}`;
-    const artifactRequest = api<{ artifacts: CompileArtifact[] }>(
-      `/api/projects/${projectId}/compile/artifacts${query}`,
+    // The retained PDF is the critical path when reopening a project. Do not
+    // make it wait for the outline or the (potentially large) artifact scan.
+    // The background requests are started after the PDF URL is published and
+    // then run in parallel with PDF.js network loading and rendering.
+    const latestRequestPromise = api<LatestCompileResponse>(
+      `/api/projects/${projectId}/compile/latest${query}`,
       { signal: controller.signal }
-    ).catch((error) => {
-      if (isAbortError(error)) throw error;
-      return { artifacts: [] };
-    });
-    void Promise.all([
-      api<LatestCompileResponse>(`/api/projects/${projectId}/compile/latest${query}`, { signal: controller.signal }),
-      artifactRequest,
-      callbacks.current.loadOutline(controller.signal, mainFile)
-    ]).then(([latest, artifactResult]) => {
+    );
+    let backgroundStarted = false;
+    const startBackgroundLoads = () => {
+      if (backgroundStarted || controller.signal.aborted) return;
+      backgroundStarted = true;
+      // Start these only after the latest PDF URL has been published to React.
+      // They then run in parallel with PDF.js network loading and rendering.
+      void loadArtifacts(mainFile, controller.signal);
+      void callbacks.current.loadOutline(controller.signal, mainFile).catch(() => undefined);
+    };
+    void latestRequestPromise.then((latest) => {
       if (controller.signal.aborted || latest.mainFile !== mainFileRef.current) return;
-      setArtifacts(artifactResult.artifacts);
       setCompileLog(latest.latestRun?.log ?? "");
       setCompileDiagnostics(latest.latestRun?.diagnostics ?? null);
       setCompileOutcome(latest.latestRun?.status === "succeeded" || latest.latestRun?.status === "failed"
@@ -154,6 +159,9 @@ export function useProjectCompilation({
       if (!isAbortError(error) && mainFileRef.current === mainFile) callbacks.current.onError(errorMessage(error));
     }).finally(() => {
       if (latestRequest.current === controller) latestRequest.current = null;
+      // Give React one turn to mount PdfPreview and start its PDF request
+      // before the background scans begin.
+      window.setTimeout(startBackgroundLoads, 0);
     });
     return () => controller.abort();
   }, [project?.id, projectId, mainFile]);
