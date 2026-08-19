@@ -7,7 +7,7 @@ import {
   type FilesEvent,
   type SharedCompileState
 } from "../collaboration";
-import type { User } from "../types";
+import type { Project, User } from "../types";
 
 function isFilesEvent(value: unknown): value is FilesEvent {
   if (!value || typeof value !== "object") return false;
@@ -20,6 +20,7 @@ export function useProjectCollaboration(
   projectId: string,
   user: User,
   activeMainFile: string,
+  projectPermission: Project["permission"],
   ready: boolean,
   onDisconnected: () => void
 ) {
@@ -32,6 +33,7 @@ export function useProjectCollaboration(
   const [commentsRevision, setCommentsRevision] = useState("");
   const [dictionaryRevision, setDictionaryRevision] = useState("");
   const [localDraftReady, setLocalDraftReady] = useState(false);
+  const [permission, setPermission] = useState<Project["permission"]>(projectPermission);
   const activeMainFileRef = useRef(activeMainFile);
   const onDisconnectedRef = useRef(onDisconnected);
   activeMainFileRef.current = activeMainFile;
@@ -82,6 +84,15 @@ export function useProjectCollaboration(
     collaboration.provider.on("connection-error", handleConnectionFailure);
     collaboration.meta.observe(handleMeta);
     const stopDraftListener = collaboration.onDraftReady(() => setLocalDraftReady(true));
+    const stopPermissionListener = collaboration.onPermissionChanged((nextPermission) => {
+      if (nextPermission === "revoked") {
+        setStatus("disconnected");
+        setSynced(false);
+        onDisconnectedRef.current();
+        return;
+      }
+      setPermission(nextPermission);
+    });
     refreshSessions();
     handleMeta();
     // The provider starts disconnected intentionally. Once the caller marks
@@ -99,6 +110,7 @@ export function useProjectCollaboration(
       collaboration.provider.off("connection-error", handleConnectionFailure);
       collaboration.meta.unobserve(handleMeta);
       stopDraftListener();
+      stopPermissionListener();
       collaboration.destroy();
     };
   }, [collaboration]);
@@ -106,6 +118,11 @@ export function useProjectCollaboration(
   useEffect(() => {
     if (ready) collaboration.connect();
   }, [collaboration, ready]);
+
+  useEffect(() => {
+    collaboration.setPermission(projectPermission);
+    setPermission(projectPermission);
+  }, [collaboration, projectPermission]);
 
   const reconnect = () => {
     setStatus("connecting");
@@ -126,6 +143,7 @@ export function useProjectCollaboration(
     commentsRevision,
     dictionaryRevision,
     localDraftReady,
+    permission,
     reconnect
   };
 }

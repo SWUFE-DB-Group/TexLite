@@ -250,7 +250,10 @@ export function useProjectFiles({
 
   const openFile = (entry: FileEntry) => {
     const kind = resourcePreviewKind(entry.path);
-    if ((entry.size ?? 0) > MAX_DIRECT_RESOURCE_PREVIEW_BYTES || kind !== "text" || !isEditableTextFile(entry.path)) {
+    const maxCollaborativeBytes = (site.maxCollaborativeFileSizeMB ?? 5) * 1024 * 1024;
+    if ((entry.size ?? 0) > MAX_DIRECT_RESOURCE_PREVIEW_BYTES
+      || (isEditableTextFile(entry.path) && (entry.size ?? 0) > maxCollaborativeBytes)
+      || kind !== "text" || !isEditableTextFile(entry.path)) {
       void previewFile(entry);
     } else {
       onActiveFile(entry.path);

@@ -45,15 +45,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-function prefetchPdf(url: string): void {
-  // Warm the browser's HTTP cache while the project metadata and collaboration
-  // room are still loading. The versioned run query makes this safe: a new
-  // successful compile produces a different URL.
-  void fetch(url, { credentials: "same-origin", cache: "force-cache" })
-    .then((response) => response.ok ? response.arrayBuffer() : undefined)
-    .catch(() => undefined);
-}
-
 export function useProjectCompilation({
   projectId, project, mainFile, collaborationSynced, sharedState, onSharedState, save,
   loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged
@@ -116,21 +107,37 @@ export function useProjectCompilation({
 
   useEffect(() => {
     latestRequest.current?.abort();
+    if (!mainFile) {
+      // Project metadata and the selected root document are loaded separately.
+      // Do not query the server with an implicit root while the real root is
+      // still unknown; the metadata response will rerun this effect exactly
+      // once with the selected main file.
+      setPdfLoading(false);
+      setPdfUrl("");
+      setPdfCompiledAt(null);
+      setCompileLog("");
+      setCompileDiagnostics(null);
+      setCompileOutcome(null);
+      setArtifacts([]);
+      setArtifactPreview(null);
+      callbacks.current.onPdfChanged();
+      return;
+    }
     const controller = new AbortController();
     latestRequest.current = controller;
     setPdfLoading(true);
     setCompileLog("");
     setCompileDiagnostics(null);
     setCompileOutcome(null);
-    const retainPrefetchedPdf = Boolean(pdfUrl && mainFile && pdfMainFileRef.current === mainFile);
-    if (!retainPrefetchedPdf) {
+    const retainPdf = Boolean(pdfUrl && mainFile && pdfMainFileRef.current === mainFile);
+    if (!retainPdf) {
       setPdfUrl("");
       setPdfCompiledAt(null);
     }
     setArtifacts([]);
     setArtifactPreview(null);
     callbacks.current.onPdfChanged();
-    const query = mainFile ? `?mainFile=${encodeURIComponent(mainFile)}` : "";
+    const query = `?mainFile=${encodeURIComponent(mainFile)}`;
     // The retained PDF is the critical path when reopening a project. Do not
     // make it wait for the outline or the (potentially large) artifact scan.
     // The background requests are started after the PDF URL is published and
@@ -169,7 +176,6 @@ export function useProjectCompilation({
         setPdfUrl(latest.pdfUrl);
         setPdfCompiledAt(latest.pdfCompiledAt);
         callbacks.current.onPreviewTab("pdf");
-        if (!project) prefetchPdf(latest.pdfUrl);
       }
     }).catch((error) => {
       if (!isAbortError(error) && mainFileRef.current === mainFile) callbacks.current.onError(errorMessage(error));
@@ -181,7 +187,7 @@ export function useProjectCompilation({
       window.setTimeout(startBackgroundLoads, 0);
     });
     return () => controller.abort();
-  }, [project?.id, projectId, mainFile]);
+  }, [projectId, mainFile]);
 
   useEffect(() => {
     if (!sharedState || sharedState.mainFile !== mainFile || sharedState.status !== "cleaned" || !sharedState.cleanMode) return;

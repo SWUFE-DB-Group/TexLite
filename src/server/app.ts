@@ -8,13 +8,14 @@ import multipart from "@fastify/multipart";
 import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
 import type { Config } from "./config.js";
-import { activeAdminCount, type DatabaseConnection, type ProjectRow, type UserRow } from "./db.js";
+import { activeAdminCount, pruneExpiredSessions, type DatabaseConnection, type ProjectRow, type UserRow } from "./db.js";
 import { createSessionToken, hashPassword, verifyPassword, digestToken } from "./security.js";
 import { currentUser, publicUser, requireAdmin, requireUser } from "./auth.js";
 import { accessibleProject, canEdit } from "./projects.js";
 import {
   createProjectFiles,
   duplicateProjectFiles,
+  assertNoSourceSymlinks,
   listProjectFiles,
   listProjectFilesAsync,
   outputRoot,
@@ -27,17 +28,19 @@ import {
   CompileQueue,
   ProjectCompileCoordinator,
   listPublishedCompileArtifacts,
-  pruneOrphanedCompileRuns
+  pruneOrphanedCompileRuns,
+  reconcilePublishedCompileRuns
 } from "./compiler.js";
 import { createSourceAnchor, offsetToLine, reanchorFileComments } from "./anchors.js";
 import { extractProjectZip } from "./zip.js";
-import { createProjectArchive } from "./archive.js";
-import { CollaborationService } from "./collaboration.js";
+import { writeProjectArchive } from "./archive.js";
+import { CollaborationService, isCollaborativeTextFile, maxCollaborativeFileBytes } from "./collaboration.js";
+import { ProjectMutationCoordinator } from "./projectMutations.js";
 import { ProjectGitService } from "./git.js";
 import { LatexCompletionService } from "./latexCompletion.js";
 import { ProjectHistoryService, type HistoryReason } from "./history.js";
 import { LatexFormatterService } from "./latexFormatter.js";
-import { buildProjectOutline } from "./projectOutline.js";
+import { ProjectOutlineService } from "./projectOutline.js";
 import { replaceProject, searchProject } from "./projectSearch.js";
 import { MetricRegistry } from "./metrics.js";
 import { compileMainFile } from "./compileArtifacts.js";
@@ -45,6 +48,7 @@ import { apiError, contentDisposition } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
 
 const now = (): string => new Date().toISOString();
+const SESSION_CLEANUP_INTERVAL_MS = 15 * 60_000;
 function text(value: unknown, name: string, max = 200): string {
   if (typeof value !== "string" || !value.trim() || value.length > max) {
     throw new Error(`${name}格式不正确`);
@@ -121,11 +125,53 @@ function touchProject(db: DatabaseConnection, projectId: string, userId: string)
     .run(now(), userId, projectId);
 }
 
+function requireActiveUser(db: DatabaseConnection, user: UserRow): void {
+  const current = db.prepare("SELECT disabled FROM users WHERE id = ?").get(user.id) as { disabled: number } | undefined;
+  if (!current || current.disabled) {
+    throw Object.assign(new Error("用户已被禁用或删除"), { statusCode: 401, code: "AUTH_REQUIRED" });
+  }
+}
+
+/**
+ * Authorization must be checked again after a queued mutation acquires its
+ * project lock.  A member can be revoked, or ownership can be transferred,
+ * while the request is waiting behind another filesystem operation.
+ */
+function requireEditableProject(db: DatabaseConnection, projectId: string, user: UserRow) {
+  requireActiveUser(db, user);
+  const project = accessibleProject(db, projectId, user);
+  if (!project) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+  if (!canEdit(project)) throw Object.assign(new Error("没有编辑权限"), { statusCode: 403, code: "PROJECT_EDIT_FORBIDDEN" });
+  return project;
+}
+
+/** Owner permission includes an administrator's effective owner access. */
+function requireProjectOwnerPermission(db: DatabaseConnection, projectId: string, user: UserRow) {
+  requireActiveUser(db, user);
+  const project = accessibleProject(db, projectId, user);
+  if (!project) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+  if (project.permission !== "owner") {
+    throw Object.assign(new Error("只有项目所有者可以执行此操作"), { statusCode: 403, code: "PROJECT_OWNER_ONLY" });
+  }
+  return project;
+}
+
+/** Operations such as ownership transfer require the actual stored owner. */
+function requireActualProjectOwner(db: DatabaseConnection, projectId: string, user: UserRow) {
+  requireActiveUser(db, user);
+  const project = accessibleProject(db, projectId, user);
+  if (!project) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+  if (project.owner_id !== user.id) {
+    throw Object.assign(new Error("只有当前项目所有者可以执行此操作"), { statusCode: 403, code: "PROJECT_OWNER_ONLY" });
+  }
+  return project;
+}
+
 function projectTextSnapshot(config: Config, projectId: string): Map<string, string> {
   const versionedText = (filePath: string) => /(?:\.tex|\.bib|\.sty|\.cls|\.txt|\.md|latexmkrc)$/i.test(filePath);
   return new Map(listProjectFiles(config, projectId).filter((entry) => entry.type === "file" && versionedText(entry.path)).map((entry) => {
     const absolute = resolveSourcePath(config, projectId, entry.path);
-    return [entry.path, fs.statSync(absolute).size <= 5 * 1024 * 1024 ? fs.readFileSync(absolute, "utf8") : ""] as const;
+    return [entry.path, fs.statSync(absolute).size <= maxCollaborativeFileBytes(config) ? fs.readFileSync(absolute, "utf8") : ""] as const;
   }));
 }
 
@@ -228,6 +274,7 @@ export async function buildApp(
   eventLoopDelay.enable();
   const history = new ProjectHistoryService(config, db);
   const latexCompletions = new LatexCompletionService(config);
+  const projectOutlines = new ProjectOutlineService(config);
   const latexFormatter = new LatexFormatterService();
   const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => {
     try { return history.record(projectId, userId, reason, paths); }
@@ -240,7 +287,11 @@ export async function buildApp(
     metrics.record("collaboration.persist", durationMs);
     recordHistory(projectId, userId, "autosave", paths);
   });
+  const projectMutations = new ProjectMutationCoordinator(collaboration);
   const projectGit = new ProjectGitService(config, db, options.githubFetch);
+  for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
+    reconcilePublishedCompileRuns(config, db, row.id);
+  }
   db.prepare(`UPDATE compile_runs SET status = 'failed',
     log = CASE WHEN log = '' THEN 'Server restarted before compilation finished.' ELSE log END,
     finished_at = ? WHERE status IN ('queued', 'running')`).run(now());
@@ -300,6 +351,7 @@ export async function buildApp(
     siteName: config.siteName,
     adminEmail: config.adminEmail,
     maxUploadSizeMB: Math.floor(config.maxUploadBytes / 1024 / 1024),
+    maxCollaborativeFileSizeMB: Math.floor(maxCollaborativeFileBytes(config) / 1024 / 1024),
     allowedEngines: config.allowedEngines,
     allowProjectLatexmkrc: config.allowProjectLatexmkrc
   }));
@@ -317,6 +369,7 @@ export async function buildApp(
       },
       compileQueue: queue.stats(),
       collaboration: collaboration.stats(),
+      caches: { completions: latexCompletions.stats(), outlines: projectOutlines.stats() },
       durationsMs: metrics.summaries()
     };
   });
@@ -328,8 +381,8 @@ export async function buildApp(
     }
     const { id } = request.params as { id: string };
     const startedAt = performance.now();
-    try { collaboration.connect(socket, id, user); }
-    finally { metrics.record("collaboration.connect", performance.now() - startedAt); }
+    void collaboration.connect(socket, id, user)
+      .finally(() => metrics.record("collaboration.connect", performance.now() - startedAt));
   });
 
   app.post("/api/auth/login", async (request, reply) => {
@@ -454,13 +507,25 @@ export async function buildApp(
     if (target.role === "admin" && activeAdminCount(db) <= 1) {
       return apiError(reply, 400, "LAST_ADMIN", "不能删除最后一个管理员");
     }
-    const owned = db.prepare("SELECT id FROM projects WHERE owner_id = ?").all(id) as Array<{ id: string }>;
-    for (const project of owned) {
-      if (body.deleteProjects) collaboration.closeProject(project.id);
-      else collaboration.flushProject(project.id);
-    }
+    let owned: Array<{ id: string }> = [];
+    // Capture and mutate the complete owned-project set in the same synchronous
+    // transaction. There is deliberately no await before COMMIT: another
+    // request cannot transfer or create a project for this user between the
+    // snapshot and the owner/delete statements.
     db.exec("BEGIN IMMEDIATE");
     try {
+      const currentTarget = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
+      if (!currentTarget) throw Object.assign(new Error("用户不存在"), { statusCode: 404, code: "USER_NOT_FOUND" });
+      if (currentTarget.role === "admin" && activeAdminCount(db) <= 1) {
+        throw Object.assign(new Error("不能删除最后一个管理员"), { statusCode: 400, code: "LAST_ADMIN" });
+      }
+      owned = db.prepare("SELECT id FROM projects WHERE owner_id = ?").all(id) as Array<{ id: string }>;
+      if (!body.deleteProjects) {
+        // Persist any active drafts while the old owner row still exists. This
+        // is synchronous, so no edit can arrive between this flush and the
+        // ownership update below, and last_modified_by remains FK-safe.
+        for (const project of owned) collaboration.flushProject(project.id);
+      }
       if (body.deleteProjects) {
         db.prepare("DELETE FROM projects WHERE owner_id = ?").run(id);
       } else {
@@ -477,10 +542,20 @@ export async function buildApp(
       db.exec("ROLLBACK");
       throw error;
     }
-    if (body.deleteProjects) {
-      for (const project of owned) removeProjectDirectory(config, project.id);
-    } else {
-      for (const project of owned) collaboration.resetProject(project.id);
+    // Requests already queued for the removed user fail their lock-time
+    // preflight. Cleanup is then serialized after them and invalidates any
+    // room initialization that started before the transaction committed.
+    for (const project of owned) {
+      await projectMutations.runExclusive(project.id, "admin user deletion cleanup", () => {
+        if (body.deleteProjects) {
+          collaboration.resetProject(project.id);
+          removeProjectDirectory(config, project.id);
+          latexCompletions.invalidate(project.id);
+          projectOutlines.invalidate(project.id);
+        } else {
+          collaboration.resetProject(project.id);
+        }
+      }, { flush: false });
     }
     return { ok: true, deletedProjects: body.deleteProjects ? owned.length : 0 };
   });
@@ -712,18 +787,22 @@ export async function buildApp(
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     const query = request.query as { path?: string; against?: string };
     const filePath = safeRelativePath(query.path ?? "");
-    const historical = history.readTextFile(id, versionId, filePath);
-    if (historical === null) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", "该历史文件不存在或不能作为文本比较", { path: filePath });
-    let comparison = "";
-    if (query.against) {
-      comparison = history.readTextFile(id, query.against, filePath) ?? "";
-    } else {
-      const current = resolveSourcePath(config, id, filePath);
-      if (fs.existsSync(current) && fs.statSync(current).isFile() && fs.statSync(current).size <= 2 * 1024 * 1024) {
-        comparison = fs.readFileSync(current, "utf8");
+    return await projectMutations.runConsistentRead(id, () => {
+      const historical = history.readTextFile(id, versionId, filePath);
+      if (historical === null) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", "该历史文件不存在或不能作为文本比较", { path: filePath });
+      let comparison = "";
+      if (query.against) {
+        comparison = history.readTextFile(id, query.against, filePath) ?? "";
+      } else {
+        const current = resolveSourcePath(config, id, filePath);
+        if (fs.existsSync(current) && fs.statSync(current).isFile() && fs.statSync(current).size <= 2 * 1024 * 1024) {
+          comparison = fs.readFileSync(current, "utf8");
+        }
       }
-    }
-    return { path: filePath, historical, comparison, against: query.against ?? "current" };
+      return { path: filePath, historical, comparison, against: query.against ?? "current" };
+    }, { preflight: () => {
+      if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+    } });
   });
 
   app.patch("/api/projects/:id/history/:versionId", async (request, reply) => {
@@ -745,9 +824,15 @@ export async function buildApp(
     const { id, versionId } = request.params as { id: string; versionId: string };
     const project = accessibleProject(db, id, user);
     if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以删除历史版本");
-    collaboration.flushProject(id);
-    if (!history.deleteVersion(id, versionId)) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND", "历史版本不存在");
-    return { ok: true, stats: history.stats(id) };
+    return await projectMutations.runWrite(id, () => {
+      if (!history.deleteVersion(id, versionId)) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND", "历史版本不存在");
+      return { ok: true, stats: history.stats(id) };
+    }, { preflight: () => {
+      requireProjectOwnerPermission(db, id, user);
+      if (!history.version(versionId, id)) {
+        throw Object.assign(new Error("历史版本不存在"), { statusCode: 404, code: "HISTORY_VERSION_NOT_FOUND" });
+      }
+    } });
   });
 
   app.delete("/api/projects/:id/history", async (request, reply) => {
@@ -756,9 +841,10 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
     if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以清空历史版本");
-    collaboration.flushProject(id);
-    history.clear(id);
-    return { ok: true, stats: history.stats(id) };
+    return await projectMutations.runWrite(id, () => {
+      history.clear(id);
+      return { ok: true, stats: history.stats(id) };
+    }, { preflight: () => { requireProjectOwnerPermission(db, id, user); } });
   });
 
   app.post("/api/projects/:id/history/:versionId/restore", async (request, reply) => {
@@ -769,15 +855,21 @@ export async function buildApp(
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const body = request.body as { path?: unknown } | undefined;
     const filePath = typeof body?.path === "string" ? safeRelativePath(body.path) : undefined;
-    collaboration.flushProject(id);
-    recordHistory(id, user.id, "checkpoint");
-    const before = projectTextSnapshot(config, id);
-    const restored = history.restore(id, versionId, filePath);
-    reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
-    touchProject(db, id, user.id);
-    recordHistory(id, user.id, "restore", filePath ? [filePath] : undefined);
-    collaboration.resetProject(id);
-    return { ok: true, restoredPaths: restored.restoredPaths, project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id)) };
+    return await projectMutations.runExclusive(id, "history restore", () => {
+      const currentProject = requireEditableProject(db, id, user);
+      recordHistory(id, user.id, "checkpoint");
+      const before = projectTextSnapshot(config, id);
+      const restored = history.restore(id, versionId, filePath);
+      reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
+      touchProject(db, id, user.id);
+      recordHistory(id, user.id, "restore", filePath ? [filePath] : undefined);
+      return { ok: true, restoredPaths: restored.restoredPaths, project: projectJson(accessibleProject(db, id, user) ?? currentProject, tagsForProject(db, id, user.id)) };
+    }, { preflight: () => {
+      requireEditableProject(db, id, user);
+      if (!history.version(versionId, id)) {
+        throw Object.assign(new Error("历史版本不存在"), { statusCode: 404, code: "HISTORY_VERSION_NOT_FOUND" });
+      }
+    } });
   });
 
   app.put("/api/projects/:id/archive", async (request, reply) => {
@@ -845,23 +937,30 @@ export async function buildApp(
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const project = accessibleProject(db, id, user);
     if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以修改项目设置");
     const body = request.body as Record<string, unknown>;
-    const name = typeof body.name === "string" ? text(body.name, "项目名称", 120) : project.name;
-    const mainFile = typeof body.mainFile === "string" ? safeRelativePath(body.mainFile) : project.main_file;
-    const engine = typeof body.engine === "string" && config.allowedEngines.includes(body.engine as typeof project.engine)
-      ? body.engine as typeof project.engine : project.engine;
-    const latexmkrc = body.latexmkrc === null || body.latexmkrc === ""
-      ? null
-      : typeof body.latexmkrc === "string" ? safeRelativePath(body.latexmkrc) : project.latexmkrc;
-    if (!fs.existsSync(resolveSourcePath(config, id, mainFile))) return apiError(reply, 400, "MAIN_FILE_NOT_FOUND", "主文件不存在", { path: mainFile });
-    if (latexmkrc && !config.allowProjectLatexmkrc) return apiError(reply, 400, "LATEXMKRC_DISABLED", "管理员已禁用项目级 latexmkrc");
-    if (latexmkrc && !fs.existsSync(resolveSourcePath(config, id, latexmkrc))) return apiError(reply, 400, "LATEXMKRC_NOT_FOUND", "latexmkrc 文件不存在", { path: latexmkrc });
-    db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
-      .run(name, mainFile, latexmkrc, engine, now(), user.id, id);
-    recordHistory(id, user.id, "settings", []);
-    return { project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id)) };
+    return await projectMutations.runWrite(id, () => {
+      const currentProject = accessibleProject(db, id, user);
+      if (!currentProject || currentProject.permission !== "owner") {
+        return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以修改项目设置");
+      }
+      const name = typeof body.name === "string" ? text(body.name, "项目名称", 120) : currentProject.name;
+      const mainFile = typeof body.mainFile === "string" ? safeRelativePath(body.mainFile) : currentProject.main_file;
+      const engine = typeof body.engine === "string" && config.allowedEngines.includes(body.engine as typeof currentProject.engine)
+        ? body.engine as typeof currentProject.engine : currentProject.engine;
+      const latexmkrc = body.latexmkrc === null || body.latexmkrc === ""
+        ? null
+        : typeof body.latexmkrc === "string" ? safeRelativePath(body.latexmkrc) : currentProject.latexmkrc;
+      if (!fs.existsSync(resolveSourcePath(config, id, mainFile))) return apiError(reply, 400, "MAIN_FILE_NOT_FOUND", "主文件不存在", { path: mainFile });
+      if (latexmkrc && !config.allowProjectLatexmkrc) return apiError(reply, 400, "LATEXMKRC_DISABLED", "管理员已禁用项目级 latexmkrc");
+      if (latexmkrc && !fs.existsSync(resolveSourcePath(config, id, latexmkrc))) return apiError(reply, 400, "LATEXMKRC_NOT_FOUND", "latexmkrc 文件不存在", { path: latexmkrc });
+      db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
+        .run(name, mainFile, latexmkrc, engine, now(), user.id, id);
+      recordHistory(id, user.id, "settings", []);
+      return { project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id)) };
+    }, { preflight: () => { requireProjectOwnerPermission(db, id, user); } });
   });
 
   app.post("/api/projects/:id/tags", async (request, reply) => {
@@ -894,6 +993,7 @@ export async function buildApp(
   });
 
   const requireGitOwner = (projectId: string, user: UserRow) => {
+    requireActiveUser(db, user);
     const project = accessibleProject(db, projectId, user);
     if (!project) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
     if (project.owner_id !== user.id) throw Object.assign(new Error("只有项目创建者可以执行 Git 操作"), { statusCode: 403, code: "PROJECT_OWNER_ONLY" });
@@ -904,7 +1004,9 @@ export async function buildApp(
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    return { status: await projectGit.status(requireGitOwner(id, user)) };
+    return await projectMutations.runConsistentRead(id, async () => {
+      return { status: await projectGit.status(requireGitOwner(id, user)) };
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.put("/api/projects/:id/git/token", async (request, reply) => {
@@ -913,14 +1015,19 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     const body = request.body as { token?: unknown };
     if (typeof body.token !== "string") return apiError(reply, 400, "GIT_TOKEN_INVALID", "请输入 GitHub token");
-    return { status: await projectGit.configureToken(requireGitOwner(id, user), body.token) };
+    const token = body.token;
+    return await projectMutations.runSerialized(id, async () => {
+      return { status: await projectGit.configureToken(requireGitOwner(id, user), token) };
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.delete("/api/projects/:id/git/token", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    return { status: await projectGit.removeToken(requireGitOwner(id, user)) };
+    return await projectMutations.runSerialized(id, async () => {
+      return { status: await projectGit.removeToken(requireGitOwner(id, user)) };
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.post("/api/projects/:id/git/repository", async (request, reply) => {
@@ -929,34 +1036,43 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     const body = request.body as { name?: unknown; private?: unknown };
     if (typeof body.name !== "string") return apiError(reply, 400, "GIT_REPOSITORY_NAME_INVALID", "请输入 GitHub 仓库名称");
-    return { status: await projectGit.createGitHubRepository(requireGitOwner(id, user), body.name.trim(), body.private !== false) };
+    const repositoryName = body.name.trim();
+    return await projectMutations.runSerialized(id, async () => {
+      return { status: await projectGit.createGitHubRepository(requireGitOwner(id, user), repositoryName, body.private !== false) };
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.post("/api/projects/:id/git/commit", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    const project = requireGitOwner(id, user);
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const body = request.body as { message?: unknown };
-    collaboration.flushProject(id);
-    const commit = await projectGit.commit(project, user, typeof body.message === "string" ? body.message : "");
-    return reply.code(201).send({ commit, status: await projectGit.status(project) });
+    return await projectMutations.runExclusive(id, "Git commit", async () => {
+      const project = requireGitOwner(id, user);
+      const commit = await projectGit.commit(project, user, typeof body.message === "string" ? body.message : "");
+      return reply.code(201).send({ commit, status: await projectGit.status(project) });
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.post("/api/projects/:id/git/push", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    const project = requireGitOwner(id, user);
-    collaboration.flushProject(id);
-    return { status: await projectGit.push(project) };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
+    return await projectMutations.runSerialized(id, async () => {
+      const project = requireGitOwner(id, user);
+      return { status: await projectGit.push(project) };
+    }, { flush: false, preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.get("/api/projects/:id/git/history", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    return { commits: await projectGit.history(requireGitOwner(id, user)) };
+    return await projectMutations.runConsistentRead(id, async () => {
+      return { commits: await projectGit.history(requireGitOwner(id, user)) };
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.get("/api/projects/:id/git/diff", async (request, reply) => {
@@ -964,43 +1080,47 @@ export async function buildApp(
     if (!user) return;
     const { id } = request.params as { id: string };
     const { revision } = request.query as { revision?: string };
-    const project = requireGitOwner(id, user);
-    collaboration.flushProject(id);
-    return projectGit.diff(project, revision);
+    return await projectMutations.runConsistentRead(id, async () => {
+      const project = requireGitOwner(id, user);
+      return projectGit.diff(project, revision);
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.post("/api/projects/:id/git/checkout", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    const project = requireGitOwner(id, user);
+    requireGitOwner(id, user);
     const body = request.body as { revision?: unknown; force?: unknown };
     if (body.revision !== null && typeof body.revision !== "string") return apiError(reply, 400, "GIT_REVISION_INVALID", "请选择要 checkout 的 Git 版本");
-    collaboration.flushProject(id);
-    recordHistory(id, user.id, "checkpoint");
-    const before = projectTextSnapshot(config, id);
-    const revision = await projectGit.checkout(project, body.revision, body.force === true);
-    reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
-    touchProject(db, id, user.id);
-    recordHistory(id, user.id, "git");
-    collaboration.resetProject(id);
-    return { revision, status: await projectGit.status(project) };
+    const revisionInput = body.revision === null ? null : body.revision as string;
+    return await projectMutations.runExclusive(id, "Git checkout", async () => {
+      const currentProject = requireGitOwner(id, user);
+      recordHistory(id, user.id, "checkpoint");
+      const before = projectTextSnapshot(config, id);
+      const revision = await projectGit.checkout(currentProject, revisionInput, body.force === true);
+      reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
+      touchProject(db, id, user.id);
+      recordHistory(id, user.id, "git");
+      return { revision, status: await projectGit.status(currentProject) };
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.post("/api/projects/:id/git/discard", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    const project = requireGitOwner(id, user);
-    collaboration.flushProject(id);
-    recordHistory(id, user.id, "checkpoint");
-    const before = projectTextSnapshot(config, id);
-    await projectGit.discardChanges(project);
-    reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
-    touchProject(db, id, user.id);
-    recordHistory(id, user.id, "git");
-    collaboration.resetProject(id);
-    return { status: await projectGit.status(project) };
+    requireGitOwner(id, user);
+    return await projectMutations.runExclusive(id, "Git restore", async () => {
+      const currentProject = requireGitOwner(id, user);
+      recordHistory(id, user.id, "checkpoint");
+      const before = projectTextSnapshot(config, id);
+      await projectGit.discardChanges(currentProject);
+      reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
+      touchProject(db, id, user.id);
+      recordHistory(id, user.id, "git");
+      return { status: await projectGit.status(currentProject) };
+    }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
   app.get("/api/projects/:id/download", async (request, reply) => {
@@ -1009,12 +1129,28 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
     if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    collaboration.flushProject(id);
-    const archive = createProjectArchive(config, id);
+    const temporaryDirectory = path.join(config.dataDir, "tmp");
+    const temporaryArchive = path.join(temporaryDirectory, `project-${id}-${randomUUID()}.zip`);
+    try {
+      await fs.promises.mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
+      await projectMutations.runConsistentRead(id, () => writeProjectArchive(config, id, temporaryArchive), {
+        preflight: () => {
+          const current = accessibleProject(db, id, user);
+          if (!current) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+        }
+      });
+    } catch (error) {
+      await fs.promises.rm(temporaryArchive, { force: true }).catch(() => undefined);
+      throw error;
+    }
     const filename = `${project.name}.zip`;
     reply.header("Content-Type", "application/zip");
     reply.header("Content-Disposition", contentDisposition(filename, "attachment"));
-    return reply.send(archive.outputStream);
+    const stream = fs.createReadStream(temporaryArchive);
+    const cleanup = () => { void fs.promises.rm(temporaryArchive, { force: true }).catch(() => undefined); };
+    stream.once("close", cleanup);
+    stream.once("error", cleanup);
+    return reply.send(stream);
   });
 
   app.delete("/api/projects/:id", async (request, reply) => {
@@ -1023,10 +1159,14 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
     if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_DELETE_FORBIDDEN", "只有项目所有者可以删除项目");
-    collaboration.closeProject(id);
-    db.prepare("DELETE FROM projects WHERE id = ?").run(id);
-    removeProjectDirectory(config, id);
-    return { ok: true };
+    return await projectMutations.runExclusive(id, "project deletion", () => {
+      collaboration.resetProject(id);
+      db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+      removeProjectDirectory(config, id);
+      latexCompletions.invalidate(id);
+      projectOutlines.invalidate(id);
+      return { ok: true };
+    }, { preflight: () => { requireProjectOwnerPermission(db, id, user); } });
   });
 
   app.get("/api/projects/:id/files", async (request, reply) => {
@@ -1037,7 +1177,13 @@ export async function buildApp(
     // Directory walks can be slow on external/project-mounted storage. Keep
     // this request off the event loop so the retained-PDF metadata and PDF
     // stream can be served while the file tree is being collected.
-    return { files: await listProjectFilesAsync(config, id) };
+    return {
+      files: await projectMutations.runConsistentRead(id, () => listProjectFilesAsync(config, id), {
+        preflight: () => {
+          if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+        }
+      })
+    };
   });
 
   app.post("/api/projects/:id/format", async (request, reply) => {
@@ -1053,11 +1199,17 @@ export async function buildApp(
       return apiError(reply, 400, "FORMAT_FILE_UNSUPPORTED", "只有 .tex、.bib、.cls 和 .sty 文件支持格式化", { path: filePath });
     }
     if (typeof body?.source !== "string") return apiError(reply, 400, "FORMAT_SOURCE_INVALID", "待格式化内容格式不正确");
-    if (Buffer.byteLength(body.source, "utf8") > config.maxUploadBytes) {
+    const source = body.source;
+    if (Buffer.byteLength(source, "utf8") > config.maxUploadBytes) {
       return apiError(reply, 413, "FILE_TOO_LARGE", `单个文件不能超过 ${Math.floor(config.maxUploadBytes / 1024 / 1024)} MB`, { path: filePath });
     }
     try {
-      return await latexFormatter.format(body.source, sourceRoot(config, id));
+      return await projectMutations.runConsistentRead(id, () => {
+        assertNoSourceSymlinks(config, id);
+        return latexFormatter.format(source, sourceRoot(config, id));
+      }, {
+        preflight: () => { requireEditableProject(db, id, user); }
+      });
     } catch (formatError) {
       const statusCode = typeof formatError === "object" && formatError !== null && "statusCode" in formatError && typeof formatError.statusCode === "number"
         ? formatError.statusCode : 422;
@@ -1077,9 +1229,19 @@ export async function buildApp(
     const query = request.query as { mainFile?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
     if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
-    collaboration.flushProject(id);
     const startedAt = performance.now();
-    try { return { outline: buildProjectOutline(config, id, mainFile), mainFile }; }
+    try {
+      return await projectMutations.runConsistentRead(id, async () => ({
+        outline: await projectOutlines.build(id, mainFile), mainFile
+      }), {
+        preflight: () => {
+          const current = accessibleProject(db, id, user);
+          if (!current) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+          const selected = compileMainFile(config, id, current.main_file, query.mainFile);
+          if (!selected || selected !== mainFile) throw Object.assign(new Error("所选文件不是有效的 LaTeX 主文档"), { statusCode: 400, code: "MAIN_DOCUMENT_INVALID" });
+        }
+      });
+    }
     finally { metrics.record("outline.build", performance.now() - startedAt); }
   });
 
@@ -1089,13 +1251,16 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     const query = request.query as { q?: string; caseSensitive?: string; wholeWord?: string };
-    collaboration.flushProject(id);
     const startedAt = performance.now();
     try {
-      return await searchProject(config, id, {
-        query: query.q ?? "",
-        caseSensitive: query.caseSensitive === "1",
-        wholeWord: query.wholeWord === "1"
+      return await projectMutations.runConsistentRead(id, () => searchProject(config, id, {
+          query: query.q ?? "",
+          caseSensitive: query.caseSensitive === "1",
+          wholeWord: query.wholeWord === "1"
+        }), {
+          preflight: () => {
+            if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+          }
       });
     } finally { metrics.record("search.project", performance.now() - startedAt); }
   });
@@ -1110,23 +1275,25 @@ export async function buildApp(
     if (typeof body.query !== "string" || typeof body.replacement !== "string" || body.replacement.length > 100_000) {
       return apiError(reply, 400, "SEARCH_QUERY_INVALID", "搜索或替换内容格式不正确");
     }
-    collaboration.flushProject(id);
-    const changed = await replaceProject(config, id, {
-      query: body.query,
-      caseSensitive: body.caseSensitive === true,
-      wholeWord: body.wholeWord === true
-    }, body.replacement);
-    let replacements = 0;
-    for (const file of changed) {
-      reanchorFileComments(db, id, file.path, file.previous, file.content);
-      collaboration.updateFile(id, file.path, file.content, user.id);
-      replacements += file.count;
-    }
-    if (changed.length) {
-      touchProject(db, id, user.id);
-      recordHistory(id, user.id, "file", changed.map((file) => file.path));
-    }
-    return { ok: true, replacements, files: changed.map((file) => file.path) };
+    return await projectMutations.runExclusive(id, "project-wide replace", async () => {
+      const changed = await replaceProject(config, id, {
+        query: body.query as string,
+        caseSensitive: body.caseSensitive === true,
+        wholeWord: body.wholeWord === true,
+        maxFileBytes: maxCollaborativeFileBytes(config)
+      }, body.replacement as string);
+      let replacements = 0;
+      for (const file of changed) {
+        reanchorFileComments(db, id, file.path, file.previous, file.content);
+        collaboration.updateFile(id, file.path, file.content, user.id);
+        replacements += file.count;
+      }
+      if (changed.length) {
+        touchProject(db, id, user.id);
+        recordHistory(id, user.id, "file", changed.map((file) => file.path));
+      }
+      return { ok: true, replacements, files: changed.map((file) => file.path) };
+    }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
 
   app.get("/api/projects/:id/completions", async (request, reply) => {
@@ -1134,9 +1301,14 @@ export async function buildApp(
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    collaboration.flushProject(id);
     const startedAt = performance.now();
-    try { return { index: await latexCompletions.build(id) }; }
+    try {
+      return await projectMutations.runConsistentRead(id, async () => ({ index: await latexCompletions.build(id) }), {
+        preflight: () => {
+          if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+        }
+      });
+    }
     finally { metrics.record("completions.build", performance.now() - startedAt); }
   });
 
@@ -1144,31 +1316,40 @@ export async function buildApp(
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const body = request.body as { path?: unknown };
     const folderPath = safeRelativePath(typeof body.path === "string" ? body.path : "");
-    const absolute = resolveSourcePath(config, id, folderPath);
-    if (fs.existsSync(absolute)) return apiError(reply, 409, "PATH_EXISTS", "同名文件或目录已存在", { path: folderPath });
-    fs.mkdirSync(absolute, { recursive: true, mode: 0o700 });
-    touchProject(db, id, user.id);
-    return reply.code(201).send({ ok: true, path: folderPath });
+    return await projectMutations.runWrite(id, () => {
+      const absolute = resolveSourcePath(config, id, folderPath);
+      if (fs.existsSync(absolute)) return apiError(reply, 409, "PATH_EXISTS", "同名文件或目录已存在", { path: folderPath });
+      fs.mkdirSync(absolute, { recursive: true, mode: 0o700 });
+      touchProject(db, id, user.id);
+      return reply.code(201).send({ ok: true, path: folderPath });
+    }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
 
   app.patch("/api/projects/:id/path", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const body = request.body as { source?: unknown; destinationDirectory?: unknown };
     const source = safeRelativePath(typeof body.source === "string" ? body.source : "");
     const destinationDirectory = body.destinationDirectory === "" ? ""
       : safeRelativePath(typeof body.destinationDirectory === "string" ? body.destinationDirectory : "");
+    const destination = destinationDirectory
+      ? `${destinationDirectory}/${path.posix.basename(source)}`
+      : path.posix.basename(source);
+
     const sourceAbsolute = resolveSourcePath(config, id, source);
     if (!fs.existsSync(sourceAbsolute)) return apiError(reply, 404, "PATH_NOT_FOUND", "要移动的文件或目录不存在", { path: source });
-    const sourceStat = fs.statSync(sourceAbsolute);
-    if (sourceStat.isDirectory() && (destinationDirectory === source || destinationDirectory.startsWith(`${source}/`))) {
+    if (destination === source) return { ok: true, path: source };
+    const initialSourceStat = fs.statSync(sourceAbsolute);
+    if (initialSourceStat.isDirectory() && (destinationDirectory === source || destinationDirectory.startsWith(`${source}/`))) {
       return apiError(reply, 400, "MOVE_INTO_SELF", "不能把目录移动到自身内部", { path: source });
     }
     const destinationRoot = destinationDirectory
@@ -1177,37 +1358,52 @@ export async function buildApp(
     if (!fs.existsSync(destinationRoot) || !fs.statSync(destinationRoot).isDirectory()) {
       return apiError(reply, 404, "DIRECTORY_NOT_FOUND", "目标目录不存在", { path: destinationDirectory });
     }
-    const destination = destinationDirectory
-      ? `${destinationDirectory}/${path.posix.basename(source)}`
-      : path.posix.basename(source);
-    if (destination === source) return { ok: true, path: source };
     const destinationAbsolute = resolveSourcePath(config, id, destination);
     if (fs.existsSync(destinationAbsolute)) return apiError(reply, 409, "PATH_EXISTS", "目标目录中存在同名文件或目录", { path: destination });
-
-    collaboration.flushProject(id);
-    fs.renameSync(sourceAbsolute, destinationAbsolute);
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      const mainFile = movedProjectPath(project.main_file, source, destination)!;
-      const latexmkrc = movedProjectPath(project.latexmkrc, source, destination);
-      const changedAt = now();
-      db.prepare(`UPDATE projects SET main_file = ?, latexmkrc = ?, updated_at = ?, last_modified_by = ? WHERE id = ?`)
-        .run(mainFile, latexmkrc, changedAt, user.id, id);
-      const comments = db.prepare("SELECT id, file_path FROM comments WHERE project_id = ?").all(id) as Array<{ id: string; file_path: string }>;
-      const updateComment = db.prepare("UPDATE comments SET file_path = ?, updated_at = ? WHERE id = ?");
-      for (const comment of comments) {
-        const nextPath = movedProjectPath(comment.file_path, source, destination);
-        if (nextPath !== comment.file_path) updateComment.run(nextPath, changedAt, comment.id);
+    let currentProject = project;
+    const validateMove = (): void => {
+      currentProject = requireEditableProject(db, id, user);
+      assertNoSourceSymlinks(config, id);
+      if (!fs.existsSync(sourceAbsolute)) {
+        throw Object.assign(new Error("要移动的文件或目录不存在"), { statusCode: 404, code: "PATH_NOT_FOUND" });
       }
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      fs.renameSync(destinationAbsolute, sourceAbsolute);
-      throw error;
-    }
-    collaboration.movePath(id, source, destination, user.id);
-    recordHistory(id, user.id, "file", [source, destination]);
-    return { ok: true, path: destination };
+      const sourceStat = fs.statSync(sourceAbsolute);
+      if (sourceStat.isDirectory() && (destinationDirectory === source || destinationDirectory.startsWith(`${source}/`))) {
+        throw Object.assign(new Error("不能把目录移动到自身内部"), { statusCode: 400, code: "MOVE_INTO_SELF" });
+      }
+      if (!fs.existsSync(destinationRoot) || !fs.statSync(destinationRoot).isDirectory()) {
+        throw Object.assign(new Error("目标目录不存在"), { statusCode: 404, code: "DIRECTORY_NOT_FOUND" });
+      }
+      if (fs.existsSync(destinationAbsolute)) {
+        throw Object.assign(new Error("目标目录中存在同名文件或目录"), { statusCode: 409, code: "PATH_EXISTS" });
+      }
+    };
+
+    return await projectMutations.runExclusive(id, "move project path", () => {
+      fs.renameSync(sourceAbsolute, destinationAbsolute);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const mainFile = movedProjectPath(currentProject.main_file, source, destination)!;
+        const latexmkrc = movedProjectPath(currentProject.latexmkrc, source, destination);
+        const changedAt = now();
+        db.prepare(`UPDATE projects SET main_file = ?, latexmkrc = ?, updated_at = ?, last_modified_by = ? WHERE id = ?`)
+          .run(mainFile, latexmkrc, changedAt, user.id, id);
+        const comments = db.prepare("SELECT id, file_path FROM comments WHERE project_id = ?").all(id) as Array<{ id: string; file_path: string }>;
+        const updateComment = db.prepare("UPDATE comments SET file_path = ?, updated_at = ? WHERE id = ?");
+        for (const comment of comments) {
+          const nextPath = movedProjectPath(comment.file_path, source, destination);
+          if (nextPath !== comment.file_path) updateComment.run(nextPath, changedAt, comment.id);
+        }
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        fs.renameSync(destinationAbsolute, sourceAbsolute);
+        throw error;
+      }
+      collaboration.movePath(id, source, destination, user.id);
+      recordHistory(id, user.id, "file", [source, destination]);
+      return { ok: true, path: destination };
+    }, { preflight: validateMove });
   });
 
   app.get("/api/projects/:id/file/raw", async (request, reply) => {
@@ -1217,8 +1413,23 @@ export async function buildApp(
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     const query = request.query as { path?: string; download?: string };
     const filePath = safeRelativePath(query.path ?? "");
-    const absolute = resolveSourcePath(config, id, filePath);
-    if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) return apiError(reply, 404, "FILE_NOT_FOUND", "文件不存在", { path: filePath });
+    const temporaryDirectory = path.join(config.dataDir, "tmp");
+    const temporaryFile = path.join(temporaryDirectory, `file-${id}-${randomUUID()}`);
+    try {
+      await fs.promises.mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
+      await projectMutations.runConsistentRead(id, async () => {
+        const absolute = resolveSourcePath(config, id, filePath);
+        if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) {
+          throw Object.assign(new Error("文件不存在"), { statusCode: 404, code: "FILE_NOT_FOUND" });
+        }
+        await fs.promises.copyFile(absolute, temporaryFile);
+      }, { preflight: () => {
+        if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+      } });
+    } catch (error) {
+      await fs.promises.rm(temporaryFile, { force: true }).catch(() => undefined);
+      throw error;
+    }
     const extension = path.extname(filePath).toLocaleLowerCase();
     const contentTypes: Record<string, string> = {
       ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
@@ -1230,8 +1441,12 @@ export async function buildApp(
     reply.header("Content-Type", contentType);
     reply.header("Content-Disposition", contentDisposition(path.basename(filePath), downloading ? "attachment" : "inline"));
     reply.header("Cache-Control", "private, no-cache");
-    reply.header("Content-Length", fs.statSync(absolute).size);
-    return reply.send(fs.createReadStream(absolute));
+    reply.header("Content-Length", fs.statSync(temporaryFile).size);
+    const stream = fs.createReadStream(temporaryFile);
+    const cleanup = () => { void fs.promises.rm(temporaryFile, { force: true }).catch(() => undefined); };
+    stream.once("close", cleanup);
+    stream.once("error", cleanup);
+    return reply.send(stream);
   });
 
   app.get("/api/projects/:id/file", async (request, reply) => {
@@ -1240,10 +1455,17 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     const { path: filePath } = request.query as { path?: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const absolute = resolveSourcePath(config, id, filePath ?? "");
-    if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) return apiError(reply, 404, "FILE_NOT_FOUND", "文件不存在", { path: filePath });
-    if (fs.statSync(absolute).size > 5 * 1024 * 1024) return apiError(reply, 413, "FILE_TOO_LARGE", "文件过大，不能作为文本打开", { path: filePath });
-    return { path: safeRelativePath(filePath ?? ""), content: fs.readFileSync(absolute, "utf8") };
+    const relative = safeRelativePath(filePath ?? "");
+    return await projectMutations.runConsistentRead(id, () => {
+      const absolute = resolveSourcePath(config, id, relative);
+      if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) return apiError(reply, 404, "FILE_NOT_FOUND", "文件不存在", { path: relative });
+      if (isCollaborativeTextFile(relative) && fs.statSync(absolute).size > maxCollaborativeFileBytes(config)) {
+        return apiError(reply, 413, "FILE_TOO_LARGE", "协作文本文件过大，不能作为编辑器内容打开", { path: relative });
+      }
+      return { path: relative, content: fs.readFileSync(absolute, "utf8") };
+    }, { preflight: () => {
+      if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+    } });
   });
 
   // Creating a file is intentionally separate from updating one.  The editor
@@ -1253,115 +1475,146 @@ export async function buildApp(
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const body = request.body as { path?: unknown; content?: unknown };
     const filePath = safeRelativePath(typeof body.path === "string" ? body.path : "");
     if (typeof body.content !== "string") throw new Error("文件内容格式不正确");
-    if (Buffer.byteLength(body.content, "utf8") > config.maxUploadBytes) {
-      return apiError(reply, 413, "FILE_TOO_LARGE", `单个文件不能超过 ${Math.floor(config.maxUploadBytes / 1024 / 1024)} MB`, { path: filePath, size: Math.floor(config.maxUploadBytes / 1024 / 1024) });
+    const content = body.content;
+    const byteLength = Buffer.byteLength(content, "utf8");
+    const limit = isCollaborativeTextFile(filePath) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
+    if (byteLength > limit) {
+      return apiError(reply, 413, "FILE_TOO_LARGE", `该文件不能超过 ${Math.floor(limit / 1024 / 1024)} MB`, { path: filePath, size: Math.floor(limit / 1024 / 1024) });
     }
-    const absolute = resolveSourcePath(config, id, filePath);
-    try {
-      fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
-    } catch (error) {
-      if (["EEXIST", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) {
-        return apiError(reply, 409, "PATH_EXISTS", "目标路径中的目录部分已被文件占用", { path: filePath });
+    return await projectMutations.runWrite(id, () => {
+      const absolute = resolveSourcePath(config, id, filePath);
+      try {
+        fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
+      } catch (error) {
+        if (["EEXIST", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+          return apiError(reply, 409, "PATH_EXISTS", "目标路径中的目录部分已被文件占用", { path: filePath });
+        }
+        throw error;
       }
-      throw error;
-    }
-    try {
-      fs.writeFileSync(absolute, body.content, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        return apiError(reply, 409, "FILE_EXISTS", "同名文件或目录已存在", { path: filePath });
+      try {
+        fs.writeFileSync(absolute, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          return apiError(reply, 409, "FILE_EXISTS", "同名文件或目录已存在", { path: filePath });
+        }
+        throw error;
       }
-      throw error;
-    }
-    touchProject(db, id, user.id);
-    collaboration.updateFile(id, filePath, body.content, user.id);
-    recordHistory(id, user.id, "file", [filePath]);
-    return reply.code(201).send({ ok: true, path: filePath, comments: commentsForFile(db, config, id, filePath) });
+      touchProject(db, id, user.id);
+      collaboration.updateFile(id, filePath, content, user.id);
+      recordHistory(id, user.id, "file", [filePath]);
+      return reply.code(201).send({ ok: true, path: filePath, comments: commentsForFile(db, config, id, filePath) });
+    }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
 
   app.put("/api/projects/:id/file", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const body = request.body as { path?: unknown; content?: unknown };
     const filePath = safeRelativePath(typeof body.path === "string" ? body.path : "");
     if (typeof body.content !== "string") throw new Error("文件内容格式不正确");
-    if (Buffer.byteLength(body.content, "utf8") > config.maxUploadBytes) {
-      return apiError(reply, 413, "FILE_TOO_LARGE", `单个文件不能超过 ${Math.floor(config.maxUploadBytes / 1024 / 1024)} MB`, { path: filePath, size: Math.floor(config.maxUploadBytes / 1024 / 1024) });
+    const content = body.content;
+    const byteLength = Buffer.byteLength(content, "utf8");
+    const limit = isCollaborativeTextFile(filePath) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
+    if (byteLength > limit) {
+      return apiError(reply, 413, "FILE_TOO_LARGE", `该文件不能超过 ${Math.floor(limit / 1024 / 1024)} MB`, { path: filePath, size: Math.floor(limit / 1024 / 1024) });
     }
-    const absolute = resolveSourcePath(config, id, filePath);
-    fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
-    const previousContent = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : "";
-    reanchorFileComments(db, id, filePath, previousContent, body.content);
-    fs.writeFileSync(absolute, body.content, { encoding: "utf8", mode: 0o600 });
-    touchProject(db, id, user.id);
-    collaboration.updateFile(id, filePath, body.content, user.id);
-    recordHistory(id, user.id, "file", [filePath]);
-    return { ok: true, comments: commentsForFile(db, config, id, filePath) };
+    return await projectMutations.runWrite(id, () => {
+      const absolute = resolveSourcePath(config, id, filePath);
+      fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
+      const previousContent = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : "";
+      reanchorFileComments(db, id, filePath, previousContent, content);
+      fs.writeFileSync(absolute, content, { encoding: "utf8", mode: 0o600 });
+      touchProject(db, id, user.id);
+      collaboration.updateFile(id, filePath, content, user.id);
+      recordHistory(id, user.id, "file", [filePath]);
+      return { ok: true, comments: commentsForFile(db, config, id, filePath) };
+    }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
 
   app.delete("/api/projects/:id/file", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const { path: filePath } = request.query as { path?: string };
+    const relative = safeRelativePath(filePath ?? "");
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
-    const relative = safeRelativePath(filePath ?? "");
-    if (relative === project.main_file || project.main_file.startsWith(`${relative}/`)) {
-      return apiError(reply, 400, "MAIN_FILE_DELETE_FORBIDDEN", "不能删除当前主文件或包含主文件的目录", { path: relative });
-    }
-    if (!fs.existsSync(resolveSourcePath(config, id, relative))) return apiError(reply, 404, "PATH_NOT_FOUND", "文件或目录不存在", { path: relative });
-    fs.rmSync(resolveSourcePath(config, id, relative), { recursive: true, force: true });
-    touchProject(db, id, user.id);
-    collaboration.removePath(id, relative);
-    recordHistory(id, user.id, "file", [relative]);
-    return { ok: true };
+    return await projectMutations.runWrite(id, () => {
+      const currentProject = requireEditableProject(db, id, user);
+      if (relative === currentProject.main_file || currentProject.main_file.startsWith(`${relative}/`)) {
+        return apiError(reply, 400, "MAIN_FILE_DELETE_FORBIDDEN", "不能删除当前主文件或包含主文件的目录", { path: relative });
+      }
+      const absolute = resolveSourcePath(config, id, relative, { allowFinalSymlink: true });
+      try { fs.lstatSync(absolute); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return apiError(reply, 404, "PATH_NOT_FOUND", "文件或目录不存在", { path: relative });
+        throw error;
+      }
+      fs.rmSync(absolute, { recursive: true, force: true });
+      touchProject(db, id, user.id);
+      collaboration.removePath(id, relative);
+      recordHistory(id, user.id, "file", [relative]);
+      return { ok: true };
+    }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
 
   app.post("/api/projects/:id/upload", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const part = await request.file();
     if (!part) return apiError(reply, 400, "UPLOAD_EMPTY", "没有收到上传文件");
     const { directory, overwrite } = request.query as { directory?: string; overwrite?: string };
     const relative = safeRelativePath(directory ? `${safeRelativePath(directory)}/${part.filename}` : part.filename);
-    const absolute = resolveSourcePath(config, id, relative);
-    try {
-      fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
-    } catch (error) {
-      if (["EEXIST", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) {
-        return apiError(reply, 409, "PATH_EXISTS", "目标路径中的目录部分已被文件占用", { path: relative });
-      }
-      throw error;
-    }
+    // Buffer the multipart stream before reserving the project write lock.
+    // Active Yjs editors can continue saving while a slow upload arrives; the
+    // lock-time flush below then establishes the exact overwrite boundary.
     const uploaded = await part.toBuffer();
-    const replacing = overwrite === "1";
-    if (fs.existsSync(absolute) && fs.statSync(absolute).isDirectory()) {
-      return apiError(reply, 409, "PATH_EXISTS", "目标路径是一个目录", { path: relative });
+    const uploadLimit = isCollaborativeTextFile(relative) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
+    if (uploaded.byteLength > uploadLimit) {
+      return apiError(reply, 413, "FILE_TOO_LARGE", `该文件不能超过 ${Math.floor(uploadLimit / 1024 / 1024)} MB`, { path: relative, size: Math.floor(uploadLimit / 1024 / 1024) });
     }
-    try {
-      fs.writeFileSync(absolute, uploaded, { mode: 0o600, flag: replacing ? "w" : "wx" });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        return apiError(reply, 409, "FILE_EXISTS", "同名文件已存在", { path: relative });
+    return await projectMutations.runWrite(id, () => {
+      const absolute = resolveSourcePath(config, id, relative);
+      try {
+        fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
+      } catch (error) {
+        if (["EEXIST", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+          return apiError(reply, 409, "PATH_EXISTS", "目标路径中的目录部分已被文件占用", { path: relative });
+        }
+        throw error;
       }
-      throw error;
-    }
-    touchProject(db, id, user.id);
-    collaboration.updateFile(id, relative, uploaded.toString("utf8"), user.id);
-    recordHistory(id, user.id, "file", [relative]);
-    return reply.code(201).send({ ok: true, path: relative });
+      const replacing = overwrite === "1";
+      if (fs.existsSync(absolute) && fs.statSync(absolute).isDirectory()) {
+        return apiError(reply, 409, "PATH_EXISTS", "目标路径是一个目录", { path: relative });
+      }
+      try {
+        fs.writeFileSync(absolute, uploaded, { mode: 0o600, flag: replacing ? "w" : "wx" });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          return apiError(reply, 409, "FILE_EXISTS", "同名文件已存在", { path: relative });
+        }
+        throw error;
+      }
+      touchProject(db, id, user.id);
+      collaboration.updateFile(id, relative, uploaded.toString("utf8"), user.id);
+      recordHistory(id, user.id, "file", [relative]);
+      return reply.code(201).send({ ok: true, path: relative });
+    }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
 
   app.get("/api/projects/:id/members", async (request, reply) => {
@@ -1392,33 +1645,42 @@ export async function buildApp(
     const target = db.prepare("SELECT id FROM users WHERE id = ? AND disabled = 0").get(body.userId) as { id: string } | undefined;
     if (!target) return apiError(reply, 404, "USER_NOT_FOUND", "用户不存在或已被禁用");
 
-    collaboration.flushProject(id);
-    const changedAt = now();
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      // The new owner may already be a shared member. The previous owner keeps
-      // edit access so a transfer does not unexpectedly lock them out.
-      db.prepare("DELETE FROM project_members WHERE project_id = ? AND user_id = ?").run(id, target.id);
-      db.prepare(`INSERT INTO project_members (project_id, user_id, permission, created_at)
-        VALUES (?, ?, 'edit', ?)
-        ON CONFLICT(project_id, user_id) DO UPDATE SET permission = 'edit'`)
-        .run(id, user.id, changedAt);
-      db.prepare("UPDATE projects SET owner_id = ?, last_modified_by = ?, updated_at = ? WHERE id = ?")
-        .run(target.id, user.id, changedAt, id);
-      // A project token belongs to the account that supplied it. Preserve the
-      // local repository/remote metadata, but require the new owner to add
-      // their own credential before the next GitHub operation.
-      db.prepare("UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE project_id = ?")
-        .run(changedAt, id);
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-    collaboration.resetProject(id);
-    return {
-      project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id))
-    };
+    return await projectMutations.runExclusive(id, "project transfer", () => {
+      const currentTarget = db.prepare("SELECT id FROM users WHERE id = ? AND disabled = 0").get(body.userId) as { id: string } | undefined;
+      // The synchronous preflight immediately precedes maintenance, so this
+      // lookup cannot change before the operation starts.
+      if (!currentTarget) throw Object.assign(new Error("用户不存在或已被禁用"), { statusCode: 404, code: "USER_NOT_FOUND" });
+      const changedAt = now();
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        // The new owner may already be a shared member. The previous owner keeps
+        // edit access so a transfer does not unexpectedly lock them out.
+        db.prepare("DELETE FROM project_members WHERE project_id = ? AND user_id = ?").run(id, currentTarget.id);
+        db.prepare(`INSERT INTO project_members (project_id, user_id, permission, created_at)
+          VALUES (?, ?, 'edit', ?)
+          ON CONFLICT(project_id, user_id) DO UPDATE SET permission = 'edit'`)
+          .run(id, user.id, changedAt);
+        db.prepare("UPDATE projects SET owner_id = ?, last_modified_by = ?, updated_at = ? WHERE id = ?")
+          .run(currentTarget.id, user.id, changedAt, id);
+        // A project token belongs to the account that supplied it. Preserve the
+        // local repository/remote metadata, but require the new owner to add
+        // their own credential before the next GitHub operation.
+        db.prepare("UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE project_id = ?")
+          .run(changedAt, id);
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+      return {
+        project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id))
+      };
+    }, { preflight: () => {
+      requireActualProjectOwner(db, id, user);
+      if (!db.prepare("SELECT 1 FROM users WHERE id = ? AND disabled = 0").get(body.userId)) {
+        throw Object.assign(new Error("用户不存在或已被禁用"), { statusCode: 404, code: "USER_NOT_FOUND" });
+      }
+    } });
   });
 
   app.put("/api/projects/:id/members/:userId", async (request, reply) => {
@@ -1428,12 +1690,16 @@ export async function buildApp(
     const project = accessibleProject(db, id, user);
     if (!project || project.permission !== "owner") return apiError(reply, 403, "MEMBERS_MANAGE_FORBIDDEN", "只有项目所有者可以管理成员");
     if (userId === project.owner_id) return apiError(reply, 400, "OWNER_MEMBER_FORBIDDEN", "项目所有者不能作为成员添加");
+    if (!db.prepare("SELECT 1 FROM users WHERE id = ? AND disabled = 0").get(userId)) {
+      return apiError(reply, 404, "USER_NOT_FOUND", "用户不存在或已被禁用");
+    }
     const body = request.body as { permission?: unknown };
     const permission = body.permission === "edit" ? "edit" : "read";
     db.prepare(`INSERT INTO project_members (project_id, user_id, permission, created_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(project_id, user_id) DO UPDATE SET permission = excluded.permission`)
       .run(id, userId, permission, now());
     touchProject(db, id, user.id);
+    collaboration.notifyPermissionChanged(id, userId, permission);
     return { ok: true };
   });
 
@@ -1445,6 +1711,7 @@ export async function buildApp(
     if (!project || project.permission !== "owner") return apiError(reply, 403, "MEMBERS_MANAGE_FORBIDDEN", "只有项目所有者可以管理成员");
     db.prepare("DELETE FROM project_members WHERE project_id = ? AND user_id = ?").run(id, userId);
     touchProject(db, id, user.id);
+    collaboration.notifyPermissionChanged(id, userId, "revoked");
     return { ok: true };
   });
 
@@ -1455,7 +1722,13 @@ export async function buildApp(
     const { path: filePath } = request.query as { path?: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     const relative = safeRelativePath(filePath ?? "");
-    return { comments: commentsForFile(db, config, id, relative) };
+    return {
+      comments: await projectMutations.runConsistentRead(id, () => commentsForFile(db, config, id, relative), {
+        preflight: () => {
+          if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+        }
+      })
+    };
   });
 
   app.post("/api/projects/:id/comments", async (request, reply) => {
@@ -1466,30 +1739,33 @@ export async function buildApp(
     const body = request.body as Record<string, unknown>;
     const createdAt = now();
     const filePath = safeRelativePath(typeof body.path === "string" ? body.path : "");
-    collaboration.flushProject(id);
-    const absolute = resolveSourcePath(config, id, filePath);
-    if (!fs.existsSync(absolute)) return apiError(reply, 404, "COMMENT_FILE_NOT_FOUND", "批注文件不存在");
-    const source = fs.readFileSync(absolute, "utf8");
-    if (!Number.isInteger(body.startOffset) || !Number.isInteger(body.endOffset)) {
-      return apiError(reply, 400, "COMMENT_RANGE_INVALID", "批注缺少有效的源码区间");
-    }
-    const anchor = createSourceAnchor(source, Number(body.startOffset), Number(body.endOffset));
-    const comment = {
-      id: randomUUID(), filePath,
-      content: text(body.content, "批注", 5000)
-    };
-    db.prepare(`INSERT INTO comments
-      (id, project_id, file_path, author_id, selected_text, start_offset, end_offset,
-       context_before, context_after, orphaned, start_line, end_line, content, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`)
-      .run(
-        comment.id, id, comment.filePath, user.id, anchor.selectedText, anchor.startOffset, anchor.endOffset,
-        anchor.contextBefore, anchor.contextAfter, offsetToLine(source, anchor.startOffset),
-        offsetToLine(source, anchor.endOffset), comment.content, createdAt, createdAt
-      );
-    const created = commentsForFile(db, config, id, filePath).find((item) => item.id === comment.id);
-    collaboration.signalComments(id);
-    return reply.code(201).send({ comment: created });
+    return await projectMutations.runWrite(id, () => {
+      const absolute = resolveSourcePath(config, id, filePath);
+      if (!fs.existsSync(absolute)) return apiError(reply, 404, "COMMENT_FILE_NOT_FOUND", "批注文件不存在");
+      const source = fs.readFileSync(absolute, "utf8");
+      if (!Number.isInteger(body.startOffset) || !Number.isInteger(body.endOffset)) {
+        return apiError(reply, 400, "COMMENT_RANGE_INVALID", "批注缺少有效的源码区间");
+      }
+      const anchor = createSourceAnchor(source, Number(body.startOffset), Number(body.endOffset));
+      const comment = {
+        id: randomUUID(), filePath,
+        content: text(body.content, "批注", 5000)
+      };
+      db.prepare(`INSERT INTO comments
+        (id, project_id, file_path, author_id, selected_text, start_offset, end_offset,
+         context_before, context_after, orphaned, start_line, end_line, content, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`)
+        .run(
+          comment.id, id, comment.filePath, user.id, anchor.selectedText, anchor.startOffset, anchor.endOffset,
+          anchor.contextBefore, anchor.contextAfter, offsetToLine(source, anchor.startOffset),
+          offsetToLine(source, anchor.endOffset), comment.content, createdAt, createdAt
+        );
+      const created = commentsForFile(db, config, id, filePath).find((item) => item.id === comment.id);
+      collaboration.signalComments(id);
+      return reply.code(201).send({ comment: created });
+    }, { preflight: () => {
+      if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+    } });
   });
 
   app.post("/api/projects/:id/comments/:commentId/replies", async (request, reply) => {
@@ -1588,7 +1864,7 @@ export async function buildApp(
     return { ok: true };
   });
 
-  registerCompileRoutes(app, { config, db, collaboration, compileCoordinator, metrics, pruneCompileRuns });
+  registerCompileRoutes(app, { config, db, collaboration, projectMutations, compileCoordinator, metrics, pruneCompileRuns });
 
   app.addHook("onRequest", async (request) => {
     if (request.url.startsWith("/api/") && request.url !== "/api/auth/login" && request.url !== "/api/health" && request.url !== "/api/config") {
@@ -1609,6 +1885,20 @@ export async function buildApp(
       return reply.sendFile("index.html");
     });
   }
+
+  const cleanupExpiredSessions = (): void => {
+    try {
+      pruneExpiredSessions(db, now());
+    } catch (error) {
+      app.log.error({ err: error }, "Failed to prune expired sessions");
+    }
+  };
+  // Clean up at startup as well as periodically so long-running deployments do
+  // not retain one row per historical login indefinitely.
+  cleanupExpiredSessions();
+  const sessionCleanupTimer = setInterval(cleanupExpiredSessions, SESSION_CLEANUP_INTERVAL_MS);
+  sessionCleanupTimer.unref();
+  app.addHook("onClose", async () => { clearInterval(sessionCleanupTimer); });
 
   return app;
 }

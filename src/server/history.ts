@@ -3,7 +3,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
 import type { DatabaseConnection, ProjectRow } from "./db.js";
-import { listProjectFiles, outputRoot, projectRoot, resolveSourcePath, safeRelativePath, sourceRoot } from "./files.js";
+import { assertNoSourceSymlinks, listProjectFiles, outputRoot, projectRoot, resolveSourcePath, safeRelativePath, sourceRoot } from "./files.js";
 
 export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
 
@@ -344,6 +344,7 @@ export class ProjectHistoryService {
   }
 
   private restoreProjectTree(projectId: string, manifest: HistoryManifest): void {
+    assertNoSourceSymlinks(this.config, projectId);
     const root = projectRoot(this.config, projectId);
     const live = sourceRoot(this.config, projectId);
     const temporary = path.join(root, `.history-restore-${randomUUID()}`);

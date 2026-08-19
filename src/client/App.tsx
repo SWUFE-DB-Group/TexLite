@@ -666,8 +666,9 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     commentsRevision,
     dictionaryRevision,
     localDraftReady,
+    permission: collaborationPermission,
     reconnect: reconnectCollaboration
-  } = useProjectCollaboration(projectId, user, activeMainFile, collaborationReady, () => setSaveState("editor.offlineDraft"));
+  } = useProjectCollaboration(projectId, user, activeMainFile, project?.permission ?? "read", collaborationReady, () => setSaveState("editor.offlineDraft"));
 
   const {
     pdfTarget, pdfViewport, sourceJump, setPdfViewport, clearPdfViewport,
@@ -830,9 +831,11 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   }, [dictionaryRevision, projectId]);
 
   useEffect(() => {
-    if (!project) return;
-    collaboration.setPermission(project.permission);
-  }, [collaboration, project?.permission]);
+    if (!project || collaborationStatus !== "connected" || collaborationPermission === project.permission) return;
+    // A server-side member update can change an already-open editor from edit
+    // to read-only without waiting for the next API request.
+    setProject((current) => current ? { ...current, permission: collaborationPermission } : current);
+  }, [collaborationPermission, project?.permission]);
 
   useEffect(() => {
     if (!filesEvent) return;
@@ -1093,7 +1096,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   useEffect(() => {
     // Let the latest-PDF response render PdfPreview first. Its PDF request is
     // the critical path; only then should a cold Yjs room be reconstructed.
-    if (!project || (!pdfUrl && pdfLoading)) return;
+    if (!project || !activeMainFile || (!pdfUrl && pdfLoading)) return;
     // Give the browser a short scheduling head start for the PDF fetch before
     // opening the WebSocket that may trigger a cold room reconstruction.
     const timer = window.setTimeout(() => setCollaborationReady(true), pdfUrl ? 150 : 0);

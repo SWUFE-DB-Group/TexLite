@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/server/config.js";
+import { openDatabase } from "../src/server/db.js";
 import {
   CompileQueue,
   ProjectCompileCoordinator,
@@ -17,6 +18,7 @@ import {
   publishCompileArtifacts,
   publishedCompileArtifacts,
   pruneOrphanedCompileRuns,
+  reconcilePublishedCompileRuns,
   type CoordinatedCompileJob,
   type CoordinatedCompileResult
 } from "../src/server/compiler.js";
@@ -69,6 +71,36 @@ describe("reliable project compilation", () => {
     expect(events).toContain("superseded:run-2");
   });
 
+  it("coalesces a generation before each job can create its snapshot", async () => {
+    const coordinator = new ProjectCompileCoordinator(new CompileQueue(2));
+    let snapshotCreations = 0;
+    const job = (runId: string, resultRevision: string): CoordinatedCompileJob => ({
+      projectId: "project-a", target: "main.tex", runId,
+      generation: "source-generation-7", revision: resultRevision,
+      onQueued: () => undefined,
+      onSelected: () => undefined,
+      onDiscarded: () => undefined,
+      execute: async (): Promise<CoordinatedCompileResult> => {
+        snapshotCreations += 1;
+        return {
+          runId,
+          revision: resultRevision,
+          ok: true,
+          log: "",
+          diagnostics: { warnings: [], errors: [] },
+          pdfPath: `${runId}.pdf`,
+          synctexPath: null
+        };
+      }
+    });
+
+    const first = coordinator.request(job("run-1", "content-digest-1"));
+    const duplicate = coordinator.request(job("run-2", "content-digest-2"));
+    expect(duplicate).toBe(first);
+    await expect(duplicate).resolves.toMatchObject({ runId: "run-1", revision: "content-digest-1" });
+    expect(snapshotCreations).toBe(1);
+  });
+
   it("compiles from an immutable snapshot and atomically selects a complete artifact set", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-"));
     temporaryRoots.push(root);
@@ -79,7 +111,7 @@ describe("reliable project compilation", () => {
     fs.writeFileSync(path.join(liveSource, "main.tex"), "first revision\n");
 
     const first = await captureCompileSnapshot(config, projectId, randomUUID(), {
-      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: [], generation: "generation-1"
     });
     fs.writeFileSync(path.join(liveSource, "main.tex"), "second revision\n");
     expect(fs.readFileSync(path.join(first.sourceDir, "main.tex"), "utf8")).toBe("first revision\n");
@@ -91,11 +123,11 @@ describe("reliable project compilation", () => {
       ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: firstPdf, synctexPath: firstSync
     });
     expect(publishedCompileArtifacts(config, projectId)).toMatchObject({
-      runId: first.runId, revision: first.revision, source: first.sourceDir, pdf: firstPdf, synctex: firstSync
+      runId: first.runId, revision: first.revision, generation: "generation-1", source: first.sourceDir, pdf: firstPdf, synctex: firstSync
     });
 
     const second = await captureCompileSnapshot(config, projectId, randomUUID(), {
-      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: [], generation: "generation-2"
     });
     expect(second.revision).not.toBe(first.revision);
     const secondPdf = path.join(second.outputDir, "main.pdf");
@@ -248,6 +280,45 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     cleanCompileArtifacts(config, projectId, "main.tex", "main.tex", [snapshot.runId]);
     expect(publishedCompileArtifacts(config, projectId, "main.tex")).toBeNull();
     expect(fs.existsSync(snapshot.root)).toBe(false);
+  });
+
+  it("reconciles a published PDF whose database run was interrupted", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-recovery-"));
+    temporaryRoots.push(root);
+    const config = testConfig(root);
+    const db = openDatabase(config);
+    const projectId = randomUUID();
+    const ownerId = randomUUID();
+    const createdAt = new Date().toISOString();
+    db.prepare(`INSERT INTO users
+      (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
+      VALUES (?, 'owner', 'Owner', 'hash', 'user', 0, 0, 1, ?)`)
+      .run(ownerId, createdAt);
+    db.prepare(`INSERT INTO projects
+      (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, created_at, updated_at)
+      VALUES (?, ?, ?, 'Recovery', 'main.tex', NULL, 'pdflatex', ?, ?)`)
+      .run(projectId, ownerId, ownerId, createdAt, createdAt);
+    const liveSource = path.join(config.projectsDir, projectId, "source");
+    fs.mkdirSync(liveSource, { recursive: true });
+    fs.writeFileSync(path.join(liveSource, "main.tex"), "source\n");
+    const snapshot = await captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const pdf = path.join(snapshot.outputDir, "main.pdf");
+    fs.writeFileSync(pdf, "%PDF-1.4\n");
+    publishCompileArtifacts(config, projectId, snapshot, {
+      ok: true, log: "successful compile", diagnostics: { warnings: [], errors: [] }, pdfPath: pdf, synctexPath: null
+    });
+    db.prepare(`INSERT INTO compile_runs
+      (id, project_id, requested_by, main_file, status, log, created_at)
+      VALUES (?, ?, ?, 'main.tex', 'running', '', ?)`)
+      .run(snapshot.runId, projectId, ownerId, createdAt);
+
+    reconcilePublishedCompileRuns(config, db, projectId);
+    expect(db.prepare("SELECT status, finished_at, log FROM compile_runs WHERE id = ?").get(snapshot.runId)).toMatchObject({
+      status: "succeeded", finished_at: expect.any(String), log: "Recovered a published PDF after a server restart."
+    });
+    db.close();
   });
 });
 

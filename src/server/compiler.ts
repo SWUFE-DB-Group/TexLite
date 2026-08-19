@@ -7,8 +7,10 @@ import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { Config } from "./config.js";
-import { listProjectFilesAsync, outputRoot, safeRelativePath, sourceRoot } from "./files.js";
+import type { DatabaseConnection } from "./db.js";
+import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, texFileStem } from "./files.js";
 import { parseCompileDiagnostics, type CompileDiagnostics } from "./compileDiagnostics.js";
+import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
 
 export interface CompileTimings {
   cacheSyncMs: number;
@@ -39,6 +41,8 @@ export interface CompileSnapshot {
   runId: string;
   mainFile: string;
   revision: string;
+  /** Cheap source/settings generation used to skip an already-published build. */
+  generation?: string;
   root: string;
   sourceDir: string;
   outputDir: string;
@@ -50,6 +54,7 @@ export interface PublishedCompileArtifacts {
   mainFile: string;
   runId: string;
   revision: string;
+  generation: string | null;
   source: string;
   output: string;
   pdf: string;
@@ -59,12 +64,24 @@ export interface PublishedCompileArtifacts {
 export interface CoordinatedCompileResult extends CompileResult {
   runId: string;
   revision: string;
+  /** Time spent creating the immutable source snapshot before compilation. */
+  snapshotMs?: number;
+  skipped?: boolean;
+  retryable?: boolean;
+  errorCode?: string;
 }
 
 export interface CoordinatedCompileJob {
   projectId: string;
   target?: string;
   runId: string;
+  /**
+   * Cheap source/settings generation used for request coalescing.  The
+   * content digest is only available after a snapshot has been copied, so it
+   * must not be used as the coordinator key at request admission time.
+   */
+  generation?: string;
+  /** Backwards-compatible name used by callers that already provide a key. */
   revision: string;
   onQueued: () => void;
   onSelected: () => void;
@@ -122,7 +139,12 @@ interface ProjectCompileState {
   pending: ManagedCompileJob | null;
 }
 
-/** Serializes each project while still respecting the server-wide LaTeX process limit. */
+/**
+ * Coalesces and serializes each project/main-document target while still
+ * respecting the server-wide LaTeX process limit. Different root documents
+ * may compile concurrently because their caches and published bundles are
+ * isolated by target.
+ */
 export class ProjectCompileCoordinator {
   private readonly targets = new Map<string, ProjectCompileState>();
 
@@ -132,20 +154,24 @@ export class ProjectCompileCoordinator {
     const targetKey = `${input.projectId}\0${input.target ?? ""}`;
     const state = this.targets.get(targetKey) ?? { active: null, pending: null };
     this.targets.set(targetKey, state);
+    const generation = input.generation ?? input.revision;
 
-    if (state.active?.input.revision === input.revision) {
-      if (state.pending) {
-        this.redirect(state.pending, state.active);
-        state.pending.input.onDiscarded("superseded");
+    const active = state.active;
+    if (active && (active.input.generation ?? active.input.revision) === generation) {
+      const pending = state.pending;
+      if (pending) {
+        this.redirect(pending, active);
+        pending.input.onDiscarded("superseded");
         state.pending = null;
       }
       input.onDiscarded("duplicate");
-      state.active.input.onSelected();
-      return state.active.promise;
+      active.input.onSelected();
+      return active.promise;
     }
-    if (state.pending?.input.revision === input.revision) {
+    const pending = state.pending;
+    if (pending && (pending.input.generation ?? pending.input.revision) === generation) {
       input.onDiscarded("duplicate");
-      return state.pending.promise;
+      return pending.promise;
     }
 
     const managed = deferredJob(input);
@@ -198,7 +224,7 @@ export async function captureCompileSnapshot(
   config: Config,
   projectId: string,
   runId: string,
-  settings: { mainFile: string; engine: string; latexmkrc: string | null; extraArgs: string[] }
+  settings: { mainFile: string; engine: string; latexmkrc: string | null; extraArgs: string[]; generation?: string }
 ): Promise<CompileSnapshot> {
   const root = compileRunRoot(config, projectId, runId);
   const snapshotSource = path.join(root, "source");
@@ -208,7 +234,11 @@ export async function captureCompileSnapshot(
   const hash = createHash("sha256");
   const files: CompileSnapshotFile[] = [];
   const directories: string[] = [];
-  hash.update(JSON.stringify(settings));
+  // The content revision remains independent from the cheap generation. A
+  // metadata-only project update should still be able to reuse an identical
+  // source snapshot after the generation check misses.
+  const { generation, ...contentSettings } = settings;
+  hash.update(JSON.stringify(contentSettings));
   try {
     const entries = (await listProjectFilesAsync(config, projectId)).sort((left, right) => left.path.localeCompare(right.path));
     const fileEntries = entries.filter((entry) => entry.type === "file");
@@ -226,8 +256,9 @@ export async function captureCompileSnapshot(
       const batch = fileEntries.slice(offset, offset + 4);
       const settled = await Promise.allSettled(batch.map(async (entry): Promise<CompileSnapshotFile> => {
         const destination = path.join(snapshotSource, entry.path);
-        const liveFile = path.join(sourceRoot(config, projectId), entry.path);
-        const stat = await fs.promises.stat(liveFile);
+        const liveFile = resolveSourcePath(config, projectId, entry.path);
+        const stat = await fs.promises.lstat(liveFile);
+        if (stat.isSymbolicLink() || !stat.isFile()) throw new Error(`Compile source path is not a regular file: ${entry.path}`);
         await fs.promises.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
         const digest = await copyAndDigest(liveFile, destination);
         await fs.promises.utimes(destination, stat.atime, stat.mtime);
@@ -239,7 +270,7 @@ export async function captureCompileSnapshot(
     }
     for (const file of files) hash.update(file.digest);
     return {
-      projectId, runId, mainFile: safeRelativePath(settings.mainFile), revision: hash.digest("hex"), root,
+      projectId, runId, mainFile: safeRelativePath(settings.mainFile), revision: hash.digest("hex"), generation, root,
       sourceDir: snapshotSource, outputDir: snapshotOutput, files, directories
     };
   } catch (error) {
@@ -308,8 +339,8 @@ export function cleanCompileArtifacts(
       path.join(output, ".texlite", "latest.json"),
       path.join(output, ".texlite", "latest.pdf"),
       path.join(output, ".texlite", "latest.synctex.gz"),
-      path.join(output, `${path.basename(mainFile, ".tex")}.pdf`),
-      path.join(output, `${path.basename(mainFile, ".tex")}.synctex.gz`)
+      path.join(output, `${texFileStem(mainFile)}.pdf`),
+      path.join(output, `${texFileStem(mainFile)}.synctex.gz`)
     ]) fs.rmSync(generated, { force: true });
   }
 }
@@ -328,6 +359,7 @@ export function publishCompileArtifacts(
     mainFile: snapshot.mainFile,
     runId: snapshot.runId,
     revision: snapshot.revision,
+    generation: snapshot.generation ?? null,
     pdf: path.basename(result.pdfPath),
     synctex: result.synctexPath ? path.basename(result.synctexPath) : null
   };
@@ -380,6 +412,30 @@ export function listPublishedCompileArtifacts(config: Config, projectId: string)
   return result;
 }
 
+/**
+ * Recover database run state after a crash between publishing an immutable
+ * bundle and updating compile_runs. A valid published manifest is evidence
+ * that latexmk produced a usable PDF, so the corresponding run must be
+ * visible to latest/PDF endpoints after restart.
+ */
+export function reconcilePublishedCompileRuns(config: Config, db: DatabaseConnection, projectId: string): void {
+  const recover = db.prepare(`UPDATE compile_runs
+    SET status = 'succeeded', log = CASE WHEN log = '' THEN ? ELSE log END, finished_at = ?
+    WHERE id = ? AND project_id = ?`);
+  const insert = db.prepare(`INSERT OR IGNORE INTO compile_runs
+    (id, project_id, requested_by, main_file, status, log, created_at, finished_at)
+    VALUES (?, ?, NULL, ?, 'succeeded', ?, ?, ?)`);
+  for (const artifact of listPublishedCompileArtifacts(config, projectId)) {
+    let finishedAt = new Date().toISOString();
+    try { finishedAt = fs.statSync(artifact.pdf).mtime.toISOString(); } catch { /* manifest validation already checked the file */ }
+    const message = "Recovered a published PDF after a server restart.";
+    const existing = db.prepare("SELECT status FROM compile_runs WHERE id = ? AND project_id = ?")
+      .get(artifact.runId, projectId) as { status: string } | undefined;
+    if (!existing) insert.run(artifact.runId, projectId, artifact.mainFile, message, finishedAt, finishedAt);
+    else if (existing.status !== "succeeded") recover.run(message, finishedAt, artifact.runId, projectId);
+  }
+}
+
 function readPublishedManifest(
   config: Config,
   projectId: string,
@@ -390,14 +446,17 @@ function readPublishedManifest(
   if (!fs.existsSync(manifestPath)) return null;
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
-      version?: unknown; mainFile?: unknown; runId?: unknown; revision?: unknown; pdf?: unknown; synctex?: unknown;
+      version?: unknown; mainFile?: unknown; runId?: unknown; revision?: unknown; generation?: unknown; pdf?: unknown; synctex?: unknown;
     };
     const mainFile = manifest.version === 2 && typeof manifest.mainFile === "string"
       ? safeRelativePath(manifest.mainFile)
       : legacy && manifest.version === 1 ? expectedMainFile ?? "" : null;
+    const generation = manifest.generation === undefined || manifest.generation === null
+      ? null : typeof manifest.generation === "string" ? manifest.generation : null;
     if (mainFile === null || (expectedMainFile !== undefined && mainFile !== expectedMainFile)
       || typeof manifest.runId !== "string" || !/^[a-f0-9-]{36}$/i.test(manifest.runId)
       || typeof manifest.revision !== "string" || typeof manifest.pdf !== "string"
+      || (manifest.generation !== undefined && manifest.generation !== null && generation === null)
       || path.basename(manifest.pdf) !== manifest.pdf
       || (manifest.synctex !== null && (typeof manifest.synctex !== "string" || path.basename(manifest.synctex) !== manifest.synctex))) {
       return null;
@@ -408,7 +467,7 @@ function readPublishedManifest(
     const pdf = path.join(output, manifest.pdf);
     const synctex = manifest.synctex ? path.join(output, manifest.synctex) : null;
     if (!fs.existsSync(source) || !fs.existsSync(output) || !fs.existsSync(pdf) || (synctex && !fs.existsSync(synctex))) return null;
-    return { mainFile, runId: manifest.runId, revision: manifest.revision, source, output, pdf, synctex };
+    return { mainFile, runId: manifest.runId, revision: manifest.revision, generation, source, output, pdf, synctex };
   } catch {
     return null;
   }
@@ -628,7 +687,7 @@ export async function compileProject(
   latexmkrcInput: string | null
 ): Promise<CompileResult> {
   const mainFile = safeRelativePath(mainFileInput);
-  if (!mainFile.endsWith(".tex")) throw new Error("主文件必须是 .tex 文件");
+  if (!/\.tex$/i.test(mainFile)) throw new Error("主文件必须是 .tex 文件");
   const startedAt = performance.now();
   let latexmkrc: string | null = null;
   if (config.allowProjectLatexmkrc && latexmkrcInput) {
@@ -662,6 +721,7 @@ export async function compileProject(
     const child = spawn(config.latexmk, args, {
       cwd,
       shell: false,
+      detached: detachedProcessGroup(),
       env: { ...process.env, max_print_line: "1000" },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -676,7 +736,7 @@ export async function compileProject(
 
     const timeout = setTimeout(() => {
       log += `\n编译超过 ${config.compileTimeoutMs / 1000} 秒，已终止。\n`;
-      child.kill("SIGKILL");
+      killProcessGroup(child);
     }, config.compileTimeoutMs);
 
     child.on("close", (code) => {
@@ -685,7 +745,7 @@ export async function compileProject(
     });
   });
   const latexmkMs = performance.now() - latexmkStartedAt;
-  const basename = path.basename(mainFile, ".tex");
+  const basename = texFileStem(mainFile);
   const cachedPdf = path.join(outDir, `${basename}.pdf`);
   const ok = processResult.code === 0 && fs.existsSync(cachedPdf);
   const diagnostics = parseCompileDiagnostics(processResult.log, ok ? "succeeded" : "failed");

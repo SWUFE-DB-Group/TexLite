@@ -4,9 +4,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/server/app.js";
+import { CollaborationService } from "../src/server/collaboration.js";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { hashPassword } from "../src/server/security.js";
@@ -82,6 +83,19 @@ describe("texLite application", () => {
       payload: { source: "This wrng source must stay in the browser." }
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("uses one collaboration size limit for the API and editable text files", async () => {
+    const publicConfig = await app.inject({ method: "GET", url: "/api/config" });
+    expect(publicConfig.json()).toMatchObject({ maxUploadSizeMB: 50, maxCollaborativeFileSizeMB: 5 });
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Large source" } });
+    const tooLarge = "x".repeat(5 * 1024 * 1024 + 1);
+    const response = await app.inject({
+      method: "PUT", url: `/api/projects/${created.json().project.id}/file`, headers: { cookie },
+      payload: { path: "large.tex", content: tooLarge }
+    });
+    expect(response.statusCode).toBe(413);
+    expect(response.json()).toMatchObject({ code: "FILE_TOO_LARGE" });
   });
 
   it("formats supported LaTeX files with the optional host formatter", async () => {
@@ -391,6 +405,25 @@ Standalone document.
     expect(invalid.json()).toMatchObject({ code: "MAIN_DOCUMENT_INVALID" });
   }, 30_000);
 
+  it("returns a retryable response when a stable compile snapshot cannot be obtained", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Busy snapshot" }
+    });
+    const projectId = created.json().project.id as string;
+    const stable = vi.spyOn(CollaborationService.prototype, "isStable").mockReturnValue(false);
+    try {
+      const response = await app.inject({
+        method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie }
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.headers["retry-after"]).toBe("1");
+      expect(response.json()).toMatchObject({ code: "COMPILE_SNAPSHOT_BUSY", retryable: true });
+      expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(projectId) as { count: number }).count).toBe(0);
+    } finally {
+      stable.mockRestore();
+    }
+  });
+
   it("creates folders and moves files and directories while preserving linked paths", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Organized" } });
     const project = created.json().project;
@@ -676,6 +709,7 @@ Another UniqueTerm appears here.
     expect(adminMetrics.json()).toMatchObject({
       compileQueue: { concurrency: 1 },
       collaboration: expect.objectContaining({ rooms: expect.any(Number), sessions: expect.any(Number) }),
+      caches: { completions: expect.any(Object), outlines: expect.any(Object) },
       durationsMs: expect.any(Object)
     });
     const username = `metrics-user-${randomUUID().slice(0, 8)}`;
@@ -1002,6 +1036,29 @@ Second version.
     expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_state WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(0);
     const missing = await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } });
     expect(missing.statusCode).toBe(404);
+  });
+
+  it("allows an administrator's effective owner permission to delete another user's project", async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const username = `admin-delete-owner-${suffix}`;
+    const createdUser = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username, displayName: "Admin Delete Owner", password: "owner-password", canCreateProjects: true }
+    });
+    const ownerId = createdUser.json().user.id as string;
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "owner-password" } });
+    const ownerCookie = login.headers["set-cookie"]!.split(";")[0];
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: ownerCookie }, payload: { name: "Administrator cleanup" }
+    });
+    const projectId = created.json().project.id as string;
+
+    const deleted = await app.inject({ method: "DELETE", url: `/api/projects/${projectId}`, headers: { cookie } });
+    expect(deleted.statusCode).toBe(200);
+    expect(fs.existsSync(path.join(config.projectsDir, projectId))).toBe(false);
+    await app.inject({
+      method: "DELETE", url: `/api/admin/users/${ownerId}`, headers: { cookie }, payload: { deleteProjects: false }
+    });
   });
 
   it("transfers ownership while retaining the former owner as an editor", async () => {

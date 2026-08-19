@@ -197,6 +197,7 @@ Important settings:
 - latex.defaultEngine, latex.allowedEngines, latex.extraArgs: compile choices available in the UI.
 - latex.compileTimeoutSeconds: timeout for one compile job.
 - latex.maxCompileJobs: global number of concurrent LaTeX processes. Jobs for the same project and root document are serialized; newer source versions supersede older queued requests. Different root documents use independent workspaces and may compile concurrently within this global limit.
+- Compilation copies a short-lived immutable source snapshot, then runs `latexmk` outside the ordinary project-operation queue. Editing and retained-PDF reads can continue; Git checkout, history restore, deletion, and compile-cache cleanup wait for active compilation to finish.
 - latex.allowProjectLatexmkrc: allow a project to supply a multi-line latexmkrc. A project rc file is executable Perl configuration and should only be enabled for trusted users.
 
 ### Effective defaults and startup validation

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { Config } from "./config.js";
+import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
 
 export interface EnvironmentCommand {
   name: string;
@@ -47,7 +48,8 @@ function commandVersion(command: string, timeoutMs: number): Promise<{
 }> {
   return new Promise((resolve) => {
     const child = spawn(command, ["--version"], {
-      env: { ...process.env, LC_ALL: "C" }, shell: false, stdio: ["ignore", "pipe", "pipe"]
+      env: { ...process.env, LC_ALL: "C" }, shell: false, detached: detachedProcessGroup(),
+      stdio: ["ignore", "pipe", "pipe"]
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
@@ -59,7 +61,7 @@ function commandVersion(command: string, timeoutMs: number): Promise<{
       clearTimeout(timer);
       resolve({ ...result, stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
     };
-    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, timeoutMs);
+    const timer = setTimeout(() => { timedOut = true; killProcessGroup(child); }, timeoutMs);
     child.stdout.on("data", (chunk: Buffer) => { if (Buffer.concat(stdout).length < 64 * 1024) stdout.push(chunk); });
     child.stderr.on("data", (chunk: Buffer) => { if (Buffer.concat(stderr).length < 64 * 1024) stderr.push(chunk); });
     child.once("error", (error) => finish({ status: null, error: error.message }));

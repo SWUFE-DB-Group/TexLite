@@ -4,7 +4,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import type { Config } from "../src/server/config.js";
-import { openDatabase } from "../src/server/db.js";
+import { openDatabase, pruneExpiredSessions } from "../src/server/db.js";
 
 describe("database migrations", () => {
   it("preserves legacy project tags and initializes modification metadata", () => {
@@ -65,8 +65,17 @@ describe("database migrations", () => {
         .toEqual({ name: "project_git_settings" });
       expect(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project_history_state'").get())
         .toEqual({ name: "project_history_state" });
+      expect(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'sessions_expires_at'").get())
+        .toEqual({ name: "sessions_expires_at" });
       expect(migrated.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
         .toEqual({ main_file: "main.tex" });
+
+      migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
+        .run("expired-session", "user-1", "2025-01-03T00:00:00.000Z", "2025-01-01T00:00:00.000Z");
+      migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
+        .run("active-session", "user-1", "2025-01-05T00:00:00.000Z", "2025-01-01T00:00:00.000Z");
+      expect(pruneExpiredSessions(migrated, "2025-01-04T00:00:00.000Z")).toBe(1);
+      expect(migrated.prepare("SELECT id FROM sessions ORDER BY id").all()).toEqual([{ id: "active-session" }]);
     } finally {
       migrated.close();
       fs.rmSync(root, { recursive: true, force: true });

@@ -16,7 +16,7 @@ import {
 } from "y-protocols/awareness";
 import type { Config } from "./config.js";
 import type { DatabaseConnection, UserRow } from "./db.js";
-import { listProjectFiles, outputRoot, resolveSourcePath, safeRelativePath } from "./files.js";
+import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, type FileEntry } from "./files.js";
 import { accessibleProject, canEdit } from "./projects.js";
 import { reanchorFileComments } from "./anchors.js";
 
@@ -25,6 +25,8 @@ const MESSAGE_AWARENESS = 1;
 const MESSAGE_QUERY_AWARENESS = 3;
 const MESSAGE_FLUSH = 4;
 const MESSAGE_PROTOCOL = 5;
+const MESSAGE_MAINTENANCE = 6;
+const MESSAGE_PERMISSION = 7;
 const SOURCE_PREFIX = "source:";
 const MAX_PROJECT_SESSIONS = 10;
 const MAX_COLLABORATIVE_FILE_BYTES = 5 * 1024 * 1024;
@@ -67,6 +69,16 @@ interface Room {
   epoch: string;
   persistedRevision: number;
   persistedAt: string;
+  maintenanceReason: string | null;
+  snapshotBarrierDepth: number;
+  snapshotFlushPending: boolean;
+}
+
+interface RoomBootstrap {
+  doc: Y.Doc;
+  recoveredState: boolean;
+  epoch: string;
+  files: Array<{ path: string; content: string }>;
 }
 
 export interface CollaborationSaveReceipt {
@@ -92,6 +104,12 @@ export interface SharedCompileState {
 
 export class CollaborationService {
   private readonly rooms = new Map<string, Room>();
+  private readonly maintenanceProjects = new Map<string, string>();
+  private readonly roomInitializations = new Map<string, Promise<Room>>();
+  private readonly projectGenerations = new Map<string, number>();
+  private readonly snapshotBarriers = new Map<string, number>();
+  private readonly pendingConnections = new Map<string, number>();
+  private closed = false;
 
   constructor(
     private readonly config: Config,
@@ -99,54 +117,113 @@ export class CollaborationService {
     private readonly onPersist?: (event: CollaborationPersistEvent) => void
   ) {}
 
-  connect(socket: WebSocket, projectId: string, user: UserRow): void {
+  async connect(socket: WebSocket, projectId: string, user: UserRow): Promise<void> {
+    if (this.closed) {
+      socket.close(1012, "Collaboration service is shutting down");
+      return;
+    }
     const project = accessibleProject(this.db, projectId, user);
     if (!project) {
       socket.close(1008, "Project access denied");
       return;
     }
-    const room = this.getRoom(projectId);
-    if (room.connections.size >= MAX_PROJECT_SESSIONS) {
+    const maintenanceReason = this.maintenanceProjects.get(projectId);
+    if (maintenanceReason) {
+      socket.close(1013, `Project is temporarily unavailable: ${maintenanceReason}`);
+      return;
+    }
+    const existing = this.rooms.get(projectId);
+    if (existing) {
+      this.attachConnection(existing, socket, user);
+      return;
+    }
+    const generation = this.projectGeneration(projectId);
+    const pendingKey = this.pendingConnectionKey(projectId, generation);
+    const pending = this.pendingConnections.get(pendingKey) ?? 0;
+    if (pending >= MAX_PROJECT_SESSIONS) {
       socket.close(1013, "Project collaboration room is full");
       return;
     }
-    if (room.cleanupTimer) {
+    this.pendingConnections.set(pendingKey, pending + 1);
+    const initialization = this.roomInitializations.get(projectId) ?? this.initializeRoom(projectId, generation);
+    try {
+      const room = await initialization;
+      if (this.projectGeneration(projectId) !== generation) {
+        socket.close(1013, "Collaboration state changed; retry required");
+      } else if (socket.readyState === WebSocket.OPEN) this.attachConnection(room, socket, user);
+      else socket.close(1000, "Collaboration connection closed during initialization");
+    } catch {
+      socket.close(1011, "Unable to initialize collaboration room");
+    } finally {
+      const count = (this.pendingConnections.get(pendingKey) ?? 1) - 1;
+      if (count > 0) this.pendingConnections.set(pendingKey, count);
+      else this.pendingConnections.delete(pendingKey);
+    }
+  }
+
+  /** Wait for an in-flight cold-room load before reading or replacing sources. */
+  async waitForReady(projectId: string): Promise<void> {
+    const initialization = this.roomInitializations.get(projectId);
+    if (!initialization) return;
+    try { await initialization; } catch { /* Source files remain authoritative if recovery fails. */ }
+  }
+
+  flushProject(projectId: string): CollaborationSaveReceipt | null {
+    const room = this.rooms.get(projectId);
+    return room ? this.flushRoom(room) : null;
+  }
+
+  /**
+   * Prevent collaboration autosaves from changing the source tree while a
+   * compiler is copying an immutable snapshot. Yjs updates remain accepted in
+   * memory and are flushed when the outermost barrier is released.
+   */
+  beginSnapshotBarrier(projectId: string): void {
+    const depth = (this.snapshotBarriers.get(projectId) ?? 0) + 1;
+    this.snapshotBarriers.set(projectId, depth);
+    const room = this.rooms.get(projectId);
+    if (!room) return;
+    room.snapshotBarrierDepth = depth;
+    if (depth === 1 && room.cleanupTimer) {
       clearTimeout(room.cleanupTimer);
       room.cleanupTimer = null;
     }
-    const connection: Connection = {
-      socket, user, awarenessClientId: null, protocolVerified: false, protocolTimer: null
-    };
-    room.connections.add(connection);
-    socket.binaryType = "arraybuffer";
-    socket.on("message", (data) => {
-      try {
-        this.handleMessage(room, connection, rawData(data));
-      } catch {
-        socket.close(1003, "Invalid collaboration message");
-      }
-    });
-    socket.on("close", () => this.disconnect(room, connection));
-    socket.on("error", () => this.disconnect(room, connection));
-    connection.protocolTimer = setTimeout(() => {
-      if (!connection.protocolVerified) socket.close(4001, "Reload required");
-    }, 10_000);
-    send(socket, protocolMessage(room.epoch));
   }
 
-  flushProject(projectId: string): void {
+  /**
+   * Release a snapshot barrier and persist edits that arrived while the
+   * source tree was protected. The returned receipt describes the post-barrier
+   * disk revision, so callers can reject a stale snapshot and retry.
+   */
+  endSnapshotBarrier(projectId: string): CollaborationSaveReceipt | null {
+    const depth = this.snapshotBarriers.get(projectId) ?? 0;
+    if (depth <= 0) return this.rooms.get(projectId) ? this.currentReceipt(this.rooms.get(projectId)!) : null;
+    const nextDepth = depth - 1;
+    if (nextDepth > 0) {
+      this.snapshotBarriers.set(projectId, nextDepth);
+      const nestedRoom = this.rooms.get(projectId);
+      if (nestedRoom) nestedRoom.snapshotBarrierDepth = nextDepth;
+      return nestedRoom ? this.currentReceipt(nestedRoom) : null;
+    }
+    this.snapshotBarriers.delete(projectId);
     const room = this.rooms.get(projectId);
-    if (room) this.flushRoom(room);
+    if (!room) return null;
+    room.snapshotBarrierDepth = 0;
+    const shouldFlush = room.snapshotFlushPending || room.dirtyPaths.size > 0;
+    room.snapshotFlushPending = false;
+    const receipt = shouldFlush ? this.flushRoom(room) : this.currentReceipt(room);
+    this.scheduleRoomCleanup(room);
+    return receipt;
   }
 
-  stats(): { rooms: number; sessions: number; dirtyFiles: number } {
+  stats(): { rooms: number; sessions: number; dirtyFiles: number; initializing: number } {
     let sessions = 0;
     let dirtyFiles = 0;
     for (const room of this.rooms.values()) {
       sessions += room.connections.size;
       dirtyFiles += room.dirtyPaths.size;
     }
-    return { rooms: this.rooms.size, sessions, dirtyFiles };
+    return { rooms: this.rooms.size, sessions, dirtyFiles, initializing: this.roomInitializations.size };
   }
 
   updateFile(projectId: string, filePathInput: string, content: string, userId: string): void {
@@ -158,6 +235,81 @@ export class CollaborationService {
     room.doc.transact(() => replaceText(this.trackedText(room, filePath), content), HTTP_ORIGIN);
     room.lastModifiedUserId = userId;
     this.bumpFiles(room, { kind: "update", path: filePath });
+  }
+
+  /**
+   * Mark a project as undergoing an exclusive source-tree operation. Existing
+   * clients are told to stop editing and are disconnected when the operation
+   * completes by endMaintenance(), which forces a fresh Yjs epoch.
+   */
+  beginMaintenance(projectId: string, reason: string): void {
+    const normalizedReason = reason.slice(0, 200);
+    const existingMaintenance = this.maintenanceProjects.get(projectId);
+    if (existingMaintenance) throw new Error("Project is already undergoing a maintenance operation");
+    const room = this.rooms.get(projectId);
+    if (room?.maintenanceReason) throw new Error("Project is already undergoing a maintenance operation");
+    this.maintenanceProjects.set(projectId, normalizedReason);
+    if (!room) return;
+    room.maintenanceReason = normalizedReason;
+    const message = maintenanceMessage(room.maintenanceReason);
+    for (const connection of room.connections) {
+      send(connection.socket, message);
+      // Close immediately after the notice. This prevents local edits from
+      // accumulating while a source-tree replacement is in flight; the epoch
+      // reset in endMaintenance will make the client reload authoritative data.
+      connection.socket.close(4002, `Project maintenance: ${normalizedReason}`);
+    }
+  }
+
+  endMaintenance(projectId: string): void {
+    this.maintenanceProjects.delete(projectId);
+    const room = this.rooms.get(projectId);
+    if (room) room.maintenanceReason = null;
+    // A project-level replacement cannot safely merge edits made while the
+    // operation was in flight. Resetting the epoch makes every client reload
+    // the authoritative source tree instead of replaying stale local drafts.
+    this.resetProject(projectId);
+  }
+
+  notifyPermissionChanged(projectId: string, userId: string, permission: "read" | "edit" | "owner" | "revoked"): void {
+    const room = this.rooms.get(projectId);
+    if (!room) return;
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_PERMISSION);
+    encoding.writeVarString(encoder, userId);
+    encoding.writeVarString(encoder, permission);
+    const message = encoding.toUint8Array(encoder);
+    for (const connection of room.connections) {
+      if (connection.user.id === userId) send(connection.socket, message);
+    }
+  }
+
+  currentRevision(projectId: string): number | null {
+    return this.rooms.get(projectId)?.persistedRevision ?? null;
+  }
+
+  /**
+   * Returns the current source-tree epoch.  Exclusive filesystem operations
+   * increment this value, allowing callers to cheaply distinguish a request
+   * admitted before and after a project replacement without reading files.
+   */
+  currentGeneration(projectId: string): number {
+    return this.projectGeneration(projectId);
+  }
+
+  hasPendingChanges(projectId: string): boolean {
+    return Boolean(this.rooms.get(projectId)?.dirtyPaths.size);
+  }
+
+  isMaintaining(projectId: string): boolean {
+    return this.maintenanceProjects.has(projectId);
+  }
+
+  isStable(projectId: string, revision: number | null): boolean {
+    const room = this.rooms.get(projectId);
+    return room
+      ? room.maintenanceReason === null && room.persistedRevision === revision && room.dirtyPaths.size === 0
+      : revision === null;
   }
 
   movePath(projectId: string, sourceInput: string, destinationInput: string, userId: string): void {
@@ -226,6 +378,8 @@ export class CollaborationService {
   }
 
   closeProject(projectId: string): void {
+    this.invalidateProject(projectId);
+    this.snapshotBarriers.delete(projectId);
     const room = this.rooms.get(projectId);
     if (!room) return;
     for (const connection of room.connections) connection.socket.close(1008, "Project closed");
@@ -233,6 +387,8 @@ export class CollaborationService {
   }
 
   resetProject(projectId: string): void {
+    this.invalidateProject(projectId);
+    this.snapshotBarriers.delete(projectId);
     const room = this.rooms.get(projectId);
     if (room) {
       for (const connection of room.connections) connection.socket.close(4001, "Project version changed; reload required");
@@ -243,18 +399,118 @@ export class CollaborationService {
   }
 
   destroy(): void {
+    this.closed = true;
     for (const room of [...this.rooms.values()]) this.destroyRoom(room);
+    this.roomInitializations.clear();
+    this.snapshotBarriers.clear();
+    this.pendingConnections.clear();
   }
 
-  private getRoom(projectId: string): Room {
+  private initializeRoom(projectId: string, generation: number): Promise<Room> {
     const existing = this.rooms.get(projectId);
-    if (existing) return existing;
-    const doc = new Y.Doc();
+    if (existing) return Promise.resolve(existing);
+    const pending = this.roomInitializations.get(projectId);
+    if (pending) return pending;
+    const request = this.loadRoomBootstrap(projectId)
+      .then((bootstrap) => {
+        if (this.closed || this.projectGeneration(projectId) !== generation) {
+          bootstrap.doc.destroy();
+          throw new Error("Collaboration room initialization was invalidated");
+        }
+        return this.createRoom(projectId, bootstrap);
+      })
+      .finally(() => {
+        if (this.roomInitializations.get(projectId) === request) this.roomInitializations.delete(projectId);
+      });
+    this.roomInitializations.set(projectId, request);
+    return request;
+  }
+
+  /** Read the potentially large source tree without blocking the event loop. */
+  private async loadRoomBootstrap(projectId: string): Promise<RoomBootstrap> {
+    let doc = new Y.Doc();
+    try {
+      let recoveredState = false;
+      let persistedState: Buffer | null = null;
+      try {
+        persistedState = await fs.promises.readFile(collaborationStatePath(this.config, projectId));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      if (persistedState) {
+        try {
+          Y.applyUpdate(doc, persistedState, DISK_ORIGIN);
+          recoveredState = true;
+        } catch {
+          // Malformed Yjs data is recoverable because source files remain the
+          // authority. Start with a pristine document in case applyUpdate()
+          // partially mutated the original before rejecting the payload.
+          doc.destroy();
+          doc = new Y.Doc();
+        }
+      }
+      const epoch = await collaborationEpochAsync(this.config, projectId, recoveredState);
+      const files = await this.readCollaborativeFiles(projectId);
+      return { doc, recoveredState, epoch, files };
+    } catch (error) {
+      doc.destroy();
+      throw error;
+    }
+  }
+
+  /**
+   * Recheck file metadata after reading. This closes the small race where an
+   * upload or autosave changes a file while the cold room is being hydrated.
+   */
+  private async readCollaborativeFiles(projectId: string): Promise<Array<{ path: string; content: string }>> {
+    const assertSourceRoot = async (): Promise<void> => {
+      const stats = await fs.promises.lstat(sourceRoot(this.config, projectId));
+      if (stats.isSymbolicLink()) throw new Error("Collaborative source root cannot be a symbolic link");
+      if (!stats.isDirectory()) throw new Error("Collaborative source root is not a directory");
+    };
+    let lastFailure = "Unable to obtain a stable collaborative source snapshot";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await assertSourceRoot();
+      const entries = (await listProjectFilesAsync(this.config, projectId))
+        .filter((entry) => entry.type === "file" && isCollaborativeTextFile(entry.path)
+          && (entry.size ?? 0) <= maxCollaborativeFileBytes(this.config));
+      const files: Array<{ path: string; content: string }> = [];
+      const failedPaths: string[] = [];
+      for (let offset = 0; offset < entries.length; offset += 8) {
+        const batch = entries.slice(offset, offset + 8);
+        const loaded = await Promise.all(batch.map(async (entry) => {
+          try {
+            return { path: entry.path, content: await fs.promises.readFile(resolveSourcePath(this.config, projectId, entry.path), "utf8") };
+          } catch {
+            failedPaths.push(entry.path);
+            return null;
+          }
+        }));
+        files.push(...loaded.filter((file): file is { path: string; content: string } => file !== null));
+      }
+      const currentEntries = (await listProjectFilesAsync(this.config, projectId))
+        .filter((entry) => entry.type === "file" && isCollaborativeTextFile(entry.path)
+          && (entry.size ?? 0) <= maxCollaborativeFileBytes(this.config));
+      await assertSourceRoot();
+      const before = entries.map(collaborativeEntrySignature).sort().join("\n");
+      const after = currentEntries.map(collaborativeEntrySignature).sort().join("\n");
+      if (before === after && failedPaths.length === 0) return files;
+      if (failedPaths.length) lastFailure = `Unable to read collaborative source files: ${failedPaths.join(", ")}`;
+    }
+    throw new Error(lastFailure);
+  }
+
+  private createRoom(projectId: string, bootstrap: RoomBootstrap): Room {
+    const existing = this.rooms.get(projectId);
+    if (existing) {
+      bootstrap.doc.destroy();
+      return existing;
+    }
     const room: Room = {
       projectId,
-      doc,
-      awareness: new Awareness(doc),
-      meta: doc.getMap("texlite:meta"),
+      doc: bootstrap.doc,
+      awareness: new Awareness(bootstrap.doc),
+      meta: bootstrap.doc.getMap("texlite:meta"),
       connections: new Set(),
       awarenessOwners: new Map(),
       allowedPaths: new Set(),
@@ -265,51 +521,42 @@ export class CollaborationService {
       stateSaveTimer: null,
       cleanupTimer: null,
       lastModifiedUserId: null,
-      epoch: "",
+      epoch: bootstrap.epoch,
       persistedRevision: 0,
-      persistedAt: new Date().toISOString()
+      persistedAt: new Date().toISOString(),
+      maintenanceReason: null,
+      snapshotBarrierDepth: this.snapshotBarriers.get(projectId) ?? 0,
+      snapshotFlushPending: false
     };
     room.awareness.setLocalState(null);
-    const persistedState = collaborationStatePath(this.config, projectId);
-    let recoveredState = false;
     let recoveredDirty = false;
-    if (fs.existsSync(persistedState)) {
-      try {
-        Y.applyUpdate(doc, fs.readFileSync(persistedState), DISK_ORIGIN);
-        recoveredState = true;
-      } catch {
-        // A corrupt state file is ignored; the source files remain authoritative.
-      }
-    }
-    room.epoch = collaborationEpoch(this.config, projectId, recoveredState);
     const diskPaths = new Set<string>();
-    doc.transact(() => {
-      for (const entry of listProjectFiles(this.config, projectId)) {
-        if (entry.type !== "file" || !isCollaborativeTextFile(entry.path) || (entry.size ?? 0) > MAX_COLLABORATIVE_FILE_BYTES) continue;
-        const content = fs.readFileSync(resolveSourcePath(this.config, projectId, entry.path), "utf8");
-        diskPaths.add(entry.path);
-        room.allowedPaths.add(entry.path);
-        room.persistedContent.set(entry.path, content);
-        const name = typeName(entry.path);
-        // Yjs decodes top-level shared types lazily as AbstractType instances;
-        // the stable source: namespace identifies text more reliably than
-        // instanceof before getText() materializes the public type.
-        const hasRecoveredText = recoveredState && doc.share.has(name);
-        const text = this.trackedText(room, entry.path);
-        if (hasRecoveredText && text.toString() !== content) {
-          room.dirtyPaths.add(entry.path);
+    room.doc.transact(() => {
+      for (const file of bootstrap.files) {
+        diskPaths.add(file.path);
+        room.allowedPaths.add(file.path);
+        room.persistedContent.set(file.path, file.content);
+        const name = typeName(file.path);
+        // Yjs decodes top-level shared types lazily; the source: namespace is
+        // the stable identifier before getText() materializes the public type.
+        const hasRecoveredText = bootstrap.recoveredState && room.doc.share.has(name);
+        const text = this.trackedText(room, file.path);
+        if (hasRecoveredText && text.toString() !== file.content) {
+          room.dirtyPaths.add(file.path);
           recoveredDirty = true;
         } else {
-          replaceText(text, content);
+          replaceText(text, file.content);
         }
       }
-      for (const name of doc.share.keys()) {
+      for (const name of room.doc.share.keys()) {
         if (!name.startsWith(SOURCE_PREFIX)) continue;
         const filePath = name.slice(SOURCE_PREFIX.length);
-        if (!diskPaths.has(filePath)) replaceText(doc.getText(name), "");
+        if (!diskPaths.has(filePath)) replaceText(room.doc.getText(name), "");
       }
     }, DISK_ORIGIN);
-    doc.on("update", (update, origin) => {
+    const rejectedRecoveredPaths = this.rejectOversizedTexts(room);
+    recoveredDirty = room.dirtyPaths.size > 0;
+    room.doc.on("update", (update, origin) => {
       this.broadcast(room, syncUpdateMessage(update), origin instanceof Object && "socket" in origin ? origin as Connection : null);
       this.scheduleStateSave(room);
       if (origin !== DISK_ORIGIN && origin !== HTTP_ORIGIN && origin !== META_ORIGIN) {
@@ -333,10 +580,58 @@ export class CollaborationService {
         }
       }
     });
+    try {
+      // Persist a corrected state even when an oversized recovered document was
+      // reverted to the source file and no source write remains dirty.
+      if (recoveredDirty || rejectedRecoveredPaths.length > 0) this.flushRoom(room);
+    } catch (error) {
+      this.disposeRoom(room);
+      throw error;
+    }
     this.rooms.set(projectId, room);
-    if (recoveredDirty) this.flushRoom(room);
-    else this.persistRoomState(room);
+    // A fresh room has no unsaved Yjs state yet. Delaying state persistence
+    // avoids a large synchronous write on the first connection; subsequent
+    // updates schedule the normal atomic save.
     return room;
+  }
+
+  private attachConnection(room: Room, socket: WebSocket, user: UserRow): void {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    if (!accessibleProject(this.db, room.projectId, user)) {
+      socket.close(1008, "Project access denied");
+      return;
+    }
+    const maintenanceReason = this.maintenanceProjects.get(room.projectId);
+    if (maintenanceReason) {
+      socket.close(1013, `Project is temporarily unavailable: ${maintenanceReason}`);
+      return;
+    }
+    if (room.connections.size >= MAX_PROJECT_SESSIONS) {
+      socket.close(1013, "Project collaboration room is full");
+      return;
+    }
+    if (room.cleanupTimer) {
+      clearTimeout(room.cleanupTimer);
+      room.cleanupTimer = null;
+    }
+    const connection: Connection = {
+      socket, user, awarenessClientId: null, protocolVerified: false, protocolTimer: null
+    };
+    room.connections.add(connection);
+    socket.binaryType = "arraybuffer";
+    socket.on("message", (data) => {
+      try {
+        this.handleMessage(room, connection, rawData(data));
+      } catch {
+        socket.close(1003, "Invalid collaboration message");
+      }
+    });
+    socket.on("close", () => this.disconnect(room, connection));
+    socket.on("error", () => this.disconnect(room, connection));
+    connection.protocolTimer = setTimeout(() => {
+      if (!connection.protocolVerified) socket.close(4001, "Reload required");
+    }, 10_000);
+    send(socket, protocolMessage(room.epoch));
   }
 
   private trackedText(room: Room, filePath: string): Y.Text {
@@ -367,6 +662,9 @@ export class CollaborationService {
     }
     const decoder = decoding.createDecoder(bytes);
     const messageType = decoding.readVarUint(decoder);
+    if (room.maintenanceReason && messageType !== MESSAGE_PROTOCOL && messageType !== MESSAGE_QUERY_AWARENESS) {
+      return;
+    }
     if (messageType === MESSAGE_PROTOCOL) {
       const epoch = decoding.readVarString(decoder);
       if (epoch !== room.epoch) {
@@ -445,9 +743,7 @@ export class CollaborationService {
       removeAwarenessStates(room.awareness, [connection.awarenessClientId], connection);
       room.awarenessOwners.delete(connection.awarenessClientId);
     }
-    if (room.connections.size === 0 && !room.cleanupTimer) {
-      room.cleanupTimer = setTimeout(() => this.destroyRoom(room), ROOM_IDLE_MS);
-    }
+    this.scheduleRoomCleanup(room);
   }
 
   private sendSyncStep1(room: Room, socket: WebSocket): void {
@@ -464,6 +760,12 @@ export class CollaborationService {
 
   private broadcast(room: Room, message: Uint8Array, except: Connection | null): void {
     for (const connection of room.connections) if (connection !== except) send(connection.socket, message);
+  }
+
+  private scheduleRoomCleanup(room: Room): void {
+    if (room.connections.size === 0 && !room.cleanupTimer) {
+      room.cleanupTimer = setTimeout(() => this.destroyRoom(room), ROOM_IDLE_MS);
+    }
   }
 
   private scheduleSave(room: Room): void {
@@ -485,6 +787,7 @@ export class CollaborationService {
   private persistRoomState(room: Room): void {
     if (room.stateSaveTimer) clearTimeout(room.stateSaveTimer);
     room.stateSaveTimer = null;
+    this.rejectOversizedTexts(room);
     const target = collaborationStatePath(this.config, room.projectId);
     const temporary = `${target}.tmp`;
     fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
@@ -493,9 +796,16 @@ export class CollaborationService {
   }
 
   private flushRoom(room: Room): CollaborationSaveReceipt {
+    if (room.snapshotBarrierDepth > 0 || (this.snapshotBarriers.get(room.projectId) ?? 0) > 0) {
+      if (room.saveTimer) clearTimeout(room.saveTimer);
+      room.saveTimer = null;
+      if (room.dirtyPaths.size > 0) room.snapshotFlushPending = true;
+      return this.currentReceipt(room);
+    }
     const startedAt = performance.now();
     if (room.saveTimer) clearTimeout(room.saveTimer);
     room.saveTimer = null;
+    this.rejectOversizedTexts(room);
     this.persistRoomState(room);
     let changed = false;
     const changedPaths: string[] = [];
@@ -511,7 +821,7 @@ export class CollaborationService {
         room.dirtyPaths.delete(filePath);
         continue;
       }
-      if (Buffer.byteLength(next, "utf8") > this.config.maxUploadBytes) throw new Error(`Collaborative file exceeds upload limit: ${filePath}`);
+      if (Buffer.byteLength(next, "utf8") > maxCollaborativeFileBytes(this.config)) continue;
       const absolute = resolveSourcePath(this.config, room.projectId, filePath);
       if (!fs.existsSync(absolute)) throw new Error(`Collaborative source path disappeared: ${filePath}`);
       const temporary = `${absolute}.collaboration-${process.pid}-${randomUUID()}.tmp`;
@@ -538,8 +848,16 @@ export class CollaborationService {
       try { this.onPersist({ projectId: room.projectId, userId: room.lastModifiedUserId, paths: changedPaths, durationMs: performance.now() - startedAt }); }
       catch { /* Source durability must not depend on optional history bookkeeping. */ }
     }
-    room.persistedRevision += 1;
+    // A flush is also used as a read-side consistency barrier by compilation.
+    // Do not manufacture a new source revision for a no-op flush: otherwise
+    // two simultaneous compile admissions would observe different generations
+    // even though the project contents did not change.
+    if (changed) room.persistedRevision += 1;
     room.persistedAt = new Date().toISOString();
+    return this.currentReceipt(room);
+  }
+
+  private currentReceipt(room: Room): CollaborationSaveReceipt {
     return { revision: room.persistedRevision, persistedAt: room.persistedAt };
   }
 
@@ -549,24 +867,56 @@ export class CollaborationService {
 
   private destroyRoom(room: Room, persist = true): void {
     if (this.rooms.get(room.projectId) !== room) return;
+    if (persist) {
+      try { this.flushRoom(room); }
+      catch { try { this.persistRoomState(room); } catch { /* Keep shutdown best-effort. */ } }
+    }
+    this.disposeRoom(room);
+    this.rooms.delete(room.projectId);
+  }
+
+  private disposeRoom(room: Room): void {
     if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+    if (room.saveTimer) clearTimeout(room.saveTimer);
+    if (room.stateSaveTimer) clearTimeout(room.stateSaveTimer);
     for (const connection of room.connections) {
       if (connection.protocolTimer) clearTimeout(connection.protocolTimer);
       connection.protocolTimer = null;
     }
-    if (persist) {
-      try { this.flushRoom(room); }
-      catch { try { this.persistRoomState(room); } catch { /* Keep shutdown best-effort. */ } }
-    } else {
-      if (room.saveTimer) clearTimeout(room.saveTimer);
-      if (room.stateSaveTimer) clearTimeout(room.stateSaveTimer);
-    }
+    room.connections.clear();
+    room.awarenessOwners.clear();
     for (const [filePath, observer] of room.textObservers) {
       room.doc.getText(typeName(filePath)).unobserve(observer);
     }
     room.awareness.destroy();
     room.doc.destroy();
-    this.rooms.delete(room.projectId);
+  }
+
+  private rejectOversizedTexts(room: Room): string[] {
+    const rejected: string[] = [];
+    const limit = maxCollaborativeFileBytes(this.config);
+    for (const filePath of [...room.dirtyPaths]) {
+      const text = this.trackedText(room, filePath);
+      if (Buffer.byteLength(text.toString(), "utf8") <= limit) continue;
+      const previous = room.persistedContent.get(filePath) ?? "";
+      room.doc.transact(() => replaceText(text, previous), DISK_ORIGIN);
+      room.dirtyPaths.delete(filePath);
+      rejected.push(filePath);
+    }
+    return rejected;
+  }
+
+  private projectGeneration(projectId: string): number {
+    return this.projectGenerations.get(projectId) ?? 0;
+  }
+
+  private pendingConnectionKey(projectId: string, generation: number): string {
+    return `${projectId}\0${generation}`;
+  }
+
+  private invalidateProject(projectId: string): void {
+    this.projectGenerations.set(projectId, this.projectGeneration(projectId) + 1);
+    this.roomInitializations.delete(projectId);
   }
 }
 
@@ -578,22 +928,40 @@ export function collaborationEpochPath(config: Config, projectId: string): strin
   return path.join(outputRoot(config, projectId), ".texlite", "collaboration.epoch");
 }
 
-function collaborationEpoch(config: Config, projectId: string, recoveredState: boolean): string {
-  const target = collaborationEpochPath(config, projectId);
-  if (recoveredState && fs.existsSync(target)) {
-    const existing = fs.readFileSync(target, "utf8").trim();
-    if (/^[a-f0-9-]{36}$/i.test(existing)) return existing;
-  }
-  const epoch = randomUUID();
-  const temporary = `${target}.tmp`;
-  fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(temporary, epoch, { encoding: "utf8", mode: 0o600 });
-  fs.renameSync(temporary, target);
-  return epoch;
+export function maxCollaborativeFileBytes(config: Config): number {
+  return Math.min(config.maxUploadBytes, MAX_COLLABORATIVE_FILE_BYTES);
 }
 
-function isCollaborativeTextFile(filePath: string): boolean {
+export function isCollaborativeTextFile(filePath: string): boolean {
   return /(?:\.tex|\.bib|\.sty|\.cls|\.txt|\.md|latexmkrc)$/i.test(filePath);
+}
+
+function collaborativeEntrySignature(entry: FileEntry): string {
+  return `${entry.path}\0${entry.size ?? 0}\0${entry.mtimeMs ?? 0}`;
+}
+
+async function collaborationEpochAsync(config: Config, projectId: string, recoveredState: boolean): Promise<string> {
+  const target = collaborationEpochPath(config, projectId);
+  if (recoveredState) {
+    try {
+      const existing = (await fs.promises.readFile(target, "utf8")).trim();
+      if (/^[a-f0-9-]{36}$/i.test(existing)) return existing;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      // Generate a fresh epoch when the previous marker is missing.
+    }
+  }
+  const epoch = randomUUID();
+  const temporary = `${target}.${process.pid}-${randomUUID()}.tmp`;
+  await fs.promises.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+  try {
+    await fs.promises.writeFile(temporary, epoch, { encoding: "utf8", mode: 0o600 });
+    await fs.promises.rename(temporary, target);
+  } catch (error) {
+    await fs.promises.rm(temporary, { force: true });
+    throw error;
+  }
+  return epoch;
 }
 
 function typeName(filePath: string): string {
@@ -624,6 +992,13 @@ function protocolMessage(epoch: string): Uint8Array {
   const encoder = encoding.createEncoder();
   encoding.writeVarUint(encoder, MESSAGE_PROTOCOL);
   encoding.writeVarString(encoder, epoch);
+  return encoding.toUint8Array(encoder);
+}
+
+function maintenanceMessage(reason: string): Uint8Array {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, MESSAGE_MAINTENANCE);
+  encoding.writeVarString(encoder, reason);
   return encoding.toUint8Array(encoder);
 }
 

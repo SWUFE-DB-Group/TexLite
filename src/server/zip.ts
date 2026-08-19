@@ -3,7 +3,7 @@ import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import yauzl, { type Entry, type ZipFile } from "yauzl";
-import { safeRelativePath } from "./files.js";
+import { assertNoSymbolicLinks, safeRelativePath } from "./files.js";
 
 const MAX_ENTRIES = 1_000;
 const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
@@ -23,6 +23,7 @@ export async function extractProjectZip(buffer: Buffer, destination: string, max
   const maxTotalBytes = Math.max(MAX_TOTAL_BYTES, maxFileBytes);
   const entries = await inspectZip(buffer, maxFileBytes, maxTotalBytes);
   const prefix = commonRootPrefix(entries.filter((entry) => !entry.directory).map((entry) => entry.fileName));
+  assertNoSymbolicLinks(destination);
   fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
   const files = await extractZip(buffer, destination, prefix, maxFileBytes, maxTotalBytes);
   const mainFile = discoverMainFile(destination, files);

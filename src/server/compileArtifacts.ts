@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Config } from "./config.js";
 import { publishedCompileArtifacts } from "./compiler.js";
-import { outputRoot, resolveSourcePath, safeRelativePath, sourceRoot } from "./files.js";
+import { outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, texFileStem } from "./files.js";
 import { hasDocumentClass } from "./zip.js";
 
 export interface CompileArtifact {
@@ -23,7 +23,7 @@ export function availablePdf(
   if (!isDefault) return null;
   const retained = retainedPdfPath(config, projectId);
   if (fs.existsSync(retained)) return { path: retained, version: String(fs.statSync(retained).mtimeMs) };
-  const legacy = path.join(outputRoot(config, projectId), `${path.basename(mainFile, ".tex")}.pdf`);
+  const legacy = path.join(outputRoot(config, projectId), `${texFileStem(mainFile)}.pdf`);
   return fs.existsSync(legacy) ? { path: legacy, version: String(fs.statSync(legacy).mtimeMs) } : null;
 }
 
@@ -36,7 +36,7 @@ export function compileRunPdf(
 ): { path: string; version: string } | null {
   if (!/^[a-f0-9-]{36}$/i.test(runId)) return null;
   const output = path.join(outputRoot(config, projectId), ".texlite", "runs", runId, "output");
-  const pdf = path.join(output, `${path.basename(mainFile, ".tex")}.pdf`);
+  const pdf = path.join(output, `${texFileStem(mainFile)}.pdf`);
   if (!fs.existsSync(pdf) || !fs.statSync(pdf).isFile()) return null;
   return { path: pdf, version: runId };
 }
@@ -57,7 +57,7 @@ export function syncArtifacts(
     synctex: retainedSynctexPath(config, projectId)
   };
   if (fs.existsSync(retained.pdf) && fs.existsSync(retained.synctex)) return retained;
-  const basename = path.basename(mainFile, ".tex");
+  const basename = texFileStem(mainFile);
   const legacy = {
     source: sourceRoot(config, projectId),
     pdf: path.join(outputRoot(config, projectId), `${basename}.pdf`),

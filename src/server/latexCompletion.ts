@@ -276,6 +276,7 @@ interface CachedSymbols {
 /** Reuses extracted symbols for files whose mtime and size did not change. */
 export class LatexCompletionService {
   private readonly cache = new Map<string, Map<string, CachedSymbols>>();
+  private readonly resultCache = new Map<string, { signature: string; index: LatexCompletionIndex; touched: number }>();
   private readonly pending = new Map<string, Promise<LatexCompletionIndex>>();
 
   constructor(private readonly config: Config) {}
@@ -292,6 +293,15 @@ export class LatexCompletionService {
 
   invalidate(projectId: string): void {
     this.cache.delete(projectId);
+    this.resultCache.delete(projectId);
+  }
+
+  stats(): { cachedProjects: number; pending: number; cachedFiles: number } {
+    return {
+      cachedProjects: this.resultCache.size,
+      pending: this.pending.size,
+      cachedFiles: [...this.cache.values()].reduce((total, files) => total + files.size, 0)
+    };
   }
 
   private async buildIncremental(projectId: string): Promise<LatexCompletionIndex> {
@@ -299,6 +309,12 @@ export class LatexCompletionService {
     const projectCache = this.cache.get(projectId) ?? new Map<string, CachedSymbols>();
     this.cache.set(projectId, projectCache);
     const allEntries = (await listProjectFilesAsync(this.config, projectId)).filter((entry) => entry.type === "file").slice(0, maxIndexedFiles);
+    const signature = allEntries.map((entry) => `${entry.path}:${entry.size ?? 0}:${entry.mtimeMs ?? 0}`).sort().join("\n");
+    const cachedResult = this.resultCache.get(projectId);
+    if (cachedResult?.signature === signature) {
+      cachedResult.touched = Date.now();
+      return cachedResult.index;
+    }
     const livePaths = new Set(allEntries.map((entry) => entry.path));
     for (const cachedPath of [...projectCache.keys()]) if (!livePaths.has(cachedPath)) projectCache.delete(cachedPath);
     for (const entry of allEntries) index.files.set(entry.path, item(entry.path, "Project file", "text", "Project"));
@@ -321,10 +337,16 @@ export class LatexCompletionService {
       }
       mergeIndex(index, cached.index);
     }
-    return {
+    const result = {
       commands: sorted(index.commands), environments: sorted(index.environments), labels: sorted(index.labels),
       citations: sorted(index.citations), packages: sorted(index.packages), files: sorted(index.files)
     };
+    this.resultCache.set(projectId, { signature, index: result, touched: Date.now() });
+    if (this.resultCache.size > 64) {
+      const oldest = [...this.resultCache.entries()].sort((left, right) => left[1].touched - right[1].touched)[0];
+      if (oldest) this.resultCache.delete(oldest[0]);
+    }
+    return result;
   }
 }
 

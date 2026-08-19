@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { WebSocket, type RawData } from "ws";
 import * as Y from "yjs";
@@ -11,9 +11,9 @@ import * as decoding from "lib0/decoding";
 import * as syncProtocol from "y-protocols/sync";
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
 import { buildApp } from "../src/server/app.js";
-import { collaborationEpochPath, collaborationStatePath } from "../src/server/collaboration.js";
+import { CollaborationService, collaborationEpochPath, collaborationStatePath, maxCollaborativeFileBytes } from "../src/server/collaboration.js";
 import type { Config } from "../src/server/config.js";
-import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
+import { openDatabase, type DatabaseConnection, type UserRow } from "../src/server/db.js";
 import { hashPassword } from "../src/server/security.js";
 
 const REMOTE_ORIGIN = Symbol("remote");
@@ -21,6 +21,7 @@ const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 const MESSAGE_FLUSH = 4;
 const MESSAGE_PROTOCOL = 5;
+const MESSAGE_PERMISSION = 7;
 
 describe("project collaboration", () => {
   let root: string;
@@ -120,6 +121,8 @@ describe("project collaboration", () => {
       const receipt = await owner.flush();
       expect(receipt.revision).toBeGreaterThan(0);
       expect(new Date(receipt.persistedAt).toISOString()).toBe(receipt.persistedAt);
+      const repeatedReceipt = await owner.flush();
+      expect(repeatedReceipt.revision).toBe(receipt.revision);
       const diskContent = fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8");
       expect(diskContent).toBe(ownerText.toString());
       const persistedDoc = new Y.Doc();
@@ -132,6 +135,19 @@ describe("project collaboration", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(ownerText.toString()).toBe(acceptedContent);
       expect(editingPeer.doc.getText("source:main.tex").toString()).toBe(acceptedContent);
+
+      const permissionChange = await app.inject({
+        method: "PUT", url: `/api/projects/${projectId}/members/${editor.id}`,
+        headers: { cookie: adminCookie }, payload: { permission: "read" }
+      });
+      expect(permissionChange.statusCode).toBe(200);
+      await waitFor(() => editingPeer.permissionChanges.includes("read"));
+      const permissionRestore = await app.inject({
+        method: "PUT", url: `/api/projects/${projectId}/members/${editor.id}`,
+        headers: { cookie: adminCookie }, payload: { permission: "edit" }
+      });
+      expect(permissionRestore.statusCode).toBe(200);
+      await waitFor(() => editingPeer.permissionChanges.includes("edit"));
 
       const staleAppendix = owner.doc.getText("source:appendix.tex");
       expect(staleAppendix.toString()).toContain("Appendix");
@@ -212,6 +228,216 @@ describe("project collaboration", () => {
       expect(receipt.revision).toBeGreaterThan(0);
     } finally { peer.destroy(); }
   });
+
+  it("repairs an oversized recovered Yjs text from the authoritative source file", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Oversized recovery" }
+    });
+    const projectId = created.json().project.id as string;
+    const sourcePath = path.join(config.projectsDir, projectId, "source", "main.tex");
+    const sourceContent = fs.readFileSync(sourcePath, "utf8");
+    const persisted = new Y.Doc();
+    persisted.getText("source:main.tex").insert(0, "x".repeat(maxCollaborativeFileBytes(config) + 1));
+    fs.mkdirSync(path.dirname(collaborationStatePath(config, projectId)), { recursive: true });
+    fs.writeFileSync(collaborationStatePath(config, projectId), Y.encodeStateAsUpdate(persisted));
+    fs.writeFileSync(collaborationEpochPath(config, projectId), randomUUID());
+    persisted.destroy();
+
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      await waitFor(() => peer.doc.getText("source:main.tex").toString() === sourceContent);
+      const repaired = new Y.Doc();
+      Y.applyUpdate(repaired, fs.readFileSync(collaborationStatePath(config, projectId)));
+      expect(repaired.getText("source:main.tex").toString()).toBe(sourceContent);
+      repaired.destroy();
+    } finally { peer.destroy(); }
+  });
+
+  it("rejects an oversized live edit and restores the last persisted source", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Oversized live edit" }
+    });
+    const projectId = created.json().project.id as string;
+    const sourcePath = path.join(config.projectsDir, projectId, "source", "main.tex");
+    const sourceContent = fs.readFileSync(sourcePath, "utf8");
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      const text = peer.doc.getText("source:main.tex");
+      peer.doc.transact(() => {
+        text.delete(0, text.length);
+        text.insert(0, "x".repeat(maxCollaborativeFileBytes(config) + 1));
+      });
+      await peer.flush();
+      await waitFor(() => text.toString() === sourceContent, 10_000);
+      expect(fs.readFileSync(sourcePath, "utf8")).toBe(sourceContent);
+    } finally { peer.destroy(); }
+  }, 15_000);
+
+  it("does not create a room when a collaborative source file cannot be read", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Unreadable source" }
+    });
+    const projectId = created.json().project.id as string;
+    const sourcePath = path.join(config.projectsDir, projectId, "source", "main.tex");
+    const service = new CollaborationService(config, db);
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(adminId) as UserRow;
+    let closeCode: number | null = null;
+    const originalReadFile = fs.promises.readFile.bind(fs.promises);
+    vi.spyOn(fs.promises, "readFile").mockImplementation(((file: fs.PathLike, ...args: unknown[]) => {
+      if (path.resolve(String(file)) === path.resolve(sourcePath)) {
+        return Promise.reject(Object.assign(new Error("simulated read failure"), { code: "EIO" }));
+      }
+      return (originalReadFile as (...parameters: unknown[]) => unknown)(file, ...args);
+    }) as never);
+    try {
+      const socket = {
+        readyState: WebSocket.OPEN,
+        close: (code: number) => { closeCode = code; }
+      } as unknown as WebSocket;
+      await service.connect(socket, projectId, user);
+      expect(closeCode).toBe(1011);
+      expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
+    } finally {
+      vi.restoreAllMocks();
+      service.destroy();
+    }
+  });
+
+  it("does not treat a missing source root as an empty collaborative project", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Missing source root" }
+    });
+    const projectId = created.json().project.id as string;
+    const rootPath = path.join(config.projectsDir, projectId, "source");
+    const hiddenPath = `${rootPath}-temporarily-missing`;
+    const recovered = new Y.Doc();
+    recovered.getText("source:main.tex").insert(0, "recovered draft must remain durable");
+    fs.mkdirSync(path.dirname(collaborationStatePath(config, projectId)), { recursive: true });
+    const durableState = Buffer.from(Y.encodeStateAsUpdate(recovered));
+    fs.writeFileSync(collaborationStatePath(config, projectId), durableState);
+    fs.writeFileSync(collaborationEpochPath(config, projectId), randomUUID());
+    recovered.destroy();
+    const service = new CollaborationService(config, db);
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(adminId) as UserRow;
+    let closeCode: number | null = null;
+    fs.renameSync(rootPath, hiddenPath);
+    try {
+      const socket = {
+        readyState: WebSocket.OPEN,
+        close: (code: number) => { closeCode = code; }
+      } as unknown as WebSocket;
+      await service.connect(socket, projectId, user);
+      expect(closeCode).toBe(1011);
+      expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
+      expect(fs.readFileSync(collaborationStatePath(config, projectId))).toEqual(durableState);
+    } finally {
+      fs.renameSync(hiddenPath, rootPath);
+      service.destroy();
+    }
+  });
+
+  it("fails cold initialization on a collaboration-state I/O error", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "State read failure" }
+    });
+    const projectId = created.json().project.id as string;
+    const statePath = collaborationStatePath(config, projectId);
+    const service = new CollaborationService(config, db);
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(adminId) as UserRow;
+    const originalReadFile = fs.promises.readFile.bind(fs.promises);
+    vi.spyOn(fs.promises, "readFile").mockImplementation(((file: fs.PathLike, ...args: unknown[]) => {
+      if (path.resolve(String(file)) === path.resolve(statePath)) {
+        return Promise.reject(Object.assign(new Error("simulated state I/O failure"), { code: "EIO" }));
+      }
+      return (originalReadFile as (...parameters: unknown[]) => unknown)(file, ...args);
+    }) as never);
+    let closeCode: number | null = null;
+    try {
+      const socket = {
+        readyState: WebSocket.OPEN,
+        close: (code: number) => { closeCode = code; }
+      } as unknown as WebSocket;
+      await service.connect(socket, projectId, user);
+      expect(closeCode).toBe(1011);
+      expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
+    } finally {
+      vi.restoreAllMocks();
+      service.destroy();
+    }
+  });
+
+  it("invalidates a room initialization that races with project reset", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Initialization race" }
+    });
+    const projectId = created.json().project.id as string;
+    const service = new CollaborationService(config, db);
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(adminId) as UserRow;
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const loadStarted = new Promise<void>((resolve) => { started = resolve; });
+    const originalLoad = (service as unknown as { loadRoomBootstrap: (id: string) => Promise<unknown> }).loadRoomBootstrap.bind(service);
+    vi.spyOn(service as unknown as { loadRoomBootstrap: (id: string) => Promise<unknown> }, "loadRoomBootstrap")
+      .mockImplementation(async (id) => {
+        started();
+        await gate;
+        return originalLoad(id);
+      });
+    let closeCode: number | null = null;
+    const socket = {
+      readyState: WebSocket.OPEN,
+      close: (code: number) => { closeCode = code; }
+    } as unknown as WebSocket;
+    try {
+      const connecting = service.connect(socket, projectId, user);
+      await loadStarted;
+      service.resetProject(projectId);
+      release();
+      await connecting;
+      expect(closeCode).toBe(1011);
+      expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
+    } finally {
+      vi.restoreAllMocks();
+      service.destroy();
+    }
+  });
+
+  it("closes active sessions while a project-wide replacement replaces the source tree", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Exclusive replacement" }
+    });
+    const projectId = created.json().project.id as string;
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      const response = await app.inject({
+        method: "POST", url: `/api/projects/${projectId}/search/replace`, headers: { cookie: adminCookie },
+        payload: { query: "Start writing", replacement: "Start collaborating" }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ replacements: 1, files: ["main.tex"] });
+      await waitFor(() => !peer.connected);
+      expect(fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8"))
+        .toContain("Start collaborating");
+    } finally { peer.destroy(); }
+  });
+
+  it("keeps active sessions connected when an exclusive move fails validation", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Invalid move" }
+    });
+    const projectId = created.json().project.id as string;
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      const response = await app.inject({
+        method: "PATCH", url: `/api/projects/${projectId}/path`, headers: { cookie: adminCookie },
+        payload: { source: "missing.tex", destinationDirectory: "" }
+      });
+      expect(response.statusCode).toBe(404);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(peer.connected).toBe(true);
+    } finally { peer.destroy(); }
+  });
 });
 
 interface PeerUser { id: string; username: string; name: string }
@@ -220,11 +446,16 @@ class TestPeer {
   readonly doc = new Y.Doc();
   readonly awareness = new Awareness(this.doc);
   pauseUpdates = false;
+  readonly permissionChanges: string[] = [];
   private socket: WebSocket | null = null;
   private readonly queuedUpdates: Uint8Array[] = [];
   private syncResolve: (() => void) | null = null;
   private readonly synced = new Promise<void>((resolve) => { this.syncResolve = resolve; });
   private readonly flushRequests = new Map<string, (receipt: { revision: number; persistedAt: string }) => void>();
+
+  get connected(): boolean {
+    return this.socket?.readyState === WebSocket.OPEN;
+  }
 
   private constructor(private readonly user: PeerUser) {
     this.doc.on("update", (update, origin) => {
@@ -324,6 +555,10 @@ class TestPeer {
       syncProtocol.writeSyncStep1(sync, this.doc);
       this.send(encoding.toUint8Array(sync));
       this.send(awarenessMessage(encodeAwarenessUpdate(this.awareness, [this.doc.clientID])));
+    } else if (messageType === MESSAGE_PERMISSION) {
+      const userId = decoding.readVarString(decoder);
+      const permission = decoding.readVarString(decoder);
+      if (userId === this.user.id) this.permissionChanges.push(permission);
     }
   }
 

@@ -15,6 +15,8 @@ const COLORS = [
 ] as const;
 const MESSAGE_FLUSH = 4;
 const MESSAGE_PROTOCOL = 5;
+const MESSAGE_MAINTENANCE = 6;
+const MESSAGE_PERMISSION = 7;
 
 export type CollaborationStatus = "connecting" | "connected" | "disconnected";
 
@@ -87,6 +89,7 @@ export class ProjectCollaboration {
   private destroyed = false;
   private localDraftReady = false;
   private readonly draftListeners = new Set<() => void>();
+  private readonly permissionListeners = new Set<(permission: Project["permission"] | "revoked") => void>();
   private readonly flushRequests = new Map<string, { resolve: (receipt: CollaborationSaveReceipt) => void; reject: (error: Error) => void; timer: number }>();
 
   constructor(readonly projectId: string, private readonly user: User) {
@@ -147,6 +150,32 @@ export class ProjectCollaboration {
       encoding.writeVarUint8Array(awareness, encodeAwarenessUpdate(this.awareness, [this.doc.clientID]));
       socket.send(encoding.toUint8Array(awareness));
     };
+    this.provider.messageHandlers[MESSAGE_PERMISSION] = (_encoder, decoder) => {
+      const userId = decoding.readVarString(decoder);
+      const permission = decoding.readVarString(decoder);
+      if (userId !== this.user.id) return;
+      if (permission === "revoked") {
+        this.rejectFlushes(new Error("Project access revoked"));
+        this.provider.disconnect();
+        for (const listener of this.permissionListeners) listener("revoked");
+        return;
+      }
+      if (permission !== "read" && permission !== "edit" && permission !== "owner") return;
+      const previous = this.permission;
+      this.setPermission(permission, true);
+      if (previous !== permission && permission === "read") {
+        // A draft created while the user had write access must not be replayed
+        // after a permission downgrade. Reload after removing that local data
+        // so the server's current source tree becomes authoritative.
+        void this.persistence.clearData().finally(() => window.location.reload());
+      }
+    };
+    this.provider.messageHandlers[MESSAGE_MAINTENANCE] = (_encoder, decoder) => {
+      // The server closes the socket immediately after this notice. Consuming
+      // the message avoids y-websocket treating the custom protocol as an
+      // unknown packet while the page transitions to a fresh epoch.
+      decoding.readVarString(decoder);
+    };
     this.provider.on("status", ({ status }) => {
       if (status === "disconnected") this.rejectFlushes(new Error("Collaboration connection closed"));
     });
@@ -197,15 +226,25 @@ export class ProjectCollaboration {
     return this.localDraftReady;
   }
 
+  get currentPermission(): Project["permission"] {
+    return this.permission;
+  }
+
   onDraftReady(listener: () => void): () => void {
     this.draftListeners.add(listener);
     if (this.localDraftReady) listener();
     return () => this.draftListeners.delete(listener);
   }
 
-  setPermission(permission: Project["permission"]): void {
+  onPermissionChanged(listener: (permission: Project["permission"] | "revoked") => void): () => void {
+    this.permissionListeners.add(listener);
+    return () => this.permissionListeners.delete(listener);
+  }
+
+  setPermission(permission: Project["permission"], notify = false): void {
     this.permission = permission;
     this.updateLocalAwareness();
+    if (notify) for (const listener of this.permissionListeners) listener(permission);
   }
 
   setActiveFile(filePath: string): void {

@@ -4,6 +4,7 @@ export interface SiteConfig {
   allowedEngines?: Array<"pdflatex" | "xelatex" | "lualatex">;
   allowProjectLatexmkrc?: boolean;
   maxUploadSizeMB?: number;
+  maxCollaborativeFileSizeMB?: number;
 }
 
 export interface User {

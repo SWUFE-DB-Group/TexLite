@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
 
 export type LatexFormatterName = "tex-fmt";
 
@@ -71,6 +72,7 @@ function runCommand(command: string, args: string[], input: string, cwd: string,
         cwd,
         env: { ...process.env, LC_ALL: "C" },
         shell: false,
+        detached: detachedProcessGroup(),
         stdio: ["pipe", "pipe", "pipe"]
       });
     } catch (error) {
@@ -102,7 +104,7 @@ function runCommand(command: string, args: string[], input: string, cwd: string,
     };
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      killProcessGroup(child);
     }, timeoutMs);
     child.stdout.on("data", (chunk: Buffer) => {
       if (outputTooLarge || stdoutBytes >= 64 * 1024 * 1024) return;
@@ -112,7 +114,7 @@ function runCommand(command: string, args: string[], input: string, cwd: string,
       stdoutBytes += bytes.byteLength;
       if (chunk.byteLength > remaining) {
         outputTooLarge = true;
-        child.kill("SIGKILL");
+        killProcessGroup(child);
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {

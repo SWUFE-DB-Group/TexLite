@@ -7,6 +7,7 @@ export interface ProjectSearchOptions {
   query: string;
   caseSensitive: boolean;
   wholeWord: boolean;
+  maxFileBytes?: number;
 }
 
 export interface ProjectSearchMatch {
@@ -82,6 +83,12 @@ export async function replaceProject(config: Config, projectId: string, options:
     let count = 0;
     const content = previous.replace(pattern, () => { count += 1; return replacement; });
     if (!count || content === previous) continue;
+    if (options.maxFileBytes !== undefined && Buffer.byteLength(content, "utf8") > options.maxFileBytes) {
+      await Promise.allSettled(staged.map((entry) => fs.promises.rm(entry.temporary, { force: true })));
+      throw Object.assign(new Error(`Replacement would exceed the ${Math.floor(options.maxFileBytes / 1024 / 1024)} MB collaborative text limit`), {
+        code: "FILE_TOO_LARGE", statusCode: 413
+      });
+    }
     const temporary = `${absolute}.search-${process.pid}-${Date.now()}-${staged.length}.tmp`;
     await fs.promises.writeFile(temporary, content, { encoding: "utf8", mode: 0o600 });
     staged.push({ path: entry.path, absolute, temporary, previous, content, count });

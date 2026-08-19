@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Config } from "./config.js";
-import { resolveSourcePath, safeRelativePath } from "./files.js";
+import { listProjectFilesAsync, resolveSourcePath, safeRelativePath } from "./files.js";
 
 export interface ProjectOutlineItem {
   path: string;
@@ -41,6 +41,88 @@ export function buildProjectOutline(config: Config, projectId: string, mainFileI
   return result;
 }
 
+/** Async outline builder used by the HTTP path so large projects do not block the event loop. */
+export async function buildProjectOutlineAsync(config: Config, projectId: string, mainFileInput: string): Promise<ProjectOutlineItem[]> {
+  const mainFile = safeRelativePath(mainFileInput);
+  const result: ProjectOutlineItem[] = [];
+  const visited = new Set<string>();
+  const visit = async (filePath: string): Promise<void> => {
+    if (visited.has(filePath) || visited.size >= 200) return;
+    visited.add(filePath);
+    let stat: fs.Stats;
+    try { stat = await fs.promises.stat(resolveSourcePath(config, projectId, filePath)); }
+    catch { return; }
+    if (!stat.isFile() || stat.size > 3 * 1024 * 1024) return;
+    let content: string;
+    try { content = stripCommentsPreserveLines(await fs.promises.readFile(resolveSourcePath(config, projectId, filePath), "utf8")); }
+    catch { return; }
+    const lineStarts = sourceLineStarts(content);
+    const pattern = new RegExp(commandPattern.source, commandPattern.flags);
+    for (const command of content.matchAll(pattern)) {
+      const start = (command.index ?? 0) + command[0].length;
+      const argument = balancedArgument(content, start);
+      if (!argument) continue;
+      if (command[1]) {
+        result.push({ path: filePath, line: lineAtOffset(lineStarts, command.index ?? 0), level: levels[command[1]], title: cleanTitle(argument.value) });
+        continue;
+      }
+      const included = await resolveIncludedFileAsync(config, projectId, filePath, argument.value);
+      if (included) await visit(included);
+    }
+  };
+  await visit(mainFile);
+  return result;
+}
+
+/**
+ * Caches the parsed outline by project tree metadata and main document. The
+ * pending map also coalesces simultaneous requests from multiple browser
+ * sessions opening the same project.
+ */
+export class ProjectOutlineService {
+  private readonly cache = new Map<string, { signature: string; outline: ProjectOutlineItem[]; touched: number }>();
+  private readonly pending = new Map<string, Promise<ProjectOutlineItem[]>>();
+
+  constructor(private readonly config: Config) {}
+
+  build(projectId: string, mainFileInput: string): Promise<ProjectOutlineItem[]> {
+    const mainFile = safeRelativePath(mainFileInput);
+    const key = `${projectId}\0${mainFile}`;
+    const existing = this.pending.get(key);
+    if (existing) return existing;
+    const request = this.buildCached(projectId, mainFile, key).finally(() => {
+      if (this.pending.get(key) === request) this.pending.delete(key);
+    });
+    this.pending.set(key, request);
+    return request;
+  }
+
+  invalidate(projectId: string): void {
+    for (const key of this.cache.keys()) if (key.startsWith(`${projectId}\0`)) this.cache.delete(key);
+  }
+
+  stats(): { cachedOutlines: number; pending: number } {
+    return { cachedOutlines: this.cache.size, pending: this.pending.size };
+  }
+
+  private async buildCached(projectId: string, mainFile: string, key: string): Promise<ProjectOutlineItem[]> {
+    const entries = await listProjectFilesAsync(this.config, projectId);
+    const signature = entries.map((entry) => `${entry.type}:${entry.path}:${entry.size ?? 0}:${entry.mtimeMs ?? 0}`).sort().join("\n");
+    const cached = this.cache.get(key);
+    if (cached?.signature === signature) {
+      cached.touched = Date.now();
+      return cached.outline;
+    }
+    const outline = await buildProjectOutlineAsync(this.config, projectId, mainFile);
+    this.cache.set(key, { signature, outline, touched: Date.now() });
+    if (this.cache.size > 64) {
+      const oldest = [...this.cache.entries()].sort((left, right) => left[1].touched - right[1].touched)[0];
+      if (oldest) this.cache.delete(oldest[0]);
+    }
+    return outline;
+  }
+}
+
 function resolveIncludedFile(config: Config, projectId: string, currentFile: string, value: string): string | null {
   const raw = value.trim();
   if (!raw || /[\\#]/.test(raw)) return null;
@@ -50,6 +132,21 @@ function resolveIncludedFile(config: Config, projectId: string, currentFile: str
     try {
       const safe = safeRelativePath(candidate);
       if (fs.existsSync(resolveSourcePath(config, projectId, safe))) return safe;
+    } catch { /* Ignore includes outside the project. */ }
+  }
+  return null;
+}
+
+async function resolveIncludedFileAsync(config: Config, projectId: string, currentFile: string, value: string): Promise<string | null> {
+  const raw = value.trim();
+  if (!raw || /[\\#]/.test(raw)) return null;
+  const withExtension = path.posix.extname(raw) ? raw : `${raw}.tex`;
+  const candidates = [withExtension, path.posix.join(path.posix.dirname(currentFile), withExtension)];
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const safe = safeRelativePath(candidate);
+      const stat = await fs.promises.stat(resolveSourcePath(config, projectId, safe));
+      if (stat.isFile()) return safe;
     } catch { /* Ignore includes outside the project. */ }
   }
   return null;

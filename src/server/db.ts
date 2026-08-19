@@ -60,6 +60,7 @@ function migrate(db: DatabaseConnection): void {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS sessions_user_id ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS sessions_expires_at ON sessions(expires_at);
 
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
@@ -305,6 +306,11 @@ function migrate(db: DatabaseConnection): void {
     SELECT link.project_id, link.tag_id, link.created_at
     FROM project_tag_links link JOIN user_tags user_tag ON user_tag.id = link.tag_id;
   `);
+}
+
+/** Remove sessions that can no longer authenticate any request. */
+export function pruneExpiredSessions(db: DatabaseConnection, asOf = new Date().toISOString()): number {
+  return db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(asOf).changes;
 }
 
 export function activeAdminCount(db: DatabaseConnection): number {
