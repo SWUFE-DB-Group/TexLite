@@ -12,7 +12,10 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 export async function hashPassword(password: string): Promise<string> {
   if (password.length < MIN_PASSWORD_LENGTH) {
-    throw new Error(`密码至少需要 ${MIN_PASSWORD_LENGTH} 个字符`);
+    throw Object.assign(new Error(`密码至少需要 ${MIN_PASSWORD_LENGTH} 个字符`), {
+      statusCode: 400,
+      code: "PASSWORD_TOO_SHORT"
+    });
   }
   const salt = randomBytes(16);
   const key = (await scrypt(password, salt, KEY_LENGTH)) as Buffer;
@@ -35,4 +38,74 @@ export function createSessionToken(): { token: string; digest: string } {
 
 export function digestToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+interface AttemptRecord {
+  count: number;
+  firstAttemptMs: number;
+  lockedUntilMs: number;
+}
+
+export class LoginRateLimiter {
+  private readonly attempts = new Map<string, AttemptRecord>();
+  private readonly maxAttempts: number;
+  private readonly windowMs: number;
+  private readonly lockoutMs: number;
+
+  constructor(options: { maxAttempts?: number; windowMs?: number; lockoutMs?: number } = {}) {
+    this.maxAttempts = options.maxAttempts ?? 5;
+    this.windowMs = options.windowMs ?? 15 * 60_000;
+    this.lockoutMs = options.lockoutMs ?? 15 * 60_000;
+  }
+
+  isLocked(key: string): boolean {
+    const now = Date.now();
+    const record = this.attempts.get(key);
+    if (!record) return false;
+    if (record.lockedUntilMs > now) return true;
+    if (now - record.firstAttemptMs > this.windowMs && record.lockedUntilMs <= now) {
+      this.attempts.delete(key);
+      return false;
+    }
+    return false;
+  }
+
+  recordFailure(key: string): { locked: boolean; remainingAttempts: number; retryAfterSeconds: number } {
+    const now = Date.now();
+    let record = this.attempts.get(key);
+    if (!record || (now - record.firstAttemptMs > this.windowMs && record.lockedUntilMs <= now)) {
+      record = { count: 1, firstAttemptMs: now, lockedUntilMs: 0 };
+      this.attempts.set(key, record);
+      return { locked: false, remainingAttempts: this.maxAttempts - 1, retryAfterSeconds: 0 };
+    }
+
+    record.count += 1;
+    if (record.count >= this.maxAttempts) {
+      record.lockedUntilMs = now + this.lockoutMs;
+      return { locked: true, remainingAttempts: 0, retryAfterSeconds: Math.ceil(this.lockoutMs / 1000) };
+    }
+
+    return {
+      locked: false,
+      remainingAttempts: Math.max(0, this.maxAttempts - record.count),
+      retryAfterSeconds: 0
+    };
+  }
+
+  reset(key: string): void {
+    this.attempts.delete(key);
+  }
+
+  clear(): void {
+    this.attempts.clear();
+  }
+
+  prune(): void {
+    const now = Date.now();
+    for (const [key, record] of this.attempts.entries()) {
+      if (record.lockedUntilMs <= now && now - record.firstAttemptMs > this.windowMs) {
+        this.attempts.delete(key);
+      }
+    }
+  }
 }

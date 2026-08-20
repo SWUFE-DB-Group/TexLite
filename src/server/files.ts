@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
 
 export interface FileEntry {
@@ -54,7 +55,7 @@ export function duplicateProjectFiles(config: Config, sourceProjectId: string, t
       if (entry.isSymbolicLink()) throw symbolicLinkError(entry.name);
       if (entry.name === ".git") continue;
       fs.cpSync(path.join(source, entry.name), path.join(target, entry.name), {
-        recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true
+        recursive: true, errorOnExist: true, force: false, verbatimSymlinks: false
       });
     }
   }
@@ -63,14 +64,14 @@ export function duplicateProjectFiles(config: Config, sourceProjectId: string, t
 
 export function safeRelativePath(input: string): string {
   if (!input || input.includes("\0") || path.isAbsolute(input)) {
-    throw Object.assign(new Error("无效的文件路径"), { code: "INVALID_PATH" });
+    throw Object.assign(new Error("无效的文件路径"), { statusCode: 400, code: "INVALID_PATH" });
   }
   const normalized = path.posix.normalize(input.replaceAll("\\", "/"));
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
-    throw Object.assign(new Error("无效的文件路径"), { code: "INVALID_PATH" });
+    throw Object.assign(new Error("无效的文件路径"), { statusCode: 400, code: "INVALID_PATH" });
   }
   if (normalized.split("/").some((segment) => segment.toLocaleLowerCase() === ".git")) {
-    throw Object.assign(new Error(".git 是系统保留目录"), { code: "RESERVED_PATH" });
+    throw Object.assign(new Error(".git 是系统保留目录"), { statusCode: 400, code: "RESERVED_PATH" });
   }
   return normalized;
 }
@@ -248,7 +249,27 @@ export function removeProjectDirectory(config: Config, projectId: string): void 
   if (!fs.existsSync(root)) return;
   const trash = path.join(config.dataDir, "trash");
   fs.mkdirSync(trash, { recursive: true, mode: 0o700 });
-  const target = path.join(trash, `${projectId}-${Date.now()}`);
-  fs.renameSync(root, target);
-  fs.rmSync(target, { recursive: true, force: true });
+  const target = path.join(trash, `${projectId}-${Date.now()}-${randomUUID()}`);
+  try {
+    fs.renameSync(root, target);
+    void fs.promises.rm(target, { recursive: true, force: true }).catch(() => undefined);
+  } catch {
+    fs.rmSync(root, { recursive: true, force: true });
+    if (fs.existsSync(root)) {
+      throw new Error(`无法清理项目目录: ${root}`);
+    }
+  }
+}
+
+export async function pruneTrashDirectory(config: Config): Promise<void> {
+  for (const folder of ["trash", "tmp"]) {
+    const dir = path.join(config.dataDir, folder);
+    try {
+      if (!fs.existsSync(dir)) continue;
+      const entries = await fs.promises.readdir(dir);
+      await Promise.allSettled(entries.map((entry) => fs.promises.rm(path.join(dir, entry), { recursive: true, force: true })));
+    } catch {
+      // Ignore error
+    }
+  }
 }

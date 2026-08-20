@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { buildApp } from "../src/server/app.js";
+import { buildApp, escapeGlobPattern } from "../src/server/app.js";
 import { CollaborationService } from "../src/server/collaboration.js";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
@@ -253,6 +253,18 @@ It works.
     expect(upToDateCompile.json()).toMatchObject({ ok: true, skipped: true, runId: compiled.json().runId });
     expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(1);
 
+    // Modifying project tags touches updated_at, but does not invalidate the fast compile skip
+    await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/tags`, headers: { cookie },
+      payload: { name: "NewTag", color: "blue" }
+    });
+    const metadataChangedCompile = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/compile`, headers: { cookie }
+    });
+    expect(metadataChangedCompile.statusCode).toBe(200);
+    expect(metadataChangedCompile.json()).toMatchObject({ ok: true, skipped: true, runId: compiled.json().runId });
+    expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(1);
+
     const incrementalSource = `${withoutAnchor}\n% incremental compile\n`;
     const incrementalSave = await app.inject({
       method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
@@ -317,6 +329,20 @@ It works.
     expect(pdf.headers["cache-control"]).toBe("private, max-age=60, must-revalidate");
     expect(pdf.headers["accept-ranges"]).toBe("bytes");
     expect(pdf.headers.etag).toBeTruthy();
+
+    // A retained PDF must remain available while a collaboration room is
+    // still warming up. Any project queue would call waitForReady and fail
+    // this request, making a cold restart unnecessarily slow.
+    const originalWaitForReady = CollaborationService.prototype.waitForReady;
+    CollaborationService.prototype.waitForReady = async () => {
+      throw new Error("PDF serving must not wait for collaboration readiness");
+    };
+    try {
+      const coldStartPdf = await app.inject({ method: "GET", url: `/api/projects/${project.id}/pdf`, headers: { cookie } });
+      expect(coldStartPdf.statusCode).toBe(200);
+    } finally {
+      CollaborationService.prototype.waitForReady = originalWaitForReady;
+    }
     const versionedPdf = await app.inject({
       method: "GET", url: `/api/projects/${project.id}/pdf?mainFile=main.tex&run=${manifest.runId}`, headers: { cookie }
     });
@@ -1000,20 +1026,41 @@ Second version.
     const tag = createdTag.json().tag;
     const catalog = await app.inject({ method: "GET", url: "/api/tags", headers: { cookie } });
     expect(catalog.json().tags).toContainEqual(tag);
+
+    // Add a comment to the project
+    await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 5, content: "Draft note" }
+    });
+
     const tagged = await app.inject({
       method: "POST", url: `/api/projects/${project.id}/tags`, headers: { cookie }, payload: { tagId: tag.id }
     });
     expect(tagged.statusCode).toBe(201);
     expect(tagged.json().tags[0]).toMatchObject({ name: "Research", color: "purple" });
+    expect(tagged.json().project).toMatchObject({ commentCount: 1, unresolvedCommentCount: 1 });
     const projects = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie } });
     expect(projects.json().projects.find((item: { id: string }) => item.id === project.id)).toMatchObject({
-      ownerUsername: "admin", lastModifiedUsername: "admin", tags: [{ name: "Research" }]
+      ownerUsername: "admin", lastModifiedUsername: "admin", tags: [{ name: "Research" }],
+      commentCount: 1, unresolvedCommentCount: 1
     });
 
     const renamed = await app.inject({
       method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie }, payload: { name: "Renamed Paper" }
     });
-    expect(renamed.json().project).toMatchObject({ name: "Renamed Paper", lastModifiedUsername: "admin" });
+    expect(renamed.json().project).toMatchObject({
+      name: "Renamed Paper", lastModifiedUsername: "admin",
+      commentCount: 1, unresolvedCommentCount: 1
+    });
+
+    const untagged = await app.inject({
+      method: "DELETE", url: `/api/projects/${project.id}/tags/${tag.id}`, headers: { cookie }
+    });
+    expect(untagged.statusCode).toBe(200);
+    expect(untagged.json().project).toMatchObject({
+      commentCount: 1, unresolvedCommentCount: 1
+    });
+
     const download = await app.inject({ method: "GET", url: `/api/projects/${project.id}/download`, headers: { cookie } });
     expect(download.statusCode).toBe(200);
     expect(download.headers["content-type"]).toContain("application/zip");
@@ -1036,6 +1083,41 @@ Second version.
     expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_state WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(0);
     const missing = await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } });
     expect(missing.statusCode).toBe(404);
+  });
+
+  it("does not delete database record if moving project directory to trash fails", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "Fail Delete Project" }
+    });
+    const projectId = created.json().project.id as string;
+    expect((db.prepare("SELECT COUNT(*) AS count FROM projects WHERE id = ?").get(projectId) as { count: number }).count).toBe(1);
+
+    const originalRename = fs.renameSync.bind(fs);
+    const originalRm = fs.rmSync.bind(fs);
+    const renameSpy = vi.spyOn(fs, "renameSync").mockImplementation((oldPath, newPath) => {
+      if (String(oldPath).includes(projectId)) throw Object.assign(new Error("simulated EBUSY"), { code: "EBUSY" });
+      return originalRename(oldPath, newPath);
+    });
+    const rmSpy = vi.spyOn(fs, "rmSync").mockImplementation((targetPath, options) => {
+      if (String(targetPath).includes(projectId)) throw Object.assign(new Error("simulated EPERM"), { code: "EPERM" });
+      return originalRm(targetPath, options as any);
+    });
+
+    try {
+      const deleteAttempt = await app.inject({ method: "DELETE", url: `/api/projects/${projectId}`, headers: { cookie } });
+      expect(deleteAttempt.statusCode).toBe(500);
+      // Verify DB record is preserved
+      expect((db.prepare("SELECT COUNT(*) AS count FROM projects WHERE id = ?").get(projectId) as { count: number }).count).toBe(1);
+    } finally {
+      renameSpy.mockRestore();
+      rmSpy.mockRestore();
+    }
+
+    // Now normal deletion succeeds
+    const successfulDelete = await app.inject({ method: "DELETE", url: `/api/projects/${projectId}`, headers: { cookie } });
+    expect(successfulDelete.statusCode).toBe(200);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM projects WHERE id = ?").get(projectId) as { count: number }).count).toBe(0);
   });
 
   it("allows an administrator's effective owner permission to delete another user's project", async () => {
@@ -1085,11 +1167,18 @@ Second version.
       (project_id, token_ciphertext, github_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
       .run(project.id, "former-owner-token", "former-owner", timestamp, timestamp);
 
+    // Add a comment to the project
+    await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 5, content: "Transfer note" }
+    });
+
     const transferred = await app.inject({
       method: "PUT", url: `/api/projects/${project.id}/owner`, headers: { cookie }, payload: { userId: recipient.id }
     });
     expect(transferred.statusCode).toBe(200);
     expect(transferred.json().project.ownerId).toBe(recipient.id);
+    expect(transferred.json().project).toMatchObject({ commentCount: 1, unresolvedCommentCount: 1 });
     const recipientProject = await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie: recipientCookie } });
     expect(recipientProject.json().project).toMatchObject({ ownerId: recipient.id, permission: "owner" });
     expect(db.prepare("SELECT permission FROM project_members WHERE project_id = ? AND user_id = ?").get(project.id, formerOwnerId)).toEqual({ permission: "edit" });
@@ -1236,6 +1325,371 @@ Second version.
     const me = await app.inject({ method: "GET", url: "/api/me", headers: { cookie } });
     const response = await app.inject({ method: "DELETE", url: `/api/admin/users/${me.json().user.id}`, headers: { cookie }, payload: { deleteProjects: true } });
     expect(response.statusCode).toBe(400);
+  });
+
+  it("validates project mainFile and allows temporarily having no main file", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Main File Validation" } });
+    const project = created.json().project;
+    expect(project.mainFile).toBe("main.tex");
+
+    await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "alt.tex", content: "\\documentclass{article}\n\\begin{document}Alt\\end{document}\n" }
+    });
+    await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "refs.bib", content: "@article{sample, title={Sample}}\n" }
+    });
+    await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/folders`, headers: { cookie },
+      payload: { path: "chapters" }
+    });
+
+    // 1. Changing mainFile to a valid existing .tex file succeeds
+    const updateValid = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie },
+      payload: { mainFile: "alt.tex" }
+    });
+    expect(updateValid.statusCode).toBe(200);
+    expect(updateValid.json().project.mainFile).toBe("alt.tex");
+
+    // 2. Changing mainFile to empty string / null fails with 400 MAIN_FILE_INVALID
+    const updateEmpty = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie },
+      payload: { mainFile: "" }
+    });
+    expect(updateEmpty.statusCode).toBe(400);
+    expect(updateEmpty.json()).toMatchObject({ code: "MAIN_FILE_INVALID" });
+
+    // 3. Changing mainFile to a non-.tex file fails with 400 MAIN_FILE_INVALID
+    const updateNonTex = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie },
+      payload: { mainFile: "refs.bib" }
+    });
+    expect(updateNonTex.statusCode).toBe(400);
+    expect(updateNonTex.json()).toMatchObject({ code: "MAIN_FILE_INVALID" });
+
+    // 4. Changing mainFile to a directory fails with 400 MAIN_FILE_INVALID
+    const updateDirectory = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie },
+      payload: { mainFile: "chapters" }
+    });
+    expect(updateDirectory.statusCode).toBe(400);
+    expect(updateDirectory.json()).toMatchObject({ code: "MAIN_FILE_INVALID" });
+
+    // 5. Changing mainFile to a non-existent .tex file fails with 400 MAIN_FILE_NOT_FOUND
+    const updateMissing = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie },
+      payload: { mainFile: "missing.tex" }
+    });
+    expect(updateMissing.statusCode).toBe(400);
+    expect(updateMissing.json()).toMatchObject({ code: "MAIN_FILE_NOT_FOUND" });
+
+    // 6. Changing latexmkrc to a directory fails with 400 LATEXMKRC_INVALID
+    const updateRcDir = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie },
+      payload: { latexmkrc: "chapters" }
+    });
+    expect(updateRcDir.statusCode).toBe(400);
+    expect(updateRcDir.json()).toMatchObject({ code: "LATEXMKRC_INVALID" });
+  });
+
+  it("escapes SQL LIKE special characters when filtering projects by search term", async () => {
+    await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "paper_draft_v1" }
+    });
+    await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "paperXdraftXv1" }
+    });
+    await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "accuracy 100%" }
+    });
+    await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "accuracy 1000" }
+    });
+
+    const searchUnderscore = await app.inject({
+      method: "GET", url: "/api/projects?search=paper_draft", headers: { cookie }
+    });
+    expect(searchUnderscore.statusCode).toBe(200);
+    const underscoreNames = searchUnderscore.json().projects.map((p: any) => p.name);
+    expect(underscoreNames).toContain("paper_draft_v1");
+    expect(underscoreNames).not.toContain("paperXdraftXv1");
+
+    const searchPercent = await app.inject({
+      method: "GET", url: "/api/projects?search=100%", headers: { cookie }
+    });
+    expect(searchPercent.statusCode).toBe(200);
+    const percentNames = searchPercent.json().projects.map((p: any) => p.name);
+    expect(percentNames).toContain("accuracy 100%");
+    expect(percentNames).not.toContain("accuracy 1000");
+  });
+
+  it("batches and groups comment replies without N+1 query failures", async () => {
+    const createProject = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "Comment Batch Test" }
+    });
+    const project = createProject.json().project;
+
+    const comment1Res = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 5, content: "Comment 1" }
+    });
+    const comment1 = comment1Res.json().comment;
+
+    const comment2Res = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 6, endOffset: 10, content: "Comment 2" }
+    });
+    const comment2 = comment2Res.json().comment;
+
+    await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments/${comment1.id}/replies`, headers: { cookie },
+      payload: { content: "Reply 1.1" }
+    });
+    await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments/${comment1.id}/replies`, headers: { cookie },
+      payload: { content: "Reply 1.2" }
+    });
+    await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments/${comment2.id}/replies`, headers: { cookie },
+      payload: { content: "Reply 2.1" }
+    });
+
+    const getComments = await app.inject({
+      method: "GET", url: `/api/projects/${project.id}/comments?path=main.tex`, headers: { cookie }
+    });
+    expect(getComments.statusCode).toBe(200);
+    const comments = getComments.json().comments;
+    expect(comments).toHaveLength(2);
+
+    const c1 = comments.find((c: any) => c.id === comment1.id);
+    expect(c1.replies).toHaveLength(2);
+    expect(c1.replies.map((r: any) => r.content)).toEqual(["Reply 1.1", "Reply 1.2"]);
+
+    const c2 = comments.find((c: any) => c.id === comment2.id);
+    expect(c2.replies).toHaveLength(1);
+    expect(c2.replies[0].content).toBe("Reply 2.1");
+  });
+
+  it("exposes unresolvedCommentCount and commentCount on project lists and details", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "Comment Count Project" }
+    });
+    const projectId = created.json().project.id as string;
+
+    // Add 2 comments: 1 resolved, 1 unresolved
+    const commentRes1 = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "Unresolved comment" }
+    });
+    expect(commentRes1.statusCode).toBe(201);
+    const commentRes2 = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "To be resolved" }
+    });
+    expect(commentRes2.statusCode).toBe(201);
+    const comment2 = commentRes2.json().comment;
+    await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}/comments/${comment2.id}`, headers: { cookie },
+      payload: { resolved: true }
+    });
+
+    // Check project detail endpoint
+    const detailRes = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}`, headers: { cookie }
+    });
+    expect(detailRes.statusCode).toBe(200);
+    expect(detailRes.json().project).toMatchObject({
+      unresolvedCommentCount: 1,
+      commentCount: 2
+    });
+
+    // Check project list endpoint
+    const listRes = await app.inject({
+      method: "GET", url: `/api/projects?search=Comment%20Count%20Project`, headers: { cookie }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listed = listRes.json().projects.find((p: any) => p.id === projectId);
+    expect(listed).toMatchObject({
+      unresolvedCommentCount: 1,
+      commentCount: 2
+    });
+
+    // Create a companion file and a directory file with comments
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "sections/intro.tex", content: "Introduction section" }
+    });
+    await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie },
+      payload: { path: "sections/intro.tex", startOffset: 0, endOffset: 5, content: "Intro comment" }
+    });
+
+    const withSectionRes = await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } });
+    expect(withSectionRes.json().project).toMatchObject({ unresolvedCommentCount: 2, commentCount: 3 });
+
+    // Delete sections directory
+    const deleteRes = await app.inject({
+      method: "DELETE", url: `/api/projects/${projectId}/file?path=sections`, headers: { cookie }
+    });
+    expect(deleteRes.statusCode).toBe(200);
+
+    // Comments for sections/intro.tex should be deleted from DB and project summary updated
+    const afterDeleteRes = await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } });
+    expect(afterDeleteRes.json().project).toMatchObject({ unresolvedCommentCount: 1, commentCount: 2 });
+
+    const commentsForDeleted = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/comments?path=sections%2Fintro.tex`, headers: { cookie }
+    });
+    expect(commentsForDeleted.json().comments).toHaveLength(0);
+  });
+
+  it("escapes SQLite GLOB special characters when cleaning up comments on file deletion", async () => {
+    expect(escapeGlobPattern("dir[1]")).toBe("dir[[]1]");
+    expect(escapeGlobPattern("doc*name?")).toBe("doc[*]name[?]");
+
+    const createProjectRes = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "GLOB Comment Project" }
+    });
+    const projectId = createProjectRes.json().project.id;
+
+    // Create two directories: dir1 and dir[1]
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "dir1/note.tex", content: "dir1 content" }
+    });
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "dir[1]/note.tex", content: "dir[1] content" }
+    });
+
+    // Add comments to both
+    await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie },
+      payload: { path: "dir1/note.tex", startOffset: 0, endOffset: 4, content: "dir1 comment" }
+    });
+    await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie },
+      payload: { path: "dir[1]/note.tex", startOffset: 0, endOffset: 6, content: "dir[1] comment" }
+    });
+
+    const beforeDelete = await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } });
+    expect(beforeDelete.json().project).toMatchObject({ commentCount: 2 });
+
+    // Delete dir[1]
+    const deleteRes = await app.inject({
+      method: "DELETE", url: `/api/projects/${projectId}/file?path=dir%5B1%5D`, headers: { cookie }
+    });
+    expect(deleteRes.statusCode).toBe(200);
+
+    // dir1 comment should NOT be deleted
+    const dir1Comments = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/comments?path=dir1%2Fnote.tex`, headers: { cookie }
+    });
+    expect(dir1Comments.json().comments).toHaveLength(1);
+
+    // dir[1] comment should be deleted
+    const dirBracketComments = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/comments?path=dir%5B1%5D%2Fnote.tex`, headers: { cookie }
+    });
+    expect(dirBracketComments.json().comments).toHaveLength(0);
+
+    const afterDelete = await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } });
+    expect(afterDelete.json().project).toMatchObject({ commentCount: 1 });
+  });
+
+  it("handles unexpected server exceptions with a generic 500 SERVER_ERROR response", async () => {
+    const testApp = await buildApp(config, db, { logger: false });
+    testApp.get("/api/test-unexpected-error", async () => {
+      throw new TypeError("Simulated internal runtime null dereference error");
+    });
+    await testApp.ready();
+
+    const response = await testApp.inject({
+      method: "GET",
+      url: "/api/test-unexpected-error"
+    });
+
+    expect(response.statusCode).toBe(500);
+    const body = response.json();
+    expect(body).toEqual({
+      code: "SERVER_ERROR",
+      error: "服务器内部错误"
+    });
+    expect(body.error).not.toContain("Simulated internal runtime");
+    await testApp.close();
+  });
+
+  it("rate limits repeated failed login attempts with 429 AUTH_RATE_LIMITED", async () => {
+    const testUsername = "ratelimit-target";
+    await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: testUsername, displayName: "Rate Limit Target", password: "correct-password-123" }
+    });
+
+    // 5 consecutive bad passwords
+    for (let i = 0; i < 4; i++) {
+      const res = await app.inject({
+        method: "POST", url: "/api/auth/login",
+        payload: { username: testUsername, password: "wrong-password" }
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json().code).toBe("AUTH_INVALID");
+    }
+
+    // 5th bad attempt triggers lockout
+    const fifthRes = await app.inject({
+      method: "POST", url: "/api/auth/login",
+      payload: { username: testUsername, password: "wrong-password" }
+    });
+    expect(fifthRes.statusCode).toBe(429);
+    expect(fifthRes.json().code).toBe("AUTH_RATE_LIMITED");
+
+    // Even with the correct password, it is locked out
+    const lockedRes = await app.inject({
+      method: "POST", url: "/api/auth/login",
+      payload: { username: testUsername, password: "correct-password-123" }
+    });
+    expect(lockedRes.statusCode).toBe(429);
+    expect(lockedRes.json().code).toBe("AUTH_RATE_LIMITED");
+  });
+
+  it("returns HTTP 400 for safeRelativePath and short password validation errors", async () => {
+    const projectRes = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "Error Handling Test Project" }
+    });
+    const projectId = projectRes.json().project.id;
+
+    // Invalid relative path should return 400 INVALID_PATH
+    const invalidPathRes = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/file/raw?path=..%2Fsecret`, headers: { cookie }
+    });
+    expect(invalidPathRes.statusCode).toBe(400);
+    expect(invalidPathRes.json().code).toBe("INVALID_PATH");
+
+    // Reserved .git path should return 400 RESERVED_PATH
+    const reservedPathRes = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/file/raw?path=.git%2Fconfig`, headers: { cookie }
+    });
+    expect(reservedPathRes.statusCode).toBe(400);
+    expect(reservedPathRes.json().code).toBe("RESERVED_PATH");
+
+    // Short password (< 8 chars) on user creation should return 400 PASSWORD_TOO_SHORT
+    const shortPasswordRes = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "short-pass-user", displayName: "Short", password: "123" }
+    });
+    expect(shortPasswordRes.statusCode).toBe(400);
+    expect(shortPasswordRes.json().code).toBe("PASSWORD_TOO_SHORT");
   });
 });
 

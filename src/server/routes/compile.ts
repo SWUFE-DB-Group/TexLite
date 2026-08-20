@@ -123,49 +123,41 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const query = request.query as { mainFile?: string; path?: string; download?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
     if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
-    return await projectMutations.runSerialized(id, async () => {
-      const currentProject = accessibleProject(db, id, user);
-      if (!currentProject) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-      const currentMainFile = compileMainFile(config, id, currentProject.main_file, query.mainFile);
-      if (!currentMainFile || currentMainFile !== mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
-      const published = publishedCompileArtifacts(config, id, mainFile, mainFile === currentProject.main_file);
-      if (!query.path) return { mainFile, runId: published?.runId ?? null, artifacts: published ? listCompileArtifacts(published.output) : [] };
-      if (!published) return apiError(reply, 404, "COMPILE_ARTIFACTS_NOT_FOUND", "尚无可用的编译产物");
-      const relative = safeRelativePath(query.path);
-      const absolute = path.join(published.output, relative);
-      const outputDirectory = path.resolve(published.output);
-      const resolved = path.resolve(absolute);
-      if (!resolved.startsWith(`${outputDirectory}${path.sep}`)
-        || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-        return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+    const published = publishedCompileArtifacts(config, id, mainFile, mainFile === project.main_file);
+    if (!query.path) return { mainFile, runId: published?.runId ?? null, artifacts: published ? listCompileArtifacts(published.output) : [] };
+    if (!published) return apiError(reply, 404, "COMPILE_ARTIFACTS_NOT_FOUND", "尚无可用的编译产物");
+    const relative = safeRelativePath(query.path);
+    const absolute = path.join(published.output, relative);
+    const outputDirectory = path.resolve(published.output);
+    const resolved = path.resolve(absolute);
+    if (!resolved.startsWith(`${outputDirectory}${path.sep}`)
+      || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+      return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+    }
+    const stat = fs.statSync(resolved);
+    if (query.download === "1") {
+      const temporaryDirectory = path.join(config.dataDir, "tmp");
+      const temporaryFile = path.join(temporaryDirectory, `artifact-${id}-${randomUUID()}`);
+      await fs.promises.mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
+      try {
+        await fs.promises.copyFile(resolved, temporaryFile);
+      } catch (error) {
+        await fs.promises.rm(temporaryFile, { force: true }).catch(() => undefined);
+        throw error;
       }
-      const stat = fs.statSync(resolved);
-      if (query.download === "1") {
-        const temporaryDirectory = path.join(config.dataDir, "tmp");
-        const temporaryFile = path.join(temporaryDirectory, `artifact-${id}-${randomUUID()}`);
-        await fs.promises.mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
-        try {
-          await fs.promises.copyFile(resolved, temporaryFile);
-        } catch (error) {
-          await fs.promises.rm(temporaryFile, { force: true }).catch(() => undefined);
-          throw error;
-        }
-        reply.header("Content-Type", "application/octet-stream");
-        reply.header("Content-Disposition", contentDisposition(path.basename(relative), "attachment"));
-        reply.header("Content-Length", stat.size);
-        const stream = fs.createReadStream(temporaryFile);
-        const cleanup = () => { void fs.promises.rm(temporaryFile, { force: true }).catch(() => undefined); };
-        stream.once("close", cleanup);
-        stream.once("error", cleanup);
-        return reply.send(stream);
-      }
-      if (stat.size > 2 * 1024 * 1024 || !isTextCompileArtifact(relative)) {
-        return apiError(reply, 415, "ARTIFACT_PREVIEW_UNSUPPORTED", "该产物不能作为文本预览，请下载后查看");
-      }
-      return { path: relative, content: fs.readFileSync(resolved, "utf8") };
-    }, { flush: false, preflight: () => {
-      if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
-    } });
+      reply.header("Content-Type", "application/octet-stream");
+      reply.header("Content-Disposition", contentDisposition(path.basename(relative), "attachment"));
+      reply.header("Content-Length", stat.size);
+      const stream = fs.createReadStream(temporaryFile);
+      const cleanup = () => { void fs.promises.rm(temporaryFile, { force: true }).catch(() => undefined); };
+      stream.once("close", cleanup);
+      stream.once("error", cleanup);
+      return reply.send(stream);
+    }
+    if (stat.size > 2 * 1024 * 1024 || !isTextCompileArtifact(relative)) {
+      return apiError(reply, 415, "ARTIFACT_PREVIEW_UNSUPPORTED", "该产物不能作为文本预览，请下载后查看");
+    }
+    return { path: relative, content: fs.readFileSync(resolved, "utf8") };
   });
 
   app.post("/api/projects/:id/compile/clean", async (request, reply) => {
@@ -303,7 +295,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       // edits. Its revision is stable for a no-op flush, so concurrent
       // admissions observe the same generation without reading file contents.
       const revisionBeforeFlush = collaboration.currentRevision(id);
-      const receipt = collaboration.hasPendingChanges(id) ? collaboration.flushProject(id) : null;
+      const receipt = collaboration.hasPendingChanges(id) ? projectMutations.flushProject(id) : null;
       const refreshedProject = accessibleProject(db, id, user);
       if (!refreshedProject || !canEdit(refreshedProject)) {
         throw new Error("Project access changed while preparing a compile request");
@@ -420,7 +412,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             // directory while the asynchronous copy is in progress.
             for (let attempt = 0; attempt < MAX_SNAPSHOT_ATTEMPTS; attempt += 1) {
               const revisionBeforeFlush = collaboration.currentRevision(id);
-              const receipt = collaboration.hasPendingChanges(id) ? collaboration.flushProject(id) : null;
+              const receipt = collaboration.hasPendingChanges(id) ? projectMutations.flushProject(id) : null;
               const expectedRevision = receipt?.revision ?? revisionBeforeFlush;
               const snapshotGeneration = compileRequestGeneration(
                 project,
@@ -630,6 +622,11 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     };
   });
 
+  // Published PDFs are retained, immutable artifacts. Keep this read outside
+  // projectMutations: runSerialized/runConsistentRead wait for a cold Yjs room
+  // to finish initializing, which would delay the first PDF paint after a
+  // server restart. The manifest and per-run bundle are swapped atomically,
+  // so a concurrent cleanup can safely result in a normal 404 instead.
   app.get("/api/projects/:id/pdf", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
@@ -637,15 +634,8 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const project = accessibleProject(db, id, user);
     if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     const query = request.query as { mainFile?: string; download?: string; run?: string };
-    const requestedMainFile = compileMainFile(config, id, project.main_file, query.mainFile);
-    if (!requestedMainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
-    const pdfResponse = await projectMutations.runSerialized(id, async () => {
-      const currentProject = accessibleProject(db, id, user);
-      if (!currentProject) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-      const currentMainFile = compileMainFile(config, id, currentProject.main_file, query.mainFile);
-      if (!currentMainFile || currentMainFile !== requestedMainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
-      const project = currentProject;
-      const mainFile = currentMainFile;
+    const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
     const downloading = query.download === "1";
     let artifact = availablePdf(config, id, mainFile, project.main_file);
     if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
@@ -667,7 +657,8 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       }
     }
     const pdf = artifact.path;
-    const stat = fs.statSync(pdf);
+    const stat = regularFileStat(pdf);
+    if (!stat) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
     const etag = `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`;
     reply.header("Content-Type", "application/pdf");
     const targetSuffix = mainFile === project.main_file ? "" : `-${texFileStem(mainFile)}`;
@@ -698,18 +689,38 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (range) {
       reply.header("Content-Range", `bytes ${range.start}-${range.end}/${stat.size}`);
       reply.header("Content-Length", range.end - range.start + 1);
-      return { kind: "stream" as const, statusCode: 206 as const, stream: await openReadStream(fs.createReadStream(pdf, range)) };
+      let stream: fs.ReadStream;
+      try {
+        stream = await openReadStream(fs.createReadStream(pdf, range));
+      } catch (error) {
+        if (isMissingFileError(error)) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
+        throw error;
+      }
+      return reply.code(206).send(stream);
     }
     reply.header("Content-Length", stat.size);
-    return { kind: "stream" as const, statusCode: 200 as const, stream: await openReadStream(fs.createReadStream(pdf)) };
-    }, { flush: false, preflight: () => {
-      if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
-    } });
-    if (isPreparedPdfStream(pdfResponse)) {
-      return reply.code(pdfResponse.statusCode).send(pdfResponse.stream);
+    let stream: fs.ReadStream;
+    try {
+      stream = await openReadStream(fs.createReadStream(pdf));
+    } catch (error) {
+      if (isMissingFileError(error)) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
+      throw error;
     }
-    return pdfResponse;
+    return reply.code(200).send(stream);
   });
+}
+
+function regularFileStat(filePath: string): fs.Stats | null {
+  try {
+    const stat = fs.statSync(filePath);
+    return stat.isFile() ? stat : null;
+  } catch {
+    return null;
+  }
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 async function openReadStream(stream: fs.ReadStream): Promise<fs.ReadStream> {
@@ -721,20 +732,8 @@ async function openReadStream(stream: fs.ReadStream): Promise<fs.ReadStream> {
   return stream;
 }
 
-interface PreparedPdfStream {
-  kind: "stream";
-  statusCode: 200 | 206;
-  stream: fs.ReadStream;
-}
-
-function isPreparedPdfStream(value: unknown): value is PreparedPdfStream {
-  return typeof value === "object" && value !== null
-    && "kind" in value && value.kind === "stream"
-    && "stream" in value && value.stream instanceof fs.ReadStream;
-}
-
 function compileRequestGeneration(
-  project: { main_file: string; engine: string; latexmkrc: string | null; updated_at: string },
+  project: { main_file: string; engine: string; latexmkrc: string | null },
   persistedRevision: number | null,
   sourceGeneration: number,
   extraArgs: readonly string[]
@@ -743,7 +742,6 @@ function compileRequestGeneration(
     mainFile: project.main_file,
     engine: project.engine,
     latexmkrc: project.latexmkrc,
-    updatedAt: project.updated_at,
     persistedRevision,
     sourceGeneration,
     extraArgs

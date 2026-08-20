@@ -273,6 +273,74 @@ describe("project collaboration", () => {
     } finally { peer.destroy(); }
   }, 15_000);
 
+  it("disconnects a user's active WebSocket connection across rooms when disabled by admin", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Disabled user disconnect" }
+    });
+    const projectId = created.json().project.id as string;
+    const user = await createUser(app, adminCookie, "ws-disabled-user", "Disabled User");
+    const userCookie = await login(app, "ws-disabled-user", "reader-password");
+
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/members/${user.id}`, headers: { cookie: adminCookie },
+      payload: { permission: "edit" }
+    });
+
+    const peer = await TestPeer.connect(app, projectId, userCookie, { id: user.id, username: "ws-disabled-user", name: "Disabled User" });
+    try {
+      expect(peer.connected).toBe(true);
+
+      // Disable the user via admin API
+      const patchRes = await app.inject({
+        method: "PATCH", url: `/api/admin/users/${user.id}`, headers: { cookie: adminCookie },
+        payload: { disabled: true }
+      });
+      expect(patchRes.statusCode).toBe(200);
+
+      await waitFor(() => !peer.connected, 3000);
+      expect(peer.connected).toBe(false);
+    } finally {
+      peer.destroy();
+    }
+  });
+
+  it("rejects flush and identifies failed paths when a dirty file fails to write to disk", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Flush Error Project" }
+    });
+    const projectId = created.json().project.id as string;
+    const adminUser = db.prepare("SELECT * FROM users WHERE id = ?").get(adminId) as UserRow;
+    const peer = await TestPeer.connect(app, projectId, adminCookie, {
+      id: adminUser.id, username: adminUser.username, name: adminUser.display_name, permission: "owner"
+    });
+    try {
+      const text = peer.doc.getText("source:main.tex");
+      text.insert(0, "New dirty text\n");
+
+      // Spy on writeFileSync to fail for main.tex temporary file
+      const originalWriteFileSync = fs.writeFileSync.bind(fs);
+      const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(((file: fs.PathOrFileDescriptor, data: string | NodeJS.ArrayBufferView, options?: fs.WriteFileOptions) => {
+        if (String(file).includes("main.tex.collaboration")) {
+          throw Object.assign(new Error("simulated disk full"), { code: "ENOSPC" });
+        }
+        return originalWriteFileSync(file, data, options as any);
+      }) as typeof fs.writeFileSync);
+
+      try {
+        await expect(peer.flush()).rejects.toThrow(/Failed to persist|main\.tex/);
+      } finally {
+        writeSpy.mockRestore();
+      }
+
+      // After restoring writeFileSync, a subsequent flush succeeds
+      const successfulReceipt = await peer.flush();
+      expect(successfulReceipt.ok).toBe(true);
+      expect(successfulReceipt.failedPaths).toEqual([]);
+    } finally {
+      peer.destroy();
+    }
+  });
+
   it("does not create a room when a collaborative source file cannot be read", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Unreadable source" }
@@ -451,7 +519,7 @@ class TestPeer {
   private readonly queuedUpdates: Uint8Array[] = [];
   private syncResolve: (() => void) | null = null;
   private readonly synced = new Promise<void>((resolve) => { this.syncResolve = resolve; });
-  private readonly flushRequests = new Map<string, (receipt: { revision: number; persistedAt: string }) => void>();
+  private readonly flushRequests = new Map<string, { resolve: (receipt: { revision: number; persistedAt: string; ok: boolean; failedPaths: string[] }) => void; reject: (err: Error) => void }>();
 
   get connected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
@@ -492,14 +560,17 @@ class TestPeer {
     for (const update of this.queuedUpdates.splice(0)) this.send(syncUpdate(update));
   }
 
-  flush(): Promise<{ revision: number; persistedAt: string }> {
+  flush(): Promise<{ revision: number; persistedAt: string; ok: boolean; failedPaths: string[] }> {
     const requestId = randomUUID();
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_FLUSH);
     encoding.writeVarString(encoder, requestId);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("flush timeout")), 2000);
-      this.flushRequests.set(requestId, (receipt) => { clearTimeout(timer); resolve(receipt); });
+      this.flushRequests.set(requestId, {
+        resolve: (receipt) => { clearTimeout(timer); resolve(receipt); },
+        reject: (err) => { clearTimeout(timer); reject(err); }
+      });
       this.send(encoding.toUint8Array(encoder));
     });
   }
@@ -540,10 +611,23 @@ class TestPeer {
       applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(decoder), REMOTE_ORIGIN);
     } else if (messageType === MESSAGE_FLUSH) {
       const requestId = decoding.readVarString(decoder);
+      const ok = decoding.hasContent(decoder) ? decoding.readVarUint(decoder) === 1 : true;
       const revision = decoding.hasContent(decoder) ? decoding.readVarUint(decoder) : 0;
       const persistedAt = decoding.hasContent(decoder) ? decoding.readVarString(decoder) : new Date(0).toISOString();
-      this.flushRequests.get(requestId)?.({ revision, persistedAt });
-      this.flushRequests.delete(requestId);
+      const failedCount = decoding.hasContent(decoder) ? decoding.readVarUint(decoder) : 0;
+      const failedPaths: string[] = [];
+      for (let i = 0; i < failedCount; i++) {
+        failedPaths.push(decoding.readVarString(decoder));
+      }
+      const pending = this.flushRequests.get(requestId);
+      if (pending) {
+        this.flushRequests.delete(requestId);
+        if (!ok) {
+          pending.reject(Object.assign(new Error(failedPaths.length ? `Failed to persist: ${failedPaths.join(", ")}` : "Save failed"), { failedPaths }));
+        } else {
+          pending.resolve({ revision, persistedAt, ok: true, failedPaths: [] });
+        }
+      }
     } else if (messageType === MESSAGE_PROTOCOL) {
       const epoch = decoding.readVarString(decoder);
       const acknowledgement = encoding.createEncoder();

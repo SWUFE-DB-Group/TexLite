@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import Fastify, { type FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
@@ -9,7 +11,7 @@ import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
 import type { Config } from "./config.js";
 import { activeAdminCount, pruneExpiredSessions, type DatabaseConnection, type ProjectRow, type UserRow } from "./db.js";
-import { createSessionToken, hashPassword, verifyPassword, digestToken } from "./security.js";
+import { createSessionToken, hashPassword, verifyPassword, digestToken, LoginRateLimiter } from "./security.js";
 import { currentUser, publicUser, requireAdmin, requireUser } from "./auth.js";
 import { accessibleProject, canEdit } from "./projects.js";
 import {
@@ -19,6 +21,7 @@ import {
   listProjectFiles,
   listProjectFilesAsync,
   outputRoot,
+  pruneTrashDirectory,
   removeProjectDirectory,
   resolveSourcePath,
   safeRelativePath,
@@ -44,22 +47,28 @@ import { ProjectOutlineService } from "./projectOutline.js";
 import { replaceProject, searchProject } from "./projectSearch.js";
 import { MetricRegistry } from "./metrics.js";
 import { compileMainFile } from "./compileArtifacts.js";
-import { apiError, contentDisposition } from "./http.js";
+import { apiError, contentDisposition, ValidationError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
 
 const now = (): string => new Date().toISOString();
 const SESSION_CLEANUP_INTERVAL_MS = 15 * 60_000;
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+export function escapeGlobPattern(value: string): string {
+  return value.replace(/[*?[]/g, "[$&]");
+}
 function text(value: unknown, name: string, max = 200): string {
   if (typeof value !== "string" || !value.trim() || value.length > max) {
-    throw new Error(`${name}格式不正确`);
+    throw new ValidationError(`${name}格式不正确`);
   }
   return value.trim();
 }
 
 function dictionaryWord(value: unknown): string {
-  if (typeof value !== "string") throw new Error("自定义词格式不正确");
+  if (typeof value !== "string") throw new ValidationError("自定义词格式不正确");
   const word = value.trim();
-  if (!word || word.length > 64 || /[\s\\{}$%]/u.test(word)) throw new Error("自定义词格式不正确");
+  if (!word || word.length > 64 || /[\s\\{}$%]/u.test(word)) throw new ValidationError("自定义词格式不正确");
   return word;
 }
 
@@ -92,6 +101,44 @@ function tagsForProjects(db: DatabaseConnection, projectIds: string[], userId: s
   return result;
 }
 
+function commentsSummaryForProjects(db: DatabaseConnection, projectIds: string[]): Map<string, { totalCount: number; unresolvedCount: number }> {
+  const result = new Map<string, { totalCount: number; unresolvedCount: number }>();
+  if (!projectIds.length) return result;
+  for (let index = 0; index < projectIds.length; index += 100) {
+    const chunk = projectIds.slice(index, index + 100);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const rows = db.prepare(`
+      SELECT project_id,
+        COUNT(*) AS total_count,
+        SUM(CASE WHEN resolved = 0 THEN 1 ELSE 0 END) AS unresolved_count
+      FROM comments
+      WHERE project_id IN (${placeholders})
+      GROUP BY project_id
+    `).all(...chunk) as Array<{ project_id: string; total_count: number; unresolved_count: number }>;
+    for (const row of rows) {
+      result.set(row.project_id, {
+        totalCount: Number(row.total_count) || 0,
+        unresolvedCount: Number(row.unresolved_count) || 0
+      });
+    }
+  }
+  return result;
+}
+
+function commentsSummaryForProject(db: DatabaseConnection, projectId: string): { totalCount: number; unresolvedCount: number } {
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS total_count,
+      SUM(CASE WHEN resolved = 0 THEN 1 ELSE 0 END) AS unresolved_count
+    FROM comments
+    WHERE project_id = ?
+  `).get(projectId) as { total_count: number; unresolved_count: number } | undefined;
+  return {
+    totalCount: Number(row?.total_count) || 0,
+    unresolvedCount: Number(row?.unresolved_count) || 0
+  };
+}
+
 function projectJson(project: ProjectRow & {
   permission?: string;
   owner_username?: string;
@@ -99,7 +146,7 @@ function projectJson(project: ProjectRow & {
   last_modified_username?: string | null;
   last_modified_display_name?: string | null;
   archived?: boolean | number;
-}, tags: ProjectTag[] = []) {
+}, tags: ProjectTag[] = [], commentsSummary?: { totalCount: number; unresolvedCount: number }) {
   return {
     id: project.id,
     ownerId: project.owner_id,
@@ -114,6 +161,8 @@ function projectJson(project: ProjectRow & {
     engine: project.engine,
     permission: project.permission,
     tags,
+    unresolvedCommentCount: commentsSummary?.unresolvedCount ?? 0,
+    commentCount: commentsSummary?.totalCount ?? 0,
     archived: Boolean(project.archived),
     createdAt: project.created_at,
     updatedAt: project.updated_at
@@ -238,6 +287,42 @@ function commentsForFile(db: DatabaseConnection, config: Config, projectId: stri
   const rows = db.prepare(`SELECT c.*, u.username AS author_username, u.display_name AS author_display_name FROM comments c
     LEFT JOIN users u ON u.id = c.author_id WHERE c.project_id = ? AND c.file_path = ? ORDER BY c.created_at`)
     .all(projectId, filePath) as unknown as CommentRow[];
+  if (!rows.length) return [];
+
+  const replies = db.prepare(`SELECT reply.*, user.username AS author_username, user.display_name AS author_display_name
+    FROM comment_replies reply
+    JOIN comments c ON c.id = reply.comment_id
+    LEFT JOIN users user ON user.id = reply.author_id
+    WHERE c.project_id = ? AND c.file_path = ?
+    ORDER BY reply.created_at`)
+    .all(projectId, filePath) as unknown as Array<CommentReplyRow & { comment_id: string }>;
+
+  const replyMap = new Map<string, Array<{
+    id: string;
+    authorId: string | null;
+    authorUsername: string | null;
+    authorDisplayName: string | null;
+    content: string;
+    createdAt: string;
+    updatedAt: string;
+    editedAt: string | null;
+  }>>();
+
+  for (const reply of replies) {
+    const list = replyMap.get(reply.comment_id) ?? [];
+    list.push({
+      id: reply.id,
+      authorId: reply.author_id,
+      authorUsername: reply.author_username,
+      authorDisplayName: reply.author_display_name,
+      content: reply.content,
+      createdAt: reply.created_at,
+      updatedAt: reply.updated_at,
+      editedAt: reply.edited_at
+    });
+    replyMap.set(reply.comment_id, list);
+  }
+
   return rows.map((comment) => ({
     id: comment.id,
     authorId: comment.author_id,
@@ -254,7 +339,7 @@ function commentsForFile(db: DatabaseConnection, config: Config, projectId: stri
     createdAt: comment.created_at,
     updatedAt: comment.updated_at,
     editedAt: comment.edited_at,
-    replies: repliesForComment(db, comment.id)
+    replies: replyMap.get(comment.id) ?? []
   }));
 }
 
@@ -289,6 +374,7 @@ export async function buildApp(
   });
   const projectMutations = new ProjectMutationCoordinator(collaboration);
   const projectGit = new ProjectGitService(config, db, options.githubFetch);
+  const loginLimiter = new LoginRateLimiter();
   for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
     reconcilePublishedCompileRuns(config, db, row.id);
   }
@@ -308,8 +394,11 @@ export async function buildApp(
       }
     }
     const remove = db.prepare("DELETE FROM compile_runs WHERE id = ?");
-    for (const run of completed) if (!keep.has(run.id)) remove.run(run.id);
+    db.transaction(() => {
+      for (const run of completed) if (!keep.has(run.id)) remove.run(run.id);
+    })();
   };
+  void pruneTrashDirectory(config);
   for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
     history.enforceRetention(row.id);
     pruneCompileRuns(row.id);
@@ -338,13 +427,33 @@ export async function buildApp(
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
-    const status = typeof error === "object" && error !== null && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 400;
-    const message = error instanceof Error ? error.message : "请求格式不正确";
-    const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
-      ? error.code : status >= 500 ? "SERVER_ERROR" : "REQUEST_INVALID";
-    void reply.code(status >= 500 ? 500 : status).send({
-      code, error: status >= 500 ? "服务器内部错误" : message
-    });
+    const rawStatus = typeof error === "object" && error !== null && "statusCode" in error && typeof error.statusCode === "number"
+      ? error.statusCode
+      : undefined;
+    const isClientError = rawStatus !== undefined && rawStatus >= 400 && rawStatus < 500;
+    const status = isClientError ? rawStatus : 500;
+
+    if (isClientError) {
+      const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+        ? error.code
+        : "REQUEST_INVALID";
+      const message = error instanceof Error ? error.message : "请求格式不正确";
+      const failedPaths = typeof error === "object" && error !== null && "failedPaths" in error
+        && Array.isArray(error.failedPaths)
+        && error.failedPaths.every((path): path is string => typeof path === "string")
+        ? error.failedPaths.slice(0, 100)
+        : undefined;
+      void reply.code(status).send({
+        code,
+        error: message,
+        ...(failedPaths ? { failedPaths } : {})
+      });
+    } else {
+      void reply.code(500).send({
+        code: "SERVER_ERROR",
+        error: "服务器内部错误"
+      });
+    }
   });
 
   app.get("/api/config", async () => ({
@@ -388,21 +497,32 @@ export async function buildApp(
   app.post("/api/auth/login", async (request, reply) => {
     const body = request.body as { username?: unknown; password?: unknown };
     const username = text(body?.username, "用户名", 64);
+    const ip = request.ip || "127.0.0.1";
+    const rateLimitKey = `${ip}:${username.toLowerCase()}`;
+    if (loginLimiter.isLocked(rateLimitKey)) {
+      return apiError(reply, 429, "AUTH_RATE_LIMITED", "登录尝试过于频繁，账号已临时锁定，请在 15 分钟后再试");
+    }
     const password = typeof body?.password === "string" ? body.password : "";
     const user = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(username) as UserRow | undefined;
     if (!user || user.disabled || !(await verifyPassword(password, user.password_hash))) {
+      const result = loginLimiter.recordFailure(rateLimitKey);
+      if (result.locked) {
+        return apiError(reply, 429, "AUTH_RATE_LIMITED", "密码错误次数过多，账号已临时锁定，请在 15 分钟后再试");
+      }
       return apiError(reply, 401, "AUTH_INVALID", "用户名或密码错误");
     }
+    loginLimiter.reset(rateLimitKey);
     const session = createSessionToken();
     const createdAt = now();
     const expires = new Date(Date.now() + config.sessionDays * 86_400_000);
     db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
       .run(session.digest, user.id, expires.toISOString(), createdAt);
+    const isSecure = request.protocol === "https" || request.headers["x-forwarded-proto"] === "https";
     reply.setCookie("texlite_session", session.token, {
       path: "/",
       httpOnly: true,
       sameSite: "strict",
-      secure: false,
+      secure: isSecure,
       expires
     });
     return { user: publicUser(user) };
@@ -452,7 +572,7 @@ export async function buildApp(
     if (!requireAdmin(request, reply, db)) return;
     const body = request.body as Record<string, unknown>;
     const username = text(body?.username, "用户名", 64);
-    if (!/^[\p{L}\p{N}_.-]+$/u.test(username)) throw new Error("用户名只能包含字母、数字、点、横线或下划线");
+    if (!/^[\p{L}\p{N}_.-]+$/u.test(username)) return apiError(reply, 400, "USERNAME_INVALID", "用户名只能包含字母、数字、点、横线或下划线");
     const displayName = text(body?.displayName ?? username, "显示名称", 100);
     const password = typeof body?.password === "string" ? body.password : "";
     const role = body?.role === "admin" ? "admin" : "user";
@@ -492,6 +612,9 @@ export async function buildApp(
     }
     db.prepare(`UPDATE users SET display_name = ?, role = ?, disabled = ?, password_hash = ?, must_change_password = ?, can_create_projects = ? WHERE id = ?`)
       .run(displayName, role, disabled, passwordHash, mustChange, canCreateProjects, id);
+    if (disabled === 1 || (typeof body.password === "string" && body.password)) {
+      collaboration.disconnectUser(id, "用户已被禁用或密码已重置");
+    }
     const updated = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as unknown as UserRow;
     return { user: publicUser(updated) };
   });
@@ -524,11 +647,11 @@ export async function buildApp(
         // Persist any active drafts while the old owner row still exists. This
         // is synchronous, so no edit can arrive between this flush and the
         // ownership update below, and last_modified_by remains FK-safe.
-        for (const project of owned) collaboration.flushProject(project.id);
+        for (const project of owned) projectMutations.flushProject(project.id);
       }
       if (body.deleteProjects) {
         db.prepare("DELETE FROM projects WHERE owner_id = ?").run(id);
-      } else {
+    } else {
         db.prepare("UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE project_id IN (SELECT id FROM projects WHERE owner_id = ?)")
           .run(now(), id);
         db.prepare("DELETE FROM project_members WHERE user_id = ? AND project_id IN (SELECT id FROM projects WHERE owner_id = ?)")
@@ -557,6 +680,7 @@ export async function buildApp(
         }
       }, { flush: false });
     }
+    collaboration.disconnectUser(id, "用户已被删除");
     return { ok: true, deletedProjects: body.deleteProjects ? owned.length : 0 };
   });
 
@@ -614,8 +738,8 @@ export async function buildApp(
     ];
     const params: Record<string, string | number> = { userId: user.id };
     if (search) {
-      conditions.push("(p.name LIKE :search OR owner.username LIKE :search OR owner.display_name LIKE :search)");
-      params.search = `%${search}%`;
+      conditions.push("(p.name LIKE :search ESCAPE '\\' OR owner.username LIKE :search ESCAPE '\\' OR owner.display_name LIKE :search ESCAPE '\\')");
+      params.search = `%${escapeLikePattern(search)}%`;
     }
     if (tagId) {
       conditions.push(`EXISTS (
@@ -643,9 +767,15 @@ export async function buildApp(
       ORDER BY ${sortColumn} DESC, p.name COLLATE NOCASE ASC
       LIMIT :limit OFFSET :offset`).all(rowsParams);
     const projects = rows as unknown as Array<ProjectRow & { permission: string }>;
-    const projectTags = tagsForProjects(db, projects.map((project) => project.id), user.id);
+    const projectIds = projects.map((project) => project.id);
+    const projectTags = tagsForProjects(db, projectIds, user.id);
+    const commentsSummaries = commentsSummaryForProjects(db, projectIds);
     return {
-      projects: projects.map((project) => projectJson({ ...project, archived: archivedOnly }, projectTags.get(project.id) ?? [])),
+      projects: projects.map((project) => projectJson(
+        { ...project, archived: archivedOnly },
+        projectTags.get(project.id) ?? [],
+        commentsSummaries.get(project.id)
+      )),
       pagination: { page: currentPage, pageSize, total, totalPages }
     };
   });
@@ -702,7 +832,7 @@ export async function buildApp(
         .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.engine, project.created_at, project.updated_at);
     } catch (error) {
       removeProjectDirectory(config, project.id);
-      throw error;
+      return apiError(reply, 400, "ZIP_INVALID", error instanceof Error ? error.message : "无法解压 ZIP 文件");
     }
     recordHistory(project.id, user.id, "initial");
     return reply.code(201).send({ project: projectJson({
@@ -748,7 +878,13 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
     if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    return { project: projectJson(project, tagsForProject(db, id, user.id)) };
+    return {
+      project: projectJson(
+        project,
+        tagsForProject(db, id, user.id),
+        commentsSummaryForProject(db, id)
+      )
+    };
   });
 
   app.get("/api/projects/:id/history", async (request, reply) => {
@@ -863,7 +999,15 @@ export async function buildApp(
       reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
       touchProject(db, id, user.id);
       recordHistory(id, user.id, "restore", filePath ? [filePath] : undefined);
-      return { ok: true, restoredPaths: restored.restoredPaths, project: projectJson(accessibleProject(db, id, user) ?? currentProject, tagsForProject(db, id, user.id)) };
+      return {
+        ok: true,
+        restoredPaths: restored.restoredPaths,
+        project: projectJson(
+          accessibleProject(db, id, user) ?? currentProject,
+          tagsForProject(db, id, user.id),
+          commentsSummaryForProject(db, id)
+        )
+      };
     }, { preflight: () => {
       requireEditableProject(db, id, user);
       if (!history.version(versionId, id)) {
@@ -947,19 +1091,60 @@ export async function buildApp(
         return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以修改项目设置");
       }
       const name = typeof body.name === "string" ? text(body.name, "项目名称", 120) : currentProject.name;
-      const mainFile = typeof body.mainFile === "string" ? safeRelativePath(body.mainFile) : currentProject.main_file;
+      let mainFile = currentProject.main_file;
+      if (body.mainFile !== undefined) {
+        if (typeof body.mainFile !== "string" || !body.mainFile.trim()) {
+          return apiError(reply, 400, "MAIN_FILE_INVALID", "主文件必须是存在的 .tex 文件");
+        }
+        mainFile = safeRelativePath(body.mainFile);
+      }
       const engine = typeof body.engine === "string" && config.allowedEngines.includes(body.engine as typeof currentProject.engine)
         ? body.engine as typeof currentProject.engine : currentProject.engine;
       const latexmkrc = body.latexmkrc === null || body.latexmkrc === ""
         ? null
         : typeof body.latexmkrc === "string" ? safeRelativePath(body.latexmkrc) : currentProject.latexmkrc;
-      if (!fs.existsSync(resolveSourcePath(config, id, mainFile))) return apiError(reply, 400, "MAIN_FILE_NOT_FOUND", "主文件不存在", { path: mainFile });
+      if (!mainFile.toLocaleLowerCase().endsWith(".tex")) {
+        return apiError(reply, 400, "MAIN_FILE_INVALID", "主文件必须是 .tex 文件", { path: mainFile });
+      }
+      const mainFileAbsolute = resolveSourcePath(config, id, mainFile);
+      let stat: fs.Stats | null = null;
+      try {
+        stat = fs.statSync(mainFileAbsolute);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return apiError(reply, 400, "MAIN_FILE_NOT_FOUND", "主文件不存在", { path: mainFile });
+        }
+        throw error;
+      }
+      if (!stat.isFile()) {
+        return apiError(reply, 400, "MAIN_FILE_INVALID", "主文件必须是常规文件，不能是目录", { path: mainFile });
+      }
       if (latexmkrc && !config.allowProjectLatexmkrc) return apiError(reply, 400, "LATEXMKRC_DISABLED", "管理员已禁用项目级 latexmkrc");
-      if (latexmkrc && !fs.existsSync(resolveSourcePath(config, id, latexmkrc))) return apiError(reply, 400, "LATEXMKRC_NOT_FOUND", "latexmkrc 文件不存在", { path: latexmkrc });
+      if (latexmkrc) {
+        const rcAbsolute = resolveSourcePath(config, id, latexmkrc);
+        let rcStat: fs.Stats | null = null;
+        try {
+          rcStat = fs.statSync(rcAbsolute);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            return apiError(reply, 400, "LATEXMKRC_NOT_FOUND", "latexmkrc 文件不存在", { path: latexmkrc });
+          }
+          throw error;
+        }
+        if (!rcStat.isFile()) {
+          return apiError(reply, 400, "LATEXMKRC_INVALID", "latexmkrc 必须是常规文件，不能是目录", { path: latexmkrc });
+        }
+      }
       db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
         .run(name, mainFile, latexmkrc, engine, now(), user.id, id);
       recordHistory(id, user.id, "settings", []);
-      return { project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id)) };
+      return {
+        project: projectJson(
+          accessibleProject(db, id, user)!,
+          tagsForProject(db, id, user.id),
+          commentsSummaryForProject(db, id)
+        )
+      };
     }, { preflight: () => { requireProjectOwnerPermission(db, id, user); } });
   });
 
@@ -976,7 +1161,14 @@ export async function buildApp(
     db.prepare("INSERT OR IGNORE INTO user_project_tag_links (project_id, tag_id, created_at) VALUES (?, ?, ?)")
       .run(id, body.tagId, now());
     const tags = tagsForProject(db, id, user.id);
-    return reply.code(201).send({ tags, project: projectJson(accessibleProject(db, id, user)!, tags) });
+    return reply.code(201).send({
+      tags,
+      project: projectJson(
+        accessibleProject(db, id, user)!,
+        tags,
+        commentsSummaryForProject(db, id)
+      )
+    });
   });
 
   app.delete("/api/projects/:id/tags/:tagId", async (request, reply) => {
@@ -989,7 +1181,14 @@ export async function buildApp(
       AND EXISTS (SELECT 1 FROM user_tags WHERE id = ? AND user_id = ?)`)
       .run(tagId, id, tagId, user.id);
     const tags = tagsForProject(db, id, user.id);
-    return { tags, project: projectJson(accessibleProject(db, id, user)!, tags) };
+    return {
+      tags,
+      project: projectJson(
+        accessibleProject(db, id, user)!,
+        tags,
+        commentsSummaryForProject(db, id)
+      )
+    };
   });
 
   const requireGitOwner = (projectId: string, user: UserRow) => {
@@ -1161,8 +1360,8 @@ export async function buildApp(
     if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_DELETE_FORBIDDEN", "只有项目所有者可以删除项目");
     return await projectMutations.runExclusive(id, "project deletion", () => {
       collaboration.resetProject(id);
-      db.prepare("DELETE FROM projects WHERE id = ?").run(id);
       removeProjectDirectory(config, id);
+      db.prepare("DELETE FROM projects WHERE id = ?").run(id);
       latexCompletions.invalidate(id);
       projectOutlines.invalidate(id);
       return { ok: true };
@@ -1175,14 +1374,10 @@ export async function buildApp(
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     // Directory walks can be slow on external/project-mounted storage. Keep
-    // this request off the event loop so the retained-PDF metadata and PDF
-    // stream can be served while the file tree is being collected.
+    // this request off the event loop and unblocked by Yjs room initialization
+    // so the file tree and retained-PDF stream can be served concurrently.
     return {
-      files: await projectMutations.runConsistentRead(id, () => listProjectFilesAsync(config, id), {
-        preflight: () => {
-          if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
-        }
-      })
+      files: await listProjectFilesAsync(config, id)
     };
   });
 
@@ -1381,6 +1576,7 @@ export async function buildApp(
 
     return await projectMutations.runExclusive(id, "move project path", () => {
       fs.renameSync(sourceAbsolute, destinationAbsolute);
+      let hasCommentUpdates = false;
       db.exec("BEGIN IMMEDIATE");
       try {
         const mainFile = movedProjectPath(currentProject.main_file, source, destination)!;
@@ -1392,7 +1588,10 @@ export async function buildApp(
         const updateComment = db.prepare("UPDATE comments SET file_path = ?, updated_at = ? WHERE id = ?");
         for (const comment of comments) {
           const nextPath = movedProjectPath(comment.file_path, source, destination);
-          if (nextPath !== comment.file_path) updateComment.run(nextPath, changedAt, comment.id);
+          if (nextPath !== comment.file_path) {
+            updateComment.run(nextPath, changedAt, comment.id);
+            hasCommentUpdates = true;
+          }
         }
         db.exec("COMMIT");
       } catch (error) {
@@ -1401,6 +1600,7 @@ export async function buildApp(
         throw error;
       }
       collaboration.movePath(id, source, destination, user.id);
+      if (hasCommentUpdates) collaboration.signalComments(id);
       recordHistory(id, user.id, "file", [source, destination]);
       return { ok: true, path: destination };
     }, { preflight: validateMove });
@@ -1480,7 +1680,7 @@ export async function buildApp(
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const body = request.body as { path?: unknown; content?: unknown };
     const filePath = safeRelativePath(typeof body.path === "string" ? body.path : "");
-    if (typeof body.content !== "string") throw new Error("文件内容格式不正确");
+    if (typeof body.content !== "string") return apiError(reply, 400, "FILE_CONTENT_INVALID", "文件内容格式不正确");
     const content = body.content;
     const byteLength = Buffer.byteLength(content, "utf8");
     const limit = isCollaborativeTextFile(filePath) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
@@ -1521,7 +1721,7 @@ export async function buildApp(
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const body = request.body as { path?: unknown; content?: unknown };
     const filePath = safeRelativePath(typeof body.path === "string" ? body.path : "");
-    if (typeof body.content !== "string") throw new Error("文件内容格式不正确");
+    if (typeof body.content !== "string") return apiError(reply, 400, "FILE_CONTENT_INVALID", "文件内容格式不正确");
     const content = body.content;
     const byteLength = Buffer.byteLength(content, "utf8");
     const limit = isCollaborativeTextFile(filePath) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
@@ -1562,8 +1762,10 @@ export async function buildApp(
         throw error;
       }
       fs.rmSync(absolute, { recursive: true, force: true });
+      const deleteResult = db.prepare("DELETE FROM comments WHERE project_id = ? AND (file_path = ? OR file_path GLOB ?)").run(id, relative, `${escapeGlobPattern(relative)}/*`);
       touchProject(db, id, user.id);
       collaboration.removePath(id, relative);
+      if (deleteResult.changes > 0) collaboration.signalComments(id);
       recordHistory(id, user.id, "file", [relative]);
       return { ok: true };
     }, { preflight: () => { requireEditableProject(db, id, user); } });
@@ -1580,41 +1782,71 @@ export async function buildApp(
     if (!part) return apiError(reply, 400, "UPLOAD_EMPTY", "没有收到上传文件");
     const { directory, overwrite } = request.query as { directory?: string; overwrite?: string };
     const relative = safeRelativePath(directory ? `${safeRelativePath(directory)}/${part.filename}` : part.filename);
-    // Buffer the multipart stream before reserving the project write lock.
-    // Active Yjs editors can continue saving while a slow upload arrives; the
-    // lock-time flush below then establishes the exact overwrite boundary.
-    const uploaded = await part.toBuffer();
     const uploadLimit = isCollaborativeTextFile(relative) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
-    if (uploaded.byteLength > uploadLimit) {
-      return apiError(reply, 413, "FILE_TOO_LARGE", `该文件不能超过 ${Math.floor(uploadLimit / 1024 / 1024)} MB`, { path: relative, size: Math.floor(uploadLimit / 1024 / 1024) });
-    }
-    return await projectMutations.runWrite(id, () => {
-      const absolute = resolveSourcePath(config, id, relative);
-      try {
-        fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
-      } catch (error) {
-        if (["EEXIST", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) {
-          return apiError(reply, 409, "PATH_EXISTS", "目标路径中的目录部分已被文件占用", { path: relative });
+    const tmpDir = path.join(config.dataDir, "tmp");
+    fs.mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
+    const tmpPath = path.join(tmpDir, `upload-${randomUUID()}.tmp`);
+    let byteLength = 0;
+    try {
+      const limiter = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          byteLength += chunk.length;
+          if (byteLength > uploadLimit) {
+            callback(new Error("FILE_TOO_LARGE"));
+          } else {
+            callback(null, chunk);
+          }
         }
-        throw error;
+      });
+      await pipeline(part.file, limiter, fs.createWriteStream(tmpPath, { mode: 0o600 }));
+    } catch (error) {
+      if (fs.existsSync(tmpPath)) {
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
       }
-      const replacing = overwrite === "1";
-      if (fs.existsSync(absolute) && fs.statSync(absolute).isDirectory()) {
-        return apiError(reply, 409, "PATH_EXISTS", "目标路径是一个目录", { path: relative });
+      if (error instanceof Error && error.message === "FILE_TOO_LARGE") {
+        return apiError(reply, 413, "FILE_TOO_LARGE", `该文件不能超过 ${Math.floor(uploadLimit / 1024 / 1024)} MB`, { path: relative, size: Math.floor(uploadLimit / 1024 / 1024) });
       }
-      try {
-        fs.writeFileSync(absolute, uploaded, { mode: 0o600, flag: replacing ? "w" : "wx" });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw error;
+    }
+    try {
+      return await projectMutations.runWrite(id, () => {
+        const absolute = resolveSourcePath(config, id, relative);
+        try {
+          fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
+        } catch (error) {
+          if (["EEXIST", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+            return apiError(reply, 409, "PATH_EXISTS", "目标路径中的目录部分已被文件占用", { path: relative });
+          }
+          throw error;
+        }
+        const replacing = overwrite === "1";
+        if (fs.existsSync(absolute) && fs.statSync(absolute).isDirectory()) {
+          return apiError(reply, 409, "PATH_EXISTS", "目标路径是一个目录", { path: relative });
+        }
+        if (!replacing && fs.existsSync(absolute)) {
           return apiError(reply, 409, "FILE_EXISTS", "同名文件已存在", { path: relative });
         }
-        throw error;
+        try {
+          fs.renameSync(tmpPath, absolute);
+        } catch {
+          fs.copyFileSync(tmpPath, absolute);
+          fs.unlinkSync(tmpPath);
+        }
+        touchProject(db, id, user.id);
+        if (isCollaborativeTextFile(relative)) {
+          const content = fs.readFileSync(absolute, "utf8");
+          collaboration.updateFile(id, relative, content, user.id);
+        } else {
+          collaboration.invalidateSourceTree(id);
+        }
+        recordHistory(id, user.id, "file", [relative]);
+        return reply.code(201).send({ ok: true, path: relative });
+      }, { preflight: () => { requireEditableProject(db, id, user); } });
+    } finally {
+      if (fs.existsSync(tmpPath)) {
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
       }
-      touchProject(db, id, user.id);
-      collaboration.updateFile(id, relative, uploaded.toString("utf8"), user.id);
-      recordHistory(id, user.id, "file", [relative]);
-      return reply.code(201).send({ ok: true, path: relative });
-    }, { preflight: () => { requireEditableProject(db, id, user); } });
+    }
   });
 
   app.get("/api/projects/:id/members", async (request, reply) => {
@@ -1673,7 +1905,11 @@ export async function buildApp(
         throw error;
       }
       return {
-        project: projectJson(accessibleProject(db, id, user)!, tagsForProject(db, id, user.id))
+        project: projectJson(
+          accessibleProject(db, id, user)!,
+          tagsForProject(db, id, user.id),
+          commentsSummaryForProject(db, id)
+        )
       };
     }, { preflight: () => {
       requireActualProjectOwner(db, id, user);
@@ -1889,6 +2125,7 @@ export async function buildApp(
   const cleanupExpiredSessions = (): void => {
     try {
       pruneExpiredSessions(db, now());
+      loginLimiter.prune();
     } catch (error) {
       app.log.error({ err: error }, "Failed to prune expired sessions");
     }

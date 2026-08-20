@@ -157,6 +157,7 @@ function migrate(db: DatabaseConnection): void {
       edited_at TEXT
     );
     CREATE INDEX IF NOT EXISTS comments_project_file ON comments(project_id, file_path);
+    CREATE INDEX IF NOT EXISTS comments_project_resolved ON comments(project_id, resolved);
 
     CREATE TABLE IF NOT EXISTS comment_replies (
       id TEXT PRIMARY KEY,

@@ -295,25 +295,92 @@ export class ProjectHistoryService {
   }
 
   private pruneVersions(projectId: string): void {
-    const obsolete = this.db.prepare(`SELECT id, manifest_json FROM project_history_versions
-      WHERE project_id = ? AND label IS NULL AND reason <> 'initial'
-      ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?`)
-      .all(projectId, this.config.historyMaxVersions) as Array<{ id: string; manifest_json: string }>;
-    this.deleteVersions(projectId, obsolete);
+    const rows = this.db.prepare(`SELECT id, reason, label, manifest_json, created_at
+      FROM project_history_versions WHERE project_id = ?
+      ORDER BY created_at DESC, rowid DESC`).all(projectId) as Array<{
+        id: string; reason: HistoryReason; label: string | null; manifest_json: string; created_at: string;
+      }>;
+    if (!rows.length) return;
 
-    // The latest version is always retained as the baseline for subsequent
-    // incremental snapshots. Initial and labeled versions are also protected,
-    // so explicitly preserved work can make the project exceed the soft cap.
-    while (this.stats(projectId).objectBytes > this.config.historyMaxStorageBytes) {
-      const candidate = this.db.prepare(`SELECT id, manifest_json FROM project_history_versions
-        WHERE project_id = ? AND label IS NULL AND reason <> 'initial'
-          AND id <> (SELECT id FROM project_history_versions WHERE project_id = ?
-            ORDER BY created_at DESC, rowid DESC LIMIT 1)
-        ORDER BY created_at ASC, rowid ASC LIMIT 1`).get(projectId, projectId) as {
-          id: string; manifest_json: string;
-        } | undefined;
-      if (!candidate) break;
-      this.deleteVersions(projectId, [candidate]);
+    // Parse manifests and build reference counts & object size tracking in a single pass
+    const manifests = new Map<string, HistoryManifest>();
+    const refCounts = new Map<string, number>();
+    const sizeMap = new Map<string, number>();
+
+    for (const row of rows) {
+      const manifest = parseManifest(row.manifest_json);
+      manifests.set(row.id, manifest);
+      for (const file of Object.values(manifest.files)) {
+        refCounts.set(file.digest, (refCounts.get(file.digest) ?? 0) + 1);
+        if (!sizeMap.has(file.digest)) sizeMap.set(file.digest, file.size);
+      }
+    }
+
+    const baseline = this.baseline(projectId);
+    if (baseline) {
+      for (const file of Object.values(baseline.files)) {
+        refCounts.set(file.digest, (refCounts.get(file.digest) ?? 0) + 1);
+        if (!sizeMap.has(file.digest)) sizeMap.set(file.digest, file.size);
+      }
+    }
+
+    let currentObjectBytes = 0;
+    for (const [digest, count] of refCounts.entries()) {
+      if (count > 0) currentObjectBytes += sizeMap.get(digest) ?? 0;
+    }
+
+    const latestId = rows[0]?.id;
+    // Ordinary versions eligible for version count capping (ordered newest to oldest)
+    const ordinaryDesc = rows.filter((row) => row.label === null && row.reason !== "initial");
+
+    const toDeleteIds = new Set<string>();
+
+    const removeVersionRefs = (versionId: string) => {
+      if (toDeleteIds.has(versionId)) return;
+      toDeleteIds.add(versionId);
+      const manifest = manifests.get(versionId);
+      if (!manifest) return;
+      for (const file of Object.values(manifest.files)) {
+        const count = refCounts.get(file.digest);
+        if (count !== undefined) {
+          if (count === 1) {
+            refCounts.set(file.digest, 0);
+            currentObjectBytes -= sizeMap.get(file.digest) ?? 0;
+          } else if (count > 1) {
+            refCounts.set(file.digest, count - 1);
+          }
+        }
+      }
+    };
+
+    // 1. Cap by historyMaxVersions (prune excess ordinary versions from newest to oldest offset)
+    if (ordinaryDesc.length > this.config.historyMaxVersions) {
+      const obsolete = ordinaryDesc.slice(this.config.historyMaxVersions);
+      for (const row of obsolete) removeVersionRefs(row.id);
+    }
+
+    // 2. Cap by historyMaxStorageBytes (prune remaining eligible versions from oldest to newest)
+    if (currentObjectBytes > this.config.historyMaxStorageBytes) {
+      const remainingEligibleAsc = ordinaryDesc
+        .filter((row) => row.id !== latestId && !toDeleteIds.has(row.id))
+        .reverse();
+      for (const row of remainingEligibleAsc) {
+        if (currentObjectBytes <= this.config.historyMaxStorageBytes) break;
+        removeVersionRefs(row.id);
+      }
+    }
+
+    if (!toDeleteIds.size) return;
+
+    // 3. Batch delete rows in a single transaction
+    const remove = this.db.prepare("DELETE FROM project_history_versions WHERE id = ? AND project_id = ?");
+    this.db.transaction(() => {
+      for (const id of toDeleteIds) remove.run(id, projectId);
+    })();
+
+    // 4. Remove unreferenced CAS objects on disk
+    for (const [digest, count] of refCounts.entries()) {
+      if (count === 0) fs.rmSync(this.objectPath(projectId, digest), { force: true });
     }
   }
 

@@ -68,6 +68,21 @@ describe("project history retention", () => {
     expect(stats.storageLimitExceeded).toBe(true);
   });
 
+  it("strictly enforces ordinary version count cap without counting deviation", () => {
+    const fixture = createFixture({ maxVersions: 3, maxStorageBytes: 512 * 1024 * 1024 });
+    fixture.history.record(fixture.projectId, "user-1", "initial");
+
+    for (let i = 1; i <= 6; i++) {
+      writeSource(fixture, "main.tex", `version-${i}`);
+      fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"]);
+    }
+
+    const stats = fixture.history.stats(fixture.projectId);
+    expect(stats.ordinaryVersionCount).toBe(3);
+    const versions = fixture.history.list(fixture.projectId).filter((v) => v.reason !== "initial" && !v.label);
+    expect(versions).toHaveLength(3);
+  });
+
   it("keeps a correct current baseline after deleting the latest visible version", () => {
     const fixture = createFixture();
     fixture.history.record(fixture.projectId, "user-1", "initial");
@@ -84,6 +99,20 @@ describe("project history retention", () => {
     writeSource(fixture, "main.tex", "after clear");
     const rebuilt = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!;
     expect(fixture.history.readTextFile(fixture.projectId, rebuilt.id, "chapters/intro.tex")).toBe("current companion");
+  });
+
+  it("batch-prunes multiple obsolete versions in a single pass when storage limit is exceeded", () => {
+    const fixture = createFixture({ maxVersions: 10, maxStorageBytes: 30 });
+    fixture.history.record(fixture.projectId, "user-1", "initial");
+
+    for (let i = 1; i <= 5; i++) {
+      writeSource(fixture, "main.tex", `payload-${i}-${"X".repeat(10)}`);
+      fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"]);
+    }
+
+    const stats = fixture.history.stats(fixture.projectId);
+    expect(stats.storageLimitExceeded).toBe(false);
+    expect(stats.objectBytes).toBeLessThanOrEqual(30);
   });
 
   function createFixture(options: { maxVersions?: number; maxStorageBytes?: number } = {}): HistoryFixture {
