@@ -53,6 +53,8 @@ export interface SharedCompileState {
 export interface CollaborationSaveReceipt {
   revision: number;
   persistedAt: string;
+  ok: boolean;
+  failedPaths?: string[];
 }
 
 export function sharedCompileState(value: unknown): SharedCompileState | null {
@@ -114,11 +116,25 @@ export class ProjectCollaboration {
       const requestId = decoding.readVarString(decoder);
       const pending = this.flushRequests.get(requestId);
       if (!pending) return;
+      const ok = decoding.readVarUint(decoder) === 1;
       const revision = decoding.readVarUint(decoder);
       const persistedAt = decoding.readVarString(decoder);
+      const failedCount = decoding.readVarUint(decoder);
+      const failedPaths: string[] = [];
+      for (let i = 0; i < failedCount; i++) {
+        failedPaths.push(decoding.readVarString(decoder));
+      }
       window.clearTimeout(pending.timer);
       this.flushRequests.delete(requestId);
-      pending.resolve({ revision, persistedAt });
+      if (!ok) {
+        const error = Object.assign(
+          new Error(failedPaths.length ? `保存失败：${failedPaths.join(", ")}` : "源码保存到服务器磁盘失败"),
+          { failedPaths }
+        );
+        pending.reject(error);
+      } else {
+        pending.resolve({ revision, persistedAt, ok: true, failedPaths: [] });
+      }
     };
     this.provider.messageHandlers[MESSAGE_PROTOCOL] = (_encoder, decoder) => {
       const epoch = decoding.readVarString(decoder);

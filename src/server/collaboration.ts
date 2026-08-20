@@ -84,6 +84,8 @@ interface RoomBootstrap {
 export interface CollaborationSaveReceipt {
   revision: number;
   persistedAt: string;
+  ok: boolean;
+  failedPaths?: string[];
 }
 
 export interface CollaborationPersistEvent {
@@ -148,10 +150,17 @@ export class CollaborationService {
     const initialization = this.roomInitializations.get(projectId) ?? this.initializeRoom(projectId, generation);
     try {
       const room = await initialization;
-      if (this.projectGeneration(projectId) !== generation) {
+      const currentMaintenance = this.maintenanceProjects.get(projectId);
+      if (currentMaintenance) {
+        this.disposeRoom(room);
+        socket.close(1013, `Project is temporarily unavailable: ${currentMaintenance}`);
+      } else if (this.projectGeneration(projectId) !== generation) {
         socket.close(1013, "Collaboration state changed; retry required");
-      } else if (socket.readyState === WebSocket.OPEN) this.attachConnection(room, socket, user);
-      else socket.close(1000, "Collaboration connection closed during initialization");
+      } else if (socket.readyState === WebSocket.OPEN) {
+        this.attachConnection(room, socket, user);
+      } else {
+        socket.close(1000, "Collaboration connection closed during initialization");
+      }
     } catch {
       socket.close(1011, "Unable to initialize collaboration room");
     } finally {
@@ -228,12 +237,21 @@ export class CollaborationService {
 
   updateFile(projectId: string, filePathInput: string, content: string, userId: string): void {
     const room = this.rooms.get(projectId);
-    if (!room || !isCollaborativeTextFile(filePathInput)) return;
+    if (!room) {
+      this.invalidateProject(projectId);
+      return;
+    }
+    if (!isCollaborativeTextFile(filePathInput)) {
+      this.invalidateProject(projectId);
+      return;
+    }
     const filePath = safeRelativePath(filePathInput);
     room.allowedPaths.add(filePath);
     room.persistedContent.set(filePath, content);
     room.doc.transact(() => replaceText(this.trackedText(room, filePath), content), HTTP_ORIGIN);
     room.lastModifiedUserId = userId;
+    room.persistedRevision += 1;
+    room.persistedAt = new Date().toISOString();
     this.bumpFiles(room, { kind: "update", path: filePath });
   }
 
@@ -284,6 +302,24 @@ export class CollaborationService {
     }
   }
 
+  disconnectUser(userId: string, reason = "User access revoked"): void {
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_PERMISSION);
+    encoding.writeVarString(encoder, userId);
+    encoding.writeVarString(encoder, "revoked");
+    const message = encoding.toUint8Array(encoder);
+
+    for (const room of this.rooms.values()) {
+      for (const connection of [...room.connections]) {
+        if (connection.user.id === userId) {
+          send(connection.socket, message);
+          connection.socket.close(1008, reason);
+          this.disconnect(room, connection);
+        }
+      }
+    }
+  }
+
   currentRevision(projectId: string): number | null {
     return this.rooms.get(projectId)?.persistedRevision ?? null;
   }
@@ -314,7 +350,10 @@ export class CollaborationService {
 
   movePath(projectId: string, sourceInput: string, destinationInput: string, userId: string): void {
     const room = this.rooms.get(projectId);
-    if (!room) return;
+    if (!room) {
+      this.invalidateProject(projectId);
+      return;
+    }
     this.flushRoom(room);
     const source = safeRelativePath(sourceInput);
     const destination = safeRelativePath(destinationInput);
@@ -332,12 +371,17 @@ export class CollaborationService {
       }
     }, HTTP_ORIGIN);
     room.lastModifiedUserId = userId;
+    room.persistedRevision += 1;
+    room.persistedAt = new Date().toISOString();
     this.bumpFiles(room, { kind: "move", source, destination });
   }
 
   removePath(projectId: string, filePathInput: string): void {
     const room = this.rooms.get(projectId);
-    if (!room) return;
+    if (!room) {
+      this.invalidateProject(projectId);
+      return;
+    }
     const filePath = safeRelativePath(filePathInput);
     const removed = [...room.allowedPaths].filter((candidate) => candidate === filePath || candidate.startsWith(`${filePath}/`));
     room.doc.transact(() => {
@@ -348,7 +392,13 @@ export class CollaborationService {
         room.dirtyPaths.delete(candidate);
       }
     }, HTTP_ORIGIN);
+    room.persistedRevision += 1;
+    room.persistedAt = new Date().toISOString();
     this.bumpFiles(room, { kind: "delete", path: filePath });
+  }
+
+  invalidateSourceTree(projectId: string): void {
+    this.invalidateProject(projectId);
   }
 
   signalComments(projectId: string): void {
@@ -524,7 +574,7 @@ export class CollaborationService {
       epoch: bootstrap.epoch,
       persistedRevision: 0,
       persistedAt: new Date().toISOString(),
-      maintenanceReason: null,
+      maintenanceReason: this.maintenanceProjects.get(projectId) ?? null,
       snapshotBarrierDepth: this.snapshotBarriers.get(projectId) ?? 0,
       snapshotFlushPending: false
     };
@@ -705,8 +755,13 @@ export class CollaborationService {
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MESSAGE_FLUSH);
       encoding.writeVarString(encoder, requestId);
+      encoding.writeVarUint(encoder, receipt.ok ? 1 : 0);
       encoding.writeVarUint(encoder, receipt.revision);
       encoding.writeVarString(encoder, receipt.persistedAt);
+      encoding.writeVarUint(encoder, receipt.failedPaths?.length ?? 0);
+      for (const failed of receipt.failedPaths ?? []) {
+        encoding.writeVarString(encoder, failed);
+      }
       send(connection.socket, encoding.toUint8Array(encoder));
       return;
     }
@@ -800,7 +855,7 @@ export class CollaborationService {
       if (room.saveTimer) clearTimeout(room.saveTimer);
       room.saveTimer = null;
       if (room.dirtyPaths.size > 0) room.snapshotFlushPending = true;
-      return this.currentReceipt(room);
+      return this.currentReceipt(room, room.dirtyPaths.size === 0, []);
     }
     const startedAt = performance.now();
     if (room.saveTimer) clearTimeout(room.saveTimer);
@@ -809,6 +864,7 @@ export class CollaborationService {
     this.persistRoomState(room);
     let changed = false;
     const changedPaths: string[] = [];
+    const failedPaths: string[] = [];
     const dirtyPaths = [...room.dirtyPaths];
     for (const filePath of dirtyPaths) {
       if (!room.allowedPaths.has(filePath)) {
@@ -821,16 +877,25 @@ export class CollaborationService {
         room.dirtyPaths.delete(filePath);
         continue;
       }
-      if (Buffer.byteLength(next, "utf8") > maxCollaborativeFileBytes(this.config)) continue;
+      if (Buffer.byteLength(next, "utf8") > maxCollaborativeFileBytes(this.config)) {
+        failedPaths.push(filePath);
+        continue;
+      }
       const absolute = resolveSourcePath(this.config, room.projectId, filePath);
-      if (!fs.existsSync(absolute)) throw new Error(`Collaborative source path disappeared: ${filePath}`);
+      try {
+        fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
+      } catch {
+        failedPaths.push(filePath);
+        continue;
+      }
       const temporary = `${absolute}.collaboration-${process.pid}-${randomUUID()}.tmp`;
       try {
         fs.writeFileSync(temporary, next, { encoding: "utf8", mode: 0o600 });
         fs.renameSync(temporary, absolute);
       } catch (error) {
         fs.rmSync(temporary, { force: true });
-        throw error;
+        failedPaths.push(filePath);
+        continue;
       }
       room.persistedContent.set(filePath, next);
       room.dirtyPaths.delete(filePath);
@@ -848,17 +913,27 @@ export class CollaborationService {
       try { this.onPersist({ projectId: room.projectId, userId: room.lastModifiedUserId, paths: changedPaths, durationMs: performance.now() - startedAt }); }
       catch { /* Source durability must not depend on optional history bookkeeping. */ }
     }
-    // A flush is also used as a read-side consistency barrier by compilation.
-    // Do not manufacture a new source revision for a no-op flush: otherwise
-    // two simultaneous compile admissions would observe different generations
-    // even though the project contents did not change.
+    const ok = failedPaths.length === 0 && room.dirtyPaths.size === 0;
     if (changed) room.persistedRevision += 1;
-    room.persistedAt = new Date().toISOString();
-    return this.currentReceipt(room);
+    if (ok) {
+      room.persistedAt = new Date().toISOString();
+    } else if (!room.saveTimer && room.dirtyPaths.size > 0) {
+      // Retry with backoff if dirty files remain unpersisted
+      room.saveTimer = setTimeout(() => {
+        try { this.flushRoom(room); }
+        catch { room.saveTimer = null; }
+      }, 2000);
+    }
+    return this.currentReceipt(room, ok, failedPaths);
   }
 
-  private currentReceipt(room: Room): CollaborationSaveReceipt {
-    return { revision: room.persistedRevision, persistedAt: room.persistedAt };
+  private currentReceipt(room: Room, ok = true, failedPaths: string[] = []): CollaborationSaveReceipt {
+    return {
+      revision: room.persistedRevision,
+      persistedAt: room.persistedAt,
+      ok: ok && room.dirtyPaths.size === 0,
+      failedPaths
+    };
   }
 
   private bumpFiles(room: Room, event: Record<string, string>): void {

@@ -1,4 +1,5 @@
-import type { CollaborationService } from "./collaboration.js";
+import type { CollaborationSaveReceipt, CollaborationService } from "./collaboration.js";
+import { SourceFlushError } from "./http.js";
 
 interface ProjectQueue {
   tail: Promise<void>;
@@ -50,6 +51,15 @@ export class ProjectMutationCoordinator {
 
   constructor(private readonly collaboration: CollaborationService) {}
 
+  /**
+   * Flush the live collaborative room and require a durable result.  A null
+   * receipt means that no room is currently loaded, so the source directory
+   * is already authoritative for this request.
+   */
+  flushProject(projectId: string): CollaborationSaveReceipt | null {
+    return this.requireSuccessfulFlush(this.collaboration.flushProject(projectId));
+  }
+
   async runExclusive<T>(
     projectId: string,
     reason: string,
@@ -70,7 +80,7 @@ export class ProjectMutationCoordinator {
         options.preflight?.();
         // This call is synchronous. No WebSocket event can interleave between
         // the final flush and the maintenance flag being installed.
-        if (options.flush !== false) this.collaboration.flushProject(projectId);
+        if (options.flush !== false) this.flushProject(projectId);
         this.collaboration.beginMaintenance(projectId, reason);
         try {
           return await operation();
@@ -147,7 +157,7 @@ export class ProjectMutationCoordinator {
     options: ProjectMutationOptions = {}
   ): Promise<T> {
     return this.runQueued(projectId, async () => {
-      if (options.flush !== false) this.collaboration.flushProject(projectId);
+      if (options.flush !== false) this.flushProject(projectId);
       return operation();
     }, options);
   }
@@ -165,14 +175,14 @@ export class ProjectMutationCoordinator {
     options: ProjectReadOptions = {}
   ): Promise<T> {
     return this.runQueued(projectId, async () => {
-      this.collaboration.flushProject(projectId);
+      this.flushProject(projectId);
       let barrierStarted = false;
       try {
         this.collaboration.beginSnapshotBarrier(projectId);
         barrierStarted = true;
         return await operation();
       } finally {
-        if (barrierStarted) this.collaboration.endSnapshotBarrier(projectId);
+        if (barrierStarted) this.requireSuccessfulFlush(this.collaboration.endSnapshotBarrier(projectId));
       }
     }, options);
   }
@@ -205,6 +215,11 @@ export class ProjectMutationCoordinator {
       release();
       if (this.queues.get(projectId)?.tail === tail) this.queues.delete(projectId);
     }
+  }
+
+  private requireSuccessfulFlush(receipt: CollaborationSaveReceipt | null): CollaborationSaveReceipt | null {
+    if (receipt && !receipt.ok) throw new SourceFlushError(receipt.failedPaths ?? []);
+    return receipt;
   }
 
   private reserve(projectId: string): { previous: Promise<void>; tail: Promise<void>; release: () => void } {

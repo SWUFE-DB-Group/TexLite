@@ -221,4 +221,86 @@ describe("project mutation coordination", () => {
     await expect(write).resolves.toBeUndefined();
     expect(events).toEqual(["flush", "barrier:begin", "read:start", "read:end", "barrier:end", "flush", "write"]);
   });
+
+  it("stops an exclusive mutation when the collaborative flush is not durable", async () => {
+    const events: string[] = [];
+    const collaboration = {
+      flushProject: () => {
+        events.push("flush");
+        return { revision: 4, persistedAt: "2026-08-20T00:00:00.000Z", ok: false, failedPaths: ["main.tex"] };
+      },
+      beginMaintenance: () => events.push("begin"),
+      endMaintenance: () => events.push("end")
+    } as never;
+    const coordinator = new ProjectMutationCoordinator(collaboration);
+
+    await expect(coordinator.runExclusive("project-1", "checkout", () => {
+      events.push("operation");
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      code: "SOURCE_FLUSH_FAILED",
+      failedPaths: ["main.tex"]
+    });
+    expect(events).toEqual(["flush"]);
+  });
+
+  it("stops an ordinary write when the collaborative flush is not durable", async () => {
+    let operationRan = false;
+    const collaboration = {
+      flushProject: () => ({
+        revision: 7,
+        persistedAt: "2026-08-20T00:00:00.000Z",
+        ok: false,
+        failedPaths: ["chapters/intro.tex", "refs.bib"]
+      })
+    } as never;
+    const coordinator = new ProjectMutationCoordinator(collaboration);
+
+    await expect(coordinator.runSerialized("project-1", () => {
+      operationRan = true;
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      code: "SOURCE_FLUSH_FAILED",
+      failedPaths: ["chapters/intro.tex", "refs.bib"]
+    });
+    expect(operationRan).toBe(false);
+  });
+
+  it("does not start a consistent read when its initial flush fails", async () => {
+    const events: string[] = [];
+    const collaboration = {
+      flushProject: () => {
+        events.push("flush");
+        return { revision: 2, persistedAt: "2026-08-20T00:00:00.000Z", ok: false, failedPaths: ["main.tex"] };
+      },
+      beginSnapshotBarrier: () => events.push("barrier:begin"),
+      endSnapshotBarrier: () => { events.push("barrier:end"); return null; }
+    } as never;
+    const coordinator = new ProjectMutationCoordinator(collaboration);
+
+    await expect(coordinator.runConsistentRead("project-1", () => {
+      events.push("read");
+      return "snapshot";
+    })).rejects.toMatchObject({ code: "SOURCE_FLUSH_FAILED", failedPaths: ["main.tex"] });
+    expect(events).toEqual(["flush"]);
+  });
+
+  it("reports a failed deferred flush when a consistent read releases its barrier", async () => {
+    const events: string[] = [];
+    const collaboration = {
+      flushProject: () => { events.push("flush"); return null; },
+      beginSnapshotBarrier: () => events.push("barrier:begin"),
+      endSnapshotBarrier: () => {
+        events.push("barrier:end");
+        return { revision: 9, persistedAt: "2026-08-20T00:00:00.000Z", ok: false, failedPaths: ["main.tex"] };
+      }
+    } as never;
+    const coordinator = new ProjectMutationCoordinator(collaboration);
+
+    await expect(coordinator.runConsistentRead("project-1", () => {
+      events.push("read");
+      return "snapshot";
+    })).rejects.toMatchObject({ code: "SOURCE_FLUSH_FAILED", failedPaths: ["main.tex"] });
+    expect(events).toEqual(["flush", "barrier:begin", "read", "barrier:end"]);
+  });
 });
