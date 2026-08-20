@@ -105,10 +105,6 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-grid.list-view .project-card-actions .danger-text { margin-left: 0; }
 .project-comments-badge { display: inline-flex; align-items: center; gap: 3px; width: fit-content; border-radius: 999px; padding: 1px 6px; font-size: 10px; font-weight: 650; line-height: 1.4; }
 .project-comments-badge.unresolved { background: #fde8e7; color: #b3261e; border: 1px solid #f8c8c5; }
-.project-comments-badge.resolved { background: #eef1ef; color: #555e58; border: 1px solid #dce2de; }
-.comment-count-unresolved { color: #b3261e; font-weight: 600; }
-.comment-count-all-resolved { color: #555e58; }
-.comment-count-none { color: #929994; }
 .tag { display: inline-flex; align-items: center; gap: 4px; width: fit-content; border-radius: 999px; padding: 2px 7px; background: #eef0ee; color: #4a524c; font-size: 10px; font-weight: 650; }
 .tag-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
 .tag-red { --tag-color: #e04b45; } .tag-orange { --tag-color: #ef9135; } .tag-yellow { --tag-color: #dbb62f; }
