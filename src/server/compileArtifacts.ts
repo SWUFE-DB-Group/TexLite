@@ -22,9 +22,11 @@ export function availablePdf(
   if (published) return { path: published.pdf, version: published.runId };
   if (!isDefault) return null;
   const retained = retainedPdfPath(config, projectId);
-  if (fs.existsSync(retained)) return { path: retained, version: String(fs.statSync(retained).mtimeMs) };
+  const retainedStat = regularFileStat(retained);
+  if (retainedStat) return { path: retained, version: String(retainedStat.mtimeMs) };
   const legacy = path.join(outputRoot(config, projectId), `${texFileStem(mainFile)}.pdf`);
-  return fs.existsSync(legacy) ? { path: legacy, version: String(fs.statSync(legacy).mtimeMs) } : null;
+  const legacyStat = regularFileStat(legacy);
+  return legacyStat ? { path: legacy, version: String(legacyStat.mtimeMs) } : null;
 }
 
 /** Resolve the PDF bytes belonging to one successful compile run. */
@@ -37,8 +39,7 @@ export function compileRunPdf(
   if (!/^[a-f0-9-]{36}$/i.test(runId)) return null;
   const output = path.join(outputRoot(config, projectId), ".texlite", "runs", runId, "output");
   const pdf = path.join(output, `${texFileStem(mainFile)}.pdf`);
-  if (!fs.existsSync(pdf) || !fs.statSync(pdf).isFile()) return null;
-  return { path: pdf, version: runId };
+  return regularFileStat(pdf) ? { path: pdf, version: runId } : null;
 }
 
 export function syncArtifacts(
@@ -77,8 +78,16 @@ export function compileMainFile(
   catch { return null; }
   if (!mainFile.toLocaleLowerCase().endsWith(".tex")) return null;
   const absolute = resolveSourcePath(config, projectId, mainFile);
-  if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) return null;
-  if (mainFile !== defaultMainFile && !hasDocumentClass(fs.readFileSync(absolute, "utf8"))) return null;
+  try {
+    if (!fs.statSync(absolute).isFile()) return null;
+    // A project may intentionally contain only one fragmentary .tex file; the
+    // upload flow keeps it as the configured root and latexmk reports the
+    // resulting compile error. Session-selected alternate roots are stricter:
+    // they must identify an actual document rather than an included fragment.
+    if (mainFile !== defaultMainFile && !hasDocumentClass(fs.readFileSync(absolute, "utf8"))) return null;
+  } catch {
+    return null;
+  }
   return mainFile;
 }
 
@@ -113,4 +122,13 @@ function retainedPdfPath(config: Config, projectId: string): string {
 
 function retainedSynctexPath(config: Config, projectId: string): string {
   return path.join(outputRoot(config, projectId), ".texlite", "latest.synctex.gz");
+}
+
+function regularFileStat(filePath: string): fs.Stats | null {
+  try {
+    const stat = fs.statSync(filePath);
+    return stat.isFile() ? stat : null;
+  } catch {
+    return null;
+  }
 }

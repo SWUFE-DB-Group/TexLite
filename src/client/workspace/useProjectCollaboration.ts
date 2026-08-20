@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ProjectCollaboration,
-  sharedCompileStates,
   type ActiveSession,
   type CollaborationStatus,
   type FilesEvent,
@@ -40,7 +39,7 @@ export function useProjectCollaboration(
   onDisconnectedRef.current = onDisconnected;
 
   useEffect(() => {
-    const states = sharedCompileStates(collaboration.meta.get("compileStates"));
+    const states = collaboration.compileStates();
     setCompileState(states[activeMainFile] ?? null);
   }, [activeMainFile, collaboration]);
 
@@ -74,7 +73,11 @@ export function useProjectCollaboration(
       if (typeof nextCommentsRevision === "string") setCommentsRevision(nextCommentsRevision);
       const nextDictionaryRevision = collaboration.meta.get("dictionaryRevision");
       if (typeof nextDictionaryRevision === "string") setDictionaryRevision(nextDictionaryRevision);
-      const states = sharedCompileStates(collaboration.meta.get("compileStates"));
+      const states = collaboration.compileStates();
+      setCompileState(states[activeMainFileRef.current] ?? null);
+    };
+    const handleAuthoritativeCompileStates = () => {
+      const states = collaboration.compileStates();
       setCompileState(states[activeMainFileRef.current] ?? null);
     };
     collaboration.awareness.on("change", refreshSessions);
@@ -83,6 +86,7 @@ export function useProjectCollaboration(
     collaboration.provider.on("connection-close", handleConnectionFailure);
     collaboration.provider.on("connection-error", handleConnectionFailure);
     collaboration.meta.observe(handleMeta);
+    const stopCompileStateListener = collaboration.onCompileStates(handleAuthoritativeCompileStates);
     const stopDraftListener = collaboration.onDraftReady(() => setLocalDraftReady(true));
     const stopPermissionListener = collaboration.onPermissionChanged((nextPermission) => {
       if (nextPermission === "revoked") {
@@ -109,6 +113,7 @@ export function useProjectCollaboration(
       collaboration.provider.off("connection-close", handleConnectionFailure);
       collaboration.provider.off("connection-error", handleConnectionFailure);
       collaboration.meta.unobserve(handleMeta);
+      stopCompileStateListener();
       stopDraftListener();
       stopPermissionListener();
       collaboration.destroy();

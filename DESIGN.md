@@ -35,10 +35,11 @@ installation, configuration, and day-to-day operation.
 
 TexLite is intentionally a single-instance application. The collaboration
 rooms, project mutation queues, compile coordinator, and SQLite database are
-process-local. Startup acquires an atomic `.texlite.lock` in the data
-directory; a live second process is rejected, while a stale lock from a dead
-process can be recovered. Cluster mode and multiple application processes
-sharing one data directory are not supported.
+process-local. Startup acquires an atomic `.texlite.lock` directory in the data
+directory and installs its owner record atomically; a live second process is
+rejected, while a stale lock from a dead process can be recovered without
+deleting a lock that is still being initialized. Cluster mode and multiple
+application processes sharing one data directory are not supported.
 
 ## Configuration and startup
 
@@ -97,13 +98,41 @@ to source comments. Comments are anchored to source offsets and selected text,
 can be resolved, edited, deleted, and replied to. If an author is removed,
 the record remains visible as “Deleted User”.
 
+The collaboration service uses a versioned handshake and a versioned epoch
+marker. When a browser from an incompatible release connects, it is forced to
+reload before it can decode or send source updates. Protocol-only migrations
+preserve the browser's offline draft; source-tree replacements still clear the
+draft because the server tree is authoritative.
+
 The collaboration service persists dirty text with atomic temporary-file writes
 and returns a receipt containing `revision`, `persistedAt`, `ok`, and failed
 paths. Failed writes remain dirty and are retried in the background. Every
 ordinary source operation must accept a successful receipt: the coordinator
 returns `409 SOURCE_FLUSH_FAILED` with `failedPaths` instead of proceeding with
 a stale disk tree. This applies to Git checkout/restore, history restore,
-file/folder writes, moves/deletes, project deletion, and consistent reads.
+file/folder writes, moves/deletes, project deletion, and consistent reads. A
+flush requested while a snapshot barrier is active is deferred until the
+barrier closes, so the browser does not receive a false failure for an edit that
+was intentionally held in memory. If a collaborative text edit exceeds the
+configured limit, it is restored to the last durable content and the flush
+receipt identifies the rejected path.
+
+Yjs state persistence is reserved for source and HTTP-originated text updates.
+Ephemeral metadata such as compile status, file-list revisions, and comment or
+dictionary invalidation markers is broadcast live and reconstructed from the
+database/source tree after restart; metadata-only events therefore do not cause
+another full synchronous Yjs state rewrite. During room recovery the server
+removes old markers and validates any queued/running compile state against
+`compile_runs`. The collaboration handshake also sends a small
+server-authoritative compile-state snapshot, so a stale browser IndexedDB entry
+cannot make a read-only workspace appear permanently busy.
+
+Each collaboration message refreshes the account record before applying an
+update. Disabling a user, deleting the account, or changing project membership
+therefore takes effect for an already-open socket rather than relying only on
+the next reconnect. Binary uploads also publish a source-tree event so other
+open workspaces refresh their file lists even though binary files are not Yjs
+text objects.
 
 `ProjectMutationCoordinator` has two related controls:
 
@@ -115,6 +144,7 @@ file/folder writes, moves/deletes, project deletion, and consistent reads.
 | Background compilation | `latexmk` on an immutable snapshot | Holds a compile reservation but not the ordinary source queue, so editing, source reads, and the retained PDF can continue. |
 | Compile-state cleanup | Cache/artifact recovery | Waits for active compiles and serializes output removal without disconnecting collaborators. |
 | Published PDF read | PDF.js/range requests | Reads an immutable published bundle directly and does not wait for cold Yjs-room initialization; a concurrent cleanup may produce a normal 404. |
+| Cold file-list read | Project file tree | Uses the queue and a short barrier, but does not wait for a cold Yjs-room hydration; a concurrent cleanup is treated as a normal missing entry. |
 
 The source tree is checked with `lstat`-based path walks. ZIP imports, project
 duplication, Git checkout, file listing, and source resolution reject symbolic
@@ -136,6 +166,11 @@ highlighted and keyboard accessible. PDF/SyncTeX synchronization is available
 only for the current `.tex` root document; a non-root tab remains editable but
 does not claim a PDF location.
 
+Each project collaboration object owns one Yjs undo manager per source file.
+Editor tab remounts therefore preserve Ctrl/Cmd+Z and Vim undo history without
+leaving obsolete CodeMirror/Yjs observers behind. Managers are released when
+the collaboration object is destroyed or loses edit permission.
+
 Harper performs spelling and grammar checks locally in a worker. The browser's
 built-in spellcheck is disabled for the editor, LaTeX commands/environments,
 comments, references, option keys/values, and table column specifications are
@@ -150,6 +185,10 @@ manually format a selection or enable the per-user/per-project “format before
 compile” preference. The server invokes the optional host `tex-fmt` command for
 `.tex`, `.bib`, `.cls`, and `.sty`; a formatter failure reports an error but
 does not prevent compilation. There is no silent Prettier fallback.
+
+Project duplication flushes the live source room and copies the tree under a
+short read barrier. Uploading a replacement text file also re-anchors existing
+source comments against the old and new contents before notifying collaborators.
 
 The outline follows `\input`, `\include`, and `\subfile` references and
 jumps to source lines. The source and PDF panes expose explicit SyncTeX arrows,
@@ -172,9 +211,12 @@ Compilation follows this sequence:
    project, root, and a cheap source/settings generation.
 2. After coalescing, TexLite flushes the room and captures a source snapshot.
    A short snapshot barrier prevents autosave from modifying the source tree
-   while the asynchronous copy and digest run. Up to three unstable attempts
-   are made; if editing never becomes stable, the request is retryable rather
-   than accepting a mixed-time snapshot.
+   while the asynchronous copy and digest run. Edits that arrive during the
+   barrier remain in Yjs memory until the snapshot is complete, so the
+   captured tree is internally consistent even when it is already older than
+   the live editor. Such a compile is accepted and the workspace labels the
+   retained PDF as based on an earlier snapshot; only a failed post-barrier
+   flush remains retryable.
 3. Changed files are synchronized into an incremental compile workspace keyed
    by project, root, engine, latexmkrc, and compiler arguments. The cache is
    reused only for the same root; root-specific caches can compile concurrently
@@ -196,7 +238,9 @@ log, warnings, errors, generated artifacts, and recovery actions; clean-cache
 and clean-artifact actions are for recovery rather than routine compilation.
 Compile responses expose `Server-Timing` measurements for snapshot, cache
 synchronization, LaTeX execution, artifact publication, and total request time
-so queue and rendering regressions can be diagnosed.
+so queue and rendering regressions can be diagnosed. Artifact listing and
+download endpoints treat removal of a run between manifest lookup and file
+read as an empty list or 404, rather than exposing a filesystem race as a 500.
 TexLite does not keep an unlimited browsable compile history: old unsuccessful
 run rows and unreferenced bundles are pruned, while the latest successful
 result for each root is retained.
@@ -249,6 +293,7 @@ The default data layout is:
 ~~~text
 <data-dir>/
 ├── .texlite.lock
+│   └── owner.json
 ├── texlite.db
 ├── texlite.db-wal
 ├── texlite.db-shm
@@ -297,13 +342,12 @@ model expands beyond a small group of trusted users on localhost.
   localhost-only, and conservative response/security headers. Login limiting
   and strict session-cookie defaults are present but are not a complete public
   deployment policy.
-- [ ] Validate every PDF annotation URL against an explicit protocol allowlist,
+- [x] Validate every PDF annotation URL against an explicit protocol allowlist,
   including the URL that PDF.js labels as sanitized, before creating an
   external browser link.
-- [ ] Harden compile-output serving. The PDF path has regular-file and missing
-  file handling, but artifact listing/stat/copy can still race compile cleanup;
-  manifests, artifact bundles, and downloadable files need one consistent
-  lstat/real-path/atomic-copy policy.
+- [x] Harden compile-output serving. PDF and artifact listing/stat/copy paths
+  treat cleanup races as an empty result or 404 and never expose an expected
+  missing-file race as a 500.
 
 ### Correctness and recovery
 
@@ -314,13 +358,12 @@ model expands beyond a small group of trusted users on localhost.
   Project creation/import/duplication, project deletion, user cleanup, history
   deletion, and temporary downloads still need explicit tombstones or startup
   reconciliation for every failure point.
-- [ ] Validate the configured main document more strictly as a root containing
-  `\documentclass` (currently the server guarantees a regular `.tex` file and
-  compile-time selection applies the root check to session-selected files).
-- [ ] Refresh or disconnect collaboration connections immediately when a
-  user's role or project membership changes. Message-time access checks use the
-  connection's captured user row, so role downgrades need an explicit push or
-  connection refresh.
+- [ ] Validate the configured main document as a root containing
+  `\documentclass` without breaking the upload rule that a project containing
+  only one `.tex` file may retain it as its configured root. Session-selected
+  alternate roots already require `\documentclass`.
+- [x] Refresh collaboration account/access data at message time and disconnect
+  revoked users; membership changes are also pushed to open clients.
 - [ ] Add failure-injection tests for crashes between source snapshot,
   publication, database compile status updates, project deletion, and history
   cleanup.

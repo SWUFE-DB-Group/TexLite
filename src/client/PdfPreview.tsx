@@ -282,7 +282,13 @@ function PdfAnnotationLayer({ annotations, viewport, onInternalLink }: {
       const title = typeof annotation.title === "string" ? annotation.title.trim() : "";
       const unsafeUrl = typeof annotation.unsafeUrl === "string" ? annotation.unsafeUrl.trim() : "";
       const safeUrl = typeof annotation.url === "string" ? annotation.url.trim() : "";
-      const href = safeUrl || (/^(?:https?|mailto|ftp):/i.test(unsafeUrl) ? unsafeUrl : "");
+      // pdf.js exposes both a sanitized URL and the original annotation URL.
+      // Validate both before putting either value in an href; trusting the
+      // sanitized field alone would make a future pdf.js regression turn into
+      // a javascript/data URL injection in the preview.
+      const href = isAllowedExternalUrl(safeUrl)
+        ? safeUrl
+        : (isAllowedExternalUrl(unsafeUrl) ? unsafeUrl : "");
       const destination = annotation.dest;
       if (!href && destination == null) return null;
       const external = Boolean(href);
@@ -291,4 +297,8 @@ function PdfAnnotationLayer({ annotations, viewport, onInternalLink }: {
         style={{ left, top, width, height }} onClick={external ? undefined : (event) => { event.preventDefault(); onInternalLink(destination); }} />;
     })}
   </div>;
+}
+
+function isAllowedExternalUrl(value: string): boolean {
+  return /^(?:https?|mailto|ftp):/i.test(value);
 }

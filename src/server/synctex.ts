@@ -18,6 +18,17 @@ export interface SourceSyncLocation {
   column: number;
 }
 
+/** A user-correctable SyncTeX failure, rather than an opaque server error. */
+export class SyncTeXError extends Error {
+  readonly statusCode = 422;
+  readonly code = "SYNCTEX_FAILED";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "SyncTeXError";
+  }
+}
+
 async function runSynctex(args: string[], cwd: string): Promise<string> {
   try {
     const { stdout } = await runFile("synctex", args, {
@@ -27,7 +38,7 @@ async function runSynctex(args: string[], cwd: string): Promise<string> {
   } catch (error) {
     const stderr = typeof error === "object" && error !== null && "stderr" in error
       ? String(error.stderr) : "";
-    throw new Error(stderr.trim() || "SyncTeX 无法定位该位置，请重新编译项目");
+    throw new SyncTeXError(stderr.trim() || "SyncTeX 无法定位该位置，请重新编译项目");
   }
 }
 
@@ -71,7 +82,7 @@ export async function pdfToSource(
   const input = textField(output, "Input");
   const line = numericField(output, "Line");
   const column = numericField(output, "Column");
-  if (!input || !line) throw new Error("SyncTeX 没有找到对应的源码位置");
+  if (!input || !line) throw new SyncTeXError("SyncTeX 没有找到对应的源码位置");
   const absoluteInput = path.isAbsolute(input) ? input : path.resolve(sourceDirectory, input);
   return { input: absoluteInput, line, column: column && column > 0 ? column : 1 };
 }

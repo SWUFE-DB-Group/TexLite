@@ -22,6 +22,8 @@ const MESSAGE_AWARENESS = 1;
 const MESSAGE_FLUSH = 4;
 const MESSAGE_PROTOCOL = 5;
 const MESSAGE_PERMISSION = 7;
+const MESSAGE_COMPILE_STATES = 8;
+const COLLABORATION_PROTOCOL_VERSION = 2;
 
 describe("project collaboration", () => {
   let root: string;
@@ -206,6 +208,43 @@ describe("project collaboration", () => {
     }
   });
 
+  it("forces a legacy collaboration handshake to reload instead of accepting an incompatible client", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Protocol migration" }
+    });
+    const projectId = created.json().project.id as string;
+    const epochs: string[] = [];
+    let socket: WebSocket | null = null;
+    const closed = new Promise<number>((resolve) => {
+      void app.injectWS(`/api/collaboration/${projectId}`, { headers: { cookie: adminCookie } }, {
+        onInit: (createdSocket) => {
+          socket = createdSocket;
+          createdSocket.binaryType = "arraybuffer";
+          createdSocket.on("message", (data) => {
+            const decoder = decoding.createDecoder(rawData(data));
+            if (decoding.readVarUint(decoder) !== MESSAGE_PROTOCOL) return;
+            const epoch = decoding.readVarString(decoder);
+            epochs.push(epoch);
+            // Deliberately omit the protocol version, as a browser loaded from
+            // before the versioned handshake would do.
+            const acknowledgement = encoding.createEncoder();
+            encoding.writeVarUint(acknowledgement, MESSAGE_PROTOCOL);
+            encoding.writeVarString(acknowledgement, epoch);
+            if (createdSocket.readyState === WebSocket.OPEN) createdSocket.send(encoding.toUint8Array(acknowledgement));
+          });
+          createdSocket.once("close", (code) => resolve(code));
+        },
+        onOpen: () => undefined
+      });
+    });
+    const closeCode = await closed;
+    expect(closeCode).toBe(4001);
+    expect(epochs.length).toBeGreaterThanOrEqual(2);
+    expect(epochs[0]).toMatch(/^2:[a-f0-9-]{36}$/i);
+    expect(epochs[1]).toContain(":reload");
+    socket?.terminate();
+  });
+
   it("recovers a Yjs update that was durable before its source-file rename", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Crash recovery paper" }
@@ -227,6 +266,63 @@ describe("project collaboration", () => {
       const receipt = await peer.flush();
       expect(receipt.revision).toBeGreaterThan(0);
     } finally { peer.destroy(); }
+  });
+
+  it("does not restore a stale running compile state after room recovery", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Stale compile state" }
+    });
+    const projectId = created.json().project.id as string;
+    const staleRunId = randomUUID();
+    const persisted = new Y.Doc();
+    persisted.getMap("texlite:meta").set("compileStates", {
+      "main.tex": {
+        mainFile: "main.tex", runId: staleRunId, status: "running",
+        requestedBy: { id: adminId, username: "admin", name: "Administrator" },
+        updatedAt: new Date().toISOString()
+      }
+    });
+    const statePath = collaborationStatePath(config, projectId);
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(statePath, Y.encodeStateAsUpdate(persisted));
+    fs.writeFileSync(collaborationEpochPath(config, projectId), randomUUID());
+    persisted.destroy();
+
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      await waitFor(() => peer.authoritativeCompileStates !== null);
+      expect(peer.authoritativeCompileStates).toEqual({});
+      await waitFor(() => {
+        const state = peer.doc.getMap("texlite:meta").get("compileStates");
+        return state === undefined;
+      });
+      await waitFor(() => {
+        const repaired = new Y.Doc();
+        try {
+          Y.applyUpdate(repaired, fs.readFileSync(statePath));
+          return repaired.getMap("texlite:meta").get("compileStates") === undefined;
+        } finally { repaired.destroy(); }
+      });
+    } finally { peer.destroy(); }
+  });
+
+  it("advertises an active database compile when the room had no live metadata", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Queued compile handshake" }
+    });
+    const projectId = created.json().project.id as string;
+    const runId = randomUUID();
+    db.prepare(`INSERT INTO compile_runs
+      (id, project_id, requested_by, main_file, status, created_at)
+      VALUES (?, ?, ?, 'main.tex', 'queued', ?)`).run(runId, projectId, adminId, new Date().toISOString());
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      await waitFor(() => peer.authoritativeCompileStates?.["main.tex"] !== undefined);
+      expect(peer.authoritativeCompileStates?.["main.tex"]).toMatchObject({ runId, mainFile: "main.tex", status: "queued" });
+    } finally {
+      peer.destroy();
+      db.prepare("DELETE FROM compile_runs WHERE id = ?").run(runId);
+    }
   });
 
   it("repairs an oversized recovered Yjs text from the authoritative source file", async () => {
@@ -267,7 +363,7 @@ describe("project collaboration", () => {
         text.delete(0, text.length);
         text.insert(0, "x".repeat(maxCollaborativeFileBytes(config) + 1));
       });
-      await peer.flush();
+      await expect(peer.flush()).rejects.toMatchObject({ failedPaths: ["main.tex"] });
       await waitFor(() => text.toString() === sourceContent, 10_000);
       expect(fs.readFileSync(sourcePath, "utf8")).toBe(sourceContent);
     } finally { peer.destroy(); }
@@ -513,6 +609,7 @@ interface PeerUser { id: string; username: string; name: string }
 class TestPeer {
   readonly doc = new Y.Doc();
   readonly awareness = new Awareness(this.doc);
+  authoritativeCompileStates: Record<string, unknown> | null = null;
   pauseUpdates = false;
   readonly permissionChanges: string[] = [];
   private socket: WebSocket | null = null;
@@ -633,6 +730,7 @@ class TestPeer {
       const acknowledgement = encoding.createEncoder();
       encoding.writeVarUint(acknowledgement, MESSAGE_PROTOCOL);
       encoding.writeVarString(acknowledgement, epoch);
+      encoding.writeVarUint(acknowledgement, COLLABORATION_PROTOCOL_VERSION);
       this.send(encoding.toUint8Array(acknowledgement));
       const sync = encoding.createEncoder();
       encoding.writeVarUint(sync, MESSAGE_SYNC);
@@ -643,6 +741,9 @@ class TestPeer {
       const userId = decoding.readVarString(decoder);
       const permission = decoding.readVarString(decoder);
       if (userId === this.user.id) this.permissionChanges.push(permission);
+    } else if (messageType === MESSAGE_COMPILE_STATES) {
+      try { this.authoritativeCompileStates = JSON.parse(decoding.readVarString(decoder)) as Record<string, unknown>; }
+      catch { this.authoritativeCompileStates = {}; }
     }
   }
 

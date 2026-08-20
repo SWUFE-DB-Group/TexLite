@@ -174,17 +174,22 @@ export class ProjectMutationCoordinator {
     operation: () => Promise<T> | T,
     options: ProjectReadOptions = {}
   ): Promise<T> {
-    return this.runQueued(projectId, async () => {
-      this.flushProject(projectId);
-      let barrierStarted = false;
-      try {
-        this.collaboration.beginSnapshotBarrier(projectId);
-        barrierStarted = true;
-        return await operation();
-      } finally {
-        if (barrierStarted) this.requireSuccessfulFlush(this.collaboration.endSnapshotBarrier(projectId));
-      }
-    }, options);
+    return this.runBarrieredRead(projectId, operation, options, true);
+  }
+
+  /**
+   * Read the source tree under the same short barrier as a consistent read,
+   * but do not wait for a cold collaboration room to hydrate.  The filesystem
+   * is authoritative until a room exists, so this is safe for first-paint
+   * file-list requests and prevents them from being serialized behind a large
+   * Yjs bootstrap.
+   */
+  async runFilesystemRead<T>(
+    projectId: string,
+    operation: () => Promise<T> | T,
+    options: ProjectReadOptions = {}
+  ): Promise<T> {
+    return this.runBarrieredRead(projectId, operation, options, false);
   }
 
   /**
@@ -214,6 +219,32 @@ export class ProjectMutationCoordinator {
     } finally {
       release();
       if (this.queues.get(projectId)?.tail === tail) this.queues.delete(projectId);
+    }
+  }
+
+  private async runBarrieredRead<T>(
+    projectId: string,
+    operation: () => Promise<T> | T,
+    options: ProjectReadOptions,
+    waitForRoom: boolean
+  ): Promise<T> {
+    const { previous, tail, release } = this.reserve(projectId);
+    await previous;
+    let barrierStarted = false;
+    try {
+      if (waitForRoom) await this.collaboration.waitForReady?.(projectId);
+      options.preflight?.();
+      this.flushProject(projectId);
+      this.collaboration.beginSnapshotBarrier(projectId);
+      barrierStarted = true;
+      return await operation();
+    } finally {
+      try {
+        if (barrierStarted) this.requireSuccessfulFlush(this.collaboration.endSnapshotBarrier(projectId));
+      } finally {
+        release();
+        if (this.queues.get(projectId)?.tail === tail) this.queues.delete(projectId);
+      }
     }
   }
 

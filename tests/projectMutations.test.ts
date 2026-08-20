@@ -222,6 +222,23 @@ describe("project mutation coordination", () => {
     expect(events).toEqual(["flush", "barrier:begin", "read:start", "read:end", "barrier:end", "flush", "write"]);
   });
 
+  it("can read the source tree without waiting for a cold collaboration room", async () => {
+    const events: string[] = [];
+    const collaboration = {
+      waitForReady: async () => { events.push("wait-for-room"); },
+      flushProject: () => { events.push("flush"); return null; },
+      beginSnapshotBarrier: () => events.push("barrier:begin"),
+      endSnapshotBarrier: () => { events.push("barrier:end"); return null; }
+    } as never;
+    const coordinator = new ProjectMutationCoordinator(collaboration);
+
+    await expect(coordinator.runFilesystemRead("project-1", async () => {
+      events.push("read");
+      return ["main.tex"];
+    })).resolves.toEqual(["main.tex"]);
+    expect(events).toEqual(["flush", "barrier:begin", "read", "barrier:end"]);
+  });
+
   it("stops an exclusive mutation when the collaborative flush is not durable", async () => {
     const events: string[] = [];
     const collaboration = {

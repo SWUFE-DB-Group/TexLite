@@ -64,6 +64,8 @@ export interface PublishedCompileArtifacts {
 export interface CoordinatedCompileResult extends CompileResult {
   runId: string;
   revision: string;
+  /** The snapshot was consistent, but newer edits arrived while it was copied. */
+  stale?: boolean;
   /** Time spent creating the immutable source snapshot before compilation. */
   snapshotMs?: number;
   skipped?: boolean;

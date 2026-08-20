@@ -39,7 +39,7 @@ interface Props {
   spellCheckJump: SpellCheckJump | null;
   jumpTo: { line: number; column: number; nonce: number } | null;
   searchRequest: number;
-  collaboration?: { text: Y.Text; awareness: Awareness };
+  collaboration?: { text: Y.Text; awareness: Awareness; undoManager?: Y.UndoManager };
   onChange: (value: string) => void;
   onSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onCommentClick: (commentId: string) => void;
@@ -430,7 +430,7 @@ export function LatexEditor({
 
   useEffect(() => {
     if (!host.current) return;
-    const collaborationUndoManager = collaboration && !readOnly ? new Y.UndoManager(collaboration.text) : null;
+    const collaborationUndoManager = collaboration && !readOnly ? collaboration.undoManager ?? null : null;
     const state = EditorState.create({
       doc: collaboration?.text.toString() ?? value,
       extensions: [

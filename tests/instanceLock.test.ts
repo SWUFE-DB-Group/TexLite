@@ -66,6 +66,8 @@ describe("instance lock", () => {
     const read = readDataDirectoryLock(root);
     expect(read).not.toBeNull();
     expect(read?.pid).toBe(process.pid);
+    expect(read?.token).toBe(lock.info.token);
+    expect(fs.statSync(path.join(root, LOCK_FILE_NAME)).isDirectory()).toBe(true);
 
     lock.release();
     expect(fs.existsSync(path.join(root, LOCK_FILE_NAME))).toBe(false);
@@ -80,7 +82,7 @@ describe("instance lock", () => {
 
     const lock1 = acquireDataDirectoryLock(config1);
     try {
-      expect(() => acquireDataDirectoryLock(config2)).toThrow(/已被另一个 TexLite 实例独占锁定/);
+      expect(() => acquireDataDirectoryLock(config2)).toThrow(/already locked by another TexLite instance/);
     } finally {
       lock1.release();
     }
@@ -101,6 +103,7 @@ describe("instance lock", () => {
     fs.writeFileSync(lockPath, JSON.stringify({
       pid: 999999999,
       startedAt: "2020-01-01T00:00:00.000Z",
+      token: "stale-token",
       configPath: "/old/config.json",
       host: "127.0.0.1",
       port: 3000
@@ -113,5 +116,15 @@ describe("instance lock", () => {
 
     lock.release();
     expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  it("never removes a fresh lock directory whose owner metadata is still being installed", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-lock-test-"));
+    temporaryRoots.push(root);
+    const lockPath = path.join(root, LOCK_FILE_NAME);
+    fs.mkdirSync(lockPath, { mode: 0o700 });
+
+    expect(() => acquireDataDirectoryLock(mockConfig(root))).toThrow(/being initialized by another TexLite instance/);
+    expect(fs.existsSync(lockPath)).toBe(true);
   });
 });

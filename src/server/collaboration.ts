@@ -27,6 +27,17 @@ const MESSAGE_FLUSH = 4;
 const MESSAGE_PROTOCOL = 5;
 const MESSAGE_MAINTENANCE = 6;
 const MESSAGE_PERMISSION = 7;
+// A small, non-Yjs handshake message used for ephemeral compile metadata.
+// Source text still uses the normal Yjs sync protocol; this message prevents
+// an old IndexedDB metadata entry from being treated as an active compile.
+const MESSAGE_COMPILE_STATES = 8;
+/**
+ * Increment this when a wire-level collaboration change cannot be decoded by
+ * an older browser. The epoch marker is rotated at the same time, which makes
+ * already-open older pages discard their local draft and reload safely.
+ */
+export const COLLABORATION_PROTOCOL_VERSION = 2;
+const VERSIONED_EPOCH_PREFIX = `${COLLABORATION_PROTOCOL_VERSION}:`;
 const SOURCE_PREFIX = "source:";
 const MAX_PROJECT_SESSIONS = 10;
 const MAX_COLLABORATIVE_FILE_BYTES = 5 * 1024 * 1024;
@@ -36,6 +47,7 @@ const META_ORIGIN = Symbol("meta");
 const SAVE_DELAY_MS = 750;
 const STATE_SAVE_DELAY_MS = 750;
 const ROOM_IDLE_MS = 30_000;
+const EPHEMERAL_META_KEYS = ["compileStates", "filesEvent", "commentsRevision", "dictionaryRevision"] as const;
 const COLORS = [
   ["#1677c8", "#1677c833"], ["#d65745", "#d6574533"], ["#16866a", "#16866a33"],
   ["#9a58b5", "#9a58b533"], ["#d27b18", "#d27b1833"], ["#3f7d20", "#3f7d2033"],
@@ -72,6 +84,9 @@ interface Room {
   maintenanceReason: string | null;
   snapshotBarrierDepth: number;
   snapshotFlushPending: boolean;
+  pendingFlushes: Array<{ connection: Connection; requestId: string }>;
+  rejectedPaths: Set<string>;
+  compileMetaValidationPending: boolean;
 }
 
 interface RoomBootstrap {
@@ -100,6 +115,8 @@ export interface SharedCompileState {
   runId: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cleaned";
   cleanMode?: "cache" | "artifacts";
+  /** The PDF was compiled from a consistent snapshot before newer edits arrived. */
+  stale?: boolean;
   requestedBy: { id: string; username: string; name: string };
   updatedAt: string;
 }
@@ -202,7 +219,8 @@ export class CollaborationService {
   /**
    * Release a snapshot barrier and persist edits that arrived while the
    * source tree was protected. The returned receipt describes the post-barrier
-   * disk revision, so callers can reject a stale snapshot and retry.
+   * disk revision, allowing callers to label a snapshot that predates edits
+   * without treating that consistent snapshot as invalid.
    */
   endSnapshotBarrier(projectId: string): CollaborationSaveReceipt | null {
     const depth = this.snapshotBarriers.get(projectId) ?? 0;
@@ -220,7 +238,21 @@ export class CollaborationService {
     room.snapshotBarrierDepth = 0;
     const shouldFlush = room.snapshotFlushPending || room.dirtyPaths.size > 0;
     room.snapshotFlushPending = false;
-    const receipt = shouldFlush ? this.flushRoom(room) : this.currentReceipt(room);
+    let receipt: CollaborationSaveReceipt;
+    try {
+      receipt = shouldFlush ? this.flushRoom(room) : this.currentReceipt(room);
+    } catch (error) {
+      // A state-file or source-file I/O failure must still complete any
+      // browser flush requests waiting behind the barrier. The caller should
+      // receive the original server error, while editors receive a durable
+      // negative receipt instead of timing out.
+      receipt = this.currentReceipt(room, false, [...room.dirtyPaths]);
+      if (room.dirtyPaths.size > 0) this.scheduleSave(room);
+      this.resolvePendingFlushes(room, receipt);
+      this.scheduleRoomCleanup(room);
+      throw error;
+    }
+    this.resolvePendingFlushes(room, receipt);
     this.scheduleRoomCleanup(room);
     return receipt;
   }
@@ -324,6 +356,15 @@ export class CollaborationService {
     return this.rooms.get(projectId)?.persistedRevision ?? null;
   }
 
+  /** Return the durable collaborative text currently held by a live room. */
+  fileContent(projectId: string, filePathInput: string): string | null {
+    const room = this.rooms.get(projectId);
+    if (!room) return null;
+    const filePath = safeRelativePath(filePathInput);
+    if (!room.allowedPaths.has(filePath)) return null;
+    return this.trackedText(room, filePath).toString();
+  }
+
   /**
    * Returns the current source-tree epoch.  Exclusive filesystem operations
    * increment this value, allowing callers to cheaply distinguish a request
@@ -397,8 +438,12 @@ export class CollaborationService {
     this.bumpFiles(room, { kind: "delete", path: filePath });
   }
 
-  invalidateSourceTree(projectId: string): void {
+  invalidateSourceTree(projectId: string, filePathInput?: string): void {
     this.invalidateProject(projectId);
+    const room = this.rooms.get(projectId);
+    if (!room) return;
+    const filePath = filePathInput ? safeRelativePath(filePathInput) : "";
+    this.bumpFiles(room, { kind: "update", path: filePath });
   }
 
   signalComments(projectId: string): void {
@@ -425,6 +470,102 @@ export class CollaborationService {
       .sort((left, right) => Date.parse(right[1].updatedAt) - Date.parse(left[1].updatedAt))
       .slice(0, 20));
     room.doc.transact(() => room.meta.set("compileStates", retained), META_ORIGIN);
+  }
+
+  /**
+   * Drop compile states that no longer describe an active database run.
+   *
+   * `compileStates` is intentionally only a live UI signal. A browser can
+   * nevertheless replay an old IndexedDB update while reconnecting, so the
+   * server must not let an old `queued`/`running` value become authoritative
+   * again after a restart. Completed states are retained for the current room
+   * because they are useful to the UI and cannot disable a new compile.
+   */
+  private sanitizeCompileStates(room: Room): void {
+    const current = room.meta.get("compileStates");
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      if (current !== undefined) room.doc.transact(() => room.meta.delete("compileStates"), META_ORIGIN);
+      return;
+    }
+    const retained: Record<string, SharedCompileState> = {};
+    let changed = false;
+    for (const [mainFile, value] of Object.entries(current as Record<string, unknown>)) {
+      if (!isSharedCompileState(mainFile, value)) {
+        changed = true;
+        continue;
+      }
+      if (value.status === "queued" || value.status === "running") {
+        const run = this.db.prepare(`SELECT status, main_file FROM compile_runs
+          WHERE id = ? AND project_id = ?`).get(value.runId, room.projectId) as {
+            status: string; main_file: string;
+          } | undefined;
+        if (!run || run.main_file !== mainFile || (run.status !== "queued" && run.status !== "running")) {
+          changed = true;
+          continue;
+        }
+      }
+      retained[mainFile] = value;
+    }
+    if (!changed && Object.keys(retained).length === Object.keys(current).length) return;
+    room.doc.transact(() => {
+      if (Object.keys(retained).length) room.meta.set("compileStates", retained);
+      else room.meta.delete("compileStates");
+    }, META_ORIGIN);
+  }
+
+  private sendCompileStates(room: Room, socket: WebSocket): void {
+    const payload = this.compileStatesForClient(room);
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_COMPILE_STATES);
+    encoding.writeVarString(encoder, JSON.stringify(payload));
+    send(socket, encoding.toUint8Array(encoder));
+  }
+
+  /**
+   * Include active database runs even when no live room existed when the run
+   * was queued. This keeps the handshake authoritative without making every
+   * compile request persist a duplicate Yjs metadata update.
+   */
+  private compileStatesForClient(room: Room): Record<string, SharedCompileState> {
+    const current = room.meta.get("compileStates");
+    const states: Record<string, SharedCompileState> = isCompileStateMap(current) ? { ...current } : {};
+    const activeRuns = this.db.prepare(`SELECT run.id, run.main_file, run.status, run.requested_by,
+      run.created_at, user.username AS requested_by_username, user.display_name AS requested_by_name
+      FROM compile_runs run LEFT JOIN users user ON user.id = run.requested_by
+      WHERE run.project_id = ? AND run.status IN ('queued', 'running')
+      ORDER BY CASE run.status WHEN 'running' THEN 0 ELSE 1 END, run.created_at DESC`).all(room.projectId) as Array<{
+        id: string; main_file: string; status: "queued" | "running"; requested_by: string | null;
+        created_at: string; requested_by_username: string | null; requested_by_name: string | null;
+      }>;
+    for (const run of activeRuns) {
+      if (states[run.main_file]?.status === "running" && run.status === "queued") continue;
+      states[run.main_file] = {
+        mainFile: run.main_file,
+        runId: run.id,
+        status: run.status,
+        requestedBy: {
+          id: run.requested_by ?? "deleted-user",
+          username: run.requested_by_username ?? "deleted-user",
+          name: run.requested_by_name ?? "Deleted User"
+        },
+        updatedAt: run.created_at
+      };
+    }
+    return Object.fromEntries(Object.entries(states)
+      .sort((left, right) => Date.parse(right[1].updatedAt) - Date.parse(left[1].updatedAt))
+      .slice(0, 20));
+  }
+
+  private clearRecoveredMetadata(room: Room): boolean {
+    let changed = false;
+    room.doc.transact(() => {
+      for (const key of EPHEMERAL_META_KEYS) {
+        if (!room.meta.has(key)) continue;
+        room.meta.delete(key);
+        changed = true;
+      }
+    }, META_ORIGIN);
+    return changed;
   }
 
   closeProject(projectId: string): void {
@@ -576,9 +717,17 @@ export class CollaborationService {
       persistedAt: new Date().toISOString(),
       maintenanceReason: this.maintenanceProjects.get(projectId) ?? null,
       snapshotBarrierDepth: this.snapshotBarriers.get(projectId) ?? 0,
-      snapshotFlushPending: false
+      snapshotFlushPending: false,
+      pendingFlushes: [],
+      rejectedPaths: new Set(),
+      compileMetaValidationPending: false
     };
     room.awareness.setLocalState(null);
+    // A recovered Yjs document may contain metadata from a process that no
+    // longer exists. The database/source tree are authoritative after a
+    // restart; clear the markers before any browser can sync them back.
+    const recoveredMetadataChanged = bootstrap.recoveredState && this.clearRecoveredMetadata(room);
+    this.sanitizeCompileStates(room);
     let recoveredDirty = false;
     const diskPaths = new Set<string>();
     room.doc.transact(() => {
@@ -606,9 +755,20 @@ export class CollaborationService {
     }, DISK_ORIGIN);
     const rejectedRecoveredPaths = this.rejectOversizedTexts(room);
     recoveredDirty = room.dirtyPaths.size > 0;
+    room.meta.observe((_event, transaction) => {
+      if (isConnectionOrigin(transaction.origin)) room.compileMetaValidationPending = true;
+    });
     room.doc.on("update", (update, origin) => {
       this.broadcast(room, syncUpdateMessage(update), origin instanceof Object && "socket" in origin ? origin as Connection : null);
-      this.scheduleStateSave(room);
+      // Compile state, file-list revisions, and comment/dictionary revision
+      // markers are ephemeral metadata. They are reconstructed from SQLite
+      // and the source tree after a restart, so do not encode and synchronously
+      // rewrite the complete Yjs document for every metadata-only event.
+      if (origin !== META_ORIGIN) this.scheduleStateSave(room);
+      if (room.compileMetaValidationPending) {
+        room.compileMetaValidationPending = false;
+        this.sanitizeCompileStates(room);
+      }
       if (origin !== DISK_ORIGIN && origin !== HTTP_ORIGIN && origin !== META_ORIGIN) {
         if (origin && typeof origin === "object" && "user" in origin) {
           room.lastModifiedUserId = (origin as Connection).user.id;
@@ -634,6 +794,7 @@ export class CollaborationService {
       // Persist a corrected state even when an oversized recovered document was
       // reverted to the source file and no source write remains dirty.
       if (recoveredDirty || rejectedRecoveredPaths.length > 0) this.flushRoom(room);
+      else if (recoveredMetadataChanged) this.scheduleStateSave(room);
     } catch (error) {
       this.disposeRoom(room);
       throw error;
@@ -705,7 +866,14 @@ export class CollaborationService {
   }
 
   private handleMessage(room: Room, connection: Connection, bytes: Uint8Array): void {
-    const current = accessibleProject(this.db, room.projectId, connection.user);
+    const refreshedUser = this.db.prepare("SELECT * FROM users WHERE id = ?").get(connection.user.id) as UserRow | undefined;
+    if (!refreshedUser || refreshedUser.disabled) {
+      connection.socket.close(1008, "Project access revoked");
+      this.disconnect(room, connection);
+      return;
+    }
+    connection.user = refreshedUser;
+    const current = accessibleProject(this.db, room.projectId, refreshedUser);
     if (!current) {
       connection.socket.close(1008, "Project access revoked");
       return;
@@ -717,15 +885,30 @@ export class CollaborationService {
     }
     if (messageType === MESSAGE_PROTOCOL) {
       const epoch = decoding.readVarString(decoder);
+      const clientProtocolVersion = decoding.hasContent(decoder)
+        ? decoding.readVarUint(decoder)
+        : null;
       if (epoch !== room.epoch) {
         connection.socket.close(4001, "Collaboration state changed; reload required");
+        return;
+      }
+      // A pre-versioning client cannot safely decode the durable FLUSH
+      // response introduced in the previous release. Send a protocol marker
+      // that deliberately differs from the room epoch; the existing client
+      // handler treats it as a state change and reloads before it can edit.
+      // New clients append their version to the otherwise-compatible handshake.
+      if (clientProtocolVersion !== COLLABORATION_PROTOCOL_VERSION) {
+        send(connection.socket, protocolMessage(`${room.epoch}:reload`));
+        connection.socket.close(4001, "Collaboration protocol upgrade required");
         return;
       }
       if (!connection.protocolVerified) {
         connection.protocolVerified = true;
         if (connection.protocolTimer) clearTimeout(connection.protocolTimer);
         connection.protocolTimer = null;
+        this.sanitizeCompileStates(room);
         this.sendSyncStep1(room, connection.socket);
+        this.sendCompileStates(room, connection.socket);
         this.sendAwareness(room, connection.socket);
       }
       return;
@@ -737,9 +920,15 @@ export class CollaborationService {
       const syncType = decoding.readVarUint(decoder);
       if (syncType === syncProtocol.messageYjsSyncStep1) {
         syncProtocol.readSyncStep1(decoder, encoder, room.doc);
+      } else if (syncType === syncProtocol.messageYjsSyncStep2) {
+        // Read-only browsers may still carry a stale IndexedDB document. Do
+        // not apply their source updates, but always send the authoritative
+        // ephemeral compile state back to them.
+        if (canEdit(current)) syncProtocol.readSyncStep2(decoder, room.doc, connection);
+        this.sanitizeCompileStates(room);
+        this.sendCompileStates(room, connection.socket);
       } else if (canEdit(current)) {
-        if (syncType === syncProtocol.messageYjsSyncStep2) syncProtocol.readSyncStep2(decoder, room.doc, connection);
-        else if (syncType === syncProtocol.messageYjsUpdate) syncProtocol.readUpdate(decoder, room.doc, connection);
+        if (syncType === syncProtocol.messageYjsUpdate) syncProtocol.readUpdate(decoder, room.doc, connection);
       }
       if (encoding.length(encoder) > 1) send(connection.socket, encoding.toUint8Array(encoder));
       return;
@@ -751,18 +940,22 @@ export class CollaborationService {
     if (messageType === MESSAGE_FLUSH) {
       const requestId = decoding.readVarString(decoder).slice(0, 128);
       if (!canEdit(current)) return;
-      const receipt = this.flushRoom(room);
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, MESSAGE_FLUSH);
-      encoding.writeVarString(encoder, requestId);
-      encoding.writeVarUint(encoder, receipt.ok ? 1 : 0);
-      encoding.writeVarUint(encoder, receipt.revision);
-      encoding.writeVarString(encoder, receipt.persistedAt);
-      encoding.writeVarUint(encoder, receipt.failedPaths?.length ?? 0);
-      for (const failed of receipt.failedPaths ?? []) {
-        encoding.writeVarString(encoder, failed);
+      if (room.snapshotBarrierDepth > 0 || (this.snapshotBarriers.get(room.projectId) ?? 0) > 0) {
+        // Do not report the intentionally deferred flush as a failure. The
+        // request is completed by endSnapshotBarrier() after the source tree
+        // is released and the pending edits have been persisted.
+        room.pendingFlushes.push({ connection, requestId });
+        room.snapshotFlushPending = room.dirtyPaths.size > 0 || room.snapshotFlushPending;
+        return;
       }
-      send(connection.socket, encoding.toUint8Array(encoder));
+      let receipt: CollaborationSaveReceipt;
+      try {
+        receipt = this.flushRoom(room);
+      } catch {
+        receipt = this.currentReceipt(room, false, [...room.dirtyPaths]);
+        if (room.dirtyPaths.size > 0) this.scheduleSave(room);
+      }
+      this.sendFlushReceipt(connection, requestId, receipt);
       return;
     }
     if (messageType !== MESSAGE_AWARENESS) return;
@@ -792,6 +985,7 @@ export class CollaborationService {
 
   private disconnect(room: Room, connection: Connection): void {
     if (!room.connections.delete(connection)) return;
+    room.pendingFlushes = room.pendingFlushes.filter((pending) => pending.connection !== connection);
     if (connection.protocolTimer) clearTimeout(connection.protocolTimer);
     connection.protocolTimer = null;
     if (connection.awarenessClientId !== null) {
@@ -864,7 +1058,7 @@ export class CollaborationService {
     this.persistRoomState(room);
     let changed = false;
     const changedPaths: string[] = [];
-    const failedPaths: string[] = [];
+    const failedPaths: string[] = [...room.rejectedPaths];
     const dirtyPaths = [...room.dirtyPaths];
     for (const filePath of dirtyPaths) {
       if (!room.allowedPaths.has(filePath)) {
@@ -924,7 +1118,9 @@ export class CollaborationService {
         catch { room.saveTimer = null; }
       }, 2000);
     }
-    return this.currentReceipt(room, ok, failedPaths);
+    const receipt = this.currentReceipt(room, ok, [...new Set(failedPaths)]);
+    room.rejectedPaths.clear();
+    return receipt;
   }
 
   private currentReceipt(room: Room, ok = true, failedPaths: string[] = []): CollaborationSaveReceipt {
@@ -959,6 +1155,8 @@ export class CollaborationService {
       connection.protocolTimer = null;
     }
     room.connections.clear();
+    room.pendingFlushes.splice(0);
+    room.rejectedPaths.clear();
     room.awarenessOwners.clear();
     for (const [filePath, observer] of room.textObservers) {
       room.doc.getText(typeName(filePath)).unobserve(observer);
@@ -976,9 +1174,29 @@ export class CollaborationService {
       const previous = room.persistedContent.get(filePath) ?? "";
       room.doc.transact(() => replaceText(text, previous), DISK_ORIGIN);
       room.dirtyPaths.delete(filePath);
+      room.rejectedPaths.add(filePath);
       rejected.push(filePath);
     }
     return rejected;
+  }
+
+  private sendFlushReceipt(connection: Connection, requestId: string, receipt: CollaborationSaveReceipt): void {
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_FLUSH);
+    encoding.writeVarString(encoder, requestId);
+    encoding.writeVarUint(encoder, receipt.ok ? 1 : 0);
+    encoding.writeVarUint(encoder, receipt.revision);
+    encoding.writeVarString(encoder, receipt.persistedAt);
+    encoding.writeVarUint(encoder, receipt.failedPaths?.length ?? 0);
+    for (const failed of receipt.failedPaths ?? []) encoding.writeVarString(encoder, failed);
+    send(connection.socket, encoding.toUint8Array(encoder));
+  }
+
+  private resolvePendingFlushes(room: Room, receipt: CollaborationSaveReceipt): void {
+    const pending = room.pendingFlushes.splice(0);
+    for (const request of pending) {
+      if (room.connections.has(request.connection)) this.sendFlushReceipt(request.connection, request.requestId, receipt);
+    }
   }
 
   private projectGeneration(projectId: string): number {
@@ -1020,13 +1238,13 @@ async function collaborationEpochAsync(config: Config, projectId: string, recove
   if (recoveredState) {
     try {
       const existing = (await fs.promises.readFile(target, "utf8")).trim();
-      if (/^[a-f0-9-]{36}$/i.test(existing)) return existing;
+      if (new RegExp(`^${COLLABORATION_PROTOCOL_VERSION}:[a-f0-9-]{36}$`, "i").test(existing)) return existing;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       // Generate a fresh epoch when the previous marker is missing.
     }
   }
-  const epoch = randomUUID();
+  const epoch = `${VERSIONED_EPOCH_PREFIX}${randomUUID()}`;
   const temporary = `${target}.${process.pid}-${randomUUID()}.tmp`;
   await fs.promises.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
   try {
@@ -1068,6 +1286,31 @@ function protocolMessage(epoch: string): Uint8Array {
   encoding.writeVarUint(encoder, MESSAGE_PROTOCOL);
   encoding.writeVarString(encoder, epoch);
   return encoding.toUint8Array(encoder);
+}
+
+function isConnectionOrigin(origin: unknown): origin is Connection {
+  return Boolean(origin && typeof origin === "object" && "socket" in origin);
+}
+
+function isSharedCompileState(mainFile: string, value: unknown): value is SharedCompileState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const state = value as Partial<SharedCompileState>;
+  const requestedBy = state.requestedBy;
+  return state.mainFile === mainFile
+    && typeof state.runId === "string" && state.runId.length > 0
+    && (state.status === "queued" || state.status === "running" || state.status === "succeeded"
+      || state.status === "failed" || state.status === "cleaned")
+    && (state.status !== "cleaned" || state.cleanMode === "cache" || state.cleanMode === "artifacts")
+    && (state.stale === undefined || typeof state.stale === "boolean")
+    && typeof state.updatedAt === "string"
+    && Boolean(requestedBy && typeof requestedBy === "object"
+      && typeof requestedBy.id === "string" && typeof requestedBy.username === "string"
+      && typeof requestedBy.name === "string");
+}
+
+function isCompileStateMap(value: unknown): value is Record<string, SharedCompileState> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.entries(value as Record<string, unknown>).every(([mainFile, state]) => isSharedCompileState(mainFile, state));
 }
 
 function maintenanceMessage(reason: string): Uint8Array {

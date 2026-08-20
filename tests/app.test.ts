@@ -76,6 +76,30 @@ describe("texLite application", () => {
     expect(publicConfig.json()).toMatchObject({ siteName: "Test texLite", adminEmail: "admin@example.test" });
   });
 
+  it("revokes cookies when an account is disabled, including after re-enabling it", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "disable-cookie-user", displayName: "Disable Cookie User", password: "reader-password" }
+    });
+    expect(created.statusCode).toBe(201);
+    const login = await app.inject({
+      method: "POST", url: "/api/auth/login",
+      payload: { username: "disable-cookie-user", password: "reader-password" }
+    });
+    expect(login.statusCode).toBe(200);
+    const oldCookie = login.headers["set-cookie"]!.split(";")[0];
+    const userId = created.json().user.id as string;
+    expect((await app.inject({
+      method: "PATCH", url: `/api/admin/users/${userId}`, headers: { cookie }, payload: { disabled: true }
+    })).statusCode).toBe(200);
+    expect((await app.inject({
+      method: "PATCH", url: `/api/admin/users/${userId}`, headers: { cookie }, payload: { disabled: false }
+    })).statusCode).toBe(200);
+    const stale = await app.inject({ method: "GET", url: "/api/me", headers: { cookie: oldCookie } });
+    expect(stale.statusCode).toBe(401);
+    expect(stale.json()).toMatchObject({ code: "AUTH_REQUIRED" });
+  });
+
   it("does not expose a server-side spellcheck endpoint", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Client spellcheck" } });
     const response = await app.inject({
@@ -530,6 +554,34 @@ Standalone document.
     expect(overwritten.statusCode).toBe(201);
     const uploadedContent = await app.inject({ method: "GET", url: `/api/projects/${project.id}/file?path=upload.txt`, headers: { cookie } });
     expect(uploadedContent.json().content).toBe("second");
+  });
+
+  it("reanchors source comments when an uploaded text file replaces the source", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Upload comment anchors" } });
+    const projectId = created.json().project.id as string;
+    const original = "first line\nkeep this sentence\nlast line\n";
+    expect((await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "main.tex", content: original }
+    })).statusCode).toBe(200);
+    const selected = "keep this sentence";
+    const startOffset = original.indexOf(selected);
+    const comment = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset, endOffset: startOffset + selected.length, content: "Review this sentence" }
+    });
+    expect(comment.statusCode).toBe(201);
+
+    const replacement = "inserted line\nfirst line\nkeep this sentence\nlast line\n";
+    const multipart = multipartBody("main.tex", Buffer.from(replacement));
+    const uploaded = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/upload?overwrite=1`, headers: {
+        cookie, "content-type": `multipart/form-data; boundary=${multipart.boundary}`
+      }, payload: multipart.body
+    });
+    expect(uploaded.statusCode).toBe(201);
+    const comments = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?path=main.tex`, headers: { cookie } });
+    expect(comments.json().comments[0]).toMatchObject({ selectedText: selected, startOffset: replacement.indexOf(selected), orphaned: false });
   });
 
   it("keeps project archives private to each user", async () => {

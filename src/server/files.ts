@@ -45,21 +45,22 @@ Start writing here.
   );
 }
 
-export function duplicateProjectFiles(config: Config, sourceProjectId: string, targetProjectId: string): void {
+export async function duplicateProjectFiles(config: Config, sourceProjectId: string, targetProjectId: string): Promise<void> {
   const source = sourceRoot(config, sourceProjectId);
   const target = sourceRoot(config, targetProjectId);
   assertNoSourceSymlinks(config, sourceProjectId);
-  fs.mkdirSync(target, { recursive: true, mode: 0o700 });
+  await fs.promises.mkdir(target, { recursive: true, mode: 0o700 });
   if (fs.existsSync(source)) {
-    for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    const entries = await fs.promises.readdir(source, { withFileTypes: true });
+    for (const entry of entries) {
       if (entry.isSymbolicLink()) throw symbolicLinkError(entry.name);
       if (entry.name === ".git") continue;
-      fs.cpSync(path.join(source, entry.name), path.join(target, entry.name), {
+      await fs.promises.cp(path.join(source, entry.name), path.join(target, entry.name), {
         recursive: true, errorOnExist: true, force: false, verbatimSymlinks: false
       });
     }
   }
-  fs.mkdirSync(outputRoot(config, targetProjectId), { recursive: true, mode: 0o700 });
+  await fs.promises.mkdir(outputRoot(config, targetProjectId), { recursive: true, mode: 0o700 });
 }
 
 export function safeRelativePath(input: string): string {

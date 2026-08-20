@@ -398,7 +398,10 @@ export async function buildApp(
       for (const run of completed) if (!keep.has(run.id)) remove.run(run.id);
     })();
   };
-  void pruneTrashDirectory(config);
+  // No second TexLite instance can mutate the data directory while the
+  // instance lock is held. Finish cleanup before accepting requests so a
+  // freshly started server never races a stale trash/tmp removal.
+  await pruneTrashDirectory(config);
   for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
     history.enforceRetention(row.id);
     pruneCompileRuns(row.id);
@@ -612,6 +615,10 @@ export async function buildApp(
     }
     db.prepare(`UPDATE users SET display_name = ?, role = ?, disabled = ?, password_hash = ?, must_change_password = ?, can_create_projects = ? WHERE id = ?`)
       .run(displayName, role, disabled, passwordHash, mustChange, canCreateProjects, id);
+    // A disabled account must not regain access by being re-enabled while an
+    // old cookie is still within its normal lifetime. Password resets already
+    // revoke sessions above; disabling does the same for every active token.
+    if (disabled === 1) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
     if (disabled === 1 || (typeof body.password === "string" && body.password)) {
       collaboration.disconnectUser(id, "用户已被禁用或密码已重置");
     }
@@ -857,7 +864,17 @@ export async function buildApp(
       main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, created_at: now(), updated_at: now()
     };
     try {
-      duplicateProjectFiles(config, source.id, project.id);
+      // Duplicate the source tree only after flushing the live Yjs room and
+      // while a short source barrier prevents autosave from changing files
+      // between directory entries. The copy is asynchronous, so a large
+      // project does not block the Node.js event loop for its entire duration.
+      await projectMutations.runConsistentRead(source.id, () => duplicateProjectFiles(config, source.id, project.id), {
+        preflight: () => {
+          if (!accessibleProject(db, source.id, user)) {
+            throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+          }
+        }
+      });
       db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.created_at, project.updated_at);
@@ -1375,10 +1392,17 @@ export async function buildApp(
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
     // Directory walks can be slow on external/project-mounted storage. Keep
     // this request off the event loop and unblocked by Yjs room initialization
-    // so the file tree and retained-PDF stream can be served concurrently.
-    return {
+    // so the file tree and retained-PDF stream can be served concurrently, but
+    // still serialize it with source-tree mutations and collaborative flushes.
+    return await projectMutations.runFilesystemRead(id, async () => ({
       files: await listProjectFilesAsync(config, id)
-    };
+    }), {
+      preflight: () => {
+        if (!accessibleProject(db, id, user)) {
+          throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+        }
+      }
+    });
   });
 
   app.post("/api/projects/:id/format", async (request, reply) => {
@@ -1521,6 +1545,10 @@ export async function buildApp(
       if (fs.existsSync(absolute)) return apiError(reply, 409, "PATH_EXISTS", "同名文件或目录已存在", { path: folderPath });
       fs.mkdirSync(absolute, { recursive: true, mode: 0o700 });
       touchProject(db, id, user.id);
+      // Empty folders have no file entry to trigger a refresh on their own.
+      // Publish a source-tree event so other open sessions see the folder
+      // immediately instead of waiting for a later file operation.
+      collaboration.invalidateSourceTree(id, folderPath);
       return reply.code(201).send({ ok: true, path: folderPath });
     }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
@@ -1826,6 +1854,16 @@ export async function buildApp(
         if (!replacing && fs.existsSync(absolute)) {
           return apiError(reply, 409, "FILE_EXISTS", "同名文件已存在", { path: relative });
         }
+        const collaborativeText = isCollaborativeTextFile(relative);
+        let previousContent: string | null = null;
+        if (replacing && collaborativeText && fs.existsSync(absolute)) {
+          // runWrite() has flushed any live Yjs edits before entering this
+          // callback. Prefer the room's text so comment anchors are based on
+          // exactly what collaborators last saved, then fall back to disk for
+          // projects without an active collaboration room.
+          previousContent = collaboration.fileContent(id, relative);
+          if (previousContent === null) previousContent = fs.readFileSync(absolute, "utf8");
+        }
         try {
           fs.renameSync(tmpPath, absolute);
         } catch {
@@ -1833,11 +1871,15 @@ export async function buildApp(
           fs.unlinkSync(tmpPath);
         }
         touchProject(db, id, user.id);
-        if (isCollaborativeTextFile(relative)) {
+        if (collaborativeText) {
           const content = fs.readFileSync(absolute, "utf8");
+          if (previousContent !== null && previousContent !== content) {
+            reanchorFileComments(db, id, relative, previousContent, content);
+            collaboration.signalComments(id);
+          }
           collaboration.updateFile(id, relative, content, user.id);
         } else {
-          collaboration.invalidateSourceTree(id);
+          collaboration.invalidateSourceTree(id, relative);
         }
         recordHistory(id, user.id, "file", [relative]);
         return reply.code(201).send({ ok: true, path: relative });

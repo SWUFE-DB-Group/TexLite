@@ -66,6 +66,8 @@ export function useProjectCompilation({
   const pdfMainFileRef = useRef("");
   const latestRequest = useRef<AbortController | null>(null);
   const artifactsRequest = useRef<AbortController | null>(null);
+  const artifactPreviewRequest = useRef<AbortController | null>(null);
+  const backgroundRequests = useRef(new Set<AbortController>());
   const compileRequests = useRef(new Map<string, AbortController>());
   const focusedCompileRun = useRef<string | null>(null);
   const compileAction = useRef<() => void>(() => undefined);
@@ -153,7 +155,11 @@ export function useProjectCompilation({
       backgroundStarted = true;
       // Start these only after the latest PDF URL has been published to React.
       // They then run in parallel with PDF.js network loading and rendering.
-      void loadArtifacts(mainFile, controller.signal);
+      const artifactsController = new AbortController();
+      backgroundRequests.current.add(artifactsController);
+      void loadArtifacts(mainFile, artifactsController.signal).finally(() => {
+        backgroundRequests.current.delete(artifactsController);
+      });
       void callbacks.current.loadOutline(controller.signal, mainFile).catch(() => undefined);
     };
     void latestRequestPromise.then((latest) => {
@@ -190,6 +196,9 @@ export function useProjectCompilation({
     return () => {
       if (bgTimer !== null) window.clearTimeout(bgTimer);
       controller.abort();
+      artifactPreviewRequest.current?.abort();
+      for (const request of backgroundRequests.current) request.abort();
+      backgroundRequests.current.clear();
     };
   }, [projectId, mainFile]);
 
@@ -197,6 +206,9 @@ export function useProjectCompilation({
     if (!sharedState || sharedState.mainFile !== mainFile || sharedState.status !== "cleaned" || !sharedState.cleanMode) return;
     latestRequest.current?.abort();
     artifactsRequest.current?.abort();
+    artifactPreviewRequest.current?.abort();
+    for (const request of backgroundRequests.current) request.abort();
+    backgroundRequests.current.clear();
     if (sharedState.cleanMode === "artifacts") {
       setCompileLog("");
       setCompileDiagnostics(null);
@@ -218,6 +230,7 @@ export function useProjectCompilation({
       || (sharedState.status !== "succeeded" && sharedState.status !== "failed")) return;
     let cancelled = false;
     latestRequest.current?.abort();
+    artifactPreviewRequest.current?.abort();
     const controller = new AbortController();
     latestRequest.current = controller;
     setPdfLoading(true);
@@ -229,6 +242,7 @@ export function useProjectCompilation({
       setCompileLog(latest.latestRun.log);
       setCompileDiagnostics(latest.latestRun.diagnostics);
       setCompileOutcome(sharedState.status === "succeeded" ? "succeeded" : "failed");
+      if (sharedState.status === "succeeded" && sharedState.stale) setEditorNotice(t("editor.compileSnapshotStale"));
       if (sharedState.status === "succeeded" && latest.pdfUrl) {
         callbacks.current.onPdfChanged();
         setPdfUrl(latest.pdfUrl);
@@ -249,7 +263,7 @@ export function useProjectCompilation({
       controller.abort();
       if (latestRequest.current === controller) latestRequest.current = null;
     };
-  }, [sharedState?.runId, sharedState?.status, sharedState?.mainFile, mainFile, projectId]);
+  }, [sharedState?.runId, sharedState?.status, sharedState?.mainFile, sharedState?.stale, mainFile, projectId, t]);
 
   const compile = async () => {
     if (!project || !mainFile || project.permission === "read" || !collaborationSynced
@@ -259,6 +273,8 @@ export function useProjectCompilation({
     setCompilingMainFiles((current) => new Set([...current, requestedMainFile]));
     callbacks.current.onCompileStart();
     setEditorNotice("");
+    artifactPreviewRequest.current?.abort();
+    artifactPreviewRequest.current = null;
     setCompileLog("");
     setCompileDiagnostics(null);
     setCompileOutcome(null);
@@ -267,7 +283,7 @@ export function useProjectCompilation({
     compileRequests.current.set(requestedMainFile, controller);
     try {
       if (!(await callbacks.current.save())) return;
-      const result = await api<{ runId: string; mainFile: string; ok: boolean; skipped?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null }>(
+      const result = await api<{ runId: string; mainFile: string; ok: boolean; skipped?: boolean; stale?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null }>(
         `/api/projects/${projectId}/compile`,
         { method: "POST", signal: controller.signal, body: JSON.stringify({ mainFile: requestedMainFile }) }
       );
@@ -276,6 +292,7 @@ export function useProjectCompilation({
       setCompileDiagnostics(result.diagnostics);
       setCompileOutcome(result.ok ? "succeeded" : "failed");
       if (result.skipped) setEditorNotice(t("editor.upToDate"));
+      if (result.ok && result.stale) setEditorNotice(t("editor.compileSnapshotStale"));
       if (result.pdfUrl) {
         callbacks.current.onPdfChanged();
         setPdfUrl(result.pdfUrl);
@@ -313,6 +330,7 @@ export function useProjectCompilation({
     setCleaning(true);
     latestRequest.current?.abort();
     artifactsRequest.current?.abort();
+    artifactPreviewRequest.current?.abort();
     try {
       const result = await api<{ ok: boolean; mode: CompileCleanMode; mainFile: string; retainedPdf: boolean }>(
         `/api/projects/${projectId}/compile/clean`,
@@ -360,22 +378,34 @@ export function useProjectCompilation({
   useEffect(() => () => {
     latestRequest.current?.abort();
     artifactsRequest.current?.abort();
+    artifactPreviewRequest.current?.abort();
+    for (const request of backgroundRequests.current) request.abort();
+    backgroundRequests.current.clear();
     for (const request of compileRequests.current.values()) request.abort();
     compileRequests.current.clear();
   }, []);
 
   const viewArtifact = async (artifact: CompileArtifact) => {
     if (!artifact.viewable) return;
+    artifactPreviewRequest.current?.abort();
+    const controller = new AbortController();
+    artifactPreviewRequest.current = controller;
     setArtifactLoading(true);
     try {
       const result = await api<{ path: string; content: string }>(
-        `/api/projects/${projectId}/compile/artifacts?mainFile=${encodeURIComponent(mainFile)}&path=${encodeURIComponent(artifact.path)}`
+        `/api/projects/${projectId}/compile/artifacts?mainFile=${encodeURIComponent(mainFile)}&path=${encodeURIComponent(artifact.path)}`,
+        { signal: controller.signal }
       );
-      setArtifactPreview(result);
+      if (!controller.signal.aborted && artifactPreviewRequest.current === controller && mainFileRef.current === mainFile) {
+        setArtifactPreview(result);
+      }
     } catch (error) {
-      callbacks.current.onError(errorMessage(error));
+      if (!isAbortError(error)) callbacks.current.onError(errorMessage(error));
     } finally {
-      setArtifactLoading(false);
+      if (artifactPreviewRequest.current === controller) {
+        artifactPreviewRequest.current = null;
+        setArtifactLoading(false);
+      }
     }
   };
 

@@ -51,11 +51,18 @@ const timingDuration = (milliseconds: number): number => Math.round(milliseconds
 const MAX_SNAPSHOT_ATTEMPTS = 3;
 const SNAPSHOT_RETRY_AFTER_SECONDS = 1;
 
+function mainDocumentChangedError(): Error {
+  return Object.assign(
+    new Error("项目主文档在编译排队期间发生变化，请重新发起编译"),
+    { statusCode: 409, code: "MAIN_DOCUMENT_CHANGED" }
+  );
+}
+
 class CompileSnapshotBusyError extends Error {
   readonly code = "COMPILE_SNAPSHOT_BUSY";
 
   constructor() {
-    super("项目仍在持续编辑，暂时无法取得一致的编译快照，请稍后重试");
+    super("项目源码尚未完成稳定保存，暂时无法编译，请稍后重试");
     this.name = "CompileSnapshotBusyError";
   }
 }
@@ -124,17 +131,34 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
     if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
     const published = publishedCompileArtifacts(config, id, mainFile, mainFile === project.main_file);
-    if (!query.path) return { mainFile, runId: published?.runId ?? null, artifacts: published ? listCompileArtifacts(published.output) : [] };
+    if (!query.path) {
+      if (!published) return { mainFile, runId: null, artifacts: [] };
+      try {
+        return { mainFile, runId: published.runId, artifacts: listCompileArtifacts(published.output) };
+      } catch (error) {
+        // Cleanup can remove a retained run after the manifest has been read.
+        // Treat that narrow race as an empty artifact list instead of leaking
+        // an internal ENOENT/ENOTDIR as a 500 response.
+        if (isMissingFileError(error)) return { mainFile, runId: null, artifacts: [] };
+        throw error;
+      }
+    }
     if (!published) return apiError(reply, 404, "COMPILE_ARTIFACTS_NOT_FOUND", "尚无可用的编译产物");
     const relative = safeRelativePath(query.path);
     const absolute = path.join(published.output, relative);
     const outputDirectory = path.resolve(published.output);
     const resolved = path.resolve(absolute);
-    if (!resolved.startsWith(`${outputDirectory}${path.sep}`)
-      || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    if (!resolved.startsWith(`${outputDirectory}${path.sep}`)) {
       return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
     }
-    const stat = fs.statSync(resolved);
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(resolved);
+      if (!stat.isFile()) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+    } catch (error) {
+      if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+      throw error;
+    }
     if (query.download === "1") {
       const temporaryDirectory = path.join(config.dataDir, "tmp");
       const temporaryFile = path.join(temporaryDirectory, `artifact-${id}-${randomUUID()}`);
@@ -143,6 +167,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         await fs.promises.copyFile(resolved, temporaryFile);
       } catch (error) {
         await fs.promises.rm(temporaryFile, { force: true }).catch(() => undefined);
+        if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
         throw error;
       }
       reply.header("Content-Type", "application/octet-stream");
@@ -157,7 +182,12 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (stat.size > 2 * 1024 * 1024 || !isTextCompileArtifact(relative)) {
       return apiError(reply, 415, "ARTIFACT_PREVIEW_UNSUPPORTED", "该产物不能作为文本预览，请下载后查看");
     }
-    return { path: relative, content: fs.readFileSync(resolved, "utf8") };
+    try {
+      return { path: relative, content: fs.readFileSync(resolved, "utf8") };
+    } catch (error) {
+      if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+      throw error;
+    }
   });
 
   app.post("/api/projects/:id/compile/clean", async (request, reply) => {
@@ -278,6 +308,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const initialProject = accessibleProject(db, id, user);
     if (!initialProject || !canEdit(initialProject)) return apiError(reply, 403, "COMPILE_FORBIDDEN", "没有编译权限");
     const body = (request.body ?? {}) as { mainFile?: unknown };
+    const requestedMainFile = typeof body.mainFile === "string" && body.mainFile ? body.mainFile : null;
     const initialMainFile = compileMainFile(config, id, initialProject.main_file, body.mainFile);
     if (!initialMainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
     const runId = randomUUID();
@@ -291,6 +322,9 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       if (!currentProject || !canEdit(currentProject)) throw new Error("Project access changed while waiting for a source snapshot");
       const currentMainFile = compileMainFile(config, id, currentProject.main_file, body.mainFile);
       if (!currentMainFile) throw new Error("Selected main document is no longer available");
+      if (!requestedMainFile && currentMainFile !== initialMainFile) {
+        throw mainDocumentChangedError();
+      }
       // flushProject() is also the final durability barrier for collaborative
       // edits. Its revision is stable for a no-op flush, so concurrent
       // admissions observe the same generation without reading file contents.
@@ -322,7 +356,28 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     let mainFile = admission.mainFile;
     const requestedBy = { id: user.id, username: user.username, name: user.display_name };
     let phase: "queued" | "running" | "succeeded" | "failed" = "queued";
-    const broadcast = () => collaboration.signalCompileState(id, { mainFile, runId, status: phase, requestedBy, updatedAt: now() });
+    let snapshotStale = false;
+    let snapshotGeneration: string | null = null;
+    const refreshSnapshotStale = () => {
+      if (!snapshotGeneration) return;
+      if (collaboration.hasPendingChanges(id)) {
+        snapshotStale = true;
+        return;
+      }
+      const currentProject = accessibleProject(db, id, user);
+      if (!currentProject) return;
+      const currentGeneration = compileRequestGeneration(
+        currentProject,
+        collaboration.currentRevision(id),
+        collaboration.currentGeneration(id),
+        config.extraArgs
+      );
+      if (currentGeneration !== snapshotGeneration) snapshotStale = true;
+    };
+    const broadcast = () => collaboration.signalCompileState(id, {
+      mainFile, runId, status: phase, requestedBy, updatedAt: now(),
+      ...(phase === "succeeded" && snapshotStale ? { stale: true } : {})
+    });
     const result = await compileCoordinator.request({
       projectId: id,
       target: mainFile,
@@ -355,6 +410,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             }
             const currentMainFile = compileMainFile(config, id, currentProject.main_file, body.mainFile);
             if (!currentMainFile) throw new Error("Selected main document is no longer available");
+            if (!requestedMainFile && currentMainFile !== mainFile) throw mainDocumentChangedError();
             project = currentProject;
             mainFile = currentMainFile;
             return {
@@ -404,6 +460,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             }
             const currentMainFile = compileMainFile(config, id, currentProject.main_file, body.mainFile);
             if (!currentMainFile) throw new Error("Selected main document is no longer available");
+            if (!requestedMainFile && currentMainFile !== mainFile) throw mainDocumentChangedError();
             project = currentProject;
             mainFile = currentMainFile;
             // Capture only after all exclusive source-tree operations queued
@@ -414,7 +471,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
               const revisionBeforeFlush = collaboration.currentRevision(id);
               const receipt = collaboration.hasPendingChanges(id) ? projectMutations.flushProject(id) : null;
               const expectedRevision = receipt?.revision ?? revisionBeforeFlush;
-              const snapshotGeneration = compileRequestGeneration(
+              const generationKey = compileRequestGeneration(
                 project,
                 expectedRevision,
                 collaboration.currentGeneration(id),
@@ -431,7 +488,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
                   engine: project.engine,
                   latexmkrc: project.latexmkrc,
                   extraArgs: config.extraArgs,
-                  generation: snapshotGeneration
+                  generation: generationKey
                 });
               } catch (error) {
                 captureError = error;
@@ -451,11 +508,17 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
                 throw releaseError;
               }
               if (!candidate) throw new Error("Unable to create a compile snapshot");
-              const roomCreatedWithoutEdits = expectedRevision === null
-                && afterBarrierRevision === 0 && !collaboration.hasPendingChanges(id);
-              const stable = (afterBarrierRevision === expectedRevision || roomCreatedWithoutEdits)
-                && collaboration.isStable(id, afterBarrierRevision);
-              if (stable) return candidate;
+              // The barrier makes the candidate internally consistent. Edits
+              // that arrive while files are being copied stay in Yjs memory
+              // and are flushed only after the barrier is released; they do
+              // not make the candidate a mixed or unsafe snapshot. Keep the
+              // snapshot and surface that it predates those newer edits.
+              const stable = collaboration.isStable(id, afterBarrierRevision);
+              if (stable) {
+                snapshotStale = afterBarrierRevision !== expectedRevision;
+                snapshotGeneration = candidate.generation ?? null;
+                return candidate;
+              }
               discardCompileSnapshot(candidate);
             }
             throw new CompileSnapshotBusyError();
@@ -489,6 +552,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
               runId: published.runId,
               ok: true,
               skipped: true,
+              stale: snapshotStale,
               log: publishedRun.log ?? "",
               diagnostics: parseCompileDiagnostics(publishedRun.log ?? "", "succeeded"),
               pdfPath: null,
@@ -504,6 +568,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
           let compiled;
           try {
             compiled = await compileProject(config, snapshot, mainFile, project.engine, project.latexmkrc);
+            refreshSnapshotStale();
             if (compiled.ok && compiled.pdfPath) {
               const publishStartedAt = performance.now();
               // Publishing is short and atomic, but still goes through the
@@ -514,6 +579,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
                 if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)) throw new Error("项目已被删除");
                 publishCompileArtifacts(config, id, snapshot!, compiled!);
               }, { flush: false });
+              refreshSnapshotStale();
               if (compiled.timings) {
                 compiled.timings.publishMs = performance.now() - publishStartedAt;
                 compiled.timings.totalMs += compiled.timings.publishMs;
@@ -537,7 +603,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
           db.prepare("UPDATE compile_runs SET status = ?, log = ?, finished_at = ? WHERE id = ?")
             .run(phase, compiled.log, now(), runId);
           broadcast();
-          return { ...compiled, runId, revision: snapshot?.revision ?? admission.generation, snapshotMs };
+          return { ...compiled, runId, revision: snapshot?.revision ?? admission.generation, stale: snapshotStale, snapshotMs };
         } catch (error) {
           if (snapshot) discardCompileSnapshot(snapshot);
           if (error instanceof CompileSnapshotBusyError) {
@@ -720,7 +786,8 @@ function regularFileStat(filePath: string): fs.Stats | null {
 }
 
 function isMissingFileError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+  return typeof error === "object" && error !== null && "code" in error
+    && (error.code === "ENOENT" || error.code === "ENOTDIR");
 }
 
 async function openReadStream(stream: fs.ReadStream): Promise<fs.ReadStream> {

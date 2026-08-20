@@ -44,9 +44,13 @@ export async function startServer(configPath?: string): Promise<RunningServer> {
     };
   } catch (error) {
     try {
-      db?.close();
+      if (app) await app.close();
     } finally {
-      lock.release();
+      try {
+        db?.close();
+      } finally {
+        lock.release();
+      }
     }
     throw error;
   }
