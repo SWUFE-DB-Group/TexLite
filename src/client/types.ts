@@ -33,6 +33,8 @@ export interface Project {
   engine: "pdflatex" | "xelatex" | "lualatex";
   permission: "read" | "edit" | "owner";
   tags: ProjectTag[];
+  unresolvedCommentCount?: number;
+  commentCount?: number;
   archived?: boolean;
   createdAt: string;
   updatedAt: string;

@@ -137,6 +137,7 @@ export function useProjectCompilation({
     setArtifacts([]);
     setArtifactPreview(null);
     callbacks.current.onPdfChanged();
+    let bgTimer: number | null = null;
     const query = `?mainFile=${encodeURIComponent(mainFile)}`;
     // The retained PDF is the critical path when reopening a project. Do not
     // make it wait for the outline or the (potentially large) artifact scan.
@@ -181,12 +182,15 @@ export function useProjectCompilation({
       if (!isAbortError(error) && mainFileRef.current === mainFile) callbacks.current.onError(errorMessage(error));
     }).finally(() => {
       if (latestRequest.current === controller) latestRequest.current = null;
-      if (!controller.signal.aborted) setPdfLoading(false);
-      // Give React one turn to mount PdfPreview and start its PDF request
-      // before the background scans begin.
-      window.setTimeout(startBackgroundLoads, 0);
+      if (!controller.signal.aborted) {
+        setPdfLoading(false);
+        bgTimer = window.setTimeout(startBackgroundLoads, 0);
+      }
     });
-    return () => controller.abort();
+    return () => {
+      if (bgTimer !== null) window.clearTimeout(bgTimer);
+      controller.abort();
+    };
   }, [projectId, mainFile]);
 
   useEffect(() => {

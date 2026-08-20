@@ -448,10 +448,22 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
           {view === "grid" && project.ownerId === user.id && <button className="project-transfer-action" title={t("projects.transferOwnership")} onClick={() => void openTransfer(project)}><ArrowRightLeft aria-hidden size={13} />{t("projects.transfer")}</button>}
           <button className="project-card-open" onClick={() => onOpenProject(project.id)}>
             <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername}>{project.ownerDisplayName ?? project.ownerUsername}</span>
-            <span className="project-card-main"><strong>{project.name}</strong><span className="project-tags">{project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}</span></span>
+            <span className="project-card-main">
+              <strong>{project.name}</strong>
+              <span className="project-tags">
+                {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
+                {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
+                  <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
+                    <MessageSquare aria-hidden size={10} />
+                    <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
+                  </span>
+                )}
+              </span>
+            </span>
             <dl className="project-meta">
               <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
               <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
+              <div><dt><MessageSquare aria-hidden size={13} />{t("projects.comments")}</dt><dd>{project.unresolvedCommentCount ? <span className="comment-count-unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>{t("projects.unresolvedComments", { count: project.unresolvedCommentCount })}</span> : project.commentCount ? <span className="comment-count-all-resolved" title={t("projects.allCommentsResolvedTooltip", { count: project.commentCount })}>{t("projects.allResolved", { count: project.commentCount })}</span> : <span className="comment-count-none">{t("projects.noComments")}</span>}</dd></div>
             </dl>
           </button>
           <div className="project-card-actions">
@@ -599,6 +611,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState("editor.saved");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const lastSavedAtRef = useRef(lastSavedAt);
+  lastSavedAtRef.current = lastSavedAt;
   const [sourceCursor, setSourceCursor] = useState({ line: 1, column: 1 });
   const sourceCursorRef = useRef(sourceCursor);
   const [previewTab, setPreviewTab] = useState<PreviewSurface>("pdf");
@@ -846,11 +860,12 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     const filesLoadRequest = api<{ files: FileEntry[] }>(`/api/projects/${projectId}/files`, { signal: controller.signal })
       .then((result) => { if (isCurrent()) setFiles(result.files); })
       .catch((e) => { if (isCurrent()) setError(errorMessage(e)); });
+    let deferredTimer: number | null = null;
     void Promise.allSettled([projectRequest, filesLoadRequest]).then(() => {
       if (!isCurrent() || !projectLoaded) return;
       // Completion indexing reads the whole project. Let the critical editor
       // and retained-PDF requests finish and paint before starting these.
-      window.setTimeout(() => {
+      deferredTimer = window.setTimeout(() => {
         if (!isCurrent()) return;
         void Promise.all([
           loadCompletionIndex({ signal: controller.signal, isCurrent }),
@@ -860,6 +875,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     });
     return () => {
       cancelled = true;
+      if (deferredTimer !== null) window.clearTimeout(deferredTimer);
       controller.abort();
       completionRequest.current?.abort(); completionRequest.current = null;
       outlineRequest.current?.abort(); outlineRequest.current = null;
@@ -942,7 +958,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
         setDirty(true);
         setSaveState("editor.pending");
       } else if (localEditSequence.current <= persistedEditSequence.current) {
-        setSaveState(lastSavedAt ? "editor.savedAt" : "editor.saved");
+        setSaveState(lastSavedAtRef.current ? "editor.savedAt" : "editor.saved");
       }
     };
     sharedText.observe(updateContent);
@@ -999,8 +1015,10 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       await persistPendingEdits();
       void loadCompletionIndex();
       return true;
-    } catch {
-      setSaveState("editor.saveFailed"); setError(t("errors.collaborationUnavailable")); return false;
+    } catch (saveError) {
+      setSaveState("editor.saveFailed");
+      setError(errorMessage(saveError) || t("errors.collaborationUnavailable"));
+      return false;
     }
   };
   const formatWithHostFormatter = async (filePath: string, source: string): Promise<string> => {

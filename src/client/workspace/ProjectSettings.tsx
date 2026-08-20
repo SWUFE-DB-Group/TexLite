@@ -34,7 +34,7 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
       .then(({ content }) => setRcText(content)).catch((requestError) => setError(errorMessage(requestError)));
   }, [project.latexmkrc]);
   const texFiles = files.filter((entry) => entry.type === "file" && /\.tex$/i.test(entry.path)).map((entry) => entry.path);
-  const mainFileOptions = [...new Set(project.mainFile.toLowerCase().endsWith(".tex") ? [...texFiles, project.mainFile] : texFiles)]
+  const mainFileOptions = [...new Set(project.mainFile && project.mainFile.toLowerCase().endsWith(".tex") ? [...texFiles, project.mainFile] : texFiles)]
     .sort((left, right) => left.localeCompare(right));
   const saveCompilerSettings = async () => {
     try {
