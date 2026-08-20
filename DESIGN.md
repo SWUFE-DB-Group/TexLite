@@ -7,179 +7,279 @@ installation, configuration, and day-to-day operation.
 ## Design goals
 
 - Use the host's TeX Live/LaTeX installation so it can be updated independently.
-- Avoid Redis, MongoDB, and a reverse proxy for the default localhost deployment.
-- Keep projects and generated artifacts on the local filesystem.
-- Use SQLite through better-sqlite3 for durable application data.
-- Provide useful collaboration for a small number of active sessions without requiring a distributed deployment.
+- Keep the deployment small: one Node.js process, SQLite, local files, and no
+  Redis, MongoDB, reverse proxy, or bundled LaTeX image for the default
+  localhost setup.
+- Keep project source, compile output, history, and credentials under one
+  configurable data directory so that a complete backup is straightforward.
+- Provide useful real-time collaboration for a small trusted group rather than
+  emulate a distributed Overleaf deployment.
+- Prefer durable, explicit boundaries over silently accepting a possibly stale
+  or mixed-time source tree.
 
 ## Architecture
 
 | Area | Implementation |
 | --- | --- |
 | Browser UI | React, Vite, CodeMirror, PDF.js |
+| Editor language features | CodeMirror LaTeX syntax/folding, auto-pairs, project completion index, optional Vim mode |
+| Writing assistance | Harper.js in a browser worker; project dictionary stored by the server |
 | API and static server | Fastify, WebSocket |
-| Collaboration | Yjs, y-websocket, y-codemirror.next |
-| Database | SQLite via better-sqlite3 |
+| Collaboration | Yjs, y-websocket, awareness messages, y-codemirror.next |
+| Database | SQLite through better-sqlite3, foreign keys and WAL mode |
 | Files | Local project directories under the configured data directory |
-| Compilation | Host latexmk and a configured LaTeX engine |
+| Compilation | Host `latexmk` and a configured LaTeX engine |
 | Formatting | Optional host `tex-fmt` executable |
-| Git backup | Host git and the GitHub REST API |
+| Git backup | Optional host Git and the GitHub REST API |
+| Process management | Foreground `serve`, or the bundled PM2 lifecycle commands |
 
-TexLite is designed as a single Node.js process. Do not run multiple
-application instances against the same SQLite database or project directory;
-the in-memory collaboration service and compile queue are intentionally
-single-instance.
+TexLite is intentionally a single-instance application. The collaboration
+rooms, project mutation queues, compile coordinator, and SQLite database are
+process-local. Startup acquires an atomic `.texlite.lock` in the data
+directory; a live second process is rejected, while a stale lock from a dead
+process can be recovered. Cluster mode and multiple application processes
+sharing one data directory are not supported.
 
-## Collaboration and compilation model
+## Configuration and startup
 
-The editor uses a Yjs CRDT document for concurrent editing. Each active
-browser session is shown in the project header, and remote cursor colors
-identify editors. The intended scale is up to roughly ten active sessions on
-one project. The save indicator changes to “saved” only after the server
-acknowledges durable source persistence. Unsynchronized updates are also
-retained in browser IndexedDB and replayed after a transient disconnect; a
-history restore or Git checkout rotates the collaboration epoch so an obsolete
-local draft cannot overwrite the restored tree. Deleting or moving a file
-rejects late edits from sessions that still held its old editor binding.
+The npm package keeps configuration outside the package installation. The
+effective configuration is selected in this order:
 
-Cold collaboration rooms hydrate their persisted Yjs state and collaborative
-source files with bounded asynchronous filesystem I/O. The server coalesces
-simultaneous room initialization requests and verifies file metadata after the
-read, so opening a project does not monopolize the Node.js event loop or load a
-mixed-time source tree. Project outlines and completion indexes likewise use
-metadata-keyed caches and coalesce concurrent requests; a source-tree change
-automatically produces a new cache signature.
+1. `--config PATH`;
+2. `TEXLITE_CONFIG`;
+3. `$XDG_CONFIG_HOME/texlite/texlite.config.json`;
+4. `~/.config/texlite/texlite.config.json`.
 
-The main document saved in project settings is the default root. When a user
-opens another `.tex` file containing `\documentclass`, that file becomes the
-compile root for that browser session; opening an included fragment does not
-change the current root. Only the current root is compiled. Compile status,
-logs, retained PDF, artifacts, outline, and SyncTeX state are keyed by root
-document, so collaborators working on different roots do not see each other's
-compile notification or replace each other's PDF.
+The data directory defaults to `$XDG_DATA_HOME/texlite` or
+`~/.local/share/texlite`, and can be changed with `storage.dataDir` or
+`TEXLITE_DATA_DIR`. Relative configured paths are resolved relative to the
+configuration file. The effective defaults and accepted ranges are documented
+in the README and are also available through `texlite config`.
 
-Compilation is isolated from editing:
+`texlite init` creates the configuration when necessary and creates the first
+administrator. The server refuses to start without at least one active
+administrator; public registration is not enabled. Configuration values are
+validated before environment checks, database opening, or binding the HTTP
+listener. Validation covers paths, limits, engines, timeout/queue settings,
+URLs, and cross-field constraints such as the default engine being present in
+the allowed-engine list.
 
-1. The server captures an immutable source snapshot.
-2. Changed files are synchronized into a persistent compile workspace keyed by
-   project, root document, and compiler settings.
-3. latexmk reuses its dependency database and auxiliary files; jobs for the
-   same root remain serialized.
-4. The resulting PDF, logs, SyncTeX, and other artifacts are copied into an
-   immutable run bundle.
-5. A successful bundle is published atomically as the latest retained result.
+Startup and `doctor` check `latexmk` and every configured LaTeX engine. Git is
+optional: a host without Git can run the editor and compiler, while Git is
+checked on demand when an owner opens or uses Git integration (or explicitly
+with `texlite doctor --git`). `tex-fmt` is also optional and is checked only
+when formatting is requested. TexLite never installs or updates TeX packages.
 
-Only the snapshot and publication phases use the project source-operation
-queue. The potentially long latexmk process runs from the immutable snapshot
-without occupying that queue, so ordinary editing, file reads, and retained
-PDF requests can continue while compilation is in progress. Git checkout,
-history restore, project deletion, and compile-cache cleanup wait for active
-compiles before replacing or removing project state. The mutable cache for one
-root is never used concurrently, while different roots have separate caches
-and published artifacts are never modified in place. A user can continue
-viewing the previous PDF while a new compile is running. latexmk handles the
-necessary repeated passes for BibTeX-based documents and avoids rerunning
-BibTeX when its inputs have not changed.
+`texlite serve` runs in the foreground and is suitable for debugging, Docker,
+or systemd. `start`, `status`, `stop`, `restart`, and `logs` use the bundled
+PM2 dependency. Managed startup waits for both PM2 and the HTTP health probe;
+status has a colored systemctl-style view and a `--json` form for scripts.
+Expired login sessions are pruned at startup and periodically while the
+process is running, rather than merely being ignored during authentication.
+Administrators can open the System status view (or authenticated
+`GET /api/health/metrics`) for in-memory uptime, resource, queue, collaboration,
+event-loop, and recent latency summaries. These metrics intentionally exclude
+source text, passwords, tokens, and comment content.
 
-Project operations are coordinated according to what they modify:
+## Collaboration and source persistence
+
+Each open project has one Yjs room. Awareness data provides active-session
+avatars, user names, permissions, file paths, cursor colors, and the ten-session
+project limit. Ordinary Yjs edits remain concurrent; source-tree replacement
+operations temporarily enter maintenance, notify/close collaborators, and
+rotate the collaboration epoch so an old offline draft cannot overwrite a
+checkout or history restore. Browser IndexedDB retains unsent updates across a
+transient disconnect.
+
+Read permission is intentionally different from edit permission: read-only
+members cannot modify source files, but can view the project and add or reply
+to source comments. Comments are anchored to source offsets and selected text,
+can be resolved, edited, deleted, and replied to. If an author is removed,
+the record remains visible as “Deleted User”.
+
+The collaboration service persists dirty text with atomic temporary-file writes
+and returns a receipt containing `revision`, `persistedAt`, `ok`, and failed
+paths. Failed writes remain dirty and are retried in the background. Every
+ordinary source operation must accept a successful receipt: the coordinator
+returns `409 SOURCE_FLUSH_FAILED` with `failedPaths` instead of proceeding with
+a stale disk tree. This applies to Git checkout/restore, history restore,
+file/folder writes, moves/deletes, project deletion, and consistent reads.
+
+`ProjectMutationCoordinator` has two related controls:
 
 | Operation class | Examples | Coordination behavior |
 | --- | --- | --- |
-| Consistent source operation | File reads/writes, project archive, source snapshot | Uses the per-project source-operation queue only while reading or changing the live source tree. |
-| Background compilation | `latexmk` on an immutable snapshot | Holds a compile reservation but does not occupy the source-operation queue. Ordinary editing and retained-result reads continue. |
-| Compile-state replacement | Cache or artifact cleanup | Waits for active compiles, blocks new compiles briefly, and does not disconnect collaborators. |
-| Source-tree replacement | Git checkout/restore, history restore, project deletion | Waits for active compiles, flushes collaborative state, enters maintenance, and rotates the collaboration epoch when complete. |
+| Serialized source operation | File writes, settings, Git metadata, project-wide replace | Waits for queued operations, waits for a ready room, flushes the room, then runs while holding the per-project queue. |
+| Exclusive source replacement | Git checkout/restore, history restore, project deletion, path move | Waits for active compilation, flushes successfully, enters maintenance, performs the replacement, and resets the collaboration epoch. |
+| Consistent source read | Archive/download, raw source, history comparison, search, outline, completion index, Git diff/history | Uses the queue and a short snapshot barrier. The barrier blocks disk autosaves while an asynchronous scan/copy runs, then validates the deferred flush before returning. |
+| Background compilation | `latexmk` on an immutable snapshot | Holds a compile reservation but not the ordinary source queue, so editing, source reads, and the retained PDF can continue. |
+| Compile-state cleanup | Cache/artifact recovery | Waits for active compiles and serializes output removal without disconnecting collaborators. |
+| Published PDF read | PDF.js/range requests | Reads an immutable published bundle directly and does not wait for cold Yjs-room initialization; a concurrent cleanup may produce a normal 404. |
 
-Simultaneous requests for the same project, root document, and source/settings
-generation are coalesced before a snapshot is copied. A successful manifest
-stores both the cheap generation and a complete content digest. An exactly
-unchanged request can therefore reuse the retained result before snapshot
-creation; if the cheap generation changed, TexLite still creates and hashes a
-snapshot so reverted or metadata-only changes can reuse identical content.
+The source tree is checked with `lstat`-based path walks. ZIP imports, project
+duplication, Git checkout, file listing, and source resolution reject symbolic
+links (except that deletion may address a final link itself without following
+its target). This prevents a project path from escaping its source directory.
 
-Compile responses expose a Server-Timing header for snapshot, cache
-synchronization, latexmk, artifact-copy, and total request time. TexLite does
-not retain a browsable compile history: it keeps only the latest attempt state
-and, when needed, the last successful result currently published for each root
-document. Older database rows and immutable artifact bundles are removed
-automatically.
+## Editor, files, and navigation
 
-## History, navigation, and diagnostics
+The editor is CodeMirror-based and provides LaTeX syntax highlighting, folding,
+auto-pairs (including `\begin{...}`/`\end{...}`), indentation, Vim mode when
+explicitly enabled, and completion items from built-in LaTeX plus project
+`.tex`, `.sty`, and `.cls` definitions and BibTeX labels. Completion indexes and
+outlines are metadata-keyed and coalesced; a source-tree change invalidates the
+corresponding cache.
 
-Automatic history records source/file operations, compiler-setting changes, Git
-operations, restores, and acknowledged collaborative saves. Collaborative saves
-use fixed two-minute version windows, so continuous editing still creates
-useful recovery points without recording every keystroke. TexLite retains the
-latest 200 ordinary versions by default, plus every labeled and initial
-version. File contents are stored as complete SHA-256-addressed objects:
-unchanged data is reused, while a changed file creates a new complete object.
-A 512 MB soft per-project limit removes the oldest ordinary versions first;
-protected versions and the current internal baseline may exceed it. Project
-owners can see history storage usage and delete one version or clear all
-history without changing current project files. Unreferenced objects are
-garbage-collected. History is useful for correcting writing mistakes, but it is
-not a replacement for backing up the complete data directory.
+Opening `.tex`, `.bib`, `.sty`, or `.cls` files in editor tabs is an optional
+per-user/per-project preference and is off by default. The active tab is
+highlighted and keyboard accessible. PDF/SyncTeX synchronization is available
+only for the current `.tex` root document; a non-root tab remains editable but
+does not claim a PDF location.
 
-Use Ctrl/Cmd+P to open a project file quickly and Ctrl/Cmd+Shift+F for literal
-project-wide search and replace. Project replacement is staged as one operation
-and creates a history version. The outline follows `\input`, `\include`, and
-`\subfile` references from the main document. Structured warning/error entries
-resolve project-relative file names and jump directly to the matching source
-line; the raw latexmk transcript remains available.
+Harper performs spelling and grammar checks locally in a worker. The browser's
+built-in spellcheck is disabled for the editor, LaTeX commands/environments,
+comments, references, option keys/values, and table column specifications are
+excluded by the Harper-LaTeX preprocessing rules. Spelling uses a red wavy
+underline and grammar uses yellow. A context menu offers Harper suggestions;
+read-only members can inspect suggestions but cannot apply edits. The shared
+project dictionary is kept in SQLite and is imported into Harper for every
+collaborator.
 
-Administrators can open **System status** on the project list. It reports only
-counts and timings—never source text, passwords, Git tokens, or comments. The
-same data is available at authenticated endpoint `GET /api/health/metrics`.
+Formatting is independent from the editor's local appearance. A user can
+manually format a selection or enable the per-user/per-project “format before
+compile” preference. The server invokes the optional host `tex-fmt` command for
+`.tex`, `.bib`, `.cls`, and `.sty`; a formatter failure reports an error but
+does not prevent compilation. There is no silent Prettier fallback.
+
+The outline follows `\input`, `\include`, and `\subfile` references and
+jumps to source lines. The source and PDF panes expose explicit SyncTeX arrows,
+and PDF double-click can request the corresponding source location. Search and
+replace is project-wide, staged as one serialized operation, and records one
+history version. Structured compile diagnostics resolve project-relative
+file names and line numbers; the raw `latexmk` transcript remains available.
+
+## Compilation and retained output
+
+The project setting supplies the default root document. A browser session may
+select another `.tex` file containing `\documentclass`; only the currently
+selected root is compiled. Compile state, logs, retained PDF, artifacts,
+outline, and SyncTeX are keyed by root, so collaborators working on different
+roots do not replace each other's result or compile notification.
+
+Compilation follows this sequence:
+
+1. Admission validates permissions/root selection and coalesces requests by
+   project, root, and a cheap source/settings generation.
+2. After coalescing, TexLite flushes the room and captures a source snapshot.
+   A short snapshot barrier prevents autosave from modifying the source tree
+   while the asynchronous copy and digest run. Up to three unstable attempts
+   are made; if editing never becomes stable, the request is retryable rather
+   than accepting a mixed-time snapshot.
+3. Changed files are synchronized into an incremental compile workspace keyed
+   by project, root, engine, latexmkrc, and compiler arguments. The cache is
+   reused only for the same root; root-specific caches can compile concurrently
+   within the global `maxCompileJobs` limit.
+4. `latexmk` runs with `-synctex=1`, line-oriented error output, and shell escape
+   disabled by default. Its process group, including `pdflatex`, BibTeX/Biber,
+   and other descendants, is terminated on timeout. latexmk itself performs
+   the repeated passes required by bibliography documents.
+5. A successful PDF, SyncTeX file, log, and generated artifacts are copied into
+   an immutable run bundle. A small atomic manifest switch publishes it as the
+   latest result; an older bundle is retained briefly so an already-open PDF
+   request can finish.
+
+The previous successful PDF remains visible during a new compile. The latest
+published bundle is recovered after a restart and can be served before a cold
+collaboration room is initialized. PDF requests support range responses for
+PDF.js and expose the successful compile time. The output panel groups the PDF,
+log, warnings, errors, generated artifacts, and recovery actions; clean-cache
+and clean-artifact actions are for recovery rather than routine compilation.
+Compile responses expose `Server-Timing` measurements for snapshot, cache
+synchronization, LaTeX execution, artifact publication, and total request time
+so queue and rendering regressions can be diagnosed.
+TexLite does not keep an unlimited browsable compile history: old unsuccessful
+run rows and unreferenced bundles are pruned, while the latest successful
+result for each root is retained.
+
+## History and recovery
+
+History records initial state, acknowledged collaborative saves, file/source
+operations, compiler settings, Git operations, checkpoints, and restores.
+Autosaves by the same author are coalesced within a two-minute window. File
+contents are complete SHA-256-addressed objects; unchanged files are reused
+across manifests. The retention defaults are 200 ordinary unlabeled versions
+and 512 MB of deduplicated objects per project. Initial and labeled versions,
+plus the current internal baseline, are protected and can make the soft limit
+temporarily exceed its target. Retention pruning batches reference accounting
+and removes unreferenced objects.
+
+Owners can view storage statistics, delete one version, or clear all history
+without changing current source files. Restore is an exclusive source
+operation, reanchors comments against the before/after text, updates project
+settings when restoring a complete version, and resets the collaboration epoch.
+History is a recovery mechanism, not a substitute for backing up the complete
+data directory.
 
 ## GitHub backup
 
-The Git panel is visible only to the project owner. A GitHub personal access
-token is configured per project and stored encrypted in SQLite. The local
-repository is initialized in the project source directory; Git identity is
-temporary for each command:
+The Git panel is project-owner-only. Git is optional at startup and is checked
+when Git integration is used. A per-project GitHub token is encrypted in
+SQLite; it is never placed in a remote URL or command-line argument. The local
+repository lives in the project source directory, with temporary identity:
 
 ~~~text
 user.name  = project owner's username
 user.email = <username>@texlite.com
 ~~~
 
-For a fine-grained GitHub token, the intended trusted-user deployment should
-grant repository Administration and Contents read/write permissions and use
-All repositories, because a repository may not exist when the token is
-configured and later repositories may be created. The token never appears in
-the remote URL or command-line arguments.
+For a fine-grained GitHub token in a trusted deployment, grant repository
+Administration and Contents read/write permissions. “All repositories” is the
+practical choice when a repository may be created after token configuration.
+Only the owner can commit, push, checkout, restore, or configure the project
+repository. Commit messages are entered explicitly. Normal checkout preserves
+local changes and refuses conflicts; only the explicit force option discards
+tracked, untracked, and ignored working-tree files. The Git operations use the
+same project coordination and durable-flush boundary as other source
+replacements.
 
-Normal checkout uses Git's preserving behavior and refuses conflicts. Only the
-explicit force option discards tracked, untracked, and ignored working-tree
-files. After checking out a historical revision, return to the default branch
-before committing or pushing.
+## Data, backup, tags, and deletion
 
-## Data, backup, and deletion
-
-The default data directory is:
+The default data layout is:
 
 ~~~text
-.texlite/
+<data-dir>/
+├── .texlite.lock
 ├── texlite.db
 ├── texlite.db-wal
 ├── texlite.db-shm
 ├── git-token.key
+├── tmp/ and trash/
 └── projects/
     └── <project-id>/
         ├── source/
         └── output/
-            └── .texlite/   # compile cache/runs and history objects
+            └── .texlite/
+                ├── cache/
+                ├── runs/
+                └── history/
 ~~~
 
-Back up `texlite.db`, `git-token.key`, and `projects/` together. The encryption
-key is required to recover saved GitHub tokens. SQLite WAL files should be
-included when taking a live filesystem backup, or use a SQLite-aware backup
-procedure.
+Back up `texlite.db`, `git-token.key`, and `projects/` together. Include the
+SQLite WAL files in a live filesystem backup or use a SQLite-aware backup
+procedure. The token encryption key is required to recover saved GitHub
+credentials.
 
-Deleting a user removes their memberships and comments remain attributable as
-“Deleted User”. Depending on the administrator's choice, projects owned by that
-user can be transferred to the current administrator or deleted together with
-their files. The last active administrator cannot be removed or disabled.
+Tags and archive state are private to each user. A project can therefore have
+different labels, filters, and archived/active visibility for different
+collaborators. Deleting a project removes its database rows and source/output
+directory; deletion uses a temporary trash rename when possible and a startup
+reaper cleans abandoned trash/temp entries. Deleting a user removes sessions,
+memberships, private tags, and comments remain attributable as “Deleted User”.
+An administrator can transfer the user's owned projects to the current
+administrator or delete them with their files. Project transfer keeps the old
+owner as an editor and clears the project GitHub token so the new owner must
+configure their own credential. The last active administrator cannot be
+removed or disabled.
 
 ## Known limitations and TODO
 
@@ -191,58 +291,49 @@ model expands beyond a small group of trusted users on localhost.
 
 - [ ] Isolate compilation. LaTeX is not a security sandbox, and a project
   `latexmkrc` is executable Perl. Prefer a dedicated low-privilege account or
-  container/sandbox, disable project rc files by default for untrusted users,
-  and apply CPU, memory, process, and filesystem limits.
-- [ ] Harden compile-output serving. Validate manifests, PDFs, SyncTeX files,
-  and downloadable artifacts with `lstat`/real-path checks and serve only
-  regular files so compiler-created symbolic links cannot escape a run bundle.
-- [ ] Add deployment-aware HTTP protections: configurable `Secure` session
-  cookies, trusted-proxy handling, Origin/CSRF validation, login and expensive
-  endpoint rate limits, and conservative response/security headers.
-- [ ] Treat unexpected exceptions as internal failures. Return a generic 500
-  response with a request ID while keeping paths, database details, and stack
-  traces only in server logs; validation errors should remain explicit 4xx
-  responses.
+  container/sandbox and apply CPU, memory, process, and filesystem limits.
+- [ ] Add deployment-aware HTTP protections: configurable trusted-proxy
+  handling, explicit Origin/CSRF validation for deployments that are not
+  localhost-only, and conservative response/security headers. Login limiting
+  and strict session-cookie defaults are present but are not a complete public
+  deployment policy.
 - [ ] Validate every PDF annotation URL against an explicit protocol allowlist,
   including the URL that PDF.js labels as sanitized, before creating an
   external browser link.
+- [ ] Harden compile-output serving. The PDF path has regular-file and missing
+  file handling, but artifact listing/stat/copy can still race compile cleanup;
+  manifests, artifact bundles, and downloadable files need one consistent
+  lstat/real-path/atomic-copy policy.
 
 ### Correctness and recovery
 
-- [ ] Re-check project maintenance after asynchronous cold-room initialization
-  and before attaching the WebSocket. Maintenance may begin while the room is
-  loading even though the collaboration generation has not rotated yet.
 - [ ] Strengthen source-comment re-anchoring. When selected text is replaced,
   verify the original text and surrounding context instead of accepting only
-  the diff-mapped offsets; otherwise mark the comment orphaned for manual
-  review.
-- [ ] Make database/filesystem lifecycle operations crash-recoverable. Project
-  creation, import, duplication, deletion, user cleanup, history deletion, and
-  temporary downloads need tombstones or a startup reconciliation/reaper so a
-  crash cannot leave orphaned rows or directories.
-- [ ] Add a data-directory ownership lock. Collaboration rooms and operation
-  coordinators are in memory, so a second TexLite process must fail fast before
-  opening the same SQLite database and project directory.
-- [ ] Store the collaboration epoch with the IndexedDB draft instead of relying
-  on localStorage alone. If localStorage is unavailable, an obsolete offline
-  draft must not be replayed after Git checkout or history restore.
-- [ ] Validate project main-document settings on the server as a regular `.tex`
-  file and, where practical, a root containing `\documentclass`, rather than
-  accepting any existing path selected by a crafted API request.
+  diff-mapped offsets; otherwise mark the comment orphaned for manual review.
+- [ ] Make database/filesystem lifecycle operations fully crash-recoverable.
+  Project creation/import/duplication, project deletion, user cleanup, history
+  deletion, and temporary downloads still need explicit tombstones or startup
+  reconciliation for every failure point.
+- [ ] Validate the configured main document more strictly as a root containing
+  `\documentclass` (currently the server guarantees a regular `.tex` file and
+  compile-time selection applies the root check to session-selected files).
+- [ ] Refresh or disconnect collaboration connections immediately when a
+  user's role or project membership changes. Message-time access checks use the
+  connection's captured user row, so role downgrades need an explicit push or
+  connection refresh.
+- [ ] Add failure-injection tests for crashes between source snapshot,
+  publication, database compile status updates, project deletion, and history
+  cleanup.
 
-### Performance, testing, and maintainability
+### Performance and maintainability
 
-- [ ] Stream multipart uploads and ZIP imports to bounded temporary storage.
-  Current buffering is simple but allows several concurrent near-limit uploads
-  to create avoidable memory pressure.
 - [ ] Move large history snapshots, retention scans, and object garbage
   collection away from synchronous request/startup paths, and add integrity
   recovery for missing or orphaned history objects.
 - [ ] Record per-project queue wait time and add a real-browser concurrency
   benchmark covering a long compile alongside editing, PDF range requests,
   SyncTeX, cleanup, and Git checkout.
-- [ ] Add failure-injection tests for crashes between snapshot, publication,
-  database status updates, project deletion, and history cleanup.
-- [ ] Continue modularization of the largest files, especially `server/app.ts`,
-  `server/collaboration.ts`, and `client/App.tsx`, so authorization and
-  coordination rules are easier to audit and test independently.
+- [ ] Continue modularization of the largest files, especially
+  `server/app.ts`, `server/collaboration.ts`, and `client/App.tsx`, so
+  authorization and coordination rules are easier to audit and test
+  independently.
