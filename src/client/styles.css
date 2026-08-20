@@ -195,12 +195,11 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .file-drop-overlay span { max-width: 90%; overflow: hidden; color: #5e7668; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .outline-panel { min-height: 150px; flex: 2; overflow: auto; }
 .panel-title { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #e6e8e5; color: #647069; text-transform: uppercase; font-size: 11px; font-weight: 700; }
-.panel-title > span { display: flex; align-items: center; gap: 6px; }
+.panel-title > span { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .panel-title button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #5d6961; }
 .panel-title button:hover { background: #e8eeea; color: #176b44; }
-.file-tools { display: flex; gap: 2px; }
-.folder-target { min-width: 0; display: flex; align-items: center; gap: 6px; margin: 7px 8px 0; padding: 6px 8px; border-radius: 5px; background: #edf2ee; color: #58645c; font-size: 10px; }
-.folder-target span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-tools { flex: none; display: flex; align-items: center; gap: 4px; margin-left: 8px; }
+.file-tools button { box-sizing: border-box; }
 .file-list { padding: 6px 7px 10px; }
 .file-entry { min-width: 0; height: calc(1em + 18px); min-height: 30px; display: flex; align-items: center; border-radius: 5px; color: #4f5952; }
 .file-entry:hover { background: #f0f3f0; }
