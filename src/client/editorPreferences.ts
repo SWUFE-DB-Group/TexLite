@@ -8,6 +8,7 @@ export interface EditorPreferences {
   spellCheck: boolean;
   vimMode: boolean;
   formatOnCompile: boolean;
+  openFilesInTabs: boolean;
 }
 
 export const editorFonts: Array<{ id: EditorFont; labelKey: string; stack: string }> = [
@@ -25,7 +26,8 @@ export const defaultEditorPreferences: EditorPreferences = {
   lineWrapping: true,
   spellCheck: true,
   vimMode: false,
-  formatOnCompile: false
+  formatOnCompile: false,
+  openFilesInTabs: false
 };
 
 const storageKeyPrefix = "texlite-editor-preferences";
@@ -48,7 +50,8 @@ export function loadEditorPreferences(userId: string, projectId: string): Editor
       lineWrapping: typeof stored.lineWrapping === "boolean" ? stored.lineWrapping : defaultEditorPreferences.lineWrapping,
       spellCheck: typeof stored.spellCheck === "boolean" ? stored.spellCheck : defaultEditorPreferences.spellCheck,
       vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode,
-      formatOnCompile: typeof stored.formatOnCompile === "boolean" ? stored.formatOnCompile : defaultEditorPreferences.formatOnCompile
+      formatOnCompile: typeof stored.formatOnCompile === "boolean" ? stored.formatOnCompile : defaultEditorPreferences.formatOnCompile,
+      openFilesInTabs: typeof stored.openFilesInTabs === "boolean" ? stored.openFilesInTabs : defaultEditorPreferences.openFilesInTabs
     };
   } catch {
     return defaultEditorPreferences;

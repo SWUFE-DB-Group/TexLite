@@ -58,7 +58,7 @@
     "editReply": "编辑回复", "deleteReply": "删除回复", "deleteReplyTitle": "删除回复",
     "deleteReplyDescription": "确定删除这条回复吗？此操作不可撤销。", "editedAt": "编辑于 {{time}}",
     "outlineJump": "跳转到源码第 {{line}} 行并定位 PDF", "lineNumber": "第 {{line}} 行", "showInSource": "在源码中显示当前 PDF 位置",
-    "showInPdf": "在 PDF 中显示当前源码光标位置", "pdfLoadFailed": "无法载入 PDF 预览",
+    "showInPdf": "在 PDF 中显示当前源码光标位置", "syncTexOnlyForTex": "PDF 跳转仅支持 TeX 源文件（.tex）", "syncTexOnlyForMain": "PDF 跳转仅支持当前主 TeX 文档", "openFiles": "打开的文件", "pdfLoadFailed": "无法载入 PDF 预览",
     "pdfZoomControls": "PDF 缩放控件", "downloadPdf": "下载 PDF", "downloadResource": "下载文件", "resourceTooLarge": "该文件大小为 {{size}}，超过 {{limit}} 的直接预览上限。", "resourceTooLargeTitle": "文件过大，无法直接预览", "resourceTooLargeDescription": "请下载文件后在本地打开。", "resourceUnsupportedTitle": "无法预览", "resourceUnsupportedDescription": "浏览器不能直接渲染此文件类型，请下载后在本地打开。",
     "resourcePreview": { "image": "图片预览", "pdf": "PDF 预览", "text": "文本预览", "unsupported": "文件预览" }, "pdfZoomOut": "缩小", "pdfZoomIn": "放大", "pdfFitWidth": "适合宽度", "pdfLink": "PDF 链接", "pdfLinks": "PDF 链接",
     "layout": {
@@ -110,7 +110,7 @@
     "writingCheckDescription": "Harper 在浏览器本地 worker 中运行。拼写问题使用红色波浪线，语法问题使用黄色波浪线；右键问题可以查看修改建议。",
     "projectConfiguration": "项目配置", "fontFamily": "英文字体", "fontSize": "字体大小", "lineHeight": "行间距",
     "dictionary": "项目词典", "dictionaryDescription": "添加到这里的词会导入 Harper 的自定义词典，并在本项目的拼写检查中忽略；具有编辑权限的用户可以维护此列表。", "dictionaryPlaceholder": "添加自定义词", "addWord": "添加词", "dictionaryEmpty": "暂未添加自定义词。",
-    "lineWrapping": "自动换行", "spellCheck": "拼写和语法检查", "vimMode": "Vim 键位", "vimModeDescription": "在当前编辑器中使用 Vim 的普通、插入和可视模式。", "vimHelp": "查看帮助", "formatOnCompile": "编译前自动格式化 LaTeX", "formatOnCompileDescription": "默认关闭；格式化会在服务器编译前执行。", "formatRequiresWrite": "需要项目编辑权限才能使用格式化。", "formatterDescription": "格式化使用宿主机上的可选 tex-fmt 命令。", "formatterInstall": "安装或查看 tex-fmt 文档", "writingIssues": "发现 {{count}} 个写作问题（去重后 {{uniqueCount}} 个）", "noWritingIssues": "未发现拼写或语法问题。", "spellCheckFirst": "第一个写作问题", "spellCheckPrevious": "上一个写作问题", "spellCheckNext": "下一个写作问题", "spellCheckLast": "最后一个写作问题", "spellCheckPosition": "第 {{current}}/{{total}} 个",
+    "lineWrapping": "自动换行", "spellCheck": "拼写和语法检查", "vimMode": "Vim 键位", "vimModeDescription": "在当前编辑器中使用 Vim 的普通、插入和可视模式。", "vimHelp": "查看帮助", "formatOnCompile": "编译前自动格式化 LaTeX", "formatOnCompileDescription": "默认关闭；格式化会在服务器编译前执行。", "formatRequiresWrite": "需要项目编辑权限才能使用格式化。", "formatterDescription": "格式化使用宿主机上的可选 tex-fmt 命令。", "formatterInstall": "安装或查看 tex-fmt 文档", "openFilesInTabs": "使用新 Tab 打开 LaTeX 文件", "openFilesInTabsDescription": "在编辑器顶部通过标签页管理打开的 .tex、.bib、.sty 等源码文件。", "writingIssues": "发现 {{count}} 个写作问题（去重后 {{uniqueCount}} 个）", "noWritingIssues": "未发现拼写或语法问题。", "spellCheckFirst": "第一个写作问题", "spellCheckPrevious": "上一个写作问题", "spellCheckNext": "下一个写作问题", "spellCheckLast": "最后一个写作问题", "spellCheckPosition": "第 {{current}}/{{total}} 个",
     "fontJetBrains": "JetBrains Mono", "fontSourceCode": "Source Code Pro",
     "fontIbmPlex": "IBM Plex Mono", "fontFiraCode": "Fira Code", "fontIosevka": "Iosevka", "lineHeightCompact": "紧凑",
     "lineHeightNormal": "标准", "lineHeightRelaxed": "宽松"

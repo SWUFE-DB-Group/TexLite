@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { version as texliteVersion } from "../../package.json";
 import { api, ApiError, localizedResponseError } from "./api";
@@ -630,6 +630,9 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [formatting, setFormatting] = useState(false);
   const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(() => loadEditorPreferences(user.id, projectId));
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
+  const openTabsRef = useRef<string[]>([]);
+  openTabsRef.current = openTabs;
   const uploadInput = useRef<HTMLInputElement>(null);
   const filesPanel = useRef<ImperativePanelHandle>(null);
   const localEditSequence = useRef(0);
@@ -653,6 +656,35 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     const next = { line, column };
     sourceCursorRef.current = next;
     setSourceCursor(next);
+  };
+
+  const updateOpenTabs = (updater: (current: string[]) => string[]) => {
+    const current = openTabsRef.current;
+    const next = updater(current);
+    if (next === current) return;
+    openTabsRef.current = next;
+    setOpenTabs(next);
+  };
+
+  useEffect(() => {
+    // ProjectWorkspace can stay mounted while the route changes. Never carry
+    // tabs from the previous project into the new file tree.
+    openTabsRef.current = [];
+    setOpenTabs([]);
+  }, [projectId]);
+
+  const closeTab = (tabPath: string) => {
+    const current = openTabsRef.current;
+    const index = current.indexOf(tabPath);
+    if (index < 0) return;
+    const nextTabs = current.filter((p) => p !== tabPath);
+    openTabsRef.current = nextTabs;
+    setOpenTabs(nextTabs);
+    if (activeFileRef.current !== tabPath) return;
+    const nextActive = nextTabs.length > 0
+      ? nextTabs[Math.min(index, nextTabs.length - 1)]
+      : project?.mainFile ?? "";
+    setActiveFile(nextActive);
   };
 
   const {
@@ -703,7 +735,17 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     sourceCursorRef.current = { line: 1, column: 1 };
     setSourceCursor({ line: 1, column: 1 });
     setSelection({ selectedText: "", startOffset: 0, endOffset: 0 });
-  }, [activeFile]);
+    if (!editorPreferences.openFilesInTabs) {
+      if (openTabsRef.current.length > 0) {
+        openTabsRef.current = [];
+        setOpenTabs([]);
+      }
+      return;
+    }
+    if (activeFile) {
+      updateOpenTabs((current) => current.includes(activeFile) ? current : [...current, activeFile]);
+    }
+  }, [activeFile, editorPreferences.openFilesInTabs, projectId]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -853,6 +895,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       setActiveMainFile((current) => remap(current));
       setRootDocuments((current) => new Set([...current].map(remap)));
       setSelectedFolder((current) => current ? remap(current) : current);
+      updateOpenTabs((current) => current.map(remap));
     }
     if (deletedActiveFile) {
       setActiveFile("");
@@ -864,6 +907,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       setRootDocuments((current) => new Set([...current].filter((filePath) => !pathContains(filesEvent.path!, filePath))));
       setSelectedFolder((current) => pathContains(filesEvent.path!, current) ? "" : current);
       setResourcePreview((current) => current && pathContains(filesEvent.path!, current.path) ? null : current);
+      updateOpenTabs((current) => current.filter((filePath) => !pathContains(filesEvent.path!, filePath)));
     }
     refreshRequest.current?.abort();
     const controller = new AbortController();
@@ -1058,6 +1102,15 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     onActiveMainFile: setActiveMainFile,
     onRootDocuments: setRootDocuments
   });
+
+  useEffect(() => {
+    if (!editorPreferences.openFilesInTabs || files.length === 0) return;
+    const existingFiles = new Set(files.filter((entry) => entry.type === "file" && isEditableTextFile(entry.path)).map((entry) => entry.path));
+    updateOpenTabs((current) => {
+      const next = current.filter((filePath) => existingFiles.has(filePath));
+      return next.length === current.length ? current : next;
+    });
+  }, [files, editorPreferences.openFilesInTabs]);
   const {
     comments, focusComment, setFocusComment, commentOpen, setCommentOpen, commentText, setCommentText,
     addComment, toggleComment, replyToComment, editComment, deleteComment, editCommentReply, deleteCommentReply
@@ -1162,6 +1215,29 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const pdfTargetLabel = activeMainFile.split("/").at(-1) ?? activeMainFile;
   const diagnosticCount = compileMessages.warnings.length + compileMessages.errors.length + artifacts.length;
   const pdfDownloadUrl = pdfUrl ? `${pdfUrl}${pdfUrl.includes("?") ? "&" : "?"}download=1` : "";
+  const syncMainFile = activeMainFile || project.mainFile;
+  const canSyncWithPdf = Boolean(activeFile && activeFile === syncMainFile && /\.tex$/i.test(activeFile));
+  const activateTab = (tabPath: string): void => {
+    const entry = files.find((file) => file.path === tabPath);
+    if (entry && isEditableTextFile(entry.path)) openFile(entry);
+    else closeTab(tabPath);
+  };
+  const focusTab = (tabPath: string): void => {
+    document.getElementById(`editor-tab-${encodeURIComponent(tabPath)}`)?.focus();
+  };
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? openTabs.length - 1
+        : (index + (event.key === "ArrowLeft" ? -1 : 1) + openTabs.length) % openTabs.length;
+    const nextPath = openTabs[nextIndex];
+    if (!nextPath) return;
+    activateTab(nextPath);
+    window.requestAnimationFrame(() => focusTab(nextPath));
+  };
   const compileStatusMessage = compileBusy
     ? sharedCompiling
       ? compileState?.status === "queued" ? t("editor.compileQueued") : t("editor.compilingBy", { name: compileState?.requestedBy.name ?? t("common.user") })
@@ -1207,9 +1283,58 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       </Panel>}
       {showEditor && <PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle>}
       {showEditor && <Panel id="source" order={2} defaultSize={42} minSize={22}>
-        <main className="source-panel"><Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}><LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor} /></Suspense>{editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}</main>
+        <main className="source-panel">
+          {editorPreferences.openFilesInTabs && openTabs.length > 0 && (
+            <div className="editor-tabs-bar" role="tablist" aria-label={t("editor.openFiles")}>
+              <div className="editor-tabs-scroll">
+                {openTabs.map((tabPath, index) => {
+                  const isActive = tabPath === activeFile;
+                  const isMain = tabPath === (activeMainFile || project.mainFile);
+                  const fileName = tabPath.split("/").at(-1) || tabPath;
+                  return (
+                    <div className={`editor-tab-item${isActive ? " active" : ""}`} role="presentation" key={tabPath}>
+                      <button
+                      id={`editor-tab-${encodeURIComponent(tabPath)}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      aria-controls="editor-source-content"
+                      tabIndex={isActive ? 0 : -1}
+                      className={`editor-tab${isActive ? " active" : ""}${isMain ? " main-tab" : ""}`}
+                      onClick={() => activateTab(tabPath)}
+                      onKeyDown={(event) => handleTabKeyDown(event, index)}
+                      title={tabPath}
+                    >
+                      <span className="editor-tab-icon">
+                        {isMain ? <BookOpen size={13} /> : <FileText size={13} />}
+                      </span>
+                      <span className="editor-tab-title">{fileName}</span>
+                      {isMain && <small className="editor-tab-badge">{t("editor.currentMainShort")}</small>}
+                    </button>
+                    <button
+                      type="button"
+                      className="editor-tab-close"
+                      title={t("common.close")}
+                      aria-label={`${t("common.close")} ${fileName}`}
+                      onClick={() => closeTab(tabPath)}
+                    >
+                      <X size={12} />
+                    </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <div id="editor-source-content" className="editor-content-container">
+            <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
+              <LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor} />
+            </Suspense>
+            {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
+          </div>
+        </main>
       </Panel>}
-      {showEditor && showPreview && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport} title={t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={syncVisiblePdfToSource}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl} title={t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={() => void syncSourceToPdf(activeFile, sourceCursor.line, sourceCursor.column)}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
+      {showEditor && showPreview && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport || !canSyncWithPdf} title={canSyncWithPdf ? t("editor.showInSource") : t("editor.syncTexOnlyForMain")} aria-label={t("editor.showInSource")} onClick={() => { if (!canSyncWithPdf) { setNotice(t("editor.syncTexOnlyForMain")); return; } syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={canSyncWithPdf ? t("editor.showInPdf") : t("editor.syncTexOnlyForMain")} aria-label={t("editor.showInPdf")} onClick={() => { if (!canSyncWithPdf) { setNotice(t("editor.syncTexOnlyForMain")); return; } void syncSourceToPdf(activeFile, sourceCursor.line, sourceCursor.column); }}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
       {showPreview && <Panel id="preview" order={3} defaultSize={42} minSize={22}>
         <section className="preview-panel">
           <div className="preview-tabs">
@@ -1227,7 +1352,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
             <button role="tab" aria-selected={diagnosticTab === "clean"} className={diagnosticTab === "clean" ? "active" : ""} onClick={() => selectPreviewTab("clean")}><Eraser size={13} />{t("editor.clean")}</button>
           </div>}
           <div className={`preview-content preview-${previewTab} ${previewTab === "diagnostics" ? `preview-${diagnosticTab}` : ""}`}>
-            {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}><PdfPreview url={pdfUrl} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} onDoubleClickLocation={(page, x, y) => { setPdfViewport({ page, x, y }); void syncPdfToSource(page, x, y); }} /></Suspense> : pdfLoading ? <div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
+            {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}><PdfPreview url={pdfUrl} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} onDoubleClickLocation={(page, x, y) => { setPdfViewport({ page, x, y }); if (!canSyncWithPdf) { setNotice(t("editor.syncTexOnlyForMain")); return; } void syncPdfToSource(page, x, y); }} /></Suspense> : pdfLoading ? <div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
             {previewTab === "diagnostics" && diagnosticTab === "log" && <CompileOutput lines={compileLog ? compileLog.split("\n") : []} empty={localCompiling ? t("editor.compiling") : t("editor.noLog")} />}
             {previewTab === "diagnostics" && diagnosticTab === "warnings" && (compileDiagnostics
               ? <CompileDiagnosticOutput tone="warning" diagnostics={compileDiagnostics.warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />

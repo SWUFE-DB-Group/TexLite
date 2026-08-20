@@ -33,6 +33,7 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
   const onActiveFileRef = useRef(onActiveFile);
   const onErrorRef = useRef(onError);
   const onShowPdfRef = useRef(onShowPdf);
+  const isMainTeX = (path: string): boolean => path === mainFile && /\.tex$/i.test(path);
   activeFileRef.current = activeFile;
   onActiveFileRef.current = onActiveFile;
   onErrorRef.current = onError;
@@ -53,6 +54,10 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
   };
 
   const syncSourceToPdf = async (path: string, line: number, column: number, options: { silent?: boolean } = {}) => {
+    // SyncTeX coordinates are produced for the selected root document. Do not
+    // send requests for a secondary tab: it has no reliable PDF mapping in the
+    // current preview and would otherwise produce confusing 400 responses.
+    if (!isMainTeX(path)) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -72,6 +77,11 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
   };
 
   const syncPdfToSource = async (page: number, x: number, y: number) => {
+    // A PDF belongs to the active root document. While a secondary TeX file is
+    // open, leave the cursor in that file instead of silently switching files
+    // from a PDF click.
+    if (!isMainTeX(activeFileRef.current)) return;
+    const requestedFromFile = activeFileRef.current;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -80,7 +90,7 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
         `/api/projects/${projectId}/sync/source?mainFile=${encodeURIComponent(mainFile)}&page=${page}&x=${x}&y=${y}`,
         { signal: controller.signal }
       );
-      if (request.current !== controller) return;
+      if (request.current !== controller || activeFileRef.current !== requestedFromFile || !isMainTeX(activeFileRef.current)) return;
       jumpToSource(location.path, location.line, location.column);
     } catch (error) {
       if (!isAbortError(error)) onErrorRef.current(errorMessage(error));

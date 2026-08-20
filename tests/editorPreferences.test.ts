@@ -24,7 +24,7 @@ describe("editor preference scope", () => {
   beforeEach(() => storage.clear());
 
   it("keeps preferences isolated by user and project", () => {
-    const aliceProjectOne = { ...defaultEditorPreferences, fontSize: 20, vimMode: true, formatOnCompile: true };
+    const aliceProjectOne = { ...defaultEditorPreferences, fontSize: 20, vimMode: true, formatOnCompile: true, openFilesInTabs: true };
     const bobProjectOne = { ...defaultEditorPreferences, fontSize: 12 };
     saveEditorPreferences("alice", "project-one", aliceProjectOne);
     saveEditorPreferences("bob", "project-one", bobProjectOne);
@@ -34,8 +34,9 @@ describe("editor preference scope", () => {
     expect(loadEditorPreferences("alice", "project-two")).toEqual(defaultEditorPreferences);
   });
 
-  it("keeps formatting off for preferences saved before the option existed", () => {
+  it("keeps formatting and tabs off for preferences saved before the options existed", () => {
     storage.setItem("texlite-editor-preferences:alice:legacy", JSON.stringify({ fontSize: 18 }));
     expect(loadEditorPreferences("alice", "legacy").formatOnCompile).toBe(false);
+    expect(loadEditorPreferences("alice", "legacy").openFilesInTabs).toBe(false);
   });
 });
