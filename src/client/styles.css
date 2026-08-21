@@ -446,6 +446,8 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .settings-section-title { display: flex; align-items: center; gap: 7px; color: #31523e; font-size: 13px; }
 .settings-section-title.project-configuration { margin-top: 4px; padding-top: 15px; border-top: 1px solid #e1e5e2; }
 .settings-description { margin: 0; color: #7b837e; font-size: 11px; line-height: 1.45; }
+.settings .editor-preference { display: flex; flex-direction: column; gap: 4px; }
+.settings .editor-preference .field-hint { margin: 0 9px; line-height: 1.4; }
 .settings .editor-checkbox { flex-direction: row; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid #d9ded9; border-radius: 7px; font-weight: 500; }
 .settings .editor-checkbox input { width: auto; margin: 0; accent-color: #176b44; }
 .spell-check-result { display: inline-flex; align-items: center; gap: 6px; color: #66716a; font-size: 11px; }
