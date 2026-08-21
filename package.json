@@ -1,6 +1,6 @@
 {
   "name": "texlite",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "description": "A lightweight local-first collaborative LaTeX workspace",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -69,6 +69,7 @@
     "@radix-ui/react-dialog": "^1.1.15",
     "@replit/codemirror-vim": "^6.4.0",
     "better-sqlite3": "^13.0.2",
+    "bibtex-tidy": "1.14.0",
     "diff-match-patch": "^1.0.5",
     "fastify": "^5.4.0",
     "harper.js": "^2.7.0",

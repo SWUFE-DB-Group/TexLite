@@ -46,14 +46,15 @@ citation library as a separate management page beside the other management
 controls; the project workspace keeps a smaller `.bib` import dialog for
 in-context writing. Library results are server-filtered and paginated with 60
 entries per page by default (the API accepts a bounded page-size override).
-Library entries are size-limited and validated as exactly one balanced BibTeX
-entry with syntactically formed fields before storage. Citation keys are unique
+Library entries are checked in the browser with the `bibtex-tidy` JavaScript
+parser and formatter before a mutation request is sent. Citation keys are unique
 per user without regard to letter case. Creating an existing key is rejected;
 updating an entry or its tags requires the revision last read by the client, so
 concurrent browser sessions report a conflict instead of silently overwriting
 newer content. Entry-text and tag-only mutations use separate endpoints, while
 the explicit save-from-`.bib` action can replace the stored entry without
-discarding its existing tags.
+discarding its existing tags. The server retains only transport-level size and
+field-shape limits; it does not reparse BibTeX syntax.
 
 TexLite is intentionally a single-instance application. The collaboration
 rooms, project mutation queues, compile coordinator, and SQLite database are

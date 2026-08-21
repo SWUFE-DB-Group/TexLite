@@ -5,7 +5,7 @@ import { BookMarked, Check, ChevronLeft, ChevronRight, Edit3, Import, LoaderCirc
 import { Modal } from "./Dialog";
 import { api } from "./api";
 import { errorMessage } from "./errors";
-import { parseBibEntries, type ParsedCitationEntry } from "./citationLibrary";
+import { parseBibEntries, parseSingleBibEntry, type ParsedCitationEntry } from "./citationLibrary";
 import type { CitationLibraryEntry, CitationLibraryTag, ProjectListPagination, TagColor } from "./types";
 
 interface Props {
@@ -136,7 +136,8 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
       const existing = savedEntries.get(entry.citationKey.toLowerCase());
       const result = await api<{ entry: CitationLibraryEntry; updated: boolean }>("/api/citations", {
         method: "POST", body: JSON.stringify({
-          bibtex: entry.bibtex,
+          bibtex: entry.bibtex, citationKey: entry.citationKey, entryType: entry.entryType,
+          title: entry.title, authors: entry.authors, year: entry.year,
           overwrite: Boolean(existing),
           expectedRevision: existing?.revision
         })
@@ -159,8 +160,17 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
     setSavingKey(editing.citationKey);
     setError("");
     try {
+      const parsed = parseSingleBibEntry(editText);
+      if (!parsed) {
+        setError(t("citationErrors.invalid"));
+        return;
+      }
       const result = await api<{ entry: CitationLibraryEntry }>(`/api/citations/${encodeURIComponent(editing.id)}`, {
-        method: "PATCH", body: JSON.stringify({ bibtex: editText, expectedRevision: editing.revision })
+        method: "PATCH", body: JSON.stringify({
+          bibtex: parsed.bibtex, citationKey: parsed.citationKey, entryType: parsed.entryType,
+          title: parsed.title, authors: parsed.authors, year: parsed.year,
+          expectedRevision: editing.revision
+        })
       });
       setEntries((current) => [result.entry, ...current.filter((item) => item.id !== result.entry.id)]);
       setSavedEntries((current) => {
@@ -184,8 +194,16 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
     setSavingKey("__new__");
     setError("");
     try {
+      const parsed = parseSingleBibEntry(addText);
+      if (!parsed) {
+        setError(t("citationErrors.invalid"));
+        return;
+      }
       const result = await api<{ entry: CitationLibraryEntry; updated: boolean }>("/api/citations", {
-        method: "POST", body: JSON.stringify({ bibtex: addText })
+        method: "POST", body: JSON.stringify({
+          bibtex: parsed.bibtex, citationKey: parsed.citationKey, entryType: parsed.entryType,
+          title: parsed.title, authors: parsed.authors, year: parsed.year
+        })
       });
       setEntries((current) => [result.entry, ...current.filter((item) => item.id !== result.entry.id && item.citationKey.toLowerCase() !== result.entry.citationKey.toLowerCase())]);
       setSavedEntries((current) => new Map(current).set(result.entry.citationKey.toLowerCase(), {

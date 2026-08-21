@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBibEntries, parseSingleBibEntry } from "../src/server/citationLibrary.js";
+import { formatBibtex, parseBibEntries, parseSingleBibEntry } from "../src/client/citationLibrary";
 
 describe("citation library BibTeX parser", () => {
   it("preserves complete entries and extracts common metadata", () => {
@@ -39,5 +39,9 @@ describe("citation library BibTeX parser", () => {
       .toMatchObject({ citationKey: "parenthesized", title: "A) valid title", year: "2026" });
     expect(parseSingleBibEntry("@misc{encoded, url={https://example.test/a%20b}, title=\"A {Nested} title\"}"))
       .toMatchObject({ citationKey: "encoded", title: "A {Nested} title" });
+  });
+
+  it("formats valid BibTeX in the browser-facing helper", () => {
+    expect(formatBibtex("@article{x,title={One},year=2026}")).toContain("title         = {One}");
   });
 });

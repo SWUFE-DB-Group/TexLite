@@ -50,9 +50,9 @@ import { MetricRegistry } from "./metrics.js";
 import { compileMainFile } from "./compileArtifacts.js";
 import { apiError, contentDisposition, ValidationError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
-import { MAX_CITATION_BIBTEX_BYTES, parseSingleBibEntry, type ParsedCitationEntry } from "./citationLibrary.js";
 
 const now = (): string => new Date().toISOString();
+const MAX_CITATION_BIBTEX_BYTES = 512 * 1024;
 const SESSION_CLEANUP_INTERVAL_MS = 15 * 60_000;
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, "\\$&");
@@ -153,18 +153,45 @@ function citationExpectedRevision(value: unknown): number {
   return Number(value);
 }
 
-function citationInput(value: unknown): ParsedCitationEntry {
-  if (typeof value !== "string" || !value.trim()) {
+interface CitationInput {
+  bibtex: string;
+  citationKey: string;
+  entryType: string;
+  title: string | null;
+  authors: string | null;
+  year: string | null;
+}
+
+function citationNullableText(value: unknown, name: string, max: number): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || value.length > max) throw new ValidationError(`${name}格式不正确`);
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function citationInput(value: unknown): CitationInput {
+  if (typeof value !== "object" || value === null) throw new ValidationError("引用条目格式不正确");
+  const body = value as Record<string, unknown>;
+  if (typeof body.bibtex !== "string" || !body.bibtex.trim()) {
     throw new ValidationError("引用条目不能为空");
   }
-  if (Buffer.byteLength(value, "utf8") > MAX_CITATION_BIBTEX_BYTES) {
+  if (Buffer.byteLength(body.bibtex, "utf8") > MAX_CITATION_BIBTEX_BYTES) {
     throw Object.assign(new Error("引用条目过大"), { statusCode: 413, code: "CITATION_TOO_LARGE" });
   }
-  const parsed = parseSingleBibEntry(value);
-  if (!parsed) {
-    throw Object.assign(new Error("请输入一个有效的 BibTeX 文献条目"), { statusCode: 400, code: "CITATION_INVALID" });
+  if (typeof body.citationKey !== "string" || !body.citationKey.trim() || body.citationKey.length > 512) {
+    throw new ValidationError("引用 key 格式不正确");
   }
-  return parsed;
+  if (typeof body.entryType !== "string" || !body.entryType.trim() || body.entryType.length > 128) {
+    throw new ValidationError("引用类型格式不正确");
+  }
+  return {
+    bibtex: body.bibtex.trim(),
+    citationKey: body.citationKey.trim(),
+    entryType: body.entryType.trim(),
+    title: citationNullableText(body.title, "引用标题", 2048),
+    authors: citationNullableText(body.authors, "引用作者", 2048),
+    year: citationNullableText(body.year, "引用年份", 128)
+  };
 }
 
 interface ProjectTag {
@@ -764,8 +791,8 @@ export async function buildApp(
   app.post("/api/citations", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const body = request.body as { bibtex?: unknown; tagIds?: unknown; overwrite?: unknown; expectedRevision?: unknown } | undefined;
-    const citation = citationInput(body?.bibtex);
+    const body = request.body as { bibtex?: unknown; citationKey?: unknown; entryType?: unknown; title?: unknown; authors?: unknown; year?: unknown; tagIds?: unknown; overwrite?: unknown; expectedRevision?: unknown } | undefined;
+    const citation = citationInput(body);
     const tagIds = citationTagIds(db, user.id, body?.tagIds);
     const overwrite = body?.overwrite === true;
     const existing = db.prepare("SELECT id, revision FROM citation_library_entries WHERE user_id = ? AND citation_key = ? COLLATE NOCASE")
@@ -838,8 +865,8 @@ export async function buildApp(
     const existing = db.prepare("SELECT id FROM citation_library_entries WHERE id = ? AND user_id = ?")
       .get(citationId, user.id) as { id: string } | undefined;
     if (!existing) return apiError(reply, 404, "CITATION_NOT_FOUND", "引用条目不存在");
-    const body = request.body as { bibtex?: unknown; expectedRevision?: unknown } | undefined;
-    const citation = citationInput(body?.bibtex);
+    const body = request.body as { bibtex?: unknown; citationKey?: unknown; entryType?: unknown; title?: unknown; authors?: unknown; year?: unknown; expectedRevision?: unknown } | undefined;
+    const citation = citationInput(body);
     const expectedRevision = citationExpectedRevision(body?.expectedRevision);
     const duplicate = db.prepare("SELECT id FROM citation_library_entries WHERE user_id = ? AND citation_key = ? COLLATE NOCASE AND id != ?")
       .get(user.id, citation.citationKey, citationId) as { id: string } | undefined;
@@ -1719,8 +1746,8 @@ export async function buildApp(
     if (!canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
     const body = request.body as { path?: unknown; source?: unknown } | undefined;
     const filePath = safeRelativePath(typeof body?.path === "string" ? body.path : "");
-    if (!/\.(?:tex|bib|cls|sty)$/i.test(filePath)) {
-      return apiError(reply, 400, "FORMAT_FILE_UNSUPPORTED", "只有 .tex、.bib、.cls 和 .sty 文件支持格式化", { path: filePath });
+    if (!/\.(?:tex|cls|sty)$/i.test(filePath)) {
+      return apiError(reply, 400, "FORMAT_FILE_UNSUPPORTED", "只有 .tex、.cls 和 .sty 文件支持宿主机格式化", { path: filePath });
     }
     if (typeof body?.source !== "string") return apiError(reply, 400, "FORMAT_SOURCE_INVALID", "待格式化内容格式不正确");
     const source = body.source;

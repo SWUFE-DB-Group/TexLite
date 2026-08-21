@@ -23,13 +23,14 @@ import type { Awareness } from "y-protocols/awareness";
 import type { Comment, LatexCompletionIndex, LatexCompletionItem } from "./types";
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
 import { countSearchMatches, searchQuerySignature } from "./editorSearch";
-import { latexLanguage } from "./latexLanguage";
+import { bibtexLanguage, latexLanguage } from "./latexLanguage";
 import { latexAutoPair, latexAutoPairAtCursor } from "./latexAutoPairs";
 import type { SpellCheckIssue } from "./spellCheck";
 export type { SpellCheckIssue } from "./spellCheck";
 
 interface Props {
   value: string;
+  filePath: string;
   readOnly: boolean;
   comments: Comment[];
   focusComment: Comment | null;
@@ -380,7 +381,7 @@ const latexFold = foldService.of((state, lineStart) => {
 });
 
 export function LatexEditor({
-  value, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
+  value, filePath, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
   spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onCommentClick, onSpellCheckReplace, onCursor
 }: Props) {
   const { t, i18n } = useTranslation();
@@ -435,7 +436,7 @@ export function LatexEditor({
       doc: collaboration?.text.toString() ?? value,
       extensions: [
         lineNumbers(), foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
-        latexLanguage, syntaxHighlighting(defaultHighlightStyle), bracketMatching(),
+        /\.bib$/i.test(filePath) ? bibtexLanguage : latexLanguage, syntaxHighlighting(defaultHighlightStyle), bracketMatching(),
         Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
         search({ top: false }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
         autocompletion({ override: [(context) => latexCompletions(context, t, completionIndexRef.current)], activateOnTyping: true }),
@@ -512,7 +513,7 @@ export function LatexEditor({
       view.current?.destroy();
       view.current = null;
     };
-  }, [readOnly, i18n.resolvedLanguage, collaboration?.text]);
+  }, [filePath, readOnly, i18n.resolvedLanguage, collaboration?.text]);
 
   useEffect(() => {
     const editor = view.current;

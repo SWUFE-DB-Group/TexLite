@@ -15,6 +15,7 @@ import {
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "./editorPreferences";
 import { createLatexTextEdits, isFormattableLatexFile, reindentLatexSelection } from "./latexFormatter";
+import { formatBibtex } from "./citationLibrary";
 import { classifyCompileLog } from "./compileLog";
 import type { CollaborationSaveReceipt } from "./collaboration";
 import { isProjectHistoryState, projectIdFromPath, projectPath, type TexLiteHistoryState } from "./routes";
@@ -489,8 +490,8 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
     <header className="topbar">
       <a className="brand-link" href="/" aria-label={site.siteName}><span className="site-title">{site.siteName}</span><SiteLogo siteName={site.siteName} /></a>
       <div className="top-actions">
-        {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className="ghost" onClick={() => { setAdminOpen((current) => !current); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
-        <button className={`ghost top-citation-action${citationLibraryOpen ? " active" : ""}`} aria-current={citationLibraryOpen ? "page" : undefined} onClick={() => { setAdminOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
+        {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen((current) => !current); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
+        <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
         <LanguageSwitcher compact /><span className="top-user-identity"><strong>{user.displayName}</strong><small>@{user.username}</small></span><button className="ghost" onClick={logout}>{t("auth.logout")}</button>
       </div>
     </header>
@@ -1088,6 +1089,44 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     );
     return result.formatted;
   };
+  const formatSource = async (filePath: string, source: string): Promise<string> => {
+    if (/\.bib$/i.test(filePath)) return formatBibtex(source);
+    return formatWithHostFormatter(filePath, source);
+  };
+  const formatCurrentFile = async (): Promise<void> => {
+    if (!project || project.permission === "read" || !collaborationSynced || formattingRef.current
+      || !isFormattableLatexFile(activeFileRef.current)) return;
+    const filePath = activeFileRef.current;
+    const sharedText = collaboration.getText(filePath);
+    const source = sharedText.toString();
+    formattingRef.current = true;
+    setFormatting(true);
+    let finishFormattingTask: () => void = () => {};
+    const formattingTask = new Promise<void>((resolve) => { finishFormattingTask = resolve; });
+    formattingTaskRef.current = formattingTask;
+    try {
+      const formatted = await formatSource(filePath, source);
+      if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
+        setError(t("editor.formatSourceChanged"));
+        return;
+      }
+      const edits = await createLatexTextEdits(source, formatted);
+      if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
+        setError(t("editor.formatSourceChanged"));
+        return;
+      }
+      if (edits.length) collaboration.applyTextEdits(filePath, edits);
+      setError("");
+      setNotice(t("editor.formatFileComplete"));
+    } catch (formatError) {
+      setError(t("editor.formatFileFailed", { message: errorMessage(formatError) }));
+    } finally {
+      formattingRef.current = false;
+      setFormatting(false);
+      finishFormattingTask();
+      if (formattingTaskRef.current === formattingTask) formattingTaskRef.current = null;
+    }
+  };
   const formatBeforeCompile = async (): Promise<void> => {
     if (!editorPreferences.formatOnCompile || !project || project.permission === "read"
       || !collaborationSynced || !isFormattableLatexFile(activeFileRef.current) || formattingRef.current) return;
@@ -1097,7 +1136,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     formattingRef.current = true;
     setFormatting(true);
     try {
-      const formatted = await formatWithHostFormatter(filePath, source);
+      const formatted = await formatSource(filePath, source);
       const edits = await createLatexTextEdits(source, formatted);
       if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
         throw new Error(t("editor.formatSourceChanged"));
@@ -1136,7 +1175,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     const formattingTask = new Promise<void>((resolve) => { finishFormattingTask = resolve; });
     formattingTaskRef.current = formattingTask;
     try {
-      const formatted = reindentLatexSelection(selectedText, await formatWithHostFormatter(filePath, selectedText));
+      const formatted = reindentLatexSelection(selectedText, await formatSource(filePath, selectedText));
       const edits = await createLatexTextEdits(selectedText, formatted, startOffset);
       if (activeFileRef.current !== filePath || sharedText.toString().slice(startOffset, endOffset) !== selectedText) {
         setError(t("editor.formatSelectionChanged"));
@@ -1357,7 +1396,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
       <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
       {collaborationStatus === "disconnected" && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
-      <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setHistoryOpen(true)}><History size={15} />{t("history.title")}</button><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}{showEditor && /\.bib$/i.test(activeFile) && <button className={citationLibraryOpen ? "active" : ""} onClick={() => setCitationLibraryOpen(true)}><BookMarked size={15} />{t("citationLibrary.title")}</button>}{showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <button title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || !collaborationSynced}>{formatting ? <LoaderCircle className="spin" size={15} /> : <AlignLeft size={15} />}{formatting ? t("editor.formatting") : t("editor.formatSelection")}</button>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
+      <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setHistoryOpen(true)}><History size={15} />{t("history.title")}</button><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}{showEditor && /\.bib$/i.test(activeFile) && <button className={citationLibraryOpen ? "active" : ""} onClick={() => setCitationLibraryOpen(true)}><BookMarked size={15} />{t("citationLibrary.title")}</button>}{showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <div className="format-action" role="group" aria-label={t("editor.format")}><div className="format-action-label"><AlignLeft size={14} /><span>{t("editor.format")}</span></div><div className="format-action-options"><button type="button" className="format-action-file" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatCurrentFile()} disabled={readOnly || formatting || !collaborationSynced}>{formatting ? <LoaderCircle className="spin" size={13} /> : <FileText size={13} />}{t("editor.formatFile")}</button><button type="button" className="format-action-selected" title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || !collaborationSynced || !selection.selectedText.trim()}>{formatting ? <LoaderCircle className="spin" size={13} /> : <AlignLeft size={13} />}{t("editor.formatSelected")}</button></div></div>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
     </header>
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
@@ -1426,7 +1465,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
           )}
           <div id="editor-source-content" className="editor-content-container">
             <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
-              <LatexEditor key={activeFile} value={content} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness, undoManager: readOnly ? undefined : collaboration.getUndoManager(activeFile) } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor} />
+              <LatexEditor key={activeFile} value={content} filePath={activeFile} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness, undoManager: readOnly ? undefined : collaboration.getUndoManager(activeFile) } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor} />
             </Suspense>
             {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
           </div>

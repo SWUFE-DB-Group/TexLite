@@ -13,6 +13,10 @@ import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { hashPassword } from "../src/server/security.js";
 import { sourceRoot } from "../src/server/files.js";
 
+function citationPayload(citationKey: string, title: string, bibtex: string, extras: Record<string, unknown> = {}): Record<string, unknown> {
+  return { bibtex, citationKey, entryType: "article", title, authors: null, year: "2026", ...extras };
+}
+
 describe("texLite application", () => {
   const execFileAsync = promisify(execFile);
   let root: string;
@@ -1787,7 +1791,7 @@ Second version.
 
     const created = await app.inject({
       method: "POST", url: "/api/citations", headers: { cookie },
-      payload: { bibtex: "@article{versioned2026, title={Original}, year={2026}}" }
+      payload: citationPayload("versioned2026", "Original", "@article{versioned2026, title={Original}, year={2026}}")
     });
     expect(created.statusCode).toBe(201);
     expect(created.json().entry.revision).toBe(1);
@@ -1795,7 +1799,7 @@ Second version.
 
     const duplicate = await app.inject({
       method: "POST", url: "/api/citations", headers: { cookie },
-      payload: { bibtex: "@article{versioned2026, title={Accidental replacement}, year={2026}}" }
+      payload: citationPayload("versioned2026", "Accidental replacement", "@article{versioned2026, title={Accidental replacement}, year={2026}}")
     });
     expect(duplicate.statusCode).toBe(409);
     expect(duplicate.json().code).toBe("CITATION_KEY_EXISTS");
@@ -1818,14 +1822,14 @@ Second version.
 
     const staleEdit = await app.inject({
       method: "PATCH", url: `/api/citations/${entryId}`, headers: { cookie },
-      payload: { bibtex: "@article{versioned2026, title={Stale}, year={2026}}", expectedRevision: 1 }
+      payload: citationPayload("versioned2026", "Stale", "@article{versioned2026, title={Stale}, year={2026}}", { expectedRevision: 1 })
     });
     expect(staleEdit.statusCode).toBe(409);
     expect(staleEdit.json().code).toBe("CITATION_CONFLICT");
 
     const edited = await app.inject({
       method: "PATCH", url: `/api/citations/${entryId}`, headers: { cookie },
-      payload: { bibtex: "@article{versioned2026, title={Edited safely}, year={2026}}", expectedRevision: 2 }
+      payload: citationPayload("versioned2026", "Edited safely", "@article{versioned2026, title={Edited safely}, year={2026}}", { expectedRevision: 2 })
     });
     expect(edited.statusCode).toBe(200);
     expect(edited.json().entry).toMatchObject({ revision: 3, title: "Edited safely" });
@@ -1838,11 +1842,9 @@ Second version.
     expect(staleTags.statusCode).toBe(409);
     const explicitOverwrite = await app.inject({
       method: "POST", url: "/api/citations", headers: { cookie },
-      payload: {
-        bibtex: "@article{versioned2026, title={Updated from a project}, year={2026}}",
-        overwrite: true,
-        expectedRevision: 3
-      }
+      payload: citationPayload("versioned2026", "Updated from a project", "@article{versioned2026, title={Updated from a project}, year={2026}}", {
+        overwrite: true, expectedRevision: 3
+      })
     });
     expect(explicitOverwrite.statusCode).toBe(200);
     expect(explicitOverwrite.json()).toMatchObject({ updated: true, entry: { revision: 4, title: "Updated from a project" } });
@@ -1863,7 +1865,7 @@ Second version.
     expect(tagResponse.statusCode).toBe(201);
     const citationResponse = await app.inject({
       method: "POST", url: "/api/citations", headers: { cookie },
-      payload: { bibtex: "@article{shared2026, title={Shared paper}, author={Author}, year={2026}}", tagIds: [tagResponse.json().tag.id] }
+      payload: citationPayload("shared2026", "Shared paper", "@article{shared2026, title={Shared paper}, author={Author}, year={2026}}", { authors: "Author", tagIds: [tagResponse.json().tag.id] })
     });
     expect(citationResponse.statusCode).toBe(201);
     expect(citationResponse.json().entry.tags).toEqual([expect.objectContaining({ name: "Security papers", color: "blue" })]);
@@ -1889,7 +1891,7 @@ Second version.
     expect(unauthorizedEdit.statusCode).toBe(404);
     const readerCitation = await app.inject({
       method: "POST", url: "/api/citations", headers: { cookie: readerCookie },
-      payload: { bibtex: "@article{reader2026, title={Reader paper}, author={Reader}, year={2026}}" }
+      payload: citationPayload("reader2026", "Reader paper", "@article{reader2026, title={Reader paper}, author={Reader}, year={2026}}", { authors: "Reader" })
     });
     expect(readerCitation.statusCode).toBe(201);
     expect((await app.inject({ method: "GET", url: "/api/citations", headers: { cookie: readerCookie } })).json().entries)
