@@ -99,7 +99,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-grid.list-view .project-card { min-height: 88px; flex-direction: row; align-items: stretch; }
 .project-grid.list-view .project-card-open { display: grid; grid-template-columns: minmax(90px, 140px) minmax(170px, 1fr) minmax(390px, 2fr); align-items: center; gap: 14px; padding: 12px 15px; }
 .project-grid.list-view .project-card-main { min-width: 170px; }
-.project-grid.list-view .project-meta { grid-template-columns: minmax(110px, .7fr) minmax(190px, 1.2fr) minmax(110px, .8fr); gap: 8px 12px; margin: 0; }
+.project-grid.list-view .project-meta { grid-template-columns: minmax(145px, .75fr) minmax(0, 1.25fr); gap: 8px 12px; margin: 0; }
+.project-grid.list-view .project-meta > div:last-child dd { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .project-grid.list-view .project-card-actions { width: 190px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: center; gap: 4px; border-top: 0; border-left: 1px solid #eceeeb; }
 .project-grid.list-view .project-card-actions button, .project-grid.list-view .project-card-actions a { width: 100%; justify-content: flex-start; }
 .project-grid.list-view .project-card-actions .danger-text { margin-left: 0; }

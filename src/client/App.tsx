@@ -48,6 +48,29 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+function formatRelativeTime(value: string, locale: string, now: number): string {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return value;
+
+  const difference = timestamp - now;
+  const absoluteDifference = Math.abs(difference);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const threeDays = 3 * day;
+  let unit: Intl.RelativeTimeFormatUnit = "minute";
+  let unitLength = minute;
+  if (absoluteDifference >= threeDays) {
+    unit = "day";
+    unitLength = day;
+  } else if (absoluteDifference >= day) {
+    unit = "hour";
+    unitLength = hour;
+  }
+  const amount = Math.sign(difference) * Math.max(1, Math.floor(absoluteDifference / unitLength));
+  return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(amount, unit);
+}
+
 export function App() {
   const { t } = useTranslation();
   const [site, setSite] = useState<SiteConfig>({ siteName: "TexLite", adminEmail: "" });
@@ -236,6 +259,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   const [showArchived, setShowArchived] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState("");
   const [page, setPage] = useState(1);
+  const [relativeTimeNow, setRelativeTimeNow] = useState(() => Date.now());
   const [loadedKey, setLoadedKey] = useState("");
   const requestSequence = useRef(0);
   const loadController = useRef<AbortController | null>(null);
@@ -269,6 +293,10 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   useEffect(() => {
     if (hasLoaded && !showArchived && loadedKey === currentRequestKey) onDataChange(projects, tags, pagination);
   }, [projects, tags, pagination, hasLoaded, loadedKey, currentRequestKey, showArchived]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setRelativeTimeNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const changeView = (next: "grid" | "list") => { setView(next); localStorage.setItem("texlite-project-view", next); };
   const changeSort = (next: "updated" | "created") => { setSort(next); setPage(1); localStorage.setItem("texlite-project-sort", next); };
   const changeScope = (archived: boolean) => { setShowArchived(archived); setPage(1); };
@@ -430,6 +458,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   const filtered = projects;
   const colors: TagColor[] = ["red", "orange", "yellow", "green", "blue", "purple", "gray"];
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
+  const formatProjectUpdatedTime = (value: string) => formatRelativeTime(value, i18n.resolvedLanguage ?? "en", relativeTimeNow);
 
   return <div className="page">
     <header className="topbar">
@@ -462,7 +491,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
             </span>
             <dl className="project-meta">
               <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
-              <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
+              <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
             </dl>
           </button>
           <div className="project-card-actions">
