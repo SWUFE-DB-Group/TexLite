@@ -8,7 +8,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import i18n from "./i18n";
 import {
   Activity, AlertTriangle, AlignLeft, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Dices, Download, Eraser, FileArchive, FilePlus2, FileText, FolderCheck, FolderX, Keyboard,
-  FileSearch, Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, KeyRound, ListTree, LoaderCircle, MessageSquare, MessageSquarePlus, PackageOpen,
+  FileSearch, Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, KeyRound, ListTree, LoaderCircle, MessageSquare, PackageOpen,
   Move, PanelLeftClose, PanelLeftOpen, Pencil, Play, ScrollText,
   Search, Settings, ShieldCheck, ShieldOff, Sparkles, Tags, Trash2, Upload, UserCheck, UserPlus, UserX, Users, X, XCircle
 } from "lucide-react";
@@ -1396,7 +1396,35 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
       <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
       {collaborationStatus === "disconnected" && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
-      <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setHistoryOpen(true)}><History size={15} />{t("history.title")}</button><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}{showEditor && /\.bib$/i.test(activeFile) && <button className={citationLibraryOpen ? "active" : ""} onClick={() => setCitationLibraryOpen(true)}><BookMarked size={15} />{t("citationLibrary.title")}</button>}{showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <div className="format-action" role="group" aria-label={t("editor.format")}><div className="format-action-label"><AlignLeft size={14} /><span>{t("editor.format")}</span></div><div className="format-action-options"><button type="button" className="format-action-file" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatCurrentFile()} disabled={readOnly || formatting || !collaborationSynced}>{formatting ? <LoaderCircle className="spin" size={13} /> : <FileText size={13} />}{t("editor.formatFile")}</button><button type="button" className="format-action-selected" title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || !collaborationSynced || !selection.selectedText.trim()}>{formatting ? <LoaderCircle className="spin" size={13} /> : <AlignLeft size={13} />}{t("editor.formatSelected")}</button></div></div>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
+      <div className="editor-actions">
+        {showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}
+        <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} />
+        <button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>
+        {showEditor && /\.bib$/i.test(activeFile) && <button className={citationLibraryOpen ? "active" : ""} onClick={() => setCitationLibraryOpen(true)}><BookMarked size={15} />{t("citationLibrary.title")}</button>}
+        <div className="version-action" role="group" aria-label={t("common.version")}>
+          <div className="version-action-label"><GitBranch size={14} /><span>{t("common.version")}</span></div>
+          <div className="version-action-options">
+            <button type="button" className="version-action-history" title={t("history.title")} onClick={() => setHistoryOpen(true)}>{t("history.title")}</button>
+            <button type="button" className="version-action-git" title={project.ownerId === user.id ? t("git.title") : t("git.ownerOnly")} disabled={project.ownerId !== user.id} onClick={() => setGitOpen(true)}>Git</button>
+          </div>
+        </div>
+        {showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <div className="format-action" role="group" aria-label={t("editor.format")} aria-busy={formatting}>
+          <div className="format-action-label"><AlignLeft size={14} /><span>{t("editor.format")}</span></div>
+          <div className="format-action-options">
+            <button type="button" className="format-action-file" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatCurrentFile()} disabled={readOnly || formatting || !collaborationSynced}>{t("editor.formatFile")}</button>
+            <button type="button" className="format-action-selected" title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || !collaborationSynced || !selection.selectedText.trim()}>{t("editor.formatSelected")}</button>
+          </div>
+        </div>}
+        <div className="comments-action" role="group" aria-label={t("common.comments")}>
+          <div className="comments-action-label"><MessageSquare size={14} /><span>{t("common.comments")}</span></div>
+          <div className="comments-action-options">
+            <button type="button" className="comments-action-add" title={t("editor.addComment")} aria-label={t("editor.addComment")} onMouseDown={(event) => event.preventDefault()} onClick={() => setCommentOpen(true)} disabled={!activeFile}>{t("editor.commentsAdd")}</button>
+            <button type="button" className={`comments-action-all${sidePanel === "comments" ? " active" : ""}`} title={t("editor.commentsAll")} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}>{t("editor.commentsAll")} {comments.filter((item) => !item.resolved).length || ""}</button>
+          </div>
+        </div>
+        <button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button>
+        <button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button>
+      </div>
     </header>
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}

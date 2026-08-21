@@ -2,7 +2,7 @@
   "common": {
     "cancel": "Cancel", "create": "Create", "add": "Add", "remove": "Remove", "delete": "Delete", "close": "Close",
     "user": "User", "permission": "Permission", "readOnly": "Read only", "readWrite": "Read & write", "settings": "Settings",
-    "comments": "Comments", "files": "Files", "outline": "Outline", "loading": "Loading…", "enabled": "Enabled",
+    "comments": "Comments", "files": "Files", "outline": "Outline", "version": "Version", "loading": "Loading…", "enabled": "Enabled",
     "disabled": "Disabled", "normal": "Active", "admin": "Administrator", "language": "Language", "save": "Save", "edit": "Edit",
     "languageEnglish": "English", "languageChinese": "中文"
   },
@@ -60,7 +60,7 @@
     "moveTitle": "Move or rename {{name}}", "moveDescription": "Choose a destination folder and name. Files, comments and project paths stay linked.", "pathName": "Name", "moveApply": "Move / rename",
     "deletePath": "Delete file or folder", "deletePathTitle": "Delete {{name}}", "deletePathDescription": "Delete {{path}}? This cannot be undone.",
     "deletePathActiveDescription": "Delete {{path}}? It is currently open for {{users}} and will close in those sessions.", "deletePathWillClose": "Any late edits to this path will be rejected to prevent silent data loss.", "fileDeletedByCollaborator": "{{path}} was deleted in another session. A safe fallback file has been opened.",
-    "destinationFolder": "Destination folder", "compileShortcut": "Save and compile (Ctrl+S / Cmd+S)", "compilingBy": "{{name}} is compiling", "format": "Format", "formatFile": "File", "formatFileHint": "Format the current file", "formatFileComplete": "Current file formatted.", "formatFileFailed": "Unable to format the current file: {{message}}", "formatSelected": "Selected", "formatSelection": "Format selection", "formatting": "Formatting…", "formatSelectionHint": "Select LaTeX source to format", "formatSelectionRequired": "Select LaTeX source before formatting.", "formatSelectionComplete": "Selected LaTeX source formatted.", "formatFailedContinue": "Formatting failed; compilation will continue: {{message}}", "formatFailed": "Unable to format the selection: {{message}}", "formatSourceChanged": "The source changed during formatting, so formatting was skipped.", "formatSelectionChanged": "The selected source changed during formatting. Select it again and retry.", "writingSuggestions": "Writing suggestions", "noWritingSuggestions": "No suggestions available", "removeText": "Remove text", "replaceWith": "Replace with {{word}}", "spellCheckReadOnly": "Read-only: choose a suggestion in an editor with write permission.", "spellCheckSourceChanged": "The source changed before the writing correction could be applied.", "vimOn": "Vim ON", "vimOnHint": "Vim keybindings are enabled for this editor.",
+    "destinationFolder": "Destination folder", "compileShortcut": "Save and compile (Ctrl+S / Cmd+S)", "compilingBy": "{{name}} is compiling", "format": "Format", "formatFile": "File", "formatFileHint": "Format the current file", "formatFileComplete": "Current file formatted.", "formatFileFailed": "Unable to format the current file: {{message}}", "formatSelected": "Selected", "commentsAdd": "Add", "commentsAll": "All", "formatSelection": "Format selection", "formatting": "Formatting…", "formatSelectionHint": "Select LaTeX source to format", "formatSelectionRequired": "Select LaTeX source before formatting.", "formatSelectionComplete": "Selected LaTeX source formatted.", "formatFailedContinue": "Formatting failed; compilation will continue: {{message}}", "formatFailed": "Unable to format the selection: {{message}}", "formatSourceChanged": "The source changed during formatting, so formatting was skipped.", "formatSelectionChanged": "The selected source changed during formatting. Select it again and retry.", "writingSuggestions": "Writing suggestions", "noWritingSuggestions": "No suggestions available", "removeText": "Remove text", "replaceWith": "Replace with {{word}}", "spellCheckReadOnly": "Read-only: choose a suggestion in an editor with write permission.", "spellCheckSourceChanged": "The source changed before the writing correction could be applied.", "vimOn": "Vim ON", "vimOnHint": "Vim keybindings are enabled for this editor.",
     "reply": "Reply", "replyPlaceholder": "Write a reply…", "sendReply": "Send reply",
     "editComment": "Edit comment", "deleteComment": "Delete comment", "saveChanges": "Save changes",
     "deleteCommentTitle": "Delete comment", "deleteCommentDescription": "Delete this comment and its {{count}} replies? This cannot be undone.",
@@ -117,7 +117,7 @@
   },
   "projectSettings": {
     "mainFile": "Main document", "engine": "Compiler", "latexmkrc": "Project latexmkrc", "save": "Save project settings",
-    "members": "Shared members", "recentLog": "Latest compile log", "share": "Share project",
+    "members": "Shared members", "recentLog": "Latest compile log", "share": "Share",
     "shareDescription": "Projects can only be shared with users created by an administrator.", "chooseUser": "Choose a user",
     "latexmkrcPlaceholder": "# Empty disables the project rc file\n$pdf_mode = 1;",
     "addMember": "Add member", "noMembers": "This project has not been shared with anyone.", "removeTitle": "Remove shared member",
@@ -134,7 +134,7 @@
     "lineHeightNormal": "Normal", "lineHeightRelaxed": "Relaxed"
   },
   "git": {
-    "title": "Git backup", "description": "Manage the local Git history and its GitHub backup. Only the project owner can use these actions.",
+    "title": "Git backup", "description": "Manage the local Git history and its GitHub backup. Only the project owner can use these actions.", "ownerOnly": "Only the project owner can use Git backup.",
     "authentication": "GitHub authentication", "authenticationHint": "Use a token with repository Administration and Contents write access. It is encrypted at rest and never written to the repository or remote URL.",
     "recommendedAccessTitle": "Recommended repository access: All repositories",
     "recommendedAccess": "texLite is intended for trusted users. Select All repositories so this token can create a repository and access repositories created later. Grant Administration and Contents read and write permissions.",

@@ -2,7 +2,7 @@
   "common": {
     "cancel": "取消", "create": "创建", "add": "添加", "remove": "移除", "delete": "删除", "close": "关闭", "user": "用户",
     "permission": "权限", "readOnly": "只读", "readWrite": "读写", "settings": "设置", "comments": "批注", "files": "文件",
-    "outline": "大纲", "loading": "正在载入…", "enabled": "允许", "disabled": "禁止", "normal": "正常", "admin": "管理员", "language": "语言", "save": "保存", "edit": "编辑",
+    "outline": "大纲", "version": "版本", "loading": "正在载入…", "enabled": "允许", "disabled": "禁止", "normal": "正常", "admin": "管理员", "language": "语言", "save": "保存", "edit": "编辑",
     "languageEnglish": "English", "languageChinese": "中文"
   },
   "auth": {
@@ -53,7 +53,7 @@
     "collapseFiles": "折叠文件面板", "move": "移动", "moveTitle": "移动或重命名 {{name}}", "moveDescription": "选择目标文件夹和名称；源码、批注和项目路径会保持关联。", "pathName": "名称", "moveApply": "移动/重命名",
     "destinationFolder": "目标文件夹", "deletePath": "删除文件或文件夹", "deletePathTitle": "删除 {{name}}", "deletePathDescription": "确定删除 {{path}}？此操作不可撤销。",
     "deletePathActiveDescription": "确定删除 {{path}}？{{users}} 当前正在打开它，删除后这些会话将关闭该文件。", "deletePathWillClose": "系统会拒绝该路径上迟到的修改，避免内容被静默丢失。", "fileDeletedByCollaborator": "{{path}} 已在其他会话中删除，现已打开安全的备用文件。",
-    "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "format": "格式化", "formatFile": "文件", "formatFileHint": "格式化当前文件", "formatFileComplete": "当前文件已格式化。", "formatFileFailed": "无法格式化当前文件：{{message}}", "formatSelected": "选区", "formatSelection": "格式化选区", "formatting": "正在格式化…", "formatSelectionHint": "选择一段 LaTeX 源码后格式化", "formatSelectionRequired": "请先选择 LaTeX 源码，再进行格式化。", "formatSelectionComplete": "所选 LaTeX 源码已格式化。", "formatFailedContinue": "格式化失败，仍将继续编译：{{message}}", "formatFailed": "无法格式化选区：{{message}}", "formatSourceChanged": "格式化期间源码已发生变化，已跳过本次格式化。", "formatSelectionChanged": "格式化期间所选源码已发生变化，请重新选择后再试。", "writingSuggestions": "写作建议", "noWritingSuggestions": "没有可用的修改建议", "removeText": "删除文本", "replaceWith": "替换为 {{word}}", "spellCheckReadOnly": "当前为只读，需要编辑权限才能替换。", "spellCheckSourceChanged": "源码在应用写作修正前发生了变化。", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
+    "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "format": "格式化", "formatFile": "文件", "formatFileHint": "格式化当前文件", "formatFileComplete": "当前文件已格式化。", "formatFileFailed": "无法格式化当前文件：{{message}}", "formatSelected": "选区", "commentsAdd": "添加", "commentsAll": "全部", "formatSelection": "格式化选区", "formatting": "正在格式化…", "formatSelectionHint": "选择一段 LaTeX 源码后格式化", "formatSelectionRequired": "请先选择 LaTeX 源码，再进行格式化。", "formatSelectionComplete": "所选 LaTeX 源码已格式化。", "formatFailedContinue": "格式化失败，仍将继续编译：{{message}}", "formatFailed": "无法格式化选区：{{message}}", "formatSourceChanged": "格式化期间源码已发生变化，已跳过本次格式化。", "formatSelectionChanged": "格式化期间所选源码已发生变化，请重新选择后再试。", "writingSuggestions": "写作建议", "noWritingSuggestions": "没有可用的修改建议", "removeText": "删除文本", "replaceWith": "替换为 {{word}}", "spellCheckReadOnly": "当前为只读，需要编辑权限才能替换。", "spellCheckSourceChanged": "源码在应用写作修正前发生了变化。", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
     "replyPlaceholder": "输入回复内容…", "sendReply": "发送回复", "editComment": "编辑批注", "deleteComment": "删除批注",
     "saveChanges": "保存修改", "deleteCommentTitle": "删除批注", "deleteCommentDescription": "确定删除这条批注及其 {{count}} 条回复吗？此操作不可撤销。",
     "editReply": "编辑回复", "deleteReply": "删除回复", "deleteReplyTitle": "删除回复",
@@ -109,7 +109,7 @@
   },
   "projectSettings": {
     "mainFile": "主文档", "engine": "编译引擎", "latexmkrc": "项目 latexmkrc", "save": "保存项目设置", "members": "共享成员",
-    "recentLog": "最近编译日志", "share": "共享项目", "shareDescription": "仅可共享给管理员已创建的用户。", "chooseUser": "请选择用户",
+    "recentLog": "最近编译日志", "share": "共享", "shareDescription": "仅可共享给管理员已创建的用户。", "chooseUser": "请选择用户",
     "latexmkrcPlaceholder": "# 留空表示不使用项目 rc 文件\n$pdf_mode = 1;",
     "addMember": "添加成员", "noMembers": "该项目尚未分享给其他成员。", "removeTitle": "移除共享成员", "removeDescription": "确认移除 {{username}}？其账号和其他项目不会受到影响。",
     "editorTab": "编辑器外观", "compilerTab": "LaTeX 编译器", "compilerDescription": "选择本项目所有成员共享的主文档和 LaTeX 编译选项。",
@@ -124,7 +124,7 @@
     "lineHeightNormal": "标准", "lineHeightRelaxed": "宽松"
   },
   "git": {
-    "title": "Git 备份", "description": "管理本地 Git 历史及 GitHub 备份；只有项目创建者可以执行这些操作。",
+    "title": "Git 备份", "description": "管理本地 Git 历史及 GitHub 备份；只有项目创建者可以执行这些操作。", "ownerOnly": "只有项目所有者可以使用 Git 备份。",
     "authentication": "GitHub 身份验证", "authenticationHint": "token 需要仓库 Administration 与 Contents 写权限；它会加密保存，不会写入项目仓库或远程地址。",
     "recommendedAccessTitle": "建议的仓库访问范围：All repositories（所有仓库）",
     "recommendedAccess": "texLite 面向相互信任的用户。请选择 All repositories，使该 token 能创建仓库，并访问之后新建的仓库；同时授予 Administration 和 Contents 的 Read and write 权限。",

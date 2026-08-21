@@ -181,16 +181,25 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .editor-actions button { padding: 8px 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid #ffffff28; color: white; background: #ffffff0d; font-size: 12px; white-space: nowrap; }
 .editor-actions .compile { background: #f3b943; border-color: #f3b943; color: #193023; font-weight: 700; }
 .editor-actions button.active { background: #d9eadf; color: #164c33; }
-.format-action { min-width: 112px; display: flex; flex-direction: column; align-self: center; gap: 2px; }
-.format-action-label { height: 12px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; color: #b9d0c2; font-size: 9px; font-weight: 750; letter-spacing: .08em; line-height: 1; text-transform: uppercase; }
-.format-action-options { height: 27px; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid #ffffff35; border-radius: 6px; background: #ffffff0d; }
-.editor-actions .format-action button { min-width: 0; height: 25px; justify-content: center; border: 0; border-radius: 0; padding: 0 7px; font-size: 11px; }
-.editor-actions .format-action button + button { border-left: 1px solid #ffffff35; }
+.format-action, .comments-action, .version-action { min-width: 112px; display: flex; flex-direction: column; align-self: center; gap: 2px; }
+.format-action-label, .comments-action-label, .version-action-label { height: 12px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; color: #b9d0c2; font-size: 9px; font-weight: 750; letter-spacing: .08em; line-height: 1; text-transform: uppercase; }
+.format-action-options, .comments-action-options, .version-action-options { height: 27px; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid #ffffff35; border-radius: 6px; background: #ffffff0d; }
+.editor-actions .format-action button, .editor-actions .comments-action button, .editor-actions .version-action button { min-width: 0; height: 25px; justify-content: center; border: 0; border-radius: 0; padding: 0 7px; font-size: 11px; }
+.editor-actions .format-action button + button, .editor-actions .comments-action button + button, .editor-actions .version-action button + button { border-left: 1px solid #ffffff35; }
 .editor-actions .format-action-file { background: #2f7a58; color: white; }
 .editor-actions .format-action-selected { background: #326b91; color: white; }
 .editor-actions .format-action-file:hover:not(:disabled) { background: #3a946c; }
 .editor-actions .format-action-selected:hover:not(:disabled) { background: #3d82ae; }
-.editor-actions .format-action button:disabled { cursor: not-allowed; opacity: .45; }
+.editor-actions .comments-action-add { background: #2f7a58; color: white; }
+.editor-actions .comments-action-all { background: #5b648e; color: white; }
+.editor-actions .comments-action-add:hover:not(:disabled) { background: #3a946c; }
+.editor-actions .comments-action-all:hover:not(:disabled) { background: #6e79a8; }
+.editor-actions .comments-action-all.active { border-color: transparent; background: #6e79a8; color: white; }
+.editor-actions .version-action-history { background: #5b648e; color: white; }
+.editor-actions .version-action-git { background: #765493; color: white; }
+.editor-actions .version-action-history:hover:not(:disabled) { background: #6e79a8; }
+.editor-actions .version-action-git:hover:not(:disabled) { background: #8a65ad; }
+.editor-actions .format-action button:disabled, .editor-actions .comments-action button:disabled, .editor-actions .version-action button:disabled { cursor: not-allowed; opacity: .45; }
 .layout-menu { position: relative; }
 .editor-actions .layout-trigger { min-width: 138px; justify-content: flex-start; padding-block: 5px; }
 .layout-trigger > span { min-width: 0; display: flex; flex: 1; flex-direction: column; align-items: flex-start; line-height: 1.15; }
@@ -580,7 +589,12 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .citation-tag-create button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bdc9c0; border-radius: 6px; padding: 6px 8px; background: white; color: #31523e; font-size: 10px; white-space: nowrap; }
 .citation-tag-create button:hover:not(:disabled) { border-color: #8eaa98; background: #edf4ef; }
 .citation-entry-list { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow: auto; padding: 1px; }
+.citation-entry-item { display: flex; flex-direction: column; gap: 6px; }
 .citation-entry-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px solid #dce3de; border-radius: 8px; background: #fbfcfb; }
+.citation-entry-card.already-in-file { border-color: #d7ddd8; background: #f0f2f0; filter: grayscale(.35); }
+.citation-entry-card.already-in-file .citation-entry-heading code, .citation-entry-card.already-in-file .citation-entry-main > strong, .citation-entry-card.already-in-file .citation-entry-main > p { color: #7c867f; }
+.citation-entry-card.selected { position: relative; z-index: 1; border-color: #70a982; background: #f0f8f2; box-shadow: 0 0 0 2px #2f7a5824, 0 6px 16px #244c3520; }
+.citation-entry-card.selected .citation-entry-heading code { color: #0f633d; }
 .citation-entry-main { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 3px; }
 .citation-entry-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .citation-entry-heading code { color: #176b44; font: 650 11px/1.3 "SFMono-Regular", Consolas, monospace; }
@@ -616,6 +630,9 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .citation-edit-header button:hover { background: #e2ece4; }
 .citation-edit-panel textarea { width: 100%; resize: vertical; border: 1px solid #cbd5ce; border-radius: 6px; padding: 8px; outline: 0; font: 11px/1.5 "SFMono-Regular", Consolas, monospace; }
 .citation-edit-panel textarea:focus { border-color: #176b44; box-shadow: 0 0 0 2px #176b4420; }
+.citation-modal-form { display: flex; flex-direction: column; gap: 12px; }
+.citation-modal-form.citation-edit-panel { padding: 0; border: 0; background: transparent; }
+.citation-entry-item > .citation-edit-panel, .citation-entry-item > .citation-tag-editor { margin: 0 7px 0 12px; border-left: 3px solid #70a982; }
 .citation-edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .citation-edit-actions button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bdc9c0; border-radius: 6px; padding: 6px 9px; background: white; color: #52685a; font-size: 10px; }
 .citation-edit-actions button.primary { border-color: #176b44; background: #176b44; color: white; }
@@ -800,8 +817,8 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
   .project-grid.list-view .project-meta { grid-column: 1 / -1; }
   .editor-actions button { padding: 8px; }
   .editor-actions button svg + * { display: none; }
-  .editor-actions .format-action button { padding: 7px 6px; }
-  .editor-actions .format-action button svg + * { display: inline; }
+  .editor-actions .format-action button, .editor-actions .comments-action button, .editor-actions .version-action button { padding: 7px 6px; }
+  .editor-actions .format-action button svg + *, .editor-actions .comments-action button svg + *, .editor-actions .version-action button svg + * { display: inline; }
 }
 
 @media (max-width: 720px) {
