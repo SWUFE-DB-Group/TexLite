@@ -444,7 +444,6 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .settings-tab:focus-visible { outline: 2px solid #176b44; outline-offset: 1px; }
 .settings-actions { display: flex; width: 100%; justify-content: flex-end; padding-top: 2px; }
 .settings-section-title { display: flex; align-items: center; gap: 7px; color: #31523e; font-size: 13px; }
-.settings-section-title.project-configuration { margin-top: 4px; padding-top: 15px; border-top: 1px solid #e1e5e2; }
 .settings-description { margin: 0; color: #7b837e; font-size: 11px; line-height: 1.45; }
 .settings .editor-preference { display: flex; flex-direction: column; gap: 4px; }
 .settings .editor-preference .field-hint { margin: 0 9px; line-height: 1.4; }

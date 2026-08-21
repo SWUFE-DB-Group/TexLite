@@ -109,7 +109,6 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
     </section> : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
       <div className="settings-section-title"><Settings size={15} /><strong>{t("projectSettings.compilerTab")}</strong></div>
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>
-      <div className="settings-section-title project-configuration"><Settings size={15} /><strong>{t("projectSettings.projectConfiguration")}</strong></div>
       <label>{t("projects.name")}<input disabled={!canManage} value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label>{t("projectSettings.mainFile")}<select disabled={!canManage || mainFileOptions.length === 0} value={mainFile} onChange={(event) => setMainFile(event.target.value)}>{mainFileOptions.map((filePath) => <option value={filePath} key={filePath}>{filePath}</option>)}</select></label>
       <label>{t("projectSettings.engine")}<select disabled={!canManage} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
