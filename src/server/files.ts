@@ -77,6 +77,15 @@ export function safeRelativePath(input: string): string {
   return normalized;
 }
 
+/** Validate a user-provided file or directory name used within one folder. */
+export function safePathSegment(input: string): string {
+  const name = input.trim();
+  if (!name || name.includes("\0") || name.includes("/") || name.includes("\\")) {
+    throw Object.assign(new Error("无效的文件名"), { statusCode: 400, code: "INVALID_PATH" });
+  }
+  return safeRelativePath(name);
+}
+
 export interface ResolveSourcePathOptions {
   /** Deletion is allowed to address the link itself, never its target. */
   allowFinalSymlink?: boolean;

@@ -185,6 +185,24 @@ export class ProjectHistoryService {
     return row ? parseManifest(row.manifest_json) : null;
   }
 
+  /**
+   * Validate a single-file restore before the project enters maintenance.
+   * restore() repeats the target check while the exclusive operation is held
+   * so a directory created between these two checks cannot be replaced.
+   */
+  validateRestoreTarget(projectId: string, versionId: string, filePathInput?: string): void {
+    if (!filePathInput) return;
+    const manifest = this.manifest(projectId, versionId);
+    if (!manifest) {
+      throw Object.assign(new Error("历史版本不存在"), { code: "HISTORY_VERSION_NOT_FOUND", statusCode: 404 });
+    }
+    const filePath = safeRelativePath(filePathInput);
+    if (!manifest.files[filePath]) {
+      throw Object.assign(new Error("该历史版本中不存在此文件"), { code: "HISTORY_FILE_NOT_FOUND", statusCode: 404 });
+    }
+    this.assertRestoreTargetIsFile(projectId, filePath);
+  }
+
   setLabel(projectId: string, versionId: string, label: string | null): HistoryVersion | null {
     const result = this.db.prepare("UPDATE project_history_versions SET label = ? WHERE id = ? AND project_id = ?")
       .run(label, versionId, projectId);
@@ -205,18 +223,31 @@ export class ProjectHistoryService {
       const filePath = safeRelativePath(filePathInput);
       const entry = manifest.files[filePath];
       if (!entry) throw Object.assign(new Error("该历史版本中不存在此文件"), { code: "HISTORY_FILE_NOT_FOUND", statusCode: 404 });
+      this.assertRestoreTargetIsFile(projectId, filePath);
       const target = resolveSourcePath(this.config, projectId, filePath);
       fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
       const temporary = `${target}.history-${randomUUID()}.tmp`;
-      fs.copyFileSync(this.objectPath(projectId, entry.digest), temporary);
-      fs.chmodSync(temporary, 0o600);
-      fs.renameSync(temporary, target);
+      try {
+        fs.copyFileSync(this.objectPath(projectId, entry.digest), temporary);
+        fs.chmodSync(temporary, 0o600);
+        fs.renameSync(temporary, target);
+      } finally {
+        fs.rmSync(temporary, { force: true });
+      }
       return { restoredPaths: [filePath], manifest };
     }
     this.restoreProjectTree(projectId, manifest);
     this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ? WHERE id = ?")
       .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, projectId);
     return { restoredPaths: Object.keys(manifest.files).sort(), manifest };
+  }
+
+  private assertRestoreTargetIsFile(projectId: string, filePath: string): void {
+    const target = resolveSourcePath(this.config, projectId, filePath);
+    const targetStat = fs.existsSync(target) ? fs.lstatSync(target) : null;
+    if (targetStat && !targetStat.isFile()) {
+      throw Object.assign(new Error("历史文件恢复目标不是普通文件"), { code: "HISTORY_TARGET_CONFLICT", statusCode: 409 });
+    }
   }
 
   private latestRow(projectId: string): HistoryRow | null {

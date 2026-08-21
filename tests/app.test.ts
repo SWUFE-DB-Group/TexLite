@@ -506,11 +506,21 @@ Standalone document.
       payload: { source: "main.tex", destinationDirectory: "archive/chapters" }
     });
     expect(movedMain.json()).toMatchObject({ path: "archive/chapters/main.tex" });
+    const renamedMain = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}/path`, headers: { cookie },
+      payload: { source: "archive/chapters/main.tex", destinationDirectory: "archive/chapters", destinationName: "paper.tex" }
+    });
+    expect(renamedMain.json()).toMatchObject({ path: "archive/chapters/paper.tex" });
+    const renamedFolder = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}/path`, headers: { cookie },
+      payload: { source: "archive/chapters", destinationDirectory: "archive", destinationName: "sections" }
+    });
+    expect(renamedFolder.json()).toMatchObject({ path: "archive/sections" });
     const details = await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } });
-    expect(details.json().project.mainFile).toBe("archive/chapters/main.tex");
+    expect(details.json().project.mainFile).toBe("archive/sections/paper.tex");
     const files = await app.inject({ method: "GET", url: `/api/projects/${project.id}/files`, headers: { cookie } });
     expect(files.json().files.map((entry: { path: string }) => entry.path)).toEqual(expect.arrayContaining([
-      "archive", "archive/chapters", "archive/chapters/intro.tex", "archive/chapters/main.tex"
+      "archive", "archive/sections", "archive/sections/intro.tex", "archive/sections/paper.tex"
     ]));
   });
 
@@ -737,6 +747,25 @@ Another UniqueTerm appears here.
       method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie }, payload: { label: "Before terminology update" }
     });
     expect(labeled.json().version.label).toBe("Before terminology update");
+
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "restore-target.txt", content: "restore me" }
+    });
+    const restoreVersions = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie } });
+    const restoreVersion = restoreVersions.json().versions.find((version: { changedPaths: string[] }) => version.changedPaths.includes("restore-target.txt"));
+    expect(restoreVersion).toBeTruthy();
+    await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/file?path=restore-target.txt`, headers: { cookie } });
+    await app.inject({ method: "POST", url: `/api/projects/${projectId}/folders`, headers: { cookie }, payload: { path: "restore-target.txt" } });
+    const versionsBeforeConflict = (await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie } })).json().versions.length;
+    const targetConflict = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/history/${restoreVersion.id}/restore`, headers: { cookie }, payload: { path: "restore-target.txt" }
+    });
+    expect(targetConflict.statusCode).toBe(409);
+    expect(targetConflict.json()).toMatchObject({ code: "HISTORY_TARGET_CONFLICT" });
+    const versionsAfterConflict = (await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie } })).json().versions.length;
+    expect(versionsAfterConflict).toBe(versionsBeforeConflict);
+    expect(fs.readdirSync(sourceRoot(config, projectId)).some((entry) => entry.startsWith("restore-target.txt.history-") && entry.endsWith(".tmp"))).toBe(false);
 
     const restoredFile = await app.inject({
       method: "POST", url: `/api/projects/${projectId}/history/${selectedVersion.id}/restore`, headers: { cookie }, payload: { path: "main.tex" }

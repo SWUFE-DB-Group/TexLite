@@ -92,6 +92,7 @@ export function useProjectFiles({
   const [selectedFolder, setSelectedFolder] = useState("");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [moveEntry, setMoveEntry] = useState<FileEntry | null>(null);
+  const [moveName, setMoveName] = useState("");
   const [moveDestination, setMoveDestination] = useState("");
   const [deleteEntry, setDeleteEntry] = useState<FileEntry | null>(null);
   const [fileDragActive, setFileDragActive] = useState(false);
@@ -262,11 +263,13 @@ export function useProjectFiles({
 
   const movePath = async () => {
     if (!moveEntry) return;
+    const destinationName = moveName.trim();
+    if (!destinationName) return;
     setFileDialogError("");
     try {
       if (!(await save())) return;
       const result = await api<{ path: string }>(`/api/projects/${projectId}/path`, {
-        method: "PATCH", body: JSON.stringify({ source: moveEntry.path, destinationDirectory: moveDestination })
+        method: "PATCH", body: JSON.stringify({ source: moveEntry.path, destinationDirectory: moveDestination, destinationName })
       });
       const remap = (value: string) => value === moveEntry.path
         ? result.path
@@ -283,6 +286,7 @@ export function useProjectFiles({
       onProject(projectResult.project);
       setExpandedFolders((current) => new Set([...current, ...parentFolders(result.path), moveDestination].filter(Boolean)));
       setMoveEntry(null);
+      setMoveName("");
       setMoveDestination("");
     } catch (error) { setFileDialogError(errorMessage(error)); }
   };
@@ -319,7 +323,7 @@ export function useProjectFiles({
     fileDialogError, setFileDialogError,
     selectedFolder, setSelectedFolder,
     expandedFolders, setExpandedFolders,
-    moveEntry, setMoveEntry, moveDestination, setMoveDestination,
+    moveEntry, setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination,
     deleteEntry, setDeleteEntry,
     fileDragActive, setFileDragActive,
     uploadConflict, setUploadConflict, uploadingFiles,

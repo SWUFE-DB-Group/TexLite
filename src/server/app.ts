@@ -24,6 +24,7 @@ import {
   pruneTrashDirectory,
   removeProjectDirectory,
   resolveSourcePath,
+  safePathSegment,
   safeRelativePath,
   sourceRoot
 } from "./files.js";
@@ -1030,6 +1031,7 @@ export async function buildApp(
       if (!history.version(versionId, id)) {
         throw Object.assign(new Error("历史版本不存在"), { statusCode: 404, code: "HISTORY_VERSION_NOT_FOUND" });
       }
+      history.validateRestoreTarget(id, versionId, filePath);
     } });
   });
 
@@ -1560,13 +1562,14 @@ export async function buildApp(
     if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY", "项目正在执行源文件操作，请稍后重试");
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
-    const body = request.body as { source?: unknown; destinationDirectory?: unknown };
+    const body = request.body as { source?: unknown; destinationDirectory?: unknown; destinationName?: unknown };
     const source = safeRelativePath(typeof body.source === "string" ? body.source : "");
     const destinationDirectory = body.destinationDirectory === "" ? ""
       : safeRelativePath(typeof body.destinationDirectory === "string" ? body.destinationDirectory : "");
-    const destination = destinationDirectory
-      ? `${destinationDirectory}/${path.posix.basename(source)}`
-      : path.posix.basename(source);
+    const destinationName = body.destinationName === undefined
+      ? path.posix.basename(source)
+      : safePathSegment(typeof body.destinationName === "string" ? body.destinationName : "");
+    const destination = destinationDirectory ? `${destinationDirectory}/${destinationName}` : destinationName;
 
     const sourceAbsolute = resolveSourcePath(config, id, source);
     if (!fs.existsSync(sourceAbsolute)) return apiError(reply, 404, "PATH_NOT_FOUND", "要移动的文件或目录不存在", { path: source });

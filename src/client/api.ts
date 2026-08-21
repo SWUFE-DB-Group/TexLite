@@ -32,6 +32,7 @@ export function localizedResponseError(body: unknown, status: number, fallbackKe
       ADMIN_REQUIRED: "users.adminRequired",
       HISTORY_VERSION_NOT_FOUND: "apiErrors.historyVersionNotFound",
       HISTORY_FILE_NOT_FOUND: "apiErrors.historyFileNotFound",
+      HISTORY_TARGET_CONFLICT: "apiErrors.historyTargetConflict",
       HISTORY_FILE_PREVIEW_UNSUPPORTED: "apiErrors.historyPreviewUnsupported",
       SEARCH_QUERY_INVALID: "apiErrors.searchInvalid",
       GIT_UNAVAILABLE: "apiErrors.gitUnavailable",
