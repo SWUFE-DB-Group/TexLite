@@ -48,7 +48,12 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-function formatRelativeTime(value: string, locale: string, now: number): string {
+function formatRelativeTime(
+  value: string,
+  locale: string,
+  now: number,
+  translate: (key: string, options: { days: number; hours: number; minutes: number }) => string
+): string {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return value;
 
@@ -57,16 +62,22 @@ function formatRelativeTime(value: string, locale: string, now: number): string 
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
-  const threeDays = 3 * day;
+  if (absoluteDifference >= day) {
+    const days = Math.floor(absoluteDifference / day);
+    const hours = Math.floor((absoluteDifference % day) / hour);
+    const direction = difference < 0 ? "Past" : "Future";
+    const unit = hours > 0 ? "DaysHours" : "Days";
+    return translate(`projects.relative${unit}${direction}`, { days, hours, minutes: 0 });
+  }
+  if (absoluteDifference >= hour) {
+    const hours = Math.floor(absoluteDifference / hour);
+    const minutes = Math.floor((absoluteDifference % hour) / minute);
+    const direction = difference < 0 ? "Past" : "Future";
+    const unit = minutes > 0 ? "HoursMinutes" : "Hours";
+    return translate(`projects.relative${unit}${direction}`, { days: 0, hours, minutes });
+  }
   let unit: Intl.RelativeTimeFormatUnit = "minute";
   let unitLength = minute;
-  if (absoluteDifference >= threeDays) {
-    unit = "day";
-    unitLength = day;
-  } else if (absoluteDifference >= day) {
-    unit = "hour";
-    unitLength = hour;
-  }
   const amount = Math.sign(difference) * Math.max(1, Math.floor(absoluteDifference / unitLength));
   return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(amount, unit);
 }
@@ -458,7 +469,12 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   const filtered = projects;
   const colors: TagColor[] = ["red", "orange", "yellow", "green", "blue", "purple", "gray"];
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
-  const formatProjectUpdatedTime = (value: string) => formatRelativeTime(value, i18n.resolvedLanguage ?? "en", relativeTimeNow);
+  const formatProjectUpdatedTime = (value: string) => formatRelativeTime(
+    value,
+    i18n.resolvedLanguage ?? "en",
+    relativeTimeNow,
+    (key, options) => t(key, options)
+  );
 
   return <div className="page">
     <header className="topbar">
