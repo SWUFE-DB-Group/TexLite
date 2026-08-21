@@ -44,6 +44,12 @@ export function localizedResponseError(body: unknown, status: number, fallbackKe
       MAIN_DOCUMENT_INVALID: "apiErrors.mainDocumentInvalid",
       COMPILE_SNAPSHOT_BUSY: "apiErrors.compileSnapshotBusy",
       COMPILE_CLEAN_BUSY: "editor.cleanBusy",
+      CITATION_INVALID: "citationErrors.invalid",
+      CITATION_TOO_LARGE: "citationErrors.tooLarge",
+      CITATION_NOT_FOUND: "citationErrors.notFound",
+      CITATION_KEY_EXISTS: "citationErrors.keyExists",
+      CITATION_TAG_NOT_FOUND: "citationErrors.tagNotFound",
+      CITATION_CONFLICT: "citationErrors.conflict",
     } as Record<string, string>)[code] ?? `errors.codes.${code}`;
     if (i18n.exists(key)) return i18n.t(key, { status, ...(typeof body === "object" && body !== null ? body : {}) });
   }

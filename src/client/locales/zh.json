@@ -2,7 +2,7 @@
   "common": {
     "cancel": "取消", "create": "创建", "add": "添加", "remove": "移除", "delete": "删除", "close": "关闭", "user": "用户",
     "permission": "权限", "readOnly": "只读", "readWrite": "读写", "settings": "设置", "comments": "批注", "files": "文件",
-    "outline": "大纲", "loading": "正在载入…", "enabled": "允许", "disabled": "禁止", "normal": "正常", "admin": "管理员", "language": "语言",
+    "outline": "大纲", "loading": "正在载入…", "enabled": "允许", "disabled": "禁止", "normal": "正常", "admin": "管理员", "language": "语言", "save": "保存", "edit": "编辑",
     "languageEnglish": "English", "languageChinese": "中文"
   },
   "auth": {
@@ -84,6 +84,13 @@
       "invalidQuery": "正则表达式无效"
     }
   },
+  "citationLibrary": {
+    "title": "引用库", "description": "从 {{file}} 保存文献，并将它们导入当前 BibTeX 文件。引用库及其标签仅属于你自己。", "myLibrary": "我的引用库", "currentFile": "当前文件", "searchPlaceholder": "搜索引用…", "searchHint": "可搜索 key、标题、作者或年份", "emptyTitle": "引用库还是空的", "emptyDescription": "打开“当前文件”标签页，保存一个 BibTeX 文献条目。", "noEntries": "没有找到 BibTeX 条目", "noEntriesDescription": "请在当前文件中添加有效的 @article、@inproceedings 或其他文献条目。", "currentFileTitle": "当前文件中的条目", "currentFileDescription": "选择一个条目保存到你的引用库。", "backToLibrary": "返回引用库", "save": "保存", "update": "更新", "saving": "正在保存…", "saved": "引用已保存到你的引用库。", "updated": "引用已更新。", "deleted": "引用已删除。", "savedLabel": "已保存", "import": "导入", "importToFile": "导入到当前 BibTeX 文件", "importRequiresWrite": "导入需要当前项目的写权限。", "imported": "已将 {{key}} 导入当前文件。", "untitled": "未命名引用", "authorUnknown": "未填写作者", "allTags": "全部标签", "noTags": "还没有标签", "noTagMatches": "没有匹配此标签的引用。", "newTagPlaceholder": "新标签名称", "tagColor": "标签颜色", "createTag": "创建标签", "tagCreated": "标签已创建。", "tags": "标签", "tagsTitle": "{{key}} 的标签", "noTagsToAssign": "请先创建标签。", "saveTags": "保存标签", "tagsUpdated": "标签已更新。", "editTitle": "编辑 {{key}}"
+  },
+  "citationErrors": { "invalid": "请输入一个有效的 BibTeX 条目。", "tooLarge": "BibTeX 条目过大。", "notFound": "引用条目不存在。", "keyExists": "引用 key 已经存在，请检查现有条目后再决定是否替换。", "tagNotFound": "引用标签不存在。", "conflict": "该引用已在其他位置发生修改，请刷新引用库后重试。", "alreadyInFile": "{{key}} 已经存在于当前 BibTeX 文件中。" },
+  "citationLibraryHomeDescription": "在首页管理属于你自己的 BibTeX 文献和标签。打开 .bib 文件后即可保存或导入条目。",
+  "citationLibraryActions": { "addEntry": "添加条目", "addEntryTitle": "添加 BibTeX 条目", "addEntryDescription": "粘贴一个完整的 BibTeX 文献条目，保存前会进行校验。", "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}", "added": "引用已添加到你的引用库。" },
+  "citationLibraryPagination": { "pageOf": "第 {{page}} / {{totalPages}} 页 · {{count}} 条引用", "previous": "上一页", "next": "下一页" },
   "navigation": {
     "quickOpen": "快速打开", "quickOpenDescription": "按名称打开项目文件（Ctrl/Cmd+P）。", "filePlaceholder": "输入文件名…", "noFiles": "没有匹配的文件。",
     "projectSearch": "项目搜索", "projectSearchDescription": "在项目源码文件中搜索和替换（Ctrl/Cmd+Shift+F）。", "searchPlaceholder": "搜索全部源码文件…", "replacePlaceholder": "替换为…",

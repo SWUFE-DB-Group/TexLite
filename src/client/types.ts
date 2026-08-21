@@ -61,6 +61,30 @@ export interface FileEntry {
   size?: number;
 }
 
+export interface CitationLibraryEntry {
+  id: string;
+  ownerId: string;
+  ownerUsername: string | null;
+  ownerDisplayName: string | null;
+  citationKey: string;
+  entryType: string;
+  bibtex: string;
+  title: string | null;
+  authors: string | null;
+  year: string | null;
+  revision: number;
+  tags: CitationLibraryTag[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CitationLibraryTag {
+  id: string;
+  name: string;
+  color: TagColor;
+  ownerId: string;
+}
+
 export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
 
 export interface HistoryVersion {

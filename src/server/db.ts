@@ -210,6 +210,39 @@ function migrate(db: DatabaseConnection): void {
     );
     CREATE INDEX IF NOT EXISTS project_dictionary_words_project_id ON project_dictionary_words(project_id);
 
+    CREATE TABLE IF NOT EXISTS citation_library_entries (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      citation_key TEXT NOT NULL COLLATE NOCASE,
+      entry_type TEXT NOT NULL,
+      bibtex TEXT NOT NULL,
+      title TEXT,
+      authors TEXT,
+      year TEXT,
+      revision INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (user_id, citation_key)
+    );
+    CREATE INDEX IF NOT EXISTS citation_library_entries_user_updated
+      ON citation_library_entries(user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS citation_library_tags (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL COLLATE NOCASE,
+      color TEXT NOT NULL CHECK (color IN ('red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray')),
+      created_at TEXT NOT NULL,
+      UNIQUE (user_id, name)
+    );
+    CREATE TABLE IF NOT EXISTS citation_library_entry_tags (
+      entry_id TEXT NOT NULL REFERENCES citation_library_entries(id) ON DELETE CASCADE,
+      tag_id TEXT NOT NULL REFERENCES citation_library_tags(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (entry_id, tag_id)
+    );
+    CREATE INDEX IF NOT EXISTS citation_library_entry_tags_tag_id ON citation_library_entry_tags(tag_id);
+
     CREATE TABLE IF NOT EXISTS project_git_settings (
       project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
       token_ciphertext TEXT,
@@ -255,6 +288,10 @@ function migrate(db: DatabaseConnection): void {
   const compileRunColumns = db.prepare("PRAGMA table_info(compile_runs)").all() as Array<{ name: string }>;
   if (!compileRunColumns.some((column) => column.name === "main_file")) {
     db.exec("ALTER TABLE compile_runs ADD COLUMN main_file TEXT NOT NULL DEFAULT ''");
+  }
+  const citationColumns = db.prepare("PRAGMA table_info(citation_library_entries)").all() as Array<{ name: string }>;
+  if (!citationColumns.some((column) => column.name === "revision")) {
+    db.exec("ALTER TABLE citation_library_entries ADD COLUMN revision INTEGER NOT NULL DEFAULT 1");
   }
   db.exec(`
     UPDATE users SET can_create_projects = 1 WHERE role = 'admin';

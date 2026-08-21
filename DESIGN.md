@@ -33,6 +33,28 @@ installation, configuration, and day-to-day operation.
 | Git backup | Optional host Git and the GitHub REST API |
 | Process management | Foreground `serve`, or the bundled PM2 lifecycle commands |
 
+### Citation library
+
+The citation library is stored in SQLite and is independent of project source
+files. A `.bib` editor tab parses complete BibTeX entries locally, so saving a
+reference preserves the author's original formatting; importing inserts the
+selected entry at the current editor cursor and requires project write access.
+Each user owns a private library. Citation entries and color tags are scoped to
+the owning user; other users cannot list, search, import, edit, or delete them.
+The homepage keeps Projects as the default view and exposes the
+citation library as a separate management page beside the other management
+controls; the project workspace keeps a smaller `.bib` import dialog for
+in-context writing. Library results are server-filtered and paginated with 60
+entries per page by default (the API accepts a bounded page-size override).
+Library entries are size-limited and validated as exactly one balanced BibTeX
+entry with syntactically formed fields before storage. Citation keys are unique
+per user without regard to letter case. Creating an existing key is rejected;
+updating an entry or its tags requires the revision last read by the client, so
+concurrent browser sessions report a conflict instead of silently overwriting
+newer content. Entry-text and tag-only mutations use separate endpoints, while
+the explicit save-from-`.bib` action can replace the stored entry without
+discarding its existing tags.
+
 TexLite is intentionally a single-instance application. The collaboration
 rooms, project mutation queues, compile coordinator, and SQLite database are
 process-local. Startup acquires an atomic `.texlite.lock` directory in the data

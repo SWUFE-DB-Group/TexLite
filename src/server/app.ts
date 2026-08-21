@@ -50,6 +50,7 @@ import { MetricRegistry } from "./metrics.js";
 import { compileMainFile } from "./compileArtifacts.js";
 import { apiError, contentDisposition, ValidationError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
+import { MAX_CITATION_BIBTEX_BYTES, parseSingleBibEntry, type ParsedCitationEntry } from "./citationLibrary.js";
 
 const now = (): string => new Date().toISOString();
 const SESSION_CLEANUP_INTERVAL_MS = 15 * 60_000;
@@ -71,6 +72,99 @@ function dictionaryWord(value: unknown): string {
   const word = value.trim();
   if (!word || word.length > 64 || /[\s\\{}$%]/u.test(word)) throw new ValidationError("自定义词格式不正确");
   return word;
+}
+
+interface CitationLibraryRow {
+  id: string;
+  user_id: string;
+  citation_key: string;
+  entry_type: string;
+  bibtex: string;
+  title: string | null;
+  authors: string | null;
+  year: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  owner_username?: string;
+  owner_display_name?: string;
+}
+
+interface CitationLibraryTagRow {
+  id: string;
+  name: string;
+  color: typeof tagColors[number];
+  user_id: string;
+}
+
+function citationJson(row: CitationLibraryRow, tags: CitationLibraryTagRow[] = []) {
+  return {
+    id: row.id,
+    citationKey: row.citation_key,
+    entryType: row.entry_type,
+    bibtex: row.bibtex,
+    title: row.title,
+    authors: row.authors,
+    year: row.year,
+    revision: row.revision,
+    tags: tags.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color, ownerId: tag.user_id })),
+    ownerId: row.user_id,
+    ownerUsername: row.owner_username ?? null,
+    ownerDisplayName: row.owner_display_name ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function citationTagsForEntries(db: DatabaseConnection, entryIds: string[]): Map<string, CitationLibraryTagRow[]> {
+  const result = new Map(entryIds.map((entryId) => [entryId, [] as CitationLibraryTagRow[]]));
+  if (!entryIds.length) return result;
+  const placeholders = entryIds.map(() => "?").join(", ");
+  const rows = db.prepare(`SELECT link.entry_id, tag.id, tag.name, tag.color, tag.user_id
+    FROM citation_library_entry_tags link JOIN citation_library_tags tag ON tag.id = link.tag_id
+    JOIN citation_library_entries entry ON entry.id = link.entry_id AND entry.user_id = tag.user_id
+    WHERE link.entry_id IN (${placeholders})
+    ORDER BY tag.name COLLATE NOCASE`).all(...entryIds) as Array<CitationLibraryTagRow & { entry_id: string }>;
+  for (const row of rows) result.get(row.entry_id)?.push({ id: row.id, name: row.name, color: row.color, user_id: row.user_id });
+  return result;
+}
+
+function citationTagIds(db: DatabaseConnection, userId: string, value: unknown): string[] | null {
+  if (value === undefined) return null;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) throw new ValidationError("引用标签格式不正确");
+  const ids = [...new Set(value.map((item) => item.trim()).filter(Boolean))];
+  if (ids.length > 100) throw new ValidationError("单个引用最多只能设置 100 个标签");
+  if (!ids.length) return [];
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = db.prepare(`SELECT id FROM citation_library_tags WHERE user_id = ? AND id IN (${placeholders})`)
+    .all(userId, ...ids) as Array<{ id: string }>;
+  if (rows.length !== ids.length) throw Object.assign(new Error("引用标签不存在"), { statusCode: 404, code: "CITATION_TAG_NOT_FOUND" });
+  return ids;
+}
+
+function citationTagName(value: unknown): string {
+  return text(value, "引用标签名称", 32);
+}
+
+function citationExpectedRevision(value: unknown): number {
+  if (!Number.isInteger(value) || Number(value) < 1) {
+    throw new ValidationError("引用版本格式不正确");
+  }
+  return Number(value);
+}
+
+function citationInput(value: unknown): ParsedCitationEntry {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ValidationError("引用条目不能为空");
+  }
+  if (Buffer.byteLength(value, "utf8") > MAX_CITATION_BIBTEX_BYTES) {
+    throw Object.assign(new Error("引用条目过大"), { statusCode: 413, code: "CITATION_TOO_LARGE" });
+  }
+  const parsed = parseSingleBibEntry(value);
+  if (!parsed) {
+    throw Object.assign(new Error("请输入一个有效的 BibTeX 文献条目"), { statusCode: 400, code: "CITATION_INVALID" });
+  }
+  return parsed;
 }
 
 interface ProjectTag {
@@ -559,6 +653,215 @@ export async function buildApp(
       .run(passwordHash, user.id);
     db.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?")
       .run(user.id, digestToken(request.cookies.texlite_session ?? ""));
+    return { ok: true };
+  });
+
+  app.get("/api/citations", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const query = request.query as { q?: string; tag?: string; page?: string; pageSize?: string; limit?: string };
+    const search = typeof query.q === "string" ? query.q.trim() : "";
+    const tagId = typeof query.tag === "string" ? query.tag.trim() : "";
+    const requestedPage = Number.parseInt(query.page ?? "1", 10);
+    const requestedPageSize = Number.parseInt(query.pageSize ?? query.limit ?? "60", 10);
+    const pageSize = Math.min(200, Math.max(1, Number.isFinite(requestedPageSize) ? requestedPageSize : 60));
+    const where = ["entry.user_id = ?"];
+    const params: Array<string | number> = [user.id];
+    if (search) {
+      where.push(`(
+            citation_key LIKE ? ESCAPE '\\' OR entry_type LIKE ? ESCAPE '\\'
+            OR COALESCE(title, '') LIKE ? ESCAPE '\\'
+            OR COALESCE(authors, '') LIKE ? ESCAPE '\\'
+            OR COALESCE(year, '') LIKE ? ESCAPE '\\'
+          )`);
+      params.push(...Array.from({ length: 5 }, () => `%${escapeLikePattern(search)}%`));
+    }
+    if (tagId) {
+      where.push(`EXISTS (SELECT 1 FROM citation_library_entry_tags filter_link
+        JOIN citation_library_tags filter_tag ON filter_tag.id = filter_link.tag_id
+        WHERE filter_link.entry_id = entry.id AND filter_link.tag_id = ? AND filter_tag.user_id = ?)`);
+      params.push(tagId, user.id);
+    }
+    const countRow = db.prepare(`SELECT COUNT(*) AS count
+      FROM citation_library_entries entry
+      WHERE ${where.join(" AND ")}`).get(...params) as { count: number };
+    const total = Number(countRow.count) || 0;
+    const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
+    const page = totalPages > 0 ? Math.min(Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1), totalPages) : 1;
+    const offset = (page - 1) * pageSize;
+    params.push(pageSize, offset);
+    const rows = db.prepare(`SELECT entry.*, owner.username AS owner_username, owner.display_name AS owner_display_name
+      FROM citation_library_entries entry
+      JOIN users owner ON owner.id = entry.user_id
+      WHERE ${where.join(" AND ")} ORDER BY entry.updated_at DESC, entry.citation_key COLLATE NOCASE LIMIT ? OFFSET ?`).all(...params) as CitationLibraryRow[];
+    const tags = citationTagsForEntries(db, rows.map((row) => row.id));
+    return {
+      entries: rows.map((row) => citationJson(row, tags.get(row.id) ?? [])),
+      pagination: { page, pageSize, total, totalPages }
+    };
+  });
+
+  app.get("/api/citations/tags", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const tags = db.prepare(`SELECT tag.id, tag.name, tag.color, tag.user_id AS owner_id
+      FROM citation_library_tags tag
+      WHERE tag.user_id = ?
+      ORDER BY tag.name COLLATE NOCASE`).all(user.id) as Array<{ id: string; name: string; color: typeof tagColors[number]; owner_id: string }>;
+    return { tags: tags.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color, ownerId: tag.owner_id })) };
+  });
+
+  app.post("/api/citations/tags", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const body = request.body as { name?: unknown; color?: unknown } | undefined;
+    const name = citationTagName(body?.name);
+    const color = tagColors.includes(body?.color as typeof tagColors[number]) ? body?.color as typeof tagColors[number] : "gray";
+    const existing = db.prepare("SELECT id, name, color, user_id FROM citation_library_tags WHERE user_id = ? AND name = ? COLLATE NOCASE").get(user.id, name) as CitationLibraryTagRow | undefined;
+    if (existing) return { tag: { id: existing.id, name: existing.name, color: existing.color, ownerId: existing.user_id }, created: false };
+    const tag = { id: randomUUID(), name, color, ownerId: user.id };
+    db.prepare("INSERT INTO citation_library_tags (id, user_id, name, color, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(tag.id, user.id, tag.name, tag.color, now());
+    return reply.code(201).send({ tag, created: true });
+  });
+
+  app.delete("/api/citations/tags/:tagId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { tagId } = request.params as { tagId: string };
+    const result = db.prepare("DELETE FROM citation_library_tags WHERE id = ? AND user_id = ?").run(tagId, user.id);
+    if (!result.changes) return apiError(reply, 404, "CITATION_TAG_NOT_FOUND", "引用标签不存在");
+    return { ok: true };
+  });
+
+  // Keep the old settings endpoint explicit so stale clients cannot accidentally
+  // reinterpret "settings" as a citation id. Citation libraries are always private.
+  app.patch("/api/citations/settings", async (request, reply) => {
+    if (!requireUser(request, reply, db)) return;
+    return apiError(reply, 403, "CITATION_LIBRARY_PRIVATE", "引用库始终为私有，仅当前用户可访问");
+  });
+
+  app.post("/api/citations/lookup", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const body = request.body as { keys?: unknown } | undefined;
+    if (!Array.isArray(body?.keys) || body.keys.length > 5000
+      || body.keys.some((key) => typeof key !== "string" || !key.trim() || key.length > 512)) {
+      throw new ValidationError("引用 key 列表格式不正确");
+    }
+    const keys = [...new Map(body.keys.map((key) => [key.trim().toLowerCase(), key.trim()] as const)).values()];
+    const matches: Array<{ id: string; citation_key: string; revision: number }> = [];
+    for (let offset = 0; offset < keys.length; offset += 500) {
+      const chunk = keys.slice(offset, offset + 500);
+      const placeholders = chunk.map(() => "?").join(", ");
+      matches.push(...db.prepare(`SELECT id, citation_key, revision FROM citation_library_entries
+        WHERE user_id = ? AND citation_key COLLATE NOCASE IN (${placeholders})`)
+        .all(user.id, ...chunk) as Array<{ id: string; citation_key: string; revision: number }>);
+    }
+    return { matches: matches.map((match) => ({ id: match.id, citationKey: match.citation_key, revision: match.revision })) };
+  });
+
+  app.post("/api/citations", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const body = request.body as { bibtex?: unknown; tagIds?: unknown; overwrite?: unknown; expectedRevision?: unknown } | undefined;
+    const citation = citationInput(body?.bibtex);
+    const tagIds = citationTagIds(db, user.id, body?.tagIds);
+    const overwrite = body?.overwrite === true;
+    const existing = db.prepare("SELECT id, revision FROM citation_library_entries WHERE user_id = ? AND citation_key = ? COLLATE NOCASE")
+      .get(user.id, citation.citationKey) as { id: string; revision: number } | undefined;
+    if (existing && !overwrite) return apiError(reply, 409, "CITATION_KEY_EXISTS", "引用 key 已经存在");
+    const expectedRevision = existing ? citationExpectedRevision(body?.expectedRevision) : null;
+    if (existing && existing.revision !== expectedRevision) {
+      return apiError(reply, 409, "CITATION_CONFLICT", "引用已在其他位置发生修改，请刷新后重试");
+    }
+    const id = existing?.id ?? randomUUID();
+    const timestamp = now();
+    db.transaction(() => {
+      if (existing) {
+        const result = db.prepare(`UPDATE citation_library_entries SET citation_key = ?, entry_type = ?, bibtex = ?,
+          title = ?, authors = ?, year = ?, revision = revision + 1, updated_at = ?
+          WHERE id = ? AND user_id = ? AND revision = ?`)
+          .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year,
+            timestamp, id, user.id, expectedRevision);
+        if (!result.changes) throw Object.assign(new Error("引用已在其他位置发生修改，请刷新后重试"), { statusCode: 409, code: "CITATION_CONFLICT" });
+      } else {
+        db.prepare(`INSERT INTO citation_library_entries
+          (id, user_id, citation_key, entry_type, bibtex, title, authors, year, revision, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+          .run(id, user.id, citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, timestamp, timestamp);
+      }
+      if (tagIds !== null) {
+        db.prepare("DELETE FROM citation_library_entry_tags WHERE entry_id = ?").run(id);
+        for (const tagId of tagIds) db.prepare("INSERT INTO citation_library_entry_tags (entry_id, tag_id, created_at) VALUES (?, ?, ?)").run(id, tagId, timestamp);
+      }
+    })();
+    const row = db.prepare("SELECT * FROM citation_library_entries WHERE id = ? AND user_id = ?")
+      .get(id, user.id) as CitationLibraryRow;
+    const tags = citationTagsForEntries(db, [id]);
+    return reply.code(existing ? 200 : 201).send({ entry: citationJson(row, tags.get(id) ?? []), updated: Boolean(existing) });
+  });
+
+  app.patch("/api/citations/:citationId/tags", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { citationId } = request.params as { citationId: string };
+    const existing = db.prepare("SELECT id FROM citation_library_entries WHERE id = ? AND user_id = ?")
+      .get(citationId, user.id) as { id: string } | undefined;
+    if (!existing) return apiError(reply, 404, "CITATION_NOT_FOUND", "引用条目不存在");
+    const body = request.body as { tagIds?: unknown; expectedRevision?: unknown } | undefined;
+    const tagIds = citationTagIds(db, user.id, body?.tagIds);
+    if (tagIds === null) throw new ValidationError("引用标签格式不正确");
+    const expectedRevision = citationExpectedRevision(body?.expectedRevision);
+    const timestamp = now();
+    db.transaction(() => {
+      const result = db.prepare(`UPDATE citation_library_entries SET revision = revision + 1, updated_at = ?
+        WHERE id = ? AND user_id = ? AND revision = ?`).run(timestamp, citationId, user.id, expectedRevision);
+      if (!result.changes) {
+        const exists = db.prepare("SELECT id FROM citation_library_entries WHERE id = ? AND user_id = ?").get(citationId, user.id);
+        if (!exists) throw Object.assign(new Error("引用条目不存在"), { statusCode: 404, code: "CITATION_NOT_FOUND" });
+        throw Object.assign(new Error("引用已在其他位置发生修改，请刷新后重试"), { statusCode: 409, code: "CITATION_CONFLICT" });
+      }
+      db.prepare("DELETE FROM citation_library_entry_tags WHERE entry_id = ?").run(citationId);
+      for (const tagId of tagIds) db.prepare("INSERT INTO citation_library_entry_tags (entry_id, tag_id, created_at) VALUES (?, ?, ?)").run(citationId, tagId, timestamp);
+    })();
+    const row = db.prepare("SELECT * FROM citation_library_entries WHERE id = ? AND user_id = ?")
+      .get(citationId, user.id) as CitationLibraryRow;
+    const tags = citationTagsForEntries(db, [citationId]);
+    return { entry: citationJson(row, tags.get(citationId) ?? []) };
+  });
+
+  app.patch("/api/citations/:citationId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { citationId } = request.params as { citationId: string };
+    const existing = db.prepare("SELECT id FROM citation_library_entries WHERE id = ? AND user_id = ?")
+      .get(citationId, user.id) as { id: string } | undefined;
+    if (!existing) return apiError(reply, 404, "CITATION_NOT_FOUND", "引用条目不存在");
+    const body = request.body as { bibtex?: unknown; expectedRevision?: unknown } | undefined;
+    const citation = citationInput(body?.bibtex);
+    const expectedRevision = citationExpectedRevision(body?.expectedRevision);
+    const duplicate = db.prepare("SELECT id FROM citation_library_entries WHERE user_id = ? AND citation_key = ? COLLATE NOCASE AND id != ?")
+      .get(user.id, citation.citationKey, citationId) as { id: string } | undefined;
+    if (duplicate) return apiError(reply, 409, "CITATION_KEY_EXISTS", "引用 key 已经存在");
+    const result = db.prepare(`UPDATE citation_library_entries SET citation_key = ?, entry_type = ?, bibtex = ?,
+      title = ?, authors = ?, year = ?, revision = revision + 1, updated_at = ?
+      WHERE id = ? AND user_id = ? AND revision = ?`)
+      .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year,
+        now(), citationId, user.id, expectedRevision);
+    if (!result.changes) return apiError(reply, 409, "CITATION_CONFLICT", "引用已在其他位置发生修改，请刷新后重试");
+    const updated = db.prepare("SELECT * FROM citation_library_entries WHERE id = ? AND user_id = ?")
+      .get(citationId, user.id) as CitationLibraryRow;
+    const tags = citationTagsForEntries(db, [citationId]);
+    return { entry: citationJson(updated, tags.get(citationId) ?? []) };
+  });
+
+  app.delete("/api/citations/:citationId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { citationId } = request.params as { citationId: string };
+    const result = db.prepare("DELETE FROM citation_library_entries WHERE id = ? AND user_id = ?").run(citationId, user.id);
+    if (!result.changes) return apiError(reply, 404, "CITATION_NOT_FOUND", "引用条目不存在");
     return { ok: true };
   });
 

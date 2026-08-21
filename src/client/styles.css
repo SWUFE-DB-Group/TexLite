@@ -30,6 +30,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .site-logo img { display: block; width: 100%; height: 100%; }
 .site-logo.compact { width: 34px; height: 34px; margin: 0 16px 0 10px; }
 .site-logo.auth-logo { width: 76px; height: 76px; margin: 0 auto 2px; filter: drop-shadow(0 10px 18px #1e2a4a25); }
+.brand-link { display: inline-flex; align-items: center; color: inherit; text-decoration: none; }
+.brand-link:hover .site-title { color: #d9f0df; }
+.compact-brand-link { flex: none; }
 .site-title { margin-right: 11px; font-size: 20px; font-weight: 800; letter-spacing: -.04em; }
 .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .support { color: #737a75; text-align: center; }
@@ -46,6 +49,22 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .language-switcher.compact select { border-color: #ffffff35; background: #ffffff10; color: inherit; }
 .language-switcher.compact option { color: #202421; }
 .dashboard { width: 100%; max-width: 1180px; flex: 1; margin: 0 auto; padding: 52px 34px; }
+.top-actions .top-citation-action { display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; }
+.top-actions .top-citation-action:hover, .top-actions .top-citation-action.active { background: #ffffff16; color: #d9f0df; }
+.citation-library-page-shell { padding-top: 34px; }
+.citation-library-page { display: flex; flex-direction: column; gap: 18px; }
+.citation-library-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.citation-library-page-header > div { min-width: 0; }
+.citation-library-page-header h1 { display: flex; align-items: center; gap: 9px; margin: 0; color: #202421; font-size: 30px; letter-spacing: -.04em; }
+.citation-library-page-header h1 svg { flex: none; color: #315b43; }
+.citation-library-page-header p { max-width: 720px; margin: 8px 0 0; color: #737a75; font-size: 12px; line-height: 1.5; }
+.citation-library-page-header > button { display: inline-flex; align-items: center; gap: 5px; flex: none; border: 1px solid #bfc8c1; border-radius: 8px; padding: 9px 12px; background: white; color: #52685a; font-size: 11px; }
+.citation-library-page-header > button:hover { border-color: #8eaa98; background: #edf4ef; color: #176b44; }
+.citation-library-page .citation-library-dialog { padding: 18px; border: 1px solid #dfe4df; border-radius: 12px; background: white; box-shadow: 0 8px 26px rgba(37,53,42,.06); }
+.citation-library-page .citation-entry-list { max-height: none; }
+.citation-library-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; color: #66736b; font-size: 10px; }
+.citation-library-pagination button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #cbd5ce; border-radius: 6px; padding: 6px 9px; background: white; color: #52685a; font-size: 10px; }
+.citation-library-pagination button:hover:not(:disabled) { border-color: #8eaa98; background: #edf4ef; color: #176b44; }
 .site-footer { width: 100%; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 7px 16px; padding: 18px 24px; border-top: 1px solid #dfe3df; background: #eef0ed; color: #737b75; font-size: 11px; text-align: center; }
 .site-footer a { color: #176b44; text-decoration: none; }
 .site-footer a:hover { text-decoration: underline; }
@@ -525,6 +544,73 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .dialog-footer button { border: 1px solid #cbd2cc; border-radius: 7px; padding: 8px 14px; background: white; }
 .dialog-footer .primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-color: #176b44; background: #176b44; color: white; }
 .dialog-footer .danger, button.danger { border-color: #b3261e; background: #b3261e; color: white; }
+.citation-library-dialog { display: flex; flex-direction: column; gap: 12px; }
+.citation-library-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid #d7ded8; border-radius: 9px; background: #f4f7f4; }
+.citation-library-tabs button { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #66716a; font-size: 12px; }
+.citation-library-tabs button:hover { background: #eaf1eb; color: #31523e; }
+.citation-library-tabs button.active { border-color: #c8d9cb; background: white; color: #176b44; box-shadow: 0 1px 2px #233c2a12; }
+.citation-library-tabs button span { min-width: 18px; padding: 1px 5px; border-radius: 999px; background: #e7eee8; font-size: 10px; }
+.citation-library-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #ccd6ce; border-radius: 7px; background: white; color: #68766d; }
+.citation-library-search-row { display: flex; align-items: stretch; gap: 8px; }
+.citation-library-search-row .citation-library-search { min-width: 0; flex: 1; }
+.citation-add-entry-button { display: inline-flex; align-items: center; gap: 5px; flex: none; border: 1px solid #176b44; border-radius: 7px; padding: 0 11px; background: #176b44; color: white; font-size: 11px; }
+.citation-add-entry-button:hover { background: #125937; }
+.citation-library-search input { min-width: 0; flex: 1; border: 0; padding: 9px 0; outline: 0; font-size: 12px; }
+.citation-library-search span { flex: none; color: #8a958d; font-size: 10px; }
+.citation-tag-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.citation-tag-filters { min-width: 0; display: flex; flex: 1; flex-wrap: wrap; gap: 5px; }
+.citation-tag-filters button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: 999px; padding: 5px 8px; background: #f1f4f1; color: #5f6e64; font-size: 10px; }
+.citation-tag-filters button:hover { background: #e6eee8; }
+.citation-tag-filters button.active { border-color: #9cbea6; background: #e8f2eb; color: #176b44; }
+.citation-tag-create { display: flex; flex: none; gap: 5px; }
+.citation-tag-create input, .citation-tag-create select { min-width: 0; border: 1px solid #cbd4cd; border-radius: 6px; padding: 6px 7px; background: white; font-size: 10px; }
+.citation-tag-create input { width: 120px; }
+.citation-tag-create select { width: 76px; }
+.citation-tag-create button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bdc9c0; border-radius: 6px; padding: 6px 8px; background: white; color: #31523e; font-size: 10px; white-space: nowrap; }
+.citation-tag-create button:hover:not(:disabled) { border-color: #8eaa98; background: #edf4ef; }
+.citation-entry-list { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow: auto; padding: 1px; }
+.citation-entry-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px solid #dce3de; border-radius: 8px; background: #fbfcfb; }
+.citation-entry-main { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 3px; }
+.citation-entry-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.citation-entry-heading code { color: #176b44; font: 650 11px/1.3 "SFMono-Regular", Consolas, monospace; }
+.citation-entry-heading > span { color: #859189; font-size: 10px; }
+.citation-entry-heading em { display: inline-flex; align-items: center; gap: 3px; border-radius: 999px; padding: 2px 6px; background: #e8f2eb; color: #26704a; font-size: 9px; font-style: normal; }
+.citation-entry-heading em.private { background: #edf0ee; color: #69756d; }
+.citation-entry-main > strong { overflow: hidden; color: #2b3b31; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.citation-entry-main > p { margin: 0; overflow: hidden; color: #718078; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.citation-entry-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.citation-tag-pill { display: inline-flex; align-items: center; gap: 4px; border: 1px solid color-mix(in srgb, var(--tag-color) 35%, transparent); border-radius: 999px; padding: 2px 6px; background: color-mix(in srgb, var(--tag-color) 12%, white); color: #526158; font-size: 9px; }
+.citation-tag-dot { width: 7px; height: 7px; flex: none; display: inline-block; border-radius: 50%; background: var(--tag-color); }
+.citation-tag-filters .citation-tag-dot { background: var(--tag-color); }
+.citation-entry-actions { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.citation-entry-actions button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #cbd5ce; border-radius: 6px; padding: 6px 8px; background: white; color: #52685a; font-size: 10px; white-space: nowrap; }
+.citation-entry-actions button:hover:not(:disabled) { border-color: #8eaa98; background: #edf4ef; color: #176b44; }
+.citation-entry-actions button.primary { border-color: #176b44; background: #176b44; color: white; }
+.citation-entry-actions button.saved { border-color: #acd0b8; background: #edf7f0; color: #17623d; }
+.citation-library-empty { min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: #7b887f; text-align: center; }
+.citation-library-empty strong { color: #526158; font-size: 13px; }
+.citation-library-empty span { max-width: 360px; font-size: 11px; line-height: 1.45; }
+.citation-library-notice { display: flex; align-items: center; gap: 6px; margin: 0; padding: 8px 10px; border: 1px solid #acd0b8; border-radius: 7px; background: #edf7f0; color: #17623d; font-size: 11px; }
+.citation-library-notice button { display: grid; place-items: center; width: 21px; height: 21px; margin-left: auto; border: 0; border-radius: 4px; background: transparent; color: inherit; }
+.citation-current-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.citation-current-heading > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.citation-current-heading strong { color: #31523e; font-size: 13px; }
+.citation-current-heading span { color: #78857c; font-size: 10px; }
+.citation-current-heading button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: #176b44; font-size: 10px; white-space: nowrap; }
+.citation-edit-panel, .citation-tag-editor { display: flex; flex-direction: column; gap: 9px; padding: 10px 11px; border: 1px solid #cbd9ce; border-radius: 8px; background: #f5f9f6; }
+.citation-edit-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #31523e; font-size: 11px; }
+.citation-edit-header > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.citation-edit-header small { color: #78857c; font-size: 10px; font-weight: 400; line-height: 1.4; }
+.citation-edit-header button { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: #68766d; }
+.citation-edit-header button:hover { background: #e2ece4; }
+.citation-edit-panel textarea { width: 100%; resize: vertical; border: 1px solid #cbd5ce; border-radius: 6px; padding: 8px; outline: 0; font: 11px/1.5 "SFMono-Regular", Consolas, monospace; }
+.citation-edit-panel textarea:focus { border-color: #176b44; box-shadow: 0 0 0 2px #176b4420; }
+.citation-edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.citation-edit-actions button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bdc9c0; border-radius: 6px; padding: 6px 9px; background: white; color: #52685a; font-size: 10px; }
+.citation-edit-actions button.primary { border-color: #176b44; background: #176b44; color: white; }
+.citation-tag-choice-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.citation-tag-choice-list label { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d4ded6; border-radius: 999px; padding: 5px 7px; background: white; color: #526158; font-size: 10px; }
+.citation-tag-choice-list input { width: auto; accent-color: #176b44; }
 .form-stack { display: flex; flex-direction: column; gap: 14px; }
 .import-error { margin: 0; padding: 10px 12px; border: 1px solid #e3b5b1; border-radius: 8px; background: #fff3f2; line-height: 1.45; }
 .form-field { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 650; }
@@ -706,6 +792,15 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 }
 
 @media (max-width: 720px) {
+  .citation-library-page-shell { padding-top: 24px; }
+  .citation-library-page-header { flex-direction: column; }
+  .citation-library-page-header h1 { font-size: 25px; }
+  .citation-library-page-header > button { align-self: flex-start; }
+  .citation-library-page .citation-library-dialog { padding: 12px; }
+  .citation-library-search-row { flex-direction: column; }
+  .citation-add-entry-button { min-height: 34px; justify-content: center; }
+  .citation-entry-card { flex-direction: column; }
+  .citation-entry-actions { width: 100%; justify-content: flex-start; }
   .upload-picker { grid-template-columns: auto 1fr; }
   .upload-picker > button { grid-column: 1 / -1; justify-content: center; }
   .share-add { grid-template-columns: 1fr; }

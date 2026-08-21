@@ -3,14 +3,14 @@ import { useTranslation } from "react-i18next";
 import { version as texliteVersion } from "../../package.json";
 import { api, ApiError, localizedResponseError } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
-import type { FileEntry, LatexCompletionIndex, Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "./types";
+import type { CitationLibraryEntry, FileEntry, LatexCompletionIndex, Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "./types";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import i18n from "./i18n";
 import {
-  Activity, AlertTriangle, AlignLeft, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Dices, Download, Eraser, FileArchive, FilePlus2, FileText, Keyboard,
-  FileSearch, Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, ListTree, LoaderCircle, MessageSquare, MessageSquarePlus, PackageOpen,
+  Activity, AlertTriangle, AlignLeft, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Dices, Download, Eraser, FileArchive, FilePlus2, FileText, FolderCheck, FolderX, Keyboard,
+  FileSearch, Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, KeyRound, ListTree, LoaderCircle, MessageSquare, MessageSquarePlus, PackageOpen,
   Move, PanelLeftClose, PanelLeftOpen, Pencil, Play, ScrollText,
-  Search, Settings, Sparkles, Tags, Trash2, Upload, UserPlus, Users, X, XCircle
+  Search, Settings, ShieldCheck, ShieldOff, Sparkles, Tags, Trash2, Upload, UserCheck, UserPlus, UserX, Users, X, XCircle
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "./editorPreferences";
@@ -33,6 +33,8 @@ import { useSpellCheck } from "./workspace/useSpellCheck";
 import { useSyncTeX } from "./workspace/useSyncTeX";
 import { useWorkspaceLayout } from "./workspace/useWorkspaceLayout";
 import type { SpellCheckIssue } from "./spellCheck";
+import { CitationLibraryDialog } from "./CitationLibraryDialog";
+import { parseBibEntries } from "./citationLibrary";
 
 const loadPdfPreview = () => import("./PdfPreview");
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
@@ -245,6 +247,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   const [hasLoaded, setHasLoaded] = useState(Boolean(initialData));
   const [adminOpen, setAdminOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
+  const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
@@ -484,13 +487,16 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
 
   return <div className="page">
     <header className="topbar">
-      <span className="site-title">{site.siteName}</span><SiteLogo siteName={site.siteName} />
+      <a className="brand-link" href="/" aria-label={site.siteName}><span className="site-title">{site.siteName}</span><SiteLogo siteName={site.siteName} /></a>
       <div className="top-actions">
-        {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className="ghost" onClick={() => setAdminOpen(!adminOpen)}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
+        {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className="ghost" onClick={() => { setAdminOpen((current) => !current); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
+        <button className={`ghost top-citation-action${citationLibraryOpen ? " active" : ""}`} aria-current={citationLibraryOpen ? "page" : undefined} onClick={() => { setAdminOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
         <LanguageSwitcher compact /><span className="top-user-identity"><strong>{user.displayName}</strong><small>@{user.username}</small></span><button className="ghost" onClick={logout}>{t("auth.logout")}</button>
       </div>
     </header>
-    {adminOpen ? <AdminUsers currentUser={user} /> : <main className="dashboard">
+    {adminOpen ? <AdminUsers currentUser={user} /> : citationLibraryOpen ? <main className="dashboard citation-library-page-shell">
+      <CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} />
+    </main> : <main className="dashboard">
       <div className="section-title"><div><h1><FolderOpen aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => setTagCreateOpen(true)}><Tags aria-hidden size={15} />{t("tags.create")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} />{t("projects.upload")}</button><button className="primary" onClick={() => setCreateOpen(true)}><FolderPlus aria-hidden size={15} />{t("projects.new")}</button></>}</div></div>
       {error && <p className="error">{error}</p>}
       <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="tablist" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} role="tab" aria-selected={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} role="tab" aria-selected={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><div className="tag-filters"><button className={!tagFilter ? "active" : ""} onClick={() => changeTagFilter("")}>{t("projects.allTags")}</button>{tags.map((tag) => <button key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => changeTagFilter(tagFilter === tag.id ? "" : tag.id)}><TagDot color={tag.color} />{tag.name}</button>)}</div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
@@ -620,19 +626,19 @@ function AdminUsers({ currentUser }: { currentUser: User }) {
     {error && <p className="error">{error}</p>}
     <div className="table-card"><table><thead><tr><th>{t("common.user")}</th><th>{t("users.role")}</th><th>{t("users.createProjects")}</th><th>{t("users.ownedProjects")}</th><th>{t("users.status")}</th><th>{t("users.actions")}</th></tr></thead>
       <tbody>{users.map((target) => <tr key={target.id}><td><strong>{target.displayName}</strong><small>@{target.username}</small></td><td>{target.role === "admin" ? t("common.admin") : t("common.user")}</td><td>{target.canCreateProjects ? t("users.allow") : t("users.deny")}</td><td>{target.ownedProjects}</td><td>{target.disabled ? t("common.disabled") : t("common.normal")}</td><td>
-        <button disabled={target.id === currentUser.id} onClick={() => toggle(target)}>{target.disabled ? t("users.enable") : t("users.disable")}</button>
-        <button disabled={target.id === currentUser.id} onClick={() => toggleRole(target)}>{target.role === "admin" ? t("users.demote") : t("users.promote")}</button>
-        <button disabled={target.role === "admin"} onClick={() => toggleProjectCreation(target)}>{target.canCreateProjects ? t("users.denyCreate") : t("users.allowCreate")}</button>
-        <button onClick={() => { setResetTarget(target); setResetValue(""); }}>{t("users.resetPassword")}</button>
-        <button className="danger-text" disabled={target.id === currentUser.id} onClick={() => { setDeleteTarget(target); setDeleteProjects(false); }}>{t("common.delete")}</button>
+        <button className="icon-button" disabled={target.id === currentUser.id} onClick={() => toggle(target)}>{target.disabled ? <UserCheck aria-hidden size={13} /> : <UserX aria-hidden size={13} />}{target.disabled ? t("users.enable") : t("users.disable")}</button>
+        <button className="icon-button" disabled={target.id === currentUser.id} onClick={() => toggleRole(target)}>{target.role === "admin" ? <ShieldOff aria-hidden size={13} /> : <ShieldCheck aria-hidden size={13} />}{target.role === "admin" ? t("users.demote") : t("users.promote")}</button>
+        <button className="icon-button" disabled={target.role === "admin"} onClick={() => toggleProjectCreation(target)}>{target.canCreateProjects ? <FolderX aria-hidden size={13} /> : <FolderCheck aria-hidden size={13} />}{target.canCreateProjects ? t("users.denyCreate") : t("users.allowCreate")}</button>
+        <button className="icon-button" onClick={() => { setResetTarget(target); setResetValue(""); }}><KeyRound aria-hidden size={13} />{t("users.resetPassword")}</button>
+        <button className="icon-button danger-text" disabled={target.id === currentUser.id} onClick={() => { setDeleteTarget(target); setDeleteProjects(false); }}><Trash2 aria-hidden size={13} />{t("common.delete")}</button>
       </td></tr>)}</tbody></table></div>
-    <Modal open={createOpen} title={t("users.add")} description={t("users.addDescription")} onOpenChange={setCreateOpen} footer={<><button onClick={() => setCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" disabled={createForm.password.length < MIN_PASSWORD_LENGTH} onClick={() => void create()}>{t("users.createUser")}</button></>}>
+    <Modal open={createOpen} title={t("users.add")} description={t("users.addDescription")} onOpenChange={setCreateOpen} footer={<><button className="icon-button" onClick={() => setCreateOpen(false)}><X aria-hidden size={14} />{t("common.cancel")}</button><button className="primary icon-button" disabled={createForm.password.length < MIN_PASSWORD_LENGTH} onClick={() => void create()}><UserPlus aria-hidden size={14} />{t("users.createUser")}</button></>}>
       <div className="form-stack"><label className="form-field">{t("auth.username")}<input value={createForm.username} onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })} /></label><label className="form-field">{t("users.displayName")}<input value={createForm.displayName} onChange={(e) => setCreateForm({ ...createForm, displayName: e.target.value })} /></label><label className="form-field">{t("users.initialPassword")}<span className="password-generator"><input minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} /><button type="button" title={t("users.generatePassword")} onClick={() => setCreateForm({ ...createForm, password: randomPassword() })}><Dices size={15} />{t("users.randomPassword")}</button></span><small className="field-hint">{t("auth.passwordMinimum", { count: MIN_PASSWORD_LENGTH })}</small></label><label className="form-field">{t("users.role")}<select value={createForm.role} onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as "user" | "admin" })}><option value="user">{t("common.user")}</option><option value="admin">{t("common.admin")}</option></select></label><label className="checkbox-field"><input type="checkbox" checked={createForm.canCreateProjects || createForm.role === "admin"} disabled={createForm.role === "admin"} onChange={(e) => setCreateForm({ ...createForm, canCreateProjects: e.target.checked })} /> {t("users.allowCreate")}</label></div>
     </Modal>
-    <Modal open={Boolean(resetTarget)} title={t("users.resetPassword")} description={t("users.resetDescription", { username: resetTarget?.username ?? "" })} onOpenChange={(open) => { if (!open) setResetTarget(null); }} footer={<><button onClick={() => setResetTarget(null)}>{t("common.cancel")}</button><button className="primary" disabled={resetValue.length < MIN_PASSWORD_LENGTH} onClick={() => void resetPassword()}>{t("users.reset")}</button></>}>
+    <Modal open={Boolean(resetTarget)} title={t("users.resetPassword")} description={t("users.resetDescription", { username: resetTarget?.username ?? "" })} onOpenChange={(open) => { if (!open) setResetTarget(null); }} footer={<><button className="icon-button" onClick={() => setResetTarget(null)}><X aria-hidden size={14} />{t("common.cancel")}</button><button className="primary icon-button" disabled={resetValue.length < MIN_PASSWORD_LENGTH} onClick={() => void resetPassword()}><KeyRound aria-hidden size={14} />{t("users.reset")}</button></>}>
       <label className="form-field">{t("auth.newPassword")}<input autoFocus type="password" minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" value={resetValue} onChange={(e) => setResetValue(e.target.value)} /><small className="field-hint">{t("auth.passwordMinimum", { count: MIN_PASSWORD_LENGTH })}</small></label>
     </Modal>
-    <Modal open={Boolean(deleteTarget)} title={t("users.deleteTitle")} description={t("users.deleteDescription", { username: deleteTarget?.username ?? "" })} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} footer={<><button onClick={() => setDeleteTarget(null)}>{t("common.cancel")}</button><button className="danger" onClick={() => void remove()}>{t("users.deleteTitle")}</button></>}>
+    <Modal open={Boolean(deleteTarget)} title={t("users.deleteTitle")} description={t("users.deleteDescription", { username: deleteTarget?.username ?? "" })} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} footer={<><button className="icon-button" onClick={() => setDeleteTarget(null)}><X aria-hidden size={14} />{t("common.cancel")}</button><button className="danger icon-button" onClick={() => void remove()}><Trash2 aria-hidden size={14} />{t("users.deleteTitle")}</button></>}>
       <fieldset className="choice-group"><legend>{t("users.ownedChoice", { count: deleteTarget?.ownedProjects ?? 0 })}</legend><label><input type="radio" checked={!deleteProjects} onChange={() => setDeleteProjects(false)} /> {t("users.transferProjects")}</label><label><input type="radio" checked={deleteProjects} onChange={() => setDeleteProjects(true)} /> {t("users.deleteProjects")}</label></fieldset>
     </Modal>
   </main>;
@@ -665,6 +671,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   lastSavedAtRef.current = lastSavedAt;
   const [sourceCursor, setSourceCursor] = useState({ line: 1, column: 1 });
   const sourceCursorRef = useRef(sourceCursor);
+  const sourceCursorOffsetRef = useRef(0);
   const [previewTab, setPreviewTab] = useState<PreviewSurface>("pdf");
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticTab>("log");
   const selectPreviewTab = (next: PreviewTab): void => {
@@ -689,6 +696,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [shareOpen, setShareOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
@@ -716,9 +724,10 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   onBackRef.current = onBack;
   activeMainFileRef.current = activeMainFile;
 
-  const updateSourceCursor = (line: number, column: number) => {
+  const updateSourceCursor = (line: number, column: number, offset = 0) => {
     const next = { line, column };
     sourceCursorRef.current = next;
+    sourceCursorOffsetRef.current = offset;
     setSourceCursor(next);
   };
 
@@ -797,6 +806,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   useEffect(() => {
     activeFileRef.current = activeFile;
     sourceCursorRef.current = { line: 1, column: 1 };
+    sourceCursorOffsetRef.current = 0;
     setSourceCursor({ line: 1, column: 1 });
     setSelection({ selectedText: "", startOffset: 0, endOffset: 0 });
     if (!editorPreferences.openFilesInTabs) {
@@ -1144,6 +1154,27 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       if (formattingTaskRef.current === formattingTask) formattingTaskRef.current = null;
     }
   };
+  const insertCitationAtCursor = (entry: CitationLibraryEntry): boolean => {
+    const filePath = activeFileRef.current;
+    if (!/\.bib$/i.test(filePath) || project?.permission === "read" || !collaborationSynced) {
+      setNotice(t("citationLibrary.importRequiresWrite"));
+      return false;
+    }
+    const sharedText = collaboration.getText(filePath);
+    const source = sharedText.toString();
+    if (parseBibEntries(source).some((item) => item.citationKey.toLowerCase() === entry.citationKey.toLowerCase())) {
+      setNotice(t("citationErrors.alreadyInFile", { key: entry.citationKey }));
+      return false;
+    }
+    const offset = Math.max(0, Math.min(source.length, sourceCursorOffsetRef.current));
+    const before = source.slice(0, offset);
+    const after = source.slice(offset);
+    const prefix = !before ? "" : before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n";
+    const suffix = !after ? "" : after.startsWith("\n\n") ? "" : after.startsWith("\n") ? "\n" : "\n\n";
+    collaboration.applyTextEdits(filePath, [{ from: offset, to: offset, replacement: `${prefix}${entry.bibtex.trim()}${suffix}` }]);
+    setNotice(t("citationLibrary.imported", { key: entry.citationKey }));
+    return true;
+  };
   const {
     files, setFiles, loadFiles,
     newFileOpen, setNewFileOpen, newFilePath, setNewFilePath,
@@ -1321,12 +1352,12 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
 
   return <div className="workspace">
     <header className="editor-topbar">
-      <button className="back" title={t("editor.backToProjects")} aria-label={t("editor.backToProjects")} onClick={onBack}><ArrowLeft size={18} /></button><SiteLogo siteName={site.siteName} compact />
+      <button className="back" title={t("editor.backToProjects")} aria-label={t("editor.backToProjects")} onClick={onBack}><ArrowLeft size={18} /></button><a className="brand-link compact-brand-link" href="/" aria-label={site.siteName} onClick={(event) => { event.preventDefault(); onBack(); }}><SiteLogo siteName={site.siteName} compact /></a>
       <div className="project-heading"><strong>{project.name}</strong><small>{activeFile} · {saveStateLabel}</small></div>
       {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
       <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
       {collaborationStatus === "disconnected" && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
-      <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setHistoryOpen(true)}><History size={15} />{t("history.title")}</button><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}{showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <button title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || !collaborationSynced}>{formatting ? <LoaderCircle className="spin" size={15} /> : <AlignLeft size={15} />}{formatting ? t("editor.formatting") : t("editor.formatSelection")}</button>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
+      <div className="editor-actions">{showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}<WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} /><button onClick={() => setHistoryOpen(true)}><History size={15} />{t("history.title")}</button><button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>{project.ownerId === user.id && <button onClick={() => setGitOpen(true)}><GitBranch size={15} />Git</button>}{showEditor && /\.bib$/i.test(activeFile) && <button className={citationLibraryOpen ? "active" : ""} onClick={() => setCitationLibraryOpen(true)}><BookMarked size={15} />{t("citationLibrary.title")}</button>}{showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <button title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || !collaborationSynced}>{formatting ? <LoaderCircle className="spin" size={15} /> : <AlignLeft size={15} />}{formatting ? t("editor.formatting") : t("editor.formatSelection")}</button>}<button onClick={() => setCommentOpen(true)} disabled={!activeFile}><MessageSquarePlus size={15} />{t("editor.addComment")}</button><button className={sidePanel === "comments" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}><MessageSquare size={15} />{t("common.comments")} {comments.filter((item) => !item.resolved).length || ""}</button><button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button><button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button></div>
     </header>
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
@@ -1454,6 +1485,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       : t("editor.deletePathDescription", { path: deleteEntry?.path ?? "" })} onOpenChange={(open) => { if (!open) { setDeleteEntry(null); setFileDialogError(""); } }} footer={<><button onClick={() => setDeleteEntry(null)}>{t("common.cancel")}</button><button className="danger" onClick={() => void removePath()}>{t("common.delete")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}{deleteActiveSessions.length > 0 && <p className="warning"><AlertTriangle size={15} />{t("editor.deletePathWillClose")}</p>}</></Modal>
     <Modal open={commentOpen} title={t("editor.addComment")} description={selection.selectedText ? t("editor.commentDescription", { count: selection.endOffset - selection.startOffset }) : t("editor.pointComment")} onOpenChange={setCommentOpen} footer={<><button onClick={() => setCommentOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void addComment()}>{t("editor.addComment")}</button></>}><label className="form-field">{t("editor.commentContent")}<textarea autoFocus rows={5} value={commentText} onChange={(event) => setCommentText(event.target.value)} /></label>{selection.selectedText && <blockquote className="selection-preview">{selection.selectedText}</blockquote>}</Modal>
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} />
+    <CitationLibraryDialog open={citationLibraryOpen} onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} onInsert={insertCitationAtCursor} />
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
     {projectSearchOpen && <Suspense fallback={null}><ProjectSearchDialog open project={project} onOpenChange={setProjectSearchOpen} onJump={(filePath, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(filePath, line, column); }} /></Suspense>}
     {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}

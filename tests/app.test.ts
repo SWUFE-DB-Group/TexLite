@@ -1772,6 +1772,132 @@ Second version.
     expect(shortPasswordRes.statusCode).toBe(400);
     expect(shortPasswordRes.json().code).toBe("PASSWORD_TOO_SHORT");
   });
+
+  it("keeps citation updates explicit and prevents stale writes", async () => {
+    const tagResponse = await app.inject({
+      method: "POST", url: "/api/citations/tags", headers: { cookie },
+      payload: { name: "Unassigned citation tag", color: "purple" }
+    });
+    expect(tagResponse.statusCode).toBe(201);
+    const tagId = tagResponse.json().tag.id as string;
+    const tagsBeforeAssignment = await app.inject({ method: "GET", url: "/api/citations/tags", headers: { cookie } });
+    expect(tagsBeforeAssignment.json().tags).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: tagId, name: "Unassigned citation tag" })
+    ]));
+
+    const created = await app.inject({
+      method: "POST", url: "/api/citations", headers: { cookie },
+      payload: { bibtex: "@article{versioned2026, title={Original}, year={2026}}" }
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().entry.revision).toBe(1);
+    const entryId = created.json().entry.id as string;
+
+    const duplicate = await app.inject({
+      method: "POST", url: "/api/citations", headers: { cookie },
+      payload: { bibtex: "@article{versioned2026, title={Accidental replacement}, year={2026}}" }
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json().code).toBe("CITATION_KEY_EXISTS");
+
+    const lookup = await app.inject({
+      method: "POST", url: "/api/citations/lookup", headers: { cookie },
+      payload: { keys: ["VERSIONED2026", "missing"] }
+    });
+    expect(lookup.statusCode).toBe(200);
+    expect(lookup.json().matches).toEqual([
+      expect.objectContaining({ id: entryId, citationKey: "versioned2026", revision: 1 })
+    ]);
+
+    const tagged = await app.inject({
+      method: "PATCH", url: `/api/citations/${entryId}/tags`, headers: { cookie },
+      payload: { tagIds: [tagId], expectedRevision: 1 }
+    });
+    expect(tagged.statusCode).toBe(200);
+    expect(tagged.json().entry).toMatchObject({ revision: 2, bibtex: "@article{versioned2026, title={Original}, year={2026}}" });
+
+    const staleEdit = await app.inject({
+      method: "PATCH", url: `/api/citations/${entryId}`, headers: { cookie },
+      payload: { bibtex: "@article{versioned2026, title={Stale}, year={2026}}", expectedRevision: 1 }
+    });
+    expect(staleEdit.statusCode).toBe(409);
+    expect(staleEdit.json().code).toBe("CITATION_CONFLICT");
+
+    const edited = await app.inject({
+      method: "PATCH", url: `/api/citations/${entryId}`, headers: { cookie },
+      payload: { bibtex: "@article{versioned2026, title={Edited safely}, year={2026}}", expectedRevision: 2 }
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json().entry).toMatchObject({ revision: 3, title: "Edited safely" });
+    expect(edited.json().entry.tags).toEqual([expect.objectContaining({ id: tagId })]);
+
+    const staleTags = await app.inject({
+      method: "PATCH", url: `/api/citations/${entryId}/tags`, headers: { cookie },
+      payload: { tagIds: [], expectedRevision: 2 }
+    });
+    expect(staleTags.statusCode).toBe(409);
+    const explicitOverwrite = await app.inject({
+      method: "POST", url: "/api/citations", headers: { cookie },
+      payload: {
+        bibtex: "@article{versioned2026, title={Updated from a project}, year={2026}}",
+        overwrite: true,
+        expectedRevision: 3
+      }
+    });
+    expect(explicitOverwrite.statusCode).toBe(200);
+    expect(explicitOverwrite.json()).toMatchObject({ updated: true, entry: { revision: 4, title: "Updated from a project" } });
+    expect(explicitOverwrite.json().entry.tags).toEqual([expect.objectContaining({ id: tagId })]);
+    const stored = await app.inject({ method: "GET", url: "/api/citations?q=versioned2026", headers: { cookie } });
+    expect(stored.json().entries[0]).toMatchObject({ revision: 4, title: "Updated from a project" });
+    expect(stored.json().entries[0].tags).toEqual([expect.objectContaining({ id: tagId })]);
+
+    expect((await app.inject({ method: "DELETE", url: `/api/citations/${entryId}`, headers: { cookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "DELETE", url: `/api/citations/tags/${tagId}`, headers: { cookie } })).statusCode).toBe(200);
+  });
+
+  it("keeps citation libraries private per user", async () => {
+    const tagResponse = await app.inject({
+      method: "POST", url: "/api/citations/tags", headers: { cookie },
+      payload: { name: "Security papers", color: "blue" }
+    });
+    expect(tagResponse.statusCode).toBe(201);
+    const citationResponse = await app.inject({
+      method: "POST", url: "/api/citations", headers: { cookie },
+      payload: { bibtex: "@article{shared2026, title={Shared paper}, author={Author}, year={2026}}", tagIds: [tagResponse.json().tag.id] }
+    });
+    expect(citationResponse.statusCode).toBe(201);
+    expect(citationResponse.json().entry.tags).toEqual([expect.objectContaining({ name: "Security papers", color: "blue" })]);
+    const ownLibrary = await app.inject({ method: "GET", url: "/api/citations", headers: { cookie } });
+    expect(ownLibrary.json().pagination).toEqual({ page: 1, pageSize: 60, total: 1, totalPages: 1 });
+    expect((await app.inject({ method: "PATCH", url: "/api/citations/settings", headers: { cookie }, payload: { visibility: "public" } })).statusCode).toBe(403);
+
+    const readerCreated = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "citation-reader", displayName: "Citation Reader", password: "reader-pass-123" }
+    });
+    const readerLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "citation-reader", password: "reader-pass-123" } });
+    const readerCookie = readerLogin.headers["set-cookie"]!.split(";")[0];
+    const readerLibrary = await app.inject({ method: "GET", url: "/api/citations", headers: { cookie: readerCookie } });
+    expect(readerLibrary.statusCode).toBe(200);
+    expect(readerLibrary.json().entries).toHaveLength(0);
+    expect(readerLibrary.json().pagination).toEqual({ page: 1, pageSize: 60, total: 0, totalPages: 0 });
+    expect((await app.inject({ method: "GET", url: "/api/citations/tags", headers: { cookie: readerCookie } })).json().tags).toHaveLength(0);
+    const unauthorizedEdit = await app.inject({
+      method: "PATCH", url: `/api/citations/${citationResponse.json().entry.id}`, headers: { cookie: readerCookie },
+      payload: { bibtex: "@article{hijack, title={No}}" }
+    });
+    expect(unauthorizedEdit.statusCode).toBe(404);
+    const readerCitation = await app.inject({
+      method: "POST", url: "/api/citations", headers: { cookie: readerCookie },
+      payload: { bibtex: "@article{reader2026, title={Reader paper}, author={Reader}, year={2026}}" }
+    });
+    expect(readerCitation.statusCode).toBe(201);
+    expect((await app.inject({ method: "GET", url: "/api/citations", headers: { cookie: readerCookie } })).json().entries)
+      .toEqual([expect.objectContaining({ citationKey: "reader2026", ownerUsername: "citation-reader" })]);
+    expect((await app.inject({ method: "GET", url: "/api/citations", headers: { cookie } })).json().entries)
+      .toEqual([expect.objectContaining({ citationKey: "shared2026", ownerUsername: "admin" })]);
+    expect(readerCreated.statusCode).toBe(201);
+  });
 });
 
 function multipartBody(filename: string, file: Buffer): { boundary: string; body: Buffer } {

@@ -44,7 +44,7 @@ interface Props {
   onSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onCommentClick: (commentId: string) => void;
   onSpellCheckReplace: (issue: SpellCheckIssue, replacement: string) => void;
-  onCursor: (line: number, column: number) => void;
+  onCursor: (line: number, column: number, offset: number) => void;
 }
 
 interface SpellSuggestionMenu {
@@ -498,7 +498,7 @@ export function LatexEditor({
             const range = update.state.selection.main;
             onSelectionRef.current(update.state.sliceDoc(range.from, range.to), range.from, range.to);
             const cursorLine = update.state.doc.lineAt(range.head);
-            onCursorRef.current(cursorLine.number, range.head - cursorLine.from + 1);
+            onCursorRef.current(cursorLine.number, range.head - cursorLine.from + 1, range.head);
           }
         })
       ]
