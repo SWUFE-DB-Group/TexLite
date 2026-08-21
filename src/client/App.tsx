@@ -62,6 +62,12 @@ function formatRelativeTime(
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
+  const threeDays = 3 * day;
+  if (absoluteDifference > threeDays) {
+    const days = Math.floor(absoluteDifference / day);
+    const direction = difference < 0 ? "Past" : "Future";
+    return translate(`projects.relativeDays${direction}`, { days, hours: 0, minutes: 0 });
+  }
   if (absoluteDifference >= day) {
     const days = Math.floor(absoluteDifference / day);
     const hours = Math.floor((absoluteDifference % day) / hour);
