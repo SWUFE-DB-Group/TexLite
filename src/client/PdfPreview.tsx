@@ -1,11 +1,95 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type WheelEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { getDocument, GlobalWorkerOptions, PDFWorker, type PageViewport, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
+import { getDocument, GlobalWorkerOptions, PDFWorker, type PDFDocumentLoadingTask, type PageViewport, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
 import { LoaderCircle, Maximize2, Minus, Plus } from "lucide-react";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 const sharedPdfWorker = new PDFWorker();
+const MAX_RETAINED_PDF_DOCUMENTS = 2;
+
+interface CachedPdfDocument {
+  task: PDFDocumentLoadingTask;
+  promise: Promise<PDFDocumentProxy>;
+  consumers: number;
+  settled: boolean;
+  lastUsed: number;
+}
+
+const cachedPdfDocuments = new Map<string, CachedPdfDocument>();
+
+/** Initialize the worker without fetching a project PDF. */
+export async function preloadPdfRuntime(): Promise<void> {
+  await sharedPdfWorker.promise;
+}
+
+function pdfDocument(url: string): CachedPdfDocument {
+  const cached = cachedPdfDocuments.get(url);
+  if (cached) {
+    cached.lastUsed = Date.now();
+    return cached;
+  }
+  // Successful compile URLs are immutable and cacheable for one year. Ask
+  // PDF.js for one normal 200 response instead of many 206 range fragments:
+  // Firefox does not reliably reuse those fragments after a page reload,
+  // whereas the complete response is retained in its HTTP disk cache.
+  // Academic-paper PDFs are small enough that this also avoids range-request
+  // overhead without delaying first paint in practice.
+  const task = getDocument({ url, worker: sharedPdfWorker, disableRange: true });
+  const entry: CachedPdfDocument = {
+    task,
+    promise: task.promise,
+    consumers: 0,
+    settled: false,
+    lastUsed: Date.now()
+  };
+  cachedPdfDocuments.set(url, entry);
+  void entry.promise.then(() => {
+    entry.settled = true;
+    prunePdfDocuments();
+  }, () => {
+    entry.settled = true;
+    if (cachedPdfDocuments.get(url) === entry) cachedPdfDocuments.delete(url);
+  });
+  return entry;
+}
+
+function prunePdfDocuments(): void {
+  if (cachedPdfDocuments.size <= MAX_RETAINED_PDF_DOCUMENTS) return;
+  const candidates = [...cachedPdfDocuments.entries()]
+    .filter(([, entry]) => entry.consumers === 0 && entry.settled)
+    .sort((left, right) => left[1].lastUsed - right[1].lastUsed);
+  while (cachedPdfDocuments.size > MAX_RETAINED_PDF_DOCUMENTS && candidates.length) {
+    const [url, entry] = candidates.shift()!;
+    if (cachedPdfDocuments.get(url) !== entry) continue;
+    cachedPdfDocuments.delete(url);
+    void entry.task.destroy();
+  }
+}
+
+/** Begin fetching and parsing an immutable retained PDF before the viewer mounts. */
+export function preloadPdf(url: string): void {
+  if (!url) return;
+  const entry = pdfDocument(url);
+  void entry.promise.catch(() => undefined);
+}
+
+function acquirePdfDocument(url: string): { promise: Promise<PDFDocumentProxy>; release: () => void } {
+  const entry = pdfDocument(url);
+  entry.consumers += 1;
+  entry.lastUsed = Date.now();
+  let released = false;
+  return {
+    promise: entry.promise,
+    release: () => {
+      if (released) return;
+      released = true;
+      entry.consumers = Math.max(0, entry.consumers - 1);
+      entry.lastUsed = Date.now();
+      prunePdfDocuments();
+    }
+  };
+}
 
 export interface PdfTarget {
   page: number;
@@ -103,13 +187,13 @@ export function PdfPreview({ url, target, compiling = false, onViewportLocation,
   useEffect(() => {
     let cancelled = false;
     setDocument(null); setError("");
-    const task = getDocument({ url, worker: sharedPdfWorker });
-    void task.promise.then((loaded) => {
+    const cached = acquirePdfDocument(url);
+    void cached.promise.then((loaded) => {
       if (!cancelled) setDocument(loaded);
     }).catch(() => { if (!cancelled) setError(t("editor.pdfLoadFailed")); });
     return () => {
       cancelled = true;
-      void task.destroy();
+      cached.release();
     };
   }, [url]);
 

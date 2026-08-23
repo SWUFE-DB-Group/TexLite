@@ -18,7 +18,7 @@ interface LatestRun {
   requestedBy?: { id: string; username: string; name: string } | null;
 }
 
-interface LatestCompileResponse {
+export interface LatestCompileResponse {
   mainFile: string;
   latestRun: LatestRun | null;
   pdfUrl: string | null;
@@ -29,6 +29,7 @@ interface UseProjectCompilationOptions {
   projectId: string;
   project: Project | null;
   mainFile: string;
+  initialLatest?: Promise<LatestCompileResponse> | null;
   collaborationSynced: boolean;
   sharedState: SharedCompileState | null;
   onSharedState: (state: SharedCompileState | null) => void;
@@ -46,7 +47,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function useProjectCompilation({
-  projectId, project, mainFile, collaborationSynced, sharedState, onSharedState, save,
+  projectId, project, mainFile, initialLatest, collaborationSynced, sharedState, onSharedState, save,
   loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged
 }: UseProjectCompilationOptions) {
   const { t } = useTranslation();
@@ -65,6 +66,8 @@ export function useProjectCompilation({
   const mainFileRef = useRef(mainFile);
   const pdfMainFileRef = useRef("");
   const latestRequest = useRef<AbortController | null>(null);
+  const initialLatestRef = useRef(initialLatest);
+  const initialLatestConsumed = useRef(false);
   const artifactsRequest = useRef<AbortController | null>(null);
   const artifactPreviewRequest = useRef<AbortController | null>(null);
   const backgroundRequests = useRef(new Set<AbortController>());
@@ -145,10 +148,19 @@ export function useProjectCompilation({
     // make it wait for the outline or the (potentially large) artifact scan.
     // The background requests are started after the PDF URL is published and
     // then run in parallel with PDF.js network loading and rendering.
-    const latestRequestPromise = api<LatestCompileResponse>(
+    const preloadedLatest = !initialLatestConsumed.current ? initialLatestRef.current : null;
+    let usedPreloadedLatest = false;
+    const requestLatest = () => api<LatestCompileResponse>(
       `/api/projects/${projectId}/compile/latest${query}`,
       { signal: controller.signal }
     );
+    const latestRequestPromise = preloadedLatest
+      ? preloadedLatest.then((latest) => {
+        if (latest.mainFile !== mainFile) return requestLatest();
+        usedPreloadedLatest = true;
+        return latest;
+      })
+      : requestLatest();
     let backgroundStarted = false;
     const startBackgroundLoads = () => {
       if (backgroundStarted || controller.signal.aborted || !mainFile) return;
@@ -184,6 +196,7 @@ export function useProjectCompilation({
         setPdfCompiledAt(latest.pdfCompiledAt);
         callbacks.current.onPreviewTab("pdf");
       }
+      if (usedPreloadedLatest) initialLatestConsumed.current = true;
     }).catch((error) => {
       if (!isAbortError(error) && mainFileRef.current === mainFile) callbacks.current.onError(errorMessage(error));
     }).finally(() => {

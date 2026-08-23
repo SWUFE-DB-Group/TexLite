@@ -35,8 +35,8 @@ import { useSyncTeX } from "./workspace/useSyncTeX";
 import { useWorkspaceLayout } from "./workspace/useWorkspaceLayout";
 import type { SpellCheckIssue } from "./spellCheck";
 import { CitationLibraryDialog } from "./CitationLibraryDialog";
+import { loadPdfPreview, preloadWorkspace, type WorkspacePreload } from "./workspacePreload";
 
-const loadPdfPreview = () => import("./PdfPreview");
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
 const LatexEditor = lazy(() => import("./LatexEditor").then((module) => ({ default: module.LatexEditor })));
 const GitDialog = lazy(() => import("./GitDialog").then((module) => ({ default: module.GitDialog })));
@@ -95,6 +95,11 @@ export function App() {
   const [site, setSite] = useState<SiteConfig>({ siteName: "TexLite", adminEmail: "" });
   const [user, setUser] = useState<User | null | undefined>();
   const [projectId, setProjectId] = useState<string | null>(() => typeof window === "undefined" ? null : projectIdFromPath(window.location.pathname));
+  const [workspacePreload, setWorkspacePreload] = useState<WorkspacePreload | null>(() => {
+    if (typeof window === "undefined") return null;
+    const initialProjectId = projectIdFromPath(window.location.pathname);
+    return initialProjectId ? preloadWorkspace(initialProjectId) : null;
+  });
   const [dashboardCache, setDashboardCache] = useState<{ userId: string; projects: Project[]; tags: ProjectTag[]; pagination: ProjectListPagination } | null>(null);
 
   useEffect(() => {
@@ -103,7 +108,11 @@ export function App() {
       const state: TexLiteHistoryState = { texliteRoute: "project", projectId: initialProjectId, fromDashboard: false };
       window.history.replaceState(state, "", projectPath(initialProjectId));
     }
-    const handlePopState = () => setProjectId(projectIdFromPath(window.location.pathname));
+    const handlePopState = () => {
+      const nextProjectId = projectIdFromPath(window.location.pathname);
+      setProjectId(nextProjectId);
+      setWorkspacePreload(nextProjectId ? preloadWorkspace(nextProjectId) : null);
+    };
     const handleSessionExpired = () => {
       setDashboardCache(null);
       setUser(null);
@@ -111,6 +120,7 @@ export function App() {
         const state: TexLiteHistoryState = { texliteRoute: "dashboard" };
         window.history.replaceState(state, "", "/");
         setProjectId(null);
+        setWorkspacePreload(null);
       }
     };
     window.addEventListener("popstate", handlePopState);
@@ -127,6 +137,7 @@ export function App() {
       const state: TexLiteHistoryState = { texliteRoute: "project", projectId: id, fromDashboard: true };
       window.history.pushState(state, "", nextPath);
     }
+    setWorkspacePreload(preloadWorkspace(id));
     setProjectId(id);
   };
   const leaveProject = () => {
@@ -138,6 +149,7 @@ export function App() {
     const dashboardState: TexLiteHistoryState = { texliteRoute: "dashboard" };
     window.history.replaceState(dashboardState, "", "/");
     setProjectId(null);
+    setWorkspacePreload(null);
   };
 
   useEffect(() => {
@@ -151,11 +163,39 @@ export function App() {
     });
   }, []);
 
+  useEffect(() => {
+    // PDF preview is a core authenticated feature. Warm only the PDF.js
+    // module and worker while the dashboard is idle; no project PDF is
+    // fetched until the user actually opens a project.
+    if (!user || user.mustChangePassword || projectId) return;
+    let cancelled = false;
+    let timer: number | null = null;
+    let idleHandle: number | null = null;
+    const warm = () => {
+      if (cancelled) return;
+      void loadPdfPreview()
+        .then((module) => module.preloadPdfRuntime())
+        .catch(() => undefined);
+    };
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (idleWindow.requestIdleCallback) idleHandle = idleWindow.requestIdleCallback(warm, { timeout: 1_200 });
+    else timer = window.setTimeout(warm, 400);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      if (idleHandle !== null) idleWindow.cancelIdleCallback?.(idleHandle);
+    };
+  }, [user?.id, user?.mustChangePassword, projectId]);
+
   if (user === undefined) return <div className="center-card">{t("common.loading")}</div>;
   if (!user) return <Login site={site} onLogin={setUser} />;
   if (user.mustChangePassword) return <ChangePassword site={site} user={user} onChanged={(updated) => setUser(updated)} />;
   if (projectId) {
-    return <ProjectWorkspace key={projectId} site={site} user={user} projectId={projectId} onBack={leaveProject} />;
+    return <ProjectWorkspace key={projectId} site={site} user={user} projectId={projectId}
+      preload={workspacePreload?.projectId === projectId ? workspacePreload : null} onBack={leaveProject} />;
   }
   const cachedDashboard = dashboardCache?.userId === user.id ? dashboardCache : null;
   return <Dashboard site={site} user={user}
@@ -664,8 +704,8 @@ interface FormattedSource { formatted: string; diagnostics: string }
 interface ProjectOutlineItem { path: string; line: number; level: number; title: string }
 interface LoadOptions { signal?: AbortSignal; isCurrent?: () => boolean }
 
-function ProjectWorkspace({ site, user, projectId, onBack }: {
-  site: SiteConfig; user: User; projectId: string; onBack: () => void;
+function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
+  site: SiteConfig; user: User; projectId: string; preload: WorkspacePreload | null; onBack: () => void;
 }) {
   const { t } = useTranslation();
   const [project, setProject] = useState<Project | null>(null);
@@ -932,7 +972,9 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     setProject(null); setFiles([]); setProjectOutline([]); setActiveFile(""); setActiveMainFile(""); setRootDocuments(new Set()); setContent(""); setLoadedFile(""); setCompileState(null);
     clearPdfViewport(); setCompletionIndex(null); setDictionaryWords([]);
     void loadPdfPreview();
-    const projectRequest = api<{ project: Project }>(`/api/projects/${projectId}`, { signal: controller.signal }).then((result) => {
+    const projectRequest = (preload?.projectId === projectId
+      ? preload.project
+      : api<{ project: Project }>(`/api/projects/${projectId}`, { signal: controller.signal })).then((result) => {
       if (!isCurrent()) return;
       projectLoaded = true;
       setProject(result.project);
@@ -966,7 +1008,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       dictionaryRequest.current?.abort(); dictionaryRequest.current = null;
       refreshRequest.current?.abort(); refreshRequest.current = null;
     };
-  }, [projectId]);
+  }, [projectId, preload]);
 
   useEffect(() => {
     if (dictionaryRevision) void loadDictionary();
@@ -1366,6 +1408,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     projectId,
     project,
     mainFile: activeMainFile,
+    initialLatest: preload?.projectId === projectId ? preload.latestCompile : null,
     collaborationSynced,
     sharedState: compileState,
     onSharedState: setCompileState,
