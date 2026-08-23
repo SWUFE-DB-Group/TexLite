@@ -20,17 +20,25 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
   const [failureDismissed, setFailureDismissed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const request = useRef(0);
+  const autoRetryRef = useRef(false);
+  const failureDismissedRef = useRef(false);
   const contentRef = useRef(content);
   const activeFileRef = useRef(activeFile);
   const jumpNonce = useRef(0);
   contentRef.current = content;
   activeFileRef.current = activeFile;
+  failureDismissedRef.current = failureDismissed;
 
   useEffect(() => {
     setIssues([]);
     setCheckedSource("");
     setCheckedFile("");
     setJump(null);
+    // A failure is scoped to one file/dictionary request. Do not carry a
+    // transient Harper/network failure into the next file or dictionary
+    // revision, where it would otherwise suppress checking indefinitely.
+    setFailure(null);
+    setFailureDismissed(false);
   }, [activeFile, dictionaryWords]);
 
   useEffect(() => {
@@ -74,6 +82,8 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
             throw error;
           }
           if (cancelled || currentRequest !== request.current || contentRef.current !== source || activeFileRef.current !== file) return;
+          autoRetryRef.current = false;
+          setFailureDismissed(false);
           setIssues(nextIssues);
           setCheckedSource(source);
           setCheckedFile(file);
@@ -85,7 +95,12 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
           setCheckedSource("");
           setCheckedFile("");
           setFailure(error instanceof Error ? error.message : String(error));
-          setFailureDismissed(false);
+          const wasAutoRetry = autoRetryRef.current;
+          autoRetryRef.current = false;
+          // Keep a deliberately dismissed banner closed across background
+          // retries. A manual retry or a new file/dictionary revision resets
+          // the dismissal state explicitly.
+          setFailureDismissed(wasAutoRetry ? failureDismissedRef.current : false);
         }
       })();
     }, 700);
@@ -94,6 +109,29 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
       window.clearTimeout(timer);
     };
   }, [active, projectId, activeFile, content, dictionaryWords, retryToken, failure]);
+
+  useEffect(() => {
+    if (!failure || !active) return;
+    // Harper is a best-effort service. Keep the browser spellchecker fallback
+    // active immediately, but retry in the background so one temporary
+    // network/worker failure does not become a permanent state. Going back
+    // online retries at once; the timer is deliberately long enough not to
+    // create a request loop while a server is unavailable.
+    let retried = false;
+    const retry = () => {
+      if (retried) return;
+      retried = true;
+      autoRetryRef.current = true;
+      setFailure(null);
+      setRetryToken((current) => current + 1);
+    };
+    const timer = window.setTimeout(retry, 15_000);
+    window.addEventListener("online", retry, { once: true });
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("online", retry);
+    };
+  }, [failure, active]);
 
   const visible = checkedFile === activeFile && checkedSource === content;
   const summary = useMemo(() => visible ? {
@@ -118,10 +156,14 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
     error: failureDismissed ? null : failure,
     nativeFallback: active && Boolean(failure),
     retry: () => {
+      autoRetryRef.current = false;
       setFailure(null);
       setFailureDismissed(false);
       setRetryToken((current) => current + 1);
     },
-    dismissError: () => setFailureDismissed(true)
+    dismissError: () => {
+      autoRetryRef.current = false;
+      setFailureDismissed(true);
+    }
   };
 }

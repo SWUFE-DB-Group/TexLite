@@ -19,6 +19,20 @@ export interface ParsedCitationEntry {
   year: string | null;
 }
 
+export type BibtexParseStatus = "ok" | "empty" | "too-large" | "invalid";
+
+export interface BibtexParseResult {
+  status: BibtexParseStatus;
+  entries: ParsedCitationEntry[];
+}
+
+export class BibtexFormatError extends Error {
+  constructor(readonly kind: "too-large" | "invalid") {
+    super(kind === "too-large" ? "BibTeX input is too large to format" : "BibTeX input is invalid");
+    this.name = "BibtexFormatError";
+  }
+}
+
 export const MAX_CITATION_BIBTEX_BYTES = 512 * 1024;
 
 const ignoredEntryTypes = new Set(["comment", "string", "preamble"]);
@@ -28,8 +42,12 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
+export function isBibtexTooLarge(source: string): boolean {
+  return byteLength(source) > MAX_CITATION_BIBTEX_BYTES;
+}
+
 function tidyBibtex(source: string): { bibtex: string; count: number } | null {
-  if (!source.trim() || byteLength(source) > MAX_CITATION_BIBTEX_BYTES) return null;
+  if (!source.trim() || isBibtexTooLarge(source)) return null;
   try {
     const result = tidy(source, tidyOptions);
     return { bibtex: result.bibtex, count: result.count };
@@ -41,15 +59,27 @@ function tidyBibtex(source: string): { bibtex: string; count: number } | null {
 /** Format a BibTeX document without changing its field names or values. */
 export function formatBibtex(source: string): string {
   if (!source.trim()) return source;
+  if (isBibtexTooLarge(source)) throw new BibtexFormatError("too-large");
   const result = tidyBibtex(source);
-  if (!result) throw new Error("BibTeX 格式不正确，无法格式化");
+  if (!result) throw new BibtexFormatError("invalid");
   return result.bibtex;
 }
 
 export function parseBibEntries(source: string): ParsedCitationEntry[] {
-  if (!source.trim() || byteLength(source) > MAX_CITATION_BIBTEX_BYTES) return [];
+  return parseBibEntriesResult(source).entries;
+}
+
+/**
+ * Parse a BibTeX document while preserving the reason an empty result was
+ * returned. Callers that make safety decisions (for example duplicate-key
+ * checks) must not treat an oversized document as an empty one.
+ */
+export function parseBibEntriesResult(source: string): BibtexParseResult {
+  if (!source.trim()) return { status: "empty", entries: [] };
+  if (isBibtexTooLarge(source)) return { status: "too-large", entries: [] };
   const tidyResult = tidyBibtex(source);
-  if (!tidyResult || tidyResult.count === 0) return [];
+  if (!tidyResult) return { status: "invalid", entries: [] };
+  if (tidyResult.count === 0) return { status: "empty", entries: [] };
   const entries: ParsedCitationEntry[] = [];
   let searchFrom = 0;
   while (searchFrom < source.length) {
@@ -67,7 +97,7 @@ export function parseBibEntries(source: string): ParsedCitationEntry[] {
     if (parsed) entries.push(parsed);
     searchFrom = closing + 1;
   }
-  return entries;
+  return { status: "ok", entries };
 }
 
 export function parseSingleBibEntry(source: string): ParsedCitationEntry | null {

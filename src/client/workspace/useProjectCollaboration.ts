@@ -9,6 +9,12 @@ import {
 } from "../collaboration";
 import type { Project, User } from "../types";
 
+export interface PermissionDowngradeNotice {
+  previous: Project["permission"];
+  localDraftReady: boolean;
+  otherTabDraft: boolean;
+}
+
 function isFilesEvent(value: unknown): value is FilesEvent {
   if (!value || typeof value !== "object") return false;
   const event = value as Partial<FilesEvent>;
@@ -35,10 +41,13 @@ export function useProjectCollaboration(
   const [formatLeaseStates, setFormatLeaseStates] = useState<FormatLeaseState[]>([]);
   const [localDraftReady, setLocalDraftReady] = useState(false);
   const [permission, setPermission] = useState<Project["permission"]>(projectPermission);
+  const [permissionDowngrade, setPermissionDowngrade] = useState<PermissionDowngradeNotice | null>(null);
   const activeMainFileRef = useRef(activeMainFile);
   const onDisconnectedRef = useRef(onDisconnected);
+  const readyRef = useRef(ready);
   activeMainFileRef.current = activeMainFile;
   onDisconnectedRef.current = onDisconnected;
+  readyRef.current = ready;
 
   useEffect(() => {
     const states = collaboration.compileStates();
@@ -92,8 +101,22 @@ export function useProjectCollaboration(
     const stopCompileStateListener = collaboration.onCompileStates(handleAuthoritativeCompileStates);
     const refreshFormatLeases = () => setFormatLeaseStates(collaboration.formatLeaseStates());
     const stopFormatLeaseListener = collaboration.onFormatLeaseState(refreshFormatLeases);
-    const stopDraftListener = collaboration.onDraftReady(() => setLocalDraftReady(true));
-    const stopPermissionListener = collaboration.onPermissionChanged((nextPermission) => {
+    const showStoredDraftNotice = () => {
+      if (!readyRef.current || collaboration.currentPermission !== "read") return;
+      const localDraftReady = collaboration.hasWritableDraft;
+      const otherTabDraft = collaboration.hasOtherWritableDraft;
+      if (!localDraftReady && !otherTabDraft) return;
+      setPermissionDowngrade({ previous: "edit", localDraftReady, otherTabDraft });
+    };
+    const stopDraftListener = collaboration.onDraftReady(() => {
+      setLocalDraftReady(true);
+      // If the page was opened after an offline-capable editor was downgraded
+      // and the project metadata has loaded, surface the same explicit draft
+      // decision as a live downgrade. The readiness guard avoids interpreting
+      // the hook's initial placeholder permission as a real downgrade.
+      showStoredDraftNotice();
+    });
+    const stopPermissionListener = collaboration.onPermissionChanged((nextPermission, previousPermission) => {
       if (nextPermission === "revoked") {
         setStatus("disconnected");
         setSynced(false);
@@ -101,6 +124,13 @@ export function useProjectCollaboration(
         return;
       }
       setPermission(nextPermission);
+      if (nextPermission === "read" && previousPermission !== "read") {
+        setPermissionDowngrade({
+          previous: previousPermission,
+          localDraftReady: collaboration.hasWritableDraft,
+          otherTabDraft: collaboration.hasOtherWritableDraft
+        });
+      } else if (nextPermission !== "read") setPermissionDowngrade(null);
     });
     refreshSessions();
     handleMeta();
@@ -133,7 +163,17 @@ export function useProjectCollaboration(
   useEffect(() => {
     collaboration.setPermission(projectPermission);
     setPermission(projectPermission);
-  }, [collaboration, projectPermission]);
+    if (ready && projectPermission === "read"
+      && (collaboration.hasWritableDraft || collaboration.hasOtherWritableDraft)) {
+      setPermissionDowngrade({
+        previous: "edit",
+        localDraftReady: collaboration.hasWritableDraft,
+        otherTabDraft: collaboration.hasOtherWritableDraft
+      });
+    } else if (projectPermission !== "read") {
+      setPermissionDowngrade(null);
+    }
+  }, [collaboration, projectPermission, ready]);
 
   const reconnect = () => {
     setStatus("connecting");
@@ -142,6 +182,18 @@ export function useProjectCollaboration(
     setCompileState(null);
     setFormatLeaseStates([]);
     collaboration.reconnect();
+  };
+
+  const dismissPermissionDowngrade = () => setPermissionDowngrade(null);
+  const discardLocalDraft = async (): Promise<boolean> => {
+    const discarded = await collaboration.discardLocalDraft();
+    if (!discarded) {
+      setPermissionDowngrade((current) => current ? { ...current, otherTabDraft: true } : current);
+      return false;
+    }
+    setPermissionDowngrade(null);
+    window.location.reload();
+    return true;
   };
 
   return {
@@ -157,6 +209,9 @@ export function useProjectCollaboration(
     dictionaryRevision,
     localDraftReady,
     permission,
-    reconnect
+    reconnect,
+    permissionDowngrade,
+    dismissPermissionDowngrade,
+    discardLocalDraft
   };
 }

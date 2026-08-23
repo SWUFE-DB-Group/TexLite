@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { BookMarked, Check, ChevronLeft, ChevronRight, Edit3, Import, LoaderCircle, Plus, Search, Tags, Trash2, X } from "lucide-react";
-import { Modal } from "./Dialog";
+import { AlertTriangle, BookMarked, Check, ChevronLeft, ChevronRight, Edit3, Import, LoaderCircle, Plus, Search, Tags, Trash2, X } from "lucide-react";
+import { ConfirmDialog, Modal } from "./Dialog";
 import { api } from "./api";
 import { errorMessage } from "./errors";
-import { parseBibEntries, parseSingleBibEntry, type ParsedCitationEntry } from "./citationLibrary";
+import { MAX_CITATION_BIBTEX_BYTES, parseBibEntriesResult, parseSingleBibEntry, type BibtexParseResult, type ParsedCitationEntry } from "./citationLibrary";
 import type { CitationLibraryEntry, CitationLibraryTag, ProjectListPagination, TagColor } from "./types";
 
 interface Props {
@@ -24,6 +24,7 @@ interface Props {
 type View = "library" | "current";
 type CitationLookupMatch = Pick<CitationLibraryEntry, "id" | "citationKey" | "revision">;
 const EMPTY_CITATION_ENTRIES: ParsedCitationEntry[] = [];
+const EMPTY_CITATION_PARSE_RESULT: BibtexParseResult = { status: "empty", entries: EMPTY_CITATION_ENTRIES };
 
 export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack, currentFile = "", currentSource = "", readOnly = false, currentUserId, onInsert }: Props) {
   const { t } = useTranslation();
@@ -47,13 +48,17 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
   const [adding, setAdding] = useState(false);
   const [addText, setAddText] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CitationLibraryEntry | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [savedEntries, setSavedEntries] = useState<Map<string, CitationLookupMatch>>(new Map());
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupNonce, setLookupNonce] = useState(0);
   const hasCurrentFile = Boolean(/\.bib$/i.test(currentFile) && onInsert);
-  const currentEntries = useMemo(() => open && hasCurrentFile ? parseBibEntries(currentSource) : EMPTY_CITATION_ENTRIES, [open, currentSource, hasCurrentFile]);
+  const currentParseResult = useMemo(() => open && hasCurrentFile ? parseBibEntriesResult(currentSource) : EMPTY_CITATION_PARSE_RESULT, [open, currentSource, hasCurrentFile]);
+  const currentFileTooLarge = currentParseResult.status === "too-large";
+  const currentFileInvalid = currentParseResult.status === "invalid";
+  const currentEntries = currentParseResult.entries;
   const currentCitationKeys = useMemo(() => new Set(currentEntries.map((entry) => entry.citationKey.toLowerCase())), [currentEntries]);
 
   useEffect(() => {
@@ -125,6 +130,7 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
     setAddText("");
     setTagEditor(null);
     setDeletingId(null);
+    setDeleteTarget(null);
     setError("");
     setNotice("");
     setSavedEntries(new Map());
@@ -292,13 +298,28 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
         <div className="citation-library-search-row"><label className="citation-library-search"><Search size={15} /><input autoFocus placeholder={t("citationLibrary.searchPlaceholder")} value={query} onChange={(event) => { setQuery(event.target.value); setPageNumber(1); }} /><span>{t("citationLibrary.searchHint")}</span></label><button type="button" className="citation-add-entry-button" onClick={() => { setAdding(true); setEditing(null); setTagEditor(null); }}><Plus size={14} />{t("citationLibraryActions.addEntry")}</button></div>
         <div className="citation-tag-bar"><div className="citation-tag-filters"><button type="button" className={!selectedTag ? "active" : ""} onClick={() => { setSelectedTag(""); setPageNumber(1); }}>{t("citationLibrary.allTags")}</button>{tags.map((tag) => <button type="button" key={tag.id} className={selectedTag === tag.id ? "active" : ""} onClick={() => { setSelectedTag(selectedTag === tag.id ? "" : tag.id); setPageNumber(1); }}><span className={`citation-tag-dot tag-${tag.color}`} />{tag.name}</button>)}{tags.length === 0 && <span className="muted">{t("citationLibrary.noTags")}</span>}</div><div className="citation-tag-create"><input value={newTagName} placeholder={t("citationLibrary.newTagPlaceholder")} onChange={(event) => setNewTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createTag(); } }} /><select aria-label={t("citationLibrary.tagColor")} value={newTagColor} onChange={(event) => setNewTagColor(event.target.value as TagColor)}>{(["red", "orange", "yellow", "green", "blue", "purple", "gray"] as TagColor[]).map((color) => <option value={color} key={color}>{t(`tags.${color}`)}</option>)}</select><button type="button" disabled={!newTagName.trim()} title={t("citationLibrary.createTag")} onClick={() => void createTag()}><Plus size={13} />{t("citationLibrary.createTag")}</button></div></div>
         {adding && <div className="citation-edit-panel"><div className="citation-edit-header"><div><strong>{t("citationLibraryActions.addEntryTitle")}</strong><small>{t("citationLibraryActions.addEntryDescription")}</small></div><button type="button" aria-label={t("common.close")} onClick={() => setAdding(false)}><X size={15} /></button></div><textarea autoFocus value={addText} onChange={(event) => setAddText(event.target.value)} placeholder={t("citationLibraryActions.addEntryPlaceholder")} spellCheck={false} rows={9} /><div className="citation-edit-actions"><button type="button" onClick={() => setAdding(false)}>{t("common.cancel")}</button><button type="button" className="primary" disabled={!addText.trim() || savingKey === "__new__"} onClick={() => void saveNew()}>{savingKey === "__new__" ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{t("citationLibraryActions.addEntry")}</button></div></div>}
-        {loading ? <div className="citation-library-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div> : entries.length === 0 ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.emptyTitle")}</strong><span>{selectedTag ? t("citationLibrary.noTagMatches") : t("citationLibrary.emptyDescription")}</span></div> : <div className="citation-entry-list">{entries.map((entry) => <div className="citation-entry-item" key={entry.id}><CitationCard entry={entry} currentUserId={currentUserId} selected={tagEditor?.id === entry.id || editing?.id === entry.id} alreadyInFile={!page && currentCitationKeys.has(entry.citationKey.toLowerCase())} importDisabled={readOnly} deleting={deletingId === entry.id} onImport={onInsert ? async () => { if (await onInsert(entry)) onOpenChange(false); } : undefined} onEdit={entry.ownerId === currentUserId ? () => { setTagEditor(null); setAdding(false); setEditing(entry); setEditText(entry.bibtex); } : undefined} onTags={entry.ownerId === currentUserId ? () => editTags(entry) : undefined} onDelete={entry.ownerId === currentUserId ? () => void deleteEntry(entry) : undefined} t={t} />{!page && tagEditor?.id === entry.id && <CitationTagEditor entry={tagEditor} tags={tags} selectedIds={tagEditorIds} saving={tagSaving} onClose={() => setTagEditor(null)} onToggle={(tagId) => setTagEditorIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])} onSave={() => void saveTags()} t={t} />}{!page && editing?.id === entry.id && <CitationEditPanel title={t("citationLibrary.editTitle", { key: editing.citationKey })} value={editText} saving={savingKey === editing.citationKey} onChange={setEditText} onClose={() => setEditing(null)} onSave={() => void saveEdited()} t={t} />}</div>)}</div>}
+        {loading ? <div className="citation-library-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div> : entries.length === 0 ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.emptyTitle")}</strong><span>{selectedTag ? t("citationLibrary.noTagMatches") : t("citationLibrary.emptyDescription")}</span></div> : <div className="citation-entry-list">{entries.map((entry) => <div className="citation-entry-item" key={entry.id}><CitationCard entry={entry} currentUserId={currentUserId} selected={tagEditor?.id === entry.id || editing?.id === entry.id} alreadyInFile={!page && currentCitationKeys.has(entry.citationKey.toLowerCase())} importDisabled={readOnly} deleting={deletingId === entry.id} onImport={onInsert ? async () => { if (await onInsert(entry)) onOpenChange(false); } : undefined} onEdit={entry.ownerId === currentUserId ? () => { setTagEditor(null); setAdding(false); setEditing(entry); setEditText(entry.bibtex); } : undefined} onTags={entry.ownerId === currentUserId ? () => editTags(entry) : undefined} onDelete={entry.ownerId === currentUserId ? () => { setDeleteTarget(entry); setError(""); } : undefined} t={t} />{!page && tagEditor?.id === entry.id && <CitationTagEditor entry={tagEditor} tags={tags} selectedIds={tagEditorIds} saving={tagSaving} onClose={() => setTagEditor(null)} onToggle={(tagId) => setTagEditorIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])} onSave={() => void saveTags()} t={t} />}{!page && editing?.id === entry.id && <CitationEditPanel title={t("citationLibrary.editTitle", { key: editing.citationKey })} value={editText} saving={savingKey === editing.citationKey} onChange={setEditText} onClose={() => setEditing(null)} onSave={() => void saveEdited()} t={t} />}</div>)}</div>}
         {pagination.totalPages > 1 && <nav className="citation-library-pagination" aria-label={t("citationLibraryPagination.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}><button type="button" disabled={pagination.page <= 1} onClick={() => setPageNumber((current) => Math.max(1, current - 1))}><ChevronLeft size={14} />{t("citationLibraryPagination.previous")}</button><span>{t("citationLibraryPagination.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}</span><button type="button" disabled={pagination.page >= pagination.totalPages} onClick={() => setPageNumber((current) => Math.min(pagination.totalPages, current + 1))}>{t("citationLibraryPagination.next")}<ChevronRight size={14} /></button></nav>}
       </> : <>
         <div className="citation-current-heading"><div><strong>{t("citationLibrary.currentFileTitle")}</strong><span>{t("citationLibrary.currentFileDescription")}</span></div><button type="button" onClick={() => setView("library")}><ChevronLeft size={14} />{t("citationLibrary.backToLibrary")}</button></div>
-        {currentEntries.length === 0 ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.noEntries")}</strong><span>{t("citationLibrary.noEntriesDescription")}</span></div> : <div className="citation-entry-list">{currentEntries.map((entry, index) => <div className="citation-entry-item" key={`${entry.citationKey}-${index}`}><CitationCard entry={entry} saved={savedEntries.has(entry.citationKey.toLowerCase())} saving={savingKey === entry.citationKey} saveDisabled={lookupLoading} onSave={() => void saveEntry(entry)} t={t} />{!page && tagEditor?.citationKey.toLowerCase() === entry.citationKey.toLowerCase() && <CitationTagEditor entry={tagEditor} tags={tags} selectedIds={tagEditorIds} saving={tagSaving} onClose={() => setTagEditor(null)} onToggle={(tagId) => setTagEditorIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])} onSave={() => void saveTags()} t={t} />}</div>)}</div>}
+        {currentFileTooLarge && <p className="warning citation-library-warning"><AlertTriangle size={15} />{t("citationLibrary.fileTooLarge", { size: `${Math.round(MAX_CITATION_BIBTEX_BYTES / 1024)} KB` })}</p>}
+        {currentFileInvalid && <p className="warning citation-library-warning"><AlertTriangle size={15} />{t("citationLibrary.fileInvalid")}</p>}
+        {currentEntries.length === 0 ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.noEntries")}</strong><span>{currentFileTooLarge ? t("citationLibrary.fileTooLargeHint") : currentFileInvalid ? t("citationLibrary.fileInvalidHint") : t("citationLibrary.noEntriesDescription")}</span></div> : <div className="citation-entry-list">{currentEntries.map((entry, index) => <div className="citation-entry-item" key={`${entry.citationKey}-${index}`}><CitationCard entry={entry} saved={savedEntries.has(entry.citationKey.toLowerCase())} saving={savingKey === entry.citationKey} saveDisabled={lookupLoading} onSave={() => void saveEntry(entry)} t={t} />{!page && tagEditor?.citationKey.toLowerCase() === entry.citationKey.toLowerCase() && <CitationTagEditor entry={tagEditor} tags={tags} selectedIds={tagEditorIds} saving={tagSaving} onClose={() => setTagEditor(null)} onToggle={(tagId) => setTagEditorIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])} onSave={() => void saveTags()} t={t} />}</div>)}</div>}
       </>}
     </div>;
+  const deleteConfirmation = <ConfirmDialog
+    open={Boolean(deleteTarget)}
+    title={t("citationLibrary.deleteTitle")}
+    description={t("citationLibrary.deleteDescription", { key: deleteTarget?.citationKey ?? "" })}
+    confirmLabel={t("common.delete")}
+    danger
+    onCancel={() => setDeleteTarget(null)}
+    onConfirm={() => {
+      const target = deleteTarget;
+      setDeleteTarget(null);
+      if (target) void deleteEntry(target);
+    }}
+  />;
   if (page) {
     return <><section className="citation-library-page">
       <header className="citation-library-page-header">
@@ -306,11 +327,11 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
         {onBack && <button type="button" onClick={onBack}><ChevronLeft size={15} />{t("projects.title")}</button>}
       </header>
       {libraryBody}
-    </section>{tagEditor && <Modal open title={t("citationLibrary.tagsTitle", { key: tagEditor.citationKey })} description={t("citationLibrary.tags")} onOpenChange={(next) => { if (!next) { setTagEditor(null); setError(""); } }}><>{error && <p className="error dialog-error">{error}</p>}<CitationTagEditor entry={tagEditor} tags={tags} selectedIds={tagEditorIds} saving={tagSaving} modal onClose={() => { setTagEditor(null); setError(""); }} onToggle={(tagId) => setTagEditorIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])} onSave={() => void saveTags()} t={t} /></></Modal>}{editing && <Modal open extraWide title={t("citationLibrary.editTitle", { key: editing.citationKey })} description={t("citationLibrary.title")} onOpenChange={(next) => { if (!next) { setEditing(null); setError(""); } }}><>{error && <p className="error dialog-error">{error}</p>}<CitationEditPanel title={t("citationLibrary.editTitle", { key: editing.citationKey })} value={editText} saving={savingKey === editing.citationKey} modal onChange={setEditText} onClose={() => { setEditing(null); setError(""); }} onSave={() => void saveEdited()} t={t} /></></Modal>}</>;
+      </section>{tagEditor && <Modal open title={t("citationLibrary.tagsTitle", { key: tagEditor.citationKey })} description={t("citationLibrary.tags")} onOpenChange={(next) => { if (!next) { setTagEditor(null); setError(""); } }}><>{error && <p className="error dialog-error">{error}</p>}<CitationTagEditor entry={tagEditor} tags={tags} selectedIds={tagEditorIds} saving={tagSaving} modal onClose={() => { setTagEditor(null); setError(""); }} onToggle={(tagId) => setTagEditorIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])} onSave={() => void saveTags()} t={t} /></></Modal>}{editing && <Modal open extraWide title={t("citationLibrary.editTitle", { key: editing.citationKey })} description={t("citationLibrary.title")} onOpenChange={(next) => { if (!next) { setEditing(null); setError(""); } }}><>{error && <p className="error dialog-error">{error}</p>}<CitationEditPanel title={t("citationLibrary.editTitle", { key: editing.citationKey })} value={editText} saving={savingKey === editing.citationKey} modal onChange={setEditText} onClose={() => { setEditing(null); setError(""); }} onSave={() => void saveEdited()} t={t} /></></Modal>}{deleteConfirmation}</>;
   }
-  return <Modal open={open} extraWide className="citation-library-modal" title={t("citationLibrary.title")} description={t(hasCurrentFile ? "citationLibrary.description" : "citationLibraryHomeDescription", { file: currentFile })} onOpenChange={onOpenChange} footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
+  return <><Modal open={open} extraWide className="citation-library-modal" title={t("citationLibrary.title")} description={t(hasCurrentFile ? "citationLibrary.description" : "citationLibraryHomeDescription", { file: currentFile })} onOpenChange={onOpenChange} footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
     {libraryBody}
-  </Modal>;
+  </Modal>{deleteConfirmation}</>;
 }
 
 function CitationCard({ entry, currentUserId, selected, alreadyInFile, saved, saving, saveDisabled, importDisabled, deleting, onSave, onImport, onEdit, onTags, onDelete, t }: {

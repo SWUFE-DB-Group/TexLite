@@ -71,6 +71,15 @@
     "collaboration": {
       "connecting": "正在连接协作服务…", "connected": "实时协作已连接", "disconnected": "实时协作连接已断开",
       "editing": "正在编辑", "viewing": "正在查看", "joining": "正在进入项目", "reconnect": "重新连接",
+      "permissionDowngradeTitle": "编辑权限已变更",
+      "permissionDowngradeDescription": "您的权限已从{{previous}}变为只读。任何尚未保存的本地草稿仍保留在当前标签页中，但无法保存。您可以继续查看草稿，或放弃草稿并重新加载服务器上的最新版本。",
+      "permissionDowngradeKeep": "保留本地草稿",
+      "permissionDowngradeDiscard": "放弃草稿并重新加载",
+      "permissionDowngradeReload": "重新加载服务器版本",
+      "permissionDowngradeNoDraft": "您的权限已变为只读。您可以继续查看当前标签页，或重新加载服务器上的最新版本。",
+      "permissionDowngradeOtherTab": "您的权限已变为只读。另一个浏览器标签页中仍有尚未保存的草稿，请返回该标签页处理。为避免误删，该页面不能清理共享的本地草稿。",
+      "permissionDowngradeMultipleDrafts": "您的权限已变为只读。当前标签页和其他浏览器标签页都存在尚未保存的草稿。请先在其他标签页中处理草稿；当前页面不会清理共享数据。",
+      "permissionDowngradeOtherTabBlocked": "另一个浏览器标签页刚刚产生了尚未保存的草稿，已取消清理以保护该草稿。",
       "activeSessions": "{{count}} 个活跃会话",
       "showMoreSessions": "展开另外 {{count}} 个会话", "showFewerSessions": "收起会话列表",
       "sessionTooltip": "{{name}}（@{{username}}）· {{file}} · {{activity}} · {{permission}}"
@@ -85,7 +94,7 @@
     }
   },
   "citationLibrary": {
-    "title": "引用库", "description": "从 {{file}} 保存文献，并将它们导入当前 BibTeX 文件。引用库及其标签仅属于你自己。", "myLibrary": "我的引用库", "currentFile": "当前文件", "searchPlaceholder": "搜索引用…", "searchHint": "可搜索 key、标题、作者或年份", "emptyTitle": "引用库还是空的", "emptyDescription": "打开“当前文件”标签页，保存一个 BibTeX 文献条目。", "noEntries": "没有找到 BibTeX 条目", "noEntriesDescription": "请在当前文件中添加有效的 @article、@inproceedings 或其他文献条目。", "currentFileTitle": "当前文件中的条目", "currentFileDescription": "选择一个条目保存到你的引用库。", "backToLibrary": "返回引用库", "save": "保存", "update": "更新", "saving": "正在保存…", "saved": "引用已保存到你的引用库。", "updated": "引用已更新。", "deleted": "引用已删除。", "savedLabel": "已保存", "import": "导入", "importToFile": "导入到当前 BibTeX 文件", "importRequiresWrite": "导入需要当前项目的写权限。", "imported": "已将 {{key}} 导入当前文件。", "untitled": "未命名引用", "authorUnknown": "未填写作者", "allTags": "全部标签", "noTags": "还没有标签", "noTagMatches": "没有匹配此标签的引用。", "newTagPlaceholder": "新标签名称", "tagColor": "标签颜色", "createTag": "创建标签", "tagCreated": "标签已创建。", "tags": "标签", "tagsTitle": "{{key}} 的标签", "noTagsToAssign": "请先创建标签。", "saveTags": "保存标签", "tagsUpdated": "标签已更新。", "editTitle": "编辑 {{key}}"
+    "title": "引用库", "description": "从 {{file}} 保存文献，并将它们导入当前 BibTeX 文件。引用库及其标签仅属于你自己。", "myLibrary": "我的引用库", "currentFile": "当前文件", "searchPlaceholder": "搜索引用…", "searchHint": "可搜索 key、标题、作者或年份", "emptyTitle": "引用库还是空的", "emptyDescription": "打开“当前文件”标签页，保存一个 BibTeX 文献条目。", "noEntries": "没有找到 BibTeX 条目", "noEntriesDescription": "请在当前文件中添加有效的 @article、@inproceedings 或其他文献条目。", "currentFileTitle": "当前文件中的条目", "currentFileDescription": "选择一个条目保存到你的引用库。", "backToLibrary": "返回引用库", "save": "保存", "update": "更新", "saving": "正在保存…", "saved": "引用已保存到你的引用库。", "updated": "引用已更新。", "deleted": "引用已删除。", "deleteTitle": "删除引用", "deleteDescription": "确定从你的私有引用库中删除引用 {{key}}？此操作不可撤销。", "fileTooLarge": "该 BibTeX 文件超过 {{size}} 限制。", "fileTooLargeHint": "文件过大，浏览器不会解析其中的条目。请拆分文件后再保存单条引用。", "fileInvalid": "当前 BibTeX 文件存在语法错误。", "fileInvalidHint": "请先修复当前文件，再格式化或导入新的引用。", "savedLabel": "已保存", "import": "导入", "importToFile": "导入到当前 BibTeX 文件", "importRequiresWrite": "导入需要当前项目的写权限。", "imported": "已将 {{key}} 导入当前文件。", "untitled": "未命名引用", "authorUnknown": "未填写作者", "allTags": "全部标签", "noTags": "还没有标签", "noTagMatches": "没有匹配此标签的引用。", "newTagPlaceholder": "新标签名称", "tagColor": "标签颜色", "createTag": "创建标签", "tagCreated": "标签已创建。", "tags": "标签", "tagsTitle": "{{key}} 的标签", "noTagsToAssign": "请先创建标签。", "saveTags": "保存标签", "tagsUpdated": "标签已更新。", "editTitle": "编辑 {{key}}"
   },
   "citationErrors": { "invalid": "请输入一个有效的 BibTeX 条目。", "tooLarge": "BibTeX 条目过大。", "notFound": "引用条目不存在。", "keyExists": "引用 key 已经存在，请检查现有条目后再决定是否替换。", "tagNotFound": "引用标签不存在。", "conflict": "该引用已在其他位置发生修改，请刷新引用库后重试。", "alreadyInFile": "{{key}} 已经存在于当前 BibTeX 文件中。" },
   "citationLibraryHomeDescription": "在首页管理属于你自己的 BibTeX 文献和标签。打开 .bib 文件后即可保存或导入条目。",

@@ -9,13 +9,13 @@ import i18n from "./i18n";
 import {
   Activity, AlertTriangle, AlignLeft, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Dices, Download, Eraser, FileArchive, FilePlus2, FileText, FolderCheck, FolderX, Keyboard,
   FileSearch, Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, History, KeyRound, ListTree, LoaderCircle, MessageSquare, PackageOpen,
-  Move, PanelLeftClose, PanelLeftOpen, Pencil, Play, ScrollText,
+  Move, PanelLeftClose, PanelLeftOpen, Pencil, Play, RefreshCw, ScrollText,
   Search, Settings, ShieldCheck, ShieldOff, Sparkles, Tags, Trash2, Upload, UserCheck, UserPlus, UserX, Users, X, XCircle
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "./editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "./latexFormatter";
-import { formatBibtex } from "./citationLibrary";
+import { BibtexFormatError, formatBibtex, MAX_CITATION_BIBTEX_BYTES, parseBibEntriesResult } from "./citationLibrary";
 import { classifyCompileLog } from "./compileLog";
 import type { CollaborationSaveReceipt, FormatLease } from "./collaboration";
 import { isProjectHistoryState, projectIdFromPath, projectPath, type TexLiteHistoryState } from "./routes";
@@ -35,7 +35,6 @@ import { useSyncTeX } from "./workspace/useSyncTeX";
 import { useWorkspaceLayout } from "./workspace/useWorkspaceLayout";
 import type { SpellCheckIssue } from "./spellCheck";
 import { CitationLibraryDialog } from "./CitationLibraryDialog";
-import { parseBibEntries } from "./citationLibrary";
 
 const loadPdfPreview = () => import("./PdfPreview");
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
@@ -250,6 +249,12 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [error, setError] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [tagCreateError, setTagCreateError] = useState("");
+  const [tagAssignmentError, setTagAssignmentError] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [duplicateError, setDuplicateError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -324,6 +329,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
   const changeTagFilter = (next: string) => { setTagFilter(next); setPage(1); };
   const createProject = async () => {
     if (!newProjectName.trim()) return;
+    setCreateError("");
     try {
       const { project } = await api<{ project: Project }>("/api/projects", { method: "POST", body: JSON.stringify({ name: newProjectName }) });
       setCreateOpen(false); setNewProjectName("");
@@ -331,7 +337,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
       const nextPagination = showArchived ? pagination : { ...pagination, total: pagination.total + 1, totalPages: Math.ceil((pagination.total + 1) / pagination.pageSize) };
       setProjects(nextProjects); setPagination(nextPagination); if (!showArchived) onDataChange(nextProjects, tags, nextPagination);
       onOpenProject(project.id);
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setCreateError(errorMessage(e)); }
   };
   const importProject = async () => {
     if (!importFile) return;
@@ -366,18 +372,20 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
 
   const createTag = async () => {
     if (!tagName.trim()) return;
+    setTagCreateError("");
     try {
       const result = await api<{ tag: ProjectTag }>("/api/tags", {
         method: "POST", body: JSON.stringify({ name: tagName, color: tagColor })
       });
       setTags((current) => [...current, result.tag].sort((left, right) => left.name.localeCompare(right.name)));
       setTagCreateOpen(false); setTagName(""); setTagColor("blue");
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setTagCreateError(errorMessage(e)); }
   };
 
   const toggleProjectTag = async (tag: ProjectTag) => {
     if (!tagProject) return;
     const assigned = tagProject.tags.some((item) => item.id === tag.id);
+    setTagAssignmentError("");
     try {
       const result = await api<{ tags: ProjectTag[]; project: Project }>(
         assigned ? `/api/projects/${tagProject.id}/tags/${tag.id}` : `/api/projects/${tagProject.id}/tags`,
@@ -386,35 +394,37 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
       const updated = result.project;
       setTagProject(updated);
       setProjects((current) => current.map((project) => project.id === updated.id ? updated : project));
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setTagAssignmentError(errorMessage(e)); }
   };
 
   const rename = async () => {
     if (!renameProject || !renameValue.trim()) return;
+    setRenameError("");
     try {
       const result = await api<{ project: Project }>(`/api/projects/${renameProject.id}`, {
         method: "PATCH", body: JSON.stringify({ name: renameValue })
       });
       setProjects((current) => current.map((project) => project.id === result.project.id ? result.project : project));
       setRenameProject(null); setRenameValue("");
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setRenameError(errorMessage(e)); }
   };
 
   const duplicate = async () => {
     if (!duplicateProject || !duplicateValue.trim()) return;
-    setDuplicating(true); setError("");
+    setDuplicating(true); setDuplicateError("");
     try {
       await api(`/api/projects/${duplicateProject.id}/duplicate`, {
         method: "POST", body: JSON.stringify({ name: duplicateValue })
       });
       setDuplicateProject(null); setDuplicateValue("");
       void load(showArchived, page, query, tagFilter, sort);
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setDuplicateError(errorMessage(e)); }
     finally { setDuplicating(false); }
   };
 
   const removeProject = async () => {
     if (!deleteProject) return;
+    setDeleteError("");
     try {
       await api(`/api/projects/${deleteProject.id}`, { method: "DELETE" });
       setProjects((current) => current.filter((project) => project.id !== deleteProject.id));
@@ -426,7 +436,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
       setDeleteProject(null);
       if (nextPage !== page) setPage(nextPage);
       else void load(showArchived, page, query, tagFilter, sort);
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setDeleteError(errorMessage(e)); }
   };
 
   const openTransfer = async (project: Project) => {
@@ -498,7 +508,7 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
     {adminOpen ? <AdminUsers currentUser={user} /> : citationLibraryOpen ? <main className="dashboard citation-library-page-shell">
       <CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} />
     </main> : <main className="dashboard">
-      <div className="section-title"><div><h1><FolderOpen aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => setTagCreateOpen(true)}><Tags aria-hidden size={15} />{t("tags.create")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} />{t("projects.upload")}</button><button className="primary" onClick={() => setCreateOpen(true)}><FolderPlus aria-hidden size={15} />{t("projects.new")}</button></>}</div></div>
+      <div className="section-title"><div><h1><FolderOpen aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => { setTagCreateError(""); setTagCreateOpen(true); }}><Tags aria-hidden size={15} />{t("tags.create")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} />{t("projects.upload")}</button><button className="primary" onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} />{t("projects.new")}</button></>}</div></div>
       {error && <p className="error">{error}</p>}
       <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="tablist" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} role="tab" aria-selected={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} role="tab" aria-selected={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><div className="tag-filters"><button className={!tagFilter ? "active" : ""} onClick={() => changeTagFilter("")}>{t("projects.allTags")}</button>{tags.map((tag) => <button key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => changeTagFilter(tagFilter === tag.id ? "" : tag.id)}><TagDot color={tag.color} />{tag.name}</button>)}</div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
       <div className={`project-grid ${view === "list" ? "list-view" : ""}`}>
@@ -524,13 +534,13 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
             </dl>
           </button>
           <div className="project-card-actions">
-            <button onClick={() => setTagProject(project)}><Tags aria-hidden size={14} />{t("tags.assign")}</button>
-            {project.permission === "owner" && <button onClick={() => { setRenameProject(project); setRenameValue(project.name); }}><Pencil aria-hidden size={14} />{t("projects.rename")}</button>}
-            {(user.role === "admin" || user.canCreateProjects) && <button onClick={() => { setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}><Copy aria-hidden size={14} />{t("projects.duplicate")}</button>}
+            <button onClick={() => { setTagAssignmentError(""); setTagProject(project); }}><Tags aria-hidden size={14} />{t("tags.assign")}</button>
+            {project.permission === "owner" && <button onClick={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}><Pencil aria-hidden size={14} />{t("projects.rename")}</button>}
+            {(user.role === "admin" || user.canCreateProjects) && <button onClick={() => { setDuplicateError(""); setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}><Copy aria-hidden size={14} />{t("projects.duplicate")}</button>}
             <a href={`/api/projects/${project.id}/download`} download><Download aria-hidden size={14} />{t("projects.download")}</a>
             <button disabled={archiveBusy === project.id} onClick={() => void toggleArchive(project)}>{showArchived ? <ArchiveRestore aria-hidden size={14} /> : <Archive aria-hidden size={14} />}{showArchived ? t("projects.unarchive") : t("projects.archive")}</button>
             {view === "list" && project.ownerId === user.id && <button onClick={() => void openTransfer(project)}><ArrowRightLeft aria-hidden size={14} />{t("projects.transfer")}</button>}
-            {project.permission === "owner" && <button className="danger-text" onClick={() => setDeleteProject(project)}><Trash2 aria-hidden size={14} />{t("common.delete")}</button>}
+            {project.permission === "owner" && <button className="danger-text" onClick={() => { setDeleteProject(project); setDeleteError(""); }}><Trash2 aria-hidden size={14} />{t("common.delete")}</button>}
           </div>
         </article>)}
         {filtered.length === 0 && (projects.length === 0
@@ -538,16 +548,16 @@ function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProjec
           : <div className="empty">{t("projects.noMatches")}</div>)}
       </div>
       {pagination.totalPages > 1 && <nav className="project-pagination" aria-label={t("projects.pagination")}><button disabled={pagination.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} title={t("projects.previousPage")}><ChevronLeft size={15} />{t("projects.previousPage")}</button><span>{t("projects.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}</span><button disabled={pagination.page >= pagination.totalPages} onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} title={t("projects.nextPage")}><ChevronRight size={15} />{t("projects.nextPage")}</button></nav>}
-      <Modal open={createOpen} title={t("projects.new")} description={t("projects.newDescription")} onOpenChange={setCreateOpen} footer={<><button onClick={() => setCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createProject()}>{t("common.create")}</button></>}>
-        <label className="form-field">{t("projects.name")}<input autoFocus value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createProject(); }} /></label>
+      <Modal open={createOpen} title={t("projects.new")} description={t("projects.newDescription")} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateError(""); }} footer={<><button onClick={() => setCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createProject()}>{t("common.create")}</button></>}>
+        <>{createError && <p className="error dialog-error">{createError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={newProjectName} onChange={(event) => { setNewProjectName(event.target.value); setCreateError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void createProject(); }} /></label></>
       </Modal>
       <Modal open={importOpen} title={t("projects.upload")} description={t("projects.uploadDescription", { size: site.maxUploadSizeMB ?? 50 })} onOpenChange={(open) => { setImportOpen(open); if (!open) setImportError(""); }} footer={<><button onClick={() => { setImportOpen(false); setImportError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={!importFile || importing} onClick={() => void importProject()}>{importing ? t("projects.importing") : t("projects.import")}</button></>}><div className="form-stack">{importError && <p className="error import-error">{importError}</p>}<div className={`upload-picker${importFile ? " has-file" : ""}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); selectImportFile(event.dataTransfer.files[0] ?? null); }}><input ref={importInput} className="sr-only" type="file" accept=".zip,application/zip" onChange={(event) => selectImportFile(event.target.files?.[0] ?? null)} /><FileArchive size={34} /><div className="upload-picker-copy"><strong>{importFile?.name ?? t("projects.chooseZip")}</strong><span>{importFile ? t("projects.selectedFileSize", { size: formatFileSize(importFile.size) }) : t("projects.dropZip")}</span></div><button type="button" onClick={() => importInput.current?.click()}><Upload size={15} />{t("projects.browse")}</button>{importFile && <button className="upload-clear" type="button" title={t("projects.clearFile")} aria-label={t("projects.clearFile")} onClick={() => { selectImportFile(null); if (importInput.current) importInput.current.value = ""; }}><X size={14} /></button>}</div><label className="form-field">{t("projects.name")}<input value={importName} onChange={(event) => setImportName(event.target.value)} /></label></div></Modal>
-      <Modal open={tagCreateOpen} title={t("tags.create")} description={t("tags.createDescription")} onOpenChange={setTagCreateOpen} footer={<><button onClick={() => setTagCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createTag()}>{t("common.create")}</button></>}><div className="form-stack"><label className="form-field">{t("tags.name")}<input autoFocus value={tagName} onChange={(event) => setTagName(event.target.value)} /></label><fieldset className="color-picker"><legend>{t("tags.color")}</legend>{colors.map((color) => <label key={color} className={tagColor === color ? "active" : ""}><input type="radio" name="dashboard-tag-color" checked={tagColor === color} onChange={() => setTagColor(color)} /><TagDot color={color} />{t(`tags.${color}`)}</label>)}</fieldset></div></Modal>
-      <Modal open={Boolean(tagProject)} title={t("tags.assignTitle", { project: tagProject?.name ?? "" })} description={t("tags.assignDescription")} onOpenChange={(open) => { if (!open) setTagProject(null); }} footer={<button onClick={() => setTagProject(null)}>{t("common.close")}</button>}><div className="tag-assignment-list">{tags.map((tag) => <label key={tag.id}><input type="checkbox" checked={Boolean(tagProject?.tags.some((item) => item.id === tag.id))} onChange={() => void toggleProjectTag(tag)} /><TagDot color={tag.color} /><span>{tag.name}</span></label>)}{tags.length === 0 && <p className="muted">{t("tags.empty")}</p>}</div></Modal>
-      <Modal open={Boolean(renameProject)} title={t("projects.renameTitle")} onOpenChange={(open) => { if (!open) setRenameProject(null); }} footer={<><button onClick={() => setRenameProject(null)}>{t("common.cancel")}</button><button className="primary" onClick={() => void rename()}>{t("projects.rename")}</button></>}><label className="form-field">{t("projects.name")}<input autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void rename(); }} /></label></Modal>
-      <Modal open={Boolean(duplicateProject)} title={t("projects.duplicateTitle")} description={t("projects.duplicateDescription", { project: duplicateProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !duplicating) { setDuplicateProject(null); setDuplicateValue(""); } }} footer={<><button disabled={duplicating} onClick={() => { setDuplicateProject(null); setDuplicateValue(""); }}>{t("common.cancel")}</button><button className="primary" disabled={duplicating || !duplicateValue.trim()} onClick={() => void duplicate()}>{duplicating ? t("projects.duplicating") : t("projects.duplicate")}</button></>}><label className="form-field">{t("projects.name")}<input autoFocus value={duplicateValue} onChange={(event) => setDuplicateValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void duplicate(); }} /></label></Modal>
+      <Modal open={tagCreateOpen} title={t("tags.create")} description={t("tags.createDescription")} onOpenChange={(open) => { setTagCreateOpen(open); if (!open) setTagCreateError(""); }} footer={<><button onClick={() => setTagCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createTag()}>{t("common.create")}</button></>}><div className="form-stack">{tagCreateError && <p className="error dialog-error">{tagCreateError}</p>}<label className="form-field">{t("tags.name")}<input autoFocus value={tagName} onChange={(event) => { setTagName(event.target.value); setTagCreateError(""); }} /></label><fieldset className="color-picker"><legend>{t("tags.color")}</legend>{colors.map((color) => <label key={color} className={tagColor === color ? "active" : ""}><input type="radio" name="dashboard-tag-color" checked={tagColor === color} onChange={() => setTagColor(color)} /><TagDot color={color} />{t(`tags.${color}`)}</label>)}</fieldset></div></Modal>
+      <Modal open={Boolean(tagProject)} title={t("tags.assignTitle", { project: tagProject?.name ?? "" })} description={t("tags.assignDescription")} onOpenChange={(open) => { if (!open) { setTagProject(null); setTagAssignmentError(""); } }} footer={<button onClick={() => { setTagProject(null); setTagAssignmentError(""); }}>{t("common.close")}</button>}><div className="tag-assignment-list">{tagAssignmentError && <p className="error dialog-error">{tagAssignmentError}</p>}{tags.map((tag) => <label key={tag.id}><input type="checkbox" checked={Boolean(tagProject?.tags.some((item) => item.id === tag.id))} onChange={() => void toggleProjectTag(tag)} /><TagDot color={tag.color} /><span>{tag.name}</span></label>)}{tags.length === 0 && <p className="muted">{t("tags.empty")}</p>}</div></Modal>
+      <Modal open={Boolean(renameProject)} title={t("projects.renameTitle")} onOpenChange={(open) => { if (!open) { setRenameProject(null); setRenameError(""); } }} footer={<><button onClick={() => { setRenameProject(null); setRenameError(""); }}>{t("common.cancel")}</button><button className="primary" onClick={() => void rename()}>{t("projects.rename")}</button></>}><>{renameError && <p className="error dialog-error">{renameError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={renameValue} onChange={(event) => { setRenameValue(event.target.value); setRenameError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void rename(); }} /></label></></Modal>
+      <Modal open={Boolean(duplicateProject)} title={t("projects.duplicateTitle")} description={t("projects.duplicateDescription", { project: duplicateProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !duplicating) { setDuplicateProject(null); setDuplicateValue(""); setDuplicateError(""); } }} footer={<><button disabled={duplicating} onClick={() => { setDuplicateProject(null); setDuplicateValue(""); setDuplicateError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={duplicating || !duplicateValue.trim()} onClick={() => void duplicate()}>{duplicating ? t("projects.duplicating") : t("projects.duplicate")}</button></>}><>{duplicateError && <p className="error dialog-error">{duplicateError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={duplicateValue} onChange={(event) => { setDuplicateValue(event.target.value); setDuplicateError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void duplicate(); }} /></label></></Modal>
       <Modal open={Boolean(transferProject)} title={t("projects.transferOwnership")} description={t("projects.transferDescription", { project: transferProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !transferBusy) { setTransferProject(null); setTransferUserId(""); setTransferError(""); } }} footer={<><button disabled={transferBusy} onClick={() => { setTransferProject(null); setTransferUserId(""); setTransferError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={transferBusy || !transferUserId} onClick={() => void transferOwnership()}>{transferBusy ? <LoaderCircle className="spin" size={14} /> : <ArrowRightLeft size={14} />}{t("projects.transfer")}</button></>}><div className="form-stack">{transferError && <p className="error dialog-error">{transferError}</p>}<label className="form-field">{t("projects.newOwner")}<select disabled={transferBusy || transferUsers.length === 0} value={transferUserId} onChange={(event) => setTransferUserId(event.target.value)}><option value="">{transferBusy ? t("common.loading") : transferUsers.length > 0 ? t("projects.chooseNewOwner") : t("projects.noTransferUsers")}</option>{transferUsers.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.displayName ?? candidate.username} (@{candidate.username})</option>)}</select></label><p className="warning"><AlertTriangle size={15} />{t("projects.transferWarning")}</p></div></Modal>
-      <ConfirmDialog open={Boolean(deleteProject)} title={t("projects.deleteTitle")} description={t("projects.deleteDescription", { project: deleteProject?.name ?? "" })} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteProject(null)} onConfirm={() => void removeProject()} />
+      <ConfirmDialog open={Boolean(deleteProject)} title={t("projects.deleteTitle")} description={t("projects.deleteDescription", { project: deleteProject?.name ?? "" })} confirmLabel={t("common.delete")} danger error={deleteError} onCancel={() => { setDeleteProject(null); setDeleteError(""); }} onConfirm={() => void removeProject()} />
     </main>}{metricsOpen && <Suspense fallback={null}><SystemMetricsDialog open onOpenChange={setMetricsOpen} /></Suspense>}<SiteFooter />
   </div>;
 }
@@ -707,6 +717,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [formatting, setFormatting] = useState(false);
   const [formatterRecovery, setFormatterRecovery] = useState<FormatterRecovery | null>(null);
   const [formatterDiagnostics, setFormatterDiagnostics] = useState("");
+  const [permissionDowngradeBusy, setPermissionDowngradeBusy] = useState(false);
   const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(() => loadEditorPreferences(user.id, projectId));
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const openTabsRef = useRef<string[]>([]);
@@ -781,7 +792,10 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     dictionaryRevision,
     localDraftReady,
     permission: collaborationPermission,
-    reconnect: reconnectCollaboration
+    reconnect: reconnectCollaboration,
+    permissionDowngrade,
+    dismissPermissionDowngrade,
+    discardLocalDraft
   } = useProjectCollaboration(projectId, user, activeMainFile, project?.permission ?? "read", collaborationReady, () => setSaveState("editor.offlineDraft"));
 
   const {
@@ -1092,7 +1106,17 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     }
   };
   const formatSource = async (filePath: string, source: string, texFmtConfig = editorPreferences.texFmtConfig): Promise<FormattedSource> => {
-    if (/\.bib$/i.test(filePath)) return { formatted: formatBibtex(source), diagnostics: "" };
+    if (/\.bib$/i.test(filePath)) {
+      try {
+        return { formatted: formatBibtex(source), diagnostics: "" };
+      } catch (formatError) {
+        if (!(formatError instanceof BibtexFormatError)) throw formatError;
+        if (formatError.kind === "too-large") {
+          throw new Error(t("citationLibrary.fileTooLarge", { size: `${Math.round(MAX_CITATION_BIBTEX_BYTES / 1024)} KB` }));
+        }
+        throw new Error(t("citationLibrary.fileInvalid"));
+      }
+    }
     const result = await formatWithTexFmt(source, texFmtConfig);
     return { formatted: result.output, diagnostics: result.logs.trim() };
   };
@@ -1264,7 +1288,16 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     }
     const sharedText = collaboration.getText(filePath);
     const source = sharedText.toString();
-    if (parseBibEntries(source).some((item) => item.citationKey.toLowerCase() === entry.citationKey.toLowerCase())) {
+    const parsedBibtex = parseBibEntriesResult(source);
+    if (parsedBibtex.status === "too-large") {
+      setNotice(t("citationLibrary.fileTooLarge", { size: `${Math.round(MAX_CITATION_BIBTEX_BYTES / 1024)} KB` }));
+      return false;
+    }
+    if (parsedBibtex.status === "invalid") {
+      setNotice(t("citationLibrary.fileInvalid"));
+      return false;
+    }
+    if (parsedBibtex.entries.some((item) => item.citationKey.toLowerCase() === entry.citationKey.toLowerCase())) {
       setNotice(t("citationErrors.alreadyInFile", { key: entry.citationKey }));
       return false;
     }
@@ -1381,6 +1414,19 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     const configOverride = resetOptions ? "" : undefined;
     if (recovery.action === "selection") void formatSelectedSource(configOverride);
     else void formatCurrentFile(configOverride);
+  };
+  const discardPermissionDraft = async (): Promise<void> => {
+    setPermissionDowngradeBusy(true);
+    try {
+      const discarded = await discardLocalDraft();
+      if (!discarded) {
+        setError(t("editor.collaboration.permissionDowngradeOtherTabBlocked"));
+        setPermissionDowngradeBusy(false);
+      }
+    } catch (draftError) {
+      setError(errorMessage(draftError));
+      setPermissionDowngradeBusy(false);
+    }
   };
   const toggleFilesPanel = () => {
     if (filesPanel.current?.isCollapsed()) filesPanel.current.expand();
@@ -1514,6 +1560,24 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     </div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
+    {permissionDowngrade && <Modal
+      open
+      title={t("editor.collaboration.permissionDowngradeTitle")}
+      description={permissionDowngrade.localDraftReady && permissionDowngrade.otherTabDraft
+        ? t("editor.collaboration.permissionDowngradeMultipleDrafts")
+        : permissionDowngrade.otherTabDraft
+          ? t("editor.collaboration.permissionDowngradeOtherTab")
+          : permissionDowngrade.localDraftReady
+        ? t("editor.collaboration.permissionDowngradeDescription", {
+          previous: t("common.readWrite")
+        })
+        : t("editor.collaboration.permissionDowngradeNoDraft")}
+      onOpenChange={(open) => { if (!open && !permissionDowngradeBusy) dismissPermissionDowngrade(); }}
+      footer={<>
+        <button type="button" disabled={permissionDowngradeBusy} onClick={dismissPermissionDowngrade}>{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeKeep") : t("common.close")}</button>
+        {!permissionDowngrade.otherTabDraft && <button type="button" className="danger" disabled={permissionDowngradeBusy} onClick={() => void discardPermissionDraft()}>{permissionDowngradeBusy ? <LoaderCircle className="spin" size={14} /> : permissionDowngrade.localDraftReady ? <Trash2 size={14} /> : <RefreshCw size={14} />}{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeDiscard") : t("editor.collaboration.permissionDowngradeReload")}</button>}
+      </>}
+    ><div /></Modal>}
     <PanelGroup autoSaveId="texlite-workspace-layout" direction="horizontal" className="work-grid">
       {showEditor && <Panel id="files" order={1} ref={filesPanel} defaultSize={16} minSize={12} maxSize={30} collapsible collapsedSize={0} onCollapse={() => setFilesCollapsed(true)} onExpand={() => setFilesCollapsed(false)}>
         <aside className="left-panel"><section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly && !uploadingFiles) setFileDragActive(true); }} onDragOver={(event) => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly || uploadingFiles ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { event.preventDefault(); setFileDragActive(false); if (!readOnly && !uploadingFiles) void uploadFiles(Array.from(event.dataTransfer.files)); }}><div className="panel-title"><span>{t("common.files")}</span><span className="file-tools"><button aria-label={t("navigation.quickOpen")} title={`${t("navigation.quickOpen")} (Ctrl/Cmd+P)`} onClick={() => setQuickOpen(true)}><FileSearch size={15} /></button><button aria-label={t("navigation.projectSearch")} title={`${t("navigation.projectSearch")} (Ctrl/Cmd+Shift+F)`} onClick={() => setProjectSearchOpen(true)}><Search size={15} /></button>{!readOnly && <><button disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} /></button><button aria-label={t("editor.newFolder")} title={t("editor.newFolder")} onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}><FolderPlus size={15} /></button><button aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} /></button><input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} /></>}<button aria-label={t("editor.collapseFiles")} title={t("editor.collapseFiles")} onClick={toggleFilesPanel}><PanelLeftClose size={15} /></button></span></div>

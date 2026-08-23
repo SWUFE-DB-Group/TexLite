@@ -21,6 +21,7 @@ const MESSAGE_COMPILE_STATES = 8;
 const MESSAGE_FORMAT_LEASE = 9;
 const COLLABORATION_PROTOCOL_VERSION = 3;
 const FORMAT_LEASE_REQUEST_TIMEOUT_MS = 60_000;
+const WRITABLE_DRAFT_MARKER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type CollaborationStatus = "connecting" | "connected" | "disconnected";
 
@@ -85,6 +86,11 @@ interface FormatLeaseResponse {
   expiresAt: number;
 }
 
+interface WritableDraftMarker {
+  generation: number;
+  updatedAt: number;
+}
+
 export function sharedCompileState(value: unknown): SharedCompileState | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<SharedCompileState>;
@@ -109,6 +115,14 @@ export function sharedCompileStates(value: unknown): Record<string, SharedCompil
   return result;
 }
 
+export function writableDraftCoveredByFlush(
+  markerGeneration: number,
+  currentGeneration: number,
+  flushedGeneration: number
+): boolean {
+  return markerGeneration <= flushedGeneration && currentGeneration <= flushedGeneration;
+}
+
 export class ProjectCollaboration {
   readonly doc = new Y.Doc();
   readonly provider: WebsocketProvider;
@@ -120,13 +134,23 @@ export class ProjectCollaboration {
   private destroyed = false;
   private localDraftReady = false;
   private readonly draftListeners = new Set<() => void>();
-  private readonly permissionListeners = new Set<(permission: Project["permission"] | "revoked") => void>();
+  private readonly permissionListeners = new Set<(
+    permission: Project["permission"] | "revoked",
+    previous: Project["permission"]
+  ) => void>();
   private readonly compileStateListeners = new Set<() => void>();
-  private readonly flushRequests = new Map<string, { resolve: (receipt: CollaborationSaveReceipt) => void; reject: (error: Error) => void; timer: number }>();
+  private readonly flushRequests = new Map<string, {
+    resolve: (receipt: CollaborationSaveReceipt) => void;
+    reject: (error: Error) => void;
+    timer: number;
+    draftGeneration: number;
+  }>();
   private readonly formatLeaseRequests = new Map<string, { resolve: (value: FormatLeaseResponse) => void; reject: (error: Error) => void; timer: number }>();
   private readonly formatLeaseListeners = new Set<(state: FormatLeaseState | null) => void>();
   private readonly formatLeaseStatesByPath = new Map<string, FormatLeaseState>();
   private readonly formatLeaseExpiryTimers = new Map<string, number>();
+  private readonly draftTabId: string;
+  private draftGeneration = 0;
   /**
    * CodeMirror remounts when the active file changes (for example when tabs
    * are enabled). Keep one undo manager per shared text instead of creating a
@@ -137,10 +161,27 @@ export class ProjectCollaboration {
   private readonly undoManagers = new Map<string, Y.UndoManager>();
   private authoritativeCompileStates: Record<string, SharedCompileState> | null = null;
   private readonly metaObserver: (event: Y.YMapEvent<unknown>, transaction: Y.Transaction) => void;
+  private readonly localDraftTransactionObserver: (transaction: Y.Transaction) => void;
 
   constructor(readonly projectId: string, private readonly user: User) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    this.draftTabId = getOrCreateDraftTabId(`texlite:collaboration-tab:${user.id}:${projectId}`);
+    this.draftGeneration = this.readOwnWritableDraftMarker()?.generation ?? 0;
     this.persistence = new IndexeddbPersistence(`texlite:${user.id}:${projectId}`, this.doc);
+    this.localDraftTransactionObserver = (transaction) => {
+      if (!transaction.local) return;
+      // CodeMirror's yCollab binding writes directly to Y.Text. Keep the
+      // protection marker at this layer so ordinary typing, undo/redo, and
+      // programmatic edits all follow the same permission-downgrade path.
+      for (const [name, sharedType] of this.doc.share) {
+        if (!name.startsWith("source:")) continue;
+        if (transaction.changed.has(sharedType) || transaction.changedParentTypes.has(sharedType)) {
+          this.markWritableDraft();
+          return;
+        }
+      }
+    };
+    this.doc.on("afterTransaction", this.localDraftTransactionObserver);
     this.persistence.on("synced", () => {
       this.localDraftReady = true;
       for (const listener of this.draftListeners) listener();
@@ -188,6 +229,7 @@ export class ProjectCollaboration {
         );
         pending.reject(error);
       } else {
+        this.clearOwnWritableDraftMarker(pending.draftGeneration);
         pending.resolve({ revision, persistedAt, ok: true, failedPaths: [] });
       }
     };
@@ -212,7 +254,10 @@ export class ProjectCollaboration {
           window.location.reload();
         };
         if (protocolMigration) reload();
-        else void this.persistence.clearData().then(reload);
+        else void this.persistence.clearData().then(() => {
+          this.clearWritableDraftMarkers();
+          reload();
+        });
         return;
       }
       this.epoch = epoch;
@@ -240,17 +285,20 @@ export class ProjectCollaboration {
       if (permission === "revoked") {
         this.rejectFlushes(new Error("Project access revoked"));
         this.provider.disconnect();
-        for (const listener of this.permissionListeners) listener("revoked");
+        for (const listener of this.permissionListeners) listener("revoked", this.permission);
         return;
       }
       if (permission !== "read" && permission !== "edit" && permission !== "owner") return;
       const previous = this.permission;
-      this.setPermission(permission, true);
-      if (previous !== permission && permission === "read") {
-        // A draft created while the user had write access must not be replayed
-        // after a permission downgrade. Reload after removing that local data
-        // so the server's current source tree becomes authoritative.
-        void this.persistence.clearData().finally(() => window.location.reload());
+      this.setPermission(permission);
+      if (previous !== permission) {
+        if (permission === "read") this.rejectFlushes(new Error("Project permission changed to read-only"));
+        // Do not destroy an offline draft as a side effect of a permission
+        // change. The workspace presents an explicit choice: keep the draft
+        // visible in this tab (read-only), or discard it and reload the
+        // authoritative server tree. This is important when a collaborator
+        // is downgraded while disconnected or while a local edit is pending.
+        for (const listener of this.permissionListeners) listener(permission, previous);
       }
     };
     this.provider.messageHandlers[MESSAGE_MAINTENANCE] = (_encoder, decoder) => {
@@ -391,19 +439,45 @@ export class ProjectCollaboration {
     return () => this.draftListeners.delete(listener);
   }
 
-  onPermissionChanged(listener: (permission: Project["permission"] | "revoked") => void): () => void {
+  onPermissionChanged(listener: (
+    permission: Project["permission"] | "revoked",
+    previous: Project["permission"]
+  ) => void): () => void {
     this.permissionListeners.add(listener);
     return () => this.permissionListeners.delete(listener);
   }
 
+  /** Explicitly discard the local IndexedDB draft after a permission change. */
+  async discardLocalDraft(): Promise<boolean> {
+    // IndexedDB is shared by every tab for this user/project. Never let one
+    // tab erase a draft that another live browser tab still owns.
+    if (this.hasOtherWritableDraft) return false;
+    await this.persistence.clearData();
+    this.localDraftReady = false;
+    this.clearWritableDraftMarkers();
+    return true;
+  }
+
+  /** Whether this browser tab has source changes not covered by its latest flush. */
+  get hasWritableDraft(): boolean {
+    return this.readOwnWritableDraftMarker() !== null;
+  }
+
+  /** Whether another browser tab has a pending draft in the shared IndexedDB. */
+  get hasOtherWritableDraft(): boolean {
+    return this.readWritableDraftMarkers().some(({ tabId }) => tabId !== this.draftTabId);
+  }
+
   setPermission(permission: Project["permission"], notify = false): void {
+    const previous = this.permission;
     this.permission = permission;
     if (permission === "read") {
+      if (previous !== "read") this.rejectFlushes(new Error("Project permission changed to read-only"));
       this.destroyUndoManagers();
       this.clearFormatLeaseStates();
     }
     this.updateLocalAwareness();
-    if (notify) for (const listener of this.permissionListeners) listener(permission);
+    if (notify && previous !== permission) for (const listener of this.permissionListeners) listener(permission, previous);
   }
 
   setActiveFile(filePath: string): void {
@@ -440,6 +514,7 @@ export class ProjectCollaboration {
       return Promise.reject(new Error("Collaboration connection is unavailable"));
     }
     const requestId = crypto.randomUUID();
+    const draftGeneration = this.draftGeneration;
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_FLUSH);
     encoding.writeVarString(encoder, requestId);
@@ -448,7 +523,7 @@ export class ProjectCollaboration {
         this.flushRequests.delete(requestId);
         reject(new Error("Collaboration save timed out"));
       }, 5000);
-      this.flushRequests.set(requestId, { resolve, reject, timer });
+      this.flushRequests.set(requestId, { resolve, reject, timer, draftGeneration });
       socket.send(encoding.toUint8Array(encoder));
     });
   }
@@ -521,6 +596,7 @@ export class ProjectCollaboration {
     this.clearFormatLeaseStates();
     this.formatLeaseListeners.clear();
     this.meta.unobserve(this.metaObserver);
+    this.doc.off("afterTransaction", this.localDraftTransactionObserver);
     this.destroyUndoManagers();
     this.doc.destroy();
   }
@@ -624,6 +700,68 @@ export class ProjectCollaboration {
   private epochStorageKey(): string {
     return `texlite:collaboration-epoch:${this.user.id}:${this.projectId}`;
   }
+
+  private writableDraftStoragePrefix(): string {
+    return `texlite:collaboration-writable:${this.user.id}:${this.projectId}:`;
+  }
+
+  private ownWritableDraftStorageKey(): string {
+    return `${this.writableDraftStoragePrefix()}${this.draftTabId}`;
+  }
+
+  private markWritableDraft(): void {
+    this.draftGeneration += 1;
+    const marker: WritableDraftMarker = { generation: this.draftGeneration, updatedAt: Date.now() };
+    safeLocalStorageSet(this.ownWritableDraftStorageKey(), JSON.stringify(marker));
+  }
+
+  private clearWritableDraftMarkers(): void {
+    for (const { key } of this.readWritableDraftMarkers()) safeLocalStorageRemove(key);
+    // Clean up the short-lived map format used by the initial implementation.
+    safeLocalStorageRemove(this.writableDraftStoragePrefix().slice(0, -1));
+  }
+
+  private clearOwnWritableDraftMarker(flushedGeneration: number): void {
+    const marker = this.readOwnWritableDraftMarker();
+    if (!marker || !writableDraftCoveredByFlush(marker.generation, this.draftGeneration, flushedGeneration)) return;
+    safeLocalStorageRemove(this.ownWritableDraftStorageKey());
+  }
+
+  private readOwnWritableDraftMarker(): WritableDraftMarker | null {
+    return this.readWritableDraftMarker(this.ownWritableDraftStorageKey());
+  }
+
+  private readWritableDraftMarkers(): Array<{ key: string; tabId: string; marker: WritableDraftMarker }> {
+    const prefix = this.writableDraftStoragePrefix();
+    const markers: Array<{ key: string; tabId: string; marker: WritableDraftMarker }> = [];
+    for (const key of safeLocalStorageKeys()) {
+      if (!key.startsWith(prefix)) continue;
+      const marker = this.readWritableDraftMarker(key);
+      if (marker) markers.push({ key, tabId: key.slice(prefix.length), marker });
+    }
+    return markers;
+  }
+
+  private readWritableDraftMarker(key: string): WritableDraftMarker | null {
+    const raw = safeLocalStorageGet(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      const candidate = parsed as Partial<WritableDraftMarker>;
+      const now = Date.now();
+      if (!Number.isInteger(candidate.generation) || (candidate.generation ?? 0) < 0
+        || typeof candidate.updatedAt !== "number" || !Number.isFinite(candidate.updatedAt)
+        || candidate.updatedAt <= 0 || now - candidate.updatedAt > WRITABLE_DRAFT_MARKER_MAX_AGE_MS) {
+        safeLocalStorageRemove(key);
+        return null;
+      }
+      return { generation: candidate.generation!, updatedAt: candidate.updatedAt };
+    } catch {
+      safeLocalStorageRemove(key);
+      return null;
+    }
+  }
 }
 
 function safeLocalStorageGet(key: string): string | null {
@@ -632,6 +770,41 @@ function safeLocalStorageGet(key: string): string | null {
 
 function safeLocalStorageSet(key: string, value: string): void {
   try { window.localStorage.setItem(key, value); } catch { /* IndexedDB still retains the draft. */ }
+}
+
+function safeLocalStorageRemove(key: string): void {
+  try { window.localStorage.removeItem(key); } catch { /* Best-effort marker cleanup. */ }
+}
+
+function safeLocalStorageKeys(): string[] {
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key) keys.push(key);
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}
+
+function safeSessionStorageGet(key: string): string | null {
+  try { return window.sessionStorage.getItem(key); } catch { return null; }
+}
+
+function safeSessionStorageSet(key: string, value: string): void {
+  try { window.sessionStorage.setItem(key, value); } catch { /* IndexedDB still retains the draft. */ }
+}
+
+function getOrCreateDraftTabId(key: string): string {
+  const existing = safeSessionStorageGet(key);
+  if (existing) return existing;
+  const created = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  safeSessionStorageSet(key, created);
+  return created;
 }
 
 export function avatarInitial(name: string, username: string): string {

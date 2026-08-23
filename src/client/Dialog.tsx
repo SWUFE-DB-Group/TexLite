@@ -33,13 +33,13 @@ export function Modal({ open, title, description, onOpenChange, children, footer
   </DialogPrimitive.Root>;
 }
 
-export function ConfirmDialog({ open, title, description, confirmLabel, danger, onCancel, onConfirm }: {
+export function ConfirmDialog({ open, title, description, confirmLabel, danger, onCancel, onConfirm, error }: {
   open: boolean; title: string; description: string; confirmLabel?: string; danger?: boolean;
-  onCancel: () => void; onConfirm: () => void;
+  onCancel: () => void; onConfirm: () => void; error?: string;
 }) {
   const { t } = useTranslation();
   return <Modal open={open} title={title} description={description} onOpenChange={(next) => { if (!next) onCancel(); }} footer={<>
     <button onClick={onCancel}>{t("common.cancel")}</button>
     <button className={danger ? "danger" : "primary"} onClick={onConfirm}>{confirmLabel ?? t("common.remove")}</button>
-  </>}><div /></Modal>;
+  </>}><>{error && <p className="error dialog-error">{error}</p>}<div /></></Modal>;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBibtex, parseBibEntries, parseSingleBibEntry } from "../src/client/citationLibrary";
+import { BibtexFormatError, formatBibtex, MAX_CITATION_BIBTEX_BYTES, parseBibEntries, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
 
 describe("citation library BibTeX parser", () => {
   it("preserves complete entries and extracts common metadata", () => {
@@ -43,5 +43,17 @@ describe("citation library BibTeX parser", () => {
 
   it("formats valid BibTeX in the browser-facing helper", () => {
     expect(formatBibtex("@article{x,title={One},year=2026}")).toContain("title         = {One}");
+  });
+
+  it("distinguishes an oversized document from an empty or invalid one", () => {
+    expect(parseBibEntriesResult("")).toEqual({ status: "empty", entries: [] });
+    expect(parseBibEntriesResult("@article{x title={Y}}")).toEqual({ status: "invalid", entries: [] });
+    expect(parseBibEntriesResult("x".repeat(MAX_CITATION_BIBTEX_BYTES + 1))).toEqual({ status: "too-large", entries: [] });
+  });
+
+  it("reports typed formatting failures without embedding a UI language", () => {
+    expect(() => formatBibtex("@article{x title={Y}}")).toThrowError(expect.objectContaining<BibtexFormatError>({ kind: "invalid" }));
+    expect(() => formatBibtex("x".repeat(MAX_CITATION_BIBTEX_BYTES + 1)))
+      .toThrowError(expect.objectContaining<BibtexFormatError>({ kind: "too-large" }));
   });
 });
