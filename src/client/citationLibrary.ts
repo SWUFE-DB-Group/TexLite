@@ -107,6 +107,22 @@ export function parseSingleBibEntry(source: string): ParsedCitationEntry | null 
   return parseRawBibEntry(bibtex);
 }
 
+/** Return the publication venue used by the citation card, when available. */
+export function citationVenue(entry: Pick<ParsedCitationEntry, "bibtex">): string | null {
+  const header = entry.bibtex.match(/^@([A-Za-z][A-Za-z0-9_-]*)\s*([\{\(])\s*[^,\s\}\)]+\s*,/s);
+  if (!header || header.index === undefined) return null;
+  const opening = entry.bibtex.indexOf(header[2], header.index);
+  const closing = matchingDelimiter(entry.bibtex, opening, header[2] === "{" ? "}" : ")");
+  if (closing < 0) return null;
+  const fields = extractFields(entry.bibtex.slice(header[0].length, -1));
+  if (!fields) return null;
+  const entryType = header[1].toLowerCase();
+  const venue = /inproceedings|conference|incollection/.test(entryType)
+    ? fields.booktitle ?? fields.journal
+    : fields.journal ?? fields.booktitle;
+  return venue?.trim() || null;
+}
+
 function parseRawBibEntry(bibtex: string): ParsedCitationEntry | null {
   const header = bibtex.match(/^@([A-Za-z][A-Za-z0-9_-]*)\s*([\{\(])\s*([^,\s\}\)]+)\s*,/s);
   if (!header) return null;

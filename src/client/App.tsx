@@ -781,6 +781,12 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   onBackRef.current = onBack;
   activeMainFileRef.current = activeMainFile;
 
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 3_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const updateSourceCursor = (line: number, column: number, offset = 0) => {
     const next = { line, column };
     sourceCursorRef.current = next;

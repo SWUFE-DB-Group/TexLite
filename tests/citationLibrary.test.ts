@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BibtexFormatError, formatBibtex, MAX_CITATION_BIBTEX_BYTES, parseBibEntries, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
+import { BibtexFormatError, citationVenue, formatBibtex, MAX_CITATION_BIBTEX_BYTES, parseBibEntries, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
 
 describe("citation library BibTeX parser", () => {
   it("preserves complete entries and extracts common metadata", () => {
@@ -43,6 +43,11 @@ describe("citation library BibTeX parser", () => {
 
   it("formats valid BibTeX in the browser-facing helper", () => {
     expect(formatBibtex("@article{x,title={One},year=2026}")).toContain("title         = {One}");
+  });
+
+  it("extracts a conference or journal venue for citation cards", () => {
+    expect(citationVenue({ bibtex: "@inproceedings{x,booktitle={Proceedings of Example},title={Paper}}" })).toBe("Proceedings of Example");
+    expect(citationVenue({ bibtex: "@article{x,journal={Journal of Example},title={Paper}}" })).toBe("Journal of Example");
   });
 
   it("distinguishes an oversized document from an empty or invalid one", () => {

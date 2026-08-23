@@ -625,6 +625,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .citation-entry-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .citation-entry-heading code { color: #176b44; font: 650 11px/1.3 "SFMono-Regular", Consolas, monospace; }
 .citation-entry-heading > span { color: #859189; font-size: 10px; }
+.citation-entry-heading > .citation-entry-venue { max-width: 22rem; overflow: hidden; border-radius: 999px; padding: 2px 6px; background: #edf0ff; color: #4b5ca8; font-size: 9px; font-style: italic; font-synthesis: style; text-overflow: ellipsis; white-space: nowrap; }
 .citation-entry-heading em { display: inline-flex; align-items: center; gap: 3px; border-radius: 999px; padding: 2px 6px; background: #e8f2eb; color: #26704a; font-size: 9px; font-style: normal; }
 .citation-entry-heading em.private { background: #edf0ee; color: #69756d; }
 .citation-entry-main > strong { overflow: hidden; color: #2b3b31; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
