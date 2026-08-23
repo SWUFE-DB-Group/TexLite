@@ -22,6 +22,11 @@ const MESSAGE_FORMAT_LEASE = 9;
 const COLLABORATION_PROTOCOL_VERSION = 3;
 const FORMAT_LEASE_REQUEST_TIMEOUT_MS = 60_000;
 const WRITABLE_DRAFT_MARKER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const WRITABLE_DRAFT_HEARTBEAT_MS = 15_000;
+// Background tabs can throttle timers heavily. Keep enough margin to avoid
+// treating an open, temporarily suspended tab as abandoned; pagehide releases
+// the lease immediately during an ordinary close or navigation.
+const WRITABLE_DRAFT_ACTIVE_MAX_AGE_MS = 5 * 60_000;
 
 export type CollaborationStatus = "connecting" | "connected" | "disconnected";
 
@@ -89,6 +94,7 @@ interface FormatLeaseResponse {
 interface WritableDraftMarker {
   generation: number;
   updatedAt: number;
+  activeAt: number;
 }
 
 export function sharedCompileState(value: unknown): SharedCompileState | null {
@@ -123,6 +129,20 @@ export function writableDraftCoveredByFlush(
   return markerGeneration <= flushedGeneration && currentGeneration <= flushedGeneration;
 }
 
+export function writableDraftAvailability(
+  markers: ReadonlyArray<{ tabId: string; activeAt: number }>,
+  currentTabId: string,
+  now: number
+): { recoverable: boolean; otherActive: boolean } {
+  const active = (activeAt: number) => activeAt > 0 && now - activeAt <= WRITABLE_DRAFT_ACTIVE_MAX_AGE_MS;
+  return {
+    // An inactive marker still identifies a draft in the shared IndexedDB,
+    // but no live tab owns it, so the current tab may explicitly discard it.
+    recoverable: markers.some((marker) => marker.tabId === currentTabId || !active(marker.activeAt)),
+    otherActive: markers.some((marker) => marker.tabId !== currentTabId && active(marker.activeAt))
+  };
+}
+
 export class ProjectCollaboration {
   readonly doc = new Y.Doc();
   readonly provider: WebsocketProvider;
@@ -151,6 +171,11 @@ export class ProjectCollaboration {
   private readonly formatLeaseExpiryTimers = new Map<string, number>();
   private readonly draftTabId: string;
   private draftGeneration = 0;
+  private draftUpdatedAt = 0;
+  private draftMarkerPresent = false;
+  private draftHeartbeatTimer: number | null = null;
+  private readonly markDraftTabInactive: () => void;
+  private readonly markDraftTabActive: () => void;
   /**
    * CodeMirror remounts when the active file changes (for example when tabs
    * are enabled). Keep one undo manager per shared text instead of creating a
@@ -166,7 +191,18 @@ export class ProjectCollaboration {
   constructor(readonly projectId: string, private readonly user: User) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     this.draftTabId = getOrCreateDraftTabId(`texlite:collaboration-tab:${user.id}:${projectId}`);
-    this.draftGeneration = this.readOwnWritableDraftMarker()?.generation ?? 0;
+    const storedDraft = this.readOwnWritableDraftMarker();
+    this.draftGeneration = storedDraft?.generation ?? 0;
+    this.draftUpdatedAt = storedDraft?.updatedAt ?? 0;
+    this.draftMarkerPresent = storedDraft !== null;
+    this.markDraftTabInactive = () => this.setOwnDraftActivity(false);
+    this.markDraftTabActive = () => this.resumeOwnDraftActivity();
+    window.addEventListener("pagehide", this.markDraftTabInactive);
+    window.addEventListener("pageshow", this.markDraftTabActive);
+    if (storedDraft) {
+      this.setOwnDraftActivity(true);
+      this.startDraftHeartbeat();
+    }
     this.persistence = new IndexeddbPersistence(`texlite:${user.id}:${projectId}`, this.doc);
     this.localDraftTransactionObserver = (transaction) => {
       if (!transaction.local) return;
@@ -458,14 +494,24 @@ export class ProjectCollaboration {
     return true;
   }
 
-  /** Whether this browser tab has source changes not covered by its latest flush. */
+  /** Whether IndexedDB contains a draft that this tab may recover or discard. */
   get hasWritableDraft(): boolean {
-    return this.readOwnWritableDraftMarker() !== null;
+    const markers = this.readWritableDraftMarkers();
+    return writableDraftAvailability(
+      markers.map(({ tabId, marker }) => ({ tabId, activeAt: marker.activeAt })),
+      this.draftTabId,
+      Date.now()
+    ).recoverable;
   }
 
   /** Whether another browser tab has a pending draft in the shared IndexedDB. */
   get hasOtherWritableDraft(): boolean {
-    return this.readWritableDraftMarkers().some(({ tabId }) => tabId !== this.draftTabId);
+    const markers = this.readWritableDraftMarkers();
+    return writableDraftAvailability(
+      markers.map(({ tabId, marker }) => ({ tabId, activeAt: marker.activeAt })),
+      this.draftTabId,
+      Date.now()
+    ).otherActive;
   }
 
   setPermission(permission: Project["permission"], notify = false): void {
@@ -587,6 +633,10 @@ export class ProjectCollaboration {
 
   destroy(): void {
     this.destroyed = true;
+    this.setOwnDraftActivity(false);
+    this.stopDraftHeartbeat();
+    window.removeEventListener("pagehide", this.markDraftTabInactive);
+    window.removeEventListener("pageshow", this.markDraftTabActive);
     this.rejectFlushes(new Error("Collaboration connection closed"));
     this.provider.destroy();
     this.persistence.destroy();
@@ -711,12 +761,17 @@ export class ProjectCollaboration {
 
   private markWritableDraft(): void {
     this.draftGeneration += 1;
-    const marker: WritableDraftMarker = { generation: this.draftGeneration, updatedAt: Date.now() };
-    safeLocalStorageSet(this.ownWritableDraftStorageKey(), JSON.stringify(marker));
+    this.draftUpdatedAt = Date.now();
+    // Persist immediately for the first edit, then let the heartbeat coalesce
+    // subsequent keystrokes into one small localStorage write every 15s.
+    if (!this.draftMarkerPresent) this.writeOwnWritableDraftMarker(true);
+    this.startDraftHeartbeat();
   }
 
   private clearWritableDraftMarkers(): void {
     for (const { key } of this.readWritableDraftMarkers()) safeLocalStorageRemove(key);
+    this.draftMarkerPresent = false;
+    this.stopDraftHeartbeat();
     // Clean up the short-lived map format used by the initial implementation.
     safeLocalStorageRemove(this.writableDraftStoragePrefix().slice(0, -1));
   }
@@ -725,6 +780,8 @@ export class ProjectCollaboration {
     const marker = this.readOwnWritableDraftMarker();
     if (!marker || !writableDraftCoveredByFlush(marker.generation, this.draftGeneration, flushedGeneration)) return;
     safeLocalStorageRemove(this.ownWritableDraftStorageKey());
+    this.draftMarkerPresent = false;
+    this.stopDraftHeartbeat();
   }
 
   private readOwnWritableDraftMarker(): WritableDraftMarker | null {
@@ -756,11 +813,61 @@ export class ProjectCollaboration {
         safeLocalStorageRemove(key);
         return null;
       }
-      return { generation: candidate.generation!, updatedAt: candidate.updatedAt };
+      const activeAt = typeof candidate.activeAt === "number" && Number.isFinite(candidate.activeAt)
+        ? Math.max(0, candidate.activeAt)
+        : 0;
+      return { generation: candidate.generation!, updatedAt: candidate.updatedAt, activeAt };
     } catch {
       safeLocalStorageRemove(key);
       return null;
     }
+  }
+
+  private writeOwnWritableDraftMarker(active: boolean): void {
+    if (!this.draftMarkerPresent && this.draftUpdatedAt <= 0) return;
+    const marker: WritableDraftMarker = {
+      generation: this.draftGeneration,
+      updatedAt: this.draftUpdatedAt || Date.now(),
+      activeAt: active ? Date.now() : 0
+    };
+    safeLocalStorageSet(this.ownWritableDraftStorageKey(), JSON.stringify(marker));
+    this.draftMarkerPresent = true;
+  }
+
+  private setOwnDraftActivity(active: boolean): void {
+    if (!this.draftMarkerPresent) return;
+    this.writeOwnWritableDraftMarker(active);
+    if (active) this.startDraftHeartbeat();
+    else this.stopDraftHeartbeat();
+  }
+
+  private resumeOwnDraftActivity(): void {
+    // Another tab may have explicitly discarded the shared IndexedDB draft
+    // while this page was suspended in the back-forward cache. Do not revive
+    // a marker that no longer exists when pageshow restores this instance.
+    const marker = this.readOwnWritableDraftMarker();
+    if (!marker) {
+      this.draftMarkerPresent = false;
+      this.stopDraftHeartbeat();
+      return;
+    }
+    this.draftGeneration = Math.max(this.draftGeneration, marker.generation);
+    this.draftUpdatedAt = marker.updatedAt;
+    this.draftMarkerPresent = true;
+    this.setOwnDraftActivity(true);
+  }
+
+  private startDraftHeartbeat(): void {
+    if (this.draftHeartbeatTimer !== null || !this.draftMarkerPresent) return;
+    this.draftHeartbeatTimer = window.setInterval(() => {
+      this.writeOwnWritableDraftMarker(true);
+    }, WRITABLE_DRAFT_HEARTBEAT_MS);
+  }
+
+  private stopDraftHeartbeat(): void {
+    if (this.draftHeartbeatTimer === null) return;
+    window.clearInterval(this.draftHeartbeatTimer);
+    this.draftHeartbeatTimer = null;
   }
 }
 

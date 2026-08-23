@@ -175,6 +175,33 @@ export function useProjectCollaboration(
     }
   }, [collaboration, projectPermission, ready]);
 
+  const permissionDowngradeVisible = permissionDowngrade !== null;
+  useEffect(() => {
+    if (!permissionDowngradeVisible) return;
+    const refreshDraftAvailability = () => {
+      if (collaboration.currentPermission !== "read") return;
+      const nextLocalDraftReady = collaboration.hasWritableDraft;
+      const nextOtherTabDraft = collaboration.hasOtherWritableDraft;
+      setPermissionDowngrade((current) => {
+        if (!current
+          || (current.localDraftReady === nextLocalDraftReady && current.otherTabDraft === nextOtherTabDraft)) {
+          return current;
+        }
+        return {
+          ...current,
+          localDraftReady: nextLocalDraftReady,
+          otherTabDraft: nextOtherTabDraft
+        };
+      });
+    };
+    refreshDraftAvailability();
+    // localStorage does not dispatch a storage event in the tab that wrote it,
+    // and a crashed tab cannot announce its departure. Poll only while this
+    // rare modal is visible so an expired activity lease becomes actionable.
+    const timer = window.setInterval(refreshDraftAvailability, 2_000);
+    return () => window.clearInterval(timer);
+  }, [collaboration, permissionDowngradeVisible]);
+
   const reconnect = () => {
     setStatus("connecting");
     setSynced(false);
