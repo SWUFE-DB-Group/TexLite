@@ -1,15 +1,9 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api";
-import { ConfirmDialog, Modal } from "../Dialog";
 import type { CitationLibraryEntry, FileEntry, LatexCompletionIndex, Project, SiteConfig, User } from "../types";
 import i18n from "../i18n";
-import {
-  AlertTriangle, AlignLeft, ArrowLeft, BookMarked, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Download, Eraser, FileArchive, FilePlus2, FileText, Keyboard,
-  FileSearch, Folder, FolderOpen, FolderPlus, GitBranch, GripVertical, ListTree, LoaderCircle, MessageSquare, PackageOpen,
-  Move, PanelLeftClose, PanelLeftOpen, Pencil, Play, RefreshCw, ScrollText,
-  Search, Settings, Trash2, Upload, Users, X, XCircle
-} from "lucide-react";
+import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
@@ -18,10 +12,6 @@ import { classifyCompileLog } from "../compileLog";
 import type { CollaborationSaveReceipt, FormatLease } from "../collaboration";
 import { errorMessage } from "../errors";
 import type { WorkspaceLayout } from "../workspace/types";
-import { CollaborationPresence, WorkspaceLayoutMenu } from "../workspace/WorkspaceChrome";
-import { CommentThread, ShareDialog } from "../workspace/Comments";
-import { ProjectSettings } from "../workspace/ProjectSettings";
-import { CompileArtifacts, CompileCleanup, CompileDiagnosticOutput, CompileOutput } from "../workspace/CompileOutput";
 import type { CompileCleanMode } from "../workspace/useProjectCompilation";
 import { useProjectComments, type SourceSelection } from "../workspace/useProjectComments";
 import { useProjectCollaboration } from "../workspace/useProjectCollaboration";
@@ -31,28 +21,22 @@ import { useSpellCheck } from "../workspace/useSpellCheck";
 import { useSyncTeX } from "../workspace/useSyncTeX";
 import { useWorkspaceLayout } from "../workspace/useWorkspaceLayout";
 import type { SpellCheckIssue } from "../spellCheck";
-import { CitationLibraryDialog } from "../CitationLibraryDialog";
 import { loadPdfPreview, type WorkspacePreload } from "../workspacePreload";
 import { hasDocumentClass as hasDocumentClassInSource } from "../latexRoot";
-import { SiteLogo } from "./SiteChrome";
-
-const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
-const LatexEditor = lazy(() => import("../LatexEditor").then((module) => ({ default: module.LatexEditor })));
-const GitDialog = lazy(() => import("../GitDialog").then((module) => ({ default: module.GitDialog })));
-const HistoryDialog = lazy(() => import("../HistoryDialog").then((module) => ({ default: module.HistoryDialog })));
-const ProjectSearchDialog = lazy(() => import("../ProjectNavigationDialogs").then((module) => ({ default: module.ProjectSearchDialog })));
-const QuickOpenDialog = lazy(() => import("../ProjectNavigationDialogs").then((module) => ({ default: module.QuickOpenDialog })));
+import { WorkspaceTopbar } from "../workspace/WorkspaceTopbar";
+import { WorkspaceFilePanel } from "../workspace/WorkspaceFilePanel";
+import { WorkspaceEditorPanel } from "../workspace/WorkspaceEditorPanel";
+import { WorkspacePreviewPanel } from "../workspace/WorkspacePreviewPanel";
+import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
+import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
+import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
-type PreviewTab = "pdf" | "log" | "warnings" | "errors" | "artifacts" | "clean";
-type PreviewSurface = "pdf" | "diagnostics";
-type DiagnosticTab = Exclude<PreviewTab, "pdf">;
 type FormatterRecoveryAction = "file" | "selection";
 interface FormatterRecovery { action: FormatterRecoveryAction; kind: TexFmtFailureKind; detail: string }
 interface FormattedSource { formatted: string; diagnostics: string }
-interface ProjectOutlineItem { path: string; line: number; level: number; title: string }
 interface LoadOptions { signal?: AbortSignal; isCurrent?: () => boolean }
 
 export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
@@ -79,9 +63,13 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const sourceCursorOffsetRef = useRef(0);
   const [previewTab, setPreviewTab] = useState<PreviewSurface>("pdf");
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticTab>("log");
-  const selectPreviewTab = (next: PreviewTab): void => {
+  const selectPreviewTab = (next: PreviewTab | PreviewSurface): void => {
     if (next === "pdf") {
       setPreviewTab("pdf");
+      return;
+    }
+    if (next === "diagnostics") {
+      setPreviewTab("diagnostics");
       return;
     }
     setDiagnosticTab(next);
@@ -926,42 +914,23 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     : t(saveState);
 
   return <div className="workspace">
-    <header className="editor-topbar">
-      <button className="back" title={t("editor.backToProjects")} aria-label={t("editor.backToProjects")} onClick={onBack}><ArrowLeft size={18} /></button><a className="brand-link compact-brand-link" href="/" aria-label={site.siteName} onClick={(event) => { event.preventDefault(); onBack(); }}><SiteLogo siteName={site.siteName} compact /></a>
-      <div className="project-heading"><strong>{project.name}</strong><small>{activeFile} · {saveStateLabel}</small></div>
-      {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
-      <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
-      {collaborationStatus === "disconnected" && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
-      <div className="editor-actions">
-        {showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}
-        <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} />
-        <button onClick={() => setShareOpen(true)}><Users size={15} />{t("projectSettings.share")}</button>
-        {showEditor && /\.bib$/i.test(activeFile) && <button className={citationLibraryOpen ? "active" : ""} onClick={() => setCitationLibraryOpen(true)}><BookMarked size={15} />{t("citationLibrary.title")}</button>}
-        <div className="version-action" role="group" aria-label={t("common.version")}>
-          <div className="version-action-label"><GitBranch size={14} /><span>{t("common.version")}</span></div>
-          <div className="version-action-options">
-            <button type="button" className="version-action-history" title={t("history.title")} onClick={() => setHistoryOpen(true)}>{t("history.title")}</button>
-            <button type="button" className="version-action-git" title={project.ownerId === user.id ? t("git.title") : t("git.ownerOnly")} disabled={project.ownerId !== user.id} onClick={() => setGitOpen(true)}>Git</button>
-          </div>
-        </div>
-        {showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <div className="format-action" role="group" aria-label={t("editor.format")} aria-busy={formatting}>
-          <div className="format-action-label"><AlignLeft size={14} /><span>{t("editor.format")}</span></div>
-          <div className="format-action-options">
-            <button type="button" className="format-action-file" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatCurrentFile()} disabled={readOnly || formatting || Boolean(activeFormatLease) || !collaborationSynced}>{t("editor.formatFile")}</button>
-            <button type="button" className="format-action-selected" title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || Boolean(activeFormatLease) || !collaborationSynced || !selection.selectedText.trim()}>{t("editor.formatSelected")}</button>
-          </div>
-        </div>}
-        <div className="comments-action" role="group" aria-label={t("common.comments")}>
-          <div className="comments-action-label"><MessageSquare size={14} /><span>{t("common.comments")}</span></div>
-          <div className="comments-action-options">
-            <button type="button" className="comments-action-add" title={t("editor.addComment")} aria-label={t("editor.addComment")} onMouseDown={(event) => event.preventDefault()} onClick={() => setCommentOpen(true)} disabled={!activeFile}>{t("editor.commentsAdd")}</button>
-            <button type="button" className={`comments-action-all${sidePanel === "comments" ? " active" : ""}`} title={t("editor.commentsAll")} onClick={() => setSidePanel(sidePanel === "comments" ? null : "comments")}>{t("editor.commentsAll")} {comments.filter((item) => !item.resolved).length || ""}</button>
-          </div>
-        </div>
-        <button className={sidePanel === "settings" ? "active" : ""} onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}><Settings size={15} />{t("common.settings")}</button>
-        <button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={compile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button>
-      </div>
-    </header>
+    <WorkspaceTopbar
+      site={site} project={project} activeFile={activeFile} saveStateLabel={saveStateLabel}
+      editorPreferences={editorPreferences} activeSessions={activeSessions} collaborationStatus={collaborationStatus}
+      reconnectCollaboration={reconnectCollaboration} showEditor={showEditor} filesCollapsed={filesCollapsed}
+      toggleFilesPanel={toggleFilesPanel} workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
+      onBack={onBack} onShare={() => setShareOpen(true)} showCitationLibrary={showEditor && /\.bib$/i.test(activeFile)}
+      citationLibraryOpen={citationLibraryOpen} onCitationLibrary={() => setCitationLibraryOpen(true)}
+      onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
+      formatting={formatting} canFormat={isFormattableLatexFile(activeFile)} readOnly={readOnly} collaborationSynced={collaborationSynced}
+      activeFormatLease={Boolean(activeFormatLease)} onFormatFile={() => void formatCurrentFile()}
+      onFormatSelection={() => void formatSelectedSource()} hasSelection={Boolean(selection.selectedText.trim())}
+      onAddComment={() => setCommentOpen(true)} onToggleComments={() => setSidePanel(sidePanel === "comments" ? null : "comments")}
+      commentsOpen={sidePanel === "comments"} unresolvedCommentCount={comments.filter((item) => !item.resolved).length}
+      hasActiveFile={Boolean(activeFile)} onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
+      settingsOpen={sidePanel === "settings"} compileBusy={compileBusy} sharedCompiling={sharedCompiling}
+      localCompiling={localCompiling} compileState={compileState} onCompile={compile}
+    />
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
     {(spellCheck.error || formatterRecovery || formatterDiagnostics || remoteFormatLease) && <div className="client-tool-recoveries">
       {spellCheck.error && <div className="client-tool-recovery" role="alert" title={spellCheck.error}><AlertTriangle size={15} /><span><strong>{t("editor.harperRecoveryTitle")}</strong>{t("editor.harperFallbackHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={spellCheck.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={spellCheck.dismissError}><X size={13} /></button></div>}
@@ -971,162 +940,96 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     </div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
-    {permissionDowngrade && <Modal
-      open
-      title={t("editor.collaboration.permissionDowngradeTitle")}
-      description={permissionDowngrade.localDraftReady && permissionDowngrade.otherTabDraft
-        ? t("editor.collaboration.permissionDowngradeMultipleDrafts")
-        : permissionDowngrade.otherTabDraft
-          ? t("editor.collaboration.permissionDowngradeOtherTab")
-          : permissionDowngrade.localDraftReady
-        ? t("editor.collaboration.permissionDowngradeDescription", {
-          previous: t("common.readWrite")
-        })
-        : t("editor.collaboration.permissionDowngradeNoDraft")}
-      onOpenChange={(open) => { if (!open && !permissionDowngradeBusy) dismissPermissionDowngrade(); }}
-      footer={<>
-        <button type="button" disabled={permissionDowngradeBusy} onClick={dismissPermissionDowngrade}>{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeKeep") : t("common.close")}</button>
-        {!permissionDowngrade.otherTabDraft && <button type="button" className="danger" disabled={permissionDowngradeBusy} onClick={() => void discardPermissionDraft()}>{permissionDowngradeBusy ? <LoaderCircle className="spin" size={14} /> : permissionDowngrade.localDraftReady ? <Trash2 size={14} /> : <RefreshCw size={14} />}{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeDiscard") : t("editor.collaboration.permissionDowngradeReload")}</button>}
-      </>}
-    ><div /></Modal>}
     <PanelGroup autoSaveId="texlite-workspace-layout" direction="horizontal" className="work-grid">
-      {showEditor && <Panel id="files" order={1} ref={filesPanel} defaultSize={16} minSize={12} maxSize={30} collapsible collapsedSize={0} onCollapse={() => setFilesCollapsed(true)} onExpand={() => setFilesCollapsed(false)}>
-        <aside className="left-panel"><section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly && !uploadingFiles) setFileDragActive(true); }} onDragOver={(event) => { if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly || uploadingFiles ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { event.preventDefault(); setFileDragActive(false); if (!readOnly && !uploadingFiles) void uploadFiles(Array.from(event.dataTransfer.files)); }}><div className="panel-title"><span>{t("common.files")}</span><span className="file-tools"><button aria-label={t("navigation.quickOpen")} title={`${t("navigation.quickOpen")} (Ctrl/Cmd+P)`} onClick={() => setQuickOpen(true)}><FileSearch size={15} /></button><button aria-label={t("navigation.projectSearch")} title={`${t("navigation.projectSearch")} (Ctrl/Cmd+Shift+F)`} onClick={() => setProjectSearchOpen(true)}><Search size={15} /></button>{!readOnly && <><button disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} /></button><button aria-label={t("editor.newFolder")} title={t("editor.newFolder")} onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}><FolderPlus size={15} /></button><button aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} /></button><input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} /></>}<button aria-label={t("editor.collapseFiles")} title={t("editor.collapseFiles")} onClick={toggleFilesPanel}><PanelLeftClose size={15} /></button></span></div>
-          {fileDragActive && <div className="file-drop-overlay"><Upload size={24} /><strong>{t("editor.dropFiles")}</strong><span>{t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })}</span></div>}
-          <div className="file-list" style={{ fontSize: `${editorPreferences.fontSize}px` }}><div className={`file-entry folder-entry root-entry${selectedFolder === "" ? " selected" : ""}`}><button className="file-entry-main" onClick={() => setSelectedFolder("")}><FolderOpen size={15} /><span>{t("editor.projectRoot")}</span></button></div>{visibleEntries.map((entry) => {
-            const depth = entry.path.split("/").length - 1;
-            const name = entry.path.split("/").at(-1);
-            const expanded = expandedFolders.has(entry.path);
-            const rootDocument = rootDocuments.has(entry.path);
-            const compileTarget = activeMainFile === entry.path;
-            const canDelete = entry.path !== project.mainFile && !project.mainFile.startsWith(`${entry.path}/`);
-            if (entry.type === "directory") return <div className={`file-entry folder-entry${selectedFolder === entry.path ? " selected" : ""}`} style={{ paddingLeft: `${depth * 13 + 5}px` }} key={entry.path}><button className="file-entry-main" title={entry.path} onClick={() => { setSelectedFolder(entry.path); setExpandedFolders((current) => { const next = new Set(current); if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path); return next; }); }}>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={14} /><span>{name}</span></button>{!readOnly && <><button className="file-entry-action" title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>{canDelete && <button className="file-entry-action danger-text" title={t("editor.deletePath")} aria-label={t("editor.deletePath")} onClick={() => { setDeleteEntry(entry); setFileDialogError(""); }}><Trash2 size={13} /></button>}</>}</div>;
-            return <div className={`file-entry${activeFile === entry.path ? " active" : ""}${rootDocument ? " root-document" : ""}${compileTarget ? " compile-target" : ""}`} style={{ paddingLeft: `${depth * 13 + 18}px` }} key={entry.path}><button className="file-entry-main" title={compileTarget ? t("editor.currentMainDocument", { path: entry.path }) : rootDocument ? t("editor.mainDocumentCandidate", { path: entry.path }) : entry.path} onClick={() => openFile(entry)}>{rootDocument ? <BookOpen size={13} /> : <FileText size={13} />}<span>{name}</span>{compileTarget && <small>{t("editor.currentMainShort")}</small>}</button>{!readOnly && <><button className="file-entry-action" title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>{canDelete && <button className="file-entry-action danger-text" title={t("editor.deletePath")} aria-label={t("editor.deletePath")} onClick={() => { setDeleteEntry(entry); setFileDialogError(""); }}><Trash2 size={13} /></button>}</>}</div>;
-          })}</div></section>
-          <section className="outline-panel"><div className="panel-title"><span><ListTree size={14} />{t("common.outline")}</span></div><div className="outline">{outline.map((item, i) => <button className={`outline-item${activeFile === item.path && sourceCursor.line === item.line ? " current" : ""}`} key={`${item.path}-${item.line}-${i}`} title={`${item.path}:${item.line}`} onClick={() => { jumpToSource(item.path, item.line, 1); void syncSourceToPdf(item.path, item.line, 1); }}><span className="outline-guides" aria-hidden style={{ width: `${item.level * 12}px` }} /><small>{item.path === activeFile ? item.line : item.path.split("/").at(-1)}</small><span className="outline-title">{item.title}</span></button>)}{outline.length === 0 && <p className="muted padded">{t("editor.noOutline")}</p>}</div></section>
-        </aside>
-      </Panel>}
+      {showEditor && <WorkspaceFilePanel
+        project={project} filesPanel={filesPanel} files={files} visibleEntries={visibleEntries}
+        activeFile={activeFile} activeMainFile={activeMainFile} rootDocuments={rootDocuments}
+        selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
+        uploadingFiles={uploadingFiles} readOnly={readOnly} editorFontSize={editorPreferences.fontSize}
+        outline={outline} sourceCursor={sourceCursor} uploadInput={uploadInput}
+        setSelectedFolder={setSelectedFolder} setExpandedFolders={setExpandedFolders}
+        setMoveEntry={setMoveEntry} setMoveName={setMoveName} setMoveDestination={setMoveDestination}
+        setDeleteEntry={setDeleteEntry} setFileDialogError={setFileDialogError}
+        setNewFolderName={setNewFolderName} setNewFolderOpen={setNewFolderOpen}
+        setNewFilePath={setNewFilePath} setNewFileOpen={setNewFileOpen}
+        setQuickOpen={setQuickOpen} setProjectSearchOpen={setProjectSearchOpen}
+        setFileDragActive={setFileDragActive} setFilesCollapsed={setFilesCollapsed} toggleFilesPanel={toggleFilesPanel}
+        uploadFiles={uploadFiles} upload={upload} openFile={openFile}
+        jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf}
+      />}
       {showEditor && <PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle>}
-      {showEditor && <Panel id="source" order={2} defaultSize={42} minSize={22}>
-        <main className="source-panel">
-          {editorPreferences.openFilesInTabs && openTabs.length > 0 && (
-            <div className="editor-tabs-bar" role="tablist" aria-label={t("editor.openFiles")}>
-              <div className="editor-tabs-scroll">
-                {openTabs.map((tabPath, index) => {
-                  const isActive = tabPath === activeFile;
-                  const isMain = tabPath === (activeMainFile || project.mainFile);
-                  const fileName = tabPath.split("/").at(-1) || tabPath;
-                  return (
-                    <div className={`editor-tab-item${isActive ? " active" : ""}`} role="presentation" key={tabPath}>
-                      <button
-                      id={`editor-tab-${encodeURIComponent(tabPath)}`}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      aria-controls="editor-source-content"
-                      tabIndex={isActive ? 0 : -1}
-                      className={`editor-tab${isActive ? " active" : ""}${isMain ? " main-tab" : ""}`}
-                      onClick={() => activateTab(tabPath)}
-                      onKeyDown={(event) => handleTabKeyDown(event, index)}
-                      title={tabPath}
-                    >
-                      <span className="editor-tab-icon">
-                        {isMain ? <BookOpen size={13} /> : <FileText size={13} />}
-                      </span>
-                      <span className="editor-tab-title">{fileName}</span>
-                      {isMain && <small className="editor-tab-badge">{t("editor.currentMainShort")}</small>}
-                    </button>
-                    <button
-                      type="button"
-                      className="editor-tab-close"
-                      title={t("common.close")}
-                      aria-label={`${t("common.close")} ${fileName}`}
-                      onClick={() => closeTab(tabPath)}
-                    >
-                      <X size={12} />
-                    </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          <div id="editor-source-content" className="editor-content-container">
-            <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
-              <LatexEditor key={activeFile} value={content} filePath={activeFile} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} nativeSpellCheck={spellCheck.nativeFallback} completionIndex={completionIndex} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness, undoManager: readOnly ? undefined : collaboration.getUndoManager(activeFile) } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor} />
-            </Suspense>
-            {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
-          </div>
-        </main>
-      </Panel>}
-      {showEditor && showPreview && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport || !canSyncWithPdf} title={canSyncWithPdf ? t("editor.showInSource") : t("editor.syncTexOnlyForMain")} aria-label={t("editor.showInSource")} onClick={() => { if (!canSyncWithPdf) { setNotice(t("editor.syncTexOnlyForMain")); return; } syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={canSyncWithPdf ? t("editor.showInPdf") : t("editor.syncTexOnlyForMain")} aria-label={t("editor.showInPdf")} onClick={() => { if (!canSyncWithPdf) { setNotice(t("editor.syncTexOnlyForMain")); return; } void syncSourceToPdf(activeFile, sourceCursor.line, sourceCursor.column); }}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
-      {showPreview && <Panel id="preview" order={3} defaultSize={42} minSize={22}>
-        <section className="preview-panel">
-          <div className="preview-tabs">
-            <div className="preview-tab-list" role="tablist" aria-label={t("editor.outputTabs")}>
-              <button role="tab" aria-selected={previewTab === "pdf"} className={`pdf-tab${previewTab === "pdf" ? " active" : ""}`} onClick={() => selectPreviewTab("pdf")} title={pdfCompiledAt ? t("editor.pdfCompiledAtFor", { file: activeMainFile, time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) }) : t("editor.currentMainDocument", { path: activeMainFile })}><FileText size={16} /><span className="pdf-tab-label">PDF · {pdfTargetLabel}{pdfCompiledLabel && <small>{pdfCompiledLabel}</small>}</span></button>
-              <button role="tab" aria-selected={previewTab === "diagnostics"} className={`diagnostics-tab${previewTab === "diagnostics" ? " active" : ""}`} onClick={() => setPreviewTab("diagnostics")}><ScrollText size={14} />{t("editor.outputTabs")}<span>{diagnosticCount}</span></button>
-            </div>
-            {pdfDownloadUrl && <a className="pdf-download-top" href={pdfDownloadUrl} download title={t("editor.downloadPdf")} aria-label={t("editor.downloadPdf")}><Download size={15} /><span>{t("editor.downloadPdf")}</span></a>}
-          </div>
-          {previewTab === "diagnostics" && <div className="preview-subtabs" role="tablist" aria-label={t("editor.outputTabs")}>
-            <button role="tab" aria-selected={diagnosticTab === "log"} className={diagnosticTab === "log" ? "active" : ""} onClick={() => selectPreviewTab("log")}><ScrollText size={13} />{t("editor.log")}</button>
-            <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{compileMessages.warnings.length}</span></button>
-            <button role="tab" aria-selected={diagnosticTab === "errors"} className={diagnosticTab === "errors" ? "active" : ""} onClick={() => selectPreviewTab("errors")}><XCircle size={13} />{t("editor.errors")}<span>{compileMessages.errors.length}</span></button>
-            <button role="tab" aria-selected={diagnosticTab === "artifacts"} className={diagnosticTab === "artifacts" ? "active" : ""} onClick={() => selectPreviewTab("artifacts")}><PackageOpen size={13} />{t("editor.artifacts")}<span>{artifacts.length}</span></button>
-            <button role="tab" aria-selected={diagnosticTab === "clean"} className={diagnosticTab === "clean" ? "active" : ""} onClick={() => selectPreviewTab("clean")}><Eraser size={13} />{t("editor.clean")}</button>
-          </div>}
-          <div className={`preview-content preview-${previewTab} ${previewTab === "diagnostics" ? `preview-${diagnosticTab}` : ""}`}>
-            {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}><PdfPreview url={pdfUrl} loadingMode={pdfLoadingMode} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} onDoubleClickLocation={(page, x, y) => { setPdfViewport({ page, x, y }); if (!canSyncWithPdf) { setNotice(t("editor.syncTexOnlyForMain")); return; } void syncPdfToSource(page, x, y); }} /></Suspense> : pdfLoading ? <div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
-            {previewTab === "diagnostics" && diagnosticTab === "log" && <CompileOutput lines={compileLog ? compileLog.split("\n") : []} empty={localCompiling ? t("editor.compiling") : t("editor.noLog")} />}
-            {previewTab === "diagnostics" && diagnosticTab === "warnings" && (compileDiagnostics
-              ? <CompileDiagnosticOutput tone="warning" diagnostics={compileDiagnostics.warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />
-              : <CompileOutput tone="warning" lines={compileMessages.warnings} empty={t("editor.noWarnings")} />)}
-            {previewTab === "diagnostics" && diagnosticTab === "errors" && (compileDiagnostics
-              ? <CompileDiagnosticOutput tone="error" diagnostics={compileDiagnostics.errors} files={files} empty={t("editor.noErrors")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />
-              : <CompileOutput tone="error" lines={compileMessages.errors} empty={t("editor.noErrors")} />)}
-            {previewTab === "diagnostics" && diagnosticTab === "artifacts" && <CompileArtifacts projectId={projectId} mainFile={activeMainFile} artifacts={artifacts} preview={artifactPreview} loading={artifactLoading} onView={(artifact) => void viewArtifact(artifact)} />}
-            {previewTab === "diagnostics" && diagnosticTab === "clean" && <CompileCleanup mainFile={activeMainFile} disabled={readOnly || !collaborationSynced || compileBusy} cleaning={cleaning} onCleanCache={() => setCleanMode("cache")} onCleanArtifacts={() => setCleanMode("artifacts")} />}
-          </div>
-        </section>
-      </Panel>}
-      {sidePanel && <><PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle><Panel id="context" order={4} defaultSize={20} minSize={15} maxSize={38}><aside className="context-panel"><div className="drawer-title"><strong>{sidePanel === "comments" ? t("editor.sourceComments") : t("editor.projectSettings")}</strong><button aria-label={t("common.close")} onClick={() => setSidePanel(null)}><X size={17} /></button></div>
-          {sidePanel === "comments" && <div className="comments">{comments.map((comment) => <CommentThread key={comment.id} comment={comment} currentUserId={user.id} onFocus={() => setFocusComment({ ...comment })} onToggle={() => void toggleComment(comment)} onReply={(content) => replyToComment(comment, content)} onEdit={(content) => editComment(comment, content)} onDelete={() => deleteComment(comment)} onEditReply={(replyId, content) => editCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => deleteCommentReply(comment, replyId)} />)}{comments.length === 0 && <p className="muted padded">{t("editor.noComments")}</p>}</div>}
-          {sidePanel === "settings" && <ProjectSettings project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={setDictionaryWords} editorPreferences={editorPreferences} onEditorPreferences={updateEditorPreferences} spellCheckCount={spellCheck.summary?.total ?? null} spellCheckUniqueCount={spellCheck.summary?.unique ?? null} spellCheckIndex={spellCheck.summary ? spellCheck.index : -1} onSpellCheckNavigate={spellCheck.jumpToIssue} onProject={setProject} />}
-        </aside></Panel></>}
+      {showEditor && <WorkspaceEditorPanel
+        project={project} activeFile={activeFile} activeMainFile={activeMainFile} openTabs={openTabs}
+        content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
+        focusComment={focusComment} editorPreferences={editorPreferences} completionIndex={completionIndex}
+        nativeSpellCheck={spellCheck.nativeFallback} spellCheckIssues={spellCheck.issues}
+        spellCheckJump={spellCheck.jump} sourceJump={sourceJump} collaborativeText={collaborativeText}
+        collaborationAwareness={collaboration.awareness} undoManager={activeFile ? collaboration.getUndoManager(activeFile) : undefined}
+        editorNotice={editorNotice} activateTab={activateTab} closeTab={closeTab}
+        handleTabKeyDown={handleTabKeyDown} updateEditorContent={updateEditorContent}
+        setSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })}
+        onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }}
+        onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor}
+      />}
+      {showPreview && <WorkspacePreviewPanel
+        projectId={projectId} activeMainFile={activeMainFile} previewTab={previewTab} diagnosticTab={diagnosticTab}
+        pdfUrl={pdfUrl} pdfLoadingMode={pdfLoadingMode} pdfLoading={pdfLoading} pdfCompiledAt={pdfCompiledAt}
+        pdfCompiledLabel={pdfCompiledLabel} pdfTargetLabel={pdfTargetLabel} pdfDownloadUrl={pdfDownloadUrl}
+        pdfTarget={pdfTarget} pdfViewport={pdfViewport} activeFile={activeFile} sourceCursor={sourceCursor}
+        compileBusy={compileBusy} compileLog={compileLog} compileDiagnostics={compileDiagnostics}
+        compileMessages={compileMessages} artifacts={artifacts}
+        artifactPreview={artifactPreview} artifactLoading={artifactLoading} cleaning={cleaning}
+        readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={showEditor && showPreview}
+        diagnosticCount={diagnosticCount} selectPreviewTab={selectPreviewTab}
+        changeWorkspaceLayout={changeWorkspaceLayout} onSetNotice={setNotice} onSetPdfViewport={setPdfViewport}
+        syncVisiblePdfToSource={syncVisiblePdfToSource} syncSourceToPdf={syncSourceToPdf}
+        syncPdfToSource={syncPdfToSource} canSyncWithPdf={canSyncWithPdf} files={files}
+        jumpToSource={jumpToSource} onSetCleanMode={setCleanMode} cleanCompile={cleanCompile}
+        viewArtifact={viewArtifact}
+      />}
+      <WorkspaceContextPanel
+        sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
+        site={site} files={files} currentUserId={user.id} comments={comments}
+        onFocusComment={(comment) => setFocusComment({ ...comment })} onToggleComment={toggleComment}
+        onReplyComment={replyToComment} onEditComment={editComment} onDeleteComment={deleteComment}
+        onEditCommentReply={editCommentReply} onDeleteCommentReply={deleteCommentReply}
+        dictionaryWords={dictionaryWords} onDictionaryChange={setDictionaryWords}
+        editorPreferences={editorPreferences} onEditorPreferences={updateEditorPreferences}
+        spellCheckCount={spellCheck.summary?.total ?? null} spellCheckUniqueCount={spellCheck.summary?.unique ?? null}
+        spellCheckIndex={spellCheck.summary ? spellCheck.index : -1} onSpellCheckNavigate={spellCheck.jumpToIssue}
+        onProject={setProject}
+      />
     </PanelGroup>
-    <Modal open={Boolean(resourcePreview)} extraWide={resourcePreview?.kind === "image" || resourcePreview?.kind === "pdf" || resourcePreview?.kind === "text"} title={resourcePreview?.path ?? ""} description={resourcePreview?.kind === "large" ? t("editor.resourceTooLarge", { size: formatFileSize(resourcePreview.size), limit: "10 MB" }) : t(`editor.resourcePreview.${resourcePreview?.kind ?? "text"}`)} onOpenChange={(open) => { if (!open) { setResourcePreview(null); setResourcePreviewLoading(false); } }} footer={resourcePreview && <a className="primary resource-download" href={`${resourcePreview.url}&download=1`} download><Download size={14} />{t("editor.downloadResource")}</a>}>
-      {resourcePreview?.kind === "large" && <div className="resource-preview-message"><FileArchive size={34} /><strong>{t("editor.resourceTooLargeTitle")}</strong><span>{t("editor.resourceTooLargeDescription")}</span></div>}
-      {resourcePreview?.kind === "unsupported" && <div className="resource-preview-message"><FileArchive size={34} /><strong>{t("editor.resourceUnsupportedTitle")}</strong><span>{t("editor.resourceUnsupportedDescription")}</span></div>}
-      {resourcePreview?.kind === "image" && <div className="resource-image-wrap"><img className="resource-image" src={resourcePreview.url} alt={resourcePreview.path} /></div>}
-      {resourcePreview?.kind === "pdf" && <iframe className="resource-pdf" src={resourcePreview.url} title={resourcePreview.path} />}
-      {resourcePreview?.kind === "text" && (resourcePreviewLoading ? <div className="resource-preview-message"><LoaderCircle className="spin" size={24} /><span>{t("common.loading")}</span></div> : <pre className="resource-text">{resourcePreview.content}</pre>)}
-    </Modal>
-    <ConfirmDialog open={Boolean(uploadConflict)} title={t("editor.uploadOverwriteTitle")} description={t("editor.uploadOverwriteDescription", { files: uploadConflict?.collisions.join(", ") ?? "" })} confirmLabel={t("editor.uploadOverwrite")} danger onCancel={() => setUploadConflict(null)} onConfirm={() => { const pending = uploadConflict; setUploadConflict(null); if (pending) void uploadFiles(pending.files, new Set(pending.collisions), pending.directory); }} />
-    <ConfirmDialog open={Boolean(cleanMode)} title={cleanMode === "cache" ? t("editor.cleanCacheConfirmTitle") : t("editor.cleanArtifactsConfirmTitle")} description={cleanMode === "cache" ? t("editor.cleanCacheConfirmDescription") : t("editor.cleanArtifactsConfirmDescription")} confirmLabel={t("editor.cleanConfirm")} danger={cleanMode === "artifacts"} onCancel={() => setCleanMode(null)} onConfirm={() => { const mode = cleanMode; setCleanMode(null); if (mode) void cleanCompile(mode); }} />
-    <Modal open={newFileOpen} title={t("editor.newFile")} description={t("editor.newFileDescription")} onOpenChange={(open) => { setNewFileOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFileOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFile()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.filePath")}<input autoFocus value={newFilePath} onChange={(event) => setNewFilePath(event.target.value)} /></label></></Modal>
-    <Modal open={newFolderOpen} title={t("editor.newFolder")} description={t("editor.folderDestination", { folder: selectedFolder || t("editor.projectRoot") })} onOpenChange={(open) => { setNewFolderOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFolderOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFolder()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.folderName")}<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></label></></Modal>
-    <Modal open={Boolean(moveEntry)} title={t("editor.moveTitle", { name: moveEntry?.path.split("/").at(-1) ?? "" })} description={t("editor.moveDescription")} onOpenChange={(open) => { if (!open) { setMoveEntry(null); setMoveName(""); setFileDialogError(""); } }} footer={<><button onClick={() => setMoveEntry(null)}>{t("common.cancel")}</button><button className="primary" disabled={!moveName.trim()} onClick={() => void movePath()}>{t("editor.moveApply")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.pathName")}<input autoFocus value={moveName} onChange={(event) => setMoveName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void movePath(); }} /></label><label className="form-field">{t("editor.destinationFolder")}<select value={moveDestination} onChange={(event) => setMoveDestination(event.target.value)}><option value="">{t("editor.projectRoot")}</option>{directoryEntries.filter((directory) => moveEntry?.type !== "directory" || (directory.path !== moveEntry.path && !directory.path.startsWith(`${moveEntry.path}/`))).map((directory) => <option value={directory.path} key={directory.path}>{directory.path}</option>)}</select></label></></Modal>
-    <Modal open={Boolean(deleteEntry)} title={t("editor.deletePathTitle", { name: deleteEntry?.path.split("/").at(-1) ?? "" })} description={deleteActiveSessions.length
-      ? t("editor.deletePathActiveDescription", { path: deleteEntry?.path ?? "", users: [...new Set(deleteActiveSessions.map((session) => session.name))].join(", ") })
-      : t("editor.deletePathDescription", { path: deleteEntry?.path ?? "" })} onOpenChange={(open) => { if (!open) { setDeleteEntry(null); setFileDialogError(""); } }} footer={<><button onClick={() => setDeleteEntry(null)}>{t("common.cancel")}</button><button className="danger" onClick={() => void removePath()}>{t("common.delete")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}{deleteActiveSessions.length > 0 && <p className="warning"><AlertTriangle size={15} />{t("editor.deletePathWillClose")}</p>}</></Modal>
-    <Modal open={commentOpen} title={t("editor.addComment")} description={selection.selectedText ? t("editor.commentDescription", { count: selection.endOffset - selection.startOffset }) : t("editor.pointComment")} onOpenChange={setCommentOpen} footer={<><button onClick={() => setCommentOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void addComment()}>{t("editor.addComment")}</button></>}><label className="form-field">{t("editor.commentContent")}<textarea autoFocus rows={5} value={commentText} onChange={(event) => setCommentText(event.target.value)} /></label>{selection.selectedText && <blockquote className="selection-preview">{selection.selectedText}</blockquote>}</Modal>
-    <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} />
-    <CitationLibraryDialog open={citationLibraryOpen} onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} onInsert={insertCitationAtCursor} />
-    {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
-    {projectSearchOpen && <Suspense fallback={null}><ProjectSearchDialog open project={project} onOpenChange={setProjectSearchOpen} onJump={(filePath, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(filePath, line, column); }} /></Suspense>}
-    {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}
-    {project.ownerId === user.id && gitOpen && <Suspense fallback={null}><GitDialog open onOpenChange={setGitOpen} project={project} onBeforeMutation={save} /></Suspense>}
+    <WorkspaceDialogs
+      user={user} project={project} projectId={projectId} activeFile={activeFile}
+      content={content} files={files} directoryEntries={directoryEntries} readOnly={readOnly}
+      workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
+      resourcePreview={resourcePreview} resourcePreviewLoading={resourcePreviewLoading}
+      setResourcePreview={setResourcePreview} setResourcePreviewLoading={setResourcePreviewLoading}
+      uploadConflict={uploadConflict} setUploadConflict={setUploadConflict} uploadFiles={uploadFiles}
+      cleanMode={cleanMode} setCleanMode={setCleanMode} cleanCompile={cleanCompile}
+      newFileOpen={newFileOpen} setNewFileOpen={setNewFileOpen} newFilePath={newFilePath}
+      setNewFilePath={setNewFilePath} newFolderOpen={newFolderOpen} setNewFolderOpen={setNewFolderOpen}
+      newFolderName={newFolderName} setNewFolderName={setNewFolderName} selectedFolder={selectedFolder}
+      fileDialogError={fileDialogError} setFileDialogError={setFileDialogError}
+      createFile={createFile} createFolder={createFolder} moveEntry={moveEntry}
+      setMoveEntry={setMoveEntry} moveName={moveName} setMoveName={setMoveName}
+      moveDestination={moveDestination} setMoveDestination={setMoveDestination} movePath={movePath}
+      deleteEntry={deleteEntry} setDeleteEntry={setDeleteEntry} deleteActiveSessions={deleteActiveSessions}
+      removePath={removePath} commentOpen={commentOpen} setCommentOpen={setCommentOpen}
+      selection={selection} commentText={commentText} setCommentText={setCommentText} addComment={addComment}
+      shareOpen={shareOpen} setShareOpen={setShareOpen} citationLibraryOpen={citationLibraryOpen}
+      setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
+      quickOpen={quickOpen} setQuickOpen={setQuickOpen} projectSearchOpen={projectSearchOpen}
+      setProjectSearchOpen={setProjectSearchOpen} openFile={openFile} jumpToSource={jumpToSource}
+      historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} gitOpen={gitOpen} setGitOpen={setGitOpen}
+      save={save} permissionDowngrade={permissionDowngrade} permissionDowngradeBusy={permissionDowngradeBusy}
+      dismissPermissionDowngrade={dismissPermissionDowngrade} discardPermissionDraft={discardPermissionDraft}
+    />
   </div>;
 }
 
 
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 function parseOutline(content: string): Array<{ level: number; title: string; line: number }> {
   const result: Array<{ level: number; title: string; line: number }> = [];
