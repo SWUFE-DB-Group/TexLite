@@ -35,6 +35,7 @@ interface Props {
   comments: Comment[];
   focusComment: Comment | null;
   preferences: EditorPreferences;
+  nativeSpellCheck: boolean;
   completionIndex: LatexCompletionIndex | null;
   spellCheckIssues: SpellCheckIssue[];
   spellCheckJump: SpellCheckJump | null;
@@ -382,7 +383,7 @@ const latexFold = foldService.of((state, lineStart) => {
 
 export function LatexEditor({
   value, filePath, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
-  spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onCommentClick, onSpellCheckReplace, onCursor
+  nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onCommentClick, onSpellCheckReplace, onCursor
 }: Props) {
   const { t, i18n } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -449,7 +450,7 @@ export function LatexEditor({
           ...(collaboration && !readOnly ? yUndoManagerKeymap : []), ...defaultKeymap,
           ...(collaboration ? [] : historyKeymap)]),
         ...(collaboration ? [yCollab(collaboration.text, collaboration.awareness, { undoManager: collaborationUndoManager ?? false })] : []),
-        EditorState.readOnly.of(readOnly), appearance.current.of(editorAppearance(preferences)),
+        EditorState.readOnly.of(readOnly), appearance.current.of(editorAppearance(preferences, nativeSpellCheck)),
         EditorView.domEventHandlers({
           click(event) {
             const element = (event.target as HTMLElement).closest<HTMLElement>("[data-comment-id]");
@@ -519,11 +520,11 @@ export function LatexEditor({
     const editor = view.current;
     if (!editor) return;
     editor.dispatch({ effects: [
-      appearance.current.reconfigure(editorAppearance(preferences)),
+      appearance.current.reconfigure(editorAppearance(preferences, nativeSpellCheck)),
       vimMode.current.reconfigure(preferences.vimMode ? vim() : [])
     ] });
     syncVimStatus(editor, preferences.vimMode);
-  }, [preferences]);
+  }, [preferences, nativeSpellCheck]);
 
   useEffect(() => {
     const editor = view.current;
@@ -706,13 +707,12 @@ function searchMatchCount(t: TFunction) {
   });
 }
 
-function editorAppearance(preferences: EditorPreferences) {
+function editorAppearance(preferences: EditorPreferences, nativeSpellCheck: boolean) {
   return [
     EditorView.contentAttributes.of({
-      // Harper performs syntax-aware spelling and grammar checks itself. Keep
-      // the browser checker disabled so users do not get a second,
-      // LaTeX-unaware set of underlines or automatic corrections.
-      spellcheck: "false",
+      // Harper normally provides syntax-aware server-side checks. If that
+      // service fails, enable the browser checker as a lightweight fallback.
+      spellcheck: nativeSpellCheck ? "true" : "false",
       autocorrect: "off",
       autocapitalize: "off",
       autocomplete: "off",

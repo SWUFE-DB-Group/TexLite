@@ -49,6 +49,7 @@ import { MetricRegistry } from "./metrics.js";
 import { compileMainFile } from "./compileArtifacts.js";
 import { apiError, contentDisposition, ValidationError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
+import { HarperService } from "./harper.js";
 
 const now = (): string => new Date().toISOString();
 const MAX_CITATION_BIBTEX_BYTES = 512 * 1024;
@@ -481,6 +482,10 @@ export async function buildApp(
   const history = new ProjectHistoryService(config, db);
   const latexCompletions = new LatexCompletionService(config);
   const projectOutlines = new ProjectOutlineService(config);
+  const harper = new HarperService();
+  // Warm the single server-side runtime without delaying startup. The first
+  // request shares this promise if initialization is still in progress.
+  void harper.preload().catch((error) => app.log.warn({ err: error }, "Harper could not be initialized"));
   const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => {
     try { return history.record(projectId, userId, reason, paths); }
     catch (error) {
@@ -527,7 +532,10 @@ export async function buildApp(
     pruneCompileRuns(row.id);
     pruneOrphanedCompileRuns(config, row.id);
   }
-  app.addHook("onClose", async () => { eventLoopDelay.disable(); });
+  app.addHook("onClose", async () => {
+    eventLoopDelay.disable();
+    await harper.dispose();
+  });
   await app.register(cookie, { hook: "onRequest" });
   await app.register(websocket, { options: { maxPayload: 6 * 1024 * 1024 } });
   await app.register(multipart, {
@@ -1390,6 +1398,24 @@ export async function buildApp(
     const rows = db.prepare(`SELECT word FROM project_dictionary_words
       WHERE project_id = ? ORDER BY word COLLATE NOCASE`).all(id) as Array<{ word: string }>;
     return { words: rows.map((row) => row.word) };
+  });
+
+  app.post("/api/projects/:id/spellcheck", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    const body = request.body as { source?: unknown } | undefined;
+    if (typeof body?.source !== "string") return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID", "待检查源码格式不正确");
+    if (Buffer.byteLength(body.source, "utf8") > maxCollaborativeFileBytes(config)) {
+      return apiError(reply, 413, "SPELLCHECK_SOURCE_TOO_LARGE", "待检查源码过大");
+    }
+    try {
+      return { lints: await harper.lint(body.source) };
+    } catch (error) {
+      request.log.error({ err: error, projectId: id }, "Harper writing check failed");
+      return apiError(reply, 503, "HARPER_UNAVAILABLE", "Harper 拼写与语法检查暂不可用");
+    }
   });
 
   app.post("/api/projects/:id/dictionary", async (request, reply) => {
@@ -2453,7 +2479,24 @@ export async function buildApp(
   app.addHook("onClose", async () => collaboration.destroy());
 
   if (fs.existsSync(config.clientDir)) {
-    await app.register(staticPlugin, { root: config.clientDir, wildcard: false });
+    await app.register(staticPlugin, {
+      root: config.clientDir,
+      wildcard: false,
+      // Vite fingerprints everything under assets/. These large JS/WASM files
+      // are safe to cache indefinitely; a new build produces a new URL. Keep
+      // index.html fresh so it always points at the current fingerprints.
+      cacheControl: false,
+      setHeaders(reply, filePath) {
+        const relativePath = path.relative(config.clientDir, filePath).split(path.sep).join("/");
+        if (relativePath === "index.html") {
+          reply.header("Cache-Control", "no-store");
+        } else if (relativePath.startsWith("assets/")) {
+          reply.header("Cache-Control", "public, max-age=31536000, immutable");
+        } else {
+          reply.header("Cache-Control", "public, max-age=3600");
+        }
+      }
+    });
     app.get("/*", async (request, reply) => {
       if (request.url.startsWith("/api/")) return apiError(reply, 404, "API_NOT_FOUND", "接口不存在");
       reply.header("Cache-Control", "no-store");

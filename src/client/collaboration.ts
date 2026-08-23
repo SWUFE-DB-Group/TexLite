@@ -18,7 +18,9 @@ const MESSAGE_PROTOCOL = 5;
 const MESSAGE_MAINTENANCE = 6;
 const MESSAGE_PERMISSION = 7;
 const MESSAGE_COMPILE_STATES = 8;
-const COLLABORATION_PROTOCOL_VERSION = 2;
+const MESSAGE_FORMAT_LEASE = 9;
+const COLLABORATION_PROTOCOL_VERSION = 3;
+const FORMAT_LEASE_REQUEST_TIMEOUT_MS = 60_000;
 
 export type CollaborationStatus = "connecting" | "connected" | "disconnected";
 
@@ -60,6 +62,29 @@ export interface CollaborationSaveReceipt {
   failedPaths?: string[];
 }
 
+export interface FormatLeaseState {
+  path: string;
+  holderUserId: string;
+  holderName: string;
+  expiresAt: number;
+}
+
+export interface FormatLease {
+  path: string;
+  token: string;
+  expiresAt: number;
+  confirm(): Promise<void>;
+  renew(): Promise<void>;
+  release(): Promise<void>;
+}
+
+interface FormatLeaseResponse {
+  status: string;
+  filePath: string;
+  token: string;
+  expiresAt: number;
+}
+
 export function sharedCompileState(value: unknown): SharedCompileState | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<SharedCompileState>;
@@ -98,6 +123,10 @@ export class ProjectCollaboration {
   private readonly permissionListeners = new Set<(permission: Project["permission"] | "revoked") => void>();
   private readonly compileStateListeners = new Set<() => void>();
   private readonly flushRequests = new Map<string, { resolve: (receipt: CollaborationSaveReceipt) => void; reject: (error: Error) => void; timer: number }>();
+  private readonly formatLeaseRequests = new Map<string, { resolve: (value: FormatLeaseResponse) => void; reject: (error: Error) => void; timer: number }>();
+  private readonly formatLeaseListeners = new Set<(state: FormatLeaseState | null) => void>();
+  private readonly formatLeaseStatesByPath = new Map<string, FormatLeaseState>();
+  private readonly formatLeaseExpiryTimers = new Map<string, number>();
   /**
    * CodeMirror remounts when the active file changes (for example when tabs
    * are enabled). Keep one undo manager per shared text instead of creating a
@@ -241,11 +270,50 @@ export class ProjectCollaboration {
       this.authoritativeCompileStates = states;
       this.notifyCompileStateListeners();
     };
+    this.provider.messageHandlers[MESSAGE_FORMAT_LEASE] = (_encoder, decoder) => {
+      const status = decoding.readVarString(decoder);
+      const requestId = decoding.readVarString(decoder);
+      const filePath = decoding.readVarString(decoder);
+      const token = decoding.readVarString(decoder);
+      const expiresAtText = decoding.readVarString(decoder);
+      const reason = decoding.readVarString(decoder);
+      if (status === "state") {
+        const holderUserId = decoding.hasContent(decoder) ? decoding.readVarString(decoder) : "";
+        const holderName = decoding.hasContent(decoder) ? decoding.readVarString(decoder) : "";
+        const expiresAt = Number(expiresAtText);
+        if (!holderUserId || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+          this.removeFormatLeaseState(filePath);
+          this.notifyFormatLeaseListeners(null);
+        } else {
+          const state = { path: filePath, holderUserId, holderName, expiresAt };
+          this.formatLeaseStatesByPath.set(filePath, state);
+          const previousTimer = this.formatLeaseExpiryTimers.get(filePath);
+          if (previousTimer !== undefined) window.clearTimeout(previousTimer);
+          const timer = window.setTimeout(() => {
+            const current = this.formatLeaseStatesByPath.get(filePath);
+            if (!current || current.expiresAt > Date.now()) return;
+            this.removeFormatLeaseState(filePath);
+            this.notifyFormatLeaseListeners(null);
+          }, Math.max(0, expiresAt - Date.now()) + 25);
+          this.formatLeaseExpiryTimers.set(filePath, timer);
+          this.notifyFormatLeaseListeners(state);
+        }
+        return;
+      }
+      const pending = this.formatLeaseRequests.get(requestId);
+      if (!pending) return;
+      window.clearTimeout(pending.timer);
+      this.formatLeaseRequests.delete(requestId);
+      if (status === "denied") pending.reject(new Error(reason || "Format lease request was denied"));
+      else pending.resolve({ status, filePath, token, expiresAt: Number(expiresAtText) });
+    };
     this.provider.on("status", ({ status }) => {
       if (status === "disconnected") {
         this.authoritativeCompileStates = null;
         this.notifyCompileStateListeners();
         this.rejectFlushes(new Error("Collaboration connection closed"));
+        this.rejectFormatLeaseRequests(new Error("Collaboration connection closed"));
+        this.clearFormatLeaseStates();
       }
     });
     this.updateLocalAwareness();
@@ -330,7 +398,10 @@ export class ProjectCollaboration {
 
   setPermission(permission: Project["permission"], notify = false): void {
     this.permission = permission;
-    if (permission === "read") this.destroyUndoManagers();
+    if (permission === "read") {
+      this.destroyUndoManagers();
+      this.clearFormatLeaseStates();
+    }
     this.updateLocalAwareness();
     if (notify) for (const listener of this.permissionListeners) listener(permission);
   }
@@ -382,6 +453,54 @@ export class ProjectCollaboration {
     });
   }
 
+  onFormatLeaseState(listener: (state: FormatLeaseState | null) => void): () => void {
+    this.formatLeaseListeners.add(listener);
+    for (const state of this.formatLeaseStatesByPath.values()) listener(state);
+    return () => this.formatLeaseListeners.delete(listener);
+  }
+
+  formatLeaseStates(): FormatLeaseState[] {
+    const now = Date.now();
+    for (const [filePath, state] of this.formatLeaseStatesByPath) {
+      if (state.expiresAt <= now) this.removeFormatLeaseState(filePath);
+    }
+    return [...this.formatLeaseStatesByPath.values()];
+  }
+
+  async acquireFormatLease(filePath: string): Promise<FormatLease> {
+    if (this.permission === "read") throw new Error("Formatting requires write permission");
+    const grant = await this.requestFormatLease("acquire", filePath);
+    if (grant.status !== "grant" || !grant.token || !Number.isFinite(grant.expiresAt)) {
+      throw new Error("Format lease was not granted");
+    }
+    let token = grant.token;
+    let expiresAt = grant.expiresAt;
+    let released = false;
+    const renew = async (): Promise<void> => {
+      if (released) throw new Error("Format lease has already been released");
+      const renewed = await this.requestFormatLease("renew", filePath, token);
+      if (renewed.status !== "renewed" || !Number.isFinite(renewed.expiresAt)) throw new Error("Format lease renewal failed");
+      token = renewed.token || token;
+      expiresAt = renewed.expiresAt;
+    };
+    const release = async (): Promise<void> => {
+      if (released) return;
+      released = true;
+      const socket = this.provider.ws;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      try { await this.requestFormatLease("release", filePath, token); }
+      catch { /* Disconnect/expiry already releases the in-memory lease. */ }
+    };
+    return {
+      path: filePath,
+      get token() { return token; },
+      get expiresAt() { return expiresAt; },
+      confirm: renew,
+      renew,
+      release
+    };
+  }
+
   /** Retry a failed websocket handshake without discarding the local Yjs doc. */
   reconnect(): void {
     if (this.destroyed) return;
@@ -398,6 +517,9 @@ export class ProjectCollaboration {
     this.persistence.destroy();
     this.draftListeners.clear();
     this.compileStateListeners.clear();
+    this.rejectFormatLeaseRequests(new Error("Collaboration connection closed"));
+    this.clearFormatLeaseStates();
+    this.formatLeaseListeners.clear();
     this.meta.unobserve(this.metaObserver);
     this.destroyUndoManagers();
     this.doc.destroy();
@@ -418,6 +540,71 @@ export class ProjectCollaboration {
       pending.reject(error);
     }
     this.flushRequests.clear();
+  }
+
+  private requestFormatLease(
+    operation: "acquire" | "renew" | "release" | "cancel",
+    filePath: string,
+    token = ""
+  ): Promise<FormatLeaseResponse> {
+    const socket = this.provider.ws;
+    if (!this.provider.synced || !socket || socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("Collaboration connection is unavailable"));
+    }
+    const requestId = crypto.randomUUID();
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_FORMAT_LEASE);
+    encoding.writeVarString(encoder, operation);
+    encoding.writeVarString(encoder, requestId);
+    encoding.writeVarString(encoder, filePath);
+    encoding.writeVarString(encoder, token);
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        this.formatLeaseRequests.delete(requestId);
+        if (operation === "acquire") {
+          const cancelSocket = this.provider.ws;
+          if (cancelSocket?.readyState === WebSocket.OPEN) {
+            const cancel = encoding.createEncoder();
+            encoding.writeVarUint(cancel, MESSAGE_FORMAT_LEASE);
+            encoding.writeVarString(cancel, "cancel");
+            encoding.writeVarString(cancel, requestId);
+            encoding.writeVarString(cancel, filePath);
+            encoding.writeVarString(cancel, "");
+            cancelSocket.send(encoding.toUint8Array(cancel));
+          }
+        }
+        reject(new Error("Format lease request timed out"));
+      }, operation === "acquire" ? FORMAT_LEASE_REQUEST_TIMEOUT_MS : 5_000);
+      this.formatLeaseRequests.set(requestId, { resolve, reject, timer });
+      socket.send(encoding.toUint8Array(encoder));
+    });
+  }
+
+  private rejectFormatLeaseRequests(error: Error): void {
+    for (const pending of this.formatLeaseRequests.values()) {
+      window.clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.formatLeaseRequests.clear();
+  }
+
+  private clearFormatLeaseStates(): void {
+    for (const timer of this.formatLeaseExpiryTimers.values()) window.clearTimeout(timer);
+    this.formatLeaseExpiryTimers.clear();
+    if (!this.formatLeaseStatesByPath.size) return;
+    this.formatLeaseStatesByPath.clear();
+    this.notifyFormatLeaseListeners(null);
+  }
+
+  private removeFormatLeaseState(filePath: string): void {
+    const timer = this.formatLeaseExpiryTimers.get(filePath);
+    if (timer !== undefined) window.clearTimeout(timer);
+    this.formatLeaseExpiryTimers.delete(filePath);
+    this.formatLeaseStatesByPath.delete(filePath);
+  }
+
+  private notifyFormatLeaseListeners(state: FormatLeaseState | null): void {
+    for (const listener of this.formatLeaseListeners) listener(state);
   }
 
   private updateLocalAwareness(): void {

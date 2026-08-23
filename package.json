@@ -1,6 +1,6 @@
 {
   "name": "texlite",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "A lightweight local-first collaborative LaTeX workspace",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -83,7 +83,7 @@
     "react-dom": "^19.1.1",
     "react-i18next": "^15.6.1",
     "react-resizable-panels": "^2.1.9",
-    "tex-fmt": "^0.5.7",
+    "tex-fmt": "0.5.7-npm.1",
     "ws": "^8.21.1",
     "y-codemirror.next": "^0.3.5",
     "y-indexeddb": "^9.0.12",

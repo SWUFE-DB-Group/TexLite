@@ -23,7 +23,8 @@ const MESSAGE_FLUSH = 4;
 const MESSAGE_PROTOCOL = 5;
 const MESSAGE_PERMISSION = 7;
 const MESSAGE_COMPILE_STATES = 8;
-const COLLABORATION_PROTOCOL_VERSION = 2;
+const MESSAGE_FORMAT_LEASE = 9;
+const COLLABORATION_PROTOCOL_VERSION = 3;
 
 describe("project collaboration", () => {
   let root: string;
@@ -240,9 +241,67 @@ describe("project collaboration", () => {
     const closeCode = await closed;
     expect(closeCode).toBe(4001);
     expect(epochs.length).toBeGreaterThanOrEqual(2);
-    expect(epochs[0]).toMatch(/^2:[a-f0-9-]{36}$/i);
+    expect(epochs[0]).toMatch(/^3:[a-f0-9-]{36}$/i);
     expect(epochs[1]).toContain(":reload");
     socket?.terminate();
+  });
+
+  it("serializes format commits per file and grants the next session after a flush", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Formatter lease" }
+    });
+    const projectId = created.json().project.id as string;
+    const first = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    const second = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    const third = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    const fourth = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      const firstLease = await first.acquireFormatLease("main.tex");
+      const secondLeasePromise = second.acquireFormatLease("main.tex");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const thirdLeasePromise = third.acquireFormatLease("main.tex");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const fourthLeasePromise = fourth.acquireFormatLease("main.tex");
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      first.doc.getText("source:main.tex").insert(0, "% formatted once\n");
+      await first.flush();
+      await first.releaseFormatLease("main.tex", firstLease.token);
+      const secondLease = await secondLeasePromise;
+      expect(secondLease.token).not.toBe(firstLease.token);
+      await second.releaseFormatLease("main.tex", secondLease.token);
+      const thirdLease = await thirdLeasePromise;
+      await third.releaseFormatLease("main.tex", thirdLease.token);
+      const fourthLease = await fourthLeasePromise;
+      await fourth.releaseFormatLease("main.tex", fourthLease.token);
+      expect(fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8"))
+        .toContain("% formatted once");
+    } finally {
+      first.destroy();
+      second.destroy();
+      third.destroy();
+      fourth.destroy();
+    }
+  });
+
+  it("releases a format lease when its websocket disconnects", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Formatter disconnect" }
+    });
+    const projectId = created.json().project.id as string;
+    const first = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    const second = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      const firstLease = await first.acquireFormatLease("main.tex");
+      const secondLeasePromise = second.acquireFormatLease("main.tex");
+      first.destroy();
+      const secondLease = await secondLeasePromise;
+      expect(secondLease.token).not.toBe(firstLease.token);
+      await second.releaseFormatLease("main.tex", secondLease.token);
+    } finally {
+      first.destroy();
+      second.destroy();
+    }
   });
 
   it("recovers a Yjs update that was durable before its source-file rename", async () => {
@@ -617,6 +676,7 @@ class TestPeer {
   private syncResolve: (() => void) | null = null;
   private readonly synced = new Promise<void>((resolve) => { this.syncResolve = resolve; });
   private readonly flushRequests = new Map<string, { resolve: (receipt: { revision: number; persistedAt: string; ok: boolean; failedPaths: string[] }) => void; reject: (err: Error) => void }>();
+  private readonly formatLeaseRequests = new Map<string, { resolve: (lease: { token: string; expiresAt: number }) => void; reject: (err: Error) => void }>();
 
   get connected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
@@ -667,6 +727,36 @@ class TestPeer {
       this.flushRequests.set(requestId, {
         resolve: (receipt) => { clearTimeout(timer); resolve(receipt); },
         reject: (err) => { clearTimeout(timer); reject(err); }
+      });
+      this.send(encoding.toUint8Array(encoder));
+    });
+  }
+
+  acquireFormatLease(filePath: string): Promise<{ token: string; expiresAt: number }> {
+    const requestId = randomUUID();
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_FORMAT_LEASE);
+    encoding.writeVarString(encoder, "acquire");
+    encoding.writeVarString(encoder, requestId);
+    encoding.writeVarString(encoder, filePath);
+    encoding.writeVarString(encoder, "");
+    return new Promise((resolve, reject) => {
+      this.formatLeaseRequests.set(requestId, { resolve, reject });
+      this.send(encoding.toUint8Array(encoder));
+    });
+  }
+
+  releaseFormatLease(filePath: string, token: string): Promise<void> {
+    const requestId = randomUUID();
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_FORMAT_LEASE);
+    encoding.writeVarString(encoder, "release");
+    encoding.writeVarString(encoder, requestId);
+    encoding.writeVarString(encoder, filePath);
+    encoding.writeVarString(encoder, token);
+    return new Promise((resolve, reject) => {
+      this.formatLeaseRequests.set(requestId, {
+        resolve: () => resolve(), reject
       });
       this.send(encoding.toUint8Array(encoder));
     });
@@ -744,6 +834,19 @@ class TestPeer {
     } else if (messageType === MESSAGE_COMPILE_STATES) {
       try { this.authoritativeCompileStates = JSON.parse(decoding.readVarString(decoder)) as Record<string, unknown>; }
       catch { this.authoritativeCompileStates = {}; }
+    } else if (messageType === MESSAGE_FORMAT_LEASE) {
+      const status = decoding.readVarString(decoder);
+      const requestId = decoding.readVarString(decoder);
+      decoding.readVarString(decoder); // path
+      const token = decoding.readVarString(decoder);
+      const expiresAt = Number(decoding.readVarString(decoder));
+      const reason = decoding.readVarString(decoder);
+      if (status === "state") return;
+      const pending = this.formatLeaseRequests.get(requestId);
+      if (!pending) return;
+      this.formatLeaseRequests.delete(requestId);
+      if (status === "denied") pending.reject(new Error(reason || "lease denied"));
+      else pending.resolve({ token, expiresAt });
     }
   }
 

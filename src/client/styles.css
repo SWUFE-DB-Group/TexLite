@@ -177,6 +177,21 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .collaboration-recovery button:hover { background: #ffffff2c; }
 .compile-status-strip { min-height: 31px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 6px 14px; background: #fff6dc; color: #72530d; border-bottom: 1px solid #e8cd7d; font-size: 11px; }
 .compile-status-strip.failed { background: #fff0ee; color: #9a3028; border-bottom-color: #e8aaa4; }
+.client-tool-recoveries { flex: none; display: flex; flex-direction: column; }
+.client-tool-recovery { min-height: 34px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid #e4bf78; background: #fff8e8; color: #6f4d10; font-size: 11px; }
+.client-tool-recovery > svg { flex: none; color: #b97817; }
+.client-tool-recovery > span { min-width: 0; flex: 0 1 auto; line-height: 1.35; }
+.client-tool-recovery > span strong { margin-right: 3px; }
+.client-tool-recovery-actions { flex: none; display: inline-flex; align-items: center; gap: 5px; }
+.client-tool-recovery-actions button { border: 1px solid #d5a553; border-radius: 5px; padding: 4px 8px; background: #fff; color: #6f4d10; font: inherit; cursor: pointer; }
+.client-tool-recovery-actions button:hover:not(:disabled) { border-color: #a86b0f; background: #fff1cd; }
+.client-tool-recovery-actions button:disabled { cursor: not-allowed; opacity: .5; }
+.formatter-diagnostics details { min-width: 110px; max-width: min(760px, 80vw); }
+.formatter-diagnostics summary { cursor: pointer; color: #8f5b0d; font-weight: 650; }
+.formatter-diagnostics details[open] { flex-basis: 100%; order: 3; }
+.formatter-diagnostics pre { max-height: 150px; margin: 7px auto 2px; overflow: auto; border: 1px solid #e4c88f; border-radius: 5px; padding: 8px 10px; background: #fffdf7; color: #57451f; font: 11px/1.45 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; }
+.formatter-diagnostics-dismiss { width: 25px; height: 25px; display: grid; place-items: center; flex: none; border: 1px solid transparent; border-radius: 5px; padding: 0; background: transparent; color: #8f5b0d; cursor: pointer; }
+.formatter-diagnostics-dismiss:hover { border-color: #d5a553; background: #fff1cd; }
 .editor-actions { display: flex; align-items: center; gap: 8px; }
 .editor-actions button { padding: 8px 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid #ffffff28; color: white; background: #ffffff0d; font-size: 12px; white-space: nowrap; }
 .editor-actions .compile { background: #f3b943; border-color: #f3b943; color: #193023; font-weight: 700; }
@@ -485,6 +500,16 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .settings-actions { display: flex; width: 100%; justify-content: flex-end; padding-top: 2px; }
 .settings-section-title { display: flex; align-items: center; gap: 7px; color: #31523e; font-size: 13px; }
 .settings-description { margin: 0; color: #7b837e; font-size: 11px; line-height: 1.45; }
+.browser-tool-statuses { display: flex; flex-wrap: wrap; gap: 7px; }
+.browser-tool-status { min-width: 116px; flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 8px 9px; border: 1px solid #d9ded9; border-radius: 7px; background: #f7f9f7; color: #6d776f; font-size: 10px; }
+.browser-tool-status strong { min-width: 0; overflow: hidden; color: #344d3c; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.browser-tool-status span { font-weight: 700; white-space: nowrap; }
+.browser-tool-status.loading { border-color: #e4d7ad; background: #fffaf0; color: #9a6b18; }
+.browser-tool-status.working { border-color: #bddbc7; background: #f0f8f2; color: #187348; }
+.browser-tool-status.error { border-color: #e7beb9; background: #fff3f1; color: #a3342c; }
+.tex-fmt-status { margin-top: 8px; max-width: 360px; }
+.browser-tool-reload { grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 26px; margin-top: 2px; border: 1px solid #dca9a3; border-radius: 5px; background: #fff; color: #922d27; font-size: 10px; font-weight: 700; }
+.browser-tool-reload:hover { border-color: #bf7770; background: #fff8f7; }
 .settings .editor-preference { display: flex; flex-direction: column; gap: 4px; }
 .settings .editor-preference .field-hint { margin: 0 9px; line-height: 1.4; }
 .settings .editor-checkbox { flex-direction: row; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid #d9ded9; border-radius: 7px; font-weight: 500; }

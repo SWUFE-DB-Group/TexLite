@@ -1,10 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, BookOpen, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PanelsTopLeft, Save, Settings, SpellCheck2, Type, WrapText, X } from "lucide-react";
+import { AlertCircle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LoaderCircle, PanelsTopLeft, RefreshCw, Save, Settings, SpellCheck2, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
+import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
 import { errorMessage } from "../errors";
+import { preloadTexFmt, reloadTexFmt } from "../latexFormatter";
 import type { FileEntry, Project, SiteConfig } from "../types";
+
+function BrowserToolStatus({ name, state, label, reloadLabel, onReload }: {
+  name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void;
+}) {
+  const icon = state.status === "loading"
+    ? <LoaderCircle className="spin" size={14} />
+    : state.status === "working"
+      ? <CheckCircle2 size={14} />
+      : <AlertCircle size={14} />;
+  return <div className={`browser-tool-status ${state.status}`} title={state.error || undefined}>
+    {icon}<strong>{name}</strong><span>{label}</span>
+    {state.status === "error" && <button type="button" className="browser-tool-reload" onClick={onReload}>
+      <RefreshCw size={12} />{reloadLabel}
+    </button>}
+  </div>;
+}
 
 export function ProjectSettings({ project, projectId, site, files, dictionaryWords, onDictionaryChange, editorPreferences, onEditorPreferences, spellCheckCount, spellCheckUniqueCount, spellCheckIndex, onSpellCheckNavigate, onProject }: {
   project: Project; projectId: string; site: SiteConfig; files: FileEntry[]; dictionaryWords: string[];
@@ -24,10 +42,18 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
   const [dictionaryError, setDictionaryError] = useState("");
   const [settingsTab, setSettingsTab] = useState<"appearance" | "compiler">("appearance");
   const [appearancePreferences, setAppearancePreferences] = useState(editorPreferences);
+  const texFmtStatus = useSyncExternalStore(texFmtToolStatus.subscribe, texFmtToolStatus.getSnapshot, texFmtToolStatus.getSnapshot);
   const canManage = project.permission === "owner";
   const canEdit = project.permission !== "read";
   const canManageDictionary = project.permission !== "read";
   useEffect(() => setAppearancePreferences(editorPreferences), [editorPreferences]);
+  useEffect(() => {
+    // Opening settings eagerly initializes the browser formatter Worker.
+    void preloadTexFmt().catch(texFmtToolStatus.failed);
+  }, [projectId]);
+  const reloadTexFmtRuntime = () => {
+    void reloadTexFmt().catch(texFmtToolStatus.failed);
+  };
   useEffect(() => {
     if (!project.latexmkrc) return setRcText("");
     void api<{ content: string }>(`/api/projects/${projectId}/file?path=${encodeURIComponent(project.latexmkrc)}`)
@@ -102,6 +128,9 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
       <div className="editor-preference">
         <label>{t("projectSettings.texFmtOptions")}<textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
         <p className="field-hint">{t("projectSettings.texFmtOptionsDescription")}</p>
+        <div className="tex-fmt-status" role="status" aria-live="polite" aria-label={t("projectSettings.browserTools")}>
+          <BrowserToolStatus name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} />
+        </div>
       </div>
       {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.writingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("projectSettings.noWritingIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
       <div className="settings-section-title"><BookOpen size={15} /><strong>{t("projectSettings.dictionary")}</strong></div>

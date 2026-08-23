@@ -23,7 +23,7 @@ installation, configuration, and day-to-day operation.
 | --- | --- |
 | Browser UI | React, Vite, CodeMirror, PDF.js |
 | Editor language features | CodeMirror LaTeX syntax/folding, auto-pairs, project completion index, optional Vim mode |
-| Writing assistance | Harper.js in a browser worker; project dictionary stored by the server |
+| Writing assistance | One shared server-side Harper.js runtime with native browser spellcheck fallback; project dictionary stored by the server |
 | API and static server | Fastify, WebSocket |
 | Collaboration | Yjs, y-websocket, awareness messages, y-codemirror.next |
 | Database | SQLite through better-sqlite3, foreign keys and WAL mode |
@@ -195,23 +195,37 @@ Editor tab remounts therefore preserve Ctrl/Cmd+Z and Vim undo history without
 leaving obsolete CodeMirror/Yjs observers behind. Managers are released when
 the collaboration object is destroyed or loses edit permission.
 
-Harper performs spelling and grammar checks locally in a worker. The browser's
-built-in spellcheck is disabled for the editor, LaTeX commands/environments,
-comments, references, option keys/values, and table column specifications are
-excluded by the Harper-LaTeX preprocessing rules. Spelling uses a red wavy
-underline and grammar uses yellow. A context menu offers Harper suggestions;
-read-only members can inspect suggestions but cannot apply edits. The shared
-project dictionary is kept in SQLite and is imported into Harper for every
-collaborator.
+One asynchronously initialized Harper runtime on the Node server performs spelling and
+grammar checks for every project. Requests are serialized around the shared
+WASM linter, while the browser masks LaTeX commands/environments, comments,
+references, option keys/values, and table column specifications before sending
+prose. Spelling uses a red wavy underline and grammar uses yellow. A context
+menu offers Harper suggestions; read-only members can inspect suggestions but
+cannot apply edits. The shared project dictionary is kept in SQLite and filters
+project-specific spelling results. If the Harper endpoint fails, CodeMirror
+enables the browser's built-in English spellchecker until the user retries.
 
 Formatting is independent from the editor's local appearance. A user can
 manually format a selection or enable the per-user/per-project “format before
 compile” preference. The browser uses bundled `tex-fmt` WASM for `.tex`, `.cls`,
 and `.sty`, and `bibtex-tidy` for `.bib`; the editor settings also provide a
-per-user/per-project TOML options string passed to `tex-fmt`. The formatter is
-loaded lazily on first use, so opening a project does not wait for it. A
-formatter failure reports an error but does not prevent compilation. There is
-no silent Prettier fallback.
+per-user/per-project TOML options string passed to `tex-fmt`. The formatter and
+text-diff calculation run in a lazily loaded Web Worker, so opening a project
+does not wait for them and formatting does not block the editor UI. Formatter
+diagnostic logs are shown as expandable warnings. A formatter failure reports
+an error but does not prevent compilation. There is no silent Prettier fallback.
+
+Before a formatter computes a replacement it acquires a short-lived, per-file
+lease from the live Yjs room. The lease is held only for the format/snapshot,
+final Yjs apply, and a durability flush; ordinary typing and compilation are
+not blocked. A second formatter for the same path waits in a bounded FIFO queue,
+and the server grants it only after the first session's update has been
+received and flushed. Leases carry an expiring random token, renew before the
+final apply, and are released automatically on timeout, permission loss, or
+WebSocket disconnect. Because the lease is process-local, it is deliberately
+scoped to TexLite's single-instance deployment; it is not a distributed lock.
+If a source edit arrives while a formatter is working, the client discards the
+stale replacement rather than applying offsets to newer text.
 
 Project duplication flushes the live source room and copies the tree under a
 short read barrier. Uploading a replacement text file also re-anchors existing

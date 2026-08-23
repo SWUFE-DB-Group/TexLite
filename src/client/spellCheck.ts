@@ -1,4 +1,13 @@
-import type { Lint, Linter, Suggestion } from "harper.js";
+import { api } from "./api";
+
+export interface RawHarperLint {
+  start: number;
+  end: number;
+  problem: string;
+  kind: string;
+  message: string;
+  suggestions: string[];
+}
 
 export type SpellCheckIssueKind = "spelling" | "grammar";
 
@@ -26,10 +35,31 @@ const nonProseEnvironments = new Set([
 const optionCommands = new Set(["documentclass", "usepackage", "RequirePackage", "includegraphics", "tikzset", "pgfplotsset", "hypersetup", "lstset", "definecolor", "colorlet", "setlength", "setcounter", "draw", "path", "fill", "filldraw", "shade", "node", "addplot", "color", "textcolor", "colorbox", "pagecolor"]);
 const identifierCommands = new Set(["label", "hypertarget", "ref", "pageref", "autoref", "nameref", "hyperref", "index", "gls", "Gls", "glspl", "Glspl", "cite", "citep", "citet", "citeauthor", "citeyear", "citenum", "parencite", "textcite", "autocite", "footcite"]);
 const maxSuggestions = 5;
+const lintResultCache = new Map<string, { source: string; dictionary: string; issues: SpellCheckIssue[] }>();
+const maxCachedLintResults = 12;
 
-let harperLinter: Linter | null = null;
-let harperOperation: Promise<void> = Promise.resolve();
-let harperDictionaryKey = "";
+interface PendingLintRequest {
+  projectId: string;
+  path: string;
+  source: string;
+  customWords: string[];
+  resolve: (issues: SpellCheckIssue[]) => void;
+  reject: (error: unknown) => void;
+}
+
+let activeLintRequest = false;
+let pendingLintRequest: PendingLintRequest | null = null;
+
+export class HarperLintSupersededError extends Error {
+  constructor() {
+    super("A newer writing check replaced this request.");
+    this.name = "HarperLintSupersededError";
+  }
+}
+
+export function isHarperLintSupersededError(error: unknown): error is HarperLintSupersededError {
+  return error instanceof HarperLintSupersededError;
+}
 
 function addRange(ranges: Span[], from: number, to: number): void {
   if (to > from) ranges.push({ from, to });
@@ -240,55 +270,19 @@ function dictionaryKey(words: string[]): string {
   return [...new Set(words.map((word) => word.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right)).join("\u0000");
 }
 
-async function withHarper<T>(customWords: string[], operation: (linter: Linter) => Promise<T>): Promise<T> {
-  const next = harperOperation.then(async () => {
-    if (!harperLinter) {
-      try {
-        const [{ WorkerLinter, LocalLinter }, { binary }] = await Promise.all([
-          import("harper.js"),
-          import("harper.js/binary")
-        ]);
-        const useWorker = typeof Worker !== "undefined";
-        try {
-          harperLinter = new (useWorker ? WorkerLinter : LocalLinter)({ binary });
-          await harperLinter.setup();
-        } catch (error) {
-          const failedLinter = harperLinter;
-          harperLinter = null;
-          await failedLinter?.dispose().catch(() => undefined);
-          if (!useWorker) throw error;
-          // A strict CSP can block blob/data workers. Keep writing checks
-          // available with a main-thread fallback instead of failing silently.
-          harperLinter = new LocalLinter({ binary });
-          await harperLinter.setup();
-        }
-      } catch (error) {
-        harperLinter = null;
-        harperDictionaryKey = "";
-        throw error;
-      }
-    }
-    const key = dictionaryKey(customWords);
-    if (key !== harperDictionaryKey) {
-      await harperLinter.clearWords();
-      if (customWords.length) await harperLinter.importWords([...new Set(customWords.map((word) => word.trim()).filter(Boolean))]);
-      harperDictionaryKey = key;
-    }
-    return operation(harperLinter);
+async function requestHarperLints(projectId: string, path: string, source: string): Promise<RawHarperLint[]> {
+  const result = await api<{ lints: RawHarperLint[] }>(`/api/projects/${projectId}/spellcheck`, {
+    method: "POST",
+    body: JSON.stringify({ path, source })
   });
-  harperOperation = next.then(() => undefined, () => undefined);
-  return next;
+  return result.lints;
 }
 
-function suggestionText(suggestion: Suggestion): string {
-  return suggestion.get_replacement_text();
-}
-
-function resolveLintSpan(source: string, masked: string, lint: Lint, span: { start: number; end: number }, scalarOffsetsMap: number[]): Span | null {
-  const direct = { from: span.start, to: span.end };
+function resolveLintSpan(source: string, masked: string, lint: RawHarperLint, scalarOffsetsMap: number[]): Span | null {
+  const direct = { from: lint.start, to: lint.end };
   const scalar = {
-    from: scalarOffsetsMap[span.start] ?? -1,
-    to: scalarOffsetsMap[span.end] ?? -1
+    from: scalarOffsetsMap[lint.start] ?? -1,
+    to: scalarOffsetsMap[lint.end] ?? -1
   };
   const candidates = [direct, scalar].filter((candidate, index, values) =>
     candidate.from >= 0 && candidate.to > candidate.from && candidate.to <= source.length
@@ -300,47 +294,97 @@ function resolveLintSpan(source: string, masked: string, lint: Lint, span: { sta
   // released WASM builds expose JavaScript UTF-16 offsets. Prefer the range
   // whose masked text matches Harper's own problem text so both forms remain
   // correct for documents containing astral characters.
-  const problem = lint.get_problem_text();
-  return candidates.find((candidate) => masked.slice(candidate.from, candidate.to) === problem)
+  return candidates.find((candidate) => masked.slice(candidate.from, candidate.to) === lint.problem)
     ?? candidates.find((candidate) => /[A-Za-z]/.test(masked.slice(candidate.from, candidate.to)))
     ?? candidates[0]
     ?? null;
 }
 
-function mapLint(source: string, masked: string, lint: Lint, offsets: number[]): SpellCheckIssue | null {
-  const span = lint.span();
-  try {
-    const resolved = resolveLintSpan(source, masked, lint, span, offsets);
-    if (!resolved) return null;
-    const { from, to } = resolved;
-    if (!/[A-Za-z]/.test(masked.slice(from, to))) return null;
-    const word = source.slice(from, to);
-    if (!word.trim() || /[\\%$]/.test(word)) return null;
-    const kind = lint.lint_kind() === "Spelling" || lint.lint_kind() === "Typo" ? "spelling" : "grammar";
-    const rawSuggestions = lint.suggestions();
-    const suggestions = rawSuggestions.map(suggestionText).filter((text, index, values) => index < maxSuggestions && values.indexOf(text) === index);
-    for (const suggestion of rawSuggestions) suggestion.free();
-    return { from, to, word, kind, message: lint.message(), suggestions };
-  } finally {
-    span.free();
+function mapLint(source: string, masked: string, lint: RawHarperLint, offsets: number[]): SpellCheckIssue | null {
+  const resolved = resolveLintSpan(source, masked, lint, offsets);
+  if (!resolved) return null;
+  const { from, to } = resolved;
+  if (!/[A-Za-z]/.test(masked.slice(from, to))) return null;
+  const word = source.slice(from, to);
+  if (!word.trim() || /[\\%$]/.test(word)) return null;
+  const kind = lint.kind === "Spelling" || lint.kind === "Typo" ? "spelling" : "grammar";
+  const suggestions = lint.suggestions.filter((text, index, values) => index < maxSuggestions && values.indexOf(text) === index);
+  return { from, to, word, kind, message: lint.message, suggestions };
+}
+
+function sourceCacheKey(source: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${source.length}:${hash >>> 0}`;
+}
+
+function cachedLintResult(source: string, dictionary: string): SpellCheckIssue[] | null {
+  const key = sourceCacheKey(source);
+  const cached = lintResultCache.get(key);
+  if (!cached || cached.source !== source || cached.dictionary !== dictionary) return null;
+  lintResultCache.delete(key);
+  lintResultCache.set(key, cached);
+  return cached.issues;
+}
+
+function cacheLintResult(source: string, dictionary: string, issues: SpellCheckIssue[]): void {
+  const key = sourceCacheKey(source);
+  lintResultCache.set(key, { source, dictionary, issues });
+  while (lintResultCache.size > maxCachedLintResults) {
+    const oldest = lintResultCache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    lintResultCache.delete(oldest);
   }
 }
 
-/** Run Harper in a browser worker (or a local Node fallback) and return source-positioned diagnostics. */
-export function lintLatex(source: string, customWords: string[] = []): Promise<SpellCheckIssue[]> {
+export async function mapLatexLints(source: string, customWords: string[], lints: RawHarperLint[]): Promise<SpellCheckIssue[]> {
+  const dictionary = dictionaryKey(customWords);
+  const cached = cachedLintResult(source, dictionary);
+  if (cached) return cached;
   const masked = maskLatexSource(source);
   const offsets = scalarOffsets(source);
-  return withHarper(customWords, async (linter) => {
-    // `isolateEnglish` is intentionally disabled: Harper's current heuristic
-    // can classify short, perfectly valid sentences as non-English. Its
-    // plaintext parser already ignores the Chinese text common in LaTeX files,
-    // while the syntax mask below keeps commands and data out of the input.
-    const lints = await linter.lint(masked, { language: "plaintext", dedup: true, isolateEnglish: false });
-    try {
-      return lints.map((lint) => mapLint(source, masked, lint, offsets)).filter((issue): issue is SpellCheckIssue => Boolean(issue))
-        .sort((left, right) => left.from - right.from || left.to - right.to);
-    } finally {
-      for (const lint of lints) lint.free();
-    }
+  const projectWords = new Set(customWords.map((word) => word.trim().toLocaleLowerCase("en-US")).filter(Boolean));
+  const issues = lints.map((lint) => mapLint(source, masked, lint, offsets)).filter((issue): issue is SpellCheckIssue => Boolean(issue))
+    .filter((issue) => issue.kind !== "spelling" || !projectWords.has(issue.word.trim().toLocaleLowerCase("en-US")))
+    .sort((left, right) => left.from - right.from || left.to - right.to);
+  cacheLintResult(source, dictionary, issues);
+  return issues;
+}
+
+async function lintLatexNow(projectId: string, path: string, source: string, customWords: string[]): Promise<SpellCheckIssue[]> {
+  const dictionary = dictionaryKey(customWords);
+  const cached = cachedLintResult(source, dictionary);
+  if (cached) return cached;
+  const masked = maskLatexSource(source);
+  // Harper receives only masked prose. Project words stay outside its curated
+  // dictionary and act as a cheap, project-scoped spelling addon.
+  const lints = await requestHarperLints(projectId, path, masked);
+  return mapLatexLints(source, customWords, lints);
+}
+
+async function runLatestLintRequest(): Promise<void> {
+  if (activeLintRequest || !pendingLintRequest) return;
+  const request = pendingLintRequest;
+  pendingLintRequest = null;
+  activeLintRequest = true;
+  try {
+    request.resolve(await lintLatexNow(request.projectId, request.path, request.source, request.customWords));
+  } catch (error) {
+    request.reject(error);
+  } finally {
+    activeLintRequest = false;
+    void runLatestLintRequest();
+  }
+}
+
+/** Run the latest Harper check, replacing obsolete checks still waiting in the global queue. */
+export function lintLatex(projectId: string, path: string, source: string, customWords: string[] = []): Promise<SpellCheckIssue[]> {
+  return new Promise((resolve, reject) => {
+    pendingLintRequest?.reject(new HarperLintSupersededError());
+    pendingLintRequest = { projectId, path, source, customWords: [...customWords], resolve, reject };
+    void runLatestLintRequest();
   });
 }

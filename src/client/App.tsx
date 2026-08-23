@@ -14,10 +14,10 @@ import {
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "./editorPreferences";
-import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, reindentLatexSelection } from "./latexFormatter";
+import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "./latexFormatter";
 import { formatBibtex } from "./citationLibrary";
 import { classifyCompileLog } from "./compileLog";
-import type { CollaborationSaveReceipt } from "./collaboration";
+import type { CollaborationSaveReceipt, FormatLease } from "./collaboration";
 import { isProjectHistoryState, projectIdFromPath, projectPath, type TexLiteHistoryState } from "./routes";
 import { errorMessage } from "./errors";
 import type { WorkspaceLayout } from "./workspace/types";
@@ -648,6 +648,9 @@ function AdminUsers({ currentUser }: { currentUser: User }) {
 type PreviewTab = "pdf" | "log" | "warnings" | "errors" | "artifacts" | "clean";
 type PreviewSurface = "pdf" | "diagnostics";
 type DiagnosticTab = Exclude<PreviewTab, "pdf">;
+type FormatterRecoveryAction = "file" | "selection";
+interface FormatterRecovery { action: FormatterRecoveryAction; kind: TexFmtFailureKind; detail: string }
+interface FormattedSource { formatted: string; diagnostics: string }
 interface ProjectOutlineItem { path: string; line: number; level: number; title: string }
 interface LoadOptions { signal?: AbortSignal; isCurrent?: () => boolean }
 
@@ -702,6 +705,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const [quickOpen, setQuickOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [formatting, setFormatting] = useState(false);
+  const [formatterRecovery, setFormatterRecovery] = useState<FormatterRecovery | null>(null);
+  const [formatterDiagnostics, setFormatterDiagnostics] = useState("");
   const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(() => loadEditorPreferences(user.id, projectId));
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const openTabsRef = useRef<string[]>([]);
@@ -745,6 +750,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     // tabs from the previous project into the new file tree.
     openTabsRef.current = [];
     setOpenTabs([]);
+    setFormatterRecovery(null);
+    setFormatterDiagnostics("");
   }, [projectId]);
 
   const closeTab = (tabPath: string) => {
@@ -766,6 +773,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     status: collaborationStatus,
     synced: collaborationSynced,
     activeSessions,
+    formatLeaseStates,
     compileState,
     setCompileState,
     filesEvent,
@@ -790,6 +798,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
 
   const spellCheck = useSpellCheck({
     active: Boolean(project && activeFile && collaborationSynced && editorPreferences.spellCheck),
+    projectId,
     activeFile,
     content,
     dictionaryWords
@@ -1082,38 +1091,60 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       return false;
     }
   };
-  const formatSource = async (filePath: string, source: string): Promise<string> => {
-    if (/\.bib$/i.test(filePath)) return formatBibtex(source);
-    return formatWithTexFmt(source, editorPreferences.texFmtConfig);
+  const formatSource = async (filePath: string, source: string, texFmtConfig = editorPreferences.texFmtConfig): Promise<FormattedSource> => {
+    if (/\.bib$/i.test(filePath)) return { formatted: formatBibtex(source), diagnostics: "" };
+    const result = await formatWithTexFmt(source, texFmtConfig);
+    return { formatted: result.output, diagnostics: result.logs.trim() };
   };
-  const formatCurrentFile = async (): Promise<void> => {
+  const formatCurrentFile = async (texFmtConfig?: string): Promise<void> => {
     if (!project || project.permission === "read" || !collaborationSynced || formattingRef.current
       || !isFormattableLatexFile(activeFileRef.current)) return;
     const filePath = activeFileRef.current;
     const sharedText = collaboration.getText(filePath);
-    const source = sharedText.toString();
     formattingRef.current = true;
     setFormatting(true);
     let finishFormattingTask: () => void = () => {};
     const formattingTask = new Promise<void>((resolve) => { finishFormattingTask = resolve; });
     formattingTaskRef.current = formattingTask;
+    setFormatterDiagnostics("");
+    let lease: FormatLease | null = null;
     try {
-      const formatted = await formatSource(filePath, source);
+      // Acquire before taking the source snapshot. Other formatters queue on
+      // this file, while ordinary Yjs editing remains available.
+      lease = await collaboration.acquireFormatLease(filePath);
+      const source = sharedText.toString();
+      const { formatted, diagnostics } = await formatSource(filePath, source, texFmtConfig);
       if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
         setError(t("editor.formatSourceChanged"));
         return;
       }
+      // Renew before the potentially expensive diff. The formatter and diff
+      // each have their own timeout, so a single initial lease could expire
+      // before the final apply confirmation.
+      await lease.confirm();
       const edits = await createLatexTextEdits(source, formatted);
       if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
         setError(t("editor.formatSourceChanged"));
         return;
       }
+      await lease.confirm();
+      if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
+        setError(t("editor.formatSourceChanged"));
+        return;
+      }
       if (edits.length) collaboration.applyTextEdits(filePath, edits);
+      if (edits.length) await persistPendingEdits();
+      setFormatterRecovery(null);
+      setFormatterDiagnostics(diagnostics);
       setError("");
       setNotice(t("editor.formatFileComplete"));
     } catch (formatError) {
-      setError(t("editor.formatFileFailed", { message: errorMessage(formatError) }));
+      if (isTexFmtError(formatError)) {
+        setFormatterRecovery({ action: "file", kind: formatError.kind, detail: formatError.message });
+        setError("");
+      } else setError(t("editor.formatFileFailed", { message: errorMessage(formatError) }));
     } finally {
+      if (lease) await lease.release();
       formattingRef.current = false;
       setFormatting(false);
       finishFormattingTask();
@@ -1125,19 +1156,36 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       || !collaborationSynced || !isFormattableLatexFile(activeFileRef.current) || formattingRef.current) return;
     const filePath = activeFileRef.current;
     const sharedText = collaboration.getText(filePath);
-    const source = sharedText.toString();
     formattingRef.current = true;
     setFormatting(true);
+    setFormatterDiagnostics("");
+    let lease: FormatLease | null = null;
     try {
-      const formatted = await formatSource(filePath, source);
+      lease = await collaboration.acquireFormatLease(filePath);
+      const source = sharedText.toString();
+      const { formatted, diagnostics } = await formatSource(filePath, source);
+      await lease.confirm();
       const edits = await createLatexTextEdits(source, formatted);
       if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
         throw new Error(t("editor.formatSourceChanged"));
       }
+      await lease.confirm();
+      if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
+        throw new Error(t("editor.formatSourceChanged"));
+      }
       if (edits.length) collaboration.applyTextEdits(filePath, edits);
+      // Keep the lease until the formatter's Yjs update is durable. The
+      // compile save that follows may still issue its normal idempotent flush.
+      if (edits.length) await collaboration.flush();
+      setFormatterRecovery(null);
+      setFormatterDiagnostics(diagnostics);
     } catch (formatError) {
-      setError(t("editor.formatFailedContinue", { message: errorMessage(formatError) }));
+      if (isTexFmtError(formatError)) {
+        setFormatterRecovery({ action: "file", kind: formatError.kind, detail: formatError.message });
+        setError("");
+      } else setError(t("editor.formatFailedContinue", { message: errorMessage(formatError) }));
     } finally {
+      if (lease) await lease.release();
       formattingRef.current = false;
       setFormatting(false);
     }
@@ -1147,7 +1195,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     await formatBeforeCompile();
     return save();
   };
-  const formatSelectedSource = async (): Promise<void> => {
+  const formatSelectedSource = async (texFmtConfig?: string): Promise<void> => {
     if (!project || project.permission === "read" || !collaborationSynced || formattingRef.current
       || !isFormattableLatexFile(activeFileRef.current)) return;
     const currentSelection = selectionRef.current;
@@ -1167,19 +1215,41 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     let finishFormattingTask: () => void = () => {};
     const formattingTask = new Promise<void>((resolve) => { finishFormattingTask = resolve; });
     formattingTaskRef.current = formattingTask;
+    setFormatterDiagnostics("");
+    let lease: FormatLease | null = null;
     try {
-      const formatted = reindentLatexSelection(selectedText, await formatSource(filePath, selectedText));
+      lease = await collaboration.acquireFormatLease(filePath);
+      const source = sharedText.toString();
+      if (source.slice(startOffset, endOffset) !== selectedText) {
+        setError(t("editor.formatSelectionChanged"));
+        return;
+      }
+      const result = await formatSource(filePath, selectedText, texFmtConfig);
+      const formatted = reindentLatexSelection(selectedText, result.formatted);
+      await lease.confirm();
       const edits = await createLatexTextEdits(selectedText, formatted, startOffset);
       if (activeFileRef.current !== filePath || sharedText.toString().slice(startOffset, endOffset) !== selectedText) {
         setError(t("editor.formatSelectionChanged"));
         return;
       }
+      await lease.confirm();
+      if (activeFileRef.current !== filePath || sharedText.toString().slice(startOffset, endOffset) !== selectedText) {
+        setError(t("editor.formatSelectionChanged"));
+        return;
+      }
       if (edits.length) collaboration.applyTextEdits(filePath, edits);
+      if (edits.length) await persistPendingEdits();
+      setFormatterRecovery(null);
+      setFormatterDiagnostics(result.diagnostics);
       setError("");
       setNotice(t("editor.formatSelectionComplete"));
     } catch (formatError) {
-      setError(t("editor.formatFailed", { message: errorMessage(formatError) }));
+      if (isTexFmtError(formatError)) {
+        setFormatterRecovery({ action: "selection", kind: formatError.kind, detail: formatError.message });
+        setError("");
+      } else setError(t("editor.formatFailed", { message: errorMessage(formatError) }));
     } finally {
+      if (lease) await lease.release();
       formattingRef.current = false;
       setFormatting(false);
       finishFormattingTask();
@@ -1301,6 +1371,17 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
   const updateEditorPreferences = (next: EditorPreferences) => {
     setEditorPreferences(next); saveEditorPreferences(user.id, projectId, next);
   };
+  const retryFormatter = (resetOptions = false): void => {
+    const recovery = formatterRecovery;
+    if (!recovery) return;
+    setFormatterRecovery(null);
+    setFormatterDiagnostics("");
+    setError("");
+    if (resetOptions) updateEditorPreferences({ ...editorPreferences, texFmtConfig: "" });
+    const configOverride = resetOptions ? "" : undefined;
+    if (recovery.action === "selection") void formatSelectedSource(configOverride);
+    else void formatCurrentFile(configOverride);
+  };
   const toggleFilesPanel = () => {
     if (filesPanel.current?.isCollapsed()) filesPanel.current.expand();
     else filesPanel.current?.collapse();
@@ -1320,6 +1401,11 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
     : [];
   if (!project) return <div className="center-card"><p>{error || t("common.loading")}</p>{error && <button className="primary" onClick={onBack}>{t("editor.backToProjects")}</button>}</div>;
   const readOnly = project.permission === "read" || !collaborationSynced;
+  const activeFormatLease = formatLeaseStates.find((lease) => lease.path === activeFile);
+  // The lease state deliberately has no durable user/session identity. Show
+  // it whenever this browser is not the formatter currently holding it; this
+  // also explains a second tab belonging to the same account.
+  const remoteFormatLease = activeFormatLease && !formatting ? activeFormatLease : null;
   const replaceSpellCheckIssue = (issue: SpellCheckIssue, replacement: string): void => {
     if (readOnly) return;
     const filePath = activeFileRef.current;
@@ -1404,8 +1490,8 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
         {showEditor && project.permission !== "read" && isFormattableLatexFile(activeFile) && <div className="format-action" role="group" aria-label={t("editor.format")} aria-busy={formatting}>
           <div className="format-action-label"><AlignLeft size={14} /><span>{t("editor.format")}</span></div>
           <div className="format-action-options">
-            <button type="button" className="format-action-file" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatCurrentFile()} disabled={readOnly || formatting || !collaborationSynced}>{t("editor.formatFile")}</button>
-            <button type="button" className="format-action-selected" title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || !collaborationSynced || !selection.selectedText.trim()}>{t("editor.formatSelected")}</button>
+            <button type="button" className="format-action-file" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatCurrentFile()} disabled={readOnly || formatting || Boolean(activeFormatLease) || !collaborationSynced}>{t("editor.formatFile")}</button>
+            <button type="button" className="format-action-selected" title={selection.selectedText.trim() ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={() => void formatSelectedSource()} disabled={readOnly || formatting || Boolean(activeFormatLease) || !collaborationSynced || !selection.selectedText.trim()}>{t("editor.formatSelected")}</button>
           </div>
         </div>}
         <div className="comments-action" role="group" aria-label={t("common.comments")}>
@@ -1420,6 +1506,12 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       </div>
     </header>
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
+    {(spellCheck.error || formatterRecovery || formatterDiagnostics || remoteFormatLease) && <div className="client-tool-recoveries">
+      {spellCheck.error && <div className="client-tool-recovery" role="alert" title={spellCheck.error}><AlertTriangle size={15} /><span><strong>{t("editor.harperRecoveryTitle")}</strong>{t("editor.harperFallbackHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={spellCheck.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={spellCheck.dismissError}><X size={13} /></button></div>}
+      {formatterRecovery && <div className="client-tool-recovery" role="alert" title={formatterRecovery.detail}><AlertTriangle size={15} /><span><strong>{t(formatterRecovery.kind === "format" ? "editor.texFmtOptionsRecoveryTitle" : formatterRecovery.kind === "load" ? "editor.texFmtRecoveryTitle" : "editor.texFmtRuntimeRecoveryTitle")}</strong>{t("editor.clientToolRecoveryHint")}</span><div className="client-tool-recovery-actions"><button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter()}>{t("common.retry")}</button>{formatterRecovery.kind === "format" && editorPreferences.texFmtConfig.trim() && <button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter(true)}>{t("editor.resetFormatterOptions")}</button>}<button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={() => setFormatterRecovery(null)}><X size={13} /></button></div>}
+      {formatterDiagnostics && <div className="client-tool-recovery formatter-diagnostics" role="status"><AlertTriangle size={15} /><span><strong>{t("editor.texFmtDiagnosticsTitle")}</strong>{t("editor.texFmtDiagnosticsHint")}</span><details><summary>{t("editor.viewFormatterDiagnostics")}</summary><pre>{formatterDiagnostics}</pre></details><button type="button" className="formatter-diagnostics-dismiss" title={t("editor.dismissFormatterDiagnostics")} aria-label={t("editor.dismissFormatterDiagnostics")} onClick={() => setFormatterDiagnostics("")}><X size={13} /></button></div>}
+      {remoteFormatLease && <div className="client-tool-recovery format-lease-status" role="status"><LoaderCircle className="spin" size={15} /><span>{t("editor.formattingBy", { name: remoteFormatLease.holderName })}</span></div>}
+    </div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
     <PanelGroup autoSaveId="texlite-workspace-layout" direction="horizontal" className="work-grid">
@@ -1486,7 +1578,7 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
           )}
           <div id="editor-source-content" className="editor-content-container">
             <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
-              <LatexEditor key={activeFile} value={content} filePath={activeFile} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} completionIndex={completionIndex} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness, undoManager: readOnly ? undefined : collaboration.getUndoManager(activeFile) } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor} />
+              <LatexEditor key={activeFile} value={content} filePath={activeFile} readOnly={readOnly} comments={comments} focusComment={focusComment} preferences={editorPreferences} nativeSpellCheck={spellCheck.nativeFallback} completionIndex={completionIndex} spellCheckIssues={spellCheck.issues} spellCheckJump={spellCheck.jump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaboration.awareness, undoManager: readOnly ? undefined : collaboration.getUndoManager(activeFile) } : undefined} onChange={updateEditorContent} onSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })} onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }} onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor} />
             </Suspense>
             {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
           </div>

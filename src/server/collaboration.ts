@@ -31,12 +31,15 @@ const MESSAGE_PERMISSION = 7;
 // Source text still uses the normal Yjs sync protocol; this message prevents
 // an old IndexedDB metadata entry from being treated as an active compile.
 const MESSAGE_COMPILE_STATES = 8;
+// Ephemeral, per-file formatter leases. These are deliberately kept out of
+// the Yjs document and source persistence state.
+const MESSAGE_FORMAT_LEASE = 9;
 /**
  * Increment this when a wire-level collaboration change cannot be decoded by
  * an older browser. The epoch marker is rotated at the same time, which makes
  * already-open older pages discard their local draft and reload safely.
  */
-export const COLLABORATION_PROTOCOL_VERSION = 2;
+export const COLLABORATION_PROTOCOL_VERSION = 3;
 const VERSIONED_EPOCH_PREFIX = `${COLLABORATION_PROTOCOL_VERSION}:`;
 const SOURCE_PREFIX = "source:";
 const MAX_PROJECT_SESSIONS = 10;
@@ -47,6 +50,8 @@ const META_ORIGIN = Symbol("meta");
 const SAVE_DELAY_MS = 750;
 const STATE_SAVE_DELAY_MS = 750;
 const ROOM_IDLE_MS = 30_000;
+const FORMAT_LEASE_TTL_MS = 45_000;
+const MAX_FORMAT_LEASE_WAITERS = MAX_PROJECT_SESSIONS * 2;
 const EPHEMERAL_META_KEYS = ["compileStates", "filesEvent", "commentsRevision", "dictionaryRevision"] as const;
 const COLORS = [
   ["#1677c8", "#1677c833"], ["#d65745", "#d6574533"], ["#16866a", "#16866a33"],
@@ -61,6 +66,21 @@ interface Connection {
   awarenessClientId: number | null;
   protocolVerified: boolean;
   protocolTimer: NodeJS.Timeout | null;
+}
+
+interface FormatLease {
+  path: string;
+  token: string;
+  requestId: string;
+  connection: Connection;
+  expiresAt: number;
+  timer: NodeJS.Timeout;
+}
+
+interface FormatLeaseWaiter {
+  path: string;
+  requestId: string;
+  connection: Connection;
 }
 
 interface Room {
@@ -87,6 +107,8 @@ interface Room {
   pendingFlushes: Array<{ connection: Connection; requestId: string }>;
   rejectedPaths: Set<string>;
   compileMetaValidationPending: boolean;
+  formatLeases: Map<string, FormatLease>;
+  formatLeaseWaiters: Map<string, FormatLeaseWaiter[]>;
 }
 
 interface RoomBootstrap {
@@ -324,6 +346,10 @@ export class CollaborationService {
   notifyPermissionChanged(projectId: string, userId: string, permission: "read" | "edit" | "owner" | "revoked"): void {
     const room = this.rooms.get(projectId);
     if (!room) return;
+    if (permission === "read" || permission === "revoked") {
+      const connectionIds = new Set([...room.connections].filter((connection) => connection.user.id === userId));
+      for (const connection of connectionIds) this.releaseFormatLeasesForConnection(room, connection);
+    }
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_PERMISSION);
     encoding.writeVarString(encoder, userId);
@@ -720,7 +746,9 @@ export class CollaborationService {
       snapshotFlushPending: false,
       pendingFlushes: [],
       rejectedPaths: new Set(),
-      compileMetaValidationPending: false
+      compileMetaValidationPending: false,
+      formatLeases: new Map(),
+      formatLeaseWaiters: new Map()
     };
     room.awareness.setLocalState(null);
     // A recovered Yjs document may contain metadata from a process that no
@@ -910,6 +938,7 @@ export class CollaborationService {
         this.sendSyncStep1(room, connection.socket);
         this.sendCompileStates(room, connection.socket);
         this.sendAwareness(room, connection.socket);
+        this.sendFormatLeaseStates(room, connection);
       }
       return;
     }
@@ -958,6 +987,10 @@ export class CollaborationService {
       this.sendFlushReceipt(connection, requestId, receipt);
       return;
     }
+    if (messageType === MESSAGE_FORMAT_LEASE) {
+      this.handleFormatLeaseMessage(room, connection, decoder, current);
+      return;
+    }
     if (messageType !== MESSAGE_AWARENESS) return;
     const update = decoding.readVarUint8Array(decoder);
     const clientIds = awarenessClientIds(update);
@@ -985,6 +1018,7 @@ export class CollaborationService {
 
   private disconnect(room: Room, connection: Connection): void {
     if (!room.connections.delete(connection)) return;
+    this.releaseFormatLeasesForConnection(room, connection);
     room.pendingFlushes = room.pendingFlushes.filter((pending) => pending.connection !== connection);
     if (connection.protocolTimer) clearTimeout(connection.protocolTimer);
     connection.protocolTimer = null;
@@ -1009,6 +1043,224 @@ export class CollaborationService {
 
   private broadcast(room: Room, message: Uint8Array, except: Connection | null): void {
     for (const connection of room.connections) if (connection !== except) send(connection.socket, message);
+  }
+
+  /**
+   * Serialize access to one source file while a browser-side formatter is
+   * calculating and applying its replacement. This is intentionally an
+   * in-memory room primitive: the lease is advisory to the live collaboration
+   * room, while the Yjs update + flush ordering remains the authoritative
+   * durability boundary. A disconnected holder can never keep a lease alive.
+   */
+  private handleFormatLeaseMessage(
+    room: Room,
+    connection: Connection,
+    decoder: decoding.Decoder,
+    currentProject: NonNullable<ReturnType<typeof accessibleProject>>
+  ): void {
+    const operation = decoding.hasContent(decoder) ? decoding.readVarString(decoder).slice(0, 16) : "";
+    const requestId = decoding.hasContent(decoder) ? decoding.readVarString(decoder).slice(0, 128) : "";
+    const rawPath = decoding.hasContent(decoder) ? decoding.readVarString(decoder) : "";
+    const token = decoding.hasContent(decoder) ? decoding.readVarString(decoder).slice(0, 128) : "";
+    let filePath: string;
+    try {
+      filePath = safeRelativePath(rawPath);
+    } catch {
+      this.sendFormatLeaseResponse(connection, "denied", requestId, rawPath, "invalid path");
+      return;
+    }
+    if (!requestId || !isCollaborativeTextFile(filePath) || !room.allowedPaths.has(filePath)) {
+      this.sendFormatLeaseResponse(connection, "denied", requestId, filePath, "file is not format-able");
+      return;
+    }
+    if (!canEdit(currentProject)) {
+      this.sendFormatLeaseResponse(connection, "denied", requestId, filePath, "write permission is required");
+      return;
+    }
+    if (operation === "acquire") {
+      const current = this.activeFormatLease(room, filePath);
+      if (!current) {
+        // Expiring a lease may have immediately granted the next queued
+        // request. Do not overwrite that grant with this new request.
+        if (room.formatLeases.has(filePath)) {
+          const waiters = room.formatLeaseWaiters.get(filePath) ?? [];
+          if (waiters.length >= MAX_FORMAT_LEASE_WAITERS) {
+            this.sendFormatLeaseResponse(connection, "denied", requestId, filePath, "too many formatters are waiting");
+            return;
+          }
+          waiters.push({ path: filePath, requestId, connection });
+          room.formatLeaseWaiters.set(filePath, waiters);
+          return;
+        }
+        this.grantFormatLease(room, { path: filePath, requestId, connection });
+        return;
+      }
+      if (current.connection === connection) {
+        this.sendFormatLeaseResponse(connection, "denied", requestId, filePath, "this session already holds the lease");
+        return;
+      }
+      const waiters = room.formatLeaseWaiters.get(filePath) ?? [];
+      if (waiters.some((waiter) => waiter.connection === connection && waiter.requestId === requestId)) return;
+      if (waiters.length >= MAX_FORMAT_LEASE_WAITERS) {
+        this.sendFormatLeaseResponse(connection, "denied", requestId, filePath, "too many formatters are waiting");
+        return;
+      }
+      waiters.push({ path: filePath, requestId, connection });
+      room.formatLeaseWaiters.set(filePath, waiters);
+      return;
+    }
+    if (operation === "renew") {
+      const lease = this.activeFormatLease(room, filePath);
+      if (!lease || lease.connection !== connection || lease.token !== token) {
+        this.sendFormatLeaseResponse(connection, "denied", requestId, filePath, "format lease is no longer valid");
+        return;
+      }
+      this.extendFormatLease(room, lease);
+      this.sendFormatLeaseResponse(connection, "renewed", requestId, filePath, "", lease.expiresAt, lease.token);
+      this.broadcastFormatLeaseState(room, lease);
+      return;
+    }
+    if (operation === "release") {
+      const lease = this.activeFormatLease(room, filePath);
+      if (!lease || lease.connection !== connection || lease.token !== token) {
+        this.sendFormatLeaseResponse(connection, "denied", requestId, filePath, "format lease is no longer valid");
+        return;
+      }
+      this.releaseFormatLease(room, lease);
+      this.sendFormatLeaseResponse(connection, "released", requestId, filePath);
+      return;
+    }
+    if (operation === "cancel") {
+      const waiters = room.formatLeaseWaiters.get(filePath) ?? [];
+      const remaining = waiters.filter((waiter) => !(waiter.connection === connection && waiter.requestId === requestId));
+      if (remaining.length) room.formatLeaseWaiters.set(filePath, remaining);
+      else room.formatLeaseWaiters.delete(filePath);
+      // A timeout may race with the server granting the request. In that
+      // window the request is no longer in the waiter queue, so also revoke a
+      // matching active lease instead of leaving it until the TTL expires.
+      const active = this.activeFormatLease(room, filePath);
+      if (active?.connection === connection && active.requestId === requestId) {
+        this.releaseFormatLease(room, active);
+      }
+      this.sendFormatLeaseResponse(connection, "released", requestId, filePath);
+      return;
+    }
+    this.sendFormatLeaseResponse(connection, "denied", requestId, filePath, "unknown format lease operation");
+  }
+
+  private activeFormatLease(room: Room, filePath: string): FormatLease | null {
+    const lease = room.formatLeases.get(filePath);
+    if (!lease) return null;
+    if (lease.expiresAt > Date.now()) return lease;
+    this.releaseFormatLease(room, lease);
+    return null;
+  }
+
+  private grantFormatLease(room: Room, waiter: FormatLeaseWaiter): boolean {
+    if (!room.connections.has(waiter.connection) || waiter.connection.socket.readyState !== WebSocket.OPEN) return false;
+    const lease: FormatLease = {
+      path: waiter.path,
+      token: randomUUID(),
+      requestId: waiter.requestId,
+      connection: waiter.connection,
+      expiresAt: Date.now() + FORMAT_LEASE_TTL_MS,
+      timer: setTimeout(() => this.expireFormatLease(room, waiter.path), FORMAT_LEASE_TTL_MS + 25)
+    };
+    room.formatLeases.set(waiter.path, lease);
+    this.sendFormatLeaseResponse(waiter.connection, "grant", waiter.requestId, lease.path, "", lease.expiresAt, lease.token);
+    this.broadcastFormatLeaseState(room, lease);
+    return true;
+  }
+
+  private extendFormatLease(room: Room, lease: FormatLease): void {
+    clearTimeout(lease.timer);
+    lease.expiresAt = Date.now() + FORMAT_LEASE_TTL_MS;
+    lease.timer = setTimeout(() => this.expireFormatLease(room, lease.path), FORMAT_LEASE_TTL_MS + 25);
+  }
+
+  private expireFormatLease(room: Room, filePath: string): void {
+    const lease = room.formatLeases.get(filePath);
+    if (!lease) return;
+    if (lease.expiresAt > Date.now()) {
+      lease.timer = setTimeout(() => this.expireFormatLease(room, filePath), lease.expiresAt - Date.now() + 25);
+      return;
+    }
+    this.releaseFormatLease(room, lease);
+  }
+
+  private releaseFormatLease(room: Room, lease: FormatLease): void {
+    if (room.formatLeases.get(lease.path) !== lease) return;
+    clearTimeout(lease.timer);
+    room.formatLeases.delete(lease.path);
+    this.broadcastFormatLeaseState(room, null, lease.path);
+    this.grantNextFormatLease(room, lease.path);
+  }
+
+  private grantNextFormatLease(room: Room, filePath: string): void {
+    if (room.formatLeases.has(filePath)) return;
+    const waiters = room.formatLeaseWaiters.get(filePath);
+    if (!waiters?.length) {
+      room.formatLeaseWaiters.delete(filePath);
+      return;
+    }
+    while (waiters.length) {
+      const waiter = waiters.shift()!;
+      if (!room.connections.has(waiter.connection) || waiter.connection.socket.readyState !== WebSocket.OPEN) continue;
+      // Keep all later requests in the room queue while the first valid
+      // waiter owns the lease. The previous implementation deleted the map
+      // before granting and silently dropped every later waiter.
+      if (waiters.length) room.formatLeaseWaiters.set(filePath, waiters);
+      else room.formatLeaseWaiters.delete(filePath);
+      if (this.grantFormatLease(room, waiter)) return;
+    }
+    room.formatLeaseWaiters.delete(filePath);
+  }
+
+  private releaseFormatLeasesForConnection(room: Room, connection: Connection): void {
+    const pathsToGrant = new Set<string>();
+    for (const [filePath, lease] of room.formatLeases) {
+      if (lease.connection !== connection) continue;
+      pathsToGrant.add(filePath);
+      clearTimeout(lease.timer);
+      room.formatLeases.delete(filePath);
+      this.broadcastFormatLeaseState(room, null, filePath);
+    }
+    for (const [filePath, waiters] of room.formatLeaseWaiters) {
+      const remaining = waiters.filter((waiter) => waiter.connection !== connection);
+      if (remaining.length) room.formatLeaseWaiters.set(filePath, remaining);
+      else room.formatLeaseWaiters.delete(filePath);
+    }
+    for (const filePath of pathsToGrant) this.grantNextFormatLease(room, filePath);
+  }
+
+  private sendFormatLeaseResponse(
+    connection: Connection,
+    status: "grant" | "renewed" | "released" | "denied",
+    requestId: string,
+    filePath: string,
+    reason = "",
+    expiresAt = 0,
+    token = ""
+  ): void {
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_FORMAT_LEASE);
+    encoding.writeVarString(encoder, status);
+    encoding.writeVarString(encoder, requestId);
+    encoding.writeVarString(encoder, filePath);
+    encoding.writeVarString(encoder, token);
+    encoding.writeVarString(encoder, expiresAt > 0 ? String(expiresAt) : "");
+    encoding.writeVarString(encoder, reason.slice(0, 256));
+    send(connection.socket, encoding.toUint8Array(encoder));
+  }
+
+  private broadcastFormatLeaseState(room: Room, lease: FormatLease | null, filePath = lease?.path ?? ""): void {
+    this.broadcast(room, formatLeaseStateMessage(lease, filePath), null);
+  }
+
+  private sendFormatLeaseStates(room: Room, connection: Connection): void {
+    for (const lease of room.formatLeases.values()) {
+      if (lease.expiresAt > Date.now()) send(connection.socket, formatLeaseStateMessage(lease, lease.path));
+    }
   }
 
   private scheduleRoomCleanup(room: Room): void {
@@ -1155,6 +1407,9 @@ export class CollaborationService {
       connection.protocolTimer = null;
     }
     room.connections.clear();
+    for (const lease of room.formatLeases.values()) clearTimeout(lease.timer);
+    room.formatLeases.clear();
+    room.formatLeaseWaiters.clear();
     room.pendingFlushes.splice(0);
     room.rejectedPaths.clear();
     room.awarenessOwners.clear();
@@ -1317,6 +1572,20 @@ function maintenanceMessage(reason: string): Uint8Array {
   const encoder = encoding.createEncoder();
   encoding.writeVarUint(encoder, MESSAGE_MAINTENANCE);
   encoding.writeVarString(encoder, reason);
+  return encoding.toUint8Array(encoder);
+}
+
+function formatLeaseStateMessage(lease: FormatLease | null, filePath: string): Uint8Array {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, MESSAGE_FORMAT_LEASE);
+  encoding.writeVarString(encoder, "state");
+  encoding.writeVarString(encoder, "");
+  encoding.writeVarString(encoder, filePath);
+  encoding.writeVarString(encoder, "");
+  encoding.writeVarString(encoder, lease ? String(lease.expiresAt) : "");
+  encoding.writeVarString(encoder, "");
+  encoding.writeVarString(encoder, lease?.connection.user.id ?? "");
+  encoding.writeVarString(encoder, lease?.connection.user.display_name ?? "");
   return encoding.toUint8Array(encoder);
 }
 

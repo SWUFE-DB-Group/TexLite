@@ -4,6 +4,7 @@ import {
   type ActiveSession,
   type CollaborationStatus,
   type FilesEvent,
+  type FormatLeaseState,
   type SharedCompileState
 } from "../collaboration";
 import type { Project, User } from "../types";
@@ -31,6 +32,7 @@ export function useProjectCollaboration(
   const [filesEvent, setFilesEvent] = useState<FilesEvent | null>(null);
   const [commentsRevision, setCommentsRevision] = useState("");
   const [dictionaryRevision, setDictionaryRevision] = useState("");
+  const [formatLeaseStates, setFormatLeaseStates] = useState<FormatLeaseState[]>([]);
   const [localDraftReady, setLocalDraftReady] = useState(false);
   const [permission, setPermission] = useState<Project["permission"]>(projectPermission);
   const activeMainFileRef = useRef(activeMainFile);
@@ -52,6 +54,7 @@ export function useProjectCollaboration(
       setFilesEvent(null);
       setCommentsRevision("");
       setDictionaryRevision("");
+      setFormatLeaseStates([]);
       onDisconnectedRef.current();
     };
     const handleStatus = ({ status: nextStatus }: { status: CollaborationStatus }) => {
@@ -87,6 +90,8 @@ export function useProjectCollaboration(
     collaboration.provider.on("connection-error", handleConnectionFailure);
     collaboration.meta.observe(handleMeta);
     const stopCompileStateListener = collaboration.onCompileStates(handleAuthoritativeCompileStates);
+    const refreshFormatLeases = () => setFormatLeaseStates(collaboration.formatLeaseStates());
+    const stopFormatLeaseListener = collaboration.onFormatLeaseState(refreshFormatLeases);
     const stopDraftListener = collaboration.onDraftReady(() => setLocalDraftReady(true));
     const stopPermissionListener = collaboration.onPermissionChanged((nextPermission) => {
       if (nextPermission === "revoked") {
@@ -114,6 +119,7 @@ export function useProjectCollaboration(
       collaboration.provider.off("connection-error", handleConnectionFailure);
       collaboration.meta.unobserve(handleMeta);
       stopCompileStateListener();
+      stopFormatLeaseListener();
       stopDraftListener();
       stopPermissionListener();
       collaboration.destroy();
@@ -134,6 +140,7 @@ export function useProjectCollaboration(
     setSynced(false);
     setActiveSessions([]);
     setCompileState(null);
+    setFormatLeaseStates([]);
     collaboration.reconnect();
   };
 
@@ -144,6 +151,7 @@ export function useProjectCollaboration(
     activeSessions,
     compileState,
     setCompileState,
+    formatLeaseStates,
     filesEvent,
     commentsRevision,
     dictionaryRevision,

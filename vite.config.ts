@@ -4,6 +4,13 @@ import wasm from "vite-plugin-wasm";
 
 export default defineConfig({
   plugins: [react(), wasm()],
+  worker: {
+    // Worker bundles use their own plugin pipeline. tex-fmt is deliberately
+    // loaded there so both its WASM execution and diff calculation stay off
+    // the editor's main thread.
+    plugins: () => [wasm()],
+    format: "es"
+  },
   root: "src/client",
   build: {
     // tex-fmt's WASM module uses native top-level await. TexLite targets

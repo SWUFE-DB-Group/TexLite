@@ -30,12 +30,15 @@ describe("texLite application", () => {
     config = {
       configPath: path.join(root, "config.json"), siteName: "Test texLite", adminEmail: "admin@example.test",
       host: "127.0.0.1", port: 3000, dataDir: root, databasePath: path.join(root, "texlite.db"),
-      projectsDir: path.join(root, "projects"), clientDir: path.join(root, "missing-client"), sessionDays: 1,
+      projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "pdflatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
       maxUploadBytes: 50 * 1024 * 1024, historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024
       , git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
     };
+    fs.mkdirSync(path.join(config.clientDir, "assets"), { recursive: true });
+    fs.writeFileSync(path.join(config.clientDir, "index.html"), "<!doctype html><div id=\"root\"></div>");
+    fs.writeFileSync(path.join(config.clientDir, "assets", "app-deadbeef.js"), "export {};\n");
     db = openDatabase(config);
     db.prepare(`INSERT INTO users
       (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
@@ -80,6 +83,16 @@ describe("texLite application", () => {
     expect(publicConfig.json()).toMatchObject({ siteName: "Test texLite", adminEmail: "admin@example.test" });
   });
 
+  it("keeps the app shell fresh and caches fingerprinted browser runtimes", async () => {
+    const shell = await app.inject({ method: "GET", url: "/" });
+    expect(shell.statusCode).toBe(200);
+    expect(shell.headers["cache-control"]).toBe("no-store");
+
+    const asset = await app.inject({ method: "GET", url: "/assets/app-deadbeef.js" });
+    expect(asset.statusCode).toBe(200);
+    expect(asset.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+  });
+
   it("revokes cookies when an account is disabled, including after re-enabling it", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/admin/users", headers: { cookie },
@@ -104,13 +117,14 @@ describe("texLite application", () => {
     expect(stale.json()).toMatchObject({ code: "AUTH_REQUIRED" });
   });
 
-  it("does not expose a server-side spellcheck endpoint", async () => {
-    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Client spellcheck" } });
+  it("runs authenticated spellcheck through the shared server runtime", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Server spellcheck" } });
     const response = await app.inject({
       method: "POST", url: `/api/projects/${created.json().project.id}/spellcheck`, headers: { cookie },
-      payload: { source: "This wrng source must stay in the browser." }
+      payload: { source: "This wrng source is checked by Harper." }
     });
-    expect(response.statusCode).toBe(404);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().lints).toEqual(expect.arrayContaining([expect.objectContaining({ problem: "wrng" })]));
   });
 
   it("uses one collaboration size limit for the API and editable text files", async () => {
