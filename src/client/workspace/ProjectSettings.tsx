@@ -37,6 +37,7 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
   const [rcText, setRcText] = useState("");
   const [name, setName] = useState(project.name);
   const [mainFile, setMainFile] = useState(project.mainFile);
+  const [mainFileOptions, setMainFileOptions] = useState<string[] | null>(null);
   const [error, setError] = useState("");
   const [dictionaryValue, setDictionaryValue] = useState("");
   const [dictionaryError, setDictionaryError] = useState("");
@@ -59,9 +60,20 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
     void api<{ content: string }>(`/api/projects/${projectId}/file?path=${encodeURIComponent(project.latexmkrc)}`)
       .then(({ content }) => setRcText(content)).catch((requestError) => setError(errorMessage(requestError)));
   }, [project.latexmkrc]);
-  const texFiles = files.filter((entry) => entry.type === "file" && /\.tex$/i.test(entry.path)).map((entry) => entry.path);
-  const mainFileOptions = [...new Set(project.mainFile && project.mainFile.toLowerCase().endsWith(".tex") ? [...texFiles, project.mainFile] : texFiles)]
-    .sort((left, right) => left.localeCompare(right));
+  useEffect(() => {
+    if (settingsTab !== "compiler") return;
+    const controller = new AbortController();
+    setMainFileOptions(null);
+    void api<{ mainFiles: string[] }>(`/api/projects/${projectId}/main-files`, { signal: controller.signal })
+      .then((result) => setMainFileOptions(result.mainFiles))
+      .catch((requestError) => {
+        if (requestError instanceof Error && requestError.name === "AbortError") return;
+        setError(errorMessage(requestError));
+      });
+    return () => controller.abort();
+  }, [projectId, files, settingsTab]);
+  const displayedMainFileOptions = mainFileOptions ?? [project.mainFile];
+  const invalidCurrentMainFile = mainFileOptions !== null && !mainFileOptions.includes(mainFile);
   const saveCompilerSettings = async () => {
     try {
       const latexmkrc = rcText.trim() && site.allowProjectLatexmkrc !== false ? ".latexmkrc" : null;
@@ -143,7 +155,7 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
       <div className="settings-section-title"><Settings size={15} /><strong>{t("projectSettings.compilerTab")}</strong></div>
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>
       <label>{t("projects.name")}<input disabled={!canManage} value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>{t("projectSettings.mainFile")}<select disabled={!canManage || mainFileOptions.length === 0} value={mainFile} onChange={(event) => setMainFile(event.target.value)}>{mainFileOptions.map((filePath) => <option value={filePath} key={filePath}>{filePath}</option>)}</select></label>
+      <label>{t("projectSettings.mainFile")}<select disabled={!canManage || mainFileOptions === null || mainFileOptions.length === 0} value={mainFile} onChange={(event) => setMainFile(event.target.value)}>{invalidCurrentMainFile && <option value={mainFile} disabled>{t("projectSettings.invalidMainFileOption", { path: mainFile })}</option>}{displayedMainFileOptions.map((filePath) => <option value={filePath} key={filePath}>{filePath}</option>)}</select></label>
       <label>{t("projectSettings.engine")}<select disabled={!canManage} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
       <label>{t("projectSettings.latexmkrc")}<textarea className="latexmkrc-editor" rows={10} spellCheck={false} disabled={!canManage || site.allowProjectLatexmkrc === false} value={rcText} placeholder={t("projectSettings.latexmkrcPlaceholder")} onChange={(event) => setRcText(event.target.value)} /></label>
       <div className="settings-actions">{canManage && <button className="settings-save" onClick={() => void saveCompilerSettings()}><Save size={15} />{t("projectSettings.saveCompiler")}</button>}</div>

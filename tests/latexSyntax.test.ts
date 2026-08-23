@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { matchBrackets } from "@codemirror/language";
 import { latexLanguage } from "../src/client/latexLanguage";
+import { hasDocumentClass } from "../src/client/latexRoot";
 
 describe("LaTeX syntax handling", () => {
   it("matches an outer resizebox brace after a nested tabular environment", () => {
@@ -21,5 +22,12 @@ describe("LaTeX syntax handling", () => {
       end: { from: opening, to: opening + 1 },
       matched: true
     });
+  });
+
+  it("detects document roots after source changes while ignoring comments and listings", () => {
+    expect(hasDocumentClass("% \\documentclass{article}\n")).toBe(false);
+    const listing = "\\begin{verbatim}[options]\n\\documentclass{article}\n\\end{verbatim}";
+    expect(hasDocumentClass(listing)).toBe(false);
+    expect(hasDocumentClass("\\documentclass[11pt]{article}\n")).toBe(true);
   });
 });

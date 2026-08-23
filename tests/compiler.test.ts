@@ -227,6 +227,53 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     expect(fs.readdirSync(cacheDirectory)).toHaveLength(2);
   });
 
+  it("ignores ambient latexmkrc files unless the project setting selects one", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-rc-"));
+    temporaryRoots.push(root);
+    const config = testConfig(root);
+    const fakeLatexmk = path.join(root, "fake-latexmk.mjs");
+    const fakeScript = [
+      "#!/usr/bin/env node",
+      "import fs from \"node:fs\";",
+      "import path from \"node:path\";",
+      "const output = process.argv.find((argument) => argument.startsWith(\"-outdir=\")).slice(\"-outdir=\".length);",
+      "const main = process.argv.at(-1);",
+      "const basename = path.basename(main, \".tex\");",
+      "fs.mkdirSync(output, { recursive: true });",
+      "fs.writeFileSync(path.join(output, \".args\"), JSON.stringify(process.argv.slice(2)));",
+      "fs.writeFileSync(path.join(output, basename + \".pdf\"), \"%PDF-1.4\\n\");"
+    ].join("\n");
+    fs.writeFileSync(fakeLatexmk, fakeScript);
+    fs.chmodSync(fakeLatexmk, 0o700);
+    config.latexmk = fakeLatexmk;
+    const projectId = randomUUID();
+    const liveSource = path.join(config.projectsDir, projectId, "source");
+    fs.mkdirSync(liveSource, { recursive: true });
+    fs.writeFileSync(path.join(liveSource, "main.tex"), "\\documentclass{article}\\begin{document}x\\end{document}\\n");
+    // This file is intentionally present in the source tree, as it would be
+    // after importing a normal LaTeX archive.
+    fs.writeFileSync(path.join(liveSource, ".latexmkrc"), "$silent = 1;\\n");
+
+    const withoutConfiguredRc = await captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const ignoredResult = await compileProject(config, withoutConfiguredRc, "main.tex", "pdflatex", null);
+    expect(ignoredResult.ok, ignoredResult.log).toBe(true);
+    const ignoredArgs = JSON.parse(fs.readFileSync(path.join(withoutConfiguredRc.outputDir, ".args"), "utf8")) as string[];
+    expect(ignoredArgs).toContain("-norc");
+    expect(ignoredArgs).not.toContain("-r");
+
+    const withConfiguredRc = await captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: ".latexmkrc", extraArgs: []
+    });
+    const configuredResult = await compileProject(config, withConfiguredRc, "main.tex", "pdflatex", ".latexmkrc");
+    expect(configuredResult.ok, configuredResult.log).toBe(true);
+    const configuredArgs = JSON.parse(fs.readFileSync(path.join(withConfiguredRc.outputDir, ".args"), "utf8")) as string[];
+    expect(configuredArgs.filter((argument) => argument === "-norc")).toHaveLength(1);
+    expect(configuredArgs.filter((argument) => argument === "-r")).toHaveLength(1);
+    expect(configuredArgs).toContain(".latexmkrc");
+  });
+
   it("coordinates different root documents independently", async () => {
     const coordinator = new ProjectCompileCoordinator(new CompileQueue(2));
     let release!: () => void;

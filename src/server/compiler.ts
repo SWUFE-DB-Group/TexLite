@@ -708,6 +708,11 @@ export async function compileProject(
   const engineFlag = engine === "xelatex" ? "-xelatex" : engine === "lualatex" ? "-lualatex" : "-pdf";
   const args = [
     engineFlag,
+    // latexmk otherwise reads a .latexmkrc from the compile working
+    // directory automatically.  Project sources may contain one after a ZIP
+    // import or a Git checkout, so only an rc file explicitly selected in the
+    // project settings may be loaded below with -r.
+    "-norc",
     "-interaction=nonstopmode",
     "-file-line-error",
     "-halt-on-error",

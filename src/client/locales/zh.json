@@ -117,7 +117,7 @@
     "reasons": { "initial": "项目创建", "autosave": "自动保存", "file": "文件操作", "settings": "编译器设置", "git": "Git 操作", "restore": "恢复版本", "checkpoint": "安全检查点" }
   },
   "projectSettings": {
-    "mainFile": "主文档", "engine": "编译引擎", "latexmkrc": "项目 latexmkrc", "save": "保存项目设置", "members": "共享成员",
+    "mainFile": "主文档", "invalidMainFileOption": "{{path}}（不是主文档）", "engine": "编译引擎", "latexmkrc": "项目 latexmkrc", "save": "保存项目设置", "members": "共享成员",
     "recentLog": "最近编译日志", "share": "共享", "shareDescription": "仅可共享给管理员已创建的用户。", "chooseUser": "请选择用户",
     "latexmkrcPlaceholder": "# 留空表示不使用项目 rc 文件\n$pdf_mode = 1;",
     "addMember": "添加成员", "noMembers": "该项目尚未分享给其他成员。", "removeTitle": "移除共享成员", "removeDescription": "确认移除 {{username}}？其账号和其他项目不会受到影响。",

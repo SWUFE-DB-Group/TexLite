@@ -99,6 +99,11 @@ requested. TexLite never installs or updates TeX packages.
 or systemd. `start`, `status`, `stop`, `restart`, and `logs` use the bundled
 PM2 dependency. Managed startup waits for both PM2 and the HTTP health probe;
 status has a colored systemctl-style view and a `--json` form for scripts.
+PM2 7.0.3 currently declares `js-yaml@4.3.0`, so dependency audits may report
+the upstream GHSA-5p4m-2wfm-xmqj advisory. TexLite invokes PM2 through its
+JavaScript API and does not load user- or project-supplied YAML configuration;
+deployments requiring a zero-advisory dependency tree can instead supervise
+`texlite serve` with systemd or Docker until PM2 updates that dependency.
 Expired login sessions are pruned at startup and periodically while the
 process is running, rather than merely being ignored during authentication.
 Administrators can open the System status view (or authenticated
@@ -240,11 +245,14 @@ file names and line numbers; the raw `latexmk` transcript remains available.
 
 ## Compilation and retained output
 
-The project setting supplies the default root document. A browser session may
-select another `.tex` file containing `\documentclass`; only the currently
-selected root is compiled. Compile state, logs, retained PDF, artifacts,
-outline, and SyncTeX are keyed by root, so collaborators working on different
-roots do not replace each other's result or compile notification.
+The project setting supplies the default root document. Project settings list
+and accept only `.tex` files containing a real `\documentclass` declaration;
+an imported project with exactly one `.tex` file may use that file as a
+compatibility fallback. The server enforces the same rule for compile and
+preview routes. A browser session may select another detected root, and only
+the currently selected root is compiled. Compile state, logs, retained PDF,
+artifacts, outline, and SyncTeX are keyed by root, so collaborators working on
+different roots do not replace each other's result or compile notification.
 
 Compilation follows this sequence:
 
@@ -262,7 +270,7 @@ Compilation follows this sequence:
    by project, root, engine, latexmkrc, and compiler arguments. The cache is
    reused only for the same root; root-specific caches can compile concurrently
    within the global `maxCompileJobs` limit.
-4. `latexmk` runs with `-synctex=1`, line-oriented error output, and shell escape
+4. `latexmk` runs with `-norc` and `-synctex=1`, line-oriented error output, and shell escape
    disabled by default. Its process group, including `pdflatex`, BibTeX/Biber,
    and other descendants, is terminated on timeout. latexmk itself performs
    the repeated passes required by bibliography documents.
@@ -392,19 +400,21 @@ model expands beyond a small group of trusted users on localhost.
 
 ### Correctness and recovery
 
-- [ ] Strengthen source-comment re-anchoring. When selected text is replaced,
-  verify the original text and surrounding context instead of accepting only
-  diff-mapped offsets; otherwise mark the comment orphaned for manual review.
 - [ ] Make database/filesystem lifecycle operations fully crash-recoverable.
   Project creation/import/duplication, project deletion, user cleanup, history
   deletion, and temporary downloads still need explicit tombstones or startup
   reconciliation for every failure point.
-- [ ] Validate the configured main document as a root containing
-  `\documentclass` without breaking the upload rule that a project containing
-  only one `.tex` file may retain it as its configured root. Session-selected
-  alternate roots already require `\documentclass`.
 - [x] Refresh collaboration account/access data at message time and disconnect
   revoked users; membership changes are also pushed to open clients.
+- [x] Strengthen source-comment re-anchoring. A diff-mapped range is accepted
+  only when it still contains the original selected text; replacements and
+  ambiguous repeated text require matching surrounding context or are marked
+  orphaned for manual review.
+- [x] Detect root documents as source files are opened and edited, ignoring
+  comments and common verbatim environments. The settings API and UI expose
+  only files with a real `\documentclass` declaration as candidates; a sole
+  `.tex` file remains a compatibility fallback for single-file imports. The
+  editor applies the same rule instead of trusting the configured path.
 - [ ] Add failure-injection tests for crashes between source snapshot,
   publication, database compile status updates, project deletion, and history
   cleanup.

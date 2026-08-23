@@ -262,6 +262,9 @@ texlite stop
 检查可选的 Git 集成。`texlite config` 显示生效的配置和路径。
 `texlite serve` 以前台方式运行，不启动 PM2。
 
+<details>
+<summary>从仓库部署并单独安装 PM2</summary>
+
 从仓库运行时仍可以使用 `ecosystem.config.cjs` 和 npm PM2 快捷命令。
 该配置明确使用一个 fork 实例（`instances: 1`）。不支持 cluster 模式，因为
 协作状态、编译队列、SQLite 连接和项目文件系统都属于单个进程。
@@ -292,6 +295,8 @@ pm2 save
 ~~~
 
 常用命令还有 pm2 stop texlite、pm2 restart texlite、pm2 delete texlite 和 pm2 monit。
+
+</details>
 
 ## 协作和编译模型
 

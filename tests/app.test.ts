@@ -1428,6 +1428,10 @@ Second version.
       payload: { path: "refs.bib", content: "@article{sample, title={Sample}}\n" }
     });
     await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "chapter.tex", content: "% \\documentclass{book}\n\\section{A fragment}\n" }
+    });
+    await app.inject({
       method: "POST", url: `/api/projects/${project.id}/folders`, headers: { cookie },
       payload: { path: "chapters" }
     });
@@ -1439,6 +1443,22 @@ Second version.
     });
     expect(updateValid.statusCode).toBe(200);
     expect(updateValid.json().project.mainFile).toBe("alt.tex");
+
+    const candidates = await app.inject({
+      method: "GET", url: `/api/projects/${project.id}/main-files`, headers: { cookie }
+    });
+    expect(candidates.statusCode).toBe(200);
+    expect(candidates.json()).toEqual({
+      texFiles: ["alt.tex", "chapter.tex", "main.tex"],
+      mainFiles: ["alt.tex", "main.tex"]
+    });
+
+    const updateFragment = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie },
+      payload: { mainFile: "chapter.tex" }
+    });
+    expect(updateFragment.statusCode).toBe(400);
+    expect(updateFragment.json()).toMatchObject({ code: "MAIN_DOCUMENT_INVALID", path: "chapter.tex" });
 
     // 2. Changing mainFile to empty string / null fails with 400 MAIN_FILE_INVALID
     const updateEmpty = await app.inject({
@@ -1479,6 +1499,45 @@ Second version.
     });
     expect(updateRcDir.statusCode).toBe(400);
     expect(updateRcDir.json()).toMatchObject({ code: "LATEXMKRC_INVALID" });
+  });
+
+  it("uses a fragmentary tex file as the main-document fallback only when it is the sole tex file", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Single TeX fallback" }
+    });
+    const projectId = created.json().project.id as string;
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "main.tex", content: "\\section{Imported fragment}\n" }
+    });
+
+    const soleCandidate = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/main-files`, headers: { cookie }
+    });
+    expect(soleCandidate.json()).toEqual({ texFiles: ["main.tex"], mainFiles: ["main.tex"] });
+    const soleUpdate = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}`, headers: { cookie }, payload: { mainFile: "main.tex" }
+    });
+    expect(soleUpdate.statusCode).toBe(200);
+
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "chapter.tex", content: "\\section{Another fragment}\n" }
+    });
+    const noCandidate = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/main-files`, headers: { cookie }
+    });
+    expect(noCandidate.json()).toEqual({ texFiles: ["chapter.tex", "main.tex"], mainFiles: [] });
+    const invalidUpdate = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}`, headers: { cookie }, payload: { mainFile: "main.tex" }
+    });
+    expect(invalidUpdate.statusCode).toBe(400);
+    expect(invalidUpdate.json()).toMatchObject({ code: "MAIN_DOCUMENT_INVALID" });
+    const invalidCompileState = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/compile/latest?mainFile=main.tex`, headers: { cookie }
+    });
+    expect(invalidCompileState.statusCode).toBe(400);
+    expect(invalidCompileState.json()).toMatchObject({ code: "MAIN_DOCUMENT_INVALID" });
   });
 
   it("escapes SQL LIKE special characters when filtering projects by search term", async () => {

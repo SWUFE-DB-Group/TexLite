@@ -18,7 +18,10 @@ import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFm
 import { BibtexFormatError, formatBibtex, MAX_CITATION_BIBTEX_BYTES, parseBibEntriesResult } from "./citationLibrary";
 import { classifyCompileLog } from "./compileLog";
 import type { CollaborationSaveReceipt, FormatLease } from "./collaboration";
-import { isProjectHistoryState, projectIdFromPath, projectPath, type TexLiteHistoryState } from "./routes";
+import {
+  isProjectHistoryState, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath,
+  type TexLiteHistoryState
+} from "./routes";
 import { errorMessage } from "./errors";
 import type { WorkspaceLayout } from "./workspace/types";
 import { CollaborationPresence, WorkspaceLayoutMenu } from "./workspace/WorkspaceChrome";
@@ -36,6 +39,7 @@ import { useWorkspaceLayout } from "./workspace/useWorkspaceLayout";
 import type { SpellCheckIssue } from "./spellCheck";
 import { CitationLibraryDialog } from "./CitationLibraryDialog";
 import { loadPdfPreview, preloadWorkspace, type WorkspacePreload } from "./workspacePreload";
+import { hasDocumentClass as hasDocumentClassInSource } from "./latexRoot";
 
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
 const LatexEditor = lazy(() => import("./LatexEditor").then((module) => ({ default: module.LatexEditor })));
@@ -101,6 +105,27 @@ export function App() {
     return initialProjectId ? preloadWorkspace(initialProjectId) : null;
   });
   const [dashboardCache, setDashboardCache] = useState<{ userId: string; projects: Project[]; tags: ProjectTag[]; pagination: ProjectListPagination } | null>(null);
+  const routeCurrentProjectToLogin = () => {
+    const returnProjectId = projectIdFromPath(window.location.pathname);
+    if (!returnProjectId) return;
+    const state: TexLiteHistoryState = { texliteRoute: "dashboard" };
+    window.history.replaceState(state, "", projectLoginPath(returnProjectId));
+    setProjectId(null);
+    setWorkspacePreload(null);
+  };
+  const completeAuthentication = (authenticatedUser: User) => {
+    const returnProjectId = projectIdFromReturn(window.location.search);
+    if (returnProjectId) {
+      const state: TexLiteHistoryState = { texliteRoute: "project", projectId: returnProjectId, fromDashboard: false };
+      window.history.replaceState(state, "", projectPath(returnProjectId));
+      setWorkspacePreload(preloadWorkspace(returnProjectId, { force: true }));
+      setProjectId(returnProjectId);
+    } else if (new URLSearchParams(window.location.search).has("return")) {
+      const state: TexLiteHistoryState = { texliteRoute: "dashboard" };
+      window.history.replaceState(state, "", "/");
+    }
+    setUser(authenticatedUser);
+  };
 
   useEffect(() => {
     const initialProjectId = projectIdFromPath(window.location.pathname);
@@ -116,12 +141,7 @@ export function App() {
     const handleSessionExpired = () => {
       setDashboardCache(null);
       setUser(null);
-      if (projectIdFromPath(window.location.pathname)) {
-        const state: TexLiteHistoryState = { texliteRoute: "dashboard" };
-        window.history.replaceState(state, "", "/");
-        setProjectId(null);
-        setWorkspacePreload(null);
-      }
+      routeCurrentProjectToLogin();
     };
     window.addEventListener("popstate", handlePopState);
     window.addEventListener("texlite:session-expired", handleSessionExpired);
@@ -157,9 +177,9 @@ export function App() {
       setSite(config);
       document.title = config.siteName;
     });
-    void api<{ user: User }>("/api/me").then(({ user }) => setUser(user)).catch((error) => {
-      if (error instanceof ApiError && error.status === 401) setUser(null);
-      else setUser(null);
+    void api<{ user: User }>("/api/me", { suppressSessionExpired: true }).then(({ user }) => completeAuthentication(user)).catch(() => {
+      routeCurrentProjectToLogin();
+      setUser(null);
     });
   }, []);
 
@@ -191,7 +211,7 @@ export function App() {
   }, [user?.id, user?.mustChangePassword, projectId]);
 
   if (user === undefined) return <div className="center-card">{t("common.loading")}</div>;
-  if (!user) return <Login site={site} onLogin={setUser} />;
+  if (!user) return <Login site={site} onLogin={completeAuthentication} />;
   if (user.mustChangePassword) return <ChangePassword site={site} user={user} onChanged={(updated) => setUser(updated)} />;
   if (projectId) {
     return <ProjectWorkspace key={projectId} site={site} user={user} projectId={projectId}
@@ -251,7 +271,7 @@ function Login({ site, onLogin }: { site: SiteConfig; onLogin: (user: User) => v
     setError("");
     try {
       const result = await api<{ user: User }>("/api/auth/login", {
-        method: "POST", body: JSON.stringify({ username, password })
+        method: "POST", body: JSON.stringify({ username, password }), suppressSessionExpired: true
       });
       onLogin(result.user);
     } catch (err) { setError(errorMessage(err)); }
@@ -769,7 +789,6 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const contentRef = useRef("");
   const activeFileRef = useRef("");
   const activeMainFileRef = useRef("");
-  const rootDetectionFile = useRef("");
   const projectLoadSequence = useRef(0);
   const completionRequest = useRef<AbortController | null>(null);
   const outlineRequest = useRef<AbortController | null>(null);
@@ -974,7 +993,6 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     const controller = new AbortController();
     const isCurrent = () => !cancelled && projectLoadSequence.current === sequence;
     let projectLoaded = false;
-    rootDetectionFile.current = "";
     setProject(null); setFiles([]); setProjectOutline([]); setActiveFile(""); setActiveMainFile(""); setRootDocuments(new Set()); setContent(""); setLoadedFile(""); setCompileState(null);
     clearPdfViewport(); setCompletionIndex(null); setDictionaryWords([]);
     void loadPdfPreview();
@@ -986,7 +1004,7 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       setProject(result.project);
       setActiveFile(result.project.mainFile);
       setActiveMainFile(result.project.mainFile);
-      setRootDocuments(new Set([result.project.mainFile]));
+      setRootDocuments(new Set());
       setExpandedFolders(new Set(parentFolders(result.project.mainFile)));
     }).catch((e) => { if (isCurrent()) setError(errorMessage(e)); });
     const filesLoadRequest = api<{ files: FileEntry[] }>(`/api/projects/${projectId}/files`, { signal: controller.signal })
@@ -1099,14 +1117,6 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       sharedText.unobserve(updateContent);
     };
   }, [activeFile, collaboration, collaborationSynced, localDraftReady, project?.permission]);
-
-  useEffect(() => {
-    if (!activeFile || loadedFile !== activeFile || rootDetectionFile.current === activeFile) return;
-    rootDetectionFile.current = activeFile;
-    if (!activeFile.toLocaleLowerCase().endsWith(".tex") || !hasDocumentClass(content)) return;
-    setRootDocuments((current) => new Set([...current, activeFile]));
-    setActiveMainFile(activeFile);
-  }, [activeFile, loadedFile, content]);
 
   const persistPendingEdits = async (): Promise<CollaborationSaveReceipt> => {
     if (!collaborationSynced) throw new Error("Collaboration is not synchronized");
@@ -1384,6 +1394,27 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     onActiveMainFile: setActiveMainFile,
     onRootDocuments: setRootDocuments
   });
+
+  useEffect(() => {
+    if (!activeFile || loadedFile !== activeFile || !activeFile.toLocaleLowerCase().endsWith(".tex")) return;
+    const texFileCount = files.filter((entry) => entry.type === "file" && /\.tex$/i.test(entry.path)).length;
+    if (texFileCount === 0) return;
+    const configuredRoot = activeFile === project?.mainFile;
+    const detectedRoot = hasDocumentClassInSource(content);
+    const isRoot = detectedRoot || texFileCount === 1;
+    setRootDocuments((current) => {
+      if (current.has(activeFile) === isRoot) return current;
+      const next = new Set(current);
+      if (isRoot) next.add(activeFile);
+      else next.delete(activeFile);
+      return next;
+    });
+    if (isRoot && !configuredRoot && activeMainFileRef.current !== activeFile) {
+      setActiveMainFile(activeFile);
+    } else if (!isRoot && activeMainFileRef.current === activeFile && project?.mainFile) {
+      setActiveMainFile(project.mainFile);
+    }
+  }, [activeFile, loadedFile, content, files, project?.mainFile]);
 
   useEffect(() => {
     if (!editorPreferences.openFilesInTabs || files.length === 0) return;
@@ -1758,21 +1789,6 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   </div>;
 }
 
-function hasDocumentClass(source: string): boolean {
-  const withoutComments = source.split(/(?<=\n)/).map((line) => {
-    for (let index = 0; index < line.length; index += 1) {
-      if (line[index] !== "%") continue;
-      let slashes = 0;
-      for (let cursor = index - 1; cursor >= 0 && line[cursor] === "\\"; cursor -= 1) slashes += 1;
-      if (slashes % 2 === 0) return `${line.slice(0, index)}${line.endsWith("\n") ? "\n" : ""}`;
-    }
-    return line;
-  }).join("");
-  const withoutVerbatim = withoutComments
-    .replace(/\\verb\*?([^\s]).*?\1/g, "")
-    .replace(/\\begin\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}[\s\S]*?\\end\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}/g, "");
-  return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{/.test(withoutVerbatim);
-}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

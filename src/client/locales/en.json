@@ -125,7 +125,7 @@
     "reasons": { "initial": "Project created", "autosave": "Automatic save", "file": "File operation", "settings": "Compiler settings", "git": "Git operation", "restore": "Restored version", "checkpoint": "Safety checkpoint" }
   },
   "projectSettings": {
-    "mainFile": "Main document", "engine": "Compiler", "latexmkrc": "Project latexmkrc", "save": "Save project settings",
+    "mainFile": "Main document", "invalidMainFileOption": "{{path}} (not a root document)", "engine": "Compiler", "latexmkrc": "Project latexmkrc", "save": "Save project settings",
     "members": "Shared members", "recentLog": "Latest compile log", "share": "Share",
     "shareDescription": "Projects can only be shared with users created by an administrator.", "chooseUser": "Choose a user",
     "latexmkrcPlaceholder": "# Empty disables the project rc file\n$pdf_mode = 1;",

@@ -177,7 +177,7 @@ export function hasDocumentClass(source: string): boolean {
   }).join("");
   const withoutVerbatim = withoutComments
     .replace(/\\verb\*?([^\s]).*?\1/g, "")
-    .replace(/\\begin\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}[\s\S]*?\\end\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}/g, "");
+    .replace(/\\begin\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}(?:\[[^\]]*\])?[\s\S]*?\\end\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}/g, "");
   return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{/.test(withoutVerbatim);
 }
 

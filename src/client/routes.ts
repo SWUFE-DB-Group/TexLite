@@ -17,6 +17,18 @@ export function projectIdFromPath(pathname: string): string | null {
   }
 }
 
+/** Build the login URL that remembers one validated project destination. */
+export function projectLoginPath(projectId: string): string {
+  const query = new URLSearchParams({ return: projectPath(projectId) });
+  return "/?" + query.toString();
+}
+
+/** Accept only an internal project route from the login return parameter. */
+export function projectIdFromReturn(search: string): string | null {
+  const value = new URLSearchParams(search).get("return");
+  return value ? projectIdFromPath(value) : null;
+}
+
 export type TexLiteHistoryState =
   | { texliteRoute: "dashboard" }
   | { texliteRoute: "project"; projectId: string; fromDashboard: boolean };

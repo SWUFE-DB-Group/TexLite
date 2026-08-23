@@ -18,13 +18,13 @@ const PRELOAD_DEDUPLICATION_MS = 2_000;
  * This runs while /api/me is still in flight, removing the previous serial
  * project -> compile/latest -> PDF.js chain after a full page refresh.
  */
-export function preloadWorkspace(projectId: string): WorkspacePreload {
+export function preloadWorkspace(projectId: string, options: { force?: boolean } = {}): WorkspacePreload {
   const now = Date.now();
   const existing = recentPreloads.get(projectId);
-  if (existing && now - existing.createdAt < PRELOAD_DEDUPLICATION_MS) return existing.preload;
+  if (!options.force && existing && now - existing.createdAt < PRELOAD_DEDUPLICATION_MS) return existing.preload;
 
-  const project = api<{ project: Project }>(`/api/projects/${projectId}`);
-  const latestCompile = api<LatestCompileResponse>(`/api/projects/${projectId}/compile/latest`);
+  const project = api<{ project: Project }>(`/api/projects/${projectId}`, { suppressSessionExpired: true });
+  const latestCompile = api<LatestCompileResponse>(`/api/projects/${projectId}/compile/latest`, { suppressSessionExpired: true });
   const pdfModule = loadPdfPreview();
   const preload = { projectId, project, latestCompile };
   recentPreloads.set(projectId, { preload, createdAt: now });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { isProjectHistoryState, projectIdFromPath, projectPath } from "../src/client/routes";
+import {
+  isProjectHistoryState, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath
+} from "../src/client/routes";
 
 describe("client project routes", () => {
   it("uses a stable URL and parses the singular and plural aliases", () => {
@@ -14,6 +16,14 @@ describe("client project routes", () => {
     expect(projectIdFromPath("/projects")).toBeNull();
     expect(projectIdFromPath("/project/a/b")).toBeNull();
     expect(projectIdFromPath("/project/%E0%A4%A")).toBeNull();
+  });
+
+  it("round-trips only internal project destinations through login", () => {
+    expect(projectLoginPath("abc-123")).toBe("/?return=%2Fproject%2Fabc-123");
+    expect(projectIdFromReturn("?return=%2Fproject%2Fabc-123")).toBe("abc-123");
+    expect(projectIdFromReturn("?return=https%3A%2F%2Fexample.com%2Fproject%2Fabc")).toBeNull();
+    expect(projectIdFromReturn("?return=%2Fadmin")).toBeNull();
+    expect(projectIdFromReturn("?return=%2Fproject%2Fa%2Fb")).toBeNull();
   });
 
   it("validates route history markers before using browser back", () => {

@@ -50,6 +50,7 @@ import { compileMainFile } from "./compileArtifacts.js";
 import { apiError, contentDisposition, ValidationError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
 import { HarperService } from "./harper.js";
+import { isMainDocumentCandidate, mainDocumentCandidates } from "./latexRoot.js";
 
 const now = (): string => new Date().toISOString();
 const MAX_CITATION_BIBTEX_BYTES = 512 * 1024;
@@ -1458,7 +1459,7 @@ export async function buildApp(
     const project = accessibleProject(db, id, user);
     if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以修改项目设置");
     const body = request.body as Record<string, unknown>;
-    return await projectMutations.runWrite(id, () => {
+    return await projectMutations.runWrite(id, async () => {
       const currentProject = accessibleProject(db, id, user);
       if (!currentProject || currentProject.permission !== "owner") {
         return apiError(reply, 403, "PROJECT_OWNER_ONLY", "只有项目所有者可以修改项目设置");
@@ -1491,6 +1492,9 @@ export async function buildApp(
       }
       if (!stat.isFile()) {
         return apiError(reply, 400, "MAIN_FILE_INVALID", "主文件必须是常规文件，不能是目录", { path: mainFile });
+      }
+      if (body.mainFile !== undefined && !await isMainDocumentCandidate(config, id, mainFile)) {
+        return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档", { path: mainFile });
       }
       if (latexmkrc && !config.allowProjectLatexmkrc) return apiError(reply, 400, "LATEXMKRC_DISABLED", "管理员已禁用项目级 latexmkrc");
       if (latexmkrc) {
@@ -1753,6 +1757,23 @@ export async function buildApp(
     return await projectMutations.runFilesystemRead(id, async () => ({
       files: await listProjectFilesAsync(config, id)
     }), {
+      preflight: () => {
+        if (!accessibleProject(db, id, user)) {
+          throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+        }
+      }
+    });
+  });
+
+  app.get("/api/projects/:id/main-files", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    return await projectMutations.runFilesystemRead(id, async () => {
+      const files = await listProjectFilesAsync(config, id);
+      return await mainDocumentCandidates(config, id, files);
+    }, {
       preflight: () => {
         if (!accessibleProject(db, id, user)) {
           throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });

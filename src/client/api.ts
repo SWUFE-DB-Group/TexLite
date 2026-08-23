@@ -1,20 +1,30 @@
 import i18n from "./i18n";
 
+export interface ApiRequestInit extends RequestInit {
+  /**
+   * Requests used to discover the initial route must not redirect an
+   * unauthenticated deep link to the dashboard. The caller can retry them
+   * after login instead.
+   */
+  suppressSessionExpired?: boolean;
+}
+
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly code: string | null = null) {
     super(message);
   }
 }
 
-export async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
+export async function api<T>(url: string, options: ApiRequestInit = {}): Promise<T> {
+  const { suppressSessionExpired = false, ...requestOptions } = options;
   const response = await fetch(url, {
-    ...options,
-    headers: options.body ? { "Content-Type": "application/json", ...options.headers } : options.headers
+    ...requestOptions,
+    headers: requestOptions.body ? { "Content-Type": "application/json", ...requestOptions.headers } : requestOptions.headers
   });
   const contentType = response.headers.get("content-type") ?? "";
   const body = contentType.includes("application/json") ? await response.json() : null;
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
+    if (response.status === 401 && !suppressSessionExpired && typeof window !== "undefined") {
       window.dispatchEvent(new Event("texlite:session-expired"));
     }
     throw new ApiError(localizedResponseError(body, response.status), response.status, responseErrorCode(body));

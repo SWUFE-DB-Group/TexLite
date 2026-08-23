@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Config } from "./config.js";
 import { publishedCompileArtifacts } from "./compiler.js";
 import { outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, texFileStem } from "./files.js";
-import { hasDocumentClass } from "./zip.js";
+import { isMainDocumentCandidateSync } from "./latexRoot.js";
 
 export interface CompileArtifact {
   path: string;
@@ -80,11 +80,7 @@ export function compileMainFile(
   const absolute = resolveSourcePath(config, projectId, mainFile);
   try {
     if (!fs.statSync(absolute).isFile()) return null;
-    // A project may intentionally contain only one fragmentary .tex file; the
-    // upload flow keeps it as the configured root and latexmk reports the
-    // resulting compile error. Session-selected alternate roots are stricter:
-    // they must identify an actual document rather than an included fragment.
-    if (mainFile !== defaultMainFile && !hasDocumentClass(fs.readFileSync(absolute, "utf8"))) return null;
+    if (!isMainDocumentCandidateSync(config, projectId, mainFile)) return null;
   } catch {
     return null;
   }

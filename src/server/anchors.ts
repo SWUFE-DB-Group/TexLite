@@ -50,7 +50,15 @@ export function reanchorFileComments(
     let end = clamp(dmp.diff_xIndex(diffs, oldEnd), start, newSource.length);
     let orphaned = false;
 
-    if (oldEnd > oldStart && end === start) {
+    // A diff-mapped range is only trustworthy when it still contains the
+    // exact text that the author selected. A replacement can preserve a
+    // non-empty range while changing every character, which otherwise makes
+    // a comment silently point at an unrelated piece of source.
+    const hasSelectedRange = oldEnd > oldStart || comment.selected_text.length > 0;
+    const originalTextMatches = !hasSelectedRange || oldSource.slice(oldStart, oldEnd) === comment.selected_text;
+    if (hasSelectedRange && !originalTextMatches) {
+      orphaned = true;
+    } else if (hasSelectedRange && newSource.slice(start, end) !== comment.selected_text) {
       const relocated = nearestContextualMatch(
         newSource, comment.selected_text, start, comment.context_before, comment.context_after
       );
@@ -61,6 +69,7 @@ export function reanchorFileComments(
         end = relocated + comment.selected_text.length;
       }
     }
+    if (hasSelectedRange && !comment.selected_text) orphaned = true;
 
     const anchor = anchorAt(newSource, start, end, orphaned);
     update.run(
@@ -106,6 +115,15 @@ function nearestContextualMatch(
     const before = source.slice(Math.max(0, found - contextBefore.length), found);
     const after = source.slice(found + selected.length, found + selected.length + contextAfter.length);
     const contextScore = commonSuffixLength(before, contextBefore) + commonPrefixLength(after, contextAfter);
+    // Do not relocate based solely on proximity. A repeated word with no
+    // matching context is ambiguous and must be surfaced as orphaned.
+    const availableContext = contextBefore.length + contextAfter.length;
+    if (availableContext === 0) return null;
+    const minimumContext = Math.min(4, availableContext);
+    if (contextScore < minimumContext) {
+      cursor = found + Math.max(1, selected.length);
+      continue;
+    }
     const rank = contextScore * 1000 - distance;
     if (rank > bestRank) {
       best = found;

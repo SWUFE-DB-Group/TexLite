@@ -196,6 +196,11 @@ Important settings:
 - Compilation copies a short-lived immutable source snapshot, then runs `latexmk` outside the ordinary project-operation queue. Editing and retained-PDF reads can continue; Git checkout, history restore, deletion, and compile-cache cleanup wait for active compilation to finish.
 - latex.allowProjectLatexmkrc: allow a project to supply a multi-line latexmkrc. A project rc file is executable Perl configuration and should only be enabled for trusted users.
 
+Before every compile TexLite passes `-norc` to latexmk. Therefore a `.latexmkrc`
+included directly in an uploaded ZIP, Git checkout, or project source is ignored.
+The file is read only when the owner explicitly selects it in Project Settings,
+where TexLite passes it with `-r`.
+
 ### Effective defaults and startup validation
 
 When a setting is omitted, texLite uses the following built-in defaults (the
@@ -279,6 +284,9 @@ add `--git` to check the optional Git integration. `texlite config` prints the
 effective paths and values. `texlite serve` keeps the process in the foreground
 and does not start PM2.
 
+<details>
+<summary>Repository deployment with a separately installed PM2</summary>
+
 For repository deployments, `ecosystem.config.cjs` and the npm PM2 wrappers are
 also available. It deliberately runs one forked instance (`instances: 1`);
 cluster mode is not supported because collaboration state, the compile queue,
@@ -310,6 +318,8 @@ pm2 save
 ~~~
 
 Useful lifecycle commands are pm2 stop texlite, pm2 restart texlite, pm2 delete texlite, and pm2 monit.
+
+</details>
 
 ## Security boundaries
 
