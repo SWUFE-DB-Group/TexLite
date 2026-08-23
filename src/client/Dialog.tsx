@@ -33,13 +33,13 @@ export function Modal({ open, title, description, onOpenChange, children, footer
   </DialogPrimitive.Root>;
 }
 
-export function ConfirmDialog({ open, title, description, confirmLabel, danger, onCancel, onConfirm, error }: {
+export function ConfirmDialog({ open, title, description, confirmLabel, danger, onCancel, onConfirm, error, busy = false }: {
   open: boolean; title: string; description: string; confirmLabel?: string; danger?: boolean;
-  onCancel: () => void; onConfirm: () => void; error?: string;
+  onCancel: () => void; onConfirm: () => void; error?: string; busy?: boolean;
 }) {
   const { t } = useTranslation();
-  return <Modal open={open} title={title} description={description} onOpenChange={(next) => { if (!next) onCancel(); }} footer={<>
-    <button onClick={onCancel}>{t("common.cancel")}</button>
-    <button className={danger ? "danger" : "primary"} onClick={onConfirm}>{confirmLabel ?? t("common.remove")}</button>
+  return <Modal open={open} title={title} description={description} onOpenChange={(next) => { if (!next && !busy) onCancel(); }} footer={<>
+    <button disabled={busy} onClick={onCancel}>{t("common.cancel")}</button>
+    <button className={danger ? "danger" : "primary"} disabled={busy} aria-busy={busy} onClick={onConfirm}>{confirmLabel ?? t("common.remove")}</button>
   </>}><>{error && <p className="error dialog-error">{error}</p>}<div /></></Modal>;
 }
