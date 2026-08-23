@@ -11,7 +11,7 @@ import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
 import type { Config } from "./config.js";
 import { activeAdminCount, pruneExpiredSessions, type DatabaseConnection, type ProjectRow, type UserRow } from "./db.js";
-import { createSessionToken, hashPassword, verifyPassword, digestToken, LoginRateLimiter } from "./security.js";
+import { hashPassword, digestToken, LoginRateLimiter } from "./security.js";
 import { currentUser, publicUser, requireAdmin, requireUser } from "./auth.js";
 import { accessibleProject, canEdit } from "./projects.js";
 import {
@@ -49,6 +49,8 @@ import { MetricRegistry } from "./metrics.js";
 import { compileMainFile } from "./compileArtifacts.js";
 import { apiError, contentDisposition, ValidationError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
+import { registerAuthRoutes } from "./routes/auth.js";
+import { registerSystemRoutes } from "./routes/system.js";
 import { HarperService } from "./harper.js";
 import { isMainDocumentCandidate, mainDocumentCandidates } from "./latexRoot.js";
 
@@ -588,107 +590,17 @@ export async function buildApp(
     }
   });
 
-  app.get("/api/config", async () => ({
-    siteName: config.siteName,
-    adminEmail: config.adminEmail,
-    maxUploadSizeMB: Math.floor(config.maxUploadBytes / 1024 / 1024),
-    maxCollaborativeFileSizeMB: Math.floor(maxCollaborativeFileBytes(config) / 1024 / 1024),
-    allowedEngines: config.allowedEngines,
-    allowProjectLatexmkrc: config.allowProjectLatexmkrc
-  }));
-  app.get("/api/health", async () => ({ ok: true, pid: process.pid, latexmk: config.latexmk }));
-  app.get("/api/health/metrics", async (request, reply) => {
-    if (!requireAdmin(request, reply, db)) return;
-    const memory = process.memoryUsage();
-    return {
-      uptimeSeconds: Math.round(process.uptime()),
-      memory: { rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal },
-      eventLoopDelay: {
-        p50Ms: Math.round(eventLoopDelay.percentile(50) / 100_000) / 10,
-        p95Ms: Math.round(eventLoopDelay.percentile(95) / 100_000) / 10,
-        maxMs: Math.round(eventLoopDelay.max / 100_000) / 10
-      },
-      compileQueue: queue.stats(),
-      collaboration: collaboration.stats(),
-      caches: { completions: latexCompletions.stats(), outlines: projectOutlines.stats() },
-      durationsMs: metrics.summaries()
-    };
+  registerSystemRoutes(app, {
+    config,
+    db,
+    queue,
+    collaboration,
+    latexCompletions,
+    projectOutlines,
+    metrics,
+    eventLoopDelay
   });
-  app.get("/api/collaboration/:id", { websocket: true }, (socket, request) => {
-    const user = currentUser(request, db);
-    if (!user) {
-      socket.close(1008, "Authentication required");
-      return;
-    }
-    const { id } = request.params as { id: string };
-    const startedAt = performance.now();
-    void collaboration.connect(socket, id, user)
-      .finally(() => metrics.record("collaboration.connect", performance.now() - startedAt));
-  });
-
-  app.post("/api/auth/login", async (request, reply) => {
-    const body = request.body as { username?: unknown; password?: unknown };
-    const username = text(body?.username, "用户名", 64);
-    const ip = request.ip || "127.0.0.1";
-    const rateLimitKey = `${ip}:${username.toLowerCase()}`;
-    if (loginLimiter.isLocked(rateLimitKey)) {
-      return apiError(reply, 429, "AUTH_RATE_LIMITED", "登录尝试过于频繁，账号已临时锁定，请在 15 分钟后再试");
-    }
-    const password = typeof body?.password === "string" ? body.password : "";
-    const user = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(username) as UserRow | undefined;
-    if (!user || user.disabled || !(await verifyPassword(password, user.password_hash))) {
-      const result = loginLimiter.recordFailure(rateLimitKey);
-      if (result.locked) {
-        return apiError(reply, 429, "AUTH_RATE_LIMITED", "密码错误次数过多，账号已临时锁定，请在 15 分钟后再试");
-      }
-      return apiError(reply, 401, "AUTH_INVALID", "用户名或密码错误");
-    }
-    loginLimiter.reset(rateLimitKey);
-    const session = createSessionToken();
-    const createdAt = now();
-    const expires = new Date(Date.now() + config.sessionDays * 86_400_000);
-    db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
-      .run(session.digest, user.id, expires.toISOString(), createdAt);
-    const isSecure = request.protocol === "https" || request.headers["x-forwarded-proto"] === "https";
-    reply.setCookie("texlite_session", session.token, {
-      path: "/",
-      httpOnly: true,
-      sameSite: "strict",
-      secure: isSecure,
-      expires
-    });
-    return { user: publicUser(user) };
-  });
-
-  app.post("/api/auth/logout", async (request, reply) => {
-    const token = request.cookies.texlite_session;
-    if (token) db.prepare("DELETE FROM sessions WHERE id = ?").run(digestToken(token));
-    reply.clearCookie("texlite_session", { path: "/" });
-    return { ok: true };
-  });
-
-  app.get("/api/me", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    return { user: publicUser(user) };
-  });
-
-  app.put("/api/me/password", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const body = request.body as { currentPassword?: unknown; newPassword?: unknown };
-    const currentPassword = typeof body?.currentPassword === "string" ? body.currentPassword : "";
-    const newPassword = typeof body?.newPassword === "string" ? body.newPassword : "";
-    if (!(await verifyPassword(currentPassword, user.password_hash))) {
-      return apiError(reply, 400, "CURRENT_PASSWORD_INVALID", "当前密码错误");
-    }
-    const passwordHash = await hashPassword(newPassword);
-    db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?")
-      .run(passwordHash, user.id);
-    db.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?")
-      .run(user.id, digestToken(request.cookies.texlite_session ?? ""));
-    return { ok: true };
-  });
+  registerAuthRoutes(app, { config, db, loginLimiter });
 
   app.get("/api/citations", async (request, reply) => {
     const user = requireUser(request, reply, db);
