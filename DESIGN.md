@@ -282,7 +282,10 @@ Compilation follows this sequence:
 The previous successful PDF remains visible during a new compile. The latest
 published bundle is recovered after a restart and can be served before a cold
 collaboration room is initialized. PDF requests support range responses for
-PDF.js and expose the successful compile time. The output panel groups the PDF,
+PDF.js and expose the successful compile time and artifact size. The default
+automatic loading policy uses a complete, cache-friendly response through 5 MB
+and enables PDF.js byte-range loading above that threshold; deployments can
+force either mode without changing project compiler settings. The output panel groups the PDF,
 log, warnings, errors, generated artifacts, and recovery actions; clean-cache
 and clean-artifact actions are for recovery rather than routine compilation.
 Compile responses expose `Server-Timing` measurements for snapshot, cache

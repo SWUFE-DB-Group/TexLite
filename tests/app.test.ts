@@ -33,7 +33,8 @@ describe("texLite application", () => {
       projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "pdflatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
-      maxUploadBytes: 50 * 1024 * 1024, historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024
+      maxUploadBytes: 50 * 1024 * 1024, pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
+      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024
       , git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
     };
     fs.mkdirSync(path.join(config.clientDir, "assets"), { recursive: true });
@@ -322,6 +323,8 @@ It works.
     expect(latestCompile.json()).toMatchObject({
       pdfUrl: expect.stringContaining(`/api/projects/${project.id}/pdf`),
       pdfCompiledAt: incrementalCompile.json().pdfCompiledAt,
+      pdfSizeBytes: expect.any(Number),
+      pdfLoadingMode: "full",
       latestRun: { diagnostics: { warnings: expect.any(Array), errors: expect.any(Array) } }
     });
     const artifactDirectory = path.join(config.projectsDir, project.id, "output", ".texlite", "runs", manifest.runId, "output");

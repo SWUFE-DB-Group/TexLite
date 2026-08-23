@@ -107,6 +107,10 @@ function writeInitialConfig(configPath: string, siteName: string, adminEmail: st
     server: { host: CONFIG_DEFAULTS.host, port: CONFIG_DEFAULTS.port },
     storage: { dataDir: dataDirectory },
     uploads: { maxFileSizeMB: CONFIG_DEFAULTS.maxFileSizeMB },
+    pdf: {
+      loadingStrategy: CONFIG_DEFAULTS.pdfLoadingStrategy,
+      rangeThresholdMB: CONFIG_DEFAULTS.pdfRangeThresholdMB
+    },
     history: {
       maxVersions: CONFIG_DEFAULTS.historyMaxVersions,
       maxStorageMB: CONFIG_DEFAULTS.historyMaxStorageMB
@@ -227,6 +231,8 @@ async function printConfig(options: CliOptions): Promise<void> {
     defaultEngine: config.defaultEngine,
     allowedEngines: config.allowedEngines,
     maxUploadBytes: config.maxUploadBytes,
+    pdfLoadingStrategy: config.pdfLoadingStrategy,
+    pdfRangeThresholdMB: config.pdfRangeThresholdBytes / (1024 * 1024),
     historyMaxVersions: config.historyMaxVersions,
     historyMaxStorageBytes: config.historyMaxStorageBytes,
     git: config.git

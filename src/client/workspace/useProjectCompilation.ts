@@ -23,6 +23,8 @@ export interface LatestCompileResponse {
   latestRun: LatestRun | null;
   pdfUrl: string | null;
   pdfCompiledAt: string | null;
+  pdfSizeBytes: number | null;
+  pdfLoadingMode: "full" | "range" | null;
 }
 
 interface UseProjectCompilationOptions {
@@ -54,6 +56,7 @@ export function useProjectCompilation({
   const [pdfUrl, setPdfUrl] = useState("");
   const [pdfLoading, setPdfLoading] = useState(true);
   const [pdfCompiledAt, setPdfCompiledAt] = useState<string | null>(null);
+  const [pdfLoadingMode, setPdfLoadingMode] = useState<"full" | "range">("full");
   const [compileLog, setCompileLog] = useState("");
   const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostics | null>(null);
   const [compileOutcome, setCompileOutcome] = useState<"succeeded" | "failed" | null>(null);
@@ -120,6 +123,7 @@ export function useProjectCompilation({
       setPdfLoading(false);
       setPdfUrl("");
       setPdfCompiledAt(null);
+      setPdfLoadingMode("full");
       setCompileLog("");
       setCompileDiagnostics(null);
       setCompileOutcome(null);
@@ -138,6 +142,7 @@ export function useProjectCompilation({
     if (!retainPdf) {
       setPdfUrl("");
       setPdfCompiledAt(null);
+      setPdfLoadingMode("full");
     }
     setArtifacts([]);
     setArtifactPreview(null);
@@ -149,7 +154,10 @@ export function useProjectCompilation({
     // The background requests are started after the PDF URL is published and
     // then run in parallel with PDF.js network loading and rendering.
     const preloadedLatest = !initialLatestConsumed.current ? initialLatestRef.current : null;
-    let usedPreloadedLatest = false;
+    // A route preload is a one-shot optimization. Consume it before awaiting
+    // so a rejection, main-file mismatch, or effect cancellation cannot make
+    // every later root-document change reuse the same stale promise.
+    if (preloadedLatest) initialLatestConsumed.current = true;
     const requestLatest = () => api<LatestCompileResponse>(
       `/api/projects/${projectId}/compile/latest${query}`,
       { signal: controller.signal }
@@ -157,9 +165,8 @@ export function useProjectCompilation({
     const latestRequestPromise = preloadedLatest
       ? preloadedLatest.then((latest) => {
         if (latest.mainFile !== mainFile) return requestLatest();
-        usedPreloadedLatest = true;
         return latest;
-      })
+      }, () => requestLatest())
       : requestLatest();
     let backgroundStarted = false;
     const startBackgroundLoads = () => {
@@ -194,9 +201,9 @@ export function useProjectCompilation({
         pdfMainFileRef.current = latest.mainFile;
         setPdfUrl(latest.pdfUrl);
         setPdfCompiledAt(latest.pdfCompiledAt);
+        setPdfLoadingMode(latest.pdfLoadingMode ?? "full");
         callbacks.current.onPreviewTab("pdf");
       }
-      if (usedPreloadedLatest) initialLatestConsumed.current = true;
     }).catch((error) => {
       if (!isAbortError(error) && mainFileRef.current === mainFile) callbacks.current.onError(errorMessage(error));
     }).finally(() => {
@@ -228,6 +235,7 @@ export function useProjectCompilation({
       setCompileOutcome(null);
       setPdfUrl("");
       setPdfCompiledAt(null);
+      setPdfLoadingMode("full");
       setArtifacts([]);
       setArtifactPreview(null);
       callbacks.current.onPdfChanged();
@@ -260,6 +268,7 @@ export function useProjectCompilation({
         callbacks.current.onPdfChanged();
         setPdfUrl(latest.pdfUrl);
         setPdfCompiledAt(latest.pdfCompiledAt);
+        setPdfLoadingMode(latest.pdfLoadingMode ?? "full");
         callbacks.current.onPreviewTab("pdf");
         focusPdfAfterCompile(sharedState.runId);
         void loadArtifacts(mainFile);
@@ -296,7 +305,7 @@ export function useProjectCompilation({
     compileRequests.current.set(requestedMainFile, controller);
     try {
       if (!(await callbacks.current.save())) return;
-      const result = await api<{ runId: string; mainFile: string; ok: boolean; skipped?: boolean; stale?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null }>(
+      const result = await api<{ runId: string; mainFile: string; ok: boolean; skipped?: boolean; stale?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null; pdfSizeBytes: number | null; pdfLoadingMode: "full" | "range" | null }>(
         `/api/projects/${projectId}/compile`,
         { method: "POST", signal: controller.signal, body: JSON.stringify({ mainFile: requestedMainFile }) }
       );
@@ -310,6 +319,7 @@ export function useProjectCompilation({
         callbacks.current.onPdfChanged();
         setPdfUrl(result.pdfUrl);
         setPdfCompiledAt(result.pdfCompiledAt);
+        setPdfLoadingMode(result.pdfLoadingMode ?? "full");
         callbacks.current.onPreviewTab("pdf");
         if (result.ok) {
           // A skipped request reuses the published run id and is not
@@ -357,6 +367,7 @@ export function useProjectCompilation({
         setCompileOutcome(null);
         setPdfUrl("");
         setPdfCompiledAt(null);
+        setPdfLoadingMode("full");
         setArtifacts([]);
         setArtifactPreview(null);
         callbacks.current.onPdfChanged();
@@ -425,6 +436,7 @@ export function useProjectCompilation({
   return {
     pdfUrl,
     pdfCompiledAt,
+    pdfLoadingMode,
     pdfLoading,
     compileLog,
     compileDiagnostics,

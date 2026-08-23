@@ -1438,7 +1438,7 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     onAdded: () => setSidePanel("comments")
   });
   const {
-    pdfUrl, pdfCompiledAt, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
+    pdfUrl, pdfCompiledAt, pdfLoadingMode, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
     artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cleaning,
     compile, cleanCompile, viewArtifact
   } = useProjectCompilation({
@@ -1746,7 +1746,7 @@ function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
             <button role="tab" aria-selected={diagnosticTab === "clean"} className={diagnosticTab === "clean" ? "active" : ""} onClick={() => selectPreviewTab("clean")}><Eraser size={13} />{t("editor.clean")}</button>
           </div>}
           <div className={`preview-content preview-${previewTab} ${previewTab === "diagnostics" ? `preview-${diagnosticTab}` : ""}`}>
-            {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}><PdfPreview url={pdfUrl} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} onDoubleClickLocation={(page, x, y) => { setPdfViewport({ page, x, y }); if (!canSyncWithPdf) { setNotice(t("editor.syncTexOnlyForMain")); return; } void syncPdfToSource(page, x, y); }} /></Suspense> : pdfLoading ? <div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
+            {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}><PdfPreview url={pdfUrl} loadingMode={pdfLoadingMode} target={pdfTarget} compiling={compileBusy} onViewportLocation={(page, x, y) => setPdfViewport({ page, x, y })} onDoubleClickLocation={(page, x, y) => { setPdfViewport({ page, x, y }); if (!canSyncWithPdf) { setNotice(t("editor.syncTexOnlyForMain")); return; } void syncPdfToSource(page, x, y); }} /></Suspense> : pdfLoading ? <div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
             {previewTab === "diagnostics" && diagnosticTab === "log" && <CompileOutput lines={compileLog ? compileLog.split("\n") : []} empty={localCompiling ? t("editor.compiling") : t("editor.noLog")} />}
             {previewTab === "diagnostics" && diagnosticTab === "warnings" && (compileDiagnostics
               ? <CompileDiagnosticOutput tone="warning" diagnostics={compileDiagnostics.warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />

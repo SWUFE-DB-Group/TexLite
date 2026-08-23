@@ -5,6 +5,18 @@ import { publishedCompileArtifacts } from "./compiler.js";
 import { outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, texFileStem } from "./files.js";
 import { isMainDocumentCandidateSync } from "./latexRoot.js";
 
+export type PdfLoadingMode = "full" | "range";
+
+export function pdfLoadingMode(
+  config: Pick<Config, "pdfLoadingStrategy" | "pdfRangeThresholdBytes">,
+  pdfSizeBytes: number
+): PdfLoadingMode {
+  if (config.pdfLoadingStrategy === "full" || config.pdfLoadingStrategy === "range") {
+    return config.pdfLoadingStrategy;
+  }
+  return pdfSizeBytes > config.pdfRangeThresholdBytes ? "range" : "full";
+}
+
 export interface CompileArtifact {
   path: string;
   size: number;

@@ -36,7 +36,7 @@ export function preloadWorkspace(projectId: string, options: { force?: boolean }
   // workspace mounts. Failures remain handled by the normal workspace UI.
   void Promise.all([pdfModule, latestCompile])
     .then(([module, latest]) => {
-      if (latest.pdfUrl) module.preloadPdf(latest.pdfUrl);
+      if (latest.pdfUrl) module.preloadPdf(latest.pdfUrl, latest.pdfLoadingMode ?? "full");
     })
     .catch(() => undefined);
 

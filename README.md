@@ -161,6 +161,7 @@ The example configuration is intentionally complete:
   "server": { "host": "127.0.0.1", "port": 3000 },
   "storage": { "dataDir": ".texlite" },
   "uploads": { "maxFileSizeMB": 50 },
+  "pdf": { "loadingStrategy": "auto", "rangeThresholdMB": 5 },
   "history": { "maxVersions": 200, "maxStorageMB": 512 },
   "git": {
     "binary": "git",
@@ -188,6 +189,8 @@ Important settings:
 - server.host and server.port: network bind address and port. Keep the host at 127.0.0.1 unless a separately secured deployment is intended.
 - storage.dataDir: SQLite database, project sources, compile output, and the Git token encryption key.
 - uploads.maxFileSizeMB: maximum size for a project upload, a ZIP entry, project files, and attachments. The default is 50 MB.
+- pdf.loadingStrategy: PDF.js transfer mode: `auto`, `full`, or `range`. In `auto` mode, PDFs at or below `pdf.rangeThresholdMB` use one cache-friendly response; larger PDFs use byte-range requests.
+- pdf.rangeThresholdMB: automatic Range threshold, defaulting to 5 MB. This is a deployment-level preview setting, not a project compiler option.
 - history.maxVersions: maximum number of ordinary, unlabeled versions retained per project. Initial and labeled versions are protected.
 - history.maxStorageMB: soft per-project limit for deduplicated history objects. The oldest ordinary versions are removed first; protected versions and the current internal baseline can exceed this limit.
 - latex.defaultEngine, latex.allowedEngines, latex.extraArgs: compile choices available in the UI.
@@ -216,6 +219,8 @@ email):
 | `clientDir` | `dist/client` inside the installed package |
 | `sessionDays` | `14` |
 | `uploads.maxFileSizeMB` | `50` MB |
+| `pdf.loadingStrategy` | `auto` |
+| `pdf.rangeThresholdMB` | `5` MB |
 | `history.maxVersions` | `200` ordinary versions per project |
 | `history.maxStorageMB` | `512` MB per project (soft limit) |
 | `latex.latexmk` | `latexmk` |
@@ -232,7 +237,7 @@ Configuration is validated before environment checks, database opening, or
 the HTTP listener starts. Explicit values are never silently replaced by a
 default. The accepted ranges are: port `1–65535`, sessions `1–3650` days,
 upload size `1–2048` MB, history versions `10–5000`, history storage
-`16–102400` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
+`16–102400` MB, PDF Range threshold `1–2048` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
 and Git timeout `1–3600` seconds. Engine names must be supported, unique, and
 the allowed-engine list must include the selected default engine. Data and
 project paths must not point at files (the data directory cannot be the
@@ -254,6 +259,7 @@ TEXLITE_SITE_NAME             TEXLITE_ADMIN_EMAIL
 TEXLITE_HOST                  TEXLITE_PORT
 TEXLITE_DATA_DIR              TEXLITE_CLIENT_DIR
 TEXLITE_SESSION_DAYS          TEXLITE_MAX_UPLOAD_SIZE_MB
+TEXLITE_PDF_LOADING_STRATEGY TEXLITE_PDF_RANGE_THRESHOLD_MB
 TEXLITE_HISTORY_MAX_VERSIONS TEXLITE_HISTORY_MAX_STORAGE_MB
 TEXLITE_LATEXMK               TEXLITE_DEFAULT_ENGINE
 TEXLITE_COMPILE_TIMEOUT       TEXLITE_MAX_COMPILE_JOBS

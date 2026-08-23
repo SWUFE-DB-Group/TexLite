@@ -7,6 +7,7 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 GlobalWorkerOptions.workerSrc = workerUrl;
 const sharedPdfWorker = new PDFWorker();
 const MAX_RETAINED_PDF_DOCUMENTS = 2;
+export type PdfLoadingMode = "full" | "range";
 
 interface CachedPdfDocument {
   task: PDFDocumentLoadingTask;
@@ -23,19 +24,18 @@ export async function preloadPdfRuntime(): Promise<void> {
   await sharedPdfWorker.promise;
 }
 
-function pdfDocument(url: string): CachedPdfDocument {
-  const cached = cachedPdfDocuments.get(url);
+function pdfDocument(url: string, loadingMode: PdfLoadingMode): CachedPdfDocument {
+  const cacheKey = `${loadingMode}:${url}`;
+  const cached = cachedPdfDocuments.get(cacheKey);
   if (cached) {
     cached.lastUsed = Date.now();
     return cached;
   }
-  // Successful compile URLs are immutable and cacheable for one year. Ask
-  // PDF.js for one normal 200 response instead of many 206 range fragments:
-  // Firefox does not reliably reuse those fragments after a page reload,
-  // whereas the complete response is retained in its HTTP disk cache.
-  // Academic-paper PDFs are small enough that this also avoids range-request
-  // overhead without delaying first paint in practice.
-  const task = getDocument({ url, worker: sharedPdfWorker, disableRange: true });
+  // Small academic PDFs use one cache-friendly 200 response. Large PDFs let
+  // PDF.js request byte ranges so the first pages can render without waiting
+  // for the complete document. The server chooses the mode from the effective
+  // deployment configuration and immutable artifact size.
+  const task = getDocument({ url, worker: sharedPdfWorker, disableRange: loadingMode === "full" });
   const entry: CachedPdfDocument = {
     task,
     promise: task.promise,
@@ -43,13 +43,13 @@ function pdfDocument(url: string): CachedPdfDocument {
     settled: false,
     lastUsed: Date.now()
   };
-  cachedPdfDocuments.set(url, entry);
+  cachedPdfDocuments.set(cacheKey, entry);
   void entry.promise.then(() => {
     entry.settled = true;
     prunePdfDocuments();
   }, () => {
     entry.settled = true;
-    if (cachedPdfDocuments.get(url) === entry) cachedPdfDocuments.delete(url);
+    if (cachedPdfDocuments.get(cacheKey) === entry) cachedPdfDocuments.delete(cacheKey);
   });
   return entry;
 }
@@ -68,14 +68,14 @@ function prunePdfDocuments(): void {
 }
 
 /** Begin fetching and parsing an immutable retained PDF before the viewer mounts. */
-export function preloadPdf(url: string): void {
+export function preloadPdf(url: string, loadingMode: PdfLoadingMode): void {
   if (!url) return;
-  const entry = pdfDocument(url);
+  const entry = pdfDocument(url, loadingMode);
   void entry.promise.catch(() => undefined);
 }
 
-function acquirePdfDocument(url: string): { promise: Promise<PDFDocumentProxy>; release: () => void } {
-  const entry = pdfDocument(url);
+function acquirePdfDocument(url: string, loadingMode: PdfLoadingMode): { promise: Promise<PDFDocumentProxy>; release: () => void } {
+  const entry = pdfDocument(url, loadingMode);
   entry.consumers += 1;
   entry.lastUsed = Date.now();
   let released = false;
@@ -107,8 +107,9 @@ type PdfAnnotation = {
   title?: string | null;
 };
 
-export function PdfPreview({ url, target, compiling = false, onViewportLocation, onDoubleClickLocation }: {
+export function PdfPreview({ url, loadingMode, target, compiling = false, onViewportLocation, onDoubleClickLocation }: {
   url: string;
+  loadingMode: PdfLoadingMode;
   target: PdfTarget | null;
   compiling?: boolean;
   onViewportLocation: (page: number, x: number, y: number) => void;
@@ -187,7 +188,7 @@ export function PdfPreview({ url, target, compiling = false, onViewportLocation,
   useEffect(() => {
     let cancelled = false;
     setDocument(null); setError("");
-    const cached = acquirePdfDocument(url);
+    const cached = acquirePdfDocument(url, loadingMode);
     void cached.promise.then((loaded) => {
       if (!cancelled) setDocument(loaded);
     }).catch(() => { if (!cancelled) setError(t("editor.pdfLoadFailed")); });
@@ -195,7 +196,7 @@ export function PdfPreview({ url, target, compiling = false, onViewportLocation,
       cancelled = true;
       cached.release();
     };
-  }, [url]);
+  }, [url, loadingMode]);
 
   useEffect(() => {
     if (zoom > 100 || !root.current) return;

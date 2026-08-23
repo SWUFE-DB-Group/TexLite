@@ -12,6 +12,7 @@ function testConfig(): Config {
     projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
     compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: process.execPath, defaultEngine: "xelatex",
     allowedEngines: [], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024,
+    pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
     historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
     git: process.execPath, gitOperationTimeoutMs: 10_000, githubApiBaseUrl: "https://api.github.com"
   };

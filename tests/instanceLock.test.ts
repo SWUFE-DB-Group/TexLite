@@ -32,6 +32,8 @@ describe("instance lock", () => {
       adminEmail: "admin@example.com",
       sessionDays: 7,
       maxUploadBytes: 50 * 1024 * 1024,
+      pdfLoadingStrategy: "auto",
+      pdfRangeThresholdBytes: 5 * 1024 * 1024,
       historyMaxVersions: 50,
       historyMaxStorageBytes: 100 * 1024 * 1024,
       latexmk: "latexmk",

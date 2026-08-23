@@ -12,6 +12,10 @@
   "uploads": {
     "maxFileSizeMB": 50
   },
+  "pdf": {
+    "loadingStrategy": "auto",
+    "rangeThresholdMB": 5
+  },
   "history": {
     "maxVersions": 200,
     "maxStorageMB": 512

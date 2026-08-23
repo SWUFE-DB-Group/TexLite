@@ -4,6 +4,8 @@ import { defaultDataDirectory, packageClientDirectory, resolveConfigPath } from 
 
 export const LATEX_ENGINES = ["pdflatex", "xelatex", "lualatex"] as const;
 export type LatexEngine = typeof LATEX_ENGINES[number];
+export const PDF_LOADING_STRATEGIES = ["auto", "full", "range"] as const;
+export type PdfLoadingStrategy = typeof PDF_LOADING_STRATEGIES[number];
 
 /** Effective values used when the corresponding file/env setting is omitted. */
 export const CONFIG_DEFAULTS = {
@@ -22,6 +24,8 @@ export const CONFIG_DEFAULTS = {
   extraArgs: [] as string[],
   allowProjectLatexmkrc: true,
   maxFileSizeMB: 50,
+  pdfLoadingStrategy: "auto" as PdfLoadingStrategy,
+  pdfRangeThresholdMB: 5,
   historyMaxVersions: 200,
   historyMaxStorageMB: 512,
   git: "git",
@@ -35,6 +39,7 @@ const CONFIG_LIMITS = {
   compileTimeoutSeconds: [1, 3_600],
   maxCompileJobs: [1, 32],
   maxFileSizeMB: [1, 2_048],
+  pdfRangeThresholdMB: [1, 2_048],
   historyMaxVersions: [10, 5_000],
   historyMaxStorageMB: [16, 102_400],
   gitOperationTimeoutSeconds: [1, 3_600]
@@ -59,6 +64,8 @@ export interface Config {
   extraArgs: string[];
   allowProjectLatexmkrc: boolean;
   maxUploadBytes: number;
+  pdfLoadingStrategy: PdfLoadingStrategy;
+  pdfRangeThresholdBytes: number;
   historyMaxVersions: number;
   historyMaxStorageBytes: number;
   git: string;
@@ -103,6 +110,20 @@ export function loadConfig(configPathOverride?: string): Config {
     "uploads.maxFileSizeMB", process.env.TEXLITE_MAX_UPLOAD_SIZE_MB,
     fileConfig.uploads?.maxFileSizeMB, CONFIG_DEFAULTS.maxFileSizeMB, CONFIG_LIMITS.maxFileSizeMB
   );
+  const configuredPdfLoadingStrategy: unknown = setting(
+    "pdf.loadingStrategy", process.env.TEXLITE_PDF_LOADING_STRATEGY,
+    fileConfig.pdf?.loadingStrategy, CONFIG_DEFAULTS.pdfLoadingStrategy
+  );
+  if (!isPdfLoadingStrategy(configuredPdfLoadingStrategy)) {
+    throw configurationError(
+      "pdf.loadingStrategy",
+      `must be one of ${PDF_LOADING_STRATEGIES.join(", ")}; received ${displayValue(configuredPdfLoadingStrategy)}`
+    );
+  }
+  const pdfRangeThresholdMB = integerSetting(
+    "pdf.rangeThresholdMB", process.env.TEXLITE_PDF_RANGE_THRESHOLD_MB,
+    fileConfig.pdf?.rangeThresholdMB, CONFIG_DEFAULTS.pdfRangeThresholdMB, CONFIG_LIMITS.pdfRangeThresholdMB
+  );
   const historyMaxVersions = integerSetting(
     "history.maxVersions", process.env.TEXLITE_HISTORY_MAX_VERSIONS,
     fileConfig.history?.maxVersions, CONFIG_DEFAULTS.historyMaxVersions, CONFIG_LIMITS.historyMaxVersions
@@ -135,6 +156,8 @@ export function loadConfig(configPathOverride?: string): Config {
     extraArgs: fileConfig.latex?.extraArgs === undefined ? [] : [...fileConfig.latex.extraArgs],
     allowProjectLatexmkrc: fileConfig.latex?.allowProjectLatexmkrc ?? CONFIG_DEFAULTS.allowProjectLatexmkrc,
     maxUploadBytes: maxFileSizeMB * 1024 * 1024,
+    pdfLoadingStrategy: configuredPdfLoadingStrategy,
+    pdfRangeThresholdBytes: pdfRangeThresholdMB * 1024 * 1024,
     historyMaxVersions,
     historyMaxStorageBytes: historyMaxStorageMB * 1024 * 1024,
     git: stringSetting("git.binary", process.env.TEXLITE_GIT, fileConfig.git?.binary, CONFIG_DEFAULTS.git, { min: 1, max: 256 }),
@@ -170,6 +193,10 @@ export function validateConfig(config: Config): void {
   validateInteger("latex.compileTimeoutSeconds", config.compileTimeoutMs / 1000, CONFIG_LIMITS.compileTimeoutSeconds);
   validateInteger("latex.maxCompileJobs", config.maxCompileJobs, CONFIG_LIMITS.maxCompileJobs);
   validateInteger("uploads.maxFileSizeMB", config.maxUploadBytes / (1024 * 1024), CONFIG_LIMITS.maxFileSizeMB);
+  if (!isPdfLoadingStrategy(config.pdfLoadingStrategy)) {
+    throw configurationError("pdf.loadingStrategy", `must be one of ${PDF_LOADING_STRATEGIES.join(", ")}`);
+  }
+  validateInteger("pdf.rangeThresholdMB", config.pdfRangeThresholdBytes / (1024 * 1024), CONFIG_LIMITS.pdfRangeThresholdMB);
   validateInteger("history.maxVersions", config.historyMaxVersions, CONFIG_LIMITS.historyMaxVersions);
   validateInteger("history.maxStorageMB", config.historyMaxStorageBytes / (1024 * 1024), CONFIG_LIMITS.historyMaxStorageMB);
   validateInteger("git.operationTimeoutSeconds", config.gitOperationTimeoutMs / 1000, CONFIG_LIMITS.gitOperationTimeoutSeconds);
@@ -191,12 +218,17 @@ interface FileConfig {
     allowProjectLatexmkrc?: boolean;
   };
   uploads?: { maxFileSizeMB?: number };
+  pdf?: { loadingStrategy?: string; rangeThresholdMB?: number };
   history?: { maxVersions?: number; maxStorageMB?: number };
   git?: { binary?: string; operationTimeoutSeconds?: number; githubApiBaseUrl?: string };
 }
 
 function isEngine(value: unknown): value is LatexEngine {
   return typeof value === "string" && (LATEX_ENGINES as readonly string[]).includes(value);
+}
+
+function isPdfLoadingStrategy(value: unknown): value is PdfLoadingStrategy {
+  return typeof value === "string" && (PDF_LOADING_STRATEGIES as readonly string[]).includes(value);
 }
 
 function readConfigFile(configPath: string): FileConfig {
@@ -224,6 +256,15 @@ function validateFileConfig(config: FileConfig): void {
   optionalString(storage?.dataDir, "storage.dataDir", { min: 1, max: 4_096 });
   const uploads = optionalSection(config.uploads, "uploads");
   optionalInteger(uploads?.maxFileSizeMB, "uploads.maxFileSizeMB", CONFIG_LIMITS.maxFileSizeMB);
+  const pdf = optionalSection(config.pdf, "pdf");
+  if (pdf && Object.prototype.hasOwnProperty.call(pdf, "loadingStrategy")
+    && !isPdfLoadingStrategy(pdf.loadingStrategy)) {
+    throw configurationError(
+      "pdf.loadingStrategy",
+      `must be one of ${PDF_LOADING_STRATEGIES.join(", ")}; received ${displayValue(pdf.loadingStrategy)}`
+    );
+  }
+  optionalInteger(pdf?.rangeThresholdMB, "pdf.rangeThresholdMB", CONFIG_LIMITS.pdfRangeThresholdMB);
   const history = optionalSection(config.history, "history");
   optionalInteger(history?.maxVersions, "history.maxVersions", CONFIG_LIMITS.historyMaxVersions);
   optionalInteger(history?.maxStorageMB, "history.maxStorageMB", CONFIG_LIMITS.historyMaxStorageMB);

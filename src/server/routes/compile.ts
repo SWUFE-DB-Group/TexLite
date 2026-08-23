@@ -32,6 +32,7 @@ import {
   compilePdfUrl,
   isTextCompileArtifact,
   listCompileArtifacts,
+  pdfLoadingMode,
   syncArtifacts
 } from "../compileArtifacts.js";
 import { apiError, contentDisposition } from "../http.js";
@@ -50,6 +51,22 @@ const now = (): string => new Date().toISOString();
 const timingDuration = (milliseconds: number): number => Math.round(milliseconds * 10) / 10;
 const MAX_SNAPSHOT_ATTEMPTS = 3;
 const SNAPSHOT_RETRY_AFTER_SECONDS = 1;
+
+function pdfResponseMetadata(config: Config, pdfPath: string | null): {
+  pdfSizeBytes: number | null;
+  pdfLoadingMode: "full" | "range" | null;
+} {
+  if (!pdfPath) return { pdfSizeBytes: null, pdfLoadingMode: null };
+  const stat = regularFileStat(pdfPath);
+  if (!stat) return {
+    pdfSizeBytes: null,
+    pdfLoadingMode: config.pdfLoadingStrategy === "range" ? "range" : "full"
+  };
+  return {
+    pdfSizeBytes: stat.size,
+    pdfLoadingMode: pdfLoadingMode(config, stat.size)
+  };
+}
 
 function mainDocumentChangedError(): Error {
   return Object.assign(
@@ -100,6 +117,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     // A retained legacy PDF has no run bundle, so its file version (mtime) is
     // the only stable token that can be resolved back to those bytes.
     const pdfVersion = published?.runId ?? pdf?.version;
+    const pdfMetadata = pdfResponseMetadata(config, pdf?.path ?? null);
     return {
       mainFile,
       latestRun: latest ? {
@@ -117,7 +135,8 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       } : null,
       hasPdf: Boolean(pdf),
       pdfUrl: pdf ? compilePdfUrl(id, mainFile, pdfVersion ?? pdf.version) : null,
-      pdfCompiledAt: publishedRun?.finished_at ?? latestSuccess?.finished_at ?? null
+      pdfCompiledAt: publishedRun?.finished_at ?? latestSuccess?.finished_at ?? null,
+      ...pdfMetadata
     };
   });
 
@@ -672,6 +691,8 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const timings = result.timings
       ? { snapshotMs: result.snapshotMs ?? 0, ...result.timings, requestMs }
       : { snapshotMs: result.snapshotMs ?? 0, requestMs };
+    const responsePdf = result.ok ? availablePdf(config, id, mainFile, project.main_file) : null;
+    const pdfMetadata = pdfResponseMetadata(config, responsePdf?.path ?? null);
     reply.header("Server-Timing", [
       `snapshot;dur=${timingDuration(result.snapshotMs ?? 0)}`,
       result.timings ? `cache;dur=${timingDuration(result.timings.cacheSyncMs)}` : "",
@@ -684,6 +705,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       mainFile, runId: result.runId, ok: result.ok, skipped: result.skipped === true, log: result.log, diagnostics: result.diagnostics,
       pdfUrl: result.ok ? compilePdfUrl(id, mainFile, result.runId) : null,
       pdfCompiledAt: result.ok ? completed?.finished_at ?? null : null,
+      ...pdfMetadata,
       timings
     };
   });

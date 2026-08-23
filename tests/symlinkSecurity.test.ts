@@ -91,7 +91,8 @@ function testConfig(root: string): Config {
     projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
     compileTimeoutMs: 30_000, maxCompileJobs: 3, latexmk: "latexmk", defaultEngine: "pdflatex",
     allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
-    maxUploadBytes: 50 * 1024 * 1024, historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
+    maxUploadBytes: 50 * 1024 * 1024, pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
+    historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
     git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
   };
 }
