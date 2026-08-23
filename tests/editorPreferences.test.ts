@@ -37,6 +37,14 @@ describe("editor preference scope", () => {
   it("keeps formatting and tabs off for preferences saved before the options existed", () => {
     storage.setItem("texlite-editor-preferences:alice:legacy", JSON.stringify({ fontSize: 18 }));
     expect(loadEditorPreferences("alice", "legacy").formatOnCompile).toBe(false);
+    expect(loadEditorPreferences("alice", "legacy").texFmtConfig).toBe("");
     expect(loadEditorPreferences("alice", "legacy").openFilesInTabs).toBe(false);
+  });
+
+  it("keeps tex-fmt options scoped to the user and project", () => {
+    const preferences = { ...defaultEditorPreferences, texFmtConfig: "wrap = true\nwraplen = 90" };
+    saveEditorPreferences("alice", "paper", preferences);
+    expect(loadEditorPreferences("alice", "paper").texFmtConfig).toBe(preferences.texFmtConfig);
+    expect(loadEditorPreferences("bob", "paper").texFmtConfig).toBe("");
   });
 });

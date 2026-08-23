@@ -501,7 +501,8 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .password-generator button { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border: 1px solid #c9d0ca; border-radius: 6px; background: #f6f8f6; color: #31523e; font-size: 11px; white-space: nowrap; }
 .password-generator button:hover { border-color: #8eaa98; background: #edf3ef; }
 .settings-save { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.latexmkrc-editor { resize: vertical; min-height: 160px; font: 12px/1.5 "SFMono-Regular", Consolas, monospace !important; }
+.latexmkrc-editor, .tex-fmt-options-editor { resize: vertical; font: 12px/1.5 "SFMono-Regular", Consolas, monospace !important; }
+.tex-fmt-options-editor { min-height: 100px; }
 .dictionary-add { display: flex; align-items: stretch; gap: 7px; }
 .dictionary-add input { min-width: 0; flex: 1; }
 .dictionary-add button { flex: none; color: #176b44; }

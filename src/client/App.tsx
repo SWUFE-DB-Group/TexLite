@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "./editorPreferences";
-import { createLatexTextEdits, isFormattableLatexFile, reindentLatexSelection } from "./latexFormatter";
+import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, reindentLatexSelection } from "./latexFormatter";
 import { formatBibtex } from "./citationLibrary";
 import { classifyCompileLog } from "./compileLog";
 import type { CollaborationSaveReceipt } from "./collaboration";
@@ -1082,16 +1082,9 @@ function ProjectWorkspace({ site, user, projectId, onBack }: {
       return false;
     }
   };
-  const formatWithHostFormatter = async (filePath: string, source: string): Promise<string> => {
-    const result = await api<{ formatter: "tex-fmt"; formatted: string }>(
-      `/api/projects/${projectId}/format`,
-      { method: "POST", body: JSON.stringify({ path: filePath, source }) }
-    );
-    return result.formatted;
-  };
   const formatSource = async (filePath: string, source: string): Promise<string> => {
     if (/\.bib$/i.test(filePath)) return formatBibtex(source);
-    return formatWithHostFormatter(filePath, source);
+    return formatWithTexFmt(source, editorPreferences.texFmtConfig);
   };
   const formatCurrentFile = async (): Promise<void> => {
     if (!project || project.permission === "read" || !collaborationSynced || formattingRef.current

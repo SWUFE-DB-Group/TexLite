@@ -1,5 +1,40 @@
 const latexSourcePattern = /\.(?:tex|bib|cls|sty)$/i;
 
+type TexFmtModule = typeof import("./texFmtRuntime");
+
+let texFmtModule: Promise<TexFmtModule> | null = null;
+
+/**
+ * Format LaTeX source in the browser with the bundled tex-fmt WASM build.
+ *
+ * The module is loaded lazily so opening a project does not pay for the
+ * formatter unless the user formats a file (or enables format-before-compile).
+ * `config` is the TOML options string accepted by tex-fmt and is deliberately
+ * supplied by the caller so editor preferences can remain user/project local.
+ */
+export async function formatWithTexFmt(source: string, config = ""): Promise<string> {
+  texFmtModule ??= import("./texFmtRuntime");
+  let main: TexFmtModule["main"];
+  try {
+    ({ main } = await texFmtModule);
+  } catch {
+    // Do not permanently cache a transient asset/CSP failure. A later
+    // attempt can succeed after the browser has recovered its connection.
+    texFmtModule = null;
+    throw new Error("The bundled tex-fmt formatter could not be loaded.");
+  }
+  let result: unknown;
+  try {
+    result = main(source, config);
+  } catch {
+    throw new Error("tex-fmt could not format this source. Check the TOML formatter options.");
+  }
+  if (!result || typeof result !== "object" || !("output" in result) || typeof result.output !== "string") {
+    throw new Error("tex-fmt returned an invalid formatting result.");
+  }
+  return result.output;
+}
+
 export interface LatexTextEdit {
   from: number;
   to: number;
@@ -16,9 +51,8 @@ function trailingLineBreaks(source: string): string {
 
 /**
  * Put formatted selection text back at the indentation level from which it
- * was selected.  Server-side formatters generally format from column zero,
- * while a selection inside an environment should remain nested in the
- * document.
+ * was selected. Formatters generally format from column zero, while a
+ * selection inside an environment should remain nested in the document.
  */
 export function reindentLatexSelection(source: string, formatted: string): string {
   const trailing = trailingLineBreaks(source);

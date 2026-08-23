@@ -126,18 +126,6 @@ describe("texLite application", () => {
     expect(response.json()).toMatchObject({ code: "FILE_TOO_LARGE" });
   });
 
-  it("formats supported LaTeX files with the optional host formatter", async () => {
-    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Host formatter" } });
-    const projectId = created.json().project.id as string;
-    const response = await app.inject({
-      method: "POST", url: `/api/projects/${projectId}/format`, headers: { cookie },
-      payload: { path: "main.tex", source: "\\documentclass{article}\n\\begin{document}\n\\section{Title}\n\\end{document}\n" }
-    });
-    expect([200, 503]).toContain(response.statusCode);
-    if (response.statusCode === 200) expect(response.json()).toMatchObject({ formatter: "tex-fmt" });
-    else expect(response.json()).toMatchObject({ code: "FORMATTER_UNAVAILABLE" });
-  });
-
   it("creates, edits, compiles and comments on a project", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Paper" } });
     expect(created.statusCode).toBe(201);

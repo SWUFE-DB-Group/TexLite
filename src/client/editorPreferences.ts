@@ -8,6 +8,8 @@ export interface EditorPreferences {
   spellCheck: boolean;
   vimMode: boolean;
   formatOnCompile: boolean;
+  /** TOML options passed to the browser-side tex-fmt WASM formatter. */
+  texFmtConfig: string;
   openFilesInTabs: boolean;
 }
 
@@ -27,6 +29,7 @@ export const defaultEditorPreferences: EditorPreferences = {
   spellCheck: true,
   vimMode: false,
   formatOnCompile: false,
+  texFmtConfig: "",
   openFilesInTabs: false
 };
 
@@ -51,6 +54,7 @@ export function loadEditorPreferences(userId: string, projectId: string): Editor
       spellCheck: typeof stored.spellCheck === "boolean" ? stored.spellCheck : defaultEditorPreferences.spellCheck,
       vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode,
       formatOnCompile: typeof stored.formatOnCompile === "boolean" ? stored.formatOnCompile : defaultEditorPreferences.formatOnCompile,
+      texFmtConfig: typeof stored.texFmtConfig === "string" && stored.texFmtConfig.length <= 16 * 1024 ? stored.texFmtConfig : defaultEditorPreferences.texFmtConfig,
       openFilesInTabs: typeof stored.openFilesInTabs === "boolean" ? stored.openFilesInTabs : defaultEditorPreferences.openFilesInTabs
     };
   } catch {

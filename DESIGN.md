@@ -29,7 +29,7 @@ installation, configuration, and day-to-day operation.
 | Database | SQLite through better-sqlite3, foreign keys and WAL mode |
 | Files | Local project directories under the configured data directory |
 | Compilation | Host `latexmk` and a configured LaTeX engine |
-| Formatting | Optional host `tex-fmt` executable |
+| Formatting | Browser-side `tex-fmt` WASM package and `bibtex-tidy` |
 | Git backup | Optional host Git and the GitHub REST API |
 | Process management | Foreground `serve`, or the bundled PM2 lifecycle commands |
 
@@ -91,8 +91,9 @@ the allowed-engine list.
 Startup and `doctor` check `latexmk` and every configured LaTeX engine. Git is
 optional: a host without Git can run the editor and compiler, while Git is
 checked on demand when an owner opens or uses Git integration (or explicitly
-with `texlite doctor --git`). `tex-fmt` is also optional and is checked only
-when formatting is requested. TexLite never installs or updates TeX packages.
+with `texlite doctor --git`). Formatting is also optional: the browser loads
+the bundled npm `tex-fmt` WASM module and `bibtex-tidy` only when formatting is
+requested. TexLite never installs or updates TeX packages.
 
 `texlite serve` runs in the foreground and is suitable for debugging, Docker,
 or systemd. `start`, `status`, `stop`, `restart`, and `logs` use the bundled
@@ -205,9 +206,12 @@ collaborator.
 
 Formatting is independent from the editor's local appearance. A user can
 manually format a selection or enable the per-user/per-project “format before
-compile” preference. The server invokes the optional host `tex-fmt` command for
-`.tex`, `.bib`, `.cls`, and `.sty`; a formatter failure reports an error but
-does not prevent compilation. There is no silent Prettier fallback.
+compile” preference. The browser uses bundled `tex-fmt` WASM for `.tex`, `.cls`,
+and `.sty`, and `bibtex-tidy` for `.bib`; the editor settings also provide a
+per-user/per-project TOML options string passed to `tex-fmt`. The formatter is
+loaded lazily on first use, so opening a project does not wait for it. A
+formatter failure reports an error but does not prevent compilation. There is
+no silent Prettier fallback.
 
 Project duplication flushes the live source room and copies the tree under a
 short read barrier. Uploading a replacement text file also re-anchors existing

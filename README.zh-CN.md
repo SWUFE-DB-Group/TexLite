@@ -19,7 +19,6 @@ texLite 是一个轻量、以本机为中心的 LaTeX 网页工作区，用于�
 - git（可选；仅项目所有者使用 Git/GitHub 集成时需要）
 - latexmk
 - 至少一个配置好的引擎：pdflatex、xelatex 或 lualatex
-- `tex-fmt`（可选；仅使用 LaTeX 格式化功能时需要）
 
 初始化前可以检查：
 
@@ -28,16 +27,13 @@ node --version
 npm --version
 latexmk --version
 xelatex --version
-# 可选，仅在使用 LaTeX 格式化时检查：
-tex-fmt --version
 # 可选，仅在需要 Git/GitHub 集成时检查：
 git --version
 ~~~
 
 npm run init 和应用启动会检查 latexmk 以及 latex.allowedEngines 中列出的每个引擎。Git 不参与这项核心检查，因此未安装 Git 的宿主机仍可正常初始化并运行 TexLite。项目所有者打开 Git 面板或执行 Git/GitHub 操作时，TexLite 才会按需检查 git.binary；如果 Git 不可用，界面会给出可操作的错误提示。
 
-格式化功能同样是可选的。如果服务器的 `PATH` 中没有 `tex-fmt`，格式化控件会提示安装方法；TexLite 不会静默替换成其他格式化器。支持 `.tex`、`.bib`、`.cls` 和 `.sty`，项目中的 `tex-fmt.toml` 配置会自动生效。
-如果 PM2 使用了受限的 `PATH`，可以将 `TEXLITE_TEX_FMT` 设置为宿主机可执行文件的绝对路径。
+格式化功能同样是可选的，并直接在浏览器中运行。TexLite 内置 [npm 包 `tex-fmt`](https://www.npmjs.com/package/tex-fmt)（WASM 版本）格式化 `.tex`、`.cls` 和 `.sty`，并在浏览器中使用 `bibtex-tidy` 格式化 `.bib`。编辑器设置中可以为当前用户和项目填写 `tex-fmt` 的 TOML 参数；不需要在宿主机安装格式化命令，也不需要配置 PATH。
 
 ## 快速开始
 
@@ -242,7 +238,6 @@ TEXLITE_HISTORY_MAX_VERSIONS TEXLITE_HISTORY_MAX_STORAGE_MB
 TEXLITE_LATEXMK               TEXLITE_DEFAULT_ENGINE
 TEXLITE_COMPILE_TIMEOUT       TEXLITE_MAX_COMPILE_JOBS
 TEXLITE_GIT                   TEXLITE_GIT_TIMEOUT
-TEXLITE_TEX_FMT
 TEXLITE_GITHUB_API_URL
 ~~~
 

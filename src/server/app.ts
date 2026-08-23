@@ -43,7 +43,6 @@ import { ProjectMutationCoordinator } from "./projectMutations.js";
 import { ProjectGitService } from "./git.js";
 import { LatexCompletionService } from "./latexCompletion.js";
 import { ProjectHistoryService, type HistoryReason } from "./history.js";
-import { LatexFormatterService } from "./latexFormatter.js";
 import { ProjectOutlineService } from "./projectOutline.js";
 import { replaceProject, searchProject } from "./projectSearch.js";
 import { MetricRegistry } from "./metrics.js";
@@ -482,7 +481,6 @@ export async function buildApp(
   const history = new ProjectHistoryService(config, db);
   const latexCompletions = new LatexCompletionService(config);
   const projectOutlines = new ProjectOutlineService(config);
-  const latexFormatter = new LatexFormatterService();
   const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => {
     try { return history.record(projectId, userId, reason, paths); }
     catch (error) {
@@ -1735,40 +1733,6 @@ export async function buildApp(
         }
       }
     });
-  });
-
-  app.post("/api/projects/:id/format", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    if (!canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN", "没有编辑权限");
-    const body = request.body as { path?: unknown; source?: unknown } | undefined;
-    const filePath = safeRelativePath(typeof body?.path === "string" ? body.path : "");
-    if (!/\.(?:tex|cls|sty)$/i.test(filePath)) {
-      return apiError(reply, 400, "FORMAT_FILE_UNSUPPORTED", "只有 .tex、.cls 和 .sty 文件支持宿主机格式化", { path: filePath });
-    }
-    if (typeof body?.source !== "string") return apiError(reply, 400, "FORMAT_SOURCE_INVALID", "待格式化内容格式不正确");
-    const source = body.source;
-    if (Buffer.byteLength(source, "utf8") > config.maxUploadBytes) {
-      return apiError(reply, 413, "FILE_TOO_LARGE", `单个文件不能超过 ${Math.floor(config.maxUploadBytes / 1024 / 1024)} MB`, { path: filePath });
-    }
-    try {
-      return await projectMutations.runConsistentRead(id, () => {
-        assertNoSourceSymlinks(config, id);
-        return latexFormatter.format(source, sourceRoot(config, id));
-      }, {
-        preflight: () => { requireEditableProject(db, id, user); }
-      });
-    } catch (formatError) {
-      const statusCode = typeof formatError === "object" && formatError !== null && "statusCode" in formatError && typeof formatError.statusCode === "number"
-        ? formatError.statusCode : 422;
-      const code = typeof formatError === "object" && formatError !== null && "code" in formatError && typeof formatError.code === "string"
-        ? formatError.code : "FORMAT_FAILED";
-      const message = formatError instanceof Error ? formatError.message : "LaTeX formatting failed";
-      return apiError(reply, statusCode, code, message);
-    }
   });
 
   app.get("/api/projects/:id/outline", async (request, reply) => {

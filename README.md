@@ -22,7 +22,6 @@ navigation and diagnostics, GitHub backup, and data-management decisions, see
 - git (optional; required only for the project-owner Git/GitHub integration)
 - latexmk
 - At least one configured engine: pdflatex, xelatex, or lualatex
-- `tex-fmt` (optional; required only when using LaTeX formatting)
 
 Check the host before initialization:
 
@@ -31,16 +30,13 @@ node --version
 npm --version
 latexmk --version
 xelatex --version
-# Optional, only when using LaTeX formatting:
-tex-fmt --version
 # Optional, when Git/GitHub integration is needed:
 git --version
 ~~~
 
 npm run init and application startup check latexmk and every engine in latex.allowedEngines. Git is deliberately excluded from this core check, so a host without Git can initialize and run TexLite normally. When a project owner opens the Git panel or invokes a Git/GitHub operation, TexLite checks git.binary on demand and shows an actionable error if Git is unavailable.
 
-Formatting is also optional. If `tex-fmt` is not on the server's `PATH`, the formatting control explains how to install it; TexLite does not silently substitute another formatter. The supported source types are `.tex`, `.bib`, `.cls`, and `.sty`; project-level `tex-fmt.toml` settings are honored.
-If PM2 uses a restricted `PATH`, set `TEXLITE_TEX_FMT` to the absolute path of the host executable.
+Formatting is optional and runs in the browser. TexLite bundles the [`tex-fmt` npm package](https://www.npmjs.com/package/tex-fmt) (a WASM build) for `.tex`, `.cls`, and `.sty` files, and uses browser-side `bibtex-tidy` for `.bib` files. The editor settings panel accepts per-user/per-project TOML options for `tex-fmt`; no host formatter installation or PATH configuration is required.
 
 ## Quick start
 
@@ -257,7 +253,6 @@ TEXLITE_HISTORY_MAX_VERSIONS TEXLITE_HISTORY_MAX_STORAGE_MB
 TEXLITE_LATEXMK               TEXLITE_DEFAULT_ENGINE
 TEXLITE_COMPILE_TIMEOUT       TEXLITE_MAX_COMPILE_JOBS
 TEXLITE_GIT                   TEXLITE_GIT_TIMEOUT
-TEXLITE_TEX_FMT
 TEXLITE_GITHUB_API_URL
 ~~~
 

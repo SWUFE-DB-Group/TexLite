@@ -1,10 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import wasm from "vite-plugin-wasm";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), wasm()],
   root: "src/client",
   build: {
+    // tex-fmt's WASM module uses native top-level await. TexLite targets
+    // current browsers, so retaining it avoids a fragile post-build rewrite.
+    target: "esnext",
     outDir: "../../dist/client",
     emptyOutDir: true,
     rollupOptions: {

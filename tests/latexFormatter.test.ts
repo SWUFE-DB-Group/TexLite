@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createLatexTextEdits, isFormattableLatexFile, reindentLatexSelection } from "../src/client/latexFormatter";
+import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, reindentLatexSelection } from "../src/client/latexFormatter";
 
 describe("LaTeX formatting", () => {
   it("recognizes LaTeX source files", () => {
@@ -15,7 +15,15 @@ describe("LaTeX formatting", () => {
     ]);
   });
 
-  it("reindents output from the host formatter", () => {
+  it("formats LaTeX in the browser with the bundled tex-fmt build", async () => {
+    await expect(formatWithTexFmt("\\documentclass{article}\n\\begin{document}\n  text\n\\end{document}\n")).resolves.toBe("\\documentclass{article}\n\\begin{document}\ntext\n\\end{document}\n");
+  });
+
+  it("passes editor TOML options to tex-fmt", async () => {
+    await expect(formatWithTexFmt("\\section{Title}\n", "not valid =")).rejects.toThrow("TOML");
+  });
+
+  it("reindents formatted selection output", () => {
     expect(reindentLatexSelection("    \\section{Title}\n", "\\section{Title}\n")).toBe("    \\section{Title}\n");
   });
 });

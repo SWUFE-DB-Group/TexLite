@@ -36,7 +36,6 @@ export function localizedResponseError(body: unknown, status: number, fallbackKe
       HISTORY_FILE_PREVIEW_UNSUPPORTED: "apiErrors.historyPreviewUnsupported",
       SEARCH_QUERY_INVALID: "apiErrors.searchInvalid",
       GIT_UNAVAILABLE: "apiErrors.gitUnavailable",
-      FORMATTER_UNAVAILABLE: "apiErrors.formatterUnavailable",
       FORMAT_FAILED: "apiErrors.formatFailed",
       PROJECT_TRANSFER_FORBIDDEN: "projects.transferForbidden",
       PROJECT_TRANSFER_TARGET_INVALID: "projects.transferTargetInvalid",
