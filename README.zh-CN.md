@@ -152,7 +152,7 @@ npm start
   "server": { "host": "127.0.0.1", "port": 3000 },
   "storage": { "dataDir": ".texlite" },
   "uploads": { "maxFileSizeMB": 50 },
-  "history": { "maxVersions": 200, "maxStorageMB": 512 },
+  "history": { "maxVersions": 200, "maxStorageMB": 128 },
   "git": {
     "binary": "git",
     "operationTimeoutSeconds": 120,
@@ -200,7 +200,7 @@ npm start
 | `sessionDays` | `14` 天 |
 | `uploads.maxFileSizeMB` | `50` MB |
 | `history.maxVersions` | 每项目 `200` 个普通版本 |
-| `history.maxStorageMB` | 每项目 `512` MB（软上限） |
+| `history.maxStorageMB` | 每项目 `128` MB（软上限） |
 | `latex.latexmk` | `latexmk` |
 | `latex.defaultEngine` | `xelatex` |
 | `latex.allowedEngines` | `pdflatex`、`xelatex`、`lualatex` |
@@ -316,7 +316,7 @@ pm2 save
 
 ## 历史、导航和诊断
 
-自动历史会记录源码/文件操作、编译器设置、Git 操作、恢复操作和服务端确认的协作保存。协作保存采用固定的两分钟版本窗口，因此连续编辑仍会形成有用的恢复点，同时不会按每次按键记录。TexLite 默认保留最近 200 个普通版本，以及全部已标记版本和初始版本。文件内容以完整的 SHA-256 对象保存：未变化内容会复用，变化文件则产生一个新的完整对象。默认每个项目设置 512 MB 软上限，超过后优先删除最旧的普通版本；受保护版本和当前内部基线可能使实际用量超过上限。项目所有者可以查看历史存储用量、删除单个版本或清空全部历史，而不会改变当前项目文件。不再被引用的对象会被清理。历史功能适合修正写作误操作，但不能替代对完整数据目录的备份。
+自动历史会记录源码/文件操作、编译器设置、Git 操作、恢复操作和服务端确认的协作保存。协作保存采用固定的两分钟版本窗口，因此连续编辑仍会形成有用的恢复点，同时不会按每次按键记录。TexLite 默认保留最近 200 个普通版本，以及全部已标记版本和初始版本。文件内容以完整的 SHA-256 对象保存：未变化内容会复用，变化文件则产生一个新的完整对象。默认每个项目设置 128 MB 软上限，超过后优先删除最旧的普通版本；受保护版本和当前内部基线可能使实际用量超过上限。项目所有者可以查看历史存储用量、删除单个版本或清空全部历史，而不会改变当前项目文件。不再被引用的对象会被清理。历史功能适合修正写作误操作，但不能替代对完整数据目录的备份。
 
 Ctrl/Cmd+P 用于快速打开项目文件，Ctrl/Cmd+Shift+F 用于全项目纯文本搜索和替换。全项目替换按一次操作暂存，并自动创建历史版本。大纲从主文档开始跟随 `\\input`、`\\include` 和 `\\subfile`。结构化警告/错误会解析项目内文件名，点击后直接跳到源码行；完整 latexmk 原始日志仍然保留。
 

@@ -162,7 +162,7 @@ The example configuration is intentionally complete:
   "storage": { "dataDir": ".texlite" },
   "uploads": { "maxFileSizeMB": 50 },
   "pdf": { "loadingStrategy": "auto", "rangeThresholdMB": 5 },
-  "history": { "maxVersions": 200, "maxStorageMB": 512 },
+  "history": { "maxVersions": 200, "maxStorageMB": 128 },
   "git": {
     "binary": "git",
     "operationTimeoutSeconds": 120,
@@ -222,7 +222,7 @@ email):
 | `pdf.loadingStrategy` | `auto` |
 | `pdf.rangeThresholdMB` | `5` MB |
 | `history.maxVersions` | `200` ordinary versions per project |
-| `history.maxStorageMB` | `512` MB per project (soft limit) |
+| `history.maxStorageMB` | `128` MB per project (soft limit) |
 | `latex.latexmk` | `latexmk` |
 | `latex.defaultEngine` | `xelatex` |
 | `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` |

@@ -321,7 +321,7 @@ operations, compiler settings, Git operations, checkpoints, and restores.
 Autosaves by the same author are coalesced within a two-minute window. File
 contents are complete SHA-256-addressed objects; unchanged files are reused
 across manifests. The retention defaults are 200 ordinary unlabeled versions
-and 512 MB of deduplicated objects per project. Initial and labeled versions,
+and 128 MB of deduplicated objects per project. Initial and labeled versions,
 plus the current internal baseline, are protected and can make the soft limit
 temporarily exceed its target. Retention pruning batches reference accounting
 and removes unreferenced objects.

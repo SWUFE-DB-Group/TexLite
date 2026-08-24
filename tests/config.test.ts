@@ -69,7 +69,7 @@ describe("configuration", () => {
       compileTimeoutMs: 600_000, maxCompileJobs: 10, defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
       pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
+      historyMaxVersions: 200, historyMaxStorageBytes: 128 * 1024 * 1024,
       git: "git", gitOperationTimeoutMs: 120_000, githubApiBaseUrl: "https://api.github.com"
     });
   });

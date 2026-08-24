@@ -27,7 +27,7 @@ export const CONFIG_DEFAULTS = {
   pdfLoadingStrategy: "auto" as PdfLoadingStrategy,
   pdfRangeThresholdMB: 5,
   historyMaxVersions: 200,
-  historyMaxStorageMB: 512,
+  historyMaxStorageMB: 128,
   git: "git",
   gitOperationTimeoutSeconds: 120,
   githubApiBaseUrl: "https://api.github.com"
