@@ -52,6 +52,10 @@ const STATE_SAVE_DELAY_MS = 750;
 const ROOM_IDLE_MS = 30_000;
 const FORMAT_LEASE_TTL_MS = 45_000;
 const MAX_FORMAT_LEASE_WAITERS = MAX_PROJECT_SESSIONS * 2;
+// Completion notifications are useful only to browsers that were already
+// present when the operation finished. The database and retained manifests
+// are the authority for a later workspace open.
+const COMPLETED_COMPILE_STATE_TTL_MS = 60_000;
 const EPHEMERAL_META_KEYS = ["compileStates", "filesEvent", "commentsRevision", "dictionaryRevision"] as const;
 const COLORS = [
   ["#1677c8", "#1677c833"], ["#d65745", "#d6574533"], ["#16866a", "#16866a33"],
@@ -499,13 +503,10 @@ export class CollaborationService {
   }
 
   /**
-   * Drop compile states that no longer describe an active database run.
-   *
-   * `compileStates` is intentionally only a live UI signal. A browser can
-   * nevertheless replay an old IndexedDB update while reconnecting, so the
-   * server must not let an old `queued`/`running` value become authoritative
-   * again after a restart. Completed states are retained for the current room
-   * because they are useful to the UI and cannot disable a new compile.
+   * Keep collaboration compile metadata strictly ephemeral and database
+   * backed. A browser can replay old IndexedDB updates after reconnecting;
+   * completed states must therefore not override the retained-PDF lookup for
+   * a newly opened workspace.
    */
   private sanitizeCompileStates(room: Room): void {
     const current = room.meta.get("compileStates");
@@ -515,19 +516,45 @@ export class CollaborationService {
     }
     const retained: Record<string, SharedCompileState> = {};
     let changed = false;
+    const checkedAt = Date.now();
+    const findRun = this.db.prepare(`SELECT id, status, main_file FROM compile_runs
+      WHERE id = ? AND project_id = ?`);
+    const findLatestRun = this.db.prepare(`SELECT id, status FROM compile_runs
+      WHERE project_id = ? AND main_file = ? ORDER BY created_at DESC LIMIT 1`);
     for (const [mainFile, value] of Object.entries(current as Record<string, unknown>)) {
       if (!isSharedCompileState(mainFile, value)) {
         changed = true;
         continue;
       }
       if (value.status === "queued" || value.status === "running") {
-        const run = this.db.prepare(`SELECT status, main_file FROM compile_runs
-          WHERE id = ? AND project_id = ?`).get(value.runId, room.projectId) as {
-            status: string; main_file: string;
-          } | undefined;
+        const run = findRun.get(value.runId, room.projectId) as {
+          id: string; status: string; main_file: string;
+        } | undefined;
         if (!run || run.main_file !== mainFile || (run.status !== "queued" && run.status !== "running")) {
           changed = true;
           continue;
+        }
+      } else {
+        const updatedAt = Date.parse(value.updatedAt);
+        const fresh = Number.isFinite(updatedAt)
+          && updatedAt <= checkedAt + COMPLETED_COMPILE_STATE_TTL_MS
+          && checkedAt - updatedAt <= COMPLETED_COMPILE_STATE_TTL_MS;
+        if (!fresh) {
+          changed = true;
+          continue;
+        }
+        if (value.status !== "cleaned") {
+          const run = findRun.get(value.runId, room.projectId) as {
+            id: string; status: string; main_file: string;
+          } | undefined;
+          const latest = findLatestRun.get(room.projectId, mainFile) as {
+            id: string; status: string;
+          } | undefined;
+          if (!run || run.main_file !== mainFile || run.status !== value.status
+            || !latest || latest.id !== value.runId || latest.status !== value.status) {
+            changed = true;
+            continue;
+          }
         }
       }
       retained[mainFile] = value;

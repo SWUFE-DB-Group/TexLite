@@ -8,20 +8,25 @@ import { errorMessage } from "../errors";
 import { preloadTexFmt, reloadTexFmt } from "../latexFormatter";
 import type { FileEntry, Project, SiteConfig } from "../types";
 
-function BrowserToolStatus({ name, state, label, reloadLabel, onReload }: {
-  name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void;
+function BrowserToolStatus({ name, state, label, reloadLabel, onReload, compact = false }: {
+  name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void; compact?: boolean;
 }) {
   const icon = state.status === "loading"
     ? <LoaderCircle className="spin" size={14} />
     : state.status === "working"
       ? <CheckCircle2 size={14} />
       : <AlertCircle size={14} />;
-  return <div className={`browser-tool-status ${state.status}`} title={state.error || undefined}>
+  const contents = <>
     {icon}<strong>{name}</strong><span>{label}</span>
-    {state.status === "error" && <button type="button" className="browser-tool-reload" onClick={onReload}>
+    {state.status === "error" && <button type="button" className="browser-tool-reload" title={reloadLabel} aria-label={reloadLabel} onClick={onReload}>
       <RefreshCw size={12} />{reloadLabel}
     </button>}
-  </div>;
+  </>;
+  if (compact) return <span className={`browser-tool-status compact ${state.status}`} role="status" aria-live="polite" aria-label={`${name}: ${label}`} title={state.error || undefined}>
+    {icon}<span>{label}</span>
+    {state.status === "error" && <button type="button" className="browser-tool-reload" title={reloadLabel} aria-label={reloadLabel} onClick={onReload}><RefreshCw size={12} /></button>}
+  </span>;
+  return <div className={`browser-tool-status ${state.status}`} title={state.error || undefined}>{contents}</div>;
 }
 
 export function ProjectSettings({ project, projectId, site, files, dictionaryWords, onDictionaryChange, editorPreferences, onEditorPreferences, spellCheckCount, spellCheckUniqueCount, spellCheckIndex, onSpellCheckNavigate, onProject }: {
@@ -138,11 +143,8 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
         <p className="field-hint">{t(canEdit ? "projectSettings.formatOnCompileDescription" : "projectSettings.formatRequiresWrite")} {t("projectSettings.formatterDescription")} <a href="https://www.npmjs.com/package/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a> · <a href="https://github.com/FlamingTempura/bibtex-tidy" target="_blank" rel="noreferrer">{t("projectSettings.bibtexTidyInstall")}</a></p>
       </div>
       <div className="editor-preference">
-        <label>{t("projectSettings.texFmtOptions")}<textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
+        <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
         <p className="field-hint">{t("projectSettings.texFmtOptionsDescription")}</p>
-        <div className="tex-fmt-status" role="status" aria-live="polite" aria-label={t("projectSettings.browserTools")}>
-          <BrowserToolStatus name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} />
-        </div>
       </div>
       {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.writingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("projectSettings.noWritingIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
       <div className="settings-section-title"><BookOpen size={15} /><strong>{t("projectSettings.dictionary")}</strong></div>

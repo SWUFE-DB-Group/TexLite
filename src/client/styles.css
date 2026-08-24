@@ -507,7 +507,12 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .browser-tool-status.loading { border-color: #e4d7ad; background: #fffaf0; color: #9a6b18; }
 .browser-tool-status.working { border-color: #bddbc7; background: #f0f8f2; color: #187348; }
 .browser-tool-status.error { border-color: #e7beb9; background: #fff3f1; color: #a3342c; }
-.tex-fmt-status { margin-top: 8px; max-width: 360px; }
+.tex-fmt-options-heading { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tex-fmt-options-heading > span:first-child { min-width: 0; }
+.browser-tool-status.compact { min-width: 0; flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 999px; font-size: 10px; line-height: 1; white-space: nowrap; }
+.browser-tool-status.compact span { font-size: 10px; }
+.browser-tool-status.compact .browser-tool-reload { grid-column: auto; display: grid; place-items: center; width: 18px; height: 18px; min-height: 18px; margin: -1px -3px -1px 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; }
+.browser-tool-status.compact .browser-tool-reload:hover { background: #0000000d; }
 .browser-tool-reload { grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 26px; margin-top: 2px; border: 1px solid #dca9a3; border-radius: 5px; background: #fff; color: #922d27; font-size: 10px; font-weight: 700; }
 .browser-tool-reload:hover { border-color: #bf7770; background: #fff8f7; }
 .settings .editor-preference { display: flex; flex-direction: column; gap: 4px; }

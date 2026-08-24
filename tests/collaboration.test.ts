@@ -366,6 +366,37 @@ describe("project collaboration", () => {
     } finally { peer.destroy(); }
   });
 
+  it("removes a replayed completed compile state when it is no longer the latest run", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Replayed completed state" }
+    });
+    const projectId = created.json().project.id as string;
+    const staleRunId = randomUUID();
+    const currentRunId = randomUUID();
+    const now = Date.now();
+    db.prepare(`INSERT INTO compile_runs
+      (id, project_id, requested_by, main_file, status, log, created_at, finished_at)
+      VALUES (?, ?, ?, 'main.tex', 'succeeded', '', ?, ?), (?, ?, ?, 'main.tex', 'succeeded', '', ?, ?)`)
+      .run(
+        staleRunId, projectId, adminId, new Date(now - 1_000).toISOString(), new Date(now - 900).toISOString(),
+        currentRunId, projectId, adminId, new Date(now).toISOString(), new Date(now).toISOString()
+      );
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      peer.doc.getMap("texlite:meta").set("compileStates", {
+        "main.tex": {
+          mainFile: "main.tex", runId: staleRunId, status: "succeeded",
+          requestedBy: { id: adminId, username: "admin", name: "Administrator" },
+          updatedAt: new Date().toISOString()
+        }
+      });
+      await waitFor(() => peer.doc.getMap("texlite:meta").get("compileStates") === undefined);
+    } finally {
+      peer.destroy();
+      db.prepare("DELETE FROM compile_runs WHERE id IN (?, ?)").run(staleRunId, currentRunId);
+    }
+  });
+
   it("advertises an active database compile when the room had no live metadata", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Queued compile handshake" }

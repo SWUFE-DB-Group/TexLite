@@ -69,6 +69,11 @@ export function useProjectCompilation({
   const mainFileRef = useRef(mainFile);
   const pdfMainFileRef = useRef("");
   const latestRequest = useRef<AbortController | null>(null);
+  // The initial retained-PDF lookup is authoritative when a workspace opens.
+  // Keep state-replay lookups separate so an old Yjs completed state cannot
+  // abort that lookup before it publishes the retained PDF.
+  const completedStateRequest = useRef<AbortController | null>(null);
+  const authoritativeCompileRun = useRef<{ mainFile: string; runId: string } | null>(null);
   const initialLatestRef = useRef(initialLatest);
   const initialLatestConsumed = useRef(false);
   const artifactsRequest = useRef<AbortController | null>(null);
@@ -129,8 +134,12 @@ export function useProjectCompilation({
       setCompileOutcome(null);
       setArtifacts([]);
       setArtifactPreview(null);
+      authoritativeCompileRun.current = null;
       callbacks.current.onPdfChanged();
       return;
+    }
+    if (authoritativeCompileRun.current?.mainFile !== mainFile) {
+      authoritativeCompileRun.current = null;
     }
     const controller = new AbortController();
     latestRequest.current = controller;
@@ -183,6 +192,9 @@ export function useProjectCompilation({
     };
     void latestRequestPromise.then((latest) => {
       if (controller.signal.aborted || (mainFile && latest.mainFile !== mainFileRef.current)) return;
+      const authoritativeRun = authoritativeCompileRun.current;
+      if (authoritativeRun && authoritativeRun.mainFile === mainFile
+        && latest.latestRun?.id !== authoritativeRun.runId) return;
       setCompileLog(latest.latestRun?.log ?? "");
       setCompileDiagnostics(latest.latestRun?.diagnostics ?? null);
       setCompileOutcome(latest.latestRun?.status === "succeeded" || latest.latestRun?.status === "failed"
@@ -225,11 +237,13 @@ export function useProjectCompilation({
   useEffect(() => {
     if (!sharedState || sharedState.mainFile !== mainFile || sharedState.status !== "cleaned" || !sharedState.cleanMode) return;
     latestRequest.current?.abort();
+    completedStateRequest.current?.abort();
     artifactsRequest.current?.abort();
     artifactPreviewRequest.current?.abort();
     for (const request of backgroundRequests.current) request.abort();
     backgroundRequests.current.clear();
     if (sharedState.cleanMode === "artifacts") {
+      authoritativeCompileRun.current = null;
       setCompileLog("");
       setCompileDiagnostics(null);
       setCompileOutcome(null);
@@ -250,10 +264,10 @@ export function useProjectCompilation({
     if (!sharedState || sharedState.mainFile !== mainFile
       || (sharedState.status !== "succeeded" && sharedState.status !== "failed")) return;
     let cancelled = false;
-    latestRequest.current?.abort();
+    completedStateRequest.current?.abort();
     artifactPreviewRequest.current?.abort();
     const controller = new AbortController();
-    latestRequest.current = controller;
+    completedStateRequest.current = controller;
     setPdfLoading(true);
     void api<LatestCompileResponse>(
       `/api/projects/${projectId}/compile/latest?mainFile=${encodeURIComponent(mainFile)}`,
@@ -265,6 +279,7 @@ export function useProjectCompilation({
       setCompileOutcome(sharedState.status === "succeeded" ? "succeeded" : "failed");
       if (sharedState.status === "succeeded" && sharedState.stale) setEditorNotice(t("editor.compileSnapshotStale"));
       if (sharedState.status === "succeeded" && latest.pdfUrl) {
+        authoritativeCompileRun.current = { mainFile, runId: sharedState.runId };
         callbacks.current.onPdfChanged();
         setPdfUrl(latest.pdfUrl);
         setPdfCompiledAt(latest.pdfCompiledAt);
@@ -278,12 +293,13 @@ export function useProjectCompilation({
     }).catch((error) => {
       if (!isAbortError(error) && !cancelled) callbacks.current.onError(errorMessage(error));
     }).finally(() => {
+      if (completedStateRequest.current === controller) completedStateRequest.current = null;
       if (!cancelled) setPdfLoading(false);
     });
     return () => {
       cancelled = true;
       controller.abort();
-      if (latestRequest.current === controller) latestRequest.current = null;
+      if (completedStateRequest.current === controller) completedStateRequest.current = null;
     };
   }, [sharedState?.runId, sharedState?.status, sharedState?.mainFile, sharedState?.stale, mainFile, projectId, t]);
 
@@ -316,6 +332,7 @@ export function useProjectCompilation({
       if (result.skipped) setEditorNotice(t("editor.upToDate"));
       if (result.ok && result.stale) setEditorNotice(t("editor.compileSnapshotStale"));
       if (result.pdfUrl) {
+        if (result.ok) authoritativeCompileRun.current = { mainFile: requestedMainFile, runId: result.runId };
         callbacks.current.onPdfChanged();
         setPdfUrl(result.pdfUrl);
         setPdfCompiledAt(result.pdfCompiledAt);
@@ -352,6 +369,7 @@ export function useProjectCompilation({
     const requestedMainFile = mainFile;
     setCleaning(true);
     latestRequest.current?.abort();
+    completedStateRequest.current?.abort();
     artifactsRequest.current?.abort();
     artifactPreviewRequest.current?.abort();
     try {
@@ -362,6 +380,7 @@ export function useProjectCompilation({
       if (result.mainFile !== mainFileRef.current) return;
       callbacks.current.onSharedState(null);
       if (mode === "artifacts") {
+        authoritativeCompileRun.current = null;
         setCompileLog("");
         setCompileDiagnostics(null);
         setCompileOutcome(null);
@@ -401,6 +420,7 @@ export function useProjectCompilation({
 
   useEffect(() => () => {
     latestRequest.current?.abort();
+    completedStateRequest.current?.abort();
     artifactsRequest.current?.abort();
     artifactPreviewRequest.current?.abort();
     for (const request of backgroundRequests.current) request.abort();
