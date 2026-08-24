@@ -391,8 +391,8 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       );
       if (currentGeneration !== snapshotGeneration) snapshotStale = true;
     };
-    const broadcast = () => collaboration.signalCompileState(id, {
-      mainFile, runId, status: phase, requestedBy, updatedAt: now(),
+    const broadcast = (stateRunId: string = runId) => collaboration.signalCompileState(id, {
+      mainFile, runId: stateRunId, status: phase, requestedBy, updatedAt: now(),
       ...(phase === "succeeded" && snapshotStale ? { stale: true } : {})
     });
     const result = await compileCoordinator.request({
@@ -417,10 +417,11 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         let snapshotMs = 0;
         const snapshotStartedAt = performance.now();
         try {
-          // Refresh the cheap generation after waiting for any queued source
-          // operation. This makes the no-op check safe when a Git/HTTP write
-          // completed after admission but before this compile got a worker.
-          const refreshed = await projectMutations.runSerialized(id, () => {
+          // Revalidate settings after queued source operations. Do not use the
+          // in-memory collaboration revision to skip before a snapshot: it is
+          // not a durable content version and can collide after a room restart
+          // or reconnect.
+          await projectMutations.runSerialized(id, () => {
             const currentProject = accessibleProject(db, id, user);
             if (!currentProject || !canEdit(currentProject)) {
               throw new Error("Project access changed while waiting for a source snapshot");
@@ -430,46 +431,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             if (!requestedMainFile && currentMainFile !== mainFile) throw mainDocumentChangedError();
             project = currentProject;
             mainFile = currentMainFile;
-            return {
-              generation: compileRequestGeneration(
-                currentProject,
-                collaboration.currentRevision(id),
-                collaboration.currentGeneration(id),
-                config.extraArgs
-              )
-            };
           });
-          const currentGeneration = refreshed.generation;
-          const publishedBeforeSnapshot = publishedCompileArtifacts(config, id, mainFile, mainFile === project.main_file);
-          const publishedRunBeforeSnapshot = publishedBeforeSnapshot ? db.prepare(`SELECT id, status, log, finished_at
-            FROM compile_runs WHERE id = ? AND project_id = ?`).get(publishedBeforeSnapshot.runId, id) as {
-              id: string; status: string; log: string; finished_at: string | null;
-            } | undefined : undefined;
-          const latestRunBeforeSnapshot = db.prepare(`SELECT id, status FROM compile_runs
-            WHERE project_id = ? AND main_file = ? AND id <> ? ORDER BY created_at DESC LIMIT 1`).get(id, mainFile, runId) as {
-              id: string; status: string;
-            } | undefined;
-          const activeRunBeforeSnapshot = db.prepare(`SELECT 1 AS active FROM compile_runs
-            WHERE project_id = ? AND main_file = ? AND id <> ? AND status IN ('queued', 'running') LIMIT 1`).get(id, mainFile, runId);
-          if (!activeRunBeforeSnapshot && publishedBeforeSnapshot?.generation === currentGeneration
-            && publishedRunBeforeSnapshot?.status === "succeeded"
-            && latestRunBeforeSnapshot?.id === publishedRunBeforeSnapshot.id
-            && hasCompileCache(config, id, mainFile)) {
-            db.prepare("DELETE FROM compile_runs WHERE id = ? AND status = 'queued'").run(runId);
-            phase = "succeeded";
-            broadcast();
-            return {
-              runId: publishedBeforeSnapshot.runId,
-              ok: true,
-              skipped: true,
-              log: publishedRunBeforeSnapshot.log ?? "",
-              diagnostics: parseCompileDiagnostics(publishedRunBeforeSnapshot.log ?? "", "succeeded"),
-              pdfPath: null,
-              synctexPath: publishedBeforeSnapshot.synctex,
-              revision: publishedBeforeSnapshot.revision,
-              snapshotMs: 0
-            };
-          }
           const captured = await projectMutations.runSerialized(id, async () => {
             const currentProject = accessibleProject(db, id, user);
             if (!currentProject || !canEdit(currentProject)) {
@@ -564,7 +526,9 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             snapshot = null;
             db.prepare("DELETE FROM compile_runs WHERE id = ? AND status = 'queued'").run(runId);
             phase = "succeeded";
-            broadcast();
+            // The probe row was deleted, so broadcast the retained run that
+            // clients can actually resolve from SQLite and the manifest.
+            broadcast(published.runId);
             return {
               runId: published.runId,
               ok: true,

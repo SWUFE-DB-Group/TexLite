@@ -397,6 +397,48 @@ describe("project collaboration", () => {
     }
   });
 
+  it("recompiles a changed collaborative source despite a colliding manifest generation", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Compile generation collision" }
+    });
+    const projectId = created.json().project.id as string;
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      const first = await app.inject({ method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie: adminCookie } });
+      expect(first.json()).toMatchObject({ ok: true, skipped: false });
+      const firstRunId = first.json().runId as string;
+
+      const unchanged = await app.inject({ method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie: adminCookie } });
+      expect(unchanged.json()).toMatchObject({ ok: true, skipped: true, runId: firstRunId });
+      await waitFor(() => {
+        const states = peer.doc.getMap("texlite:meta").get("compileStates") as Record<string, { runId?: string }> | undefined;
+        return states?.["main.tex"]?.runId === firstRunId;
+      });
+
+      peer.doc.getText("source:main.tex").insert(0, "% newer collaborative source\n");
+      const receipt = await peer.flush();
+      const targetsRoot = path.join(config.projectsDir, projectId, "output", ".texlite", "targets");
+      const target = fs.readdirSync(targetsRoot).find((entry) => fs.existsSync(path.join(targetsRoot, entry, "latest.json")));
+      expect(target).toBeTruthy();
+      const manifestPath = path.join(targetsRoot, target!, "latest.json");
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+      // A collaboration room's in-memory revision can restart from a small
+      // value. Reproduce the former fast-path collision without changing the
+      // source revision recorded in the manifest.
+      manifest.generation = JSON.stringify({
+        mainFile: "main.tex", engine: "pdflatex", latexmkrc: null,
+        persistedRevision: receipt.revision, sourceGeneration: 0, extraArgs: []
+      });
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+
+      const changed = await app.inject({ method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie: adminCookie } });
+      expect(changed.json()).toMatchObject({ ok: true, skipped: false });
+      expect(changed.json().runId).not.toBe(firstRunId);
+    } finally {
+      peer.destroy();
+    }
+  });
+
   it("advertises an active database compile when the room had no live metadata", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Queued compile handshake" }
