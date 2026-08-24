@@ -5,7 +5,7 @@ import { AlertTriangle, BookMarked, Check, ChevronLeft, ChevronRight, Edit3, Imp
 import { ConfirmDialog, Modal } from "./Dialog";
 import { api } from "./api";
 import { errorMessage } from "./errors";
-import { citationVenue, MAX_CITATION_BIBTEX_BYTES, parseBibEntriesResult, parseSingleBibEntry, type BibtexParseResult, type ParsedCitationEntry } from "./citationLibrary";
+import { citationBibtexLimitLabel, citationVenue, parseBibEntriesResult, parseSingleBibEntry, type BibtexParseResult, type ParsedCitationEntry } from "./citationLibrary";
 import type { CitationLibraryEntry, CitationLibraryTag, ProjectListPagination, TagColor } from "./types";
 
 interface Props {
@@ -18,6 +18,7 @@ interface Props {
   currentSource?: string;
   readOnly?: boolean;
   currentUserId: string;
+  maxBibtexBytes: number;
   onInsert?: (entry: CitationLibraryEntry) => boolean | Promise<boolean>;
 }
 
@@ -26,7 +27,7 @@ type CitationLookupMatch = Pick<CitationLibraryEntry, "id" | "citationKey" | "re
 const EMPTY_CITATION_ENTRIES: ParsedCitationEntry[] = [];
 const EMPTY_CITATION_PARSE_RESULT: BibtexParseResult = { status: "empty", entries: EMPTY_CITATION_ENTRIES };
 
-export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack, currentFile = "", currentSource = "", readOnly = false, currentUserId, onInsert }: Props) {
+export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack, currentFile = "", currentSource = "", readOnly = false, currentUserId, maxBibtexBytes, onInsert }: Props) {
   const { t } = useTranslation();
   const [view, setView] = useState<View>("library");
   const [query, setQuery] = useState("");
@@ -56,7 +57,7 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupNonce, setLookupNonce] = useState(0);
   const hasCurrentFile = Boolean(/\.bib$/i.test(currentFile) && onInsert);
-  const currentParseResult = useMemo(() => open && hasCurrentFile ? parseBibEntriesResult(currentSource) : EMPTY_CITATION_PARSE_RESULT, [open, currentSource, hasCurrentFile]);
+  const currentParseResult = useMemo(() => open && hasCurrentFile ? parseBibEntriesResult(currentSource, maxBibtexBytes) : EMPTY_CITATION_PARSE_RESULT, [open, currentSource, hasCurrentFile, maxBibtexBytes]);
   const currentFileTooLarge = currentParseResult.status === "too-large";
   const currentFileInvalid = currentParseResult.status === "invalid";
   const currentEntries = currentParseResult.entries;
@@ -169,7 +170,7 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
     setSavingKey(editing.citationKey);
     setError("");
     try {
-      const parsed = parseSingleBibEntry(editText);
+      const parsed = parseSingleBibEntry(editText, maxBibtexBytes);
       if (!parsed) {
         setError(t("citationErrors.invalid"));
         return;
@@ -203,7 +204,7 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
     setSavingKey("__new__");
     setError("");
     try {
-      const parsed = parseSingleBibEntry(addText);
+      const parsed = parseSingleBibEntry(addText, maxBibtexBytes);
       if (!parsed) {
         setError(t("citationErrors.invalid"));
         return;
@@ -305,7 +306,7 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
         {pagination.totalPages > 1 && <nav className="citation-library-pagination" aria-label={t("citationLibraryPagination.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}><button type="button" disabled={pagination.page <= 1} onClick={() => setPageNumber((current) => Math.max(1, current - 1))}><ChevronLeft size={14} />{t("citationLibraryPagination.previous")}</button><span>{t("citationLibraryPagination.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}</span><button type="button" disabled={pagination.page >= pagination.totalPages} onClick={() => setPageNumber((current) => Math.min(pagination.totalPages, current + 1))}>{t("citationLibraryPagination.next")}<ChevronRight size={14} /></button></nav>}
       </> : <>
         <div className="citation-current-heading"><div><strong>{t("citationLibrary.currentFileTitle")}</strong><span>{t("citationLibrary.currentFileDescription")}</span></div><button type="button" onClick={() => setView("library")}><ChevronLeft size={14} />{t("citationLibrary.backToLibrary")}</button></div>
-        {currentFileTooLarge && <p className="warning citation-library-warning"><AlertTriangle size={15} />{t("citationLibrary.fileTooLarge", { size: `${Math.round(MAX_CITATION_BIBTEX_BYTES / 1024)} KB` })}</p>}
+        {currentFileTooLarge && <p className="warning citation-library-warning"><AlertTriangle size={15} />{t("citationLibrary.fileTooLarge", { size: citationBibtexLimitLabel(maxBibtexBytes) })}</p>}
         {currentFileInvalid && <p className="warning citation-library-warning"><AlertTriangle size={15} />{t("citationLibrary.fileInvalid")}</p>}
         {currentEntries.length === 0 ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.noEntries")}</strong><span>{currentFileTooLarge ? t("citationLibrary.fileTooLargeHint") : currentFileInvalid ? t("citationLibrary.fileInvalidHint") : t("citationLibrary.noEntriesDescription")}</span></div> : <div className="citation-entry-list">{currentEntries.map((entry, index) => <div className="citation-entry-item" key={`${entry.citationKey}-${index}`}><CitationCard entry={entry} saved={savedEntries.has(entry.citationKey.toLowerCase())} saving={savingKey === entry.citationKey} saveDisabled={lookupLoading} onSave={() => void saveEntry(entry)} t={t} />{!page && tagEditor?.citationKey.toLowerCase() === entry.citationKey.toLowerCase() && <CitationTagEditor entry={tagEditor} tags={tags} selectedIds={tagEditorIds} saving={tagSaving} onClose={() => setTagEditor(null)} onToggle={(tagId) => setTagEditorIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])} onSave={() => void saveTags()} t={t} />}</div>)}</div>}
       </>}

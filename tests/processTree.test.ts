@@ -42,7 +42,7 @@ setInterval(() => {}, 1000);
 
     const result = await compileProject(config, snapshot, "main.tex", "pdflatex", null);
     expect(result.ok).toBe(false);
-    expect(result.log).toContain("编译超过");
+    expect(result.log).toContain("Compilation exceeded");
     const marker = findFile(path.join(config.projectsDir, projectId), "descendant.pid");
     expect(marker).not.toBeNull();
     const descendantPid = Number(fs.readFileSync(marker!, "utf8"));

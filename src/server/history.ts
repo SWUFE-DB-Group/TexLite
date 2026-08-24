@@ -4,6 +4,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
 import type { DatabaseConnection, ProjectRow } from "./db.js";
 import { assertNoSourceSymlinks, listProjectFiles, outputRoot, projectRoot, resolveSourcePath, safeRelativePath, sourceRoot } from "./files.js";
+import { httpError } from "./http.js";
+import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
 
 export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
 
@@ -194,11 +196,11 @@ export class ProjectHistoryService {
     if (!filePathInput) return;
     const manifest = this.manifest(projectId, versionId);
     if (!manifest) {
-      throw Object.assign(new Error("历史版本不存在"), { code: "HISTORY_VERSION_NOT_FOUND", statusCode: 404 });
+      throw httpError(404, "HISTORY_VERSION_NOT_FOUND");
     }
     const filePath = safeRelativePath(filePathInput);
     if (!manifest.files[filePath]) {
-      throw Object.assign(new Error("该历史版本中不存在此文件"), { code: "HISTORY_FILE_NOT_FOUND", statusCode: 404 });
+      throw httpError(404, "HISTORY_FILE_NOT_FOUND");
     }
     this.assertRestoreTargetIsFile(projectId, filePath);
   }
@@ -212,17 +214,17 @@ export class ProjectHistoryService {
   readTextFile(projectId: string, versionId: string, filePathInput: string): string | null {
     const filePath = safeRelativePath(filePathInput);
     const entry = this.manifest(projectId, versionId)?.files[filePath];
-    if (!entry || entry.size > 2 * 1024 * 1024) return null;
+    if (!entry || entry.size > MAX_TEXT_PREVIEW_BYTES) return null;
     return fs.readFileSync(this.objectPath(projectId, entry.digest), "utf8");
   }
 
   restore(projectId: string, versionId: string, filePathInput?: string): { restoredPaths: string[]; manifest: HistoryManifest } {
     const manifest = this.manifest(projectId, versionId);
-    if (!manifest) throw Object.assign(new Error("历史版本不存在"), { code: "HISTORY_VERSION_NOT_FOUND", statusCode: 404 });
+    if (!manifest) throw httpError(404, "HISTORY_VERSION_NOT_FOUND");
     if (filePathInput) {
       const filePath = safeRelativePath(filePathInput);
       const entry = manifest.files[filePath];
-      if (!entry) throw Object.assign(new Error("该历史版本中不存在此文件"), { code: "HISTORY_FILE_NOT_FOUND", statusCode: 404 });
+      if (!entry) throw httpError(404, "HISTORY_FILE_NOT_FOUND");
       this.assertRestoreTargetIsFile(projectId, filePath);
       const target = resolveSourcePath(this.config, projectId, filePath);
       fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
@@ -246,7 +248,7 @@ export class ProjectHistoryService {
     const target = resolveSourcePath(this.config, projectId, filePath);
     const targetStat = fs.existsSync(target) ? fs.lstatSync(target) : null;
     if (targetStat && !targetStat.isFile()) {
-      throw Object.assign(new Error("历史文件恢复目标不是普通文件"), { code: "HISTORY_TARGET_CONFLICT", statusCode: 409 });
+      throw httpError(409, "HISTORY_TARGET_CONFLICT");
     }
   }
 
@@ -257,7 +259,7 @@ export class ProjectHistoryService {
 
   private project(projectId: string): ProjectRow {
     const project = this.db.prepare("SELECT * FROM projects WHERE id = ?").get(projectId) as ProjectRow | undefined;
-    if (!project) throw new Error("项目不存在");
+    if (!project) throw httpError(404, "PROJECT_NOT_FOUND");
     return project;
   }
 
@@ -321,7 +323,7 @@ export class ProjectHistoryService {
   }
 
   private objectPath(projectId: string, digest: string): string {
-    if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error("历史对象摘要无效");
+    if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid history object digest");
     return path.join(outputRoot(this.config, projectId), ".texlite", "history", "objects", digest.slice(0, 2), digest);
   }
 
@@ -494,7 +496,7 @@ function cloneManifest(manifest: HistoryManifest): HistoryManifest {
 
 function parseManifest(value: string): HistoryManifest {
   const parsed = JSON.parse(value) as HistoryManifest;
-  if (parsed.version !== 1 || !parsed.files || !parsed.settings) throw new Error("历史版本清单损坏");
+  if (parsed.version !== 1 || !parsed.files || !parsed.settings) throw new Error("History manifest is invalid");
   return parsed;
 }
 

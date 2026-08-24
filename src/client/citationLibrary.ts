@@ -33,8 +33,6 @@ export class BibtexFormatError extends Error {
   }
 }
 
-export const MAX_CITATION_BIBTEX_BYTES = 512 * 1024;
-
 const ignoredEntryTypes = new Set(["comment", "string", "preamble"]);
 const tidyOptions = { lowercase: false, removeDuplicateFields: false } as const;
 
@@ -42,12 +40,23 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
-export function isBibtexTooLarge(source: string): boolean {
-  return byteLength(source) > MAX_CITATION_BIBTEX_BYTES;
+function citationBibtexLimit(maxBytes: number): number {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new RangeError("Citation BibTeX limit must be a positive integer.");
+  }
+  return maxBytes;
 }
 
-function tidyBibtex(source: string): { bibtex: string; count: number } | null {
-  if (!source.trim() || isBibtexTooLarge(source)) return null;
+export function citationBibtexLimitLabel(maxBytes: number): string {
+  return `${Math.round(citationBibtexLimit(maxBytes) / 1024)} KB`;
+}
+
+export function isBibtexTooLarge(source: string, maxBytes: number): boolean {
+  return byteLength(source) > citationBibtexLimit(maxBytes);
+}
+
+function tidyBibtex(source: string, maxBytes: number): { bibtex: string; count: number } | null {
+  if (!source.trim() || isBibtexTooLarge(source, maxBytes)) return null;
   try {
     const result = tidy(source, tidyOptions);
     return { bibtex: result.bibtex, count: result.count };
@@ -57,16 +66,16 @@ function tidyBibtex(source: string): { bibtex: string; count: number } | null {
 }
 
 /** Format a BibTeX document without changing its field names or values. */
-export function formatBibtex(source: string): string {
+export function formatBibtex(source: string, maxBytes: number): string {
   if (!source.trim()) return source;
-  if (isBibtexTooLarge(source)) throw new BibtexFormatError("too-large");
-  const result = tidyBibtex(source);
+  if (isBibtexTooLarge(source, maxBytes)) throw new BibtexFormatError("too-large");
+  const result = tidyBibtex(source, maxBytes);
   if (!result) throw new BibtexFormatError("invalid");
   return result.bibtex;
 }
 
-export function parseBibEntries(source: string): ParsedCitationEntry[] {
-  return parseBibEntriesResult(source).entries;
+export function parseBibEntries(source: string, maxBytes: number): ParsedCitationEntry[] {
+  return parseBibEntriesResult(source, maxBytes).entries;
 }
 
 /**
@@ -74,10 +83,10 @@ export function parseBibEntries(source: string): ParsedCitationEntry[] {
  * returned. Callers that make safety decisions (for example duplicate-key
  * checks) must not treat an oversized document as an empty one.
  */
-export function parseBibEntriesResult(source: string): BibtexParseResult {
+export function parseBibEntriesResult(source: string, maxBytes: number): BibtexParseResult {
   if (!source.trim()) return { status: "empty", entries: [] };
-  if (isBibtexTooLarge(source)) return { status: "too-large", entries: [] };
-  const tidyResult = tidyBibtex(source);
+  if (isBibtexTooLarge(source, maxBytes)) return { status: "too-large", entries: [] };
+  const tidyResult = tidyBibtex(source, maxBytes);
   if (!tidyResult) return { status: "invalid", entries: [] };
   if (tidyResult.count === 0) return { status: "empty", entries: [] };
   const entries: ParsedCitationEntry[] = [];
@@ -100,9 +109,9 @@ export function parseBibEntriesResult(source: string): BibtexParseResult {
   return { status: "ok", entries };
 }
 
-export function parseSingleBibEntry(source: string): ParsedCitationEntry | null {
+export function parseSingleBibEntry(source: string, maxBytes: number): ParsedCitationEntry | null {
   const bibtex = source.trim();
-  const tidyResult = tidyBibtex(bibtex);
+  const tidyResult = tidyBibtex(bibtex, maxBytes);
   if (!tidyResult || tidyResult.count !== 1) return null;
   return parseRawBibEntry(bibtex);
 }

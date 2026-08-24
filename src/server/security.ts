@@ -5,6 +5,7 @@ import {
   timingSafeEqual
 } from "node:crypto";
 import { promisify } from "node:util";
+import { httpError } from "./http.js";
 
 const scrypt = promisify(scryptCallback);
 const KEY_LENGTH = 64;
@@ -12,10 +13,7 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 export async function hashPassword(password: string): Promise<string> {
   if (password.length < MIN_PASSWORD_LENGTH) {
-    throw Object.assign(new Error(`密码至少需要 ${MIN_PASSWORD_LENGTH} 个字符`), {
-      statusCode: 400,
-      code: "PASSWORD_TOO_SHORT"
-    });
+    throw httpError(400, "PASSWORD_TOO_SHORT", { minLength: MIN_PASSWORD_LENGTH });
   }
   const salt = randomBytes(16);
   const key = (await scrypt(password, salt, KEY_LENGTH)) as Buffer;

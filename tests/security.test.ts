@@ -22,8 +22,8 @@ describe("security helpers", () => {
     expect(safeRelativePath("chapters/intro.tex")).toBe("chapters/intro.tex");
     expect(() => safeRelativePath("../../etc/passwd")).toThrow();
     expect(() => safeRelativePath("/etc/passwd")).toThrow();
-    expect(() => safeRelativePath(".git/config")).toThrow("保留目录");
-    expect(() => safeRelativePath("archive/.GIT/hooks/pre-commit")).toThrow("保留目录");
+    expect(() => safeRelativePath(".git/config")).toThrow("reserved");
+    expect(() => safeRelativePath("archive/.GIT/hooks/pre-commit")).toThrow("reserved");
   });
 
   it("memoizes currentUser on repeated calls for the same request object", () => {

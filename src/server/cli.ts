@@ -8,7 +8,7 @@ import { stdin, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 import { CONFIG_DEFAULTS, loadConfig } from "./config.js";
 import { activeAdminCount, openDatabase } from "./db.js";
-import { hashPassword } from "./security.js";
+import { hashPassword, MIN_PASSWORD_LENGTH } from "./security.js";
 import { assertEnvironment, assertGitAvailable } from "./environment.js";
 import { serve } from "./index.js";
 import { processStatus, restartManaged, startManaged, stopManaged, streamLogs, waitForOnline, type ProcessStatus } from "./pm2.js";
@@ -171,7 +171,7 @@ async function initialize(options: CliOptions): Promise<void> {
     const displayName = process.env.TEXLITE_INIT_DISPLAY_NAME
       ?? (rl ? (await rl.question("Administrator display name [Administrator]: ")).trim() || "Administrator" : "Administrator");
     const password = process.env.TEXLITE_INIT_PASSWORD
-      ?? (rl ? await rl.question("Administrator password (at least 8 characters; input is visible): ") : "");
+      ?? (rl ? await rl.question(`Administrator password (at least ${MIN_PASSWORD_LENGTH} characters; input is visible): `) : "");
     if (!password) throw new Error("Non-interactive initialization requires TEXLITE_INIT_PASSWORD to be set.");
     const timestamp = new Date().toISOString();
     db.prepare(`INSERT INTO users

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
+import { httpError, type HttpError } from "./http.js";
 
 export interface FileEntry {
   path: string;
@@ -65,14 +66,14 @@ export async function duplicateProjectFiles(config: Config, sourceProjectId: str
 
 export function safeRelativePath(input: string): string {
   if (!input || input.includes("\0") || path.isAbsolute(input)) {
-    throw Object.assign(new Error("无效的文件路径"), { statusCode: 400, code: "INVALID_PATH" });
+    throw httpError(400, "INVALID_PATH");
   }
   const normalized = path.posix.normalize(input.replaceAll("\\", "/"));
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
-    throw Object.assign(new Error("无效的文件路径"), { statusCode: 400, code: "INVALID_PATH" });
+    throw httpError(400, "INVALID_PATH");
   }
   if (normalized.split("/").some((segment) => segment.toLocaleLowerCase() === ".git")) {
-    throw Object.assign(new Error(".git 是系统保留目录"), { statusCode: 400, code: "RESERVED_PATH" });
+    throw httpError(400, "RESERVED_PATH");
   }
   return normalized;
 }
@@ -81,7 +82,7 @@ export function safeRelativePath(input: string): string {
 export function safePathSegment(input: string): string {
   const name = input.trim();
   if (!name || name.includes("\0") || name.includes("/") || name.includes("\\")) {
-    throw Object.assign(new Error("无效的文件名"), { statusCode: 400, code: "INVALID_PATH" });
+    throw httpError(400, "INVALID_PATH");
   }
   return safeRelativePath(name);
 }
@@ -91,11 +92,8 @@ export interface ResolveSourcePathOptions {
   allowFinalSymlink?: boolean;
 }
 
-export function symbolicLinkError(relativePath: string): Error & { statusCode: number; code: string } {
-  return Object.assign(
-    new Error(`项目源文件包含不受支持的符号链接，已拒绝访问：${relativePath || "source"}`),
-    { statusCode: 409, code: "SYMLINK_FORBIDDEN" }
-  );
+export function symbolicLinkError(relativePath: string): HttpError {
+  return httpError(409, "SYMLINK_FORBIDDEN", { path: relativePath || "source" });
 }
 
 /**
@@ -266,7 +264,7 @@ export function removeProjectDirectory(config: Config, projectId: string): void 
   } catch {
     fs.rmSync(root, { recursive: true, force: true });
     if (fs.existsSync(root)) {
-      throw new Error(`无法清理项目目录: ${root}`);
+      throw new Error(`Unable to remove project directory: ${root}`);
     }
   }
 }

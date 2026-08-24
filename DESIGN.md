@@ -22,6 +22,7 @@ installation, configuration, and day-to-day operation.
 | Area | Implementation |
 | --- | --- |
 | Browser UI | React, Vite, CodeMirror, PDF.js |
+| Localization | Frontend JSON resources plus a server-side error-code catalog, selected from `Accept-Language` |
 | Editor language features | CodeMirror LaTeX syntax/folding, auto-pairs, project completion index, optional Vim mode |
 | Writing assistance | One shared server-side Harper.js runtime with native browser spellcheck fallback; project dictionary stored by the server |
 | API and static server | Fastify, WebSocket |
@@ -32,6 +33,22 @@ installation, configuration, and day-to-day operation.
 | Formatting | Browser-side `tex-fmt` WASM package and `bibtex-tidy` |
 | Git backup | Optional host Git and the GitHub REST API |
 | Process management | Foreground `serve`, or the bundled PM2 lifecycle commands |
+
+## Localization
+
+The browser owns interface copy through the English and Chinese JSON resources
+in `src/client/locales`. API errors use stable codes rather than route-local
+human text. The server resolves those codes through `src/server/i18n.ts` using
+the request's `Accept-Language` header; the browser API helper always supplies
+its active language, and unmatched or non-browser requests fall back to
+English. This keeps direct API clients usable while allowing the React client
+to retain its more contextual local translations.
+
+New user-correctable server failures must use `apiError()` for an immediate
+response or `httpError()` for a thrown response. Do not place translated text
+in route, filesystem, Git, or compiler-control code. Operational logs and
+raw LaTeX output remain in their original form, so they can be searched and
+diagnosed without changing behavior by browser language.
 
 ### Citation library
 

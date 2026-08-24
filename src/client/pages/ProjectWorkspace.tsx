@@ -7,7 +7,7 @@ import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
-import { BibtexFormatError, formatBibtex, MAX_CITATION_BIBTEX_BYTES, parseBibEntriesResult } from "../citationLibrary";
+import { BibtexFormatError, citationBibtexLimitLabel, formatBibtex, parseBibEntriesResult } from "../citationLibrary";
 import { classifyCompileLog } from "../compileLog";
 import type { CollaborationSaveReceipt, FormatLease } from "../collaboration";
 import { errorMessage } from "../errors";
@@ -485,11 +485,11 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const formatSource = async (filePath: string, source: string, texFmtConfig = editorPreferences.texFmtConfig): Promise<FormattedSource> => {
     if (/\.bib$/i.test(filePath)) {
       try {
-        return { formatted: formatBibtex(source), diagnostics: "" };
+        return { formatted: formatBibtex(source, site.maxCitationBibtexBytes), diagnostics: "" };
       } catch (formatError) {
         if (!(formatError instanceof BibtexFormatError)) throw formatError;
         if (formatError.kind === "too-large") {
-          throw new Error(t("citationLibrary.fileTooLarge", { size: `${Math.round(MAX_CITATION_BIBTEX_BYTES / 1024)} KB` }));
+          throw new Error(t("citationLibrary.fileTooLarge", { size: citationBibtexLimitLabel(site.maxCitationBibtexBytes) }));
         }
         throw new Error(t("citationLibrary.fileInvalid"));
       }
@@ -665,9 +665,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     }
     const sharedText = collaboration.getText(filePath);
     const source = sharedText.toString();
-    const parsedBibtex = parseBibEntriesResult(source);
+    const parsedBibtex = parseBibEntriesResult(source, site.maxCitationBibtexBytes);
     if (parsedBibtex.status === "too-large") {
-      setNotice(t("citationLibrary.fileTooLarge", { size: `${Math.round(MAX_CITATION_BIBTEX_BYTES / 1024)} KB` }));
+      setNotice(t("citationLibrary.fileTooLarge", { size: citationBibtexLimitLabel(site.maxCitationBibtexBytes) }));
       return false;
     }
     if (parsedBibtex.status === "invalid") {
@@ -1002,7 +1002,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     </PanelGroup>
     <WorkspaceDialogs
       user={user} project={project} projectId={projectId} activeFile={activeFile}
-      content={content} files={files} directoryEntries={directoryEntries} readOnly={readOnly}
+      content={content} maxCitationBibtexBytes={site.maxCitationBibtexBytes} files={files} directoryEntries={directoryEntries} readOnly={readOnly}
       workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
       resourcePreview={resourcePreview} resourcePreviewLoading={resourcePreviewLoading}
       setResourcePreview={setResourcePreview} setResourcePreviewLoading={setResourcePreviewLoading}

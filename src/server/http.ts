@@ -1,8 +1,33 @@
-export class ValidationError extends Error {
-  readonly statusCode = 400;
-  readonly code = "REQUEST_INVALID";
-  constructor(message: string) {
-    super(message);
+import { serverErrorMessage, serverLocale, type ServerErrorCode } from "./i18n.js";
+
+export class HttpError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly code: ServerErrorCode,
+    readonly details: Record<string, unknown> = {}
+  ) {
+    // Keep a useful, locale-neutral message for internal callers and logs.
+    // HTTP responses are still rendered using the request's actual locale.
+    super(serverErrorMessage("en", code, details));
+    this.name = "HttpError";
+  }
+}
+
+/**
+ * Create a user-correctable error without putting a locale-specific string in
+ * service or route code. `apiError` resolves the code using the request locale.
+ */
+export function httpError(
+  statusCode: number,
+  code: ServerErrorCode,
+  details: Record<string, unknown> = {}
+): HttpError {
+  return new HttpError(statusCode, code, details);
+}
+
+export class ValidationError extends HttpError {
+  constructor(code: ServerErrorCode = "REQUEST_INVALID", details: Record<string, unknown> = {}) {
+    super(400, code, details);
     this.name = "ValidationError";
   }
 }
@@ -12,29 +37,31 @@ export class ValidationError extends Error {
  * replace or remove source files must stop at this boundary instead of
  * continuing with a stale filesystem snapshot.
  */
-export class SourceFlushError extends Error {
-  readonly statusCode = 409;
-  readonly code = "SOURCE_FLUSH_FAILED";
+export class SourceFlushError extends HttpError {
   readonly failedPaths: string[];
 
   constructor(failedPaths: readonly string[] = []) {
     const paths = [...new Set(failedPaths)].slice(0, 100);
-    super(paths.length
-      ? `部分源码未能保存至磁盘，无法继续项目操作：${paths.join(", ")}`
-      : "部分源码未能保存至磁盘，无法继续项目操作");
+    super(409, "SOURCE_FLUSH_FAILED", { failedPaths: paths });
     this.name = "SourceFlushError";
     this.failedPaths = paths;
   }
 }
 
 export function apiError(
-  reply: { code: (status: number) => { send: (payload: unknown) => unknown } },
+  reply: {
+    code: (status: number) => { send: (payload: unknown) => unknown };
+    request?: { headers?: Record<string, string | string[] | undefined> };
+  },
   status: number,
   code: string,
-  message: string,
   details: Record<string, unknown> = {}
 ): unknown {
-  return reply.code(status).send({ code, error: message, ...details });
+  return reply.code(status).send({
+    code,
+    error: serverErrorMessage(serverLocale(reply.request?.headers), code, details),
+    ...details
+  });
 }
 
 export function contentDisposition(filename: string, mode: "inline" | "attachment"): string {

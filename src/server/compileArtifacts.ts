@@ -4,6 +4,7 @@ import type { Config } from "./config.js";
 import { publishedCompileArtifacts } from "./compiler.js";
 import { outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, texFileStem } from "./files.js";
 import { isMainDocumentCandidateSync } from "./latexRoot.js";
+import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
 
 export type PdfLoadingMode = "full" | "range";
 
@@ -112,7 +113,7 @@ export function listCompileArtifacts(directory: string): CompileArtifact[] {
       if (entry.isDirectory()) visit(absolute, relative);
       else if (entry.isFile()) {
         const size = fs.statSync(absolute).size;
-        artifacts.push({ path: relative, size, viewable: size <= 2 * 1024 * 1024 && isTextCompileArtifact(relative) });
+        artifacts.push({ path: relative, size, viewable: size <= MAX_TEXT_PREVIEW_BYTES && isTextCompileArtifact(relative) });
       }
     }
   };

@@ -35,7 +35,8 @@ import {
   pdfLoadingMode,
   syncArtifacts
 } from "../compileArtifacts.js";
-import { apiError, contentDisposition } from "../http.js";
+import { MAX_TEXT_PREVIEW_BYTES } from "../limits.js";
+import { apiError, contentDisposition, httpError } from "../http.js";
 
 interface CompileRouteContext {
   config: Config;
@@ -69,17 +70,14 @@ function pdfResponseMetadata(config: Config, pdfPath: string | null): {
 }
 
 function mainDocumentChangedError(): Error {
-  return Object.assign(
-    new Error("项目主文档在编译排队期间发生变化，请重新发起编译"),
-    { statusCode: 409, code: "MAIN_DOCUMENT_CHANGED" }
-  );
+  return httpError(409, "MAIN_DOCUMENT_CHANGED");
 }
 
 class CompileSnapshotBusyError extends Error {
   readonly code = "COMPILE_SNAPSHOT_BUSY";
 
   constructor() {
-    super("项目源码尚未完成稳定保存，暂时无法编译，请稍后重试");
+    super("COMPILE_SNAPSHOT_BUSY");
     this.name = "CompileSnapshotBusyError";
   }
 }
@@ -92,10 +90,10 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (!user) return;
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     const query = request.query as { mainFile?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
-    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const latest = db.prepare(`SELECT run.id, run.status, run.log, run.created_at, run.finished_at,
       run.requested_by, user.username AS requested_by_username, user.display_name AS requested_by_name
       FROM compile_runs run LEFT JOIN users user ON user.id = run.requested_by
@@ -145,10 +143,10 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (!user) return;
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     const query = request.query as { mainFile?: string; path?: string; download?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
-    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const published = publishedCompileArtifacts(config, id, mainFile, mainFile === project.main_file);
     if (!query.path) {
       if (!published) return { mainFile, runId: null, artifacts: [] };
@@ -162,20 +160,20 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         throw error;
       }
     }
-    if (!published) return apiError(reply, 404, "COMPILE_ARTIFACTS_NOT_FOUND", "尚无可用的编译产物");
+    if (!published) return apiError(reply, 404, "COMPILE_ARTIFACTS_NOT_FOUND");
     const relative = safeRelativePath(query.path);
     const absolute = path.join(published.output, relative);
     const outputDirectory = path.resolve(published.output);
     const resolved = path.resolve(absolute);
     if (!resolved.startsWith(`${outputDirectory}${path.sep}`)) {
-      return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+      return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND");
     }
     let stat: fs.Stats;
     try {
       stat = fs.statSync(resolved);
-      if (!stat.isFile()) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+      if (!stat.isFile()) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND");
     } catch (error) {
-      if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+      if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND");
       throw error;
     }
     if (query.download === "1") {
@@ -186,7 +184,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         await fs.promises.copyFile(resolved, temporaryFile);
       } catch (error) {
         await fs.promises.rm(temporaryFile, { force: true }).catch(() => undefined);
-        if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+        if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND");
         throw error;
       }
       reply.header("Content-Type", "application/octet-stream");
@@ -198,13 +196,13 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       stream.once("error", cleanup);
       return reply.send(stream);
     }
-    if (stat.size > 2 * 1024 * 1024 || !isTextCompileArtifact(relative)) {
-      return apiError(reply, 415, "ARTIFACT_PREVIEW_UNSUPPORTED", "该产物不能作为文本预览，请下载后查看");
+    if (stat.size > MAX_TEXT_PREVIEW_BYTES || !isTextCompileArtifact(relative)) {
+      return apiError(reply, 415, "ARTIFACT_PREVIEW_UNSUPPORTED");
     }
     try {
       return { path: relative, content: fs.readFileSync(resolved, "utf8") };
     } catch (error) {
-      if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND", "编译产物不存在");
+      if (isMissingFileError(error)) return apiError(reply, 404, "COMPILE_ARTIFACT_NOT_FOUND");
       throw error;
     }
   });
@@ -214,17 +212,17 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (!user) return;
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
-    if (!project || !canEdit(project)) return apiError(reply, 403, "COMPILE_FORBIDDEN", "没有清理编译产物的权限");
+    if (!project || !canEdit(project)) return apiError(reply, 403, "COMPILE_FORBIDDEN");
     const body = (request.body ?? {}) as { mainFile?: unknown; mode?: unknown };
     const mainFile = compileMainFile(config, id, project.main_file, body.mainFile);
-    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     if (body.mode !== "cache" && body.mode !== "artifacts") {
-      return apiError(reply, 400, "REQUEST_INVALID", "清理模式无效");
+      return apiError(reply, 400, "REQUEST_INVALID");
     }
     return await projectMutations.runCompileExclusive(id, () => {
       const activeRun = db.prepare(`SELECT 1 AS active FROM compile_runs
         WHERE project_id = ? AND main_file = ? AND status IN ('queued', 'running') LIMIT 1`).get(id, mainFile);
-      if (activeRun) return apiError(reply, 409, "COMPILE_CLEAN_BUSY", "当前主文档正在编译，请稍后再清理");
+      if (activeRun) return apiError(reply, 409, "COMPILE_CLEAN_BUSY");
       const requestedBy = { id: user.id, username: user.username, name: user.display_name };
       if (body.mode === "cache") {
         cleanCompileCache(config, id, mainFile);
@@ -239,7 +237,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         return { ok: true, mode: "cache", mainFile, retainedPdf: true };
       }
       const currentProject = accessibleProject(db, id, user);
-      if (!currentProject || !canEdit(currentProject)) return apiError(reply, 403, "COMPILE_FORBIDDEN", "没有清理编译产物的权限");
+      if (!currentProject || !canEdit(currentProject)) return apiError(reply, 403, "COMPILE_FORBIDDEN");
       const runs = db.prepare(`SELECT id FROM compile_runs
         WHERE project_id = ? AND main_file = ? AND status NOT IN ('queued', 'running')`).all(id, mainFile) as Array<{ id: string }>;
       cleanCompileArtifacts(config, id, mainFile, currentProject.main_file, runs.map((run) => run.id));
@@ -256,9 +254,9 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       return { ok: true, mode: "artifacts", mainFile, retainedPdf: false };
     }, { preflight: () => {
       const current = accessibleProject(db, id, user);
-      if (!current || !canEdit(current)) throw Object.assign(new Error("没有清理编译产物的权限"), { statusCode: 403, code: "COMPILE_FORBIDDEN" });
+      if (!current || !canEdit(current)) throw httpError(403, "COMPILE_FORBIDDEN");
       const selected = compileMainFile(config, id, current.main_file, body.mainFile);
-      if (!selected || selected !== mainFile) throw Object.assign(new Error("所选文件不是有效的 LaTeX 主文档"), { statusCode: 400, code: "MAIN_DOCUMENT_INVALID" });
+      if (!selected || selected !== mainFile) throw httpError(400, "MAIN_DOCUMENT_INVALID");
     } });
   });
 
@@ -267,25 +265,25 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (!user) return;
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     const query = request.query as { mainFile?: string; path?: string; line?: string; column?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
-    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const sourcePath = safeRelativePath(query.path ?? "");
     const line = Number(query.line);
     const column = Number(query.column ?? 1);
     if (!Number.isInteger(line) || line < 1 || !Number.isInteger(column) || column < 1) {
-      return apiError(reply, 400, "SYNC_SOURCE_INVALID", "源码位置无效");
+      return apiError(reply, 400, "SYNC_SOURCE_INVALID");
     }
     return await projectMutations.runConsistentRead(id, async () => {
       if (!fs.existsSync(resolveSourcePath(config, id, sourcePath))) {
-        return apiError(reply, 404, "SOURCE_FILE_NOT_FOUND", "源码文件不存在");
+        return apiError(reply, 404, "SOURCE_FILE_NOT_FOUND");
       }
       const artifacts = syncArtifacts(config, id, mainFile, project.main_file);
-      if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE", "项目尚无可用的 SyncTeX 数据，请重新编译");
+      if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE");
       return await sourceToPdf(artifacts.source, artifacts.pdf, sourcePath, line, column);
     }, { preflight: () => {
-      if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+      if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
     } });
   });
 
@@ -294,28 +292,28 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (!user) return;
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     const query = request.query as { mainFile?: string; page?: string; x?: string; y?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
-    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const page = Number(query.page);
     const x = Number(query.x);
     const y = Number(query.y);
     if (!Number.isInteger(page) || page < 1 || !Number.isFinite(x) || x < 0 || !Number.isFinite(y) || y < 0) {
-      return apiError(reply, 400, "SYNC_PDF_INVALID", "PDF 位置无效");
+      return apiError(reply, 400, "SYNC_PDF_INVALID");
     }
     return await projectMutations.runConsistentRead(id, async () => {
       const artifacts = syncArtifacts(config, id, mainFile, project.main_file);
-      if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE", "项目尚无可用的 SyncTeX 数据，请重新编译");
+      if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE");
       const location = await pdfToSource(artifacts.source, artifacts.pdf, page, x, y);
       const sourceDirectory = path.resolve(artifacts.source);
       const relative = path.relative(sourceDirectory, path.resolve(location.input));
       if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-        return apiError(reply, 400, "SYNCTEX_EXTERNAL_PATH", "SyncTeX 返回了项目外部的源码路径");
+        return apiError(reply, 400, "SYNCTEX_EXTERNAL_PATH");
       }
       return { path: safeRelativePath(relative.replaceAll(path.sep, "/")), line: location.line, column: location.column };
     }, { preflight: () => {
-      if (!accessibleProject(db, id, user)) throw Object.assign(new Error("项目不存在"), { statusCode: 404, code: "PROJECT_NOT_FOUND" });
+      if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
     } });
   });
 
@@ -325,11 +323,11 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (!user) return;
     const { id } = request.params as { id: string };
     const initialProject = accessibleProject(db, id, user);
-    if (!initialProject || !canEdit(initialProject)) return apiError(reply, 403, "COMPILE_FORBIDDEN", "没有编译权限");
+    if (!initialProject || !canEdit(initialProject)) return apiError(reply, 403, "COMPILE_FORBIDDEN");
     const body = (request.body ?? {}) as { mainFile?: unknown };
     const requestedMainFile = typeof body.mainFile === "string" && body.mainFile ? body.mainFile : null;
     const initialMainFile = compileMainFile(config, id, initialProject.main_file, body.mainFile);
-    if (!initialMainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    if (!initialMainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const runId = randomUUID();
 
     // Admission must stay cheap. In particular, do not call
@@ -595,7 +593,9 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
               // archive/read or another output mutation. The long latexmk
               // process above remains outside that queue.
               await projectMutations.runSerialized(id, () => {
-                if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)) throw new Error("项目已被删除");
+                if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)) {
+                  throw new Error("Project was deleted before compile artifacts could be published.");
+                }
                 publishCompileArtifacts(config, id, snapshot!, compiled!);
               }, { flush: false });
               refreshSnapshotStale();
@@ -678,7 +678,6 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         reply,
         409,
         result.errorCode ?? "COMPILE_SNAPSHOT_BUSY",
-        result.log,
         { retryable: true, retryAfterSeconds: SNAPSHOT_RETRY_AFTER_SECONDS }
       );
     }
@@ -720,13 +719,13 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     if (!user) return;
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
-    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     const query = request.query as { mainFile?: string; download?: string; run?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
-    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID", "所选文件不是有效的 LaTeX 主文档");
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const downloading = query.download === "1";
     let artifact = availablePdf(config, id, mainFile, project.main_file);
-    if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
+    if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND");
     let versioned = false;
     if (query.run) {
       if (/^[a-f0-9-]{36}$/i.test(query.run)) {
@@ -735,18 +734,18 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             main_file: string; status: string;
           } | undefined;
         if (!run || run.status !== "succeeded" || run.main_file !== mainFile) {
-          return apiError(reply, 404, "PDF_NOT_FOUND", "指定的编译 PDF 不存在");
+          return apiError(reply, 404, "PDF_NOT_FOUND");
         }
         artifact = compileRunPdf(config, id, mainFile, query.run);
-        if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND", "指定的编译 PDF 已被清理");
+        if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND");
         versioned = true;
       } else if (artifact.version !== query.run) {
-        return apiError(reply, 404, "PDF_NOT_FOUND", "指定的编译 PDF 不存在");
+        return apiError(reply, 404, "PDF_NOT_FOUND");
       }
     }
     const pdf = artifact.path;
     const stat = regularFileStat(pdf);
-    if (!stat) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
+    if (!stat) return apiError(reply, 404, "PDF_NOT_FOUND");
     const etag = `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`;
     reply.header("Content-Type", "application/pdf");
     const targetSuffix = mainFile === project.main_file ? "" : `-${texFileStem(mainFile)}`;
@@ -781,7 +780,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       try {
         stream = await openReadStream(fs.createReadStream(pdf, range));
       } catch (error) {
-        if (isMissingFileError(error)) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
+        if (isMissingFileError(error)) return apiError(reply, 404, "PDF_NOT_FOUND");
         throw error;
       }
       return reply.code(206).send(stream);
@@ -791,7 +790,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     try {
       stream = await openReadStream(fs.createReadStream(pdf));
     } catch (error) {
-      if (isMissingFileError(error)) return apiError(reply, 404, "PDF_NOT_FOUND", "尚未生成 PDF");
+      if (isMissingFileError(error)) return apiError(reply, 404, "PDF_NOT_FOUND");
       throw error;
     }
     return reply.code(200).send(stream);

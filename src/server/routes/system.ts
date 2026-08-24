@@ -1,14 +1,16 @@
-import { performance, type IntervalHistogram } from "node:perf_hooks";
+import type { IntervalHistogram } from "node:perf_hooks";
 import type { FastifyInstance } from "fastify";
 import type { Config } from "../config.js";
 import type { DatabaseConnection } from "../db.js";
-import { currentUser, requireAdmin } from "../auth.js";
+import { requireAdmin } from "../auth.js";
 import { maxCollaborativeFileBytes } from "../collaboration.js";
 import type { CollaborationService } from "../collaboration.js";
 import type { CompileQueue } from "../compiler.js";
 import type { LatexCompletionService } from "../latexCompletion.js";
 import type { MetricRegistry } from "../metrics.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
+import { MAX_CITATION_BIBTEX_BYTES } from "../limits.js";
+import { MIN_PASSWORD_LENGTH } from "../security.js";
 
 interface SystemRouteContext {
   config: Config;
@@ -28,6 +30,8 @@ export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteC
   app.get("/api/config", async () => ({
     siteName: config.siteName,
     adminEmail: config.adminEmail,
+    minPasswordLength: MIN_PASSWORD_LENGTH,
+    maxCitationBibtexBytes: MAX_CITATION_BIBTEX_BYTES,
     maxUploadSizeMB: Math.floor(config.maxUploadBytes / 1024 / 1024),
     maxCollaborativeFileSizeMB: Math.floor(maxCollaborativeFileBytes(config) / 1024 / 1024),
     allowedEngines: config.allowedEngines,
@@ -54,15 +58,4 @@ export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteC
     };
   });
 
-  app.get("/api/collaboration/:id", { websocket: true }, (socket, request) => {
-    const user = currentUser(request, db);
-    if (!user) {
-      socket.close(1008, "Authentication required");
-      return;
-    }
-    const { id } = request.params as { id: string };
-    const startedAt = performance.now();
-    void collaboration.connect(socket, id, user)
-      .finally(() => metrics.record("collaboration.connect", performance.now() - startedAt));
-  });
 }

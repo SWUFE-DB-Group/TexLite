@@ -7,7 +7,7 @@ import type { CitationLibraryEntry } from "../types";
 import type { FileEntry, Project, User } from "../types";
 import type { SourceSelection } from "./useProjectComments";
 import type { PermissionDowngradeNotice } from "./useProjectCollaboration";
-import type { PendingUpload, ResourcePreview } from "./useProjectFiles";
+import { MAX_DIRECT_RESOURCE_PREVIEW_BYTES, type PendingUpload, type ResourcePreview } from "./useProjectFiles";
 import type { CompileCleanMode } from "./useProjectCompilation";
 import { CitationLibraryDialog } from "../CitationLibraryDialog";
 import { CommentThread, ShareDialog } from "./Comments";
@@ -24,6 +24,7 @@ export interface WorkspaceDialogsProps {
   projectId: string;
   activeFile: string;
   content: string;
+  maxCitationBibtexBytes: number;
   files: FileEntry[];
   directoryEntries: FileEntry[];
   readOnly: boolean;
@@ -92,7 +93,7 @@ export interface WorkspaceDialogsProps {
 }
 
 export function WorkspaceDialogs({
-  user, project, projectId, activeFile, content, files, directoryEntries, readOnly, workspaceLayout,
+  user, project, projectId, activeFile, content, maxCitationBibtexBytes, files, directoryEntries, readOnly, workspaceLayout,
   changeWorkspaceLayout, resourcePreview, resourcePreviewLoading, setResourcePreview, setResourcePreviewLoading,
   uploadConflict, setUploadConflict, uploadFiles, cleanMode, setCleanMode, cleanCompile, newFileOpen,
   setNewFileOpen, newFilePath, setNewFilePath, newFolderOpen, setNewFolderOpen, newFolderName,
@@ -113,7 +114,7 @@ export function WorkspaceDialogs({
       : permissionDowngrade.localDraftReady
           ? t("editor.collaboration.permissionDowngradeDescription", { previous: t("common.readWrite") })
           : t("editor.collaboration.permissionDowngradeNoDraft")} onOpenChange={(open) => { if (!open && !permissionDowngradeBusy) dismissPermissionDowngrade(); }} footer={<><button type="button" disabled={permissionDowngradeBusy} onClick={dismissPermissionDowngrade}>{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeKeep") : t("common.close")}</button>{!permissionDowngrade.otherTabDraft && <button type="button" className="danger" disabled={permissionDowngradeBusy} onClick={() => void discardPermissionDraft()}>{permissionDowngradeBusy ? <LoaderCircle className="spin" size={14} /> : permissionDowngrade.localDraftReady ? <Trash2 size={14} /> : <RefreshCw size={14} />}{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeDiscard") : t("editor.collaboration.permissionDowngradeReload")}</button>}</>}><div /></Modal>}
-    <Modal open={Boolean(resourcePreview)} extraWide={resourcePreview?.kind === "image" || resourcePreview?.kind === "pdf" || resourcePreview?.kind === "text"} title={resourcePreview?.path ?? ""} description={resourcePreview?.kind === "large" ? t("editor.resourceTooLarge", { size: formatFileSize(resourcePreview.size), limit: "10 MB" }) : t(`editor.resourcePreview.${resourcePreview?.kind ?? "text"}`)} onOpenChange={(open) => { if (!open) { setResourcePreview(null); setResourcePreviewLoading(false); } }} footer={resourcePreview && <a className="primary resource-download" href={`${resourcePreview.url}&download=1`} download><Download size={14} />{t("editor.downloadResource")}</a>}>
+    <Modal open={Boolean(resourcePreview)} extraWide={resourcePreview?.kind === "image" || resourcePreview?.kind === "pdf" || resourcePreview?.kind === "text"} title={resourcePreview?.path ?? ""} description={resourcePreview?.kind === "large" ? t("editor.resourceTooLarge", { size: formatFileSize(resourcePreview.size), limit: `${MAX_DIRECT_RESOURCE_PREVIEW_BYTES / 1024 / 1024} MB` }) : t(`editor.resourcePreview.${resourcePreview?.kind ?? "text"}`)} onOpenChange={(open) => { if (!open) { setResourcePreview(null); setResourcePreviewLoading(false); } }} footer={resourcePreview && <a className="primary resource-download" href={`${resourcePreview.url}&download=1`} download><Download size={14} />{t("editor.downloadResource")}</a>}>
       {resourcePreview?.kind === "large" && <div className="resource-preview-message"><FileArchive size={34} /><strong>{t("editor.resourceTooLargeTitle")}</strong><span>{t("editor.resourceTooLargeDescription")}</span></div>}
       {resourcePreview?.kind === "unsupported" && <div className="resource-preview-message"><FileArchive size={34} /><strong>{t("editor.resourceUnsupportedTitle")}</strong><span>{t("editor.resourceUnsupportedDescription")}</span></div>}
       {resourcePreview?.kind === "image" && <div className="resource-image-wrap"><img className="resource-image" src={resourcePreview.url} alt={resourcePreview.path} /></div>}
@@ -128,7 +129,7 @@ export function WorkspaceDialogs({
     <Modal open={Boolean(deleteEntry)} title={t("editor.deletePathTitle", { name: deleteEntry?.path.split("/").at(-1) ?? "" })} description={deleteActiveSessions.length ? t("editor.deletePathActiveDescription", { path: deleteEntry?.path ?? "", users: [...new Set(deleteActiveSessions.map((session) => session.name))].join(", ") }) : t("editor.deletePathDescription", { path: deleteEntry?.path ?? "" })} onOpenChange={(open) => { if (!open) { setDeleteEntry(null); setFileDialogError(""); } }} footer={<><button onClick={() => setDeleteEntry(null)}>{t("common.cancel")}</button><button className="danger" onClick={() => void removePath()}>{t("common.delete")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}{deleteActiveSessions.length > 0 && <p className="warning"><AlertTriangle size={15} />{t("editor.deletePathWillClose")}</p>}</></Modal>
     <Modal open={commentOpen} title={t("editor.addComment")} description={selection.selectedText ? t("editor.commentDescription", { count: selection.endOffset - selection.startOffset }) : t("editor.pointComment")} onOpenChange={setCommentOpen} footer={<><button onClick={() => setCommentOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void addComment()}>{t("editor.addComment")}</button></>}><label className="form-field">{t("editor.commentContent")}<textarea autoFocus rows={5} value={commentText} onChange={(event) => setCommentText(event.target.value)} /></label>{selection.selectedText && <blockquote className="selection-preview">{selection.selectedText}</blockquote>}</Modal>
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} />
-    <CitationLibraryDialog open={citationLibraryOpen} onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} onInsert={insertCitationAtCursor} />
+    <CitationLibraryDialog open={citationLibraryOpen} onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} />
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
     {projectSearchOpen && <Suspense fallback={null}><ProjectSearchDialog open project={project} onOpenChange={setProjectSearchOpen} onJump={(filePath, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(filePath, line, column); }} /></Suspense>}
     {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}

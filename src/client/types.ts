@@ -1,10 +1,14 @@
 export interface SiteConfig {
   siteName: string;
   adminEmail: string;
+  /** Server-enforced password policy, exposed for immediate form validation. */
+  minPasswordLength: number;
+  /** Server-enforced cap for one citation-library BibTeX entry. */
+  maxCitationBibtexBytes: number;
   allowedEngines?: Array<"pdflatex" | "xelatex" | "lualatex">;
   allowProjectLatexmkrc?: boolean;
-  maxUploadSizeMB?: number;
-  maxCollaborativeFileSizeMB?: number;
+  maxUploadSizeMB: number;
+  maxCollaborativeFileSizeMB: number;
 }
 
 export interface User {

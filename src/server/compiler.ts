@@ -353,7 +353,7 @@ export function publishCompileArtifacts(
   snapshot: CompileSnapshot,
   result: CompileResult
 ): PublishedCompileArtifacts {
-  if (!result.ok || !result.pdfPath) throw new Error("无法发布失败的编译结果");
+  if (!result.ok || !result.pdfPath) throw new Error("Cannot publish a failed compilation result");
   const manifestDirectory = compileTargetRoot(config, projectId, snapshot.mainFile);
   const previous = publishedCompileArtifacts(config, projectId, snapshot.mainFile);
   const manifest = {
@@ -689,14 +689,14 @@ export async function compileProject(
   latexmkrcInput: string | null
 ): Promise<CompileResult> {
   const mainFile = safeRelativePath(mainFileInput);
-  if (!/\.tex$/i.test(mainFile)) throw new Error("主文件必须是 .tex 文件");
+  if (!/\.tex$/i.test(mainFile)) throw new Error("The main file must have a .tex extension");
   const startedAt = performance.now();
   let latexmkrc: string | null = null;
   if (config.allowProjectLatexmkrc && latexmkrcInput) {
     latexmkrc = safeRelativePath(latexmkrcInput);
     const absoluteRc = path.join(snapshot.sourceDir, latexmkrc);
     if (!fs.existsSync(absoluteRc) || !fs.statSync(absoluteRc).isFile()) {
-      throw new Error(`项目 latexmkrc 不存在：${latexmkrc}`);
+      throw new Error(`The configured project latexmkrc does not exist: ${latexmkrc}`);
     }
   }
   const cacheStartedAt = performance.now();
@@ -742,7 +742,7 @@ export async function compileProject(
     child.on("error", reject);
 
     const timeout = setTimeout(() => {
-      log += `\n编译超过 ${config.compileTimeoutMs / 1000} 秒，已终止。\n`;
+      log += `\nCompilation exceeded ${config.compileTimeoutMs / 1000} seconds and was terminated.\n`;
       killProcessGroup(child);
     }, config.compileTimeoutMs);
 

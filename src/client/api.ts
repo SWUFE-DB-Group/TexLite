@@ -17,9 +17,14 @@ export class ApiError extends Error {
 
 export async function api<T>(url: string, options: ApiRequestInit = {}): Promise<T> {
   const { suppressSessionExpired = false, ...requestOptions } = options;
+  const headers = new Headers(requestOptions.headers);
+  if (!headers.has("Accept-Language")) {
+    headers.set("Accept-Language", i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en");
+  }
+  if (requestOptions.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const response = await fetch(url, {
     ...requestOptions,
-    headers: requestOptions.body ? { "Content-Type": "application/json", ...requestOptions.headers } : requestOptions.headers
+    headers
   });
   const contentType = response.headers.get("content-type") ?? "";
   const body = contentType.includes("application/json") ? await response.json() : null;
@@ -62,7 +67,7 @@ export function localizedResponseError(body: unknown, status: number, fallbackKe
     } as Record<string, string>)[code] ?? `errors.codes.${code}`;
     if (i18n.exists(key)) return i18n.t(key, { status, ...(typeof body === "object" && body !== null ? body : {}) });
   }
-  if (i18n.resolvedLanguage?.startsWith("zh") && serverMessage) return serverMessage;
+  if (serverMessage) return serverMessage;
   return i18n.t(fallbackKey, { status });
 }
 

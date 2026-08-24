@@ -6,6 +6,7 @@ import type { Config } from "./config.js";
 import type { DatabaseConnection, ProjectRow, UserRow } from "./db.js";
 import { assertGitAvailable } from "./environment.js";
 import { assertNoSourceSymlinks, sourceRoot, symbolicLinkError } from "./files.js";
+import { httpError } from "./http.js";
 import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
 
 const MAX_COMMAND_OUTPUT = 8 * 1024 * 1024;
@@ -118,10 +119,10 @@ export class ProjectGitService {
 
   async configureToken(project: ProjectRow, tokenInput: string): Promise<ProjectGitStatus> {
     const token = tokenInput.trim();
-    if (token.length < 20 || token.length > 500) throw httpError(400, "GitHub token 格式不正确");
+    if (token.length < 20 || token.length > 500) throw httpError(400, "GIT_TOKEN_INVALID");
     await this.ensureGitAvailable();
     const account = await this.githubRequest<{ login?: unknown }>(token, "/user", { method: "GET" });
-    if (typeof account.login !== "string" || !account.login) throw httpError(502, "GitHub 没有返回有效的用户信息");
+    if (typeof account.login !== "string" || !account.login) throw httpError(502, "GIT_ACCOUNT_INVALID");
     await this.ensureRepository(project);
     const timestamp = new Date().toISOString();
     this.db.prepare(`INSERT INTO project_git_settings
@@ -140,10 +141,10 @@ export class ProjectGitService {
   }
 
   async createGitHubRepository(project: ProjectRow, name: string, isPrivate: boolean): Promise<ProjectGitStatus> {
-    if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) throw httpError(400, "GitHub 仓库名称只能包含字母、数字、点、横线或下划线");
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) throw httpError(400, "GIT_REPOSITORY_NAME_INVALID");
     await this.ensureGitAvailable();
     const settings = this.requireTokenSettings(project.id);
-    if (settings.remote_url) throw httpError(409, "该项目已经配置远程仓库");
+    if (settings.remote_url) throw httpError(409, "GIT_REMOTE_ALREADY_CONFIGURED");
     const token = decryptToken(this.config, settings.token_ciphertext!);
     const repository = await this.githubRequest<{
       name?: unknown; clone_url?: unknown; html_url?: unknown; default_branch?: unknown;
@@ -152,7 +153,7 @@ export class ProjectGitService {
       body: JSON.stringify({ name, private: isPrivate, auto_init: false, description: `Backup of ${project.name}` })
     });
     if (typeof repository.clone_url !== "string" || typeof repository.html_url !== "string") {
-      throw httpError(502, "GitHub 没有返回有效的仓库地址");
+      throw httpError(502, "GIT_REPOSITORY_RESPONSE_INVALID");
     }
     await this.ensureRepository(project);
     const root = sourceRoot(this.config, project.id);
@@ -170,14 +171,14 @@ export class ProjectGitService {
 
   async commit(project: ProjectRow, owner: UserRow, messageInput: string): Promise<GitCommit> {
     const message = messageInput.trim();
-    if (!message || message.length > 300) throw httpError(400, "提交说明不能为空且不能超过 300 个字符");
+    if (!message || message.length > 300) throw httpError(400, "GIT_COMMIT_MESSAGE_INVALID");
     const root = this.requireRepository(project.id);
     assertNoSourceSymlinks(this.config, project.id);
     const branch = await this.git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"], [1]);
-    if (branch.code !== 0) throw httpError(409, "当前处于 detached HEAD，请先返回默认分支再提交");
+    if (branch.code !== 0) throw httpError(409, "GIT_DETACHED_HEAD");
     await this.git(root, ["add", "--all"]);
     const staged = await this.git(root, ["diff", "--cached", "--quiet"], [1]);
-    if (staged.code === 0) throw httpError(409, "当前没有可以提交的修改");
+    if (staged.code === 0) throw httpError(409, "GIT_NO_CHANGES");
     await this.git(root, [
       "-c", `user.name=${owner.username}`,
       "-c", `user.email=${owner.username}@texlite.com`,
@@ -191,15 +192,15 @@ export class ProjectGitService {
 
   async push(project: ProjectRow): Promise<ProjectGitStatus> {
     const settings = this.requireTokenSettings(project.id);
-    if (!settings.remote_url) throw httpError(409, "请先创建 GitHub 仓库");
+    if (!settings.remote_url) throw httpError(409, "GIT_REMOTE_NOT_CONFIGURED");
     const root = this.requireRepository(project.id);
     assertNoSourceSymlinks(this.config, project.id);
     const head = await this.git(root, ["rev-parse", "--verify", "HEAD"], [128]);
-    if (head.code !== 0) throw httpError(409, "请先提交项目修改");
+    if (head.code !== 0) throw httpError(409, "GIT_NO_COMMIT");
     const branchResult = await this.git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"], [1]);
-    if (branchResult.code !== 0) throw httpError(409, "当前处于 detached HEAD，请先返回默认分支再推送");
+    if (branchResult.code !== 0) throw httpError(409, "GIT_DETACHED_HEAD");
     const branch = branchResult.stdout.trim();
-    if (!/^[A-Za-z0-9._/-]+$/.test(branch)) throw httpError(400, "本地分支名称无效");
+    if (!/^[A-Za-z0-9._/-]+$/.test(branch)) throw httpError(400, "GIT_BRANCH_INVALID");
     const token = decryptToken(this.config, settings.token_ciphertext!);
     await this.git(root, ["push", "--set-upstream", "origin", `HEAD:refs/heads/${branch}`], [], this.authEnvironment(token));
     return this.status(project);
@@ -258,7 +259,7 @@ export class ProjectGitService {
   async discardChanges(project: ProjectRow): Promise<void> {
     const root = this.requireRepository(project.id);
     const head = await this.git(root, ["rev-parse", "--verify", "HEAD"], [128]);
-    if (head.code !== 0) throw httpError(409, "该项目尚无可恢复的提交");
+    if (head.code !== 0) throw httpError(409, "GIT_NO_COMMIT");
     await this.assertRevisionHasNoSymlinks(root, head.stdout.trim());
     await this.git(root, ["restore", "--source=HEAD", "--staged", "--worktree", "--", "."]);
     assertNoSourceSymlinks(this.config, project.id);
@@ -291,7 +292,7 @@ export class ProjectGitService {
     catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    if (!gitStat) throw httpError(409, "该项目尚未初始化 Git");
+    if (!gitStat) throw httpError(409, "GIT_REPOSITORY_NOT_INITIALIZED");
     if (gitStat.isSymbolicLink() || !gitStat.isDirectory()) throw symbolicLinkError(".git");
     return root;
   }
@@ -302,13 +303,13 @@ export class ProjectGitService {
 
   private requireTokenSettings(projectId: string): GitSettingsRow {
     const settings = this.settings(projectId);
-    if (!settings?.token_ciphertext) throw httpError(409, "请先配置 GitHub token");
+    if (!settings?.token_ciphertext) throw httpError(409, "GIT_TOKEN_NOT_CONFIGURED");
     return settings;
   }
 
   private async verifyCommit(root: string, revision: string): Promise<string> {
     const result = await this.git(root, ["rev-parse", "--verify", `${revision}^{commit}`], [128]);
-    if (result.code !== 0) throw httpError(404, "Git 版本不存在");
+    if (result.code !== 0) throw httpError(404, "GIT_REVISION_NOT_FOUND");
     return result.stdout.trim();
   }
 
@@ -334,14 +335,13 @@ export class ProjectGitService {
           ...(init.body ? { "Content-Type": "application/json" } : {})
         }
       });
-      const body = await response.json().catch(() => ({})) as { message?: unknown } & T;
       if (!response.ok) {
-        const message = typeof body.message === "string" ? body.message : `HTTP ${response.status}`;
-        throw httpError(response.status === 401 || response.status === 403 ? 400 : 502, `GitHub 请求失败：${message}`);
+        throw httpError(response.status === 401 || response.status === 403 ? 400 : 502,
+          response.status === 401 || response.status === 403 ? "GIT_TOKEN_REJECTED" : "GIT_OPERATION_FAILED");
       }
-      return body;
+      return await response.json() as T;
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") throw httpError(504, "GitHub 请求超时");
+      if (error instanceof Error && error.name === "AbortError") throw httpError(504, "GIT_TIMEOUT");
       throw error;
     } finally {
       clearTimeout(timer);
@@ -398,15 +398,14 @@ export class ProjectGitService {
       };
       child.stdout.on("data", collect(stdout));
       child.stderr.on("data", collect(stderr));
-      child.once("error", (error) => { clearTimeout(timer); reject(httpError(500, `无法运行 Git：${error.message}`)); });
+      child.once("error", () => { clearTimeout(timer); reject(httpError(500, "GIT_OPERATION_FAILED")); });
       child.once("close", (code) => {
         clearTimeout(timer);
         const result = { stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8"), code: code ?? -1 };
-        if (timedOut) return reject(httpError(504, "Git 操作超时"));
-        if (size > MAX_COMMAND_OUTPUT) return reject(httpError(413, "Git 输出过大"));
+        if (timedOut) return reject(httpError(504, "GIT_TIMEOUT"));
+        if (size > MAX_COMMAND_OUTPUT) return reject(httpError(413, "GIT_OUTPUT_TOO_LARGE"));
         if (result.code !== 0 && !allowedCodes.includes(result.code)) {
-          const detail = (result.stderr || result.stdout).trim().slice(0, 2000) || `exit ${result.code}`;
-          return reject(httpError(400, `Git 操作失败：${detail}`));
+          return reject(httpError(400, "GIT_COMMAND_FAILED"));
         }
         resolve(result);
       });
@@ -422,7 +421,7 @@ function parseCommit(line: string): GitCommit {
 
 function validateRevision(value: string): string {
   const revision = value.trim();
-  if (!/^[a-f0-9]{7,40}$/i.test(revision)) throw httpError(400, "Git 版本格式不正确");
+  if (!/^[a-f0-9]{7,40}$/i.test(revision)) throw httpError(400, "GIT_REVISION_INVALID");
   return revision;
 }
 
@@ -434,7 +433,7 @@ function tokenKey(config: Config): Buffer {
     catch (error) { if (!fs.existsSync(target)) throw error; }
   }
   const key = fs.readFileSync(target);
-  if (key.length !== 32) throw httpError(500, "Git token 加密密钥无效");
+  if (key.length !== 32) throw httpError(500, "GIT_OPERATION_FAILED");
   return key;
 }
 
@@ -447,22 +446,12 @@ function encryptToken(config: Config, token: string): string {
 
 function decryptToken(config: Config, encoded: string): string {
   const [version, ivText, tagText, encryptedText] = encoded.split(".");
-  if (version !== "v1" || !ivText || !tagText || !encryptedText) throw httpError(500, "GitHub token 无法解密");
+  if (version !== "v1" || !ivText || !tagText || !encryptedText) throw httpError(500, "GIT_OPERATION_FAILED");
   try {
     const decipher = createDecipheriv("aes-256-gcm", tokenKey(config), Buffer.from(ivText, "base64url"));
     decipher.setAuthTag(Buffer.from(tagText, "base64url"));
     return Buffer.concat([decipher.update(Buffer.from(encryptedText, "base64url")), decipher.final()]).toString("utf8");
   } catch {
-    throw httpError(500, "GitHub token 无法解密");
+    throw httpError(500, "GIT_OPERATION_FAILED");
   }
-}
-
-function httpError(statusCode: number, message: string): Error & { statusCode: number; code: string } {
-  const code = statusCode === 400 ? "GIT_INVALID"
-    : statusCode === 404 ? "GIT_REVISION_NOT_FOUND"
-      : statusCode === 409 ? "GIT_CONFLICT"
-        : statusCode === 413 ? "GIT_OUTPUT_TOO_LARGE"
-          : statusCode === 504 ? "GIT_TIMEOUT"
-            : statusCode >= 500 ? "GIT_OPERATION_FAILED" : "REQUEST_INVALID";
-  return Object.assign(new Error(message), { statusCode, code });
 }

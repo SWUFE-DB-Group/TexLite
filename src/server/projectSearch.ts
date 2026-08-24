@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Config } from "./config.js";
 import { listProjectFilesAsync, resolveSourcePath } from "./files.js";
+import { httpError } from "./http.js";
 
 export interface ProjectSearchOptions {
   query: string;
@@ -85,9 +86,7 @@ export async function replaceProject(config: Config, projectId: string, options:
     if (!count || content === previous) continue;
     if (options.maxFileBytes !== undefined && Buffer.byteLength(content, "utf8") > options.maxFileBytes) {
       await Promise.allSettled(staged.map((entry) => fs.promises.rm(entry.temporary, { force: true })));
-      throw Object.assign(new Error(`Replacement would exceed the ${Math.floor(options.maxFileBytes / 1024 / 1024)} MB collaborative text limit`), {
-        code: "FILE_TOO_LARGE", statusCode: 413
-      });
+      throw httpError(413, "FILE_TOO_LARGE", { size: Math.floor(options.maxFileBytes / 1024 / 1024) });
     }
     const temporary = `${absolute}.search-${process.pid}-${Date.now()}-${staged.length}.tmp`;
     await fs.promises.writeFile(temporary, content, { encoding: "utf8", mode: 0o600 });
@@ -115,7 +114,7 @@ export async function replaceProject(config: Config, projectId: string, options:
 
 function searchPattern(options: ProjectSearchOptions): RegExp {
   const query = options.query.trim();
-  if (!query || query.length > 500) throw Object.assign(new Error("搜索内容格式不正确"), { code: "SEARCH_QUERY_INVALID", statusCode: 400 });
+  if (!query || query.length > 500) throw httpError(400, "SEARCH_QUERY_INVALID");
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const source = options.wholeWord ? `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])` : escaped;
   return new RegExp(source, `${options.caseSensitive ? "" : "i"}gu`);

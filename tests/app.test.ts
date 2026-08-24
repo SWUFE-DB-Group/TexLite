@@ -10,7 +10,8 @@ import { buildApp, escapeGlobPattern } from "../src/server/app.js";
 import { CollaborationService } from "../src/server/collaboration.js";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
-import { hashPassword } from "../src/server/security.js";
+import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
+import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
 import { sourceRoot } from "../src/server/files.js";
 
 function citationPayload(citationKey: string, title: string, bibtex: string, extras: Record<string, unknown> = {}): Record<string, unknown> {
@@ -81,7 +82,10 @@ describe("texLite application", () => {
     expect(unauthenticated.statusCode).toBe(401);
     expect(unauthenticated.json()).toMatchObject({ code: "AUTH_REQUIRED" });
     const publicConfig = await app.inject({ method: "GET", url: "/api/config" });
-    expect(publicConfig.json()).toMatchObject({ siteName: "Test texLite", adminEmail: "admin@example.test" });
+    expect(publicConfig.json()).toMatchObject({
+      siteName: "Test texLite", adminEmail: "admin@example.test", minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxCitationBibtexBytes: MAX_CITATION_BIBTEX_BYTES
+    });
   });
 
   it("keeps the app shell fresh and caches fingerprinted browser runtimes", async () => {
@@ -1377,7 +1381,7 @@ Second version.
     const multipart = multipartBody("unsafe.zip", makeZip({ "../main.tex": "unsafe" }));
     const response = await app.inject({
       method: "POST", url: "/api/projects/import", headers: {
-        cookie, "content-type": `multipart/form-data; boundary=${multipart.boundary}`
+        cookie, "accept-language": "zh-CN", "content-type": `multipart/form-data; boundary=${multipart.boundary}`
       }, payload: multipart.body
     });
     expect(response.statusCode).toBe(400);
@@ -1390,7 +1394,7 @@ Second version.
     ]));
     const response = await app.inject({
       method: "POST", url: "/api/projects/import", headers: {
-        cookie, "content-type": `multipart/form-data; boundary=${multipart.boundary}`
+        cookie, "accept-language": "zh-CN", "content-type": `multipart/form-data; boundary=${multipart.boundary}`
       }, payload: multipart.body
     });
     expect(response.statusCode).toBe(400);
@@ -1404,7 +1408,7 @@ Second version.
     }));
     const response = await app.inject({
       method: "POST", url: "/api/projects/import", headers: {
-        cookie, "content-type": `multipart/form-data; boundary=${multipart.boundary}`
+        cookie, "accept-language": "zh-CN", "content-type": `multipart/form-data; boundary=${multipart.boundary}`
       }, payload: multipart.body
     });
     expect(response.statusCode).toBe(400);
@@ -1755,7 +1759,7 @@ Second version.
     expect(afterDelete.json().project).toMatchObject({ commentCount: 1 });
   });
 
-  it("handles unexpected server exceptions with a generic 500 SERVER_ERROR response", async () => {
+  it("localizes generic server errors from Accept-Language without exposing internal details", async () => {
     const testApp = await buildApp(config, db, { logger: false });
     testApp.get("/api/test-unexpected-error", async () => {
       throw new TypeError("Simulated internal runtime null dereference error");
@@ -1771,9 +1775,15 @@ Second version.
     const body = response.json();
     expect(body).toEqual({
       code: "SERVER_ERROR",
-      error: "服务器内部错误"
+      error: "The server could not complete the request."
     });
     expect(body.error).not.toContain("Simulated internal runtime");
+    const chineseResponse = await testApp.inject({
+      method: "GET",
+      url: "/api/test-unexpected-error",
+      headers: { "accept-language": "zh-CN" }
+    });
+    expect(chineseResponse.json()).toEqual({ code: "SERVER_ERROR", error: "服务器内部错误" });
     await testApp.close();
   });
 

@@ -19,6 +19,17 @@ export interface ExtractedProject {
   mainFile: string;
 }
 
+/** A ZIP validation error whose stable code is safe to return from the API. */
+export class ZipValidationError extends Error {
+  constructor(
+    readonly code: string,
+    readonly details: Record<string, unknown> = {}
+  ) {
+    super(code);
+    this.name = "ZipValidationError";
+  }
+}
+
 export async function extractProjectZip(buffer: Buffer, destination: string, maxFileBytes: number): Promise<ExtractedProject> {
   const maxTotalBytes = Math.max(MAX_TOTAL_BYTES, maxFileBytes);
   const entries = await inspectZip(buffer, maxFileBytes, maxTotalBytes);
@@ -27,7 +38,7 @@ export async function extractProjectZip(buffer: Buffer, destination: string, max
   fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
   const files = await extractZip(buffer, destination, prefix, maxFileBytes, maxTotalBytes);
   const mainFile = discoverMainFile(destination, files);
-  if (!mainFile) throw new Error("压缩包中没有找到 LaTeX 主文档（.tex）");
+  if (!mainFile) throw new ZipValidationError("ZIP_MAIN_DOCUMENT_NOT_FOUND");
   return { files, mainFile };
 }
 
@@ -42,16 +53,16 @@ async function inspectZip(buffer: Buffer, maxFileBytes: number, maxTotalBytes: n
     zip.on("entry", (entry: Entry) => {
       try {
         validateEntry(entry);
-        if (entries.length >= MAX_ENTRIES) throw new Error(`ZIP 文件数量不能超过 ${MAX_ENTRIES}`);
+        if (entries.length >= MAX_ENTRIES) throw new ZipValidationError("ZIP_TOO_MANY_ENTRIES", { limit: MAX_ENTRIES });
         totalBytes += entry.uncompressedSize;
-        if (entry.uncompressedSize > maxFileBytes) throw new Error(`ZIP 中存在超过 ${formatMB(maxFileBytes)} MB 的单个文件`);
-        if (totalBytes > maxTotalBytes) throw new Error(`ZIP 解压后总体积不能超过 ${formatMB(maxTotalBytes)} MB`);
+        if (entry.uncompressedSize > maxFileBytes) throw new ZipValidationError("ZIP_ENTRY_TOO_LARGE", { size: formatMB(maxFileBytes) });
+        if (totalBytes > maxTotalBytes) throw new ZipValidationError("ZIP_TOTAL_TOO_LARGE", { size: formatMB(maxTotalBytes) });
         const normalized = normalizedEntryName(entry.fileName);
         // ZIP archives can contain duplicate entries.  Extraction of the
         // second entry would otherwise silently replace the first one (and a
         // `name`/`name/` pair would collide on disk as well).
         const collisionKey = safeRelativePath(normalized.replace(/\/+$/, ""));
-        if (seenPaths.has(collisionKey)) throw new Error(`ZIP 包含重复文件名：${collisionKey}`);
+        if (seenPaths.has(collisionKey)) throw new ZipValidationError("ZIP_DUPLICATE_ENTRY", { path: collisionKey });
         seenPaths.add(collisionKey);
         entries.push({ fileName: normalized, uncompressedSize: entry.uncompressedSize, directory: /\/$/.test(entry.fileName) });
         zip.readEntry();
@@ -102,8 +113,8 @@ async function extractZip(
           transform(chunk: Buffer, _encoding, callback) {
             actualBytes += chunk.length;
             entryBytes += chunk.length;
-            if (entryBytes > maxFileBytes) callback(new Error(`ZIP 中单个文件实际解压体积超过 ${formatMB(maxFileBytes)} MB`));
-            else if (actualBytes > maxTotalBytes) callback(new Error(`ZIP 实际解压体积超过 ${formatMB(maxTotalBytes)} MB`));
+            if (entryBytes > maxFileBytes) callback(new ZipValidationError("ZIP_ENTRY_TOO_LARGE", { size: formatMB(maxFileBytes) }));
+            else if (actualBytes > maxTotalBytes) callback(new ZipValidationError("ZIP_TOTAL_TOO_LARGE", { size: formatMB(maxTotalBytes) }));
             else callback(null, chunk);
           }
         });
@@ -122,7 +133,7 @@ async function extractZip(
 function openZip(buffer: Buffer): Promise<ZipFile> {
   return new Promise((resolve, reject) => {
     yauzl.fromBuffer(buffer, { lazyEntries: true, autoClose: true, strictFileNames: true, validateEntrySizes: true }, (error, zip) => {
-      if (error || !zip) reject(error ?? new Error("无法读取 ZIP 文件"));
+      if (error || !zip) reject(new ZipValidationError("ZIP_READ_FAILED"));
       else resolve(zip);
     });
   });
@@ -131,7 +142,7 @@ function openZip(buffer: Buffer): Promise<ZipFile> {
 function openEntryStream(zip: ZipFile, entry: Entry): Promise<NodeJS.ReadableStream> {
   return new Promise((resolve, reject) => {
     zip.openReadStream(entry, (error, stream) => {
-      if (error || !stream) reject(error ?? new Error("无法读取 ZIP 条目"));
+      if (error || !stream) reject(new ZipValidationError("ZIP_ENTRY_READ_FAILED"));
       else resolve(stream);
     });
   });
@@ -139,10 +150,14 @@ function openEntryStream(zip: ZipFile, entry: Entry): Promise<NodeJS.ReadableStr
 
 function validateEntry(entry: Entry): void {
   const name = entry.fileName;
-  if (!name || name.includes("\0") || name.startsWith("/") || name.startsWith("\\")) throw new Error("ZIP 包含无效路径");
-  safeRelativePath(name.replace(/\/$/, "") || "invalid");
+  if (!name || name.includes("\0") || name.startsWith("/") || name.startsWith("\\")) throw new ZipValidationError("ZIP_INVALID_PATH");
+  try {
+    safeRelativePath(name.replace(/\/$/, "") || "invalid");
+  } catch {
+    throw new ZipValidationError("ZIP_INVALID_PATH");
+  }
   const unixType = (entry.externalFileAttributes >>> 16) & 0o170000;
-  if (unixType === 0o120000) throw new Error("ZIP 不允许包含符号链接");
+  if (unixType === 0o120000) throw new ZipValidationError("ZIP_SYMLINK_FORBIDDEN");
 }
 
 function normalizedEntryName(name: string): string {

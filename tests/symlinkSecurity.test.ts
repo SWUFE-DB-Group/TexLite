@@ -31,15 +31,15 @@ describe("project source symlink protection", () => {
     fs.writeFileSync(outside, "must not be exposed");
     fs.symlinkSync(outside, path.join(source, "leak.txt"));
 
-    expect(() => resolveSourcePath(config, projectId, "leak.txt")).toThrowError(/符号链接/);
-    expect(() => listProjectFiles(config, projectId)).toThrowError(/符号链接/);
-    await expect(listProjectFilesAsync(config, projectId)).rejects.toThrow(/符号链接/);
+    expect(() => resolveSourcePath(config, projectId, "leak.txt")).toThrowError(/Symbolic links/);
+    expect(() => listProjectFiles(config, projectId)).toThrowError(/Symbolic links/);
+    await expect(listProjectFilesAsync(config, projectId)).rejects.toThrow(/Symbolic links/);
 
     fs.rmSync(path.join(source, "leak.txt"));
     fs.mkdirSync(path.join(root, "outside-dir"));
     fs.writeFileSync(path.join(root, "outside-dir", "secret.txt"), "must not be exposed");
     fs.symlinkSync(path.join(root, "outside-dir"), path.join(source, "assets"), "dir");
-    expect(() => resolveSourcePath(config, projectId, "assets/secret.txt")).toThrowError(/符号链接/);
+    expect(() => resolveSourcePath(config, projectId, "assets/secret.txt")).toThrowError(/Symbolic links/);
   });
 
   it("refuses a Git revision containing a tracked symlink before checkout", async () => {

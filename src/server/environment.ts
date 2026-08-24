@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { Config } from "./config.js";
+import { httpError } from "./http.js";
 import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
 
 export interface EnvironmentCommand {
@@ -34,10 +35,10 @@ export async function assertGitAvailable(config: Config): Promise<EnvironmentCom
   const result = await commandVersion(item.command, Math.min(config.gitOperationTimeoutMs, 10_000));
   if (result.error || result.status !== 0) {
     const detail = result.error || result.stderr.trim() || `exit ${result.status ?? "unknown"}`;
-    throw Object.assign(
-      new Error(`Git integration is unavailable: could not run the configured command "${item.command}" (${detail}). Install Git or correct git.binary and try again.`),
-      { statusCode: 503, code: "GIT_UNAVAILABLE" }
-    );
+    // Command output can reveal host paths; it remains a startup diagnostic,
+    // while API clients receive the localized, stable error code.
+    void detail;
+    throw httpError(503, "GIT_UNAVAILABLE");
   }
   const version = `${result.stdout || result.stderr}`.trim().split("\n")[0]?.slice(0, 160) || "available";
   return { ...item, version };

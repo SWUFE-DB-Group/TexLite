@@ -13,7 +13,7 @@ import { ProjectWorkspace } from "./pages/ProjectWorkspace";
 
 export function App() {
   const { t } = useTranslation();
-  const [site, setSite] = useState<SiteConfig>({ siteName: "TexLite", adminEmail: "" });
+  const [site, setSite] = useState<SiteConfig | null>(null);
   const [user, setUser] = useState<User | null | undefined>();
   const [projectId, setProjectId] = useState<string | null>(() => typeof window === "undefined" ? null : projectIdFromPath(window.location.pathname));
   const [workspacePreload, setWorkspacePreload] = useState<WorkspacePreload | null>(() => {
@@ -127,7 +127,7 @@ export function App() {
     };
   }, [user?.id, user?.mustChangePassword, projectId]);
 
-  if (user === undefined) return <div className="center-card">{t("common.loading")}</div>;
+  if (user === undefined || !site) return <div className="center-card">{t("common.loading")}</div>;
   if (!user) return <Login site={site} onLogin={completeAuthentication} />;
   if (user.mustChangePassword) return <ChangePassword site={site} user={user} onChanged={(updated) => setUser(updated)} />;
   if (projectId) {

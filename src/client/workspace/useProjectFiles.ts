@@ -22,7 +22,7 @@ export interface FileLoadOptions {
   isCurrent?: () => boolean;
 }
 
-const MAX_DIRECT_RESOURCE_PREVIEW_BYTES = 10 * 1024 * 1024;
+export const MAX_DIRECT_RESOURCE_PREVIEW_BYTES = 10 * 1024 * 1024;
 const binaryFileExtensions = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif", ".pdf", ".zip", ".gz", ".bz2", ".xz", ".tar", ".rar", ".7z",
   ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp", ".mp3", ".mp4", ".wav", ".ogg", ".webm", ".mov", ".avi",
@@ -156,7 +156,7 @@ export function useProjectFiles({
     filesToUpload: File[], overwritePaths: ReadonlySet<string> = new Set(), directoryOverride = selectedFolder
   ) => {
     if (!filesToUpload.length) return;
-    const maxSize = site.maxUploadSizeMB ?? 50;
+    const maxSize = site.maxUploadSizeMB;
     const oversized = filesToUpload.find((file) => file.size > maxSize * 1024 * 1024);
     if (oversized) return onError(t("errors.fileTooLarge", { size: maxSize }));
     const directory = directoryOverride;
@@ -251,7 +251,7 @@ export function useProjectFiles({
 
   const openFile = (entry: FileEntry) => {
     const kind = resourcePreviewKind(entry.path);
-    const maxCollaborativeBytes = (site.maxCollaborativeFileSizeMB ?? 5) * 1024 * 1024;
+    const maxCollaborativeBytes = site.maxCollaborativeFileSizeMB * 1024 * 1024;
     if ((entry.size ?? 0) > MAX_DIRECT_RESOURCE_PREVIEW_BYTES
       || (isEditableTextFile(entry.path) && (entry.size ?? 0) > maxCollaborativeBytes)
       || kind !== "text" || !isEditableTextFile(entry.path)) {

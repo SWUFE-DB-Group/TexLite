@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { DatabaseConnection, UserRow } from "./db.js";
+import { apiError } from "./http.js";
 import { digestToken } from "./security.js";
 
 export interface PublicUser {
@@ -58,7 +59,7 @@ export function requireUser(
 ): UserRow | null {
   const user = currentUser(request, db);
   if (!user) {
-    void reply.code(401).send({ code: "AUTH_REQUIRED", error: "请先登录" });
+    void apiError(reply, 401, "AUTH_REQUIRED");
     return null;
   }
   return user;
@@ -72,7 +73,7 @@ export function requireAdmin(
   const user = requireUser(request, reply, db);
   if (!user) return null;
   if (user.role !== "admin") {
-    void reply.code(403).send({ code: "ADMIN_REQUIRED", error: "需要管理员权限" });
+    void apiError(reply, 403, "ADMIN_REQUIRED");
     return null;
   }
   return user;
