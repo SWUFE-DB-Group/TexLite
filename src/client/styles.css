@@ -177,6 +177,12 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .collaboration-recovery button:hover { background: #ffffff2c; }
 .compile-status-strip { min-height: 31px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 6px 14px; background: #fff6dc; color: #72530d; border-bottom: 1px solid #e8cd7d; font-size: 11px; }
 .compile-status-strip.failed { background: #fff0ee; color: #9a3028; border-bottom-color: #e8aaa4; }
+.editor-actions .compile.cancel-compile { border-color: #c9675f; background: #fff5f3; color: #9b342d; }
+.editor-actions .compile.cancel-compile:hover:not(:disabled) { border-color: #a8463f; background: #ffe9e6; }
+.workspace-update-banner { min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid #dfb25e; background: #fff3d8; color: #62460e; font-size: 11px; }
+.workspace-update-banner > svg { flex: none; color: #b97817; }
+.workspace-update-banner button { flex: none; border: 1px solid #c9963d; border-radius: 5px; padding: 4px 8px; background: #fff; color: inherit; font: inherit; font-weight: 650; }
+.workspace-update-banner button:hover { border-color: #9b6b16; background: #fff8e9; }
 .client-tool-recoveries { flex: none; display: flex; flex-direction: column; }
 .client-tool-recovery { min-height: 34px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid #e4bf78; background: #fff8e8; color: #6f4d10; font-size: 11px; }
 .client-tool-recovery > svg { flex: none; color: #b97817; }

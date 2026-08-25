@@ -53,6 +53,46 @@ setInterval(() => {}, 1000);
     expect(exited).toBe(true);
   }, 10_000);
 
+  it("terminates latexmk descendants when a user cancels compilation", async () => {
+    if (process.platform === "win32") return;
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-process-cancel-"));
+    roots.push(root);
+    const config = testConfig(root);
+    config.latexmk = writeExecutable(root, "fake-latexmk.mjs", `
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
+const output = process.argv.find((value) => value.startsWith("-outdir=")).slice("-outdir=".length);
+fs.mkdirSync(output, { recursive: true });
+const descendant = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+fs.writeFileSync(path.join(output, "descendant.pid"), String(descendant.pid));
+setInterval(() => {}, 1000);
+`);
+    const projectId = randomUUID();
+    const source = path.join(config.projectsDir, projectId, "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), "\\documentclass{article}\\begin{document}x\\end{document}\\n");
+    const snapshot = await captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const controller = new AbortController();
+    const compiling = compileProject(config, snapshot, "main.tex", "pdflatex", null, { signal: controller.signal });
+    let marker: string | null = null;
+    expect(await waitFor(() => {
+      marker = findFile(path.join(config.projectsDir, projectId), "descendant.pid");
+      return marker !== null;
+    }, 3_000)).toBe(true);
+    const descendantPid = Number(fs.readFileSync(marker!, "utf8"));
+    controller.abort();
+    const result = await compiling;
+    expect(result).toMatchObject({ ok: false, cancelled: true });
+    const exited = await waitFor(() => !isAlive(descendantPid), 3_000);
+    if (!exited && isAlive(descendantPid)) {
+      try { process.kill(descendantPid, "SIGKILL"); } catch { /* already gone */ }
+    }
+    expect(exited).toBe(true);
+  }, 10_000);
+
   it("accepts uppercase TeX extensions and uses one canonical PDF stem", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-uppercase-tex-"));
     roots.push(root);

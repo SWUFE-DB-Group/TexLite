@@ -177,6 +177,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     localDraftReady,
     permission: collaborationPermission,
     reconnect: reconnectCollaboration,
+    protocolUpgradeRequired,
     permissionDowngrade,
     dismissPermissionDowngrade,
     discardLocalDraft
@@ -758,8 +759,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   });
   const {
     pdfUrl, pdfCompiledAt, pdfLoadingMode, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
-    artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cleaning,
-    compile, cleanCompile, viewArtifact
+    artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cancelling, cleaning,
+    compile, cancelCompile, cleanCompile, viewArtifact
   } = useProjectCompilation({
     projectId,
     project,
@@ -908,6 +909,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       ? pdfUrl && pdfCompiledAt
         ? t("editor.compileFailedRetained", { time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) })
         : t("editor.compileFailedNoPdf")
+      : compileOutcome === "cancelled"
+        ? t("compileControls.cancelled")
       : "";
   const saveStateLabel = saveState === "editor.savedAt" && lastSavedAt
     ? t("editor.savedAt", { time: new Date(lastSavedAt).toLocaleTimeString(i18n.resolvedLanguage, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
@@ -917,7 +920,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     <WorkspaceTopbar
       site={site} project={project} activeFile={activeFile} saveStateLabel={saveStateLabel}
       editorPreferences={editorPreferences} activeSessions={activeSessions} collaborationStatus={collaborationStatus}
-      reconnectCollaboration={reconnectCollaboration} showEditor={showEditor} filesCollapsed={filesCollapsed}
+      reconnectCollaboration={reconnectCollaboration} protocolUpgradeRequired={protocolUpgradeRequired} showEditor={showEditor} filesCollapsed={filesCollapsed}
       toggleFilesPanel={toggleFilesPanel} workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
       onBack={onBack} onShare={() => setShareOpen(true)} showCitationLibrary={showEditor && /\.bib$/i.test(activeFile)}
       citationLibraryOpen={citationLibraryOpen} onCitationLibrary={() => setCitationLibraryOpen(true)}
@@ -929,8 +932,13 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       commentsOpen={sidePanel === "comments"} unresolvedCommentCount={comments.filter((item) => !item.resolved).length}
       hasActiveFile={Boolean(activeFile)} onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
       settingsOpen={sidePanel === "settings"} compileBusy={compileBusy} sharedCompiling={sharedCompiling}
-      localCompiling={localCompiling} compileState={compileState} onCompile={compile}
+      localCompiling={localCompiling} cancelling={cancelling} compileState={compileState} onCompile={compile} onCancelCompile={() => void cancelCompile()}
     />
+    {protocolUpgradeRequired && <div className="workspace-update-banner" role="alert">
+      <AlertTriangle size={15} />
+      <span>{t("workspaceUpdates.protocolUpgrade")}</span>
+      <button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button>
+    </div>}
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
     {(spellCheck.error || formatterRecovery || formatterDiagnostics || remoteFormatLease) && <div className="client-tool-recoveries">
       {spellCheck.error && <div className="client-tool-recovery" role="alert" title={spellCheck.error}><AlertTriangle size={15} /><span><strong>{t("editor.harperRecoveryTitle")}</strong>{t("editor.harperFallbackHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={spellCheck.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={spellCheck.dismissError}><X size={13} /></button></div>}

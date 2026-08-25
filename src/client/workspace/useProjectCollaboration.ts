@@ -42,6 +42,7 @@ export function useProjectCollaboration(
   const [localDraftReady, setLocalDraftReady] = useState(false);
   const [permission, setPermission] = useState<Project["permission"]>(projectPermission);
   const [permissionDowngrade, setPermissionDowngrade] = useState<PermissionDowngradeNotice | null>(null);
+  const [protocolUpgradeRequired, setProtocolUpgradeRequired] = useState(false);
   const activeMainFileRef = useRef(activeMainFile);
   const onDisconnectedRef = useRef(onDisconnected);
   const readyRef = useRef(ready);
@@ -99,6 +100,11 @@ export function useProjectCollaboration(
     collaboration.provider.on("connection-error", handleConnectionFailure);
     collaboration.meta.observe(handleMeta);
     const stopCompileStateListener = collaboration.onCompileStates(handleAuthoritativeCompileStates);
+    const stopProtocolUpgradeListener = collaboration.onProtocolUpgrade(() => {
+      setProtocolUpgradeRequired(true);
+      setStatus("disconnected");
+      clearDisconnectedState();
+    });
     const refreshFormatLeases = () => setFormatLeaseStates(collaboration.formatLeaseStates());
     const stopFormatLeaseListener = collaboration.onFormatLeaseState(refreshFormatLeases);
     const showStoredDraftNotice = () => {
@@ -149,6 +155,7 @@ export function useProjectCollaboration(
       collaboration.provider.off("connection-error", handleConnectionFailure);
       collaboration.meta.unobserve(handleMeta);
       stopCompileStateListener();
+      stopProtocolUpgradeListener();
       stopFormatLeaseListener();
       stopDraftListener();
       stopPermissionListener();
@@ -203,6 +210,7 @@ export function useProjectCollaboration(
   }, [collaboration, permissionDowngradeVisible]);
 
   const reconnect = () => {
+    if (protocolUpgradeRequired) return;
     setStatus("connecting");
     setSynced(false);
     setActiveSessions([]);
@@ -236,6 +244,7 @@ export function useProjectCollaboration(
     dictionaryRevision,
     localDraftReady,
     permission,
+    protocolUpgradeRequired,
     reconnect,
     permissionDowngrade,
     dismissPermissionDowngrade,

@@ -101,6 +101,36 @@ describe("reliable project compilation", () => {
     expect(snapshotCreations).toBe(1);
   });
 
+  it("cancels a queued target without allowing it to create a snapshot", async () => {
+    const queue = new CompileQueue(1);
+    const coordinator = new ProjectCompileCoordinator(queue);
+    let releaseBlocker!: () => void;
+    const blocker = new Promise<void>((resolve) => { releaseBlocker = resolve; });
+    void queue.add(async () => { await blocker; });
+    let executions = 0;
+    let cancelled = 0;
+    const result = coordinator.request({
+      projectId: "project-a", target: "main.tex", runId: "run-cancelled", revision: "revision-cancelled",
+      onQueued: () => undefined,
+      onSelected: () => undefined,
+      onDiscarded: () => undefined,
+      onCancelled: () => { cancelled += 1; },
+      execute: async () => {
+        executions += 1;
+        return {
+          runId: "run-cancelled", revision: "revision-cancelled", ok: true, log: "",
+          diagnostics: { warnings: [], errors: [] }, pdfPath: "run-cancelled.pdf", synctexPath: null
+        };
+      }
+    });
+
+    expect(coordinator.cancel("project-a", "main.tex")).toEqual({ runId: "run-cancelled", status: "queued" });
+    await expect(result).resolves.toMatchObject({ ok: false, cancelled: true, runId: "run-cancelled" });
+    expect(executions).toBe(0);
+    expect(cancelled).toBe(1);
+    releaseBlocker();
+  });
+
   it("compiles from an immutable snapshot and atomically selects a complete artifact set", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-"));
     temporaryRoots.push(root);

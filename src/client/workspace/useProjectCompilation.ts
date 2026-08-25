@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import type { CompileDiagnostics } from "../compileDiagnostics";
+import type { CompileOutcome } from "../compileLog";
 import type { SharedCompileState } from "../collaboration";
 import { errorMessage } from "../errors";
 import type { Project } from "../types";
@@ -16,6 +17,15 @@ interface LatestRun {
   log: string;
   diagnostics: CompileDiagnostics;
   requestedBy?: { id: string; username: string; name: string } | null;
+}
+
+function compileOutcomeForRun(run: Pick<LatestRun, "status" | "log"> | null | undefined): CompileOutcome {
+  if (run?.status === "succeeded") return "succeeded";
+  // Compile runs intentionally reuse the existing failed status in SQLite so
+  // no schema migration is needed. The controlled cancellation marker keeps
+  // the UI from presenting a user-requested stop as a compiler failure.
+  if (run?.log.includes("Compilation was cancelled.")) return "cancelled";
+  return run?.status === "failed" ? "failed" : null;
 }
 
 export interface LatestCompileResponse {
@@ -48,6 +58,20 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+/**
+ * The workspace owns Ctrl/Cmd+S so it can save and compile from CodeMirror.
+ * Native form controls are used by dialogs and the settings panel, however,
+ * where that shortcut should be consumed locally rather than compiling in
+ * the background or opening the browser's Save Page dialog. Do not include
+ * generic contenteditable elements here:
+ * CodeMirror itself is contenteditable.
+ */
+function isNativeTextControl(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement;
+}
+
 export function useProjectCompilation({
   projectId, project, mainFile, initialLatest, collaborationSynced, sharedState, onSharedState, save,
   loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged
@@ -59,12 +83,13 @@ export function useProjectCompilation({
   const [pdfLoadingMode, setPdfLoadingMode] = useState<"full" | "range">("full");
   const [compileLog, setCompileLog] = useState("");
   const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostics | null>(null);
-  const [compileOutcome, setCompileOutcome] = useState<"succeeded" | "failed" | null>(null);
+  const [compileOutcome, setCompileOutcome] = useState<CompileOutcome>(null);
   const [artifacts, setArtifacts] = useState<CompileArtifact[]>([]);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; content: string } | null>(null);
   const [artifactLoading, setArtifactLoading] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [compilingMainFiles, setCompilingMainFiles] = useState<ReadonlySet<string>>(() => new Set());
+  const [cancellingMainFiles, setCancellingMainFiles] = useState<ReadonlySet<string>>(() => new Set());
   const [editorNotice, setEditorNotice] = useState("");
   const mainFileRef = useRef(mainFile);
   const pdfMainFileRef = useRef("");
@@ -197,9 +222,7 @@ export function useProjectCompilation({
         && latest.latestRun?.id !== authoritativeRun.runId) return;
       setCompileLog(latest.latestRun?.log ?? "");
       setCompileDiagnostics(latest.latestRun?.diagnostics ?? null);
-      setCompileOutcome(latest.latestRun?.status === "succeeded" || latest.latestRun?.status === "failed"
-        ? latest.latestRun.status
-        : null);
+      setCompileOutcome(compileOutcomeForRun(latest.latestRun));
       if (mainFile && latest.latestRun?.requestedBy && (latest.latestRun.status === "queued" || latest.latestRun.status === "running")) {
         callbacks.current.onSharedState({
           mainFile,
@@ -261,6 +284,17 @@ export function useProjectCompilation({
   }, [sharedState?.runId, sharedState?.status, sharedState?.cleanMode, sharedState?.mainFile, mainFile, t]);
 
   useEffect(() => {
+    if (!mainFile || (sharedState?.mainFile === mainFile
+      && (sharedState.status === "queued" || sharedState.status === "running"))) return;
+    setCancellingMainFiles((current) => {
+      if (!current.has(mainFile)) return current;
+      const next = new Set(current);
+      next.delete(mainFile);
+      return next;
+    });
+  }, [mainFile, sharedState?.mainFile, sharedState?.status]);
+
+  useEffect(() => {
     if (!sharedState || sharedState.mainFile !== mainFile
       || (sharedState.status !== "succeeded" && sharedState.status !== "failed")) return;
     let cancelled = false;
@@ -276,7 +310,7 @@ export function useProjectCompilation({
       if (cancelled || latest.mainFile !== mainFileRef.current || latest.latestRun?.id !== sharedState.runId) return;
       setCompileLog(latest.latestRun.log);
       setCompileDiagnostics(latest.latestRun.diagnostics);
-      setCompileOutcome(sharedState.status === "succeeded" ? "succeeded" : "failed");
+      setCompileOutcome(compileOutcomeForRun(latest.latestRun));
       if (sharedState.status === "succeeded" && sharedState.stale) setEditorNotice(t("editor.compileSnapshotStale"));
       if (sharedState.status === "succeeded" && latest.pdfUrl) {
         authoritativeCompileRun.current = { mainFile, runId: sharedState.runId };
@@ -321,14 +355,15 @@ export function useProjectCompilation({
     compileRequests.current.set(requestedMainFile, controller);
     try {
       if (!(await callbacks.current.save())) return;
-      const result = await api<{ runId: string; mainFile: string; ok: boolean; skipped?: boolean; stale?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null; pdfSizeBytes: number | null; pdfLoadingMode: "full" | "range" | null }>(
+      const result = await api<{ runId: string; mainFile: string; ok: boolean; cancelled?: boolean; skipped?: boolean; stale?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null; pdfSizeBytes: number | null; pdfLoadingMode: "full" | "range" | null }>(
         `/api/projects/${projectId}/compile`,
         { method: "POST", signal: controller.signal, body: JSON.stringify({ mainFile: requestedMainFile }) }
       );
       if (result.mainFile !== mainFileRef.current) return;
       setCompileLog(result.log);
       setCompileDiagnostics(result.diagnostics);
-      setCompileOutcome(result.ok ? "succeeded" : "failed");
+      setCompileOutcome(result.cancelled ? "cancelled" : result.ok ? "succeeded" : "failed");
+      if (result.cancelled) setEditorNotice(t("compileControls.cancelled"));
       if (result.skipped) setEditorNotice(t("editor.upToDate"));
       if (result.ok && result.stale) setEditorNotice(t("editor.compileSnapshotStale"));
       if (result.pdfUrl) {
@@ -358,7 +393,38 @@ export function useProjectCompilation({
           next.delete(requestedMainFile);
           return next;
         });
+        setCancellingMainFiles((current) => {
+          if (!current.has(requestedMainFile)) return current;
+          const next = new Set(current);
+          next.delete(requestedMainFile);
+          return next;
+        });
       }
+    }
+  };
+
+  const cancelCompile = async (): Promise<void> => {
+    if (!project || !mainFile || project.permission === "read" || !collaborationSynced) return;
+    const requestedMainFile = mainFile;
+    setCancellingMainFiles((current) => new Set([...current, requestedMainFile]));
+    try {
+      const result = await api<{ cancelled: boolean }>(`/api/projects/${projectId}/compile/cancel`, {
+        method: "POST", body: JSON.stringify({ mainFile: requestedMainFile })
+      });
+      if (!result.cancelled) {
+        setCancellingMainFiles((current) => {
+          const next = new Set(current);
+          next.delete(requestedMainFile);
+          return next;
+        });
+      }
+    } catch (error) {
+      setCancellingMainFiles((current) => {
+        const next = new Set(current);
+        next.delete(requestedMainFile);
+        return next;
+      });
+      if (!isAbortError(error) && mainFileRef.current === requestedMainFile) callbacks.current.onError(errorMessage(error));
     }
   };
 
@@ -410,6 +476,10 @@ export function useProjectCompilation({
   useEffect(() => {
     const handleCompileShortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== "s") return;
+      if (isNativeTextControl(event.target)) {
+        event.preventDefault();
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       if (!event.repeat) compileAction.current();
@@ -466,8 +536,10 @@ export function useProjectCompilation({
     artifactLoading,
     editorNotice,
     localCompiling: compilingMainFiles.has(mainFile),
+    cancelling: cancellingMainFiles.has(mainFile),
     cleaning,
     compile,
+    cancelCompile,
     cleanCompile,
     viewArtifact
   };

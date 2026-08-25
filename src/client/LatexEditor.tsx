@@ -540,6 +540,7 @@ export function LatexEditor({
 
   useEffect(() => {
     if (!spellSuggestionMenu) return;
+    const editor = view.current;
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (event.target instanceof Element && event.target.closest(".spell-suggestions-menu")) return;
       setSpellSuggestionMenu(null);
@@ -547,13 +548,16 @@ export function LatexEditor({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSpellSuggestionMenu(null);
     };
+    const closeOnEditorScroll = () => setSpellSuggestionMenu(null);
     document.addEventListener("mousedown", closeOnOutsideClick, true);
     document.addEventListener("keydown", closeOnEscape, true);
+    editor?.scrollDOM.addEventListener("scroll", closeOnEditorScroll, { passive: true });
     return () => {
       document.removeEventListener("mousedown", closeOnOutsideClick, true);
       document.removeEventListener("keydown", closeOnEscape, true);
+      editor?.scrollDOM.removeEventListener("scroll", closeOnEditorScroll);
     };
-  }, [spellSuggestionMenu]);
+  }, [spellSuggestionMenu, filePath]);
 
   useEffect(() => {
     const editor = view.current;

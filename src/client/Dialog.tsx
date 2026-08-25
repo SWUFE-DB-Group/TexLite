@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useTranslation } from "react-i18next";
+import { LoaderCircle } from "lucide-react";
 
 interface ModalProps {
   open: boolean;
@@ -40,6 +41,6 @@ export function ConfirmDialog({ open, title, description, confirmLabel, danger, 
   const { t } = useTranslation();
   return <Modal open={open} title={title} description={description} onOpenChange={(next) => { if (!next && !busy) onCancel(); }} footer={<>
     <button disabled={busy} onClick={onCancel}>{t("common.cancel")}</button>
-    <button className={danger ? "danger" : "primary"} disabled={busy} aria-busy={busy} onClick={onConfirm}>{confirmLabel ?? t("common.remove")}</button>
+    <button className={danger ? "danger" : "primary"} disabled={busy} aria-busy={busy} onClick={onConfirm}>{busy && <LoaderCircle className="spin" size={14} />}{confirmLabel ?? t("common.remove")}</button>
   </>}><>{error && <p className="error dialog-error">{error}</p>}<div /></></Modal>;
 }

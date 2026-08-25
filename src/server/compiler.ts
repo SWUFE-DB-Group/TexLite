@@ -22,6 +22,8 @@ export interface CompileTimings {
 
 export interface CompileResult {
   ok: boolean;
+  /** The requester explicitly stopped this run before it could publish output. */
+  cancelled?: boolean;
   log: string;
   diagnostics: CompileDiagnostics;
   pdfPath: string | null;
@@ -73,6 +75,14 @@ export interface CoordinatedCompileResult extends CompileResult {
   errorCode?: string;
 }
 
+/** A controlled stop is a normal compile outcome, never a server error. */
+export class CompileCancelledError extends Error {
+  constructor() {
+    super("Compilation was cancelled.");
+    this.name = "CompileCancelledError";
+  }
+}
+
 export interface CoordinatedCompileJob {
   projectId: string;
   target?: string;
@@ -87,8 +97,10 @@ export interface CoordinatedCompileJob {
   revision: string;
   onQueued: () => void;
   onSelected: () => void;
-  onDiscarded: (reason: "duplicate" | "superseded") => void;
-  execute: () => Promise<CoordinatedCompileResult>;
+  onDiscarded: (reason: "duplicate" | "superseded" | "cancelled") => void;
+  /** Called only when a queued job is cancelled before execution begins. */
+  onCancelled?: () => void;
+  execute: (signal: AbortSignal) => Promise<CoordinatedCompileResult>;
 }
 
 type Task = () => Promise<void>;
@@ -99,15 +111,36 @@ export class CompileQueue {
 
   constructor(private readonly concurrency: number) {}
 
-  add<T>(job: () => Promise<T>): Promise<T> {
+  add<T>(job: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      this.pending.push(async () => {
+      let started = false;
+      const cancelPending = () => {
+        if (started) return;
+        const index = this.pending.indexOf(task);
+        if (index < 0) return;
+        this.pending.splice(index, 1);
+        reject(new CompileCancelledError());
+        this.drain();
+      };
+      const task = async () => {
+        started = true;
+        signal?.removeEventListener("abort", cancelPending);
+        if (signal?.aborted) {
+          reject(new CompileCancelledError());
+          return;
+        }
         try {
           resolve(await job());
         } catch (error) {
           reject(error);
         }
-      });
+      };
+      if (signal?.aborted) {
+        reject(new CompileCancelledError());
+        return;
+      }
+      this.pending.push(task);
+      signal?.addEventListener("abort", cancelPending, { once: true });
       this.drain();
     });
   }
@@ -134,6 +167,8 @@ interface ManagedCompileJob {
   promise: Promise<CoordinatedCompileResult>;
   resolve: (result: CoordinatedCompileResult) => void;
   reject: (error: unknown) => void;
+  controller: AbortController;
+  started: boolean;
 }
 
 interface ProjectCompileState {
@@ -191,8 +226,41 @@ export class ProjectCompileCoordinator {
     return managed.promise;
   }
 
+  /**
+   * Stop the active target and discard any newer pending request for it. A
+   * target has one writer-visible compile at a time, so cancelling the whole
+   * target avoids immediately starting a stale follow-up compilation.
+   */
+  cancel(projectId: string, target?: string): { runId: string; status: "queued" | "running" } | null {
+    const targetKey = `${projectId}\0${target ?? ""}`;
+    const state = this.targets.get(targetKey);
+    const active = state?.active;
+    if (!active) return null;
+    const status = active.started ? "running" : "queued";
+    active.controller.abort();
+    if (state?.pending) {
+      const pending = state.pending;
+      state.pending = null;
+      pending.controller.abort();
+      pending.input.onDiscarded("cancelled");
+      pending.resolve(cancelledCompileResult(pending.input));
+    }
+    return { runId: active.input.runId, status };
+  }
+
   private start(targetKey: string, state: ProjectCompileState, job: ManagedCompileJob): void {
-    void this.queue.add(job.input.execute).then(job.resolve, job.reject).finally(() => {
+    void this.queue.add(async () => {
+      job.started = true;
+      if (job.controller.signal.aborted) throw new CompileCancelledError();
+      return await job.input.execute(job.controller.signal);
+    }, job.controller.signal).then(job.resolve, (error: unknown) => {
+      if (error instanceof CompileCancelledError) {
+        job.input.onCancelled?.();
+        job.resolve(cancelledCompileResult(job.input));
+        return;
+      }
+      job.reject(error);
+    }).finally(() => {
       if (state.active !== job) return;
       state.active = null;
       const next = state.pending;
@@ -219,7 +287,20 @@ function deferredJob(input: CoordinatedCompileJob): ManagedCompileJob {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
-  return { input, promise, resolve, reject };
+  return { input, promise, resolve, reject, controller: new AbortController(), started: false };
+}
+
+function cancelledCompileResult(input: CoordinatedCompileJob): CoordinatedCompileResult {
+  return {
+    runId: input.runId,
+    revision: input.revision,
+    ok: false,
+    cancelled: true,
+    log: new CompileCancelledError().message,
+    diagnostics: { warnings: [], errors: [] },
+    pdfPath: null,
+    synctexPath: null
+  };
 }
 
 export async function captureCompileSnapshot(
@@ -686,8 +767,11 @@ export async function compileProject(
   snapshot: CompileSnapshot,
   mainFileInput: string,
   engine: "pdflatex" | "xelatex" | "lualatex",
-  latexmkrcInput: string | null
+  latexmkrcInput: string | null,
+  options: { signal?: AbortSignal } = {}
 ): Promise<CompileResult> {
+  const { signal } = options;
+  if (signal?.aborted) return cancelledCompileResultForProject();
   const mainFile = safeRelativePath(mainFileInput);
   if (!/\.tex$/i.test(mainFile)) throw new Error("The main file must have a .tex extension");
   const startedAt = performance.now();
@@ -702,6 +786,9 @@ export async function compileProject(
   const cacheStartedAt = performance.now();
   const cache = prepareCompileCache(config, snapshot, mainFile, engine, latexmkrc);
   const cacheSyncMs = performance.now() - cacheStartedAt;
+  if (signal?.aborted) return cancelledCompileResultForProject({
+    cacheSyncMs, latexmkMs: 0, artifactCopyMs: 0, totalMs: performance.now() - startedAt
+  });
   const cwd = cache.sourceDir;
   const outDir = cache.outputDir;
 
@@ -724,7 +811,7 @@ export async function compileProject(
   args.push(...config.extraArgs, mainFile);
 
   const latexmkStartedAt = performance.now();
-  const processResult = await new Promise<{ code: number | null; log: string }>((resolve, reject) => {
+  const processResult = await new Promise<{ code: number | null; log: string; cancelled: boolean }>((resolve, reject) => {
     const child = spawn(config.latexmk, args, {
       cwd,
       shell: false,
@@ -733,27 +820,51 @@ export async function compileProject(
       stdio: ["ignore", "pipe", "pipe"]
     });
     let log = "";
+    let cancelled = false;
     const append = (chunk: Buffer): void => {
       log += chunk.toString("utf8");
       if (log.length > 2_000_000) log = log.slice(-2_000_000);
     };
     child.stdout.on("data", append);
     child.stderr.on("data", append);
-    child.on("error", reject);
 
-    const timeout = setTimeout(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const cancel = () => {
+      if (cancelled) return;
+      cancelled = true;
+      log += "\nCompilation was cancelled.\n";
+      killProcessGroup(child);
+    };
+    const removeAbortListener = () => signal?.removeEventListener("abort", cancel);
+    child.once("error", (error) => {
+      if (timeout) clearTimeout(timeout);
+      removeAbortListener();
+      reject(error);
+    });
+
+    timeout = setTimeout(() => {
+      if (cancelled) return;
       log += `\nCompilation exceeded ${config.compileTimeoutMs / 1000} seconds and was terminated.\n`;
       killProcessGroup(child);
     }, config.compileTimeoutMs);
 
+    if (signal?.aborted) cancel();
+    else signal?.addEventListener("abort", cancel, { once: true });
+
     child.on("close", (code) => {
-      clearTimeout(timeout);
-      resolve({ code, log });
+      if (timeout) clearTimeout(timeout);
+      removeAbortListener();
+      resolve({ code, log, cancelled });
     });
   });
   const latexmkMs = performance.now() - latexmkStartedAt;
   const basename = texFileStem(mainFile);
   const cachedPdf = path.join(outDir, `${basename}.pdf`);
+  if (processResult.cancelled || signal?.aborted) {
+    return cancelledCompileResultForProject({
+      cacheSyncMs, latexmkMs, artifactCopyMs: 0, totalMs: performance.now() - startedAt
+    }, processResult.log);
+  }
   const ok = processResult.code === 0 && fs.existsSync(cachedPdf);
   const diagnostics = parseCompileDiagnostics(processResult.log, ok ? "succeeded" : "failed");
   if (!ok) {
@@ -762,11 +873,29 @@ export async function compileProject(
       timings: { cacheSyncMs, latexmkMs, artifactCopyMs: 0, totalMs: performance.now() - startedAt }
     };
   }
+  if (signal?.aborted) return cancelledCompileResultForProject({
+    cacheSyncMs, latexmkMs, artifactCopyMs: 0, totalMs: performance.now() - startedAt
+  });
   const artifactStartedAt = performance.now();
   const artifacts = materializeCompileArtifacts(cache, snapshot, basename);
   const artifactCopyMs = performance.now() - artifactStartedAt;
   return {
     ok: true, log: processResult.log, diagnostics, ...artifacts,
     timings: { cacheSyncMs, latexmkMs, artifactCopyMs, totalMs: performance.now() - startedAt }
+  };
+}
+
+function cancelledCompileResultForProject(timings?: CompileTimings, log = ""): CompileResult {
+  const message = log.includes("Compilation was cancelled.")
+    ? log
+    : `${log}${log && !log.endsWith("\n") ? "\n" : ""}Compilation was cancelled.\n`;
+  return {
+    ok: false,
+    cancelled: true,
+    log: message,
+    diagnostics: parseCompileDiagnostics(message, "failed"),
+    pdfPath: null,
+    synctexPath: null,
+    ...(timings ? { timings } : {})
   };
 }

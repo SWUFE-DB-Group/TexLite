@@ -12,6 +12,7 @@ import {
   captureCompileSnapshot,
   cleanCompileArtifacts,
   cleanCompileCache,
+  CompileCancelledError,
   compileProject,
   discardCompileSnapshot,
   hasCompileCache,
@@ -71,6 +72,10 @@ function pdfResponseMetadata(config: Config, pdfPath: string | null): {
 
 function mainDocumentChangedError(): Error {
   return httpError(409, "MAIN_DOCUMENT_CHANGED");
+}
+
+function throwIfCompileCancelled(signal: AbortSignal): void {
+  if (signal.aborted) throw new CompileCancelledError();
 }
 
 class CompileSnapshotBusyError extends Error {
@@ -317,6 +322,19 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     } });
   });
 
+  app.post("/api/projects/:id/compile/cancel", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || !canEdit(project)) return apiError(reply, 403, "COMPILE_FORBIDDEN");
+    const body = (request.body ?? {}) as { mainFile?: unknown };
+    const mainFile = compileMainFile(config, id, project.main_file, body.mainFile);
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
+    const cancelled = compileCoordinator.cancel(id, mainFile);
+    return { cancelled: Boolean(cancelled), mainFile, runId: cancelled?.runId ?? null, status: cancelled?.status ?? null };
+  });
+
   app.post("/api/projects/:id/compile", async (request, reply) => {
     const requestStartedAt = performance.now();
     const user = requireUser(request, reply, db);
@@ -408,20 +426,28 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       onDiscarded: () => {
         db.prepare("DELETE FROM compile_runs WHERE id = ? AND status = 'queued'").run(runId);
       },
+      onCancelled: () => {
+        phase = "failed";
+        db.prepare("UPDATE compile_runs SET status = 'failed', log = ?, finished_at = ? WHERE id = ? AND status IN ('queued', 'running')")
+          .run(new CompileCancelledError().message, now(), runId);
+        broadcast();
+      },
       // The compile reservation protects the shared compiler cache and
       // prevents Git/cleanup/deletion from replacing the project while
       // latexmk is running, but it deliberately does not occupy the ordinary
       // project queue for the duration of the subprocess.
-      execute: async () => projectMutations.runCompile(id, async () => {
+      execute: async (signal) => projectMutations.runCompile(id, async () => {
         let snapshot: CompileSnapshot | null = null;
         let snapshotMs = 0;
         const snapshotStartedAt = performance.now();
         try {
+          throwIfCompileCancelled(signal);
           // Revalidate settings after queued source operations. Do not use the
           // in-memory collaboration revision to skip before a snapshot: it is
           // not a durable content version and can collide after a room restart
           // or reconnect.
           await projectMutations.runSerialized(id, () => {
+            throwIfCompileCancelled(signal);
             const currentProject = accessibleProject(db, id, user);
             if (!currentProject || !canEdit(currentProject)) {
               throw new Error("Project access changed while waiting for a source snapshot");
@@ -433,6 +459,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             mainFile = currentMainFile;
           });
           const captured = await projectMutations.runSerialized(id, async () => {
+            throwIfCompileCancelled(signal);
             const currentProject = accessibleProject(db, id, user);
             if (!currentProject || !canEdit(currentProject)) {
               throw new Error("Project access changed while waiting for a source snapshot");
@@ -469,6 +496,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
                   extraArgs: config.extraArgs,
                   generation: generationKey
                 });
+                throwIfCompileCancelled(signal);
               } catch (error) {
                 captureError = error;
               }
@@ -503,6 +531,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             throw new CompileSnapshotBusyError();
           }, { flush: false });
           snapshot = captured;
+          throwIfCompileCancelled(signal);
           snapshotMs = performance.now() - snapshotStartedAt;
           metrics.record("compile.snapshot", snapshotMs);
 
@@ -548,15 +577,17 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
           broadcast();
           let compiled;
           try {
-            compiled = await compileProject(config, snapshot, mainFile, project.engine, project.latexmkrc);
+            compiled = await compileProject(config, snapshot, mainFile, project.engine, project.latexmkrc, { signal });
             refreshSnapshotStale();
             if (compiled.ok && compiled.pdfPath) {
+              throwIfCompileCancelled(signal);
               const publishStartedAt = performance.now();
               // Publishing is short and atomic, but still goes through the
               // ordinary project queue so it cannot overlap a source-tree
               // archive/read or another output mutation. The long latexmk
               // process above remains outside that queue.
               await projectMutations.runSerialized(id, () => {
+                throwIfCompileCancelled(signal);
                 if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)) {
                   throw new Error("Project was deleted before compile artifacts could be published.");
                 }
@@ -576,12 +607,18 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             snapshot = null;
             compiled = {
               ok: false,
+              ...(error instanceof CompileCancelledError ? { cancelled: true } : {}),
               log: error instanceof Error ? error.message : String(error),
               diagnostics: parseCompileDiagnostics(error instanceof Error ? error.message : String(error), "failed"),
               pdfPath: null,
               synctexPath: null
             };
           }
+          // A killed latexmk can leave an incomplete dependency database in
+          // the incremental cache. Keep the last published PDF, but make the
+          // next requested compile a clean rebuild instead of trusting that
+          // partial state.
+          if (compiled.cancelled) cleanCompileCache(config, id, mainFile);
           phase = compiled.ok ? "succeeded" : "failed";
           db.prepare("UPDATE compile_runs SET status = ?, log = ?, finished_at = ? WHERE id = ?")
             .run(phase, compiled.log, now(), runId);
@@ -615,6 +652,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
           broadcast();
           return {
             ok: false,
+            ...(error instanceof CompileCancelledError ? { cancelled: true } : {}),
             log,
             diagnostics: parseCompileDiagnostics(log, "failed"),
             pdfPath: null,
@@ -665,7 +703,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       `total;dur=${timingDuration(requestMs)}`
     ].filter(Boolean).join(", "));
     return {
-      mainFile, runId: result.runId, ok: result.ok, skipped: result.skipped === true, log: result.log, diagnostics: result.diagnostics,
+      mainFile, runId: result.runId, ok: result.ok, cancelled: result.cancelled === true, skipped: result.skipped === true, log: result.log, diagnostics: result.diagnostics,
       pdfUrl: result.ok ? compilePdfUrl(id, mainFile, result.runId) : null,
       pdfCompiledAt: result.ok ? completed?.finished_at ?? null : null,
       ...pdfMetadata,

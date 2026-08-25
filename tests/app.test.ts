@@ -487,6 +487,40 @@ Standalone document.
     }
   });
 
+  it("allows an editor to cancel an active compilation without publishing output", async () => {
+    const originalLatexmk = config.latexmk;
+    const fakeLatexmk = path.join(root, "cancel-latexmk.mjs");
+    fs.writeFileSync(fakeLatexmk, "#!/usr/bin/env node\nsetInterval(() => {}, 1000);\n", { mode: 0o700 });
+    fs.chmodSync(fakeLatexmk, 0o700);
+    config.latexmk = fakeLatexmk;
+    try {
+      const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Cancelable compile" } });
+      const project = created.json().project as { id: string };
+      const compiling = app.inject({ method: "POST", url: `/api/projects/${project.id}/compile`, headers: { cookie } });
+      let active = false;
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const run = db.prepare("SELECT status FROM compile_runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1")
+          .get(project.id) as { status: string } | undefined;
+        if (run?.status === "running") { active = true; break; }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(active).toBe(true);
+
+      const cancelled = await app.inject({
+        method: "POST", url: `/api/projects/${project.id}/compile/cancel`, headers: { cookie }, payload: { mainFile: "main.tex" }
+      });
+      expect(cancelled.statusCode).toBe(200);
+      expect(cancelled.json()).toMatchObject({ cancelled: true, mainFile: "main.tex", status: "running" });
+      const result = await compiling;
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toMatchObject({ ok: false, cancelled: true });
+      expect(db.prepare("SELECT status FROM compile_runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1").get(project.id))
+        .toMatchObject({ status: "failed" });
+    } finally {
+      config.latexmk = originalLatexmk;
+    }
+  }, 10_000);
+
   it("creates folders and moves files and directories while preserving linked paths", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Organized" } });
     const project = created.json().project;
@@ -524,6 +558,13 @@ Standalone document.
       payload: { source: "archive/chapters/main.tex", destinationDirectory: "archive/chapters", destinationName: "paper.tex" }
     });
     expect(renamedMain.json()).toMatchObject({ path: "archive/chapters/paper.tex" });
+    const invalidMainRename = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}/path`, headers: { cookie },
+      payload: { source: "archive/chapters/paper.tex", destinationDirectory: "archive/chapters", destinationName: "paper.tex.bak" }
+    });
+    expect(invalidMainRename.statusCode).toBe(400);
+    expect(invalidMainRename.json()).toMatchObject({ code: "MAIN_DOCUMENT_INVALID" });
+    expect(fs.existsSync(path.join(config.projectsDir, project.id, "source", "archive", "chapters", "paper.tex"))).toBe(true);
     const renamedFolder = await app.inject({
       method: "PATCH", url: `/api/projects/${project.id}/path`, headers: { cookie },
       payload: { source: "archive/chapters", destinationDirectory: "archive", destinationName: "sections" }

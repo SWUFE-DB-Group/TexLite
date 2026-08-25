@@ -15,19 +15,54 @@ export class ApiError extends Error {
   }
 }
 
+function isAbortError(error: unknown): error is Error {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+/** Normalize raw fetch failures for the few endpoints that stream non-JSON. */
+export function normalizeNetworkError(error: unknown): Error {
+  if (isAbortError(error) || error instanceof ApiError) return error;
+  return new ApiError(i18n.t("network.requestFailed"), 0, "NETWORK_ERROR");
+}
+
+function isFormData(body: BodyInit | null | undefined): boolean {
+  return typeof FormData !== "undefined" && body instanceof FormData;
+}
+
 export async function api<T>(url: string, options: ApiRequestInit = {}): Promise<T> {
   const { suppressSessionExpired = false, ...requestOptions } = options;
   const headers = new Headers(requestOptions.headers);
   if (!headers.has("Accept-Language")) {
     headers.set("Accept-Language", i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en");
   }
-  if (requestOptions.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const response = await fetch(url, {
-    ...requestOptions,
-    headers
-  });
+  if (requestOptions.body && !isFormData(requestOptions.body) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...requestOptions,
+      headers
+    });
+  } catch (error) {
+    // Route changes intentionally abort outstanding requests. Preserve that
+    // signal for callers; every other transport exception becomes a friendly,
+    // localized API error instead of exposing raw browser text.
+    throw normalizeNetworkError(error);
+  }
   const contentType = response.headers.get("content-type") ?? "";
-  const body = contentType.includes("application/json") ? await response.json() : null;
+  let body: unknown = null;
+  if (contentType.includes("application/json")) {
+    try {
+      body = await response.json();
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      throw new ApiError(i18n.t("network.invalidResponse"), response.status, "INVALID_RESPONSE");
+    }
+  } else if (response.ok) {
+    // Every endpoint routed through api<T> is JSON. Treat an HTML proxy page
+    // or truncated text response as a recoverable transport failure here,
+    // rather than letting a later property access leak a raw TypeError.
+    throw new ApiError(i18n.t("network.invalidResponse"), response.status, "INVALID_RESPONSE");
+  }
   if (!response.ok) {
     if (response.status === 401 && !suppressSessionExpired && typeof window !== "undefined") {
       window.dispatchEvent(new Event("texlite:session-expired"));

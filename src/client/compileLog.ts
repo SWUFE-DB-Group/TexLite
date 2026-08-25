@@ -3,7 +3,7 @@ export interface CompileMessages {
   errors: string[];
 }
 
-export type CompileOutcome = "succeeded" | "failed" | null;
+export type CompileOutcome = "succeeded" | "failed" | "cancelled" | null;
 
 export function classifyCompileLog(log: string, outcome: CompileOutcome = null): CompileMessages {
   const lines = normalizedLines(log);

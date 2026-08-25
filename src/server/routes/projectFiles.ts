@@ -222,6 +222,14 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     const sourceAbsolute = resolveSourcePath(config, id, source);
     if (!fs.existsSync(sourceAbsolute)) return apiError(reply, 404, "PATH_NOT_FOUND", { path: source });
     if (destination === source) return { ok: true, path: source };
+    // Moving the configured root to (for example) main.tex.bak used to
+    // silently store that non-TeX path as main_file. The next compilation
+    // then failed long after the rename had appeared to succeed. Keep the
+    // current root a TeX file; users can first select another root document
+    // in project settings when they genuinely want to retire this one.
+    if (source === project.main_file && !/\.tex$/i.test(destination)) {
+      return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
+    }
     const initialSourceStat = fs.statSync(sourceAbsolute);
     if (initialSourceStat.isDirectory() && (destinationDirectory === source || destinationDirectory.startsWith(`${source}/`))) {
       return apiError(reply, 400, "MOVE_INTO_SELF", { path: source });
@@ -238,6 +246,9 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     const validateMove = (): void => {
       currentProject = requireEditableProject(db, id, user);
       assertNoSourceSymlinks(config, id);
+      if (source === currentProject.main_file && !/\.tex$/i.test(destination)) {
+        throw httpError(400, "MAIN_DOCUMENT_INVALID");
+      }
       if (!fs.existsSync(sourceAbsolute)) {
         throw httpError(404, "PATH_NOT_FOUND", { path: source });
       }

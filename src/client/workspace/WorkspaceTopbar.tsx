@@ -1,4 +1,4 @@
-import { AlignLeft, ArrowLeft, BookMarked, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, Users } from "lucide-react";
+import { AlignLeft, ArrowLeft, BookMarked, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, Users, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ActiveSession, CollaborationStatus, SharedCompileState } from "../collaboration";
 import type { EditorPreferences } from "../editorPreferences";
@@ -16,6 +16,7 @@ export interface WorkspaceTopbarProps {
   activeSessions: ActiveSession[];
   collaborationStatus: CollaborationStatus;
   reconnectCollaboration: () => void;
+  protocolUpgradeRequired: boolean;
   showEditor: boolean;
   filesCollapsed: boolean;
   toggleFilesPanel: () => void;
@@ -47,18 +48,20 @@ export interface WorkspaceTopbarProps {
   compileBusy: boolean;
   sharedCompiling: boolean;
   localCompiling: boolean;
+  cancelling: boolean;
   compileState: SharedCompileState | null;
   onCompile: () => void;
+  onCancelCompile: () => void;
 }
 
 export function WorkspaceTopbar({
   site, project, activeFile, saveStateLabel, editorPreferences, activeSessions, collaborationStatus,
-  reconnectCollaboration, showEditor, filesCollapsed, toggleFilesPanel, workspaceLayout,
+  reconnectCollaboration, protocolUpgradeRequired, showEditor, filesCollapsed, toggleFilesPanel, workspaceLayout,
   changeWorkspaceLayout, onBack, onShare, showCitationLibrary, citationLibraryOpen,
   onCitationLibrary, onHistory, onGit, canManageGit, formatting, readOnly, collaborationSynced,
   canFormat, activeFormatLease, onFormatFile, onFormatSelection, hasSelection, onAddComment,
   onToggleComments, commentsOpen, unresolvedCommentCount, hasActiveFile, onToggleSettings,
-  settingsOpen, compileBusy, sharedCompiling, localCompiling, compileState, onCompile
+  settingsOpen, compileBusy, sharedCompiling, localCompiling, cancelling, compileState, onCompile, onCancelCompile
 }: WorkspaceTopbarProps) {
   const { t } = useTranslation();
   return <header className="editor-topbar">
@@ -67,7 +70,7 @@ export function WorkspaceTopbar({
     <div className="project-heading"><strong>{project.name}</strong><small>{activeFile} · {saveStateLabel}</small></div>
     {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
     <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
-    {collaborationStatus === "disconnected" && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
+    {collaborationStatus === "disconnected" && !protocolUpgradeRequired && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
     <div className="editor-actions">
       {showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}
       <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} />
@@ -95,7 +98,9 @@ export function WorkspaceTopbar({
         </div>
       </div>
       <button className={settingsOpen ? "active" : ""} onClick={onToggleSettings}><Settings size={15} />{t("common.settings")}</button>
-      <button className="compile" title={sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : t("editor.compileShortcut")} onClick={onCompile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{sharedCompiling ? t("editor.compilingBy", { name: compileState?.requestedBy.name ?? "" }) : localCompiling ? t("editor.compiling") : t("editor.compile", { engine: project.engine })}</button>
+      {sharedCompiling || localCompiling
+        ? <button className="compile cancel-compile" title={t("compileControls.cancel")} onClick={onCancelCompile} disabled={cancelling || formatting || readOnly || !collaborationSynced}>{cancelling ? <LoaderCircle className="spin" size={15} /> : <X size={15} />}{cancelling ? t("compileControls.cancelling") : t("compileControls.cancel")}</button>
+        : <button className="compile" title={t("editor.compileShortcut")} onClick={onCompile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}{t("editor.compile", { engine: project.engine })}</button>}
     </div>
   </header>;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { api, localizedResponseError } from "../api";
+import { api, ApiError, localizedResponseError, normalizeNetworkError, responseErrorCode } from "../api";
 import { errorMessage } from "../errors";
 import type { FileEntry, Project, SiteConfig } from "../types";
 
@@ -184,23 +184,21 @@ export function useProjectFiles({
         const destination = query.toString() ? `?${query.toString()}` : "";
         const data = new FormData();
         data.append("file", file);
-        const response = await fetch(`/api/projects/${projectId}/upload${destination}`, { method: "POST", body: data });
-        const result = await response.json().catch(() => ({})) as { code?: unknown; path?: unknown };
-        if (!response.ok) {
-          if (response.status === 409 && !overwritePaths.has(uploadPath) && result.code === "FILE_EXISTS") {
+        try {
+          const result = await api<{ path?: unknown }>(`/api/projects/${projectId}/upload${destination}`, { method: "POST", body: data });
+          if (typeof result.path === "string" && isEditableTextFile(result.path)) lastTextPath = result.path;
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 409 && !overwritePaths.has(uploadPath) && error.code === "FILE_EXISTS") {
             if (index > 0) await loadFiles();
             setUploadConflict({
               files: filesToUpload.slice(index),
               directory,
-              collisions: [typeof result.path === "string" ? result.path : uploadPath]
+              collisions: [uploadPath]
             });
             return;
           }
-          throw new Error(response.status === 409
-            ? t("errors.pathConflict")
-            : localizedResponseError(result, response.status, "errors.upload"));
+          throw error;
         }
-        if (typeof result.path === "string" && isEditableTextFile(result.path)) lastTextPath = result.path;
       }
       await loadFiles();
       if (lastTextPath) onActiveFile(lastTextPath);
@@ -232,9 +230,23 @@ export function useProjectFiles({
     const controller = new AbortController();
     resourceRequest.current = controller;
     try {
-      const response = await fetch(url, { signal: controller.signal });
+      let response: Response;
+      try {
+        response = await fetch(url, { signal: controller.signal });
+      } catch (error) {
+        throw normalizeNetworkError(error);
+      }
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!response.ok) {
+        let body: unknown = null;
+        try {
+          body = contentType.includes("application/json") ? await response.json() : await response.text();
+        } catch {
+          // The status remains enough for a localized fallback below.
+        }
+        throw new ApiError(localizedResponseError(body, response.status), response.status, responseErrorCode(body));
+      }
       const text = await response.text();
-      if (!response.ok) throw new Error(text || t("errors.request", { status: response.status }));
       setResourcePreview((current) => current?.path === entry.path ? { ...current, content: text } : current);
     } catch (error) {
       if (!isAbortError(error)) {
