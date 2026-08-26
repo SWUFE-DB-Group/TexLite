@@ -1,7 +1,7 @@
 # TexLite
 
-TexLite 是面向少量可信协作者的轻量、本机优先 LaTeX 网页工作区。它支持在浏览器中
-共同编写、编译、预览和讨论，同时直接复用服务器上已经安装的 LaTeX 环境。
+面向*小型、可信*研究团队的轻量自托管 Overleaf 替代方案。直接使用现有的 LaTeX
+发行版，无需沉重的服务栈。
 
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)

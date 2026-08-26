@@ -1,9 +1,7 @@
 # TexLite
 
-TexLite is a lightweight, local-first web workspace for a small, trusted team
-writing LaTeX together. It provides browser-based editing, compilation,
-previewing, and source-level discussion while reusing the LaTeX installation
-already present on the host.
+A lightweight self-hosted alternative to Overleaf for *small, trusted* research
+teams. Use your existing LaTeX distribution, with no heavyweight service stack.
 
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)
