@@ -24,6 +24,9 @@
     "dist",
     "README.md",
     "README.zh-CN.md",
+    "OPERATIONS.md",
+    "DESIGN.md",
+    "NPM_TESTING.md",
     "LICENSE",
     "preview.png",
     "texlite.config.example.json"

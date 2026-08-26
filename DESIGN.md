@@ -1,8 +1,9 @@
 # TexLite design
 
 This document records the design goals and the implementation choices that
-shape TexLite. It complements the [README](README.md), which focuses on
-installation, configuration, and day-to-day operation.
+shape TexLite. It complements the short [README](README.md) and the
+[operations guide](OPERATIONS.md), which covers installation, configuration,
+and day-to-day operation.
 
 ## Design goals
 
@@ -95,7 +96,8 @@ The data directory defaults to `$XDG_DATA_HOME/texlite` or
 `~/.local/share/texlite`, and can be changed with `storage.dataDir` or
 `TEXLITE_DATA_DIR`. Relative configured paths are resolved relative to the
 configuration file. The effective defaults and accepted ranges are documented
-in the README and are also available through `texlite config`.
+in the [operations guide](OPERATIONS.md) and are also available through
+`texlite config`.
 
 `texlite init` creates the configuration when necessary and creates the first
 administrator. The server refuses to start without at least one active
