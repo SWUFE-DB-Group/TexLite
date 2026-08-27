@@ -38,7 +38,9 @@ import { registerProjectGitRoutes } from "./routes/projectGit.js";
 import { registerProjectCatalogRoutes } from "./routes/projects.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerUserManagementRoutes } from "./routes/users.js";
+import { registerWordCountRoutes } from "./routes/wordCount.js";
 import { HarperService } from "./harper.js";
+import { TexcountService } from "./texcount.js";
 
 // Retained public helper for callers and tests; implementation lives with the file routes.
 export { escapeGlobPattern } from "./routes/projectShared.js";
@@ -65,6 +67,7 @@ export async function buildApp(
   const latexCompletions = new LatexCompletionService(config);
   const projectOutlines = new ProjectOutlineService(config);
   const harper = new HarperService();
+  const texcount = new TexcountService();
   // Probe the optional host Harper CLI without delaying startup. Its absence is
   // supported: the browser spellchecker remains the writing-check fallback.
   void harper.preload().catch((error) => app.log.info({ err: error }, "Optional Harper CLI is unavailable"));
@@ -117,6 +120,7 @@ export async function buildApp(
   app.addHook("onClose", async () => {
     eventLoopDelay.disable();
     await harper.dispose();
+    await texcount.dispose();
   });
   await app.register(cookie, { hook: "onRequest" });
   await app.register(websocket, { options: { maxPayload: 6 * 1024 * 1024 } });
@@ -205,6 +209,8 @@ export async function buildApp(
     harper,
     recordHistory
   });
+
+  registerWordCountRoutes(app, { config, db, projectMutations, texcount });
 
   registerCompileRoutes(app, { config, db, collaboration, projectMutations, compileCoordinator, metrics, pruneCompileRuns });
 

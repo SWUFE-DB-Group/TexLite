@@ -99,6 +99,10 @@ export function localizedResponseError(body: unknown, status: number, fallbackKe
       CITATION_KEY_EXISTS: "citationErrors.keyExists",
       CITATION_TAG_NOT_FOUND: "citationErrors.tagNotFound",
       CITATION_CONFLICT: "citationErrors.conflict",
+      WORD_COUNT_FAILED: "editor.wordCountFailed",
+      WORD_COUNT_SOURCE_INVALID: "editor.wordCountSourceInvalid",
+      WORD_COUNT_SOURCE_TOO_LARGE: "editor.wordCountSourceTooLarge",
+      WORD_COUNT_UNAVAILABLE: "editor.wordCountUnavailable",
     } as Record<string, string>)[code] ?? `errors.codes.${code}`;
     if (i18n.exists(key)) return i18n.t(key, { status, ...(typeof body === "object" && body !== null ? body : {}) });
   }

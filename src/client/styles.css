@@ -257,6 +257,11 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .outline-panel { min-height: 150px; flex: 2; overflow: auto; }
 .panel-title { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #e6e8e5; color: #647069; text-transform: uppercase; font-size: 11px; font-weight: 700; }
 .panel-title > span { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.outline-heading { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.word-count-actions { flex: none; display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.panel-title .word-count-actions button { width: auto; height: 26px; display: inline-flex; align-items: center; gap: 3px; padding: 0 5px; color: #52685a; font-size: 9px; text-transform: none; white-space: nowrap; }
+.panel-title .word-count-actions button:hover:not(:disabled) { background: #e8f1eb; color: #176b44; }
+.panel-title .word-count-actions button:disabled { opacity: .4; }
 .panel-title button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #5d6961; }
 .panel-title button:hover { background: #e8eeea; color: #176b44; }
 .panel-title .file-size-toggle { width: auto; min-width: 0; display: inline-flex; padding: 0 5px; font: inherit; text-transform: inherit; cursor: pointer; }
@@ -574,7 +579,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .share-empty { min-height: 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: #89928c; font-size: 12px; }
 .spin { animation: spin .8s linear infinite; }
 
-.dialog-overlay { position: fixed; z-index: 100; inset: 0; background: #101b15aa; backdrop-filter: blur(2px); animation: fade-in .12s ease-out; }
+.dialog-overlay { position: fixed; z-index: 100; inset: 0; background: rgb(16 27 21 / .18); animation: fade-in .12s ease-out; }
 .dialog-content { position: fixed; z-index: 101; top: 50%; left: 50%; width: min(460px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 40px)); overflow: auto; transform: translate(-50%, -50%); background: white; border-radius: 12px; box-shadow: 0 25px 80px #0004; animation: dialog-in .15s ease-out; }
 .dialog-wide { width: min(660px, calc(100vw - 32px)); }
 .dialog-extra-wide { width: min(900px, calc(100vw - 32px)); }
@@ -585,6 +590,26 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .dialog-body { padding: 20px 22px; }
 .dialog-body .warning { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 11px; border: 1px solid #e4cf91; border-radius: 7px; background: #fff8df; color: #735a18; font-size: 11px; line-height: 1.5; }
 .dialog-body .warning svg { flex: none; margin-top: 1px; }
+.word-count-source { margin: 0 0 15px; color: #68766d; font-size: 11px; }
+.word-count-source code { color: #315b43; font: 11px/1.4 "SFMono-Regular", Consolas, monospace; }
+.word-count-source a { margin-left: 8px; color: #176b44; font-size: 10px; }
+.word-count-template-note { margin: -6px 0 15px; color: #7b7566; font-size: 10px; line-height: 1.45; }
+.word-count-loading { min-height: 150px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #52685a; font-size: 12px; }
+.word-count-result { display: grid; gap: 16px; }
+.word-count-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.word-count-total { display: flex; align-items: baseline; gap: 8px; padding: 15px 16px; border: 1px solid #cfe0d3; border-radius: 9px; background: #edf6ef; color: #1e5f3d; }
+.word-count-total svg { align-self: center; }
+.word-count-total strong { font-size: 28px; line-height: 1; letter-spacing: -.03em; }
+.word-count-total span { color: #52705d; font-size: 11px; }
+.word-count-total small { display: block; margin-top: 2px; color: #75847a; font-size: 9px; font-weight: 400; line-height: 1.25; }
+.word-count-characters { border-color: #d8ddea; background: #f1f3f9; color: #405989; }
+.word-count-characters span { color: #617092; }
+.word-count-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+.word-count-breakdown div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid #edf0ed; }
+.word-count-breakdown dt { color: #68766d; font-size: 11px; }
+.word-count-breakdown dd { display: inline-flex; align-items: baseline; gap: 3px; margin: 0; color: #2f4938; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 650; }
+.word-count-breakdown dd small { color: #77847c; font-size: 9px; font-weight: 500; }
+.word-count-warning { margin: 0; }
 
 .system-metrics { display: grid; gap: 20px; }
 .metric-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

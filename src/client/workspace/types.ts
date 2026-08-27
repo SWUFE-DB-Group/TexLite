@@ -1,4 +1,5 @@
 export type WorkspaceLayout = "editor-pdf" | "editor-only" | "pdf-only";
+export type WordCountMode = "full" | "selection";
 
 export type PreviewTab = "pdf" | "log" | "warnings" | "errors" | "artifacts" | "clean";
 export type PreviewSurface = "pdf" | "diagnostics";

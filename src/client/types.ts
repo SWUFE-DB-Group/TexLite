@@ -65,6 +65,23 @@ export interface FileEntry {
   size?: number;
 }
 
+/** Counts returned by the host TeXcount command for a document or selection. */
+export interface WordCountResult {
+  mode: "full" | "selection";
+  path: string;
+  textWords: number;
+  headerWords: number;
+  captionWords: number;
+  totalWords: number;
+  headers: number;
+  floats: number;
+  inlineMath: number;
+  displayMath: number;
+  totalCharacters: number;
+  files: number | null;
+  parserErrors: number;
+}
+
 export interface CitationLibraryEntry {
   id: string;
   ownerId: string;

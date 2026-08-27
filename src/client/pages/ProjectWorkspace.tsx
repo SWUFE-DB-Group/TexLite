@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api";
-import type { CitationLibraryEntry, FileEntry, LatexCompletionIndex, Project, SiteConfig, User } from "../types";
+import type { CitationLibraryEntry, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
 import i18n from "../i18n";
 import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
@@ -11,7 +11,7 @@ import { BibtexFormatError, citationBibtexLimitLabel, formatBibtex, parseBibEntr
 import { classifyCompileLog } from "../compileLog";
 import type { CollaborationSaveReceipt, FormatLease } from "../collaboration";
 import { errorMessage } from "../errors";
-import type { WorkspaceLayout } from "../workspace/types";
+import type { WordCountMode, WorkspaceLayout } from "../workspace/types";
 import type { CompileCleanMode } from "../workspace/useProjectCompilation";
 import { useProjectComments, type SourceSelection } from "../workspace/useProjectComments";
 import { useProjectCollaboration } from "../workspace/useProjectCollaboration";
@@ -30,6 +30,7 @@ import { WorkspacePreviewPanel } from "../workspace/WorkspacePreviewPanel";
 import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
 import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
 import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
+import { WordCountDialog } from "../workspace/WordCountDialog";
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -93,6 +94,12 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
+  const [wordCountOpen, setWordCountOpen] = useState(false);
+  const [wordCountMode, setWordCountMode] = useState<WordCountMode>("full");
+  const [wordCountPath, setWordCountPath] = useState("");
+  const [wordCountBusy, setWordCountBusy] = useState(false);
+  const [wordCountError, setWordCountError] = useState("");
+  const [wordCountResult, setWordCountResult] = useState<WordCountResult | null>(null);
   const [formatting, setFormatting] = useState(false);
   const [formatterRecovery, setFormatterRecovery] = useState<FormatterRecovery | null>(null);
   const [formatterDiagnostics, setFormatterDiagnostics] = useState("");
@@ -113,6 +120,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const outlineRequest = useRef<AbortController | null>(null);
   const dictionaryRequest = useRef<AbortController | null>(null);
   const refreshRequest = useRef<AbortController | null>(null);
+  const wordCountRequest = useRef<AbortController | null>(null);
   const formattingRef = useRef(false);
   const formattingTaskRef = useRef<Promise<void> | null>(null);
   const onBackRef = useRef(onBack);
@@ -147,6 +155,12 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     setOpenTabs([]);
     setFormatterRecovery(null);
     setFormatterDiagnostics("");
+    wordCountRequest.current?.abort();
+    wordCountRequest.current = null;
+    setWordCountOpen(false);
+    setWordCountBusy(false);
+    setWordCountError("");
+    setWordCountResult(null);
   }, [projectId]);
 
   const closeTab = (tabPath: string) => {
@@ -481,6 +495,52 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       setSaveState("editor.saveFailed");
       setError(errorMessage(saveError) || t("errors.collaborationUnavailable"));
       return false;
+    }
+  };
+  const requestWordCount = async (mode: WordCountMode): Promise<void> => {
+    if (!project || wordCountBusy) return;
+    const filePath = mode === "full"
+      ? (activeMainFileRef.current || project.mainFile)
+      : activeFileRef.current;
+    const selectedText = mode === "selection" ? selectionRef.current.selectedText : "";
+    if (!filePath) return;
+    if (mode === "selection" && (!selectedText.trim() || !/\.(?:tex|sty|cls)$/i.test(filePath))) {
+      setNotice(t("editor.wordCountSelectionEmpty"));
+      return;
+    }
+    wordCountRequest.current?.abort();
+    const controller = new AbortController();
+    wordCountRequest.current = controller;
+    setWordCountMode(mode);
+    setWordCountPath(filePath);
+    setWordCountResult(null);
+    setWordCountError("");
+    setWordCountOpen(true);
+    setWordCountBusy(true);
+    try {
+      // A full-document count reads the persisted project tree. Flush the
+      // current editor first when possible so the result includes this tab's
+      // latest edit; the route performs a second consistency check for peers.
+      if (mode === "full" && dirty && project.permission !== "read") {
+        const saved = await save();
+        if (!saved) throw new Error(t("editor.wordCountSaveRequired"));
+      }
+      const payload = mode === "selection"
+        ? { mode, path: filePath, source: selectedText }
+        : { mode, mainFile: filePath };
+      const result = await api<WordCountResult>(`/api/projects/${projectId}/word-count`, {
+        method: "POST", body: JSON.stringify(payload), signal: controller.signal
+      });
+      if (controller.signal.aborted) return;
+      setWordCountResult(result);
+    } catch (countError) {
+      if (isAbortError(countError)) return;
+      if (!controller.signal.aborted) setWordCountError(errorMessage(countError));
+    } finally {
+      if (wordCountRequest.current === controller) {
+        wordCountRequest.current = null;
+        setWordCountBusy(false);
+      }
     }
   };
   const formatSource = async (filePath: string, source: string, texFmtConfig = editorPreferences.texFmtConfig): Promise<FormattedSource> => {
@@ -954,7 +1014,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
         activeFile={activeFile} activeMainFile={activeMainFile} rootDocuments={rootDocuments}
         selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
         uploadingFiles={uploadingFiles} readOnly={readOnly} editorFontSize={editorPreferences.fontSize}
-        outline={outline} sourceCursor={sourceCursor} uploadInput={uploadInput}
+        outline={outline} sourceCursor={sourceCursor} wordCountBusy={wordCountBusy}
+        hasSelection={Boolean(selection.selectedText.trim()) && /\.(?:tex|sty|cls)$/i.test(activeFile)} uploadInput={uploadInput}
         setSelectedFolder={setSelectedFolder} setExpandedFolders={setExpandedFolders}
         setMoveEntry={setMoveEntry} setMoveName={setMoveName} setMoveDestination={setMoveDestination}
         setDeleteEntry={setDeleteEntry} setFileDialogError={setFileDialogError}
@@ -963,7 +1024,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
         setQuickOpen={setQuickOpen} setProjectSearchOpen={setProjectSearchOpen}
         setFileDragActive={setFileDragActive} setFilesCollapsed={setFilesCollapsed} toggleFilesPanel={toggleFilesPanel}
         uploadFiles={uploadFiles} upload={upload} openFile={openFile}
-        jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf}
+        jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
       />}
       {showEditor && <PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle>}
       {showEditor && <WorkspaceEditorPanel
@@ -1008,6 +1069,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
         onProject={setProject}
       />
     </PanelGroup>
+    <WordCountDialog open={wordCountOpen} mode={wordCountMode} path={wordCountPath} busy={wordCountBusy}
+      error={wordCountError} result={wordCountResult} onOpenChange={setWordCountOpen} />
     <WorkspaceDialogs
       user={user} project={project} projectId={projectId} activeFile={activeFile}
       content={content} maxCitationBibtexBytes={site.maxCitationBibtexBytes} files={files} directoryEntries={directoryEntries} readOnly={readOnly}

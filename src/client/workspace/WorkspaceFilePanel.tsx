@@ -1,9 +1,9 @@
 import { useTranslation } from "react-i18next";
-import { BookOpen, ChevronDown, ChevronRight, FilePlus2, FileSearch, FileText, Folder, FolderOpen, FolderPlus, ListTree, Move, PanelLeftClose, Search, Trash2, Upload } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, FilePlus2, FileSearch, FileText, Folder, FolderOpen, FolderPlus, Hash, ListTree, LoaderCircle, Move, PanelLeftClose, Search, Trash2, Upload } from "lucide-react";
 import { useState, type ChangeEvent, type RefObject } from "react";
 import { Panel, type ImperativePanelHandle } from "react-resizable-panels";
 import type { FileEntry, Project } from "../types";
-import type { ProjectOutlineItem } from "./types";
+import type { WordCountMode, ProjectOutlineItem } from "./types";
 
 export interface WorkspaceFilePanelProps {
   project: Project;
@@ -21,6 +21,8 @@ export interface WorkspaceFilePanelProps {
   editorFontSize: number;
   outline: ProjectOutlineItem[];
   sourceCursor: { line: number; column: number };
+  wordCountBusy: boolean;
+  hasSelection: boolean;
   uploadInput: RefObject<HTMLInputElement | null>;
   setSelectedFolder: (folder: string) => void;
   setExpandedFolders: (updater: (current: Set<string>) => Set<string>) => void;
@@ -43,15 +45,16 @@ export interface WorkspaceFilePanelProps {
   openFile: (entry: FileEntry) => void;
   jumpToSource: (path: string, line: number, column: number) => void;
   syncSourceToPdf: (path: string, line: number, column: number) => Promise<void>;
+  onWordCount: (mode: WordCountMode) => void;
 }
 
 export function WorkspaceFilePanel({
   project, filesPanel, files, visibleEntries, activeFile, activeMainFile, rootDocuments, selectedFolder,
   expandedFolders, fileDragActive, uploadingFiles, readOnly, editorFontSize, outline, sourceCursor,
-  uploadInput, setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
+  wordCountBusy, hasSelection, uploadInput, setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
   setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen,
   setQuickOpen, setProjectSearchOpen, setFileDragActive, setFilesCollapsed, toggleFilesPanel, uploadFiles, upload, openFile,
-  jumpToSource, syncSourceToPdf
+  jumpToSource, syncSourceToPdf, onWordCount
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
   const [showFileSizes, setShowFileSizes] = useState(false);
@@ -74,7 +77,7 @@ export function WorkspaceFilePanel({
           })}
         </div>
       </section>
-      <section className="outline-panel"><div className="panel-title"><span><ListTree size={14} />{t("common.outline")}</span></div><div className="outline">{outline.map((item, i) => <button className={`outline-item${activeFile === item.path && sourceCursor.line === item.line ? " current" : ""}`} key={`${item.path}-${item.line}-${i}`} title={`${item.path}:${item.line}`} onClick={() => { jumpToSource(item.path, item.line, 1); void syncSourceToPdf(item.path, item.line, 1); }}><span className="outline-guides" aria-hidden style={{ width: `${item.level * 12}px` }} /><small>{item.path === activeFile ? item.line : item.path.split("/").at(-1)}</small><span className="outline-title">{item.title}</span></button>)}{outline.length === 0 && <p className="muted padded">{t("editor.noOutline")}</p>}</div></section>
+      <section className="outline-panel"><div className="panel-title"><span className="outline-heading"><ListTree size={14} />{t("common.outline")}</span><span className="word-count-actions" role="group" aria-label={t("editor.wordCountTitle")}><button type="button" title={t("editor.wordCountFullHint")} onClick={() => onWordCount("full")} disabled={wordCountBusy || !activeMainFile}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountFull")}</button><button type="button" title={t("editor.wordCountSelectionHint")} onClick={() => onWordCount("selection")} disabled={wordCountBusy || !hasSelection}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountSelection")}</button></span></div><div className="outline">{outline.map((item, i) => <button className={`outline-item${activeFile === item.path && sourceCursor.line === item.line ? " current" : ""}`} key={`${item.path}-${item.line}-${i}`} title={`${item.path}:${item.line}`} onClick={() => { jumpToSource(item.path, item.line, 1); void syncSourceToPdf(item.path, item.line, 1); }}><span className="outline-guides" aria-hidden style={{ width: `${item.level * 12}px` }} /><small>{item.path === activeFile ? item.line : item.path.split("/").at(-1)}</small><span className="outline-title">{item.title}</span></button>)}{outline.length === 0 && <p className="muted padded">{t("editor.noOutline")}</p>}</div></section>
     </aside>
   </Panel>;
 }
