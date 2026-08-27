@@ -45,6 +45,8 @@ work after a version bump.
 Use temporary XDG directories and a non-interactive administrator account:
 
 ~~~bash
+"$TEST_ROOT/prefix/bin/texlite" requirements
+
 XDG_CONFIG_HOME="$TEST_ROOT/config" \
 XDG_DATA_HOME="$TEST_ROOT/data" \
 TEXLITE_SITE_NAME='TexLite Package Test' \
@@ -64,8 +66,12 @@ XDG_DATA_HOME="$TEST_ROOT/data" \
 ~~~
 
 The `config` output should show the temporary configuration and data paths.
-`doctor` verifies the configuration, database, administrator, and host LaTeX
-commands. Git is optional; add `--git` when Git integration should be checked.
+`requirements` is safe before initialization: it checks only default host
+commands on `PATH` and does not read the temporary configuration or data.
+`doctor` verifies the configuration, database, administrator, and required
+host software in a table. It also reports optional Git, TeXcount,
+bibliography/index, and Harper tools without treating their absence as a
+failure to start TexLite.
 
 To verify the configurable data directory explicitly:
 

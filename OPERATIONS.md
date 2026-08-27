@@ -15,18 +15,32 @@ For the product's intended use and editor comparison, start with the
 Check a host before initialization:
 
 ~~~bash
+texlite requirements
+
+# Equivalent individual checks:
 node --version
 npm --version
 latexmk --version
 xelatex --version
-# Optional, for Git/GitHub integration:
+# Optional tools:
 git --version
+texcount -version
+harper-cli --version
+harper-ls --version
 ~~~
 
-`texlite init`, `texlite start`, and `texlite doctor` validate `latexmk` and
-every engine named in `latex.allowedEngines`. Git is intentionally excluded
-from the core check, so a host without Git can run TexLite normally; use
-`texlite doctor --git` to check it explicitly.
+`texlite init` and `texlite start` validate Node.js, `latexmk`, and every
+engine named in `latex.allowedEngines`. `texlite requirements` can be run
+before initialization: it checks only the default commands on `PATH`, without
+reading a configuration file or any TexLite data. It requires Node.js and
+`latexmk`, and requires at least one of the three supported LaTeX engines.
+`texlite doctor` presents the configured deployment checks and optional host
+tools in a table with their requirement level, installation state, and
+detected version. Missing optional tools never stop the editor:
+Git enables GitHub backup, TeXcount enables document statistics, and
+`harper-cli` enables spelling and grammar diagnostics. `harper-ls` is shown
+for host diagnosis and external editor integrations; TexLite itself invokes
+`harper-cli`.
 
 Formatting does not require a host binary. The browser uses bundled `tex-fmt`
 WASM for `.tex`, `.cls`, and `.sty`, and browser-side `bibtex-tidy` for `.bib`.
@@ -119,7 +133,8 @@ Avoid putting a password into shell history on a shared host.
 | `texlite start` / `stop` / `restart` | Manage the bundled-PM2 service. |
 | `texlite status` | Show a colored, systemctl-style status view; add `--json` for scripts. |
 | `texlite logs` | Stream PM2-managed logs. |
-| `texlite doctor` | Validate configuration, paths, LaTeX, and administrator state; add `--git` for optional Git. |
+| `texlite requirements` | Check default host commands on `PATH` without loading TexLite configuration or data. |
+| `texlite doctor` | Show configuration/application checks and a table of required and optional host software. Add `--json` for scripts. |
 | `texlite config` | Print effective configuration and paths without changing them. |
 
 `start`, `stop`, `restart`, `status`, and `logs` use the PM2 runtime bundled

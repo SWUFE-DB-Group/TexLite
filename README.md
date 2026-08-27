@@ -65,8 +65,12 @@ Install Node.js 24 or newer, `latexmk`, and at least one TeX engine such as
 `pdflatex`, `xelatex`, or `lualatex`. Git is needed only for the optional
 Git/GitHub integration.
 
+After installation, `texlite requirements` checks the relevant host software
+and versions before initialization.
+
 ~~~bash
 npm install --global texlite
+texlite requirements
 texlite init
 texlite start
 texlite status

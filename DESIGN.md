@@ -107,10 +107,13 @@ listener. Validation covers paths, limits, engines, timeout/queue settings,
 URLs, and cross-field constraints such as the default engine being present in
 the allowed-engine list.
 
-Startup and `doctor` check `latexmk` and every configured LaTeX engine. Git is
-optional: a host without Git can run the editor and compiler, while Git is
-checked on demand when an owner opens or uses Git integration (or explicitly
-with `texlite doctor --git`). Formatting is also optional: the browser loads
+Startup checks Node.js, `latexmk`, and every configured LaTeX engine.
+`texlite requirements` performs a configuration-free preflight over the
+default host commands, requiring Node.js, `latexmk`, and at least one supported
+LaTeX engine. `texlite doctor` also reports optional host tools in a
+requirement/status/version table: Git, TeXcount, bibliography/index tools,
+Harper CLI, and `harper-ls`. A host without Git can run the editor and compiler;
+Git is checked on demand when an owner opens or uses Git integration. Formatting is also optional: the browser loads
 the bundled npm `tex-fmt` WASM module and `bibtex-tidy` only when formatting is
 requested. TexLite never installs or updates TeX packages.
 

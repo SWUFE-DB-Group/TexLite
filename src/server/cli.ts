@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { CONFIG_DEFAULTS, loadConfig } from "./config.js";
 import { activeAdminCount, openDatabase } from "./db.js";
 import { hashPassword, MIN_PASSWORD_LENGTH } from "./security.js";
-import { assertEnvironment, assertGitAvailable } from "./environment.js";
+import { assertEnvironment, hostRequirementsSatisfied, inspectHostEnvironment, inspectHostRequirements, type EnvironmentTool } from "./environment.js";
 import { serve } from "./index.js";
 import { processStatus, restartManaged, startManaged, stopManaged, streamLogs, waitForOnline, type ProcessStatus } from "./pm2.js";
 import { defaultDataDirectory, resolveConfigPath } from "./runtimePaths.js";
@@ -17,8 +17,27 @@ import { defaultDataDirectory, resolveConfigPath } from "./runtimePaths.js";
 export interface CliOptions {
   command: string;
   configPath?: string;
-  checkGit: boolean;
   json: boolean;
+}
+
+export interface DoctorApplicationCheck {
+  name: string;
+  status: "passed" | "failed";
+  detail: string;
+}
+
+export interface DoctorReport {
+  configPath: string;
+  dataDir: string;
+  clientDir: string;
+  application: DoctorApplicationCheck[];
+  hostTools: EnvironmentTool[];
+  ok: boolean;
+}
+
+export interface RequirementsReport {
+  hostTools: EnvironmentTool[];
+  ok: boolean;
 }
 
 const HELP = `TexLite ${packageVersion()}
@@ -27,22 +46,23 @@ Usage:
   texlite <command> [options]
 
 Commands:
-  init       Create the configuration, initialize storage, and create the first administrator.
-  serve      Run the server in the foreground for debugging, Docker, or systemd.
-  start      Start the server in the background under PM2.
-  status     Show the status of the PM2-managed server.
-  stop       Stop the PM2-managed server.
-  restart    Restart (or start) the PM2-managed server.
-  logs       Stream logs from the PM2-managed server.
-  doctor     Validate configuration, paths, LaTeX, and the administrator.
-  config     Print the effective configuration as JSON without changing it.
-  help       Show this help message.
-  version    Print the installed TexLite version.
+  init          Create the configuration, initialize storage, and create the first administrator.
+  serve         Run the server in the foreground for debugging, Docker, or systemd.
+  start         Start the server in the background under PM2.
+  status        Show the status of the PM2-managed server.
+  stop          Stop the PM2-managed server.
+  restart       Restart (or start) the PM2-managed server.
+  logs          Stream logs from the PM2-managed server.
+  doctor        Check configuration, application state, and host dependencies.
+  requirements  Check host software on PATH without loading TexLite configuration.
+  config        Print the effective configuration as JSON without changing it.
+  help          Show this help message.
+  version       Print the installed TexLite version.
 
 Options:
   --config PATH  Use this configuration file instead of TEXLITE_CONFIG or the XDG default.
-  --git          Make doctor check the optional Git integration as well.
-  --json         Print status as JSON for scripts instead of the terminal view.
+                 Requirements does not accept this option.
+  --json         Print status, doctor, or requirements results as JSON for scripts.
   -h, --help     Show this help message.
   -v, --version  Print the installed TexLite version.
 `;
@@ -50,14 +70,12 @@ Options:
 export function parseArgs(args: string[]): CliOptions {
   let command = "help";
   let configPath: string | undefined;
-  let checkGit = false;
   let json = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (!argument) continue;
-    if (argument === "-h" || argument === "--help") return { command: "help", configPath, checkGit, json };
-    if (argument === "-v" || argument === "--version") return { command: "version", configPath, checkGit, json };
-    if (argument === "--git") { checkGit = true; continue; }
+    if (argument === "-h" || argument === "--help") return { command: "help", configPath, json };
+    if (argument === "-v" || argument === "--version") return { command: "version", configPath, json };
     if (argument === "--json") { json = true; continue; }
     if (argument === "--config") {
       const value = args[++index];
@@ -75,7 +93,10 @@ export function parseArgs(args: string[]): CliOptions {
     if (command !== "help") throw new Error(`Only one command may be specified (already received ${command})`);
     command = argument;
   }
-  return { command, configPath, checkGit, json };
+  if (command === "requirements" && configPath) {
+    throw new Error("`texlite requirements` does not use --config.");
+  }
+  return { command, configPath, json };
 }
 
 function output(message: string): void {
@@ -203,14 +224,62 @@ async function assertAdmin(config: Awaited<ReturnType<typeof loadValidatedConfig
 
 async function doctor(options: CliOptions): Promise<void> {
   const { config, configPath } = await loadValidatedConfig(options);
-  const environment = await assertEnvironment(config);
-  await assertAdmin(config);
-  output(`Configuration is valid: ${configPath}`);
-  output(`Data directory: ${config.dataDir}`);
-  output(`Client assets: ${config.clientDir}`);
-  output(`Environment: ${environment.map((item) => `${item.name} ${item.version}`).join("; ")}`);
-  if (options.checkGit) output(`Git: ${(await assertGitAvailable(config)).version}`);
-  else output("Git: not checked (Git integration is optional; use --git to check it)");
+  const application = inspectDoctorApplication(config, configPath);
+  const hostTools = await inspectHostEnvironment(config);
+  const report: DoctorReport = {
+    configPath,
+    dataDir: config.dataDir,
+    clientDir: config.clientDir,
+    application,
+    hostTools,
+    ok: application.every((check) => check.status === "passed")
+      && hostRequirementsSatisfied(hostTools)
+  };
+  output(options.json ? JSON.stringify(report, null, 2) : formatDoctorReport(report, terminalColorsEnabled()));
+  if (!report.ok) process.exitCode = 2;
+}
+
+async function requirements(options: CliOptions): Promise<void> {
+  const hostTools = await inspectHostRequirements();
+  const report: RequirementsReport = { hostTools, ok: hostRequirementsSatisfied(hostTools) };
+  output(options.json ? JSON.stringify(report, null, 2) : formatRequirementsReport(report, terminalColorsEnabled()));
+  if (!report.ok) process.exitCode = 2;
+}
+
+function inspectDoctorApplication(config: Awaited<ReturnType<typeof loadValidatedConfig>>["config"], configPath: string): DoctorApplicationCheck[] {
+  const checks: DoctorApplicationCheck[] = [
+    { name: "Configuration", status: "passed", detail: `Valid: ${configPath}` },
+    inspectClientAssets(config)
+  ];
+  let db: ReturnType<typeof openDatabase> | null = null;
+  try {
+    db = openDatabase(config);
+    checks.push({ name: "Data and database", status: "passed", detail: `Opened: ${config.databasePath}` });
+    const administrators = activeAdminCount(db);
+    checks.push(administrators > 0
+      ? { name: "Administrator", status: "passed", detail: `${administrators} active administrator${administrators === 1 ? "" : "s"}` }
+      : { name: "Administrator", status: "failed", detail: "No active administrator. Run `texlite init`." });
+  } catch (error) {
+    const detail = errorMessage(error);
+    checks.push({ name: "Data and database", status: "failed", detail });
+    checks.push({ name: "Administrator", status: "failed", detail: "Could not inspect because the database is unavailable." });
+  } finally {
+    db?.close();
+  }
+  return checks;
+}
+
+function inspectClientAssets(config: Awaited<ReturnType<typeof loadValidatedConfig>>["config"]): DoctorApplicationCheck {
+  const entry = path.join(config.clientDir, "index.html");
+  try {
+    const stat = fs.statSync(entry);
+    if (stat.isFile()) return { name: "Client assets", status: "passed", detail: `Found: ${entry}` };
+  } catch { /* Report a concise diagnostic below. */ }
+  return { name: "Client assets", status: "failed", detail: `Missing ${entry}; run \`npm run build\` or reinstall TexLite.` };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message.replace(/\s+/g, " ").slice(0, 240) : String(error).slice(0, 240);
 }
 
 async function printConfig(options: CliOptions): Promise<void> {
@@ -276,6 +345,104 @@ function terminalColorsEnabled(): boolean {
 
 function colorize(value: string, color: keyof Pick<typeof ANSI, "green" | "yellow" | "red" | "gray">, enabled: boolean): string {
   return enabled ? `${ANSI[color]}${value}${ANSI.reset}` : value;
+}
+
+interface DoctorTableCell {
+  text: string;
+  color?: keyof Pick<typeof ANSI, "green" | "yellow" | "red" | "gray">;
+}
+
+export function formatDoctorReport(report: DoctorReport, colors = false): string {
+  const titleColor = report.ok ? "green" : "red";
+  const title = report.ok ? "all required checks passed" : "required checks need attention";
+  const applicationRows: DoctorTableCell[][] = report.application.map((check) => [
+    { text: check.name },
+    { text: "Required" },
+    { text: check.status === "passed" ? "Passed" : "Failed", color: check.status === "passed" ? "green" : "red" },
+    { text: shortenDoctorCell(check.detail, 68) }
+  ]);
+  return [
+    `${colorize("●", titleColor, colors)} ${colors ? `${ANSI.bold}TexLite doctor${ANSI.reset}` : "TexLite doctor"} — ${colorize(title, titleColor, colors)}`,
+    `     Config: ${report.configPath}`,
+    `       Data: ${report.dataDir}`,
+    `     Client: ${report.clientDir}`,
+    "",
+    "Application checks",
+    formatDoctorTable(["Check", "Need", "Status", "Details"], applicationRows, colors),
+    "",
+    "Host software",
+    formatHostSoftwareTable(report.hostTools, colors),
+    "",
+    hostRequirementNote(report.hostTools, "start TexLite"),
+    "Harper CLI is used by TexLite; harper-ls is reported for host diagnostics and external editor integrations."
+  ].join("\n");
+}
+
+export function formatRequirementsReport(report: RequirementsReport, colors = false): string {
+  const titleColor = report.ok ? "green" : "red";
+  const title = report.ok ? "all host requirements passed" : "host requirements need attention";
+  return [
+    `${colorize("●", titleColor, colors)} ${colors ? `${ANSI.bold}TexLite requirements${ANSI.reset}` : "TexLite requirements"} — ${colorize(title, titleColor, colors)}`,
+    "",
+    "Host software (default commands on PATH)",
+    formatHostSoftwareTable(report.hostTools, colors),
+    "",
+    hostRequirementNote(report.hostTools, "compile with TexLite"),
+    "This command does not read a TexLite configuration, data directory, database, or administrator state.",
+    "Harper CLI is used by TexLite; harper-ls is reported for host diagnostics and external editor integrations."
+  ].join("\n");
+}
+
+function formatHostSoftwareTable(hostTools: EnvironmentTool[], colors: boolean): string {
+  const hostRows: DoctorTableCell[][] = hostTools.map((tool) => [
+    { text: shortenDoctorCell(tool.command === tool.name ? tool.name : `${tool.name} (${tool.command})`, 32) },
+    { text: requirementLabel(tool.requirement) },
+    hostToolStatusCell(tool),
+    { text: shortenDoctorCell(tool.version ?? tool.detail ?? "—", 56) }
+  ]);
+  return formatDoctorTable(["Tool / command", "Need", "Status", "Version / diagnostic"], hostRows, colors);
+}
+
+function requirementLabel(requirement: EnvironmentTool["requirement"]): string {
+  if (requirement === "required") return "Required";
+  if (requirement === "one-of") return "One of";
+  return "Optional";
+}
+
+function hostRequirementNote(hostTools: EnvironmentTool[], action: string): string {
+  const oneOf = hostTools.some((tool) => tool.requirement === "one-of");
+  return oneOf
+    ? `Required tools and at least one tool in every “One of” group must be installed to ${action}. Optional tools enable their named feature without blocking the editor.`
+    : `Required tools must be installed to ${action}. Optional tools enable their named feature without blocking the editor.`;
+}
+
+function hostToolStatusCell(tool: EnvironmentTool): DoctorTableCell {
+  if (tool.status === "installed") return { text: "Installed", color: "green" };
+  if (tool.status === "missing") {
+    return { text: tool.requirement === "required" ? "Missing" : "Not installed", color: tool.requirement === "required" ? "red" : "yellow" };
+  }
+  return { text: "Failed", color: "red" };
+}
+
+function shortenDoctorCell(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, Math.max(1, maxLength - 1))}…` : normalized;
+}
+
+function formatDoctorTable(headers: string[], rows: DoctorTableCell[][], colors: boolean): string {
+  const widths = headers.map((header, index) => Math.max(header.length, ...rows.map((row) => row[index]?.text.length ?? 0)));
+  const line = (left: string, middle: string, right: string, fill: string) => `${left}${widths.map((width) => fill.repeat(width + 2)).join(middle)}${right}`;
+  const renderRow = (cells: DoctorTableCell[]) => `│${cells.map((cell, index) => {
+    const padded = (cell?.text ?? "").padEnd(widths[index] ?? 0);
+    return ` ${cell?.color ? colorize(padded, cell.color, colors) : padded} `;
+  }).join("│")}│`;
+  return [
+    line("┌", "┬", "┐", "─"),
+    renderRow(headers.map((text) => ({ text }))),
+    line("├", "┼", "┤", "─"),
+    ...rows.map(renderRow),
+    line("└", "┴", "┘", "─")
+  ].join("\n");
 }
 
 function duration(value: number | null): string {
@@ -353,6 +520,7 @@ async function run(options: CliOptions): Promise<void> {
     case "status": await status(options); return;
     case "stop": await stop(options); return;
     case "doctor": await doctor(options); return;
+    case "requirements": await requirements(options); return;
     case "config": await printConfig(options); return;
     case "logs": {
       const { config } = await loadValidatedConfig(options);

@@ -56,8 +56,11 @@ TeX 更新、数据位置与协作工作流的掌控。
 安装 Node.js 24 或更高版本、`latexmk`，以及至少一个 TeX 引擎，例如 `pdflatex`、
 `xelatex` 或 `lualatex`。只有使用可选 Git/GitHub 集成时才需要 Git。
 
+安装后可先执行 `texlite requirements`，检查相关宿主机软件及版本。
+
 ~~~bash
 npm install --global texlite
+texlite requirements
 texlite init
 texlite start
 texlite status
