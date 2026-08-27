@@ -714,8 +714,8 @@ function searchMatchCount(t: TFunction) {
 function editorAppearance(preferences: EditorPreferences, nativeSpellCheck: boolean) {
   return [
     EditorView.contentAttributes.of({
-      // Harper normally provides syntax-aware server-side checks. If that
-      // service fails, enable the browser checker as a lightweight fallback.
+      // The optional host Harper CLI normally provides server-side checks. If
+      // it is unavailable, enable the browser checker as a lightweight fallback.
       spellcheck: nativeSpellCheck ? "true" : "false",
       autocorrect: "off",
       autocapitalize: "off",

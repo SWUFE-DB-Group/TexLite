@@ -31,6 +31,22 @@ from the core check, so a host without Git can run TexLite normally; use
 Formatting does not require a host binary. The browser uses bundled `tex-fmt`
 WASM for `.tex`, `.cls`, and `.sty`, and browser-side `bibtex-tidy` for `.bib`.
 
+### Optional writing checks
+
+TexLite does not bundle Harper. To enable its spelling and grammar diagnostics,
+install a Harper distribution that provides `harper-cli` (the same host package
+normally also provides `harper-ls`) and make it available on the TexLite service
+`PATH`:
+
+~~~bash
+harper-cli --version
+~~~
+
+The command is optional: if it is absent or temporarily fails, TexLite remains
+usable and the browser's native English spellchecker is enabled instead. Native
+browser spellchecking does not provide Harper grammar diagnostics or suggested
+replacements.
+
 ## Install and initialize
 
 ### Global npm installation

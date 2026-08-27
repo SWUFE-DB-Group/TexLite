@@ -65,9 +65,9 @@ export async function buildApp(
   const latexCompletions = new LatexCompletionService(config);
   const projectOutlines = new ProjectOutlineService(config);
   const harper = new HarperService();
-  // Warm the single server-side runtime without delaying startup. The first
-  // request shares this promise if initialization is still in progress.
-  void harper.preload().catch((error) => app.log.warn({ err: error }, "Harper could not be initialized"));
+  // Probe the optional host Harper CLI without delaying startup. Its absence is
+  // supported: the browser spellchecker remains the writing-check fallback.
+  void harper.preload().catch((error) => app.log.info({ err: error }, "Optional Harper CLI is unavailable"));
   const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => {
     try { return history.record(projectId, userId, reason, paths); }
     catch (error) {

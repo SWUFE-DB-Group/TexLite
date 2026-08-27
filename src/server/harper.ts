@@ -1,152 +1,261 @@
-import { Worker } from "node:worker_threads";
-import type { Linter } from "harper.js";
-import type { RawHarperLint } from "./harperRuntime.js";
+import { spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { maskLatexSource } from "./latexSpellMask.js";
 
-export type { RawHarperLint } from "./harperRuntime.js";
+export interface RawHarperLint {
+  start: number;
+  end: number;
+  problem: string;
+  kind: string;
+  message: string;
+  suggestions: string[];
+}
 
-const setupTimeoutMs = 45_000;
+interface HarperCliLint {
+  kind?: unknown;
+  message?: unknown;
+  matched_text?: unknown;
+  span?: { char_start?: unknown; char_end?: unknown };
+  suggestions?: unknown;
+}
+
+interface HarperCliDocument {
+  lints?: unknown;
+}
+
+interface CachedLintResult {
+  expiresAt: number;
+  lints: RawHarperLint[];
+}
+
+const commandProbeTimeoutMs = 5_000;
 const lintTimeoutMs = 30_000;
+const maxCommandOutputBytes = 8 * 1024 * 1024;
+const maxCachedSourceBytes = 512 * 1024;
+const maxCachedResults = 24;
+const cacheTtlMs = 15_000;
+const unavailableRetryMs = 15_000;
 
-type WorkerResponse =
-  | { type: "ready" }
-  | { type: "load-error"; message: string }
-  | { id: number; ok: true; lints: RawHarperLint[] }
-  | { id: number; ok: false; message: string };
+export class HarperUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HarperUnavailableError";
+  }
+}
 
-function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-    operation.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (error) => { clearTimeout(timer); reject(error); }
-    );
-  });
+function lintCacheKey(source: string, filePath: string): string {
+  // Harper selects its parser from the input suffix, so equivalent text in a
+  // .tex and a .sty file must not share a diagnostic result.
+  return createHash("sha256").update(temporaryFileExtension(filePath)).update("\0").update(source).digest("base64url");
+}
+
+function temporaryFileExtension(filePath: string): string {
+  const extension = path.extname(filePath).toLowerCase();
+  // Harper selects its TeX parser by extension. Treat source-like companion
+  // files as TeX too; BibTeX keys are intentionally not grammar-checked.
+  return extension === ".tex" || extension === ".sty" || extension === ".cls" ? extension : ".tex";
+}
+
+function replacementText(suggestion: string): string | null {
+  const match = /^Replace with:\s*[“"]([\s\S]*)[”"]$/u.exec(suggestion.trim());
+  return match?.[1] ?? null;
+}
+
+/** Parse `harper-cli lint --format json` output into the browser API shape. */
+export function parseHarperCliOutput(output: string): RawHarperLint[] {
+  let documents: unknown;
+  try {
+    documents = JSON.parse(output);
+  } catch {
+    throw new Error("Harper returned invalid JSON.");
+  }
+  if (!Array.isArray(documents)) throw new Error("Harper returned an unexpected result.");
+
+  const lints: RawHarperLint[] = [];
+  for (const document of documents as HarperCliDocument[]) {
+    if (!Array.isArray(document.lints)) continue;
+    for (const lint of document.lints as HarperCliLint[]) {
+      const start = lint.span?.char_start;
+      const end = lint.span?.char_end;
+      if (typeof start !== "number" || typeof end !== "number" || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start) continue;
+      const suggestions = Array.isArray(lint.suggestions)
+        ? lint.suggestions.filter((value): value is string => typeof value === "string")
+          .map(replacementText).filter((value): value is string => value !== null)
+        : [];
+      lints.push({
+        start,
+        end,
+        problem: typeof lint.matched_text === "string" ? lint.matched_text : "",
+        kind: typeof lint.kind === "string" ? lint.kind : "Grammar",
+        message: typeof lint.message === "string" ? lint.message : "Harper found a writing issue.",
+        suggestions: [...new Set(suggestions)].slice(0, 5)
+      });
+    }
+  }
+  return lints;
 }
 
 /**
- * One Harper runtime per TexLite server process. Production uses one Node
- * Worker so WASM checks cannot block Fastify or collaboration messages. Source
- * mode (tsx/Vitest) uses the same runtime in-process because the emitted worker
- * entry does not exist until the server build has completed.
+ * Optional host-side Harper integration. `harper-cli` is distributed with
+ * Harper/harper-ls and provides native TeX parsing plus structured fixes,
+ * without bundling a WASM runtime into TexLite.
  */
 export class HarperService {
-  private readonly useWorker = import.meta.url.endsWith(".js");
-  private linter: Linter | null = null;
-  private setupPromise: Promise<void> | null = null;
-  private worker: Worker | null = null;
-  private nextRequestId = 1;
-  private pending = new Map<number, { resolve: (lints: RawHarperLint[]) => void; reject: (error: Error) => void }>();
+  private availability: "unknown" | "available" | "unavailable" = "unknown";
+  private lastUnavailableAt = 0;
+  private probePromise: Promise<void> | null = null;
   private queue: Promise<void> = Promise.resolve();
+  private readonly inFlight = new Map<string, Promise<RawHarperLint[]>>();
+  private readonly cache = new Map<string, CachedLintResult>();
+  private activeChild: ChildProcess | null = null;
+  private disposed = false;
+
+  constructor(private readonly command = "harper-cli") {}
 
   async preload(): Promise<void> {
-    await this.ensureRuntime();
+    await this.ensureAvailable();
   }
 
-  async lint(source: string): Promise<RawHarperLint[]> {
-    const operation = this.queue.then(async () => {
-      await this.ensureRuntime();
-      try {
-        return await withTimeout(this.useWorker ? this.lintInWorker(source) : this.lintInProcess(source), lintTimeoutMs, "Harper writing check timed out.");
-      } catch (error) {
-        if (error instanceof Error && error.message === "Harper writing check timed out.") this.stopFailedWorker(error);
-        throw error;
-      }
-    });
+  async lint(source: string, filePath = "main.tex"): Promise<RawHarperLint[]> {
+    if (this.disposed) throw new HarperUnavailableError("Harper service stopped.");
+    const key = lintCacheKey(source, filePath);
+    const cacheable = Buffer.byteLength(source, "utf8") <= maxCachedSourceBytes;
+    const cached = cacheable ? this.cachedResult(key) : null;
+    if (cached) return cached;
+    const existing = cacheable ? this.inFlight.get(key) : undefined;
+    if (existing) return existing;
+
+    const operation = this.queue.then(() => this.lintOnce(source, filePath));
     this.queue = operation.then(() => undefined, () => undefined);
+    if (cacheable) {
+      this.inFlight.set(key, operation);
+      void operation.then(
+        (lints) => this.cacheResult(key, lints),
+        () => undefined
+      ).finally(() => {
+        if (this.inFlight.get(key) === operation) this.inFlight.delete(key);
+      });
+    }
     return operation;
   }
 
   async dispose(): Promise<void> {
+    this.disposed = true;
+    this.activeChild?.kill("SIGTERM");
     await this.queue.catch(() => undefined);
-    await this.setupPromise?.catch(() => undefined);
-    const worker = this.worker;
-    this.worker = null;
-    if (worker) await worker.terminate().catch(() => undefined);
-    const linter = this.linter;
-    this.linter = null;
-    if (linter) await linter.dispose().catch(() => undefined);
-    this.setupPromise = null;
-    this.rejectPending(new Error("Harper service stopped."));
+    this.inFlight.clear();
+    this.cache.clear();
   }
 
-  private ensureRuntime(): Promise<void> {
-    if (this.setupPromise) return this.setupPromise;
-    if (this.worker || this.linter) return Promise.resolve();
-    this.setupPromise = withTimeout(this.useWorker ? this.startWorker() : this.startInProcess(), setupTimeoutMs, "Harper initialization timed out.")
-      .catch((error) => {
-        this.stopFailedWorker(error instanceof Error ? error : new Error(String(error)));
-        throw error;
+  private async ensureAvailable(): Promise<void> {
+    if (this.availability === "available") return;
+    if (this.availability === "unavailable" && Date.now() - this.lastUnavailableAt < unavailableRetryMs) {
+      throw new HarperUnavailableError(`The optional ${this.command} command is not available.`);
+    }
+    if (this.probePromise) return this.probePromise;
+    this.probePromise = this.runCommand(["--version"], commandProbeTimeoutMs, 64 * 1024)
+      .then(({ code }) => {
+        if (code !== 0) throw new Error(`${this.command} exited with code ${code}.`);
+        this.availability = "available";
       })
-      .finally(() => { this.setupPromise = null; });
-    return this.setupPromise;
+      .catch((error) => {
+        this.availability = "unavailable";
+        this.lastUnavailableAt = Date.now();
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new HarperUnavailableError(`The optional ${this.command} command is unavailable: ${detail}`);
+      })
+      .finally(() => { this.probePromise = null; });
+    return this.probePromise;
   }
 
-  private async startInProcess(): Promise<void> {
-    const { createHarperLinter } = await import("./harperRuntime.js");
-    this.linter = await createHarperLinter();
+  private async lintOnce(source: string, filePath: string): Promise<RawHarperLint[]> {
+    await this.ensureAvailable();
+    const directory = await mkdtemp(path.join(tmpdir(), "texlite-harper-"));
+    const input = path.join(directory, `document${temporaryFileExtension(filePath)}`);
+    try {
+      await writeFile(input, maskLatexSource(source), { encoding: "utf8", mode: 0o600 });
+      const { code, stdout, stderr } = await this.runCommand([
+        "lint", "--format", "json", "--quiet",
+        "--user-dict-path", path.join(directory, "dictionary.txt"),
+        "--file-dict-path", path.join(directory, "file-dictionaries"),
+        input
+      ], lintTimeoutMs, maxCommandOutputBytes);
+      // Harper exits with one when it found lints. Any other non-zero status is
+      // a command failure, not a spelling result.
+      if (code !== 0 && code !== 1) throw new Error(stderr.trim() || `${this.command} exited with code ${code}.`);
+      return parseHarperCliOutput(stdout);
+    } finally {
+      await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
-  private startWorker(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const worker = new Worker(new URL("./harperWorker.js", import.meta.url), { name: "texlite-harper" });
-      this.worker = worker;
-      const rejectStart = (error: Error) => reject(error);
-      const onInitialMessage = (message: WorkerResponse) => {
-        if (!("type" in message)) return;
-        worker.off("message", onInitialMessage);
-        worker.off("error", rejectStart);
-        if (message.type === "ready") resolve();
-        else reject(new Error(message.message));
+  private cachedResult(key: string): RawHarperLint[] | null {
+    const cached = this.cache.get(key);
+    if (!cached || cached.expiresAt < Date.now()) {
+      this.cache.delete(key);
+      return null;
+    }
+    this.cache.delete(key);
+    this.cache.set(key, cached);
+    return cached.lints;
+  }
+
+  private cacheResult(key: string, lints: RawHarperLint[]): void {
+    this.cache.set(key, { expiresAt: Date.now() + cacheTtlMs, lints });
+    while (this.cache.size > maxCachedResults) {
+      const oldest = this.cache.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.cache.delete(oldest);
+    }
+  }
+
+  private runCommand(args: string[], timeoutMs: number, outputLimit: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      let child: ChildProcess;
+      try {
+        child = spawn(this.command, args, { stdio: ["ignore", "pipe", "pipe"] });
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      this.activeChild = child;
+      const stdout: Buffer[] = [];
+      const stderr: Buffer[] = [];
+      let outputBytes = 0;
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+      const finish = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (this.activeChild === child) this.activeChild = null;
+        callback();
       };
-      worker.on("message", onInitialMessage);
-      worker.once("error", rejectStart);
-      worker.on("message", (message: WorkerResponse) => this.handleWorkerMessage(message));
-      worker.on("error", (error) => this.stopFailedWorker(error));
-      worker.on("exit", (code) => {
-        if (this.worker !== worker) return;
-        this.worker = null;
-        this.rejectPending(new Error(`Harper worker exited unexpectedly with code ${code}.`));
-      });
+      const fail = (error: Error) => finish(() => reject(error));
+      timer = setTimeout(() => {
+        child.kill("SIGTERM");
+        fail(new Error(`${this.command} timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`));
+      }, timeoutMs);
+      const collect = (target: Buffer[]) => (chunk: Buffer) => {
+        outputBytes += chunk.length;
+        if (outputBytes > outputLimit) {
+          child.kill("SIGTERM");
+          fail(new Error(`${this.command} produced too much output.`));
+          return;
+        }
+        target.push(chunk);
+      };
+      child.stdout!.on("data", collect(stdout));
+      child.stderr!.on("data", collect(stderr));
+      child.once("error", (error) => fail(error));
+      child.once("close", (code) => finish(() => resolve({
+        code,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8")
+      })));
     });
-  }
-
-  private lintInWorker(source: string): Promise<RawHarperLint[]> {
-    const worker = this.worker;
-    if (!worker) return Promise.reject(new Error("Harper worker is not ready."));
-    const id = this.nextRequestId++;
-    return new Promise<RawHarperLint[]>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      worker.postMessage({ id, source });
-    });
-  }
-
-  private async lintInProcess(source: string): Promise<RawHarperLint[]> {
-    if (!this.linter) throw new Error("Harper is not ready.");
-    const { collectHarperLints } = await import("./harperRuntime.js");
-    return collectHarperLints(this.linter, source);
-  }
-
-  private handleWorkerMessage(message: WorkerResponse): void {
-    if ("type" in message) return;
-    const pending = this.pending.get(message.id);
-    if (!pending) return;
-    this.pending.delete(message.id);
-    if (message.ok) pending.resolve(message.lints);
-    else pending.reject(new Error(message.message));
-  }
-
-  private stopFailedWorker(error: Error): void {
-    const worker = this.worker;
-    this.worker = null;
-    if (worker) void worker.terminate().catch(() => undefined);
-    const linter = this.linter;
-    this.linter = null;
-    if (linter) void linter.dispose().catch(() => undefined);
-    this.rejectPending(error);
-  }
-
-  private rejectPending(error: Error): void {
-    for (const pending of this.pending.values()) pending.reject(error);
-    this.pending.clear();
   }
 }

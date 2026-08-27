@@ -24,7 +24,7 @@ import type { ProjectOutlineService } from "../projectOutline.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { writeProjectArchive } from "../archive.js";
 import { extractProjectZip, ZipValidationError } from "../zip.js";
-import type { HarperService } from "../harper.js";
+import { HarperUnavailableError, type HarperService } from "../harper.js";
 import {
   commentsSummaryForProject,
   commentsSummaryForProjects,
@@ -290,15 +290,18 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const body = request.body as { source?: unknown } | undefined;
-    if (typeof body?.source !== "string") return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
+    const body = request.body as { path?: unknown; source?: unknown } | undefined;
+    if (typeof body?.source !== "string" || typeof body.path !== "string") return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
     if (Buffer.byteLength(body.source, "utf8") > maxCollaborativeFileBytes(config)) {
       return apiError(reply, 413, "SPELLCHECK_SOURCE_TOO_LARGE");
     }
     try {
-      return { lints: await harper.lint(body.source) };
+      return { lints: await harper.lint(body.source, body.path) };
     } catch (error) {
-      request.log.error({ err: error, projectId: id }, "Harper writing check failed");
+      // A missing optional command is an expected fallback condition. Keep it
+      // out of normal logs while preserving diagnostics for an actual failure.
+      if (error instanceof HarperUnavailableError) request.log.debug({ projectId: id }, "Host Harper CLI unavailable; using browser fallback");
+      else request.log.error({ err: error, projectId: id }, "Harper writing check failed");
       return apiError(reply, 503, "HARPER_UNAVAILABLE");
     }
   });

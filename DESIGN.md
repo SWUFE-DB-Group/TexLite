@@ -25,7 +25,7 @@ and day-to-day operation.
 | Browser UI | React, Vite, CodeMirror, PDF.js |
 | Localization | Frontend JSON resources plus a server-side error-code catalog, selected from `Accept-Language` |
 | Editor language features | CodeMirror LaTeX syntax/folding, auto-pairs, project completion index, optional Vim mode |
-| Writing assistance | One shared server-side Harper.js runtime with native browser spellcheck fallback; project dictionary stored by the server |
+| Writing assistance | Optional host `harper-cli`, with a linear server-side LaTeX mask and native browser spellcheck fallback; project dictionary stored by the server |
 | API and static server | Fastify, WebSocket |
 | Collaboration | Yjs, y-websocket, awareness messages, y-codemirror.next |
 | Database | SQLite through better-sqlite3, foreign keys and WAL mode |
@@ -219,15 +219,18 @@ Editor tab remounts therefore preserve Ctrl/Cmd+Z and Vim undo history without
 leaving obsolete CodeMirror/Yjs observers behind. Managers are released when
 the collaboration object is destroyed or loses edit permission.
 
-One asynchronously initialized Harper runtime on the Node server performs spelling and
-grammar checks for every project. Requests are serialized around the shared
-WASM linter, while the browser masks LaTeX commands/environments, comments,
-references, option keys/values, and table column specifications before sending
-prose. Spelling uses a red wavy underline and grammar uses yellow. A context
-menu offers Harper suggestions; read-only members can inspect suggestions but
-cannot apply edits. The shared project dictionary is kept in SQLite and filters
-project-specific spelling results. If the Harper endpoint fails, CodeMirror
-enables the browser's built-in English spellchecker until the user retries.
+TexLite probes the optional host `harper-cli` command at startup. It runs each
+check in a private temporary TeX file after a narrow, linear server-side LaTeX
+mask has removed comments, commands, references, math, tables, option syntax,
+and code-like environments. This avoids browser/WASM startup work and keeps
+malformed delimiters bounded. The service serializes checks, coalesces identical
+source inputs for a short window, and returns Harper's safe replacement
+suggestions. Spelling uses a red wavy underline and grammar uses yellow; a
+context menu offers suggestions, while read-only members can inspect but cannot
+apply them. The shared project dictionary is kept in SQLite and filters
+project-specific spelling results in the browser. If the command is absent or
+fails, CodeMirror enables the browser's built-in English spellchecker until it
+retries.
 
 Formatting is independent from the editor's local appearance. A user can
 manually format a selection or enable the per-user/per-project “format before
