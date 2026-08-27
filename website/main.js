@@ -1,6 +1,6 @@
 const localeButtons = [...document.querySelectorAll("[data-locale]")];
 const localeCache = new Map();
-const defaultLocale = "zh";
+const defaultLocale = "en";
 const localeDirectory = new URL("./locales/", import.meta.url);
 
 function readStoredLocale() {
@@ -75,6 +75,12 @@ async function selectLocale(locale) {
   }
 }
 
+function detectLocale() {
+  const stored = readStoredLocale();
+  if (stored === "zh" || stored === "en") return stored;
+  const isZh = (navigator.languages ?? [navigator.language]).some((lang) => /^zh\b/i.test(lang));
+  return isZh ? "zh" : defaultLocale;
+}
+
 localeButtons.forEach((button) => button.addEventListener("click", () => void selectLocale(button.dataset.locale)));
-const storedLocale = readStoredLocale();
-void selectLocale(storedLocale === "en" ? "en" : defaultLocale);
+void selectLocale(detectLocale());
