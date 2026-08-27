@@ -10,7 +10,8 @@
 
 **网站：** [TexLite GitHub Pages](https://swufe-db-group.github.io/TexLite/)
 
-![TexLite 预览](preview.png)
+![TexLite 工作区](preview-1.png)
+![TexLite 项目视图](preview-2.png)
 
 ## 为什么选择 TexLite
 
