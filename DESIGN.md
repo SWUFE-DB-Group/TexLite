@@ -394,8 +394,10 @@ memberships, private tags, and comments remain attributable as â€œDeleted Userâ€
 An administrator can transfer the user's owned projects to the current
 administrator or delete them with their files. Project transfer keeps the old
 owner as an editor and clears the project GitHub token so the new owner must
-configure their own credential. The last active administrator cannot be
-removed or disabled.
+configure their own credential. Administrators do not otherwise receive
+implicit access to another user's projects; they see a project only when they
+own it or it has been explicitly shared with them. The last active
+administrator cannot be removed or disabled.
 
 ## Known limitations and TODO
 

@@ -91,14 +91,11 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const archiveCondition = archivedOnly
       ? "EXISTS (SELECT 1 FROM user_project_archives archive WHERE archive.project_id = p.id AND archive.user_id = :userId)"
       : "NOT EXISTS (SELECT 1 FROM user_project_archives archive WHERE archive.project_id = p.id AND archive.user_id = :userId)";
-    const from = user.role === "admin"
-      ? `FROM projects p JOIN users owner ON owner.id = p.owner_id
-          LEFT JOIN users modifier ON modifier.id = p.last_modified_by`
-      : `FROM projects p JOIN users owner ON owner.id = p.owner_id
-          LEFT JOIN users modifier ON modifier.id = p.last_modified_by
-          LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = :userId`;
+    const from = `FROM projects p JOIN users owner ON owner.id = p.owner_id
+      LEFT JOIN users modifier ON modifier.id = p.last_modified_by
+      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = :userId`;
     const conditions = [
-      ...(user.role === "admin" ? [] : ["(p.owner_id = :userId OR pm.user_id = :userId)"]),
+      "(p.owner_id = :userId OR pm.user_id = :userId)",
       archiveCondition
     ];
     const params: Record<string, string | number> = { userId: user.id };
@@ -120,14 +117,10 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const totalPages = Math.ceil(total / pageSize);
     const currentPage = totalPages === 0 ? 1 : Math.min(page, totalPages);
     const rowsParams = { ...params, limit: pageSize, offset: (currentPage - 1) * pageSize };
-    const select = user.role === "admin"
-      ? `SELECT p.*, 'owner' AS permission, owner.username AS owner_username,
-          owner.display_name AS owner_display_name,
-          modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name`
-      : `SELECT DISTINCT p.*,
-          CASE WHEN p.owner_id = :userId THEN 'owner' ELSE pm.permission END AS permission,
-          owner.username AS owner_username, owner.display_name AS owner_display_name,
-          modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name`;
+    const select = `SELECT DISTINCT p.*,
+      CASE WHEN p.owner_id = :userId THEN 'owner' ELSE pm.permission END AS permission,
+      owner.username AS owner_username, owner.display_name AS owner_display_name,
+      modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name`;
     const rows = db.prepare(`${select} ${from} ${where}
       ORDER BY ${sortColumn} DESC, p.name COLLATE NOCASE ASC
       LIMIT :limit OFFSET :offset`).all(rowsParams);
@@ -494,7 +487,8 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     if (!user) return;
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
-    if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_DELETE_FORBIDDEN");
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    if (project.permission !== "owner") return apiError(reply, 403, "PROJECT_DELETE_FORBIDDEN");
     return await projectMutations.runExclusive(id, "project deletion", () => {
       collaboration.resetProject(id);
       removeProjectDirectory(config, id);

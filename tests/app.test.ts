@@ -1255,27 +1255,38 @@ Second version.
     expect((db.prepare("SELECT COUNT(*) AS count FROM projects WHERE id = ?").get(projectId) as { count: number }).count).toBe(0);
   });
 
-  it("allows an administrator's effective owner permission to delete another user's project", async () => {
+  it("does not grant administrators access to unshared projects", async () => {
     const suffix = randomUUID().slice(0, 8);
-    const username = `admin-delete-owner-${suffix}`;
+    const username = `private-owner-${suffix}`;
     const createdUser = await app.inject({
       method: "POST", url: "/api/admin/users", headers: { cookie },
-      payload: { username, displayName: "Admin Delete Owner", password: "owner-password", canCreateProjects: true }
+      payload: { username, displayName: "Private Owner", password: "owner-password", canCreateProjects: true }
     });
-    const ownerId = createdUser.json().user.id as string;
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "owner-password" } });
     const ownerCookie = login.headers["set-cookie"]!.split(";")[0];
     const created = await app.inject({
-      method: "POST", url: "/api/projects", headers: { cookie: ownerCookie }, payload: { name: "Administrator cleanup" }
+      method: "POST", url: "/api/projects", headers: { cookie: ownerCookie }, payload: { name: "Administrator privacy" }
     });
     const projectId = created.json().project.id as string;
 
-    const deleted = await app.inject({ method: "DELETE", url: `/api/projects/${projectId}`, headers: { cookie } });
-    expect(deleted.statusCode).toBe(200);
-    expect(fs.existsSync(path.join(config.projectsDir, projectId))).toBe(false);
-    await app.inject({
-      method: "DELETE", url: `/api/admin/users/${ownerId}`, headers: { cookie }, payload: { deleteProjects: false }
-    });
+    const catalog = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie } });
+    expect(catalog.statusCode).toBe(200);
+    expect(catalog.json().projects).not.toContainEqual(expect.objectContaining({ id: projectId }));
+    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/files`, headers: { cookie } })).statusCode).toBe(404);
+    expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}`, headers: { cookie } })).statusCode).toBe(404);
+
+    const administrator = await app.inject({ method: "GET", url: "/api/me", headers: { cookie } });
+    const administratorId = administrator.json().user.id as string;
+    expect((await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/members/${administratorId}`, headers: { cookie: ownerCookie }, payload: { permission: "read" }
+    })).statusCode).toBe(200);
+    const shared = await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } });
+    expect(shared.statusCode).toBe(200);
+    expect(shared.json().project).toMatchObject({ id: projectId, permission: "read" });
+    const sharedCatalog = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie } });
+    expect(sharedCatalog.json().projects).toContainEqual(expect.objectContaining({ id: projectId, permission: "read" }));
+    expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}`, headers: { cookie } })).statusCode).toBe(403);
   });
 
   it("transfers ownership while retaining the former owner as an editor", async () => {

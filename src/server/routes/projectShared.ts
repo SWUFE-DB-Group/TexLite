@@ -150,7 +150,7 @@ export function requireEditableProject(db: DatabaseConnection, projectId: string
   return project;
 }
 
-/** Owner permission includes an administrator's effective owner access. */
+/** Owner permission is granted only to the stored project owner. */
 export function requireProjectOwnerPermission(db: DatabaseConnection, projectId: string, user: UserRow) {
   requireActiveUser(db, user);
   const project = accessibleProject(db, projectId, user);
