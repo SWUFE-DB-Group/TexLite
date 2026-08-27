@@ -259,6 +259,8 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .panel-title > span { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .panel-title button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #5d6961; }
 .panel-title button:hover { background: #e8eeea; color: #176b44; }
+.panel-title .file-size-toggle { width: auto; min-width: 0; display: inline-flex; padding: 0 5px; font: inherit; text-transform: inherit; cursor: pointer; }
+.panel-title .file-size-toggle[aria-pressed="true"] { color: #176b44; background: #e4f0e8; }
 .file-tools { flex: none; display: flex; align-items: center; gap: 4px; margin-left: 8px; }
 .file-tools button { box-sizing: border-box; }
 .file-list { padding: 6px 7px 10px; }
@@ -271,6 +273,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .file-entry.root-document .file-entry-main > svg { color: #2d6f9f; }
 .file-entry.compile-target { background: #e9f2ec; box-shadow: inset 2px 0 #28724e; }
 .file-entry-main small { flex: none; padding: 1px 4px; border-radius: 999px; background: #d9eadf; color: #1d5b3e; font-size: 8px; line-height: 1.35; }
+.file-entry-size { flex: none; margin-right: 5px; color: #78837b; font-size: .86em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .folder-entry .file-entry-main svg:first-child { color: #78837b; }
 .folder-entry .file-entry-main svg:nth-child(2) { color: #d49b2d; }
 .root-entry { padding-left: 5px; }
