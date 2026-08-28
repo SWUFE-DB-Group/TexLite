@@ -881,6 +881,102 @@ h1 {
   color: #759787;
 }
 
+/* Optional Docker Deployment */
+.docker-deploy-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
+  gap: clamp(28px, 4vw, 54px);
+  align-items: center;
+  margin-top: 20px;
+  padding: clamp(28px, 4vw, 42px) clamp(24px, 4.5vw, 48px);
+  border: 1px solid #cfe0d3;
+  border-radius: 14px;
+  background: #f9fcf9;
+  box-shadow: 0 14px 36px #10251d0b;
+}
+
+.docker-deploy-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.docker-deploy-heading .section-kicker {
+  margin-bottom: 14px;
+}
+
+.docker-deploy-mark {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  margin-top: -2px;
+  border-radius: 6px;
+  background: #e7f2e9;
+  color: #2c7a4d;
+  font-size: 13px;
+}
+
+.docker-deploy-copy h3 {
+  max-width: 520px;
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: clamp(23px, 3vw, 34px);
+  font-weight: 730;
+  letter-spacing: -.055em;
+  line-height: 1.1;
+}
+
+.docker-deploy-copy > p {
+  max-width: 560px;
+  margin-bottom: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.docker-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.docker-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid #c5d8ca;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: white;
+  color: #256842;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color .2s ease, background-color .2s ease, color .2s ease;
+}
+
+.docker-links a:hover {
+  border-color: #71a784;
+  background: #eaf4ec;
+  color: #124e2d;
+}
+
+.docker-terminal {
+  border-color: #b9d0bf;
+  background: #183126;
+}
+
+.docker-terminal .terminal-bar {
+  border-bottom-color: #3a6049;
+}
+
+.docker-terminal pre {
+  color: #e1f4c8;
+}
+
 /* Closing Section */
 .closing-section {
   display: flex;
@@ -1015,6 +1111,10 @@ h1 {
   .deploy-panel {
     gap: 36px;
   }
+
+  .docker-deploy-card {
+    gap: 34px;
+  }
 }
 
 /* Tablet Portrait & iPad (<= 860px) */
@@ -1050,6 +1150,11 @@ h1 {
     grid-template-columns: 1fr;
     gap: 32px;
     padding: 40px 32px;
+  }
+
+  .docker-deploy-card {
+    grid-template-columns: 1fr;
+    gap: 26px;
   }
 
   .section {
@@ -1126,6 +1231,15 @@ h1 {
     padding: 30px 20px;
   }
 
+  .docker-deploy-card {
+    gap: 22px;
+    padding: 26px 20px;
+  }
+
+  .docker-deploy-copy h3 {
+    font-size: 25px;
+  }
+
   .terminal pre {
     font-size: 10px;
     padding: 18px 16px;
@@ -1155,4 +1269,3 @@ h1 {
     animation: none;
   }
 }
-
