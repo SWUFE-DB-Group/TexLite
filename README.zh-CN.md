@@ -5,6 +5,7 @@
 
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)
+[![Docker Hub](https://img.shields.io/docker/v/zhongpu/texlite?logo=docker&label=Docker%20Hub)](https://hub.docker.com/r/zhongpu/texlite)
 
 **文档：** [English](README.md) · [运维指南（英文）](OPERATIONS.md) · [设计文档（英文）](DESIGN.md) · 简体中文（当前文件）
 
@@ -27,10 +28,8 @@
 
 - 共享托管服务在使用高峰期可能排队、变慢或出现编译超时。
 - Overleaf 开源 [Community Edition](https://github.com/overleaf/overleaf) 的
-  [Docker 部署路径](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit) 更复杂，且
-  [源码批注仅限 Server Pro](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions)。
-- TexLite 直接使用服务器已有的 TeX 环境，以较小的单机栈运行，同时提供实时源码批注
-  与回复。
+  [Docker 部署路径](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit) 更复杂，且源码批注等高级功能 [仅限 Server Pro](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions)。
+  *如果不介意一个更庞大的 Docker 镜像，[我们也准备好了](#docker-deployment) :)*
 
 自托管并不保证每份文档都编译得更快，速度仍取决于宿主机和文档本身；它带来的是对容量、
 TeX 更新、数据位置与协作工作流的掌控。
@@ -80,6 +79,26 @@ texlite logs
 `texlite serve` 会以前台方式运行，适合调试、Docker 或 systemd。`start`、`stop`、
 `restart`、`status`、`logs` 使用 npm 包内置的 PM2 运行时；完整命令请执行
 `texlite help`。
+
+<a id="docker-deployment"></a>
+
+### Docker 部署
+
+如果宿主机没有，或不希望自行维护 Node.js、TeX Live、Git 和 Harper 等软件，可使用更重的
+[TexLite-Docker](https://github.com/SWUFE-DB-Group/TexLite-Docker) 部署。其已发布镜像会
+一并提供这些运行时依赖。
+
+~~~bash
+git clone https://github.com/SWUFE-DB-Group/TexLite-Docker.git
+cd texlite-docker
+cp deployment.example.json deployment.json
+# 首次启动前请编辑 deployment.json。
+./scripts/compose.sh pull
+./scripts/compose.sh up -d
+~~~
+
+Docker 版的用户配置和日常运维请参见
+[TexLite-Docker README](https://github.com/SWUFE-DB-Group/TexLite-Docker#readme)。
 
 ## 文档导航
 

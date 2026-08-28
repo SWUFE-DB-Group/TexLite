@@ -1,10 +1,11 @@
 # TexLite
 
-A lightweight self-hosted alternative to Overleaf for *small, trusted* research
+A lightweight self-hosted alternative to Overleaf for _small, trusted_ research
 teams. Use your existing LaTeX distribution, with no heavyweight service stack.
 
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)
+[![Docker Hub](https://img.shields.io/docker/v/zhongpu/texlite?logo=docker&label=Docker%20Hub)](https://hub.docker.com/r/zhongpu/texlite)
 
 **Documentation:** English (this file) · [Operations](OPERATIONS.md) · [Design](DESIGN.md) · [简体中文](README.zh-CN.md)
 
@@ -30,9 +31,8 @@ a narrower self-hosted use case:
 - A shared hosted service can queue, slow down, or time out at usage peaks.
 - Overleaf's open-source [Community Edition](https://github.com/overleaf/overleaf)
   follows a more involved [Docker deployment path](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit), and
-  [source comments are a Server Pro feature](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions).
-- TexLite uses the server's existing TeX environment, runs as a small
-  single-host stack, and includes real-time source comments and replies.
+  several functionalities, such as source comments, are [Server Pro features](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions).
+  *If you do not mind a heftier Docker image, [we have one ready too](#docker-deployment) :)*
 
 Self-hosting does not make every document compile faster: that still depends on
 the host and the document. It does give the team control over capacity, TeX
@@ -68,37 +68,58 @@ Git/GitHub integration.
 After installation, `texlite requirements` checks the relevant host software
 and versions before initialization.
 
-~~~bash
+```bash
 npm install --global texlite
 texlite requirements
 texlite init
 texlite start
 texlite status
-~~~
+```
 
 Open <http://127.0.0.1:3000>. `texlite init` creates the configuration and the
 first administrator; public registration is deliberately unavailable.
 
 For upgrades and routine management:
 
-~~~bash
+```bash
 npm update --global texlite
 texlite restart
 texlite logs
-~~~
+```
 
 `texlite serve` runs in the foreground for debugging, Docker, or systemd.
 `start`, `stop`, `restart`, `status`, and `logs` use the PM2 runtime bundled
 with the npm package. Run `texlite help` for the complete command list.
 
+<a id="docker-deployment"></a>
+
+### Docker deployment
+
+If the host does not have—or you do not want to maintain—Node.js, TeX Live,
+Git, and Harper locally, use the heavier
+[TexLite-Docker](https://github.com/SWUFE-DB-Group/TexLite-Docker) deployment.
+Its published image bundles those runtime dependencies for you.
+
+```bash
+git clone https://github.com/SWUFE-DB-Group/TexLite-Docker.git
+cd texlite-docker
+cp deployment.example.json deployment.json
+# Edit deployment.json before the first start.
+./scripts/compose.sh pull
+./scripts/compose.sh up -d
+```
+
+See the [TexLite-Docker README](https://github.com/SWUFE-DB-Group/TexLite-Docker#readme)
+for its user-facing configuration and operations guide.
+
 ## Documentation map
 
-| Need | Read |
-| --- | --- |
-| Installation, configuration paths, effective defaults, environment overrides, service management, backups, and security boundaries | [Operations guide](OPERATIONS.md) |
-| Collaboration, source persistence, compilation isolation, history, and design trade-offs | [Design](DESIGN.md) |
-| Testing an npm package before publication | [NPM testing guide](NPM_TESTING.md) |
-| Complete configuration starting point | [texlite.config.example.json](texlite.config.example.json) |
+| Need                                                                                                                               | Read                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Installation, configuration paths, effective defaults, environment overrides, service management, backups, and security boundaries | [Operations guide](OPERATIONS.md)                          |
+| Collaboration, source persistence, compilation isolation, history, and design trade-offs                                           | [Design](DESIGN.md)                                        |
+| Testing an npm package before publication                                                                                          | [NPM testing guide](NPM_TESTING.md)                        |
+| Complete configuration starting point                                                                                              | [texlite.config.example.json](texlite.config.example.json) |
 
 ## Scope and security
 
