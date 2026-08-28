@@ -349,6 +349,11 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .spell-suggestions-menu button:disabled { color: #78847d; cursor: not-allowed; opacity: .7; }
 .spell-suggestions-empty, .spell-suggestions-readonly { display: block; padding: 4px 6px; color: #78847d; font-size: 10px; line-height: 1.35; }
 .spell-suggestions-readonly { border-top: 1px solid #e2e8e3; margin-top: 3px; padding-top: 7px; }
+.cm-tooltip:has(.texlite-math-hover) { max-width: min(720px, calc(100vw - 28px)); border: 1px solid #bfd0c3; border-radius: 7px; padding: 0; background: #fff; box-shadow: 0 10px 26px #1b34261f; color: #1d3025; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.texlite-math-hover { max-width: min(680px, calc(100vw - 52px)); min-width: 56px; overflow: auto; padding: 10px 13px; color: #1d3025; font-size: 14px; line-height: 1.45; white-space: nowrap; }
+.texlite-math-hover.display { padding: 13px 17px; white-space: normal; }
+.texlite-math-hover .katex-display { margin: 0; }
+.texlite-math-hover-error { color: #9b3e36; font-size: 11px; white-space: normal; }
 .cm-source-comment { background: #ffe49b99; border-bottom: 2px solid #d68b00; cursor: text; }
 .cm-source-comment-resolved { background: #dce5de99; border-bottom-color: #829087; }
 .cm-comment-pin { color: #d68b00; font-size: 9px; padding: 0 2px; cursor: pointer; }

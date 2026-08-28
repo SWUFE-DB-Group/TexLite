@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LoaderCircle, PanelsTopLeft, RefreshCw, Save, Settings, SpellCheck2, Type, WrapText, X } from "lucide-react";
+import { AlertCircle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LoaderCircle, PanelsTopLeft, RefreshCw, Save, Settings, Sigma, SpellCheck2, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
@@ -126,6 +126,10 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
       <label>{t("projectSettings.fontSize")}<select value={appearancePreferences.fontSize} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, fontSize: Number(event.target.value) })}>{[12, 13, 14, 15, 16, 18, 20].map((size) => <option value={size} key={size}>{size} px</option>)}</select></label>
       <label>{t("projectSettings.lineHeight")}<select value={appearancePreferences.lineHeight} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineHeight: Number(event.target.value) })}><option value={1.45}>{t("projectSettings.lineHeightCompact")}</option><option value={1.65}>{t("projectSettings.lineHeightNormal")}</option><option value={1.85}>{t("projectSettings.lineHeightRelaxed")}</option></select></label>
       <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.lineWrapping} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineWrapping: event.target.checked })} /><WrapText size={15} /><span>{t("projectSettings.lineWrapping")}</span></label>
+      <div className="editor-preference">
+        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.mathPreviewOnHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, mathPreviewOnHover: event.target.checked })} /><Sigma size={15} /><span>{t("projectSettings.mathPreviewOnHover")}</span></label>
+        <p className="field-hint">{t("projectSettings.mathPreviewOnHoverDescription")}</p>
+      </div>
       <div className="editor-preference">
         <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><span>{t("projectSettings.spellCheck")}</span></label>
         <p className="field-hint">{t("projectSettings.writingCheckDescription")} <a href="https://writewithharper.com/docs/integrations/language-server" target="_blank" rel="noreferrer">Harper</a></p>

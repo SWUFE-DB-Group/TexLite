@@ -24,6 +24,8 @@ import type { Comment, LatexCompletionIndex, LatexCompletionItem } from "./types
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
 import { countSearchMatches, searchQuerySignature } from "./editorSearch";
 import { bibtexLanguage, latexLanguage } from "./latexLanguage";
+import { supportsLatexMathHover } from "./latexMath";
+import { latexMathHover } from "./mathHover";
 import { latexAutoPair, latexAutoPairAtCursor } from "./latexAutoPairs";
 import type { SpellCheckIssue } from "./spellCheck";
 export type { SpellCheckIssue } from "./spellCheck";
@@ -397,6 +399,7 @@ export function LatexEditor({
   const handledSearchRequest = useRef(searchRequest);
   const completionIndexRef = useRef(completionIndex);
   const appearance = useRef(new Compartment());
+  const mathHover = useRef(new Compartment());
   const vimMode = useRef(new Compartment());
   const vimStatusCleanup = useRef<(() => void) | null>(null);
   const [vimStatus, setVimStatus] = useState(preferences.vimMode ? "NORMAL" : "");
@@ -439,6 +442,9 @@ export function LatexEditor({
         lineNumbers(), foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
         /\.bib$/i.test(filePath) ? bibtexLanguage : latexLanguage, syntaxHighlighting(defaultHighlightStyle), bracketMatching(),
         Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
+        mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
+          loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
+        }) : []),
         search({ top: false }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
         autocompletion({ override: [(context) => latexCompletions(context, t, completionIndexRef.current)], activateOnTyping: true }),
         ...(collaborationUndoManager ? [vimHistoryCommands.of({
@@ -521,6 +527,9 @@ export function LatexEditor({
     if (!editor) return;
     editor.dispatch({ effects: [
       appearance.current.reconfigure(editorAppearance(preferences, nativeSpellCheck)),
+      mathHover.current.reconfigure(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
+        loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
+      }) : []),
       vimMode.current.reconfigure(preferences.vimMode ? vim() : [])
     ] });
     syncVimStatus(editor, preferences.vimMode);

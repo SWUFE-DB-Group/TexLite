@@ -6,6 +6,7 @@ export interface EditorPreferences {
   lineHeight: number;
   lineWrapping: boolean;
   spellCheck: boolean;
+  mathPreviewOnHover: boolean;
   vimMode: boolean;
   formatOnCompile: boolean;
   /** TOML options passed to the browser-side tex-fmt WASM formatter. */
@@ -27,6 +28,7 @@ export const defaultEditorPreferences: EditorPreferences = {
   lineHeight: 1.65,
   lineWrapping: true,
   spellCheck: true,
+  mathPreviewOnHover: false,
   vimMode: false,
   formatOnCompile: false,
   texFmtConfig: "",
@@ -52,6 +54,7 @@ export function loadEditorPreferences(userId: string, projectId: string): Editor
       lineHeight: [1.45, 1.65, 1.85].includes(Number(stored.lineHeight)) ? Number(stored.lineHeight) : defaultEditorPreferences.lineHeight,
       lineWrapping: typeof stored.lineWrapping === "boolean" ? stored.lineWrapping : defaultEditorPreferences.lineWrapping,
       spellCheck: typeof stored.spellCheck === "boolean" ? stored.spellCheck : defaultEditorPreferences.spellCheck,
+      mathPreviewOnHover: typeof stored.mathPreviewOnHover === "boolean" ? stored.mathPreviewOnHover : defaultEditorPreferences.mathPreviewOnHover,
       vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode,
       formatOnCompile: typeof stored.formatOnCompile === "boolean" ? stored.formatOnCompile : defaultEditorPreferences.formatOnCompile,
       texFmtConfig: typeof stored.texFmtConfig === "string" && stored.texFmtConfig.length <= 16 * 1024 ? stored.texFmtConfig : defaultEditorPreferences.texFmtConfig,
