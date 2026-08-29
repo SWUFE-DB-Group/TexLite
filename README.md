@@ -32,7 +32,7 @@ a narrower self-hosted use case:
 - Overleaf's open-source [Community Edition](https://github.com/overleaf/overleaf)
   follows a more involved [Docker deployment path](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit), and
   several functionalities, such as source comments, are [Server Pro features](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions).
-  *If you do not mind a heftier Docker image, [we have one ready too](#docker-deployment) :)*
+  _If you do not mind a heftier Docker image, [we have one ready too](#docker-deployment) :)_
 
 Self-hosting does not make every document compile faster: that still depends on
 the host and the document. It does give the team control over capacity, TeX
@@ -107,6 +107,7 @@ cp deployment.example.json deployment.json
 # Edit deployment.json before the first start.
 ./scripts/compose.sh pull
 ./scripts/compose.sh up -d
+# Open <http://127.0.0.1:3040>
 ```
 
 See the [TexLite-Docker README](https://github.com/SWUFE-DB-Group/TexLite-Docker#readme)

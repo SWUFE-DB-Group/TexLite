@@ -57,24 +57,24 @@ TeX 更新、数据位置与协作工作流的掌控。
 
 安装后可先执行 `texlite requirements`，检查相关宿主机软件及版本。
 
-~~~bash
+```bash
 npm install --global texlite
 texlite requirements
 texlite init
 texlite start
 texlite status
-~~~
+```
 
 访问 <http://127.0.0.1:3000>。`texlite init` 会创建配置并建立第一个管理员；TexLite
 不开放公众注册。
 
 升级与日常管理：
 
-~~~bash
+```bash
 npm update --global texlite
 texlite restart
 texlite logs
-~~~
+```
 
 `texlite serve` 会以前台方式运行，适合调试、Docker 或 systemd。`start`、`stop`、
 `restart`、`status`、`logs` 使用 npm 包内置的 PM2 运行时；完整命令请执行
@@ -88,26 +88,27 @@ texlite logs
 [TexLite-Docker](https://github.com/SWUFE-DB-Group/TexLite-Docker) 部署。其已发布镜像会
 一并提供这些运行时依赖。
 
-~~~bash
+```bash
 git clone https://github.com/SWUFE-DB-Group/TexLite-Docker.git
 cd texlite-docker
 cp deployment.example.json deployment.json
 # 首次启动前请编辑 deployment.json。
 ./scripts/compose.sh pull
 ./scripts/compose.sh up -d
-~~~
+# 访问 <http://127.0.0.1:3040>
+```
 
 Docker 版的用户配置和日常运维请参见
 [TexLite-Docker README](https://github.com/SWUFE-DB-Group/TexLite-Docker#readme)。
 
 ## 文档导航
 
-| 需要了解 | 阅读 |
-| --- | --- |
-| 安装、配置路径、生效默认值、环境变量、服务管理、备份与安全边界 | [运维指南（英文）](OPERATIONS.md) |
-| 协作、源码持久化、编译隔离、历史版本和设计权衡 | [设计文档（英文）](DESIGN.md) |
-| 发布前测试 npm 包 | [NPM 测试指南（英文）](NPM_TESTING.md) |
-| 完整配置起点 | [texlite.config.example.json](texlite.config.example.json) |
+| 需要了解                                                       | 阅读                                                       |
+| -------------------------------------------------------------- | ---------------------------------------------------------- |
+| 安装、配置路径、生效默认值、环境变量、服务管理、备份与安全边界 | [运维指南（英文）](OPERATIONS.md)                          |
+| 协作、源码持久化、编译隔离、历史版本和设计权衡                 | [设计文档（英文）](DESIGN.md)                              |
+| 发布前测试 npm 包                                              | [NPM 测试指南（英文）](NPM_TESTING.md)                     |
+| 完整配置起点                                                   | [texlite.config.example.json](texlite.config.example.json) |
 
 ## 范围与安全
 
