@@ -105,13 +105,13 @@ export function ProjectListRow({
       <span className="project-list-summary">
         <span className="project-list-title-line">
           <strong className="project-list-title" title={project.name}>{project.name}</strong>
-          {project.tags?.length > 0 && <span className="project-list-tags">{project.tags.map((tag) => <span className={`tag tag-${tag.color} project-list-tag`} key={tag.id} title={tag.name}>{tag.name}</span>)}</span>}
           {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
             <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
               <MessageSquare aria-hidden size={10} />
               <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
             </span>
           )}
+          {project.tags?.length > 0 && <span className="project-list-tags">{project.tags.map((tag) => <span className={`tag tag-${tag.color} project-list-tag`} key={tag.id} title={tag.name}>{tag.name}</span>)}</span>}
         </span>
       </span>
       <span className="project-list-owner" title={ownerName}>

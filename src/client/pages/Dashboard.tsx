@@ -429,13 +429,13 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
               <span className="project-card-main">
                 <strong title={project.name}>{project.name}</strong>
                 <span className="project-tags">
-                  {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
                   {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
                     <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
                       <MessageSquare aria-hidden size={10} />
                       <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
                     </span>
                   )}
+                  {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
                 </span>
               </span>
               <dl className="project-meta">
