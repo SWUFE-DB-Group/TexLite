@@ -249,6 +249,45 @@
 <span class="terminal-comment"># open http://localhost:3000</span></code></pre>
             </div>
           </div>
+          <div class="docker-deploy-card" id="docker-deployment">
+            <div class="docker-deploy-copy">
+              <div class="docker-deploy-heading">
+                <span class="docker-deploy-mark" aria-hidden="true">▣</span>
+                <p class="section-kicker" data-i18n="docker.kicker">可选的 Docker 部署</p>
+              </div>
+              <h3 data-i18n="docker.title">不维护本机依赖，也能快速开始。</h3>
+              <p data-i18n="docker.lead">
+                不想维护 Node.js、TeX Live、Git 和 Harper？使用 TexLite-Docker 的已发布镜像；配置和项目数据仍保存在宿主机。
+              </p>
+              <div class="docker-links">
+                <a
+                  href="https://hub.docker.com/r/zhongpu/texlite"
+                  target="_blank"
+                  rel="noreferrer"
+                  ><span data-i18n="docker.hub">查看 Docker Hub</span
+                  ><span aria-hidden="true">↗</span></a
+                >
+                <a
+                  href="https://github.com/SWUFE-DB-Group/TexLite-Docker"
+                  target="_blank"
+                  rel="noreferrer"
+                  ><span data-i18n="docker.repository">打开 TexLite-Docker</span
+                  ><span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </div>
+            <div class="terminal docker-terminal" aria-label="TexLite Docker commands">
+              <div class="terminal-bar">
+                <span></span><span></span><span></span><em data-i18n="docker.terminalTitle">docker quick-start</em>
+              </div>
+              <pre><code><b>$</b> git clone https://github.com/SWUFE-DB-Group/TexLite-Docker.git
+<b>$</b> cd texlite-docker
+<b>$</b> cp deployment.example.json deployment.json
+<b>$</b> ./scripts/compose.sh pull &amp;&amp; ./scripts/compose.sh up -d
+
+<span class="terminal-comment" data-i18n="docker.terminalComment"># Edit deployment.json, then open http://localhost:3040</span></code></pre>
+            </div>
+          </div>
         </section>
 
         <section class="section closing-section">
