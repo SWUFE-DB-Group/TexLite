@@ -62,18 +62,80 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     return { tags };
   });
 
+  /**
+   * Return the current user's tag catalog together with usage counts.  This is
+   * intentionally separate from /api/tags: the lightweight catalog is loaded
+   * with every project-list refresh, while counts are only needed by the tag
+   * management dialog.
+   */
+  app.get("/api/tags/management", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const rows = db.prepare(`SELECT tag.id, tag.name, tag.color, COUNT(link.project_id) AS project_count
+      FROM user_tags tag
+      LEFT JOIN user_project_tag_links link ON link.tag_id = tag.id
+      WHERE tag.user_id = ?
+      GROUP BY tag.id
+      ORDER BY tag.name COLLATE NOCASE`).all(user.id) as Array<ProjectTag & { project_count: number }>;
+    return {
+      tags: rows.map(({ id, name, color, project_count }) => ({
+        id,
+        name,
+        color,
+        projectCount: Number(project_count) || 0
+      }))
+    };
+  });
+
   app.post("/api/tags", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const body = request.body as { name?: unknown; color?: unknown };
+    const body = (request.body ?? {}) as { name?: unknown; color?: unknown };
     const name = text(body.name, 32);
     const color = tagColors.includes(body.color as typeof tagColors[number])
       ? body.color as typeof tagColors[number] : "gray";
     const tag: ProjectTag = { id: randomUUID(), name, color };
     const createdAt = now();
+    if (db.prepare("SELECT 1 FROM user_tags WHERE user_id = ? AND name = ?").get(user.id, tag.name)) {
+      return apiError(reply, 409, "TAG_NAME_EXISTS");
+    }
     db.prepare("INSERT INTO user_tags (id, name, color, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
       .run(tag.id, tag.name, tag.color, user.id, createdAt, createdAt);
     return reply.code(201).send({ tag });
+  });
+
+  app.patch("/api/tags/:tagId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { tagId } = request.params as { tagId: string };
+    const body = (request.body ?? {}) as { name?: unknown; color?: unknown };
+    const name = text(body.name, 32);
+    const color = tagColors.includes(body.color as typeof tagColors[number])
+      ? body.color as typeof tagColors[number] : "gray";
+    const existing = db.prepare("SELECT id FROM user_tags WHERE id = ? AND user_id = ?").get(tagId, user.id);
+    if (!existing) return apiError(reply, 404, "TAG_NOT_FOUND");
+    if (db.prepare("SELECT 1 FROM user_tags WHERE user_id = ? AND name = ? AND id <> ?").get(user.id, name, tagId)) {
+      return apiError(reply, 409, "TAG_NAME_EXISTS");
+    }
+    db.prepare("UPDATE user_tags SET name = ?, color = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+      .run(name, color, now(), tagId, user.id);
+    return { tag: { id: tagId, name, color } satisfies ProjectTag };
+  });
+
+  app.delete("/api/tags/:tagId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { tagId } = request.params as { tagId: string };
+    const tag = db.prepare(`SELECT tag.id, COUNT(link.project_id) AS project_count
+      FROM user_tags tag
+      LEFT JOIN user_project_tag_links link ON link.tag_id = tag.id
+      WHERE tag.id = ? AND tag.user_id = ?
+      GROUP BY tag.id`).get(tagId, user.id) as { id: string; project_count: number } | undefined;
+    if (!tag) return apiError(reply, 404, "TAG_NOT_FOUND");
+    // Foreign-key cascading removes only this user's project/tag links. The
+    // projects and their source files are deliberately left untouched.
+    db.prepare("DELETE FROM user_tags WHERE id = ? AND user_id = ?").run(tag.id, user.id);
+    return { deletedId: tag.id, projectCount: Number(tag.project_count) || 0 };
   });
 
   app.get("/api/projects", async (request, reply) => {

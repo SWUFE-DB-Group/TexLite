@@ -1206,6 +1206,72 @@ Second version.
     expect(download.rawPayload.subarray(0, 2).toString()).toBe("PK");
   });
 
+  it("manages a private tag catalog without deleting associated projects", async () => {
+    const firstProject = (await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Tag catalog first" }
+    })).json().project;
+    const secondProject = (await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Tag catalog second" }
+    })).json().project;
+    const tagName = `Catalog ${randomUUID().slice(0, 8)}`;
+    const created = await app.inject({
+      method: "POST", url: "/api/tags", headers: { cookie }, payload: { name: tagName, color: "blue" }
+    });
+    expect(created.statusCode).toBe(201);
+    const tag = created.json().tag as { id: string; name: string; color: string };
+
+    for (const project of [firstProject, secondProject]) {
+      const assigned = await app.inject({
+        method: "POST", url: `/api/projects/${project.id}/tags`, headers: { cookie }, payload: { tagId: tag.id }
+      });
+      expect(assigned.statusCode).toBe(201);
+    }
+
+    const catalog = await app.inject({ method: "GET", url: "/api/tags/management", headers: { cookie } });
+    expect(catalog.statusCode).toBe(200);
+    expect(catalog.json().tags).toContainEqual(expect.objectContaining({ ...tag, projectCount: 2 }));
+
+    const renamed = await app.inject({
+      method: "PATCH", url: `/api/tags/${tag.id}`, headers: { cookie }, payload: { name: `${tagName} revised`, color: "orange" }
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json().tag).toMatchObject({ id: tag.id, name: `${tagName} revised`, color: "orange" });
+    const firstAfterRename = await app.inject({ method: "GET", url: `/api/projects/${firstProject.id}`, headers: { cookie } });
+    expect(firstAfterRename.json().project.tags).toEqual([expect.objectContaining({ id: tag.id, name: `${tagName} revised`, color: "orange" })]);
+
+    const duplicateName = await app.inject({
+      method: "POST", url: "/api/tags", headers: { cookie }, payload: { name: `${tagName} revised`, color: "purple" }
+    });
+    expect(duplicateName.statusCode).toBe(409);
+    expect(duplicateName.json()).toMatchObject({ code: "TAG_NAME_EXISTS" });
+
+    const otherUser = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: `tag-manager-${randomUUID().slice(0, 8)}`, displayName: "Tag Manager", password: "reader-password" }
+    });
+    const otherLogin = await app.inject({
+      method: "POST", url: "/api/auth/login", payload: { username: otherUser.json().user.username, password: "reader-password" }
+    });
+    const otherCookie = otherLogin.headers["set-cookie"]!.split(";")[0];
+    const otherEdit = await app.inject({
+      method: "PATCH", url: `/api/tags/${tag.id}`, headers: { cookie: otherCookie }, payload: { name: "Not allowed", color: "red" }
+    });
+    expect(otherEdit.statusCode).toBe(404);
+    expect(otherEdit.json()).toMatchObject({ code: "TAG_NOT_FOUND" });
+
+    const deleted = await app.inject({ method: "DELETE", url: `/api/tags/${tag.id}`, headers: { cookie } });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toEqual({ deletedId: tag.id, projectCount: 2 });
+    const catalogAfterDelete = await app.inject({ method: "GET", url: "/api/tags/management", headers: { cookie } });
+    expect(catalogAfterDelete.json().tags).not.toContainEqual(expect.objectContaining({ id: tag.id }));
+
+    for (const project of [firstProject, secondProject]) {
+      const stillThere = await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } });
+      expect(stillThere.statusCode).toBe(200);
+      expect(stillThere.json().project.tags).toEqual([]);
+    }
+  });
+
   it("deletes a project together with its source files and history", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Disposable" } });
     const project = created.json().project;

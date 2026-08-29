@@ -881,7 +881,7 @@ h1 {
   color: #759787;
 }
 
-/* Optional Docker Deployment */
+/* Alternative Docker Deployment */
 .docker-deploy-card {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
@@ -889,10 +889,9 @@ h1 {
   align-items: center;
   margin-top: 20px;
   padding: clamp(28px, 4vw, 42px) clamp(24px, 4.5vw, 48px);
-  border: 1px solid #cfe0d3;
-  border-radius: 14px;
-  background: #f9fcf9;
-  box-shadow: 0 14px 36px #10251d0b;
+  border-radius: 15px;
+  background: var(--ink);
+  box-shadow: var(--shadow);
 }
 
 .docker-deploy-heading {
@@ -903,6 +902,7 @@ h1 {
 
 .docker-deploy-heading .section-kicker {
   margin-bottom: 14px;
+  color: var(--lime);
 }
 
 .docker-deploy-mark {
@@ -912,15 +912,20 @@ h1 {
   place-items: center;
   margin-top: -2px;
   border-radius: 6px;
-  background: #e7f2e9;
-  color: #2c7a4d;
-  font-size: 13px;
+  background: #1c382b;
+  color: var(--lime);
+}
+
+.docker-deploy-mark svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
 }
 
 .docker-deploy-copy h3 {
   max-width: 520px;
   margin: 0 0 12px;
-  color: var(--ink);
+  color: white;
   font-size: clamp(23px, 3vw, 34px);
   font-weight: 730;
   letter-spacing: -.055em;
@@ -930,7 +935,7 @@ h1 {
 .docker-deploy-copy > p {
   max-width: 560px;
   margin-bottom: 0;
-  color: var(--ink-soft);
+  color: #b6c9bd;
   font-size: 13px;
   line-height: 1.7;
 }
@@ -947,11 +952,11 @@ h1 {
   align-items: center;
   gap: 6px;
   min-height: 34px;
-  border: 1px solid #c5d8ca;
+  border: 1px solid #2b503e;
   border-radius: 6px;
-  padding: 0 10px;
-  background: white;
-  color: #256842;
+  padding: 0 12px;
+  background: #173326;
+  color: var(--lime);
   font-size: 11px;
   font-weight: 700;
   text-decoration: none;
@@ -959,22 +964,22 @@ h1 {
 }
 
 .docker-links a:hover {
-  border-color: #71a784;
-  background: #eaf4ec;
-  color: #124e2d;
+  border-color: #4a8064;
+  background: #1f4534;
+  color: white;
 }
 
 .docker-terminal {
-  border-color: #b9d0bf;
-  background: #183126;
+  border-color: #527060;
+  background: #162d23;
 }
 
 .docker-terminal .terminal-bar {
-  border-bottom-color: #3a6049;
+  border-bottom-color: #365544;
 }
 
 .docker-terminal pre {
-  color: #e1f4c8;
+  color: #dcf2bf;
 }
 
 /* Closing Section */

@@ -10,6 +10,8 @@ import { CitationLibraryDialog } from "../CitationLibraryDialog";
 import { LanguageSwitcher } from "../LanguageSwitcher";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
 import { AdminUsers } from "./AdminUsers";
+import { ProjectListRow } from "./ProjectListRow";
+import { TagManagementDialog } from "./TagManagementDialog";
 
 const SystemMetricsDialog = lazy(() => import("../SystemMetricsDialog").then((module) => ({ default: module.SystemMetricsDialog })));
 
@@ -82,7 +84,6 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [error, setError] = useState("");
   const [createError, setCreateError] = useState("");
-  const [tagCreateError, setTagCreateError] = useState("");
   const [tagAssignmentError, setTagAssignmentError] = useState("");
   const [renameError, setRenameError] = useState("");
   const [duplicateError, setDuplicateError] = useState("");
@@ -95,12 +96,12 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importError, setImportError] = useState("");
   const importInput = useRef<HTMLInputElement>(null);
+  const tagFilterSidebar = useRef<HTMLElement>(null);
   const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState("");
-  const [tagCreateOpen, setTagCreateOpen] = useState(false);
-  const [tagName, setTagName] = useState("");
-  const [tagColor, setTagColor] = useState<TagColor>("blue");
+  const [tagFiltersOpen, setTagFiltersOpen] = useState(false);
+  const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [tagProject, setTagProject] = useState<Project | null>(null);
   const [renameProject, setRenameProject] = useState<Project | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -119,6 +120,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [sort, setSort] = useState<"updated" | "created">(() => localStorage.getItem("texlite-project-sort") === "created" ? "created" : "updated");
   const [showArchived, setShowArchived] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState("");
+  const [projectMenuId, setProjectMenuId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [relativeTimeNow, setRelativeTimeNow] = useState(() => Date.now());
   const [loadedKey, setLoadedKey] = useState("");
@@ -158,7 +160,22 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     const timer = window.setInterval(() => setRelativeTimeNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
-  const changeView = (next: "grid" | "list") => { setView(next); localStorage.setItem("texlite-project-view", next); };
+  useEffect(() => {
+    if (!tagFiltersOpen) return;
+    const closeWhenOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !tagFilterSidebar.current?.contains(event.target)) setTagFiltersOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTagFiltersOpen(false);
+    };
+    document.addEventListener("pointerdown", closeWhenOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeWhenOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [tagFiltersOpen]);
+  const changeView = (next: "grid" | "list") => { setProjectMenuId(null); setView(next); localStorage.setItem("texlite-project-view", next); };
   const changeSort = (next: "updated" | "created") => { setSort(next); setPage(1); localStorage.setItem("texlite-project-sort", next); };
   const changeScope = (archived: boolean) => { setShowArchived(archived); setPage(1); };
   const changeTagFilter = (next: string) => { setTagFilter(next); setPage(1); };
@@ -204,18 +221,6 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     onUser(null);
   };
 
-  const createTag = async () => {
-    if (!tagName.trim()) return;
-    setTagCreateError("");
-    try {
-      const result = await api<{ tag: ProjectTag }>("/api/tags", {
-        method: "POST", body: JSON.stringify({ name: tagName, color: tagColor })
-      });
-      setTags((current) => [...current, result.tag].sort((left, right) => left.name.localeCompare(right.name)));
-      setTagCreateOpen(false); setTagName(""); setTagColor("blue");
-    } catch (e) { setTagCreateError(errorMessage(e)); }
-  };
-
   const toggleProjectTag = async (tag: ProjectTag) => {
     if (!tagProject) return;
     const assigned = tagProject.tags.some((item) => item.id === tag.id);
@@ -229,6 +234,24 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       setTagProject(updated);
       setProjects((current) => current.map((project) => project.id === updated.id ? updated : project));
     } catch (e) { setTagAssignmentError(errorMessage(e)); }
+  };
+
+  const addManagedTag = (tag: ProjectTag) => {
+    setTags((current) => [...current, tag].sort((left, right) => left.name.localeCompare(right.name)));
+  };
+
+  const updateManagedTag = (tag: ProjectTag) => {
+    const replaceTag = (current: ProjectTag[]) => current.map((item) => item.id === tag.id ? tag : item);
+    setTags((current) => replaceTag(current).sort((left, right) => left.name.localeCompare(right.name)));
+    setProjects((current) => current.map((project) => ({ ...project, tags: replaceTag(project.tags) })));
+    setTagProject((current) => current ? { ...current, tags: replaceTag(current.tags) } : null);
+  };
+
+  const deleteManagedTag = (tagId: string) => {
+    setTags((current) => current.filter((tag) => tag.id !== tagId));
+    setProjects((current) => current.map((project) => ({ ...project, tags: project.tags.filter((tag) => tag.id !== tagId) })));
+    setTagProject((current) => current ? { ...current, tags: current.tags.filter((tag) => tag.id !== tagId) } : null);
+    setTagFilter((current) => current === tagId ? "" : current);
   };
 
   const rename = async () => {
@@ -325,8 +348,12 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   };
 
   const filtered = projects;
-  const colors: TagColor[] = ["red", "orange", "yellow", "green", "blue", "purple", "gray"];
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
+  const formatProjectCreatedDate = (value: string) => {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return value;
+    return new Intl.DateTimeFormat(i18n.resolvedLanguage ?? "en", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  };
   const formatProjectUpdatedTime = (value: string) => formatRelativeTime(
     value,
     i18n.resolvedLanguage ?? "en",
@@ -346,51 +373,97 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     {adminOpen ? <AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} /> : citationLibraryOpen ? <main className="dashboard citation-library-page-shell">
       <CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} maxBibtexBytes={site.maxCitationBibtexBytes} />
     </main> : <main className="dashboard">
-      <div className="section-title"><div><h1><FolderOpen aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => { setTagCreateError(""); setTagCreateOpen(true); }}><Tags aria-hidden size={15} />{t("tags.create")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} />{t("projects.upload")}</button><button className="primary" onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} />{t("projects.new")}</button></>}</div></div>
+      <div className="section-title"><div><h1><FolderOpen aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} />{t("tags.manage")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} />{t("projects.upload")}</button><button className="primary" onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} />{t("projects.new")}</button></>}</div></div>
       {error && <p className="error">{error}</p>}
-      <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="tablist" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} role="tab" aria-selected={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} role="tab" aria-selected={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><div className="tag-filters"><button className={!tagFilter ? "active" : ""} onClick={() => changeTagFilter("")}>{t("projects.allTags")}</button>{tags.map((tag) => <button key={tag.id} className={tagFilter === tag.id ? "active" : ""} onClick={() => changeTagFilter(tagFilter === tag.id ? "" : tag.id)}><TagDot color={tag.color} />{tag.name}</button>)}</div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
-      <div className={`project-grid ${view === "list" ? "list-view" : ""}`}>
-        {filtered.map((project) => <article className={`project-card${project.ownerId === user.id ? " owned-project" : ""}`} key={project.id}>
-          {view === "grid" && project.ownerId === user.id && <button className="project-transfer-action" title={t("projects.transferOwnership")} onClick={() => void openTransfer(project)}><ArrowRightLeft aria-hidden size={13} />{t("projects.transfer")}</button>}
-          <button className="project-card-open" onClick={() => onOpenProject(project.id)}>
-            <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername}>{project.ownerDisplayName ?? project.ownerUsername}</span>
-            <span className="project-card-main">
-              <strong>{project.name}</strong>
-              <span className="project-tags">
-                {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
-                {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
-                  <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
-                    <MessageSquare aria-hidden size={10} />
-                    <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
-                  </span>
-                )}
-              </span>
-            </span>
-            <dl className="project-meta">
-              <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
-              <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
-            </dl>
+      <div className="project-catalog-layout">
+        <aside ref={tagFilterSidebar} className={`project-tag-sidebar${tagFilter ? " has-active-filter" : ""}`}>
+          <button
+            type="button"
+            className="project-tag-toggle"
+            title={t("projects.filterTags")}
+            aria-label={t("projects.filterTags")}
+            aria-expanded={tagFiltersOpen}
+            aria-controls="dashboard-tag-filters"
+            onClick={() => setTagFiltersOpen((current) => !current)}
+          >
+            <span className="project-tag-toggle-copy"><Tags aria-hidden size={15} /><span>{t("projects.filterTags")}</span></span>
+            <ChevronRight className="project-tag-toggle-chevron" aria-hidden size={15} />
           </button>
-          <div className="project-card-actions">
-            <button onClick={() => { setTagAssignmentError(""); setTagProject(project); }}><Tags aria-hidden size={14} />{t("tags.assign")}</button>
-            {project.permission === "owner" && <button onClick={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}><Pencil aria-hidden size={14} />{t("projects.rename")}</button>}
-            {(user.role === "admin" || user.canCreateProjects) && <button onClick={() => { setDuplicateError(""); setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}><Copy aria-hidden size={14} />{t("projects.duplicate")}</button>}
-            <a href={`/api/projects/${project.id}/download`} download><Download aria-hidden size={14} />{t("projects.download")}</a>
-            <button disabled={archiveBusy === project.id} onClick={() => void toggleArchive(project)}>{showArchived ? <ArchiveRestore aria-hidden size={14} /> : <Archive aria-hidden size={14} />}{showArchived ? t("projects.unarchive") : t("projects.archive")}</button>
-            {view === "list" && project.ownerId === user.id && <button onClick={() => void openTransfer(project)}><ArrowRightLeft aria-hidden size={14} />{t("projects.transfer")}</button>}
-            {project.permission === "owner" && <button className="danger-text" onClick={() => { setDeleteProject(project); setDeleteError(""); }}><Trash2 aria-hidden size={14} />{t("common.delete")}</button>}
-          </div>
-        </article>)}
+          {tagFiltersOpen && <div id="dashboard-tag-filters" className="project-tag-filters" role="group" aria-label={t("projects.filterTags")}>
+            <button type="button" className={!tagFilter ? "active" : ""} aria-pressed={!tagFilter} onClick={() => changeTagFilter("")}>{t("projects.allTags")}</button>
+            {tags.length > 0
+              ? tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} title={tag.name} aria-pressed={tagFilter === tag.id} onClick={() => changeTagFilter(tagFilter === tag.id ? "" : tag.id)}><TagDot color={tag.color} /><span>{tag.name}</span></button>)
+              : <p className="project-tag-empty">{t("tags.none")}</p>}
+          </div>}
+        </aside>
+        <div className="project-catalog-content">
+          <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="tablist" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} role="tab" aria-selected={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} role="tab" aria-selected={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
+      <div className={`project-grid ${view === "list" ? "list-view" : ""}${projectMenuId ? " project-list-menu-active" : ""}`}>
+        {view === "list" && filtered.length > 0 && <div className="project-list-header" aria-hidden="true"><span>{t("projects.title")}</span><span>{t("projects.owner")}</span><span>{t("projects.created")}</span><span>{t("projects.modified")}</span><span>{t("projects.actions")}</span></div>}
+        {view === "list"
+          ? filtered.map((project) => <ProjectListRow
+            key={project.id}
+            project={project}
+            currentUser={user}
+            showArchived={showArchived}
+            archiveBusy={archiveBusy === project.id}
+            menuOpen={projectMenuId === project.id}
+            t={t}
+            formatCreatedDate={formatProjectCreatedDate}
+            formatUpdatedTime={formatProjectUpdatedTime}
+            formatExactTime={formatTime}
+            onOpenProject={() => { setProjectMenuId(null); onOpenProject(project.id); }}
+            onToggleMenu={() => setProjectMenuId((current) => current === project.id ? null : project.id)}
+            onCloseMenu={() => setProjectMenuId((current) => current === project.id ? null : current)}
+            onAssignTags={() => { setTagAssignmentError(""); setTagProject(project); }}
+            onRename={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}
+            onDuplicate={() => { setDuplicateError(""); setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}
+            onArchive={() => void toggleArchive(project)}
+            onTransfer={() => void openTransfer(project)}
+            onDelete={() => { setDeleteProject(project); setDeleteError(""); }}
+          />)
+          : filtered.map((project) => <article className={`project-card${project.ownerId === user.id ? " owned-project" : ""}`} key={project.id}>
+            {project.ownerId === user.id && <button className="project-transfer-action" title={t("projects.transferOwnership")} onClick={() => void openTransfer(project)}><ArrowRightLeft aria-hidden size={13} />{t("projects.transfer")}</button>}
+            <button className="project-card-open" onClick={() => onOpenProject(project.id)}>
+              <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername}>{project.ownerDisplayName ?? project.ownerUsername}</span>
+              <span className="project-card-main">
+                <strong title={project.name}>{project.name}</strong>
+                <span className="project-tags">
+                  {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
+                  {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
+                    <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
+                      <MessageSquare aria-hidden size={10} />
+                      <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
+                    </span>
+                  )}
+                </span>
+              </span>
+              <dl className="project-meta">
+                <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
+                <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
+              </dl>
+            </button>
+            <div className="project-card-actions">
+              <button onClick={() => { setTagAssignmentError(""); setTagProject(project); }}><Tags aria-hidden size={14} />{t("tags.assign")}</button>
+              {project.permission === "owner" && <button onClick={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}><Pencil aria-hidden size={14} />{t("projects.rename")}</button>}
+              {(user.role === "admin" || user.canCreateProjects) && <button onClick={() => { setDuplicateError(""); setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}><Copy aria-hidden size={14} />{t("projects.duplicate")}</button>}
+              <a href={`/api/projects/${project.id}/download`} download><Download aria-hidden size={14} />{t("projects.download")}</a>
+              <button disabled={archiveBusy === project.id} onClick={() => void toggleArchive(project)}>{showArchived ? <ArchiveRestore aria-hidden size={14} /> : <Archive aria-hidden size={14} />}{showArchived ? t("projects.unarchive") : t("projects.archive")}</button>
+              {project.permission === "owner" && <button className="danger-text" onClick={() => { setDeleteProject(project); setDeleteError(""); }}><Trash2 aria-hidden size={14} />{t("common.delete")}</button>}
+            </div>
+          </article>)}
         {filtered.length === 0 && (projects.length === 0
           ? showArchived ? <div className="empty">{t("projects.noArchived")}</div> : <div className="project-empty"><span className="project-empty-icon"><Sparkles size={28} /></span><h2>{t("projects.emptyTitle")}</h2><p>{user.canCreateProjects ? t("projects.emptyDescription") : t("projects.emptyRestricted")}</p></div>
           : <div className="empty">{t("projects.noMatches")}</div>)}
       </div>
       {pagination.totalPages > 1 && <nav className="project-pagination" aria-label={t("projects.pagination")}><button disabled={pagination.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} title={t("projects.previousPage")}><ChevronLeft size={15} />{t("projects.previousPage")}</button><span>{t("projects.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}</span><button disabled={pagination.page >= pagination.totalPages} onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} title={t("projects.nextPage")}><ChevronRight size={15} />{t("projects.nextPage")}</button></nav>}
+        </div>
+      </div>
       <Modal open={createOpen} title={t("projects.new")} description={t("projects.newDescription")} onOpenChange={(open) => { if (!open && creating) return; setCreateOpen(open); if (!open) setCreateError(""); }} footer={<><button disabled={creating} onClick={() => setCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" disabled={creating || !newProjectName.trim()} aria-busy={creating} onClick={() => void createProject()}>{creating && <LoaderCircle className="spin" size={14} />}{creating ? t("common.loading") : t("common.create")}</button></>}>
         <>{createError && <p className="error dialog-error">{createError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={newProjectName} onChange={(event) => { setNewProjectName(event.target.value); setCreateError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void createProject(); }} /></label></>
       </Modal>
       <Modal open={importOpen} title={t("projects.upload")} description={t("projects.uploadDescription", { size: site.maxUploadSizeMB })} onOpenChange={(open) => { setImportOpen(open); if (!open) setImportError(""); }} footer={<><button onClick={() => { setImportOpen(false); setImportError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={!importFile || importing} onClick={() => void importProject()}>{importing ? t("projects.importing") : t("projects.import")}</button></>}><div className="form-stack">{importError && <p className="error import-error">{importError}</p>}<div className={`upload-picker${importFile ? " has-file" : ""}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); selectImportFile(event.dataTransfer.files[0] ?? null); }}><input ref={importInput} className="sr-only" type="file" accept=".zip,application/zip" onChange={(event) => selectImportFile(event.target.files?.[0] ?? null)} /><FileArchive size={34} /><div className="upload-picker-copy"><strong>{importFile?.name ?? t("projects.chooseZip")}</strong><span>{importFile ? t("projects.selectedFileSize", { size: formatFileSize(importFile.size) }) : t("projects.dropZip")}</span></div><button type="button" onClick={() => importInput.current?.click()}><Upload size={15} />{t("projects.browse")}</button>{importFile && <button className="upload-clear" type="button" title={t("projects.clearFile")} aria-label={t("projects.clearFile")} onClick={() => { selectImportFile(null); if (importInput.current) importInput.current.value = ""; }}><X size={14} /></button>}</div><label className="form-field">{t("projects.name")}<input value={importName} onChange={(event) => setImportName(event.target.value)} /></label></div></Modal>
-      <Modal open={tagCreateOpen} title={t("tags.create")} description={t("tags.createDescription")} onOpenChange={(open) => { setTagCreateOpen(open); if (!open) setTagCreateError(""); }} footer={<><button onClick={() => setTagCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createTag()}>{t("common.create")}</button></>}><div className="form-stack">{tagCreateError && <p className="error dialog-error">{tagCreateError}</p>}<label className="form-field">{t("tags.name")}<input autoFocus value={tagName} onChange={(event) => { setTagName(event.target.value); setTagCreateError(""); }} /></label><fieldset className="color-picker"><legend>{t("tags.color")}</legend>{colors.map((color) => <label key={color} className={tagColor === color ? "active" : ""}><input type="radio" name="dashboard-tag-color" checked={tagColor === color} onChange={() => setTagColor(color)} /><TagDot color={color} />{t(`tags.${color}`)}</label>)}</fieldset></div></Modal>
+      <TagManagementDialog open={tagManagerOpen} onOpenChange={setTagManagerOpen} onTagCreated={addManagedTag} onTagUpdated={updateManagedTag} onTagDeleted={deleteManagedTag} />
       <Modal open={Boolean(tagProject)} title={t("tags.assignTitle", { project: tagProject?.name ?? "" })} description={t("tags.assignDescription")} onOpenChange={(open) => { if (!open) { setTagProject(null); setTagAssignmentError(""); } }} footer={<button onClick={() => { setTagProject(null); setTagAssignmentError(""); }}>{t("common.close")}</button>}><div className="tag-assignment-list">{tagAssignmentError && <p className="error dialog-error">{tagAssignmentError}</p>}{tags.map((tag) => <label key={tag.id}><input type="checkbox" checked={Boolean(tagProject?.tags.some((item) => item.id === tag.id))} onChange={() => void toggleProjectTag(tag)} /><TagDot color={tag.color} /><span>{tag.name}</span></label>)}{tags.length === 0 && <p className="muted">{t("tags.empty")}</p>}</div></Modal>
       <Modal open={Boolean(renameProject)} title={t("projects.renameTitle")} onOpenChange={(open) => { if (!open && renaming) return; if (!open) { setRenameProject(null); setRenameError(""); } }} footer={<><button disabled={renaming} onClick={() => { setRenameProject(null); setRenameError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={renaming || !renameValue.trim()} aria-busy={renaming} onClick={() => void rename()}>{renaming && <LoaderCircle className="spin" size={14} />}{renaming ? t("common.loading") : t("projects.rename")}</button></>}><>{renameError && <p className="error dialog-error">{renameError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={renameValue} onChange={(event) => { setRenameValue(event.target.value); setRenameError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void rename(); }} /></label></></Modal>
       <Modal open={Boolean(duplicateProject)} title={t("projects.duplicateTitle")} description={t("projects.duplicateDescription", { project: duplicateProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !duplicating) { setDuplicateProject(null); setDuplicateValue(""); setDuplicateError(""); } }} footer={<><button disabled={duplicating} onClick={() => { setDuplicateProject(null); setDuplicateValue(""); setDuplicateError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={duplicating || !duplicateValue.trim()} onClick={() => void duplicate()}>{duplicating ? t("projects.duplicating") : t("projects.duplicate")}</button></>}><>{duplicateError && <p className="error dialog-error">{duplicateError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={duplicateValue} onChange={(event) => { setDuplicateValue(event.target.value); setDuplicateError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void duplicate(); }} /></label></></Modal>

@@ -33,13 +33,13 @@
     "docs": "Read deployment docs"
   },
   "docker": {
-    "kicker": "Optional Docker deployment",
+    "kicker": "Alternative Docker deployment",
     "title": "Start without maintaining host dependencies.",
     "lead": "Do not want to maintain Node.js, TeX Live, Git, and Harper on the host? Use the released TexLite-Docker image while keeping configuration and project data mounted on your server.",
     "hub": "View Docker Hub",
     "repository": "Open TexLite-Docker",
     "terminalTitle": "docker quick-start",
-    "terminalComment": "# Edit deployment.json, then open http://localhost:3040"
+    "terminalComment": "# Open http://localhost:3040"
   },
   "closing": {
     "kicker": "Ready for the next paper",
