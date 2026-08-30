@@ -5,12 +5,13 @@ import { ConfirmDialog, Modal } from "../Dialog";
 import type { Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "../types";
 import i18n from "../i18n";
 import { errorMessage } from "../errors";
-import { Activity, AlertTriangle, Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, CalendarDays, ChevronLeft, ChevronRight, Copy, Download, FileArchive, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Pencil, Sparkles, Tags, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
 import { CitationLibraryDialog } from "../CitationLibraryDialog";
 import { LanguageSwitcher } from "../LanguageSwitcher";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
 import { AdminUsers } from "./AdminUsers";
 import { ProjectListRow } from "./ProjectListRow";
+import { ProjectActionMenu } from "./ProjectActionMenu";
 import { ProjectIconAvatar } from "../projectIcons";
 import { ProjectIconPickerDialog } from "./ProjectIconPickerDialog";
 import { TagManagementDialog } from "./TagManagementDialog";
@@ -439,46 +440,69 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             onDelete={() => { setDeleteProject(project); setDeleteError(""); }}
             onChooseIcon={() => setProjectIconTarget(project)}
           />)
-          : filtered.map((project) => <article className={`project-card${project.ownerId === user.id ? " owned-project" : ""}`} key={project.id}>
-            {project.ownerId === user.id && <button className="project-transfer-action" title={t("projects.transferOwnership")} onClick={() => void openTransfer(project)}><ArrowRightLeft aria-hidden size={13} />{t("projects.transfer")}</button>}
-            <div className="project-card-body">
-              <ProjectIconAvatar
-                icon={project.icon}
-                projectName={project.name}
-                title={project.name}
-                editable={project.permission === "owner"}
-                editLabel={t("projectIcons.change")}
-                onEdit={() => setProjectIconTarget(project)}
-                className="project-card-icon"
-              />
-              <button className="project-card-open" onClick={() => onOpenProject(project.id)}>
-                <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername}>{project.ownerDisplayName ?? project.ownerUsername}</span>
-                <span className="project-card-main">
-                  <strong title={project.name}>{project.name}</strong>
-                  <span className="project-tags">
-                    {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
-                      <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
-                        <MessageSquare aria-hidden size={10} />
-                        <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
-                      </span>
-                    )}
-                    {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
+          : filtered.map((project) => <article
+            key={project.id}
+            className={`project-card project-grid-card${project.ownerId === user.id ? " owned-project" : ""}${projectMenuId === project.id ? " project-card-menu-open" : ""}`}
+            role="button"
+            tabIndex={0}
+            aria-label={t("projects.openProject", { project: project.name })}
+            onClick={() => { setProjectMenuId(null); onOpenProject(project.id); }}
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+              event.preventDefault();
+              setProjectMenuId(null);
+              onOpenProject(project.id);
+            }}
+          >
+            <div className="project-card-meta-row">
+              <div className="project-card-badges">
+                <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}>{project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}</span>
+                {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
+                  <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
+                    <MessageSquare aria-hidden size={11} />
+                    <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
                   </span>
-                </span>
-                <dl className="project-meta">
-                  <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
-                  <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
-                </dl>
-              </button>
+                )}
+              </div>
+              <ProjectActionMenu
+                variant="grid"
+                project={project}
+                currentUser={user}
+                showArchived={showArchived}
+                archiveBusy={archiveBusy === project.id}
+                menuOpen={projectMenuId === project.id}
+                t={t}
+                onToggleMenu={() => setProjectMenuId((current) => current === project.id ? null : project.id)}
+                onCloseMenu={() => setProjectMenuId((current) => current === project.id ? null : current)}
+                onAssignTags={() => { setTagAssignmentError(""); setTagProject(project); }}
+                onRename={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}
+                onDuplicate={() => { setDuplicateError(""); setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}
+                onArchive={() => void toggleArchive(project)}
+                onTransfer={() => void openTransfer(project)}
+                onDelete={() => { setDeleteProject(project); setDeleteError(""); }}
+              />
             </div>
-            <div className="project-card-actions">
-              <button onClick={() => { setTagAssignmentError(""); setTagProject(project); }}><Tags aria-hidden size={14} />{t("tags.assign")}</button>
-              {project.permission === "owner" && <button onClick={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}><Pencil aria-hidden size={14} />{t("projects.rename")}</button>}
-              {(user.role === "admin" || user.canCreateProjects) && <button onClick={() => { setDuplicateError(""); setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}><Copy aria-hidden size={14} />{t("projects.duplicate")}</button>}
-              <a href={`/api/projects/${project.id}/download`} download><Download aria-hidden size={14} />{t("projects.download")}</a>
-              <button disabled={archiveBusy === project.id} onClick={() => void toggleArchive(project)}>{showArchived ? <ArchiveRestore aria-hidden size={14} /> : <Archive aria-hidden size={14} />}{showArchived ? t("projects.unarchive") : t("projects.archive")}</button>
-              {project.permission === "owner" && <button className="danger-text" onClick={() => { setDeleteProject(project); setDeleteError(""); }}><Trash2 aria-hidden size={14} />{t("common.delete")}</button>}
+            <div className="project-card-title-row">
+              <span className="project-card-icon-control" onClick={project.permission === "owner" ? (event) => event.stopPropagation() : undefined}>
+                <ProjectIconAvatar
+                  icon={project.icon}
+                  projectName={project.name}
+                  title={project.name}
+                  editable={project.permission === "owner"}
+                  editLabel={t("projectIcons.change")}
+                  onEdit={() => setProjectIconTarget(project)}
+                  className="project-card-icon"
+                />
+              </span>
+              <strong className="project-card-title" title={project.name}>{project.name}</strong>
             </div>
+            <div className="project-card-tags" aria-label={t("tags.assignTitle", { project: project.name })} title={project.tags?.map((tag) => tag.name).join(", ") || undefined}>
+              {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id} title={tag.name}>{tag.name}</span>)}
+            </div>
+            <dl className="project-meta">
+              <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
+              <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
+            </dl>
           </article>)}
         {filtered.length === 0 && (projects.length === 0
           ? showArchived ? <div className="empty">{t("projects.noArchived")}</div> : <div className="project-empty"><span className="project-empty-icon"><Sparkles size={28} /></span><h2>{t("projects.emptyTitle")}</h2><p>{user.canCreateProjects ? t("projects.emptyDescription") : t("projects.emptyRestricted")}</p></div>

@@ -1,19 +1,8 @@
-import { useEffect, useRef } from "react";
-import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
-import { Archive, ArchiveRestore, ArrowRightLeft, Copy, Download, MessageSquare, MoreHorizontal, Pencil, Tags, Trash2 } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { ProjectIconAvatar } from "../projectIcons";
 import type { Project, User } from "../types";
-
-type ProjectMenuItem = {
-  id: string;
-  label: string;
-  icon: ReactNode;
-  section: "main" | "danger";
-  disabled?: boolean;
-  href?: string;
-  onSelect?: () => void;
-};
+import { ProjectActionMenu } from "./ProjectActionMenu";
 
 export { projectInitial } from "../projectIcons";
 
@@ -58,48 +47,10 @@ export function ProjectListRow({
   onDelete: () => void;
   onChooseIcon: () => void;
 }) {
-  const root = useRef<HTMLElement>(null);
   const ownerName = project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser");
   const modifiedBy = project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser");
-  const canRename = project.permission === "owner";
-  const canDuplicate = currentUser.role === "admin" || currentUser.canCreateProjects;
-  const canTransfer = project.ownerId === currentUser.id;
-  const canDelete = project.permission === "owner";
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const closeWhenOutside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) onCloseMenu();
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseMenu();
-    };
-    document.addEventListener("pointerdown", closeWhenOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeWhenOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [menuOpen, onCloseMenu]);
-
-  const menuItems: ProjectMenuItem[] = [
-    { id: "tags", label: t("tags.assign"), icon: <Tags aria-hidden size={15} />, section: "main", onSelect: onAssignTags },
-    ...(canRename ? [{ id: "rename", label: t("projects.rename"), icon: <Pencil aria-hidden size={15} />, section: "main" as const, onSelect: onRename }] : []),
-    ...(canDuplicate ? [{ id: "duplicate", label: t("projects.duplicate"), icon: <Copy aria-hidden size={15} />, section: "main" as const, onSelect: onDuplicate }] : []),
-    { id: "download", label: t("projects.download"), icon: <Download aria-hidden size={15} />, section: "main", href: `/api/projects/${project.id}/download` },
-    { id: "archive", label: showArchived ? t("projects.unarchive") : t("projects.archive"), icon: showArchived ? <ArchiveRestore aria-hidden size={15} /> : <Archive aria-hidden size={15} />, section: "main", disabled: archiveBusy, onSelect: onArchive },
-    ...(canTransfer ? [{ id: "transfer", label: t("projects.transfer"), icon: <ArrowRightLeft aria-hidden size={15} />, section: "main" as const, onSelect: onTransfer }] : []),
-    ...(canDelete ? [{ id: "delete", label: t("common.delete"), icon: <Trash2 aria-hidden size={15} />, section: "danger" as const, onSelect: onDelete }] : [])
-  ];
-  const primaryItems = menuItems.filter((item) => item.section === "main");
-  const dangerItems = menuItems.filter((item) => item.section === "danger");
-  const selectItem = (item: ProjectMenuItem) => {
-    if (item.disabled) return;
-    onCloseMenu();
-    item.onSelect?.();
-  };
-
-  return <article ref={root} className={`project-card project-list-row${project.ownerId === currentUser.id ? " owned-project" : ""}${menuOpen ? " project-list-menu-open" : ""}`}>
+  return <article className={`project-card project-list-row${project.ownerId === currentUser.id ? " owned-project" : ""}${menuOpen ? " project-list-menu-open" : ""}`}>
     <ProjectIconAvatar
       icon={project.icon}
       projectName={project.name}
@@ -136,21 +87,22 @@ export function ProjectListRow({
         <small>{t("projects.byUser", { user: modifiedBy })}</small>
       </span>
     </button>
-    <div className="project-list-menu-root">
-      <button
-        type="button"
-        className="project-list-menu-trigger"
-        aria-label={t("projects.projectActions", { project: project.name })}
-        aria-expanded={menuOpen}
-        aria-controls={`project-actions-${project.id}`}
-        onClick={(event) => { event.stopPropagation(); onToggleMenu(); }}
-      ><MoreHorizontal aria-hidden size={19} /></button>
-      {menuOpen && <div id={`project-actions-${project.id}`} className="project-list-menu" role="group" aria-label={t("projects.projectActions", { project: project.name })} onClick={(event) => event.stopPropagation()}>
-        {primaryItems.map((item) => item.href
-          ? <a key={item.id} href={item.href} download onClick={(event) => { event.stopPropagation(); onCloseMenu(); }}>{item.icon}{item.label}</a>
-          : <button key={item.id} type="button" disabled={item.disabled} onClick={(event) => { event.stopPropagation(); selectItem(item); }}>{item.icon}{item.label}</button>)}
-        {dangerItems.length > 0 && <><div className="project-list-menu-separator" aria-hidden="true" />{dangerItems.map((item) => <button key={item.id} type="button" className="danger" onClick={(event) => { event.stopPropagation(); selectItem(item); }}>{item.icon}{item.label}</button>)}</>}
-      </div>}
-    </div>
+    <ProjectActionMenu
+      variant="list"
+      project={project}
+      currentUser={currentUser}
+      showArchived={showArchived}
+      archiveBusy={archiveBusy}
+      menuOpen={menuOpen}
+      t={t}
+      onToggleMenu={onToggleMenu}
+      onCloseMenu={onCloseMenu}
+      onAssignTags={onAssignTags}
+      onRename={onRename}
+      onDuplicate={onDuplicate}
+      onArchive={onArchive}
+      onTransfer={onTransfer}
+      onDelete={onDelete}
+    />
   </article>;
 }
