@@ -33,13 +33,13 @@
     "docs": "阅读部署文档"
   },
   "docker": {
-    "kicker": "可选的 Docker 部署",
+    "kicker": "另一种选择：Docker 部署",
     "title": "不维护本机依赖，也能快速开始。",
     "lead": "不想维护 Node.js、TeX Live、Git 和 Harper？使用 TexLite-Docker 的已发布镜像；配置和项目数据仍保存在宿主机。",
     "hub": "查看 Docker Hub",
     "repository": "打开 TexLite-Docker",
     "terminalTitle": "Docker 快速启动",
-    "terminalComment": "# 编辑 deployment.json 后，打开 http://localhost:3040"
+    "terminalComment": "# 打开 http://localhost:3040"
   },
   "closing": {
     "kicker": "为下一篇论文准备",
