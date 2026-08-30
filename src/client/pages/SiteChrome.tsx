@@ -9,5 +9,5 @@ export function SiteLogo({ siteName, compact = false, auth = false }: { siteName
 export function SiteFooter() {
   const { t } = useTranslation();
   const repositoryUrl = "https://github.com/SWUFE-DB-Group/TexLite";
-  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite v{texliteVersion}</a></span><span>{t("footer.credit")}</span></footer>;
+  return <footer className="site-footer"><span>{t("footer.copyright", { year: new Date().getFullYear() })} <a href={repositoryUrl} target="_blank" rel="noreferrer">TexLite v{texliteVersion}</a></span></footer>;
 }

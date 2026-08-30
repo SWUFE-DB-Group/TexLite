@@ -300,7 +300,7 @@
     "denyProjectCreationTitle": "Remove project creation", "denyProjectCreationDescription": "Remove @{{username}}’s permission to create new projects? Their existing project access is unchanged.", "denyProjectCreationConfirm": "Remove permission"
   },
   "compileControls": { "cancel": "Cancel compile", "cancelling": "Cancelling…", "cancelled": "Compilation cancelled." },
-  "footer": { "copyright": "© {{year}}", "credit": "Designed and developed by CHEN Zhongpu" },
+  "footer": { "copyright": "© {{year}}" },
   "completions": {
     "section": "Section", "subsection": "Subsection", "bold": "Bold", "emphasis": "Emphasis", "citation": "Citation",
     "reference": "Cross-reference", "label": "Label", "image": "Image", "unordered": "Unordered list", "ordered": "Ordered list",
