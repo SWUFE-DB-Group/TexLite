@@ -115,6 +115,7 @@ export function projectJson(project: ProjectRow & {
     mainFile: project.main_file,
     latexmkrc: project.latexmkrc,
     engine: project.engine,
+    icon: project.icon,
     permission: project.permission,
     tags,
     unresolvedCommentCount: commentsSummary?.unresolvedCount ?? 0,

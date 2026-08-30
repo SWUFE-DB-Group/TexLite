@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { Archive, ArchiveRestore, ArrowRightLeft, Copy, Download, MessageSquare, MoreHorizontal, Pencil, Tags, Trash2 } from "lucide-react";
+import { ProjectIconAvatar } from "../projectIcons";
 import type { Project, User } from "../types";
 
 type ProjectMenuItem = {
@@ -14,10 +15,7 @@ type ProjectMenuItem = {
   onSelect?: () => void;
 };
 
-export function projectInitial(projectName: string): string {
-  const initial = Array.from(projectName.trim())[0];
-  return initial ? initial.toLocaleUpperCase() : "?";
-}
+export { projectInitial } from "../projectIcons";
 
 export function ProjectListRow({
   project,
@@ -37,7 +35,8 @@ export function ProjectListRow({
   onDuplicate,
   onArchive,
   onTransfer,
-  onDelete
+  onDelete,
+  onChooseIcon
 }: {
   project: Project;
   currentUser: User;
@@ -57,6 +56,7 @@ export function ProjectListRow({
   onArchive: () => void;
   onTransfer: () => void;
   onDelete: () => void;
+  onChooseIcon: () => void;
 }) {
   const root = useRef<HTMLElement>(null);
   const ownerName = project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser");
@@ -100,8 +100,16 @@ export function ProjectListRow({
   };
 
   return <article ref={root} className={`project-card project-list-row${project.ownerId === currentUser.id ? " owned-project" : ""}${menuOpen ? " project-list-menu-open" : ""}`}>
+    <ProjectIconAvatar
+      icon={project.icon}
+      projectName={project.name}
+      title={project.name}
+      editable={project.permission === "owner"}
+      editLabel={t("projectIcons.change")}
+      onEdit={onChooseIcon}
+      className="project-list-avatar"
+    />
     <button type="button" className="project-list-open" onClick={onOpenProject} aria-label={t("projects.openProject", { project: project.name })}>
-      <span className="project-list-avatar" aria-hidden="true">{projectInitial(project.name)}</span>
       <span className="project-list-summary">
         <span className="project-list-title-line">
           <strong className="project-list-title" title={project.name}>{project.name}</strong>

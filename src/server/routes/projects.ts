@@ -18,6 +18,7 @@ import {
 import type { HistoryReason } from "../history.js";
 import { apiError, contentDisposition, httpError } from "../http.js";
 import { isMainDocumentCandidate } from "../latexRoot.js";
+import { lucideIconSvg, resolveLucideIconName } from "../lucideIcons.js";
 import type { LatexCompletionService } from "../latexCompletion.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
@@ -54,6 +55,23 @@ interface ProjectCatalogRouteContext {
 /** Register project catalog, metadata, archive, dictionary, tag, export, and deletion routes. */
 export function registerProjectCatalogRoutes(app: FastifyInstance, context: ProjectCatalogRouteContext): void {
   const { config, db, collaboration, projectMutations, latexCompletions, projectOutlines, harper, recordHistory } = context;
+
+  // Advanced project icons are served as cacheable SVG masks. The browser
+  // therefore does not have to bundle Lucide's entire icon catalogue merely
+  // because an owner selected an icon outside the curated picker.
+  app.get("/api/project-icons/:name", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { name } = request.params as { name: string };
+    const iconName = resolveLucideIconName(name);
+    if (!iconName) return apiError(reply, 404, "PROJECT_ICON_INVALID");
+    const svg = await lucideIconSvg(iconName);
+    if (!svg) return apiError(reply, 404, "PROJECT_ICON_INVALID");
+    return reply
+      .header("Cache-Control", "private, max-age=604800")
+      .type("image/svg+xml; charset=utf-8")
+      .send(svg);
+  });
 
   app.get("/api/tags", async (request, reply) => {
     const user = requireUser(request, reply, db);
@@ -209,7 +227,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const body = request.body as Record<string, unknown>;
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(body?.name, 120),
-      main_file: "main.tex", latexmkrc: null, engine: config.defaultEngine, created_at: now(), updated_at: now()
+      main_file: "main.tex", latexmkrc: null, engine: config.defaultEngine, icon: null, created_at: now(), updated_at: now()
     };
     createProjectFiles(config, project.id);
     try {
@@ -240,7 +258,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const fallbackName = path.basename(part.filename, path.extname(part.filename));
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(query.name || fallbackName, 120),
-      main_file: "", latexmkrc: null, engine: config.defaultEngine, created_at: now(), updated_at: now()
+      main_file: "", latexmkrc: null, engine: config.defaultEngine, icon: null, created_at: now(), updated_at: now()
     };
     fs.mkdirSync(sourceRoot(config, project.id), { recursive: true, mode: 0o700 });
     fs.mkdirSync(outputRoot(config, project.id), { recursive: true, mode: 0o700 });
@@ -275,7 +293,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const requestedName = typeof body?.name === "string" && body.name.trim() ? body.name : `${source.name.slice(0, 115)} (1)`;
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(requestedName, 120),
-      main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, created_at: now(), updated_at: now()
+      main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, icon: source.icon, created_at: now(), updated_at: now()
     };
     try {
       // Duplicate the source tree only after flushing the live Yjs room and
@@ -289,9 +307,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
           }
         }
       });
-      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.created_at, project.updated_at);
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, icon, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.icon, project.created_at, project.updated_at);
     } catch (error) {
       removeProjectDirectory(config, project.id);
       throw error;
@@ -312,6 +330,31 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     return {
       project: projectJson(
         project,
+        tagsForProject(db, id, user.id),
+        commentsSummaryForProject(db, id)
+      )
+    };
+  });
+
+  /** Project icons are shared metadata, so only the project owner can change them. */
+  app.patch("/api/projects/:id/icon", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || project.permission !== "owner") return apiError(reply, 403, "PROJECT_OWNER_ONLY");
+    const body = (request.body ?? {}) as { icon?: unknown };
+    const icon = body.icon === null ? null : resolveLucideIconName(body.icon);
+    if (body.icon !== null && !icon) {
+      return apiError(reply, 400, "PROJECT_ICON_INVALID");
+    }
+    const changedAt = now();
+    const updated = db.prepare("UPDATE projects SET icon = ?, updated_at = ?, last_modified_by = ? WHERE id = ? AND owner_id = ?")
+      .run(icon, changedAt, user.id, id, user.id);
+    if (!updated.changes) return apiError(reply, 403, "PROJECT_OWNER_ONLY");
+    return {
+      project: projectJson(
+        accessibleProject(db, id, user)!,
         tagsForProject(db, id, user.id),
         commentsSummaryForProject(db, id)
       )

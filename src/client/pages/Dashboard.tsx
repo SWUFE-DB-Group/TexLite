@@ -11,6 +11,8 @@ import { LanguageSwitcher } from "../LanguageSwitcher";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
 import { AdminUsers } from "./AdminUsers";
 import { ProjectListRow } from "./ProjectListRow";
+import { ProjectIconAvatar } from "../projectIcons";
+import { ProjectIconPickerDialog } from "./ProjectIconPickerDialog";
 import { TagManagementDialog } from "./TagManagementDialog";
 
 const SystemMetricsDialog = lazy(() => import("../SystemMetricsDialog").then((module) => ({ default: module.SystemMetricsDialog })));
@@ -103,6 +105,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [tagFiltersOpen, setTagFiltersOpen] = useState(false);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [tagProject, setTagProject] = useState<Project | null>(null);
+  const [projectIconTarget, setProjectIconTarget] = useState<Project | null>(null);
   const [renameProject, setRenameProject] = useState<Project | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
@@ -252,6 +255,19 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     setProjects((current) => current.map((project) => ({ ...project, tags: project.tags.filter((tag) => tag.id !== tagId) })));
     setTagProject((current) => current ? { ...current, tags: current.tags.filter((tag) => tag.id !== tagId) } : null);
     setTagFilter((current) => current === tagId ? "" : current);
+  };
+
+  const saveProjectIcon = async (projectId: string, icon: string | null) => {
+    const result = await api<{ project: Project }>(`/api/projects/${projectId}/icon`, {
+      method: "PATCH",
+      body: JSON.stringify({ icon })
+    });
+    setProjects((current) => {
+      const updated = current.map((project) => project.id === result.project.id ? result.project : project);
+      return sort === "updated"
+        ? updated.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.name.localeCompare(right.name))
+        : updated;
+    });
   };
 
   const rename = async () => {
@@ -421,28 +437,40 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             onArchive={() => void toggleArchive(project)}
             onTransfer={() => void openTransfer(project)}
             onDelete={() => { setDeleteProject(project); setDeleteError(""); }}
+            onChooseIcon={() => setProjectIconTarget(project)}
           />)
           : filtered.map((project) => <article className={`project-card${project.ownerId === user.id ? " owned-project" : ""}`} key={project.id}>
             {project.ownerId === user.id && <button className="project-transfer-action" title={t("projects.transferOwnership")} onClick={() => void openTransfer(project)}><ArrowRightLeft aria-hidden size={13} />{t("projects.transfer")}</button>}
-            <button className="project-card-open" onClick={() => onOpenProject(project.id)}>
-              <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername}>{project.ownerDisplayName ?? project.ownerUsername}</span>
-              <span className="project-card-main">
-                <strong title={project.name}>{project.name}</strong>
-                <span className="project-tags">
-                  {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
-                    <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
-                      <MessageSquare aria-hidden size={10} />
-                      <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
-                    </span>
-                  )}
-                  {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
+            <div className="project-card-body">
+              <ProjectIconAvatar
+                icon={project.icon}
+                projectName={project.name}
+                title={project.name}
+                editable={project.permission === "owner"}
+                editLabel={t("projectIcons.change")}
+                onEdit={() => setProjectIconTarget(project)}
+                className="project-card-icon"
+              />
+              <button className="project-card-open" onClick={() => onOpenProject(project.id)}>
+                <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername}>{project.ownerDisplayName ?? project.ownerUsername}</span>
+                <span className="project-card-main">
+                  <strong title={project.name}>{project.name}</strong>
+                  <span className="project-tags">
+                    {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
+                      <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
+                        <MessageSquare aria-hidden size={10} />
+                        <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
+                      </span>
+                    )}
+                    {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
+                  </span>
                 </span>
-              </span>
-              <dl className="project-meta">
-                <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
-                <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
-              </dl>
-            </button>
+                <dl className="project-meta">
+                  <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
+                  <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
+                </dl>
+              </button>
+            </div>
             <div className="project-card-actions">
               <button onClick={() => { setTagAssignmentError(""); setTagProject(project); }}><Tags aria-hidden size={14} />{t("tags.assign")}</button>
               {project.permission === "owner" && <button onClick={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}><Pencil aria-hidden size={14} />{t("projects.rename")}</button>}
@@ -464,6 +492,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       </Modal>
       <Modal open={importOpen} title={t("projects.upload")} description={t("projects.uploadDescription", { size: site.maxUploadSizeMB })} onOpenChange={(open) => { setImportOpen(open); if (!open) setImportError(""); }} footer={<><button onClick={() => { setImportOpen(false); setImportError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={!importFile || importing} onClick={() => void importProject()}>{importing ? t("projects.importing") : t("projects.import")}</button></>}><div className="form-stack">{importError && <p className="error import-error">{importError}</p>}<div className={`upload-picker${importFile ? " has-file" : ""}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); selectImportFile(event.dataTransfer.files[0] ?? null); }}><input ref={importInput} className="sr-only" type="file" accept=".zip,application/zip" onChange={(event) => selectImportFile(event.target.files?.[0] ?? null)} /><FileArchive size={34} /><div className="upload-picker-copy"><strong>{importFile?.name ?? t("projects.chooseZip")}</strong><span>{importFile ? t("projects.selectedFileSize", { size: formatFileSize(importFile.size) }) : t("projects.dropZip")}</span></div><button type="button" onClick={() => importInput.current?.click()}><Upload size={15} />{t("projects.browse")}</button>{importFile && <button className="upload-clear" type="button" title={t("projects.clearFile")} aria-label={t("projects.clearFile")} onClick={() => { selectImportFile(null); if (importInput.current) importInput.current.value = ""; }}><X size={14} /></button>}</div><label className="form-field">{t("projects.name")}<input value={importName} onChange={(event) => setImportName(event.target.value)} /></label></div></Modal>
       <TagManagementDialog open={tagManagerOpen} onOpenChange={setTagManagerOpen} onTagCreated={addManagedTag} onTagUpdated={updateManagedTag} onTagDeleted={deleteManagedTag} />
+      <ProjectIconPickerDialog project={projectIconTarget} open={Boolean(projectIconTarget)} onOpenChange={(open) => { if (!open) setProjectIconTarget(null); }} onSave={saveProjectIcon} />
       <Modal open={Boolean(tagProject)} title={t("tags.assignTitle", { project: tagProject?.name ?? "" })} description={t("tags.assignDescription")} onOpenChange={(open) => { if (!open) { setTagProject(null); setTagAssignmentError(""); } }} footer={<button onClick={() => { setTagProject(null); setTagAssignmentError(""); }}>{t("common.close")}</button>}><div className="tag-assignment-list">{tagAssignmentError && <p className="error dialog-error">{tagAssignmentError}</p>}{tags.map((tag) => <label key={tag.id}><input type="checkbox" checked={Boolean(tagProject?.tags.some((item) => item.id === tag.id))} onChange={() => void toggleProjectTag(tag)} /><TagDot color={tag.color} /><span>{tag.name}</span></label>)}{tags.length === 0 && <p className="muted">{t("tags.empty")}</p>}</div></Modal>
       <Modal open={Boolean(renameProject)} title={t("projects.renameTitle")} onOpenChange={(open) => { if (!open && renaming) return; if (!open) { setRenameProject(null); setRenameError(""); } }} footer={<><button disabled={renaming} onClick={() => { setRenameProject(null); setRenameError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={renaming || !renameValue.trim()} aria-busy={renaming} onClick={() => void rename()}>{renaming && <LoaderCircle className="spin" size={14} />}{renaming ? t("common.loading") : t("projects.rename")}</button></>}><>{renameError && <p className="error dialog-error">{renameError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={renameValue} onChange={(event) => { setRenameValue(event.target.value); setRenameError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void rename(); }} /></label></></Modal>
       <Modal open={Boolean(duplicateProject)} title={t("projects.duplicateTitle")} description={t("projects.duplicateDescription", { project: duplicateProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !duplicating) { setDuplicateProject(null); setDuplicateValue(""); setDuplicateError(""); } }} footer={<><button disabled={duplicating} onClick={() => { setDuplicateProject(null); setDuplicateValue(""); setDuplicateError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={duplicating || !duplicateValue.trim()} onClick={() => void duplicate()}>{duplicating ? t("projects.duplicating") : t("projects.duplicate")}</button></>}><>{duplicateError && <p className="error dialog-error">{duplicateError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={duplicateValue} onChange={(event) => { setDuplicateValue(event.target.value); setDuplicateError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void duplicate(); }} /></label></></Modal>

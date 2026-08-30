@@ -68,6 +68,8 @@ describe("database migrations", () => {
         .toEqual({ name: "project_history_state" });
       expect((migrated.prepare("PRAGMA table_info(citation_library_entries)").all() as Array<{ name: string }>)
         .some((column) => column.name === "revision")).toBe(true);
+      expect((migrated.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>)
+        .some((column) => column.name === "icon")).toBe(true);
       expect(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'sessions_expires_at'").get())
         .toEqual({ name: "sessions_expires_at" });
       expect(migrated.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())

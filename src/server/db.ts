@@ -26,6 +26,7 @@ export interface ProjectRow {
   main_file: string;
   latexmkrc: string | null;
   engine: "pdflatex" | "xelatex" | "lualatex";
+  icon: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +71,7 @@ function migrate(db: DatabaseConnection): void {
       main_file TEXT NOT NULL DEFAULT 'main.tex',
       latexmkrc TEXT,
       engine TEXT NOT NULL DEFAULT 'xelatex' CHECK (engine IN ('pdflatex', 'xelatex', 'lualatex')),
+      icon TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -262,6 +264,9 @@ function migrate(db: DatabaseConnection): void {
   }
   if (!projectColumns.some((column) => column.name === "last_modified_by")) {
     db.exec("ALTER TABLE projects ADD COLUMN last_modified_by TEXT REFERENCES users(id) ON DELETE SET NULL");
+  }
+  if (!projectColumns.some((column) => column.name === "icon")) {
+    db.exec("ALTER TABLE projects ADD COLUMN icon TEXT");
   }
   const commentColumns = db.prepare("PRAGMA table_info(comments)").all() as Array<{ name: string }>;
   const additions = [

@@ -35,6 +35,8 @@ export interface Project {
   mainFile: string;
   latexmkrc: string | null;
   engine: "pdflatex" | "xelatex" | "lualatex";
+  /** A server-validated Lucide icon slug, or null to display the project initial. */
+  icon: string | null;
   permission: "read" | "edit" | "owner";
   tags: ProjectTag[];
   unresolvedCommentCount?: number;

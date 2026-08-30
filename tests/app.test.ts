@@ -717,6 +717,53 @@ Standalone document.
     expect(smallerPage.json().pagination).toMatchObject({ page: 2, pageSize: 5, total: 21, totalPages: 5 });
   });
 
+  it("stores a validated shared project icon and restricts changes to its owner", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Icon catalog" } });
+    const projectId = created.json().project.id as string;
+    expect(created.json().project.icon).toBeNull();
+
+    const saved = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie }, payload: { icon: "brain-circuit" }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().project).toMatchObject({ id: projectId, icon: "brain-circuit" });
+    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } })).json().project.icon)
+      .toBe("brain-circuit");
+
+    const advanced = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie }, payload: { icon: "lucide:alarm-clock-minus" }
+    });
+    expect(advanced.statusCode).toBe(200);
+    expect(advanced.json().project).toMatchObject({ id: projectId, icon: "alarm-clock-minus" });
+    const advancedSvg = await app.inject({ method: "GET", url: "/api/project-icons/alarm-clock-minus", headers: { cookie } });
+    expect(advancedSvg.statusCode).toBe(200);
+    expect(advancedSvg.headers["content-type"]).toContain("image/svg+xml");
+    expect(advancedSvg.body).toContain("lucide-alarm-clock-minus");
+
+    const invalid = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie }, payload: { icon: "not-an-icon" }
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: "PROJECT_ICON_INVALID" });
+
+    const username = `icon-editor-${randomUUID().slice(0, 8)}`;
+    const user = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username, displayName: "Icon Editor", password: "editor-password" }
+    });
+    await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/members/${user.json().user.id}`, headers: { cookie }, payload: { permission: "edit" }
+    });
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "editor-password" } });
+    const editorCookie = login.headers["set-cookie"]!.split(";")[0];
+    const forbidden = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie: editorCookie }, payload: { icon: "database" }
+    });
+    expect(forbidden.statusCode).toBe(403);
+    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } })).json().project.icon)
+      .toBe("alarm-clock-minus");
+  });
+
   it("duplicates project sources without copying collaboration or build output", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Duplicate source" } });
     const source = created.json().project;
@@ -729,6 +776,7 @@ Copied source.
     await app.inject({ method: "PUT", url: `/api/projects/${source.id}/file`, headers: { cookie }, payload: { path: "assets/data.txt", content: "resource" } });
     await app.inject({ method: "PUT", url: `/api/projects/${source.id}/file`, headers: { cookie }, payload: { path: ".latexmkrc", content: "$silent = 1;\n" } });
     await app.inject({ method: "PATCH", url: `/api/projects/${source.id}`, headers: { cookie }, payload: { latexmkrc: ".latexmkrc", engine: "xelatex" } });
+    await app.inject({ method: "PATCH", url: `/api/projects/${source.id}/icon`, headers: { cookie }, payload: { icon: "file-text" } });
     await app.inject({
       method: "POST", url: `/api/projects/${source.id}/comments`, headers: { cookie },
       payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "Source-only comment" }
@@ -737,7 +785,7 @@ Copied source.
     const duplicated = await app.inject({ method: "POST", url: `/api/projects/${source.id}/duplicate`, headers: { cookie }, payload: {} });
     expect(duplicated.statusCode, duplicated.body).toBe(201);
     const copy = duplicated.json().project;
-    expect(copy).toMatchObject({ name: "Duplicate source (1)", ownerUsername: "admin", mainFile: "main.tex", latexmkrc: ".latexmkrc", engine: "xelatex" });
+    expect(copy).toMatchObject({ name: "Duplicate source (1)", ownerUsername: "admin", mainFile: "main.tex", latexmkrc: ".latexmkrc", engine: "xelatex", icon: "file-text" });
     expect(copy.id).not.toBe(source.id);
     const copiedMain = await app.inject({ method: "GET", url: `/api/projects/${copy.id}/file?path=main.tex`, headers: { cookie } });
     expect(copiedMain.json().content).toBe(sourceContent);
