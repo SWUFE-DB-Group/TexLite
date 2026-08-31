@@ -286,7 +286,7 @@
   "tags": {
     "title": "Tags", "add": "Add tag", "create": "Create tag", "createDescription": "Create a private reusable colored tag for organizing your projects.",
     "manage": "Manage tags", "manageDescription": "Create and organize private labels for your projects. Deleting a tag only removes its project associations.", "createInManager": "Create tag", "edit": "Edit", "rename": "Rename", "deleteTitle": "Delete tag", "deleteDescription_one": "Delete {{tag}}? It will be removed from {{count}} project.", "deleteDescription_other": "Delete {{tag}}? It will be removed from {{count}} projects.", "projectCount_one": "{{count}} project", "projectCount_other": "{{count}} projects", "noTags": "No tags yet. Create one to organize your projects.", "none": "No tags yet",
-    "assign": "Tags", "assignTitle": "Tags for {{project}}", "assignDescription": "Select your private tags for this project. Other users have their own tags.",
+    "assign": "Tags", "assignTitle": "Tags for {{project}}", "assignDescription": "Select your private tags for this project.",
     "empty": "Create a tag first.", "allAssigned": "All available tags are already assigned.", "name": "Tag name", "color": "Color", "filter": "Filter",
     "red": "Red", "orange": "Orange", "yellow": "Yellow", "green": "Green", "blue": "Blue", "purple": "Purple", "gray": "Gray"
   },

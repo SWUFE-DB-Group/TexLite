@@ -117,7 +117,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-grid:not(.list-view) .project-grid-card.project-card-menu-open { z-index: 4; border-color: #8caf99; box-shadow: 0 10px 30px #25352a18; }
 .project-grid:not(.list-view).project-list-menu-active .project-grid-card:not(.project-card-menu-open) { opacity: .48; filter: saturate(.72); }
 .project-card-meta-row { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.project-card-badges { min-width: 0; display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px; }
+.project-card-badges { min-width: 0; display: flex; flex: 1 1 auto; flex-wrap: nowrap; align-items: center; gap: 6px; overflow: hidden; }
 .project-card-title-row { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .project-card-icon-control { display: inline-flex; flex: none; }
 .project-card-title { min-width: 0; overflow: hidden; color: #18221b; font-size: 17px; font-weight: 730; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
@@ -132,12 +132,15 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-card-icon { width: 30px; height: 30px; font-size: 13px; }
 .project-card-icon > svg, .project-card-icon .project-icon-external-glyph { width: 16px; height: 16px; }
 .owner-badge { max-width: 100%; overflow: hidden; padding: 4px 8px; border-radius: 6px; background: #e2f0e7; color: #176b44; font-size: 10.5px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
-.project-card-badges .owner-badge { max-width: min(100%, 170px); }
+.project-card-badges .owner-badge { min-width: 0; max-width: 100%; }
 .project-meta { width: 100%; display: grid; grid-template-columns: 1fr; gap: 8px; margin: auto 0 0; }
 .project-grid:not(.list-view) .project-meta { margin: 0; }
 .project-meta div { min-width: 0; }
 .project-meta dt { display: flex; align-items: center; gap: 4px; color: #8a918c; font-size: 10px; font-weight: 650; text-transform: none; }
 .project-meta dt svg { flex: none; color: #6f8e7a; }
+.project-meta-created-label { justify-content: space-between; gap: 8px; }
+.project-meta-created-label > span:first-child { min-width: 0; display: inline-flex; align-items: center; gap: 4px; }
+.project-meta-created-label .project-comments-badge { flex: none; }
 .project-meta dd { overflow: hidden; margin: 2px 0 0; color: #555e58; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .project-grid:not(.list-view) .project-meta dd { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .project-modified-by { color: #68716b; }

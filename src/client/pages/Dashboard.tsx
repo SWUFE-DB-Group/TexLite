@@ -457,12 +457,6 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             <div className="project-card-meta-row">
               <div className="project-card-badges">
                 <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}>{project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}</span>
-                {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
-                  <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
-                    <MessageSquare aria-hidden size={11} />
-                    <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
-                  </span>
-                )}
               </div>
               <ProjectActionMenu
                 variant="grid"
@@ -500,7 +494,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
               {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id} title={tag.name}>{tag.name}</span>)}
             </div>
             <dl className="project-meta">
-              <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
+              <div><dt className="project-meta-created-label"><span><CalendarDays aria-hidden size={13} />{t("projects.created")}</span>{Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}><MessageSquare aria-hidden size={11} /><span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span></span>}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
               <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={t("projects.modifiedByUser", { time: formatTime(project.updatedAt), user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
             </dl>
           </article>)}
