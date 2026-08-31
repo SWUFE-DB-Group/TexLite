@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { clientUuid } from "./uuid";
 import { WebsocketProvider } from "y-websocket";
 import { encodeAwarenessUpdate, type Awareness } from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
@@ -590,7 +591,7 @@ export class ProjectCollaboration {
     if (!this.provider.synced || !socket || socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Collaboration connection is unavailable"));
     }
-    const requestId = crypto.randomUUID();
+    const requestId = clientUuid();
     const draftGeneration = this.draftGeneration;
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_FLUSH);
@@ -709,7 +710,7 @@ export class ProjectCollaboration {
     if (!this.provider.synced || !socket || socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Collaboration connection is unavailable"));
     }
-    const requestId = crypto.randomUUID();
+    const requestId = clientUuid();
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_FORMAT_LEASE);
     encoding.writeVarString(encoder, operation);
@@ -939,9 +940,7 @@ function safeSessionStorageSet(key: string, value: string): void {
 function getOrCreateDraftTabId(key: string): string {
   const existing = safeSessionStorageGet(key);
   if (existing) return existing;
-  const created = typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const created = clientUuid();
   safeSessionStorageSet(key, created);
   return created;
 }
