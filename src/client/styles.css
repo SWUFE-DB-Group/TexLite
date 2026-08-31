@@ -527,6 +527,11 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .drawer-title { position: sticky; top: 0; z-index: 2; height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #e3e6e3; background: white; font-size: 13px; }
 .drawer-title button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #737a75; }
 .drawer-title button:hover { background: #edf1ee; }
+.drawer-title-actions { min-width: 0; display: flex; align-items: center; gap: 4px; }
+.settings-drawer-title > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer-title .drawer-settings-save { width: auto; min-width: 0; display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid #c9d0ca; background: white; color: #252b27; font-size: 10px; font-weight: 700; line-height: 1; white-space: nowrap; }
+.drawer-title .drawer-settings-save:hover { border-color: #aeb8b0; background: #f5f7f5; color: #1d2520; }
+.drawer-title .drawer-settings-save span { overflow: hidden; text-overflow: ellipsis; }
 .tabs { height: 42px; display: flex; border-bottom: 1px solid #e3e6e3; }
 .tabs button { flex: 1; border: 0; background: white; color: #707872; font-size: 12px; }
 .tabs button.active { color: #176b44; border-bottom: 2px solid #176b44; font-weight: 700; }

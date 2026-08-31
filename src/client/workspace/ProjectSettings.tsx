@@ -29,7 +29,8 @@ function BrowserToolStatus({ name, state, label, reloadLabel, onReload, compact 
   return <div className={`browser-tool-status ${state.status}`} title={state.error || undefined}>{contents}</div>;
 }
 
-export function ProjectSettings({ project, projectId, site, files, dictionaryWords, onDictionaryChange, editorPreferences, onEditorPreferences, spellCheckCount, spellCheckUniqueCount, spellCheckIndex, onSpellCheckNavigate, onProject }: {
+export function ProjectSettings({ onClose, project, projectId, site, files, dictionaryWords, onDictionaryChange, editorPreferences, onEditorPreferences, spellCheckCount, spellCheckUniqueCount, spellCheckIndex, onSpellCheckNavigate, onProject }: {
+  onClose: () => void;
   project: Project; projectId: string; site: SiteConfig; files: FileEntry[]; dictionaryWords: string[];
   onDictionaryChange: (words: string[]) => void;
   editorPreferences: EditorPreferences; onEditorPreferences: (preferences: EditorPreferences) => void;
@@ -90,6 +91,12 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
     } catch (requestError) { setError(errorMessage(requestError)); }
   };
   const saveAppearanceSettings = () => onEditorPreferences(appearancePreferences);
+  const saveCurrentSettings = () => {
+    if (settingsTab === "appearance") return saveAppearanceSettings();
+    if (canManage) void saveCompilerSettings();
+  };
+  const headerSaveLabel = settingsTab === "appearance" ? t("projectSettings.saveAppearance") : t("projectSettings.saveCompiler");
+  const canSaveCurrentTab = settingsTab === "appearance" || canManage;
   const addDictionaryWord = async () => {
     const word = dictionaryValue.trim();
     if (!word) return;
@@ -109,7 +116,7 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
       setDictionaryError("");
     } catch (requestError) { setDictionaryError(errorMessage(requestError)); }
   };
-  return <div className="settings padded">
+  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <button type="button" className="drawer-settings-save" onClick={saveCurrentSettings}><Save size={14} /><span>{headerSaveLabel}</span></button>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div><div className="settings padded">
     {error && <p className="error">{error}</p>}
     <div className="settings-tabs" role="tablist" aria-label={t("common.settings")}>
       <button id="settings-tab-appearance" type="button" role="tab" aria-selected={settingsTab === "appearance"} aria-controls="settings-panel-appearance" className={`settings-tab${settingsTab === "appearance" ? " active" : ""}`} onClick={() => setSettingsTab("appearance")}>
@@ -166,5 +173,5 @@ export function ProjectSettings({ project, projectId, site, files, dictionaryWor
       <label>{t("projectSettings.latexmkrc")}<textarea className="latexmkrc-editor" rows={10} spellCheck={false} disabled={!canManage || site.allowProjectLatexmkrc === false} value={rcText} placeholder={t("projectSettings.latexmkrcPlaceholder")} onChange={(event) => setRcText(event.target.value)} /></label>
       <div className="settings-actions">{canManage && <button className="settings-save" onClick={() => void saveCompilerSettings()}><Save size={15} />{t("projectSettings.saveCompiler")}</button>}</div>
     </section>}
-  </div>;
+  </div></>;
 }
