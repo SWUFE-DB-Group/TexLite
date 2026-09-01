@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api";
 import type { CitationLibraryEntry, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
@@ -7,7 +7,6 @@ import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
-import { BibtexFormatError, citationBibtexLimitLabel, formatBibtex, parseBibEntriesResult } from "../citationLibrary";
 import { classifyCompileLog } from "../compileLog";
 import type { CollaborationSaveReceipt, FormatLease } from "../collaboration";
 import { errorMessage } from "../errors";
@@ -30,7 +29,20 @@ import { WorkspacePreviewPanel } from "../workspace/WorkspacePreviewPanel";
 import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
 import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
 import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
-import { WordCountDialog } from "../workspace/WordCountDialog";
+import { LazyModal } from "../LazyLoadBoundary";
+
+const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
+let citationLibraryModule: Promise<typeof import("../citationLibrary")> | null = null;
+
+function loadCitationLibrary() {
+  if (!citationLibraryModule) {
+    citationLibraryModule = import("../citationLibrary").catch((error) => {
+      citationLibraryModule = null;
+      throw error;
+    });
+  }
+  return citationLibraryModule;
+}
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -545,12 +557,13 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   };
   const formatSource = async (filePath: string, source: string, texFmtConfig = editorPreferences.texFmtConfig): Promise<FormattedSource> => {
     if (/\.bib$/i.test(filePath)) {
+      const citationLibrary = await loadCitationLibrary();
       try {
-        return { formatted: formatBibtex(source, site.maxCitationBibtexBytes), diagnostics: "" };
+        return { formatted: citationLibrary.formatBibtex(source, site.maxCitationBibtexBytes), diagnostics: "" };
       } catch (formatError) {
-        if (!(formatError instanceof BibtexFormatError)) throw formatError;
+        if (!(formatError instanceof citationLibrary.BibtexFormatError)) throw formatError;
         if (formatError.kind === "too-large") {
-          throw new Error(t("citationLibrary.fileTooLarge", { size: citationBibtexLimitLabel(site.maxCitationBibtexBytes) }));
+          throw new Error(t("citationLibrary.fileTooLarge", { size: citationLibrary.citationBibtexLimitLabel(site.maxCitationBibtexBytes) }));
         }
         throw new Error(t("citationLibrary.fileInvalid"));
       }
@@ -718,17 +731,25 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       if (formattingTaskRef.current === formattingTask) formattingTaskRef.current = null;
     }
   };
-  const insertCitationAtCursor = (entry: CitationLibraryEntry): boolean => {
+  const insertCitationAtCursor = async (entry: CitationLibraryEntry): Promise<boolean> => {
     const filePath = activeFileRef.current;
     if (!/\.bib$/i.test(filePath) || project?.permission === "read" || !collaborationSynced) {
       setNotice(t("citationLibrary.importRequiresWrite"));
       return false;
     }
     const sharedText = collaboration.getText(filePath);
+    let citationLibrary: Awaited<ReturnType<typeof loadCitationLibrary>>;
+    try {
+      citationLibrary = await loadCitationLibrary();
+    } catch (loadError) {
+      setError(errorMessage(loadError));
+      return false;
+    }
+    if (activeFileRef.current !== filePath || !collaborationSynced) return false;
     const source = sharedText.toString();
-    const parsedBibtex = parseBibEntriesResult(source, site.maxCitationBibtexBytes);
+    const parsedBibtex = citationLibrary.parseBibEntriesResult(source, site.maxCitationBibtexBytes);
     if (parsedBibtex.status === "too-large") {
-      setNotice(t("citationLibrary.fileTooLarge", { size: citationBibtexLimitLabel(site.maxCitationBibtexBytes) }));
+      setNotice(t("citationLibrary.fileTooLarge", { size: citationLibrary.citationBibtexLimitLabel(site.maxCitationBibtexBytes) }));
       return false;
     }
     if (parsedBibtex.status === "invalid") {
@@ -1069,8 +1090,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
         onProject={setProject}
       />
     </PanelGroup>
-    <WordCountDialog open={wordCountOpen} mode={wordCountMode} path={wordCountPath} busy={wordCountBusy}
-      error={wordCountError} result={wordCountResult} onOpenChange={setWordCountOpen} />
+    {wordCountOpen && <LazyModal title={t("editor.wordCountTitle")} onClose={() => setWordCountOpen(false)}><WordCountDialog open mode={wordCountMode} path={wordCountPath} busy={wordCountBusy}
+      error={wordCountError} result={wordCountResult} onOpenChange={setWordCountOpen} /></LazyModal>}
     <WorkspaceDialogs
       user={user} project={project} projectId={projectId} activeFile={activeFile}
       content={content} maxCitationBibtexBytes={site.maxCitationBibtexBytes} files={files} directoryEntries={directoryEntries} readOnly={readOnly}

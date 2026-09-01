@@ -1,10 +1,13 @@
+import { lazy } from "react";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Comment, FileEntry, Project, SiteConfig } from "../types";
 import type { EditorPreferences } from "../editorPreferences";
 import { CommentThread } from "./Comments";
-import { ProjectSettings } from "./ProjectSettings";
+import { LazyPanel } from "../LazyLoadBoundary";
+
+const ProjectSettings = lazy(() => import("./ProjectSettings").then((module) => ({ default: module.ProjectSettings })));
 
 export interface WorkspaceContextPanelProps {
   sidePanel: "comments" | "settings" | null;
@@ -44,6 +47,6 @@ export function WorkspaceContextPanel({
   if (!sidePanel) return null;
   return <><PanelResizeHandle className="resize-handle" /><Panel id="context" order={4} defaultSize={20} minSize={15} maxSize={38}><aside className="context-panel">
     {sidePanel === "comments" && <><div className="drawer-title"><strong>{t("editor.sourceComments")}</strong><button aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div><div className="comments">{comments.map((comment) => <CommentThread key={comment.id} comment={comment} currentUserId={currentUserId} onFocus={() => onFocusComment(comment)} onToggle={() => void onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} />)}{comments.length === 0 && <p className="muted padded">{t("editor.noComments")}</p>}</div></>}
-    {sidePanel === "settings" && <ProjectSettings onClose={onClose} project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={onDictionaryChange} editorPreferences={editorPreferences} onEditorPreferences={onEditorPreferences} spellCheckCount={spellCheckCount} spellCheckUniqueCount={spellCheckUniqueCount} spellCheckIndex={spellCheckIndex} onSpellCheckNavigate={onSpellCheckNavigate} onProject={onProject} />}
+    {sidePanel === "settings" && <LazyPanel onClose={onClose}><ProjectSettings onClose={onClose} project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={onDictionaryChange} editorPreferences={editorPreferences} onEditorPreferences={onEditorPreferences} spellCheckCount={spellCheckCount} spellCheckUniqueCount={spellCheckUniqueCount} spellCheckIndex={spellCheckIndex} onSpellCheckNavigate={onSpellCheckNavigate} onProject={onProject} /></LazyPanel>}
   </aside></Panel></>;
 }
