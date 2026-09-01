@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import type { OutgoingHttpHeaders } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { WebSocket, type RawData } from "ws";
@@ -244,7 +245,6 @@ describe("project collaboration", () => {
     expect(epochs.length).toBeGreaterThanOrEqual(2);
     expect(epochs[0]).toMatch(/^3:[a-f0-9-]{36}$/i);
     expect(epochs[1]).toContain(":reload");
-    socket?.terminate();
   });
 
   it("serializes format commits per file and grants the next session after a flush", async () => {
@@ -540,7 +540,7 @@ describe("project collaboration", () => {
     const projectId = created.json().project.id as string;
     const adminUser = db.prepare("SELECT * FROM users WHERE id = ?").get(adminId) as UserRow;
     const peer = await TestPeer.connect(app, projectId, adminCookie, {
-      id: adminUser.id, username: adminUser.username, name: adminUser.display_name, permission: "owner"
+      id: adminUser.id, username: adminUser.username, name: adminUser.display_name
     });
     try {
       const text = peer.doc.getText("source:main.tex");
@@ -941,7 +941,14 @@ async function createUser(app: FastifyInstance, cookie: string, username: string
 async function login(app: FastifyInstance, username: string, password: string): Promise<string> {
   const response = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password } });
   expect(response.statusCode).toBe(200);
-  return response.headers["set-cookie"]!.split(";")[0];
+  return sessionCookie(response.headers);
+}
+
+function sessionCookie(headers: OutgoingHttpHeaders): string {
+  const value = headers["set-cookie"];
+  const cookie = Array.isArray(value) ? value[0] : value;
+  if (typeof cookie !== "string" || !cookie) throw new Error("Expected a Set-Cookie response header");
+  return cookie.split(";")[0];
 }
 
 function syncUpdate(update: Uint8Array): Uint8Array {

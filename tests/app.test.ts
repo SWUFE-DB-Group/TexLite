@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFile, spawnSync } from "node:child_process";
+import type { OutgoingHttpHeaders } from "node:http";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
@@ -19,6 +20,13 @@ const hostHarperIt = hostHarperAvailable ? it : it.skip;
 
 function citationPayload(citationKey: string, title: string, bibtex: string, extras: Record<string, unknown> = {}): Record<string, unknown> {
   return { bibtex, citationKey, entryType: "article", title, authors: null, year: "2026", ...extras };
+}
+
+function sessionCookie(headers: OutgoingHttpHeaders): string {
+  const value = headers["set-cookie"];
+  const cookie = Array.isArray(value) ? value[0] : value;
+  if (typeof cookie !== "string" || !cookie) throw new Error("Expected a Set-Cookie response header");
+  return cookie.split(";")[0];
 }
 
 describe("texLite application", () => {
@@ -68,7 +76,7 @@ describe("texLite application", () => {
     app = await buildApp(config, db, { logger: false, githubFetch });
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: "administrator password" } });
     expect(login.statusCode).toBe(200);
-    cookie = login.headers["set-cookie"]!.split(";")[0];
+    cookie = sessionCookie(login.headers);
   }, 30_000);
 
   afterAll(async () => {
@@ -112,7 +120,7 @@ describe("texLite application", () => {
       payload: { username: "disable-cookie-user", password: "reader-password" }
     });
     expect(login.statusCode).toBe(200);
-    const oldCookie = login.headers["set-cookie"]!.split(";")[0];
+    const oldCookie = sessionCookie(login.headers);
     const userId = created.json().user.id as string;
     expect((await app.inject({
       method: "PATCH", url: `/api/admin/users/${userId}`, headers: { cookie }, payload: { disabled: true }
@@ -661,7 +669,7 @@ Standalone document.
     const readerId = createdUser.json().user.id as string;
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "reader-password" } });
     expect(login.statusCode).toBe(200);
-    const readerCookie = login.headers["set-cookie"]!.split(";")[0];
+    const readerCookie = sessionCookie(login.headers);
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Private archive" } });
     const projectId = created.json().project.id as string;
     await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${readerId}`, headers: { cookie }, payload: { permission: "read" } });
@@ -755,7 +763,7 @@ Standalone document.
       method: "PUT", url: `/api/projects/${projectId}/members/${user.json().user.id}`, headers: { cookie }, payload: { permission: "edit" }
     });
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "editor-password" } });
-    const editorCookie = login.headers["set-cookie"]!.split(";")[0];
+    const editorCookie = sessionCookie(login.headers);
     const forbidden = await app.inject({
       method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie: editorCookie }, payload: { icon: "database" }
     });
@@ -896,7 +904,7 @@ Another UniqueTerm appears here.
     const readerId = reader.json().user.id as string;
     await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${readerId}`, headers: { cookie }, payload: { permission: "read" } });
     const readerLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "reader-password" } });
-    const readerCookie = readerLogin.headers["set-cookie"]!.split(";")[0];
+    const readerCookie = sessionCookie(readerLogin.headers);
     const readerHistory = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie: readerCookie } });
     expect(readerHistory.statusCode).toBe(200);
     expect(readerHistory.json().stats).toBeNull();
@@ -927,7 +935,7 @@ Another UniqueTerm appears here.
     const username = `metrics-user-${randomUUID().slice(0, 8)}`;
     await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: { username, displayName: "Metrics User", password: "metrics-password" } });
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "metrics-password" } });
-    const userCookie = login.headers["set-cookie"]!.split(";")[0];
+    const userCookie = sessionCookie(login.headers);
     expect((await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie: userCookie } })).statusCode).toBe(403);
   });
 
@@ -1045,7 +1053,7 @@ Second version.
     const readerId = readerCreated.json().user.id;
     await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${readerId}`, headers: { cookie }, payload: { permission: "edit" } });
     const readerLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "git-reader", password: "reader-password" } });
-    const readerCookie = readerLogin.headers["set-cookie"]!.split(";")[0];
+    const readerCookie = sessionCookie(readerLogin.headers);
     const forbidden = await app.inject({ method: "GET", url: `/api/projects/${projectId}/git`, headers: { cookie: readerCookie } });
     expect(forbidden.statusCode).toBe(403);
   });
@@ -1060,7 +1068,7 @@ Second version.
     expect(createdUser.json().user.mustChangePassword).toBe(false);
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "writer", password: "writer-password" } });
     expect(login.json().user.mustChangePassword).toBe(false);
-    const writerCookie = login.headers["set-cookie"]!.split(";")[0];
+    const writerCookie = sessionCookie(login.headers);
     const project = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: writerCookie }, payload: { name: "Not allowed" } });
     expect(project.statusCode).toBe(403);
     const granted = await app.inject({ method: "PATCH", url: `/api/admin/users/${createdUser.json().user.id}`, headers: { cookie }, payload: { canCreateProjects: true } });
@@ -1078,7 +1086,7 @@ Second version.
     const login = await app.inject({
       method: "POST", url: "/api/auth/login", payload: { username: "comment-reader", password: "reader-password" }
     });
-    const readerCookie = login.headers["set-cookie"]!.split(";")[0];
+    const readerCookie = sessionCookie(login.headers);
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Authored comments" } });
     const projectId = created.json().project.id;
     await app.inject({
@@ -1300,7 +1308,7 @@ Second version.
     const otherLogin = await app.inject({
       method: "POST", url: "/api/auth/login", payload: { username: otherUser.json().user.username, password: "reader-password" }
     });
-    const otherCookie = otherLogin.headers["set-cookie"]!.split(";")[0];
+    const otherCookie = sessionCookie(otherLogin.headers);
     const otherEdit = await app.inject({
       method: "PATCH", url: `/api/tags/${tag.id}`, headers: { cookie: otherCookie }, payload: { name: "Not allowed", color: "red" }
     });
@@ -1380,7 +1388,7 @@ Second version.
       payload: { username, displayName: "Private Owner", password: "owner-password", canCreateProjects: true }
     });
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "owner-password" } });
-    const ownerCookie = login.headers["set-cookie"]!.split(";")[0];
+    const ownerCookie = sessionCookie(login.headers);
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: ownerCookie }, payload: { name: "Administrator privacy" }
     });
@@ -1416,7 +1424,7 @@ Second version.
     const recipientLogin = await app.inject({
       method: "POST", url: "/api/auth/login", payload: { username: "project-recipient", password: "recipient-password" }
     });
-    const recipientCookie = recipientLogin.headers["set-cookie"]!.split(";")[0];
+    const recipientCookie = sessionCookie(recipientLogin.headers);
     const me = await app.inject({ method: "GET", url: "/api/me", headers: { cookie } });
     const formerOwnerId = me.json().user.id as string;
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Transferred paper" } });
@@ -1464,7 +1472,7 @@ Second version.
     const ownerLogin = await app.inject({
       method: "POST", url: "/api/auth/login", payload: { username: "disposable-owner", password: "owner-password" }
     });
-    const ownerCookie = ownerLogin.headers["set-cookie"]!.split(";")[0];
+    const ownerCookie = sessionCookie(ownerLogin.headers);
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: ownerCookie }, payload: { name: "Delete with owner" }
     });
@@ -1492,7 +1500,7 @@ Second version.
     const login = await app.inject({
       method: "POST", url: "/api/auth/login", payload: { username: "last-editor", password: "editor-password" }
     });
-    const editorCookie = login.headers["set-cookie"]!.split(";")[0];
+    const editorCookie = sessionCookie(login.headers);
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Shared paper" } });
     const project = created.json().project;
     await app.inject({
@@ -1518,7 +1526,7 @@ Second version.
     const login = await app.inject({
       method: "POST", url: "/api/auth/login", payload: { username: "former-reviewer", password: "reviewer-password" }
     });
-    const reviewerCookie = login.headers["set-cookie"]!.split(";")[0];
+    const reviewerCookie = sessionCookie(login.headers);
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Reviewed paper" } });
     const project = created.json().project;
     await app.inject({
@@ -2121,7 +2129,7 @@ Second version.
       payload: { username: "citation-reader", displayName: "Citation Reader", password: "reader-pass-123" }
     });
     const readerLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "citation-reader", password: "reader-pass-123" } });
-    const readerCookie = readerLogin.headers["set-cookie"]!.split(";")[0];
+    const readerCookie = sessionCookie(readerLogin.headers);
     const readerLibrary = await app.inject({ method: "GET", url: "/api/citations", headers: { cookie: readerCookie } });
     expect(readerLibrary.statusCode).toBe(200);
     expect(readerLibrary.json().entries).toHaveLength(0);

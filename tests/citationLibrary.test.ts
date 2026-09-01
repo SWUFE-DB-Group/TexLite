@@ -60,8 +60,17 @@ describe("citation library BibTeX parser", () => {
   });
 
   it("reports typed formatting failures without embedding a UI language", () => {
-    expect(() => formatBibtex("@article{x title={Y}}", citationLimit)).toThrowError(expect.objectContaining<BibtexFormatError>({ kind: "invalid" }));
-    expect(() => formatBibtex("x".repeat(citationLimit + 1), citationLimit))
-      .toThrowError(expect.objectContaining<BibtexFormatError>({ kind: "too-large" }));
+    expect(formattingFailure("@article{x title={Y}}").kind).toBe("invalid");
+    expect(formattingFailure("x".repeat(citationLimit + 1)).kind).toBe("too-large");
   });
 });
+
+function formattingFailure(source: string): BibtexFormatError {
+  try {
+    formatBibtex(source, citationLimit);
+  } catch (error) {
+    if (error instanceof BibtexFormatError) return error;
+    throw error;
+  }
+  throw new Error("Expected BibTeX formatting to fail");
+}
