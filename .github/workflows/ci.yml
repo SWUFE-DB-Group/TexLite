@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Typecheck and build
+    name: Typecheck, test and build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -39,10 +39,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The test suite uses fake LaTeX commands where compilation behaviour is
+      # relevant, so it can run on the standard GitHub Actions runner without
+      # installing TeX Live.
+      - name: Run unit and integration tests
+        run: npm test
+
       - name: Build browser and server bundles
         run: npm run build
 
-      # This workflow intentionally does not install TeX Live or run the full
-      # integration suite. Those tests invoke the host's LaTeX installation.
       - name: Inspect npm package contents
         run: npm pack --dry-run --ignore-scripts
