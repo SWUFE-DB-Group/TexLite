@@ -17,7 +17,12 @@ import {
 import type { Config } from "./config.js";
 import type { DatabaseConnection, UserRow } from "./db.js";
 import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, type FileEntry } from "./files.js";
-import { accessibleProject, canEdit } from "./projects.js";
+import {
+  accessibleProjectFromStatement,
+  canEdit,
+  prepareAccessibleProjectStatement,
+  type AccessibleProject
+} from "./projects.js";
 import { reanchorFileComments } from "./anchors.js";
 
 const MESSAGE_SYNC = 0;
@@ -155,19 +160,28 @@ export class CollaborationService {
   private readonly snapshotBarriers = new Map<string, number>();
   private readonly pendingConnections = new Map<string, number>();
   private closed = false;
+  private readonly userByIdStatement;
+  private readonly accessibleProjectStatement;
 
   constructor(
     private readonly config: Config,
     private readonly db: DatabaseConnection,
     private readonly onPersist?: (event: CollaborationPersistEvent) => void
-  ) {}
+  ) {
+    this.userByIdStatement = db.prepare<[string], UserRow>("SELECT * FROM users WHERE id = ?");
+    this.accessibleProjectStatement = prepareAccessibleProjectStatement(db);
+  }
+
+  private lookupProjectAccess(projectId: string, user: UserRow): AccessibleProject | null {
+    return accessibleProjectFromStatement(this.accessibleProjectStatement, projectId, user);
+  }
 
   async connect(socket: WebSocket, projectId: string, user: UserRow): Promise<void> {
     if (this.closed) {
       socket.close(1012, "Collaboration service is shutting down");
       return;
     }
-    const project = accessibleProject(this.db, projectId, user);
+    const project = this.lookupProjectAccess(projectId, user);
     if (!project) {
       socket.close(1008, "Project access denied");
       return;
@@ -863,7 +877,7 @@ export class CollaborationService {
 
   private attachConnection(room: Room, socket: WebSocket, user: UserRow): void {
     if (socket.readyState !== WebSocket.OPEN) return;
-    if (!accessibleProject(this.db, room.projectId, user)) {
+    if (!this.lookupProjectAccess(room.projectId, user)) {
       socket.close(1008, "Project access denied");
       return;
     }
@@ -921,14 +935,14 @@ export class CollaborationService {
   }
 
   private handleMessage(room: Room, connection: Connection, bytes: Uint8Array): void {
-    const refreshedUser = this.db.prepare("SELECT * FROM users WHERE id = ?").get(connection.user.id) as UserRow | undefined;
+    const refreshedUser = this.userByIdStatement.get(connection.user.id);
     if (!refreshedUser || refreshedUser.disabled) {
       connection.socket.close(1008, "Project access revoked");
       this.disconnect(room, connection);
       return;
     }
     connection.user = refreshedUser;
-    const current = accessibleProject(this.db, room.projectId, refreshedUser);
+    const current = this.lookupProjectAccess(room.projectId, refreshedUser);
     if (!current) {
       connection.socket.close(1008, "Project access revoked");
       return;
@@ -1083,7 +1097,7 @@ export class CollaborationService {
     room: Room,
     connection: Connection,
     decoder: decoding.Decoder,
-    currentProject: NonNullable<ReturnType<typeof accessibleProject>>
+    currentProject: AccessibleProject
   ): void {
     const operation = decoding.hasContent(decoder) ? decoding.readVarString(decoder).slice(0, 16) : "";
     const requestId = decoding.hasContent(decoder) ? decoding.readVarString(decoder).slice(0, 128) : "";

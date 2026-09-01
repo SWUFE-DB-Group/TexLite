@@ -147,6 +147,13 @@ describe("project collaboration", () => {
       });
       expect(permissionChange.statusCode).toBe(200);
       await waitFor(() => editingPeer.permissionChanges.includes("read"));
+      // The collaboration service reuses its prepared authorization statement,
+      // but must still observe a permission row updated after this socket was
+      // attached.
+      const contentBeforeDowngradedWrite = ownerText.toString();
+      editingPeer.doc.getText("source:main.tex").insert(0, "% forbidden downgraded edit\n");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(ownerText.toString()).toBe(contentBeforeDowngradedWrite);
       const permissionRestore = await app.inject({
         method: "PUT", url: `/api/projects/${projectId}/members/${editor.id}`,
         headers: { cookie: adminCookie }, payload: { permission: "edit" }

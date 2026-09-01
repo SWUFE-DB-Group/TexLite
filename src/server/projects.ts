@@ -1,3 +1,4 @@
+import type Database from "better-sqlite3";
 import type { DatabaseConnection, UserRow, ProjectRow } from "./db.js";
 
 export type ProjectPermission = "read" | "edit" | "owner";
@@ -10,23 +11,45 @@ export interface AccessibleProject extends ProjectRow {
   last_modified_display_name?: string | null;
 }
 
+export type AccessibleProjectStatement = Database.Statement<
+  [userIdForPermission: string, memberUserId: string, projectId: string, ownerUserId: string],
+  AccessibleProject
+>;
+
+const ACCESSIBLE_PROJECT_SQL = `
+  SELECT p.*,
+    CASE WHEN p.owner_id = ? THEN 'owner' ELSE pm.permission END AS permission,
+    owner.username AS owner_username, owner.display_name AS owner_display_name,
+    modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name
+  FROM projects p
+  JOIN users owner ON owner.id = p.owner_id
+  LEFT JOIN users modifier ON modifier.id = p.last_modified_by
+  LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
+  WHERE p.id = ? AND (p.owner_id = ? OR pm.user_id IS NOT NULL)
+`;
+
+export function prepareAccessibleProjectStatement(db: DatabaseConnection): AccessibleProjectStatement {
+  return db.prepare<
+    [userIdForPermission: string, memberUserId: string, projectId: string, ownerUserId: string],
+    AccessibleProject
+  >(ACCESSIBLE_PROJECT_SQL);
+}
+
+export function accessibleProjectFromStatement(
+  statement: AccessibleProjectStatement,
+  projectId: string,
+  user: UserRow
+): AccessibleProject | null {
+  const row = statement.get(user.id, user.id, projectId, user.id);
+  return row ?? null;
+}
+
 export function accessibleProject(
   db: DatabaseConnection,
   projectId: string,
   user: UserRow
 ): AccessibleProject | null {
-  const row = db.prepare(`
-    SELECT p.*,
-      CASE WHEN p.owner_id = ? THEN 'owner' ELSE pm.permission END AS permission,
-      owner.username AS owner_username, owner.display_name AS owner_display_name,
-      modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name
-    FROM projects p
-    JOIN users owner ON owner.id = p.owner_id
-    LEFT JOIN users modifier ON modifier.id = p.last_modified_by
-    LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
-    WHERE p.id = ? AND (p.owner_id = ? OR pm.user_id IS NOT NULL)
-  `).get(user.id, user.id, projectId, user.id) as AccessibleProject | undefined;
-  return row ?? null;
+  return accessibleProjectFromStatement(prepareAccessibleProjectStatement(db), projectId, user);
 }
 
 export function canEdit(project: AccessibleProject): boolean {
