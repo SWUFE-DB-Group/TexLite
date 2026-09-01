@@ -122,6 +122,9 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   const [zoom, setZoom] = useState(100);
   const [error, setError] = useState("");
   const pageElements = useRef(new Map<number, HTMLElement>());
+  const viewportFrame = useRef<number | null>(null);
+  const onViewportLocationRef = useRef(onViewportLocation);
+  onViewportLocationRef.current = onViewportLocation;
 
   const registerPageElement = useCallback((pageNumber: number, element: HTMLElement | null) => {
     if (element) pageElements.current.set(pageNumber, element);
@@ -150,7 +153,8 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
     pageElements.current.get(pageIndex + 1)?.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
   };
 
-  const reportViewport = () => {
+  const measureViewport = useCallback(() => {
+    viewportFrame.current = null;
     const viewer = root.current;
     if (!viewer) return;
     const viewerBounds = viewer.getBoundingClientRect();
@@ -172,8 +176,18 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
     const pageNumber = Number(page.dataset.page);
     const x = Math.max(0, Math.min(bounds.width, centerX - bounds.left)) / scale;
     const y = Math.max(0, Math.min(bounds.height, centerY - bounds.top)) / scale;
-    if (pageNumber) onViewportLocation(pageNumber, x, y);
-  };
+    if (pageNumber) onViewportLocationRef.current(pageNumber, x, y);
+  }, []);
+
+  const reportViewport = useCallback(() => {
+    if (viewportFrame.current !== null) return;
+    viewportFrame.current = window.requestAnimationFrame(measureViewport);
+  }, [measureViewport]);
+
+  useEffect(() => () => {
+    if (viewportFrame.current !== null) window.cancelAnimationFrame(viewportFrame.current);
+    viewportFrame.current = null;
+  }, []);
 
   useEffect(() => {
     const element = root.current;
