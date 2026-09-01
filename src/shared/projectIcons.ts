@@ -1,7 +1,7 @@
 /**
- * A curated project-icon vocabulary.
+ * A curated project-icon vocabulary shared by the browser and server.
  *
- * The client renders these with the Lucide icons already used throughout the
+ * The browser renders these with the Lucide icons already used throughout the
  * application. They are the fast, searchable defaults; the server separately
  * validates advanced choices against the installed Lucide catalogue.
  */

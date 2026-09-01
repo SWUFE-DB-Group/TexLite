@@ -16,5 +16,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src/client", "vite.config.ts"]
+  "include": ["src/client", "src/shared", "vite.config.ts"]
 }

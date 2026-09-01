@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isProjectIconName, normalizeLucideIconName, projectIconNames } from "../src/server/projectIcons.js";
+import { isProjectIconName, normalizeLucideIconName, projectIconNames } from "../src/shared/projectIcons.js";
 
 describe("project icon catalog", () => {
   it("keeps persisted icon names within the curated catalog", () => {

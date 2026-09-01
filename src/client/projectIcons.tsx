@@ -73,7 +73,7 @@ import {
   UsersRound,
   Workflow
 } from "lucide-react";
-import { isProjectIconName, normalizeLucideIconName, projectIconNames, type ProjectIconName } from "../server/projectIcons.js";
+import { isProjectIconName, normalizeLucideIconName, projectIconNames, type ProjectIconName } from "../shared/projectIcons.js";
 
 const icons: Record<ProjectIconName, LucideIcon> = {
   "file-text": FileText,

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import { ProjectIconGlyph, projectIconEntries, projectInitial } from "../projectIcons";
-import { isProjectIconName, normalizeLucideIconName } from "../../server/projectIcons.js";
+import { isProjectIconName, normalizeLucideIconName } from "../../shared/projectIcons.js";
 import type { Project } from "../types";
 
 function normalized(value: string): string {

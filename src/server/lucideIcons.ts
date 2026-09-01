@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { icons, type LucideIcon } from "lucide-react";
-import { normalizeLucideIconName } from "./projectIcons.js";
+import { normalizeLucideIconName } from "../shared/projectIcons.js";
 
 /** Convert public Lucide component exports, e.g. AlarmClockMinus, to slugs. */
 function lucideSlug(componentName: string): string {
