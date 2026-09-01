@@ -40,11 +40,11 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server/index.ts",
+    "dev": "npm run generate:lucide-icons && tsx watch src/server/index.ts",
     "dev:web": "vite",
     "build": "npm run build:web && npm run build:server",
     "build:web": "vite build",
-    "build:server": "tsc -p tsconfig.server.json",
+    "build:server": "tsc -p tsconfig.server.json && npm run generate:lucide-icons",
     "start": "node dist/server/index.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart texlite --update-env",
@@ -54,6 +54,8 @@
     "pm2:save": "pm2 save",
     "init": "tsx src/server/cli.ts init",
     "prepack": "npm run build",
+    "generate:lucide-icons": "node scripts/generate-lucide-static-icons.mjs",
+    "pretest": "npm run generate:lucide-icons",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
