@@ -51,6 +51,11 @@ type FormatterRecoveryAction = "file" | "selection";
 interface FormatterRecovery { action: FormatterRecoveryAction; kind: TexFmtFailureKind; detail: string }
 interface FormattedSource { formatted: string; diagnostics: string }
 interface LoadOptions { signal?: AbortSignal; isCurrent?: () => boolean }
+interface SourceAnalysisSnapshot { filePath: string; content: string }
+
+// Main-document detection and the fallback outline both scan the entire
+// source. They do not need to run on every keystroke.
+const SOURCE_ANALYSIS_DEBOUNCE_MS = 300;
 
 export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   site: SiteConfig; user: User; projectId: string; preload: WorkspacePreload | null; onBack: () => void;
@@ -65,6 +70,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const [activeMainFile, setActiveMainFile] = useState("");
   const [rootDocuments, setRootDocuments] = useState<Set<string>>(new Set());
   const [content, setContent] = useState("");
+  const [analysisSource, setAnalysisSource] = useState<SourceAnalysisSnapshot>({ filePath: "", content: "" });
   const [loadedFile, setLoadedFile] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState("editor.saved");
@@ -74,6 +80,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const [sourceCursor, setSourceCursor] = useState({ line: 1, column: 1 });
   const sourceCursorRef = useRef(sourceCursor);
   const sourceCursorOffsetRef = useRef(0);
+  const pendingSourceCursor = useRef<{ line: number; column: number } | null>(null);
+  const sourceCursorFrame = useRef<number | null>(null);
   const [previewTab, setPreviewTab] = useState<PreviewSurface>("pdf");
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticTab>("log");
   const selectPreviewTab = (next: PreviewTab | PreviewSurface): void => {
@@ -94,6 +102,10 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const [selection, setSelectionState] = useState<SourceSelection>({ selectedText: "", startOffset: 0, endOffset: 0 });
   const selectionRef = useRef<SourceSelection>({ selectedText: "", startOffset: 0, endOffset: 0 });
   const setSelection = (next: SourceSelection): void => {
+    const current = selectionRef.current;
+    if (current.selectedText === next.selectedText
+      && current.startOffset === next.startOffset
+      && current.endOffset === next.endOffset) return;
     selectionRef.current = next;
     setSelectionState(next);
   };
@@ -124,7 +136,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const filesPanel = useRef<ImperativePanelHandle>(null);
   const localEditSequence = useRef(0);
   const persistedEditSequence = useRef(0);
-  const contentRef = useRef("");
   const activeFileRef = useRef("");
   const activeMainFileRef = useRef("");
   const projectLoadSequence = useRef(0);
@@ -146,11 +157,25 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   }, [notice]);
 
   const updateSourceCursor = (line: number, column: number, offset = 0) => {
+    const current = sourceCursorRef.current;
+    if (current.line === line && current.column === column && sourceCursorOffsetRef.current === offset) return;
     const next = { line, column };
     sourceCursorRef.current = next;
     sourceCursorOffsetRef.current = offset;
-    setSourceCursor(next);
+    pendingSourceCursor.current = next;
+    if (sourceCursorFrame.current !== null) return;
+    sourceCursorFrame.current = window.requestAnimationFrame(() => {
+      sourceCursorFrame.current = null;
+      const pending = pendingSourceCursor.current;
+      pendingSourceCursor.current = null;
+      if (!pending) return;
+      setSourceCursor((previous) => previous.line === pending.line && previous.column === pending.column ? previous : pending);
+    });
   };
+
+  useEffect(() => () => {
+    if (sourceCursorFrame.current !== null) window.cancelAnimationFrame(sourceCursorFrame.current);
+  }, []);
 
   const updateOpenTabs = (updater: (current: string[]) => string[]) => {
     const current = openTabsRef.current;
@@ -234,15 +259,34 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   }, [user.id, projectId]);
 
   const updateEditorContent = (next: string) => {
-    contentRef.current = next;
     setContent(next);
   };
 
   useEffect(() => {
+    if (!activeFile || loadedFile !== activeFile) {
+      setAnalysisSource((current) => current.filePath || current.content ? { filePath: "", content: "" } : current);
+      return;
+    }
+    const filePath = activeFile;
+    const snapshot = content;
+    const timer = window.setTimeout(() => {
+      setAnalysisSource((current) => current.filePath === filePath && current.content === snapshot
+        ? current
+        : { filePath, content: snapshot });
+    }, SOURCE_ANALYSIS_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeFile, loadedFile, content]);
+
+  useEffect(() => {
     activeFileRef.current = activeFile;
+    if (sourceCursorFrame.current !== null) {
+      window.cancelAnimationFrame(sourceCursorFrame.current);
+      sourceCursorFrame.current = null;
+    }
+    pendingSourceCursor.current = null;
     sourceCursorRef.current = { line: 1, column: 1 };
     sourceCursorOffsetRef.current = 0;
-    setSourceCursor({ line: 1, column: 1 });
+    setSourceCursor((current) => current.line === 1 && current.column === 1 ? current : { line: 1, column: 1 });
     setSelection({ selectedText: "", startOffset: 0, endOffset: 0 });
     if (!editorPreferences.openFilesInTabs) {
       if (openTabsRef.current.length > 0) {
@@ -796,12 +840,51 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     onRootDocuments: setRootDocuments
   });
 
+  const getCurrentMainFile = (): string => activeMainFileRef.current || project?.mainFile || "";
+
+  // This is deliberately the only path that may synchronously select a new
+  // root from source text. It is called only after compilation has passed its
+  // permission and collaboration checks; all other compilation actions use
+  // the pure getCurrentMainFile lookup.
+  const resolveCompileMainFile = (): string => {
+    const currentMainFile = getCurrentMainFile();
+    const currentFile = activeFileRef.current;
+    if (!currentFile || !/\.tex$/i.test(currentFile)) return currentMainFile;
+
+    const texFileCount = files.filter((entry) => entry.type === "file" && /\.tex$/i.test(entry.path)).length;
+    const source = collaboration.getText(currentFile).toString();
+    const isRoot = hasDocumentClassInSource(source) || texFileCount === 1;
+    if (isRoot) {
+      setRootDocuments((current) => {
+        if (current.has(currentFile)) return current;
+        const next = new Set(current);
+        next.add(currentFile);
+        return next;
+      });
+      if (currentMainFile !== currentFile) {
+        // Keep the ref current immediately: the compile hook can run before
+        // React has committed the matching activeMainFile state update.
+        activeMainFileRef.current = currentFile;
+        setActiveMainFile(currentFile);
+      }
+      return currentFile;
+    }
+
+    if (currentMainFile === currentFile && project?.mainFile && project.mainFile !== currentFile) {
+      activeMainFileRef.current = project.mainFile;
+      setActiveMainFile(project.mainFile);
+      return project.mainFile;
+    }
+    return currentMainFile;
+  };
+
   useEffect(() => {
-    if (!activeFile || loadedFile !== activeFile || !activeFile.toLocaleLowerCase().endsWith(".tex")) return;
+    if (!activeFile || loadedFile !== activeFile || analysisSource.filePath !== activeFile
+      || !activeFile.toLocaleLowerCase().endsWith(".tex")) return;
     const texFileCount = files.filter((entry) => entry.type === "file" && /\.tex$/i.test(entry.path)).length;
     if (texFileCount === 0) return;
     const configuredRoot = activeFile === project?.mainFile;
-    const detectedRoot = hasDocumentClassInSource(content);
+    const detectedRoot = hasDocumentClassInSource(analysisSource.content);
     const isRoot = detectedRoot || texFileCount === 1;
     setRootDocuments((current) => {
       if (current.has(activeFile) === isRoot) return current;
@@ -815,7 +898,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     } else if (!isRoot && activeMainFileRef.current === activeFile && project?.mainFile) {
       setActiveMainFile(project.mainFile);
     }
-  }, [activeFile, loadedFile, content, files, project?.mainFile]);
+  }, [activeFile, loadedFile, analysisSource, files, project?.mainFile]);
 
   useEffect(() => {
     if (!editorPreferences.openFilesInTabs || files.length === 0) return;
@@ -846,6 +929,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     projectId,
     project,
     mainFile: activeMainFile,
+    resolveCompileMainFile,
+    getCurrentMainFile,
     initialLatest: preload?.projectId === projectId ? preload.latestCompile : null,
     collaborationSynced,
     sharedState: compileState,
@@ -913,9 +998,11 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     if (filesPanel.current?.isCollapsed()) filesPanel.current.expand();
     else filesPanel.current?.collapse();
   };
-  const outline = useMemo(() => projectOutline.length
-    ? projectOutline
-    : parseOutline(content).map((item) => ({ ...item, path: activeFile })), [projectOutline, content, activeFile]);
+  const outline = useMemo(() => {
+    if (projectOutline.length) return projectOutline;
+    if (analysisSource.filePath !== activeFile) return [];
+    return parseOutline(analysisSource.content).map((item) => ({ ...item, path: activeFile }));
+  }, [projectOutline, analysisSource, activeFile]);
   const compileMessages = useMemo(() => classifyCompileLog(compileLog, compileOutcome), [compileLog, compileOutcome]);
   const showEditor = workspaceLayout !== "pdf-only";
   const showPreview = workspaceLayout !== "editor-only";
@@ -1065,14 +1152,20 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
         projectId={projectId} activeMainFile={activeMainFile} previewTab={previewTab} diagnosticTab={diagnosticTab}
         pdfUrl={pdfUrl} pdfLoadingMode={pdfLoadingMode} pdfLoading={pdfLoading} pdfCompiledAt={pdfCompiledAt}
         pdfCompiledLabel={pdfCompiledLabel} pdfTargetLabel={pdfTargetLabel} pdfDownloadUrl={pdfDownloadUrl}
-        pdfTarget={pdfTarget} pdfViewport={pdfViewport} activeFile={activeFile} sourceCursor={sourceCursor}
+        pdfTarget={pdfTarget} pdfViewport={pdfViewport} activeFile={activeFile}
         compileBusy={compileBusy} compileLog={compileLog} compileDiagnostics={compileDiagnostics}
         compileMessages={compileMessages} artifacts={artifacts}
         artifactPreview={artifactPreview} artifactLoading={artifactLoading} cleaning={cleaning}
         readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={showEditor && showPreview}
         diagnosticCount={diagnosticCount} selectPreviewTab={selectPreviewTab}
         changeWorkspaceLayout={changeWorkspaceLayout} onSetNotice={setNotice} onSetPdfViewport={setPdfViewport}
-        syncVisiblePdfToSource={syncVisiblePdfToSource} syncSourceToPdf={syncSourceToPdf}
+        syncVisiblePdfToSource={syncVisiblePdfToSource}
+        syncCurrentSourceToPdf={() => {
+          const path = activeFileRef.current;
+          if (!path) return Promise.resolve();
+          const cursor = sourceCursorRef.current;
+          return syncSourceToPdf(path, cursor.line, cursor.column);
+        }}
         syncPdfToSource={syncPdfToSource} canSyncWithPdf={canSyncWithPdf} files={files}
         jumpToSource={jumpToSource} onSetCleanMode={setCleanMode} cleanCompile={cleanCompile}
         viewArtifact={viewArtifact}

@@ -18,10 +18,10 @@ import type { Config } from "./config.js";
 import type { DatabaseConnection, UserRow } from "./db.js";
 import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, type FileEntry } from "./files.js";
 import {
-  accessibleProjectFromStatement,
+  collaborationProjectAccessFromStatement,
   canEdit,
-  prepareAccessibleProjectStatement,
-  type AccessibleProject
+  prepareCollaborationProjectAccessStatement,
+  type CollaborationProjectAccess
 } from "./projects.js";
 import { reanchorFileComments } from "./anchors.js";
 
@@ -161,7 +161,7 @@ export class CollaborationService {
   private readonly pendingConnections = new Map<string, number>();
   private closed = false;
   private readonly userByIdStatement;
-  private readonly accessibleProjectStatement;
+  private readonly collaborationProjectAccessStatement;
 
   constructor(
     private readonly config: Config,
@@ -169,11 +169,11 @@ export class CollaborationService {
     private readonly onPersist?: (event: CollaborationPersistEvent) => void
   ) {
     this.userByIdStatement = db.prepare<[string], UserRow>("SELECT * FROM users WHERE id = ?");
-    this.accessibleProjectStatement = prepareAccessibleProjectStatement(db);
+    this.collaborationProjectAccessStatement = prepareCollaborationProjectAccessStatement(db);
   }
 
-  private lookupProjectAccess(projectId: string, user: UserRow): AccessibleProject | null {
-    return accessibleProjectFromStatement(this.accessibleProjectStatement, projectId, user);
+  private lookupProjectAccess(projectId: string, user: UserRow): CollaborationProjectAccess | null {
+    return collaborationProjectAccessFromStatement(this.collaborationProjectAccessStatement, projectId, user);
   }
 
   async connect(socket: WebSocket, projectId: string, user: UserRow): Promise<void> {
@@ -1097,7 +1097,7 @@ export class CollaborationService {
     room: Room,
     connection: Connection,
     decoder: decoding.Decoder,
-    currentProject: AccessibleProject
+    currentProject: CollaborationProjectAccess
   ): void {
     const operation = decoding.hasContent(decoder) ? decoding.readVarString(decoder).slice(0, 16) : "";
     const requestId = decoding.hasContent(decoder) ? decoding.readVarString(decoder).slice(0, 128) : "";

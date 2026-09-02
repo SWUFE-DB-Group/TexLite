@@ -147,9 +147,9 @@ describe("project collaboration", () => {
       });
       expect(permissionChange.statusCode).toBe(200);
       await waitFor(() => editingPeer.permissionChanges.includes("read"));
-      // The collaboration service reuses its prepared authorization statement,
-      // but must still observe a permission row updated after this socket was
-      // attached.
+      // The collaboration service uses a dedicated, prepared authorization
+      // query on the WebSocket hot path, but must still observe a permission
+      // row updated after this socket was attached.
       const contentBeforeDowngradedWrite = ownerText.toString();
       editingPeer.doc.getText("source:main.tex").insert(0, "% forbidden downgraded edit\n");
       await new Promise((resolve) => setTimeout(resolve, 50));

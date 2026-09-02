@@ -3,6 +3,10 @@ import type { Project } from "./types";
 import type { LatestCompileResponse } from "./workspace/useProjectCompilation";
 
 export const loadPdfPreview = () => import("./PdfPreview");
+// Keep the heavyweight workspace behind a route boundary. App uses this same
+// loader both for React.lazy and for the click-time preload, so the browser
+// shares a single module request.
+export const loadProjectWorkspace = () => import("./pages/ProjectWorkspace");
 
 export interface WorkspacePreload {
   projectId: string;
@@ -14,9 +18,9 @@ const recentPreloads = new Map<string, { preload: WorkspacePreload; createdAt: n
 const PRELOAD_DEDUPLICATION_MS = 2_000;
 
 /**
- * Start the project critical path as soon as App can see a project route.
- * This runs while /api/me is still in flight, removing the previous serial
- * project -> compile/latest -> PDF.js chain after a full page refresh.
+ * Start the project critical path after App has authenticated the current
+ * session. This overlaps project metadata, retained-PDF metadata, and the
+ * PDF runtime without fetching project data for an unauthenticated route.
  */
 export function preloadWorkspace(projectId: string, options: { force?: boolean } = {}): WorkspacePreload {
   const now = Date.now();

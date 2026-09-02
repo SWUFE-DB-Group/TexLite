@@ -41,6 +41,15 @@ interface UseProjectCompilationOptions {
   projectId: string;
   project: Project | null;
   mainFile: string;
+  /**
+   * Resolve the currently intended root only when a new compile is about to
+   * start. This keeps
+   * a Ctrl/Cmd+S immediately after adding \documentclass from compiling the
+   * root that was selected before the debounced workspace analysis ran.
+   */
+  resolveCompileMainFile?: () => string;
+  /** A side-effect-free current-root lookup for async response checks. */
+  getCurrentMainFile?: () => string;
   initialLatest?: Promise<LatestCompileResponse> | null;
   collaborationSynced: boolean;
   sharedState: SharedCompileState | null;
@@ -73,7 +82,7 @@ function isNativeTextControl(target: EventTarget | null): boolean {
 }
 
 export function useProjectCompilation({
-  projectId, project, mainFile, initialLatest, collaborationSynced, sharedState, onSharedState, save,
+  projectId, project, mainFile, resolveCompileMainFile, getCurrentMainFile, initialLatest, collaborationSynced, sharedState, onSharedState, save,
   loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged
 }: UseProjectCompilationOptions) {
   const { t } = useTranslation();
@@ -107,9 +116,17 @@ export function useProjectCompilation({
   const compileRequests = useRef(new Map<string, AbortController>());
   const focusedCompileRun = useRef<string | null>(null);
   const compileAction = useRef<() => void>(() => undefined);
-  const callbacks = useRef({ onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged });
+  const callbacks = useRef({
+    onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged,
+    resolveCompileMainFile, getCurrentMainFile
+  });
   mainFileRef.current = mainFile;
-  callbacks.current = { onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged };
+  callbacks.current = {
+    onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged,
+    resolveCompileMainFile, getCurrentMainFile
+  };
+
+  const currentMainFile = (): string => callbacks.current.getCurrentMainFile?.() || mainFileRef.current;
 
   const focusPdfAfterCompile = (runId: string) => {
     if (focusedCompileRun.current === runId) return;
@@ -338,10 +355,11 @@ export function useProjectCompilation({
   }, [sharedState?.runId, sharedState?.status, sharedState?.mainFile, sharedState?.stale, mainFile, projectId, t]);
 
   const compile = async () => {
-    if (!project || !mainFile || project.permission === "read" || !collaborationSynced
-      || compileRequests.current.has(mainFile)
-      || (sharedState?.mainFile === mainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
-    const requestedMainFile = mainFile;
+    if (!project || project.permission === "read" || !collaborationSynced) return;
+    const requestedMainFile = callbacks.current.resolveCompileMainFile?.() || currentMainFile();
+    if (!requestedMainFile
+      || compileRequests.current.has(requestedMainFile)
+      || (sharedState?.mainFile === requestedMainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
     setCompilingMainFiles((current) => new Set([...current, requestedMainFile]));
     callbacks.current.onCompileStart();
     setEditorNotice("");
@@ -359,7 +377,9 @@ export function useProjectCompilation({
         `/api/projects/${projectId}/compile`,
         { method: "POST", signal: controller.signal, body: JSON.stringify({ mainFile: requestedMainFile }) }
       );
-      if (result.mainFile !== mainFileRef.current) return;
+      // Do not replace the active preview if the user selected another root
+      // while this compile was running.
+      if (result.mainFile !== requestedMainFile || currentMainFile() !== requestedMainFile) return;
       setCompileLog(result.log);
       setCompileDiagnostics(result.diagnostics);
       setCompileOutcome(result.cancelled ? "cancelled" : result.ok ? "succeeded" : "failed");
@@ -384,7 +404,7 @@ export function useProjectCompilation({
         callbacks.current.onPreviewTab(result.diagnostics.errors.length ? "errors" : "log");
       }
     } catch (error) {
-      if (!isAbortError(error) && mainFileRef.current === requestedMainFile) callbacks.current.onError(errorMessage(error));
+      if (!isAbortError(error) && currentMainFile() === requestedMainFile) callbacks.current.onError(errorMessage(error));
     } finally {
       if (compileRequests.current.get(requestedMainFile) === controller) {
         compileRequests.current.delete(requestedMainFile);
@@ -404,8 +424,11 @@ export function useProjectCompilation({
   };
 
   const cancelCompile = async (): Promise<void> => {
-    if (!project || !mainFile || project.permission === "read" || !collaborationSynced) return;
-    const requestedMainFile = mainFile;
+    if (!project || project.permission === "read" || !collaborationSynced) return;
+    // Cancellation is tied to the root currently shown as compiling. It must
+    // not re-evaluate the active source, which may have changed since start.
+    const requestedMainFile = currentMainFile();
+    if (!requestedMainFile) return;
     setCancellingMainFiles((current) => new Set([...current, requestedMainFile]));
     try {
       const result = await api<{ cancelled: boolean }>(`/api/projects/${projectId}/compile/cancel`, {
@@ -424,15 +447,16 @@ export function useProjectCompilation({
         next.delete(requestedMainFile);
         return next;
       });
-      if (!isAbortError(error) && mainFileRef.current === requestedMainFile) callbacks.current.onError(errorMessage(error));
+      if (!isAbortError(error) && currentMainFile() === requestedMainFile) callbacks.current.onError(errorMessage(error));
     }
   };
 
   const cleanCompile = async (mode: CompileCleanMode): Promise<void> => {
-    if (!project || !mainFile || project.permission === "read" || !collaborationSynced || cleaning
-      || compileRequests.current.has(mainFile)
-      || (sharedState?.mainFile === mainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
-    const requestedMainFile = mainFile;
+    if (!project || project.permission === "read" || !collaborationSynced || cleaning) return;
+    const requestedMainFile = currentMainFile();
+    if (!requestedMainFile
+      || compileRequests.current.has(requestedMainFile)
+      || (sharedState?.mainFile === requestedMainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
     setCleaning(true);
     latestRequest.current?.abort();
     completedStateRequest.current?.abort();
@@ -443,7 +467,7 @@ export function useProjectCompilation({
         `/api/projects/${projectId}/compile/clean`,
         { method: "POST", body: JSON.stringify({ mainFile: requestedMainFile, mode }) }
       );
-      if (result.mainFile !== mainFileRef.current) return;
+      if (result.mainFile !== requestedMainFile || currentMainFile() !== requestedMainFile) return;
       callbacks.current.onSharedState(null);
       if (mode === "artifacts") {
         authoritativeCompileRun.current = null;
@@ -459,7 +483,7 @@ export function useProjectCompilation({
       }
       setEditorNotice(mode === "cache" ? t("editor.cleanCacheComplete") : t("editor.cleanArtifactsComplete"));
     } catch (error) {
-      if (!isAbortError(error) && mainFileRef.current === requestedMainFile) callbacks.current.onError(errorMessage(error));
+      if (!isAbortError(error) && currentMainFile() === requestedMainFile) callbacks.current.onError(errorMessage(error));
     } finally {
       setCleaning(false);
     }

@@ -29,7 +29,6 @@ export interface WorkspacePreviewPanelProps {
   pdfTarget: PdfTarget | null;
   pdfViewport: { page: number; x: number; y: number } | null;
   activeFile: string;
-  sourceCursor: { line: number; column: number };
   compileBusy: boolean;
   compileLog: string;
   compileDiagnostics: CompileDiagnostics | null;
@@ -48,7 +47,7 @@ export interface WorkspacePreviewPanelProps {
   onSetNotice: (message: string) => void;
   onSetPdfViewport: (viewport: { page: number; x: number; y: number }) => void;
   syncVisiblePdfToSource: () => void;
-  syncSourceToPdf: (path: string, line: number, column: number) => Promise<void>;
+  syncCurrentSourceToPdf: () => Promise<void>;
   syncPdfToSource: (page: number, x: number, y: number) => Promise<void>;
   canSyncWithPdf: boolean;
   files: FileEntry[];
@@ -60,15 +59,15 @@ export interface WorkspacePreviewPanelProps {
 
 export function WorkspacePreviewPanel({
   projectId, activeMainFile, previewTab, diagnosticTab, pdfUrl, pdfLoadingMode, pdfLoading, pdfCompiledAt,
-  pdfCompiledLabel, pdfTargetLabel, pdfDownloadUrl, pdfTarget, pdfViewport, activeFile, sourceCursor, compileBusy, compileLog,
+  pdfCompiledLabel, pdfTargetLabel, pdfDownloadUrl, pdfTarget, pdfViewport, activeFile, compileBusy, compileLog,
   compileDiagnostics, compileMessages, artifacts, artifactPreview, artifactLoading, cleaning, readOnly,
   collaborationSynced, workspaceLayout, showSyncResize, diagnosticCount, selectPreviewTab, changeWorkspaceLayout,
-  onSetNotice, onSetPdfViewport, syncVisiblePdfToSource, syncSourceToPdf, syncPdfToSource, canSyncWithPdf,
+  onSetNotice, onSetPdfViewport, syncVisiblePdfToSource, syncCurrentSourceToPdf, syncPdfToSource, canSyncWithPdf,
   files, jumpToSource, onSetCleanMode, cleanCompile, viewArtifact
 }: WorkspacePreviewPanelProps) {
   const { t } = useTranslation();
   return <>
-    {showSyncResize && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport || !canSyncWithPdf} title={canSyncWithPdf ? t("editor.showInSource") : t("editor.syncTexOnlyForMain")} aria-label={t("editor.showInSource")} onClick={() => { if (!canSyncWithPdf) { onSetNotice(t("editor.syncTexOnlyForMain")); return; } syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={canSyncWithPdf ? t("editor.showInPdf") : t("editor.syncTexOnlyForMain")} aria-label={t("editor.showInPdf")} onClick={() => { if (!canSyncWithPdf) { onSetNotice(t("editor.syncTexOnlyForMain")); return; } void syncSourceToPdf(activeFile, sourceCursor.line, sourceCursor.column); }}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
+    {showSyncResize && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfViewport || !canSyncWithPdf} title={canSyncWithPdf ? t("editor.showInSource") : t("editor.syncTexOnlyForMain")} aria-label={t("editor.showInSource")} onClick={() => { if (!canSyncWithPdf) { onSetNotice(t("editor.syncTexOnlyForMain")); return; } syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={canSyncWithPdf ? t("editor.showInPdf") : t("editor.syncTexOnlyForMain")} aria-label={t("editor.showInPdf")} onClick={() => { if (!canSyncWithPdf) { onSetNotice(t("editor.syncTexOnlyForMain")); return; } void syncCurrentSourceToPdf(); }}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
     <Panel id="preview" order={3} defaultSize={42} minSize={22}>
       <section className="preview-panel">
         <div className="preview-tabs">

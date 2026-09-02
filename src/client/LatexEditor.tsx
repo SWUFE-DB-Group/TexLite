@@ -491,7 +491,13 @@ export function LatexEditor({
           const loadedExternalDocument = update.transactions.some(
             (transaction) => transaction.annotation(externalDocumentUpdate)
           );
-          if (update.docChanged && !loadedExternalDocument) onChangeRef.current(update.state.doc.toString());
+          // In collaborative workspaces yCollab writes to the same Y.Text
+          // observed by ProjectWorkspace. Let that observer materialize the
+          // source once, rather than converting the complete CodeMirror
+          // document here and again in the Y.Text observer.
+          if (update.docChanged && !loadedExternalDocument && !collaboration) {
+            onChangeRef.current(update.state.doc.toString());
+          }
           if (update.docChanged) setSpellSuggestionMenu(null);
           if (update.selectionSet && !update.docChanged && update.transactions.some((transaction) => transaction.isUserEvent("input"))) {
             const cursor = update.state.selection.main.head;
