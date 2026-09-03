@@ -28,7 +28,7 @@ and day-to-day operation.
 | Writing assistance | Optional host `harper-cli`, with a linear server-side LaTeX mask and native browser spellcheck fallback; project dictionary stored by the server |
 | API and static server | Fastify, WebSocket |
 | Collaboration | Yjs, y-websocket, awareness messages, y-codemirror.next |
-| Database | SQLite through better-sqlite3, foreign keys and WAL mode |
+| Database | SQLite through better-sqlite3, foreign keys, WAL mode, and `synchronous=NORMAL` |
 | Files | Local project directories under the configured data directory |
 | Compilation | Host `latexmk` and a configured LaTeX engine |
 | Formatting | Browser-side `tex-fmt` WASM package and `bibtex-tidy` |
@@ -390,6 +390,13 @@ Back up `texlite.db`, `git-token.key`, and `projects/` together. Include the
 SQLite WAL files in a live filesystem backup or use a SQLite-aware backup
 procedure. The token encryption key is required to recover saved GitHub
 credentials.
+
+TexLite opens SQLite with WAL mode and `synchronous=NORMAL`. This avoids a
+full WAL fsync on most small metadata writes while preserving SQLite's atomic
+and consistent database state. Following an abrupt host power loss or
+operating-system crash, the most recently acknowledged database transaction
+may be rolled back; normal process crashes do not have that trade-off. The
+setting is deliberately not `OFF`, which could permit database corruption.
 
 Tags and archive state are private to each user. A project can therefore have
 different labels, filters, and archived/active visibility for different

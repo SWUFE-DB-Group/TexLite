@@ -36,6 +36,7 @@ const definitionExtensions = /\.(?:tex|sty|cls|def|cfg|dtx|ins)$/i;
 const maxIndexedFileBytes = 3 * 1024 * 1024;
 const maxIndexedBytes = 24 * 1024 * 1024;
 const maxIndexedFiles = 500;
+const maxCachedProjects = 64;
 
 // Core LaTeX commands are kept in the completion index even when the project
 // has not loaded a package-specific definition yet.  Keep the catalogue
@@ -276,7 +277,7 @@ interface CachedSymbols {
 /** Reuses extracted symbols for files whose mtime and size did not change. */
 export class LatexCompletionService {
   private readonly cache = new Map<string, Map<string, CachedSymbols>>();
-  private readonly resultCache = new Map<string, { signature: string; index: LatexCompletionIndex; touched: number }>();
+  private readonly resultCache = new Map<string, { signature: string; index: LatexCompletionIndex }>();
   private readonly pending = new Map<string, Promise<LatexCompletionIndex>>();
 
   constructor(private readonly config: Config) {}
@@ -284,9 +285,15 @@ export class LatexCompletionService {
   build(projectId: string): Promise<LatexCompletionIndex> {
     const existing = this.pending.get(projectId);
     if (existing) return existing;
-    const request = this.buildIncremental(projectId).finally(() => {
-      if (this.pending.get(projectId) === request) this.pending.delete(projectId);
-    });
+    const request = this.buildIncremental(projectId)
+      // Do not retain a partial per-file cache when a project scan fails.
+      .catch((error) => {
+        this.invalidate(projectId);
+        throw error;
+      })
+      .finally(() => {
+        if (this.pending.get(projectId) === request) this.pending.delete(projectId);
+      });
     this.pending.set(projectId, request);
     return request;
   }
@@ -296,9 +303,10 @@ export class LatexCompletionService {
     this.resultCache.delete(projectId);
   }
 
-  stats(): { cachedProjects: number; pending: number; cachedFiles: number } {
+  stats(): { cachedProjects: number; cachedSymbolProjects: number; pending: number; cachedFiles: number } {
     return {
       cachedProjects: this.resultCache.size,
+      cachedSymbolProjects: this.cache.size,
       pending: this.pending.size,
       cachedFiles: [...this.cache.values()].reduce((total, files) => total + files.size, 0)
     };
@@ -306,15 +314,15 @@ export class LatexCompletionService {
 
   private async buildIncremental(projectId: string): Promise<LatexCompletionIndex> {
     const index = standardIndex();
-    const projectCache = this.cache.get(projectId) ?? new Map<string, CachedSymbols>();
-    this.cache.set(projectId, projectCache);
     const allEntries = (await listProjectFilesAsync(this.config, projectId)).filter((entry) => entry.type === "file").slice(0, maxIndexedFiles);
     const signature = allEntries.map((entry) => `${entry.path}:${entry.size ?? 0}:${entry.mtimeMs ?? 0}`).sort().join("\n");
     const cachedResult = this.resultCache.get(projectId);
     if (cachedResult?.signature === signature) {
-      cachedResult.touched = Date.now();
+      this.touch(projectId);
       return cachedResult.index;
     }
+    const projectCache = this.cache.get(projectId) ?? new Map<string, CachedSymbols>();
+    this.cache.set(projectId, projectCache);
     const livePaths = new Set(allEntries.map((entry) => entry.path));
     for (const cachedPath of [...projectCache.keys()]) if (!livePaths.has(cachedPath)) projectCache.delete(cachedPath);
     for (const entry of allEntries) index.files.set(entry.path, item(entry.path, "Project file", "text", "Project"));
@@ -341,12 +349,33 @@ export class LatexCompletionService {
       commands: sorted(index.commands), environments: sorted(index.environments), labels: sorted(index.labels),
       citations: sorted(index.citations), packages: sorted(index.packages), files: sorted(index.files)
     };
-    this.resultCache.set(projectId, { signature, index: result, touched: Date.now() });
-    if (this.resultCache.size > 64) {
-      const oldest = [...this.resultCache.entries()].sort((left, right) => left[1].touched - right[1].touched)[0];
-      if (oldest) this.resultCache.delete(oldest[0]);
-    }
+    this.resultCache.set(projectId, { signature, index: result });
+    this.touch(projectId);
+    this.evictLeastRecentlyUsedProjects();
     return result;
+  }
+
+  /** Keep result and per-file symbol caches on the same project-level LRU. */
+  private touch(projectId: string): void {
+    const result = this.resultCache.get(projectId);
+    if (result) {
+      this.resultCache.delete(projectId);
+      this.resultCache.set(projectId, result);
+    }
+    const symbols = this.cache.get(projectId);
+    if (symbols) {
+      this.cache.delete(projectId);
+      this.cache.set(projectId, symbols);
+    }
+  }
+
+  private evictLeastRecentlyUsedProjects(): void {
+    while (this.resultCache.size > maxCachedProjects) {
+      const oldestProjectId = this.resultCache.keys().next().value as string | undefined;
+      if (!oldestProjectId) return;
+      this.resultCache.delete(oldestProjectId);
+      this.cache.delete(oldestProjectId);
+    }
   }
 }
 

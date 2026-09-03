@@ -54,6 +54,9 @@ describe("database migrations", () => {
     };
     const migrated = openDatabase(config);
     try {
+      expect(migrated.pragma("journal_mode", { simple: true })).toBe("wal");
+      expect(migrated.pragma("synchronous", { simple: true })).toBe(1);
+      expect(migrated.pragma("foreign_keys", { simple: true })).toBe(1);
       expect(migrated.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: "user-1" });
       expect(migrated.prepare(`SELECT tag.name, tag.color FROM tags tag

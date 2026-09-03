@@ -35,7 +35,10 @@ export function openDatabase(config: Config): DatabaseConnection {
   fs.mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
   fs.mkdirSync(config.projectsDir, { recursive: true, mode: 0o700 });
   const db = new Database(config.databasePath, { timeout: 5000 });
-  db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+  // WAL allows readers to proceed while writes are committed. NORMAL avoids a
+  // per-transaction WAL fsync: a sudden host failure can lose the most recent
+  // acknowledged transaction, but the database remains consistent.
+  db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;");
   migrate(db);
   return db;
 }

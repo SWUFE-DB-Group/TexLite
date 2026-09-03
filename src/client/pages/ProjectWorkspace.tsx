@@ -1,4 +1,4 @@
-import { lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api";
 import type { CitationLibraryEntry, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
@@ -28,6 +28,7 @@ import { WorkspaceEditorPanel } from "../workspace/WorkspaceEditorPanel";
 import { WorkspacePreviewPanel } from "../workspace/WorkspacePreviewPanel";
 import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
 import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
+import { createSourceCursorStore, type SourceCursorStore } from "../workspace/sourceCursorStore";
 import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
 import { LazyModal } from "../LazyLoadBoundary";
 
@@ -77,11 +78,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const lastSavedAtRef = useRef(lastSavedAt);
   lastSavedAtRef.current = lastSavedAt;
-  const [sourceCursor, setSourceCursor] = useState({ line: 1, column: 1 });
-  const sourceCursorRef = useRef(sourceCursor);
-  const sourceCursorOffsetRef = useRef(0);
-  const pendingSourceCursor = useRef<{ line: number; column: number } | null>(null);
-  const sourceCursorFrame = useRef<number | null>(null);
+  const sourceCursorStoreRef = useRef<SourceCursorStore | null>(null);
+  if (!sourceCursorStoreRef.current) sourceCursorStoreRef.current = createSourceCursorStore();
+  const sourceCursorStore = sourceCursorStoreRef.current;
   const [previewTab, setPreviewTab] = useState<PreviewSurface>("pdf");
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticTab>("log");
   const selectPreviewTab = (next: PreviewTab | PreviewSurface): void => {
@@ -156,26 +155,11 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  const updateSourceCursor = (line: number, column: number, offset = 0) => {
-    const current = sourceCursorRef.current;
-    if (current.line === line && current.column === column && sourceCursorOffsetRef.current === offset) return;
-    const next = { line, column };
-    sourceCursorRef.current = next;
-    sourceCursorOffsetRef.current = offset;
-    pendingSourceCursor.current = next;
-    if (sourceCursorFrame.current !== null) return;
-    sourceCursorFrame.current = window.requestAnimationFrame(() => {
-      sourceCursorFrame.current = null;
-      const pending = pendingSourceCursor.current;
-      pendingSourceCursor.current = null;
-      if (!pending) return;
-      setSourceCursor((previous) => previous.line === pending.line && previous.column === pending.column ? previous : pending);
-    });
-  };
+  const updateSourceCursor = useCallback((line: number, column: number, offset = 0) => {
+    sourceCursorStore.update(line, column, offset);
+  }, [sourceCursorStore]);
 
-  useEffect(() => () => {
-    if (sourceCursorFrame.current !== null) window.cancelAnimationFrame(sourceCursorFrame.current);
-  }, []);
+  useEffect(() => () => sourceCursorStore.dispose(), [sourceCursorStore]);
 
   const updateOpenTabs = (updater: (current: string[]) => string[]) => {
     const current = openTabsRef.current;
@@ -279,14 +263,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
 
   useEffect(() => {
     activeFileRef.current = activeFile;
-    if (sourceCursorFrame.current !== null) {
-      window.cancelAnimationFrame(sourceCursorFrame.current);
-      sourceCursorFrame.current = null;
-    }
-    pendingSourceCursor.current = null;
-    sourceCursorRef.current = { line: 1, column: 1 };
-    sourceCursorOffsetRef.current = 0;
-    setSourceCursor((current) => current.line === 1 && current.column === 1 ? current : { line: 1, column: 1 });
+    sourceCursorStore.reset();
     setSelection({ selectedText: "", startOffset: 0, endOffset: 0 });
     if (!editorPreferences.openFilesInTabs) {
       if (openTabsRef.current.length > 0) {
@@ -298,7 +275,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     if (activeFile) {
       updateOpenTabs((current) => current.includes(activeFile) ? current : [...current, activeFile]);
     }
-  }, [activeFile, editorPreferences.openFilesInTabs, projectId]);
+  }, [activeFile, editorPreferences.openFilesInTabs, projectId, sourceCursorStore]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -804,7 +781,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       setNotice(t("citationErrors.alreadyInFile", { key: entry.citationKey }));
       return false;
     }
-    const offset = Math.max(0, Math.min(source.length, sourceCursorOffsetRef.current));
+    const offset = Math.max(0, Math.min(source.length, sourceCursorStore.getCursor().offset));
     const before = source.slice(0, offset);
     const after = source.slice(offset);
     const prefix = !before ? "" : before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n";
@@ -942,7 +919,10 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     onCompileStart: () => { setError(""); setNotice(""); },
     onCompileSuccess: () => {
       const path = activeFileRef.current;
-      if (path) void syncSourceToPdf(path, sourceCursorRef.current.line, sourceCursorRef.current.column, { silent: true });
+      if (path) {
+        const cursor = sourceCursorStore.getCursor();
+        void syncSourceToPdf(path, cursor.line, cursor.column, { silent: true });
+      }
     },
     onPdfChanged: clearPdfViewport
   });
@@ -1122,7 +1102,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
         activeFile={activeFile} activeMainFile={activeMainFile} rootDocuments={rootDocuments}
         selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
         uploadingFiles={uploadingFiles} readOnly={readOnly} editorFontSize={editorPreferences.fontSize}
-        outline={outline} sourceCursor={sourceCursor} wordCountBusy={wordCountBusy}
+        outline={outline} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy}
         hasSelection={Boolean(selection.selectedText.trim()) && /\.(?:tex|sty|cls)$/i.test(activeFile)} uploadInput={uploadInput}
         setSelectedFolder={setSelectedFolder} setExpandedFolders={setExpandedFolders}
         setMoveEntry={setMoveEntry} setMoveName={setMoveName} setMoveDestination={setMoveDestination}
@@ -1163,7 +1143,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
         syncCurrentSourceToPdf={() => {
           const path = activeFileRef.current;
           if (!path) return Promise.resolve();
-          const cursor = sourceCursorRef.current;
+          const cursor = sourceCursorStore.getCursor();
           return syncSourceToPdf(path, cursor.line, cursor.column);
         }}
         syncPdfToSource={syncPdfToSource} canSyncWithPdf={canSyncWithPdf} files={files}
