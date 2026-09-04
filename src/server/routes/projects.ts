@@ -26,6 +26,7 @@ import { accessibleProject, canEdit } from "../projects.js";
 import { writeProjectArchive } from "../archive.js";
 import { extractProjectZip, ZipValidationError } from "../zip.js";
 import { HarperUnavailableError, type HarperService } from "../harper.js";
+import { unreadMentionCountsForProjects } from "../commentMentions.js";
 import {
   commentsSummaryForProject,
   commentsSummaryForProjects,
@@ -208,11 +209,13 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const projectIds = projects.map((project) => project.id);
     const projectTags = tagsForProjects(db, projectIds, user.id);
     const commentsSummaries = commentsSummaryForProjects(db, projectIds);
+    const unreadMentionCounts = unreadMentionCountsForProjects(db, projectIds, user.id);
     return {
       projects: projects.map((project) => projectJson(
         { ...project, archived: archivedOnly },
         projectTags.get(project.id) ?? [],
-        commentsSummaries.get(project.id)
+        commentsSummaries.get(project.id),
+        unreadMentionCounts.get(project.id) ?? 0
       )),
       pagination: { page: currentPage, pageSize, total, totalPages }
     };

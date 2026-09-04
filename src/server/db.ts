@@ -175,6 +175,27 @@ function migrate(db: DatabaseConnection): void {
     );
     CREATE INDEX IF NOT EXISTS comment_replies_comment_id ON comment_replies(comment_id, created_at);
 
+    -- Mentions are personal notification records, rather than a mutable
+    -- counter on comments or projects.  This makes unread state naturally
+    -- per user and lets resolving one thread clear its existing notifications.
+    CREATE TABLE IF NOT EXISTS comment_mentions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      comment_id TEXT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+      reply_id TEXT REFERENCES comment_replies(id) ON DELETE CASCADE,
+      mentioned_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      mentioned_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      read_at TEXT,
+      read_reason TEXT CHECK (read_reason IN ('opened', 'resolved', 'manual')),
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS comment_mentions_receiver_unread
+      ON comment_mentions(mentioned_user_id, project_id, created_at DESC)
+      WHERE read_at IS NULL;
+    CREATE INDEX IF NOT EXISTS comment_mentions_comment_id ON comment_mentions(comment_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS comment_mentions_source_recipient
+      ON comment_mentions(comment_id, IFNULL(reply_id, ''), mentioned_user_id);
+
     CREATE TABLE IF NOT EXISTS compile_runs (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

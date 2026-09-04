@@ -18,6 +18,7 @@ interface UseProjectCommentsOptions {
   save: () => Promise<boolean>;
   onError: (message: string) => void;
   onAdded: () => void;
+  onChanged?: () => void;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -25,7 +26,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function useProjectComments({
-  projectId, activeFile, permission, revision, selection, save, onError, onAdded
+  projectId, activeFile, permission, revision, selection, save, onError, onAdded, onChanged
 }: UseProjectCommentsOptions) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [focusComment, setFocusComment] = useState<Comment | null>(null);
@@ -36,10 +37,12 @@ export function useProjectComments({
   const saveRef = useRef(save);
   const onErrorRef = useRef(onError);
   const onAddedRef = useRef(onAdded);
+  const onChangedRef = useRef(onChanged);
   activeFileRef.current = activeFile;
   saveRef.current = save;
   onErrorRef.current = onError;
   onAddedRef.current = onAdded;
+  onChangedRef.current = onChanged;
 
   const loadComments = async (file: string) => {
     request.current?.abort();
@@ -83,6 +86,7 @@ export function useProjectComments({
       setCommentOpen(false);
       setCommentText("");
       onAddedRef.current();
+      onChangedRef.current?.();
     } catch (error) {
       onErrorRef.current(errorMessage(error));
     }
@@ -95,6 +99,7 @@ export function useProjectComments({
         body: JSON.stringify({ resolved: !Boolean(comment.resolved) })
       });
       await loadComments(activeFile);
+      onChangedRef.current?.();
     } catch (error) { onErrorRef.current(errorMessage(error)); }
   };
 
@@ -104,6 +109,7 @@ export function useProjectComments({
         method: "POST", body: JSON.stringify({ content })
       });
       await loadComments(activeFile);
+      onChangedRef.current?.();
       return true;
     } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
   };
@@ -114,6 +120,7 @@ export function useProjectComments({
         method: "PATCH", body: JSON.stringify({ content })
       });
       await loadComments(activeFile);
+      onChangedRef.current?.();
       return true;
     } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
   };
@@ -123,6 +130,7 @@ export function useProjectComments({
       await api(`/api/projects/${projectId}/comments/${comment.id}`, { method: "DELETE" });
       await loadComments(activeFile);
       setFocusComment((current) => current?.id === comment.id ? null : current);
+      onChangedRef.current?.();
       return true;
     } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
   };
@@ -133,6 +141,7 @@ export function useProjectComments({
         method: "PATCH", body: JSON.stringify({ content })
       });
       await loadComments(activeFile);
+      onChangedRef.current?.();
       return true;
     } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
   };
@@ -141,6 +150,7 @@ export function useProjectComments({
     try {
       await api(`/api/projects/${projectId}/comments/${comment.id}/replies/${replyId}`, { method: "DELETE" });
       await loadComments(activeFile);
+      onChangedRef.current?.();
       return true;
     } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
   };

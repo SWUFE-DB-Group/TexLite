@@ -1077,6 +1077,80 @@ Second version.
     expect(allowed.statusCode).toBe(201);
   });
 
+  it("creates personal @mention notifications only for project members and clears them explicitly or on resolve", async () => {
+    const createdUser = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "mention-reader", displayName: "Mention Reader", password: "reader-password" }
+    });
+    const readerId = createdUser.json().user.id as string;
+    const readerLogin = await app.inject({
+      method: "POST", url: "/api/auth/login", payload: { username: "mention-reader", password: "reader-password" }
+    });
+    const readerCookie = sessionCookie(readerLogin.headers);
+    const project = (await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Mention notifications" }
+    })).json().project as { id: string };
+    await app.inject({ method: "PUT", url: `/api/projects/${project.id}/members/${readerId}`, headers: { cookie }, payload: { permission: "read" } });
+
+    const candidates = await app.inject({ method: "GET", url: `/api/projects/${project.id}/mention-candidates`, headers: { cookie: readerCookie } });
+    expect(candidates.statusCode).toBe(200);
+    expect(candidates.json().users).toEqual([{ id: expect.any(String), username: "admin", displayName: "Administrator" }]);
+
+    const ordinaryAt = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "Mail mention-reader@example.test and @nobody." }
+    });
+    expect(ordinaryAt.statusCode).toBe(201);
+    const noMention = await app.inject({ method: "GET", url: `/api/projects/${project.id}/mentions?unread=1`, headers: { cookie: readerCookie } });
+    expect(noMention.json().mentions).toEqual([]);
+
+    const mentionedComment = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "Could you check this, @mention-reader?" }
+    });
+    const commentId = mentionedComment.json().comment.id as string;
+    const unread = await app.inject({ method: "GET", url: `/api/projects/${project.id}/mentions?unread=1`, headers: { cookie: readerCookie } });
+    expect(unread.json().mentions).toMatchObject([{ commentId, replyId: null, filePath: "main.tex", resolved: false }]);
+    const mentionId = unread.json().mentions[0].id as string;
+    const inaccessibleMention = await app.inject({ method: "GET", url: `/api/projects/${project.id}/mentions/${mentionId}`, headers: { cookie } });
+    expect(inaccessibleMention.statusCode).toBe(404);
+    const listed = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie: readerCookie } });
+    expect(listed.json().projects.find((entry: { id: string }) => entry.id === project.id)).toMatchObject({ unreadMentionCount: 1 });
+
+    const marked = await app.inject({ method: "POST", url: `/api/projects/${project.id}/mentions/${mentionId}/read`, headers: { cookie: readerCookie } });
+    expect(marked.json()).toMatchObject({ ok: true, changed: true });
+    const afterMarked = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie: readerCookie } });
+    expect(afterMarked.json().projects.find((entry: { id: string }) => entry.id === project.id)).toMatchObject({ unreadMentionCount: 0 });
+
+    const removeMention = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
+      payload: { content: "Please check this without a direct notification." }
+    });
+    expect(removeMention.statusCode).toBe(200);
+    const resolveMention = await app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
+      payload: { content: "Please check this, @mention-reader." }
+    });
+    expect(resolveMention.statusCode).toBe(200);
+    const newlyUnread = await app.inject({ method: "GET", url: `/api/projects/${project.id}/mentions?unread=1`, headers: { cookie: readerCookie } });
+    expect(newlyUnread.json().mentions).toHaveLength(1);
+    await app.inject({ method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie }, payload: { resolved: true } });
+    const resolvedUnread = await app.inject({ method: "GET", url: `/api/projects/${project.id}/mentions?unread=1`, headers: { cookie: readerCookie } });
+    expect(resolvedUnread.json().mentions).toEqual([]);
+
+    // A fresh reply after resolving a thread is actionable again; resolving
+    // only clears notifications which existed at the time of resolution.
+    const reply = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments/${commentId}/replies`, headers: { cookie },
+      payload: { content: "One more detail for @mention-reader." }
+    });
+    expect(reply.statusCode).toBe(201);
+    const replyUnread = await app.inject({ method: "GET", url: `/api/projects/${project.id}/mentions?unread=1`, headers: { cookie: readerCookie } });
+    expect(replyUnread.json().mentions).toMatchObject([{ commentId, replyId: reply.json().reply.id }]);
+    const markAll = await app.inject({ method: "POST", url: `/api/projects/${project.id}/mentions/read-all`, headers: { cookie: readerCookie } });
+    expect(markAll.json()).toMatchObject({ ok: true, changed: 1 });
+  });
+
   it("allows only authors to edit or delete their comments and replies", async () => {
     const createdUser = await app.inject({
       method: "POST", url: "/api/admin/users", headers: { cookie },

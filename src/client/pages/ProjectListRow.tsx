@@ -1,5 +1,5 @@
 import type { TFunction } from "i18next";
-import { MessageSquare } from "lucide-react";
+import { AtSign, MessageSquare } from "lucide-react";
 import { ProjectIconAvatar } from "../projectIcons";
 import type { Project, User } from "../types";
 import { ProjectActionMenu } from "./ProjectActionMenu";
@@ -17,6 +17,7 @@ export function ProjectListRow({
   formatUpdatedTime,
   formatExactTime,
   onOpenProject,
+  onOpenMention,
   onToggleMenu,
   onCloseMenu,
   onAssignTags,
@@ -37,6 +38,7 @@ export function ProjectListRow({
   formatUpdatedTime: (value: string) => string;
   formatExactTime: (value: string) => string;
   onOpenProject: () => void;
+  onOpenMention: () => void;
   onToggleMenu: () => void;
   onCloseMenu: () => void;
   onAssignTags: () => void;
@@ -50,7 +52,10 @@ export function ProjectListRow({
   const ownerName = project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser");
   const modifiedBy = project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser");
 
-  return <article className={`project-card project-list-row${project.ownerId === currentUser.id ? " owned-project" : ""}${menuOpen ? " project-list-menu-open" : ""}`}>
+  return <article
+    className={`project-card project-list-row${project.ownerId === currentUser.id ? " owned-project" : ""}${menuOpen ? " project-list-menu-open" : ""}`}
+    onClick={(event) => { if (event.target === event.currentTarget) onOpenProject(); }}
+  >
     <ProjectIconAvatar
       icon={project.icon}
       projectName={project.name}
@@ -60,8 +65,8 @@ export function ProjectListRow({
       onEdit={onChooseIcon}
       className="project-list-avatar"
     />
-    <button type="button" className="project-list-open" onClick={onOpenProject} aria-label={t("projects.openProject", { project: project.name })}>
-      <span className="project-list-summary">
+    <span className="project-list-summary">
+      <button type="button" className="project-list-cell-open project-list-summary-open" onClick={onOpenProject} aria-label={t("projects.openProject", { project: project.name })}>
         <span className="project-list-title-line">
           <strong className="project-list-title" title={project.name}>{project.name}</strong>
           {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
@@ -72,21 +77,27 @@ export function ProjectListRow({
           )}
           {project.tags?.length > 0 && <span className="project-list-tags">{project.tags.map((tag) => <span className={`tag tag-${tag.color} project-list-tag`} key={tag.id} title={tag.name}>{tag.name}</span>)}</span>}
         </span>
-      </span>
-      <span className="project-list-owner" title={ownerName}>
-        <span className="sr-only">{t("projects.owner")}: </span>
-        {ownerName}
-      </span>
-      <span className="project-list-created" title={formatExactTime(project.createdAt)}>
-        <span className="sr-only">{t("projects.created")}: </span>
-        <time dateTime={project.createdAt}>{formatCreatedDate(project.createdAt)}</time>
-      </span>
-      <span className="project-list-modified" title={t("projects.modifiedByUser", { time: formatExactTime(project.updatedAt), user: modifiedBy })}>
-        <span className="sr-only">{t("projects.modified")}: </span>
-        <time dateTime={project.updatedAt}>{formatUpdatedTime(project.updatedAt)}</time>
-        <small>{t("projects.byUser", { user: modifiedBy })}</small>
-      </span>
+      </button>
+    </span>
+    <button type="button" className="project-list-cell-open project-list-owner" onClick={onOpenProject} title={ownerName} aria-label={t("projects.openProject", { project: project.name })}>
+      <span className="sr-only">{t("projects.owner")}: </span>
+      {ownerName}
     </button>
+    <button type="button" className="project-list-cell-open project-list-created" onClick={onOpenProject} title={formatExactTime(project.createdAt)} aria-label={t("projects.openProject", { project: project.name })}>
+      <span className="sr-only">{t("projects.created")}: </span>
+      <time dateTime={project.createdAt}>{formatCreatedDate(project.createdAt)}</time>
+    </button>
+    <button type="button" className="project-list-cell-open project-list-modified" onClick={onOpenProject} title={t("projects.modifiedByUser", { time: formatExactTime(project.updatedAt), user: modifiedBy })} aria-label={t("projects.openProject", { project: project.name })}>
+      <span className="sr-only">{t("projects.modified")}: </span>
+      <time dateTime={project.updatedAt}>{formatUpdatedTime(project.updatedAt)}</time>
+      <small>{t("projects.byUser", { user: modifiedBy })}</small>
+    </button>
+    {Boolean(project.unreadMentionCount && project.unreadMentionCount > 0)
+      ? <button className="project-mentions-badge project-list-mentions" type="button" title={t("projects.unreadMentionsTooltip", { count: project.unreadMentionCount })} onClick={onOpenMention}>
+          <AtSign aria-hidden size={10} />
+          <span>{project.unreadMentionCount}</span>
+        </button>
+      : <span className="project-list-mentions" />}
     <ProjectActionMenu
       variant="list"
       project={project}

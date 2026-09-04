@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  isProjectHistoryState, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath
+  isProjectHistoryState, mentionIdFromReturn, mentionIdFromSearch, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath
 } from "../src/client/routes";
 
 describe("client project routes", () => {
@@ -24,6 +24,15 @@ describe("client project routes", () => {
     expect(projectIdFromReturn("?return=https%3A%2F%2Fexample.com%2Fproject%2Fabc")).toBeNull();
     expect(projectIdFromReturn("?return=%2Fadmin")).toBeNull();
     expect(projectIdFromReturn("?return=%2Fproject%2Fa%2Fb")).toBeNull();
+  });
+
+  it("retains one personal mention target through project and login routes", () => {
+    expect(projectPath("abc-123", "mention-1")).toBe("/project/abc-123?mention=mention-1");
+    expect(mentionIdFromSearch("?mention=mention-1")).toBe("mention-1");
+    expect(mentionIdFromSearch("?mention=" + "x".repeat(129))).toBeNull();
+    expect(projectLoginPath("abc-123", "mention-1")).toBe("/?return=%2Fproject%2Fabc-123%3Fmention%3Dmention-1");
+    expect(projectIdFromReturn("?return=%2Fproject%2Fabc-123%3Fmention%3Dmention-1")).toBe("abc-123");
+    expect(mentionIdFromReturn("?return=%2Fproject%2Fabc-123%3Fmention%3Dmention-1")).toBe("mention-1");
   });
 
   it("validates route history markers before using browser back", () => {

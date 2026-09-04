@@ -1,8 +1,8 @@
 import { lazy } from "react";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
-import { X } from "lucide-react";
+import { AtSign, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { Comment, FileEntry, Project, SiteConfig } from "../types";
+import type { Comment, CommentMention, FileEntry, Project, SiteConfig } from "../types";
 import type { EditorPreferences } from "../editorPreferences";
 import { CommentThread } from "./Comments";
 import { LazyPanel } from "../LazyLoadBoundary";
@@ -18,6 +18,11 @@ export interface WorkspaceContextPanelProps {
   files: FileEntry[];
   currentUserId: string;
   comments: Comment[];
+  unreadMentions: CommentMention[];
+  onMarkMentionRead: (mentionId: string) => Promise<boolean>;
+  onMarkAllMentionsRead: () => Promise<boolean>;
+  targetCommentId?: string | null;
+  targetReplyId?: string | null;
   onFocusComment: (comment: Comment) => void;
   onToggleComment: (comment: Comment) => Promise<void>;
   onReplyComment: (comment: Comment, content: string) => Promise<boolean>;
@@ -37,7 +42,8 @@ export interface WorkspaceContextPanelProps {
 }
 
 export function WorkspaceContextPanel({
-  sidePanel, onClose, project, projectId, site, files, currentUserId, comments, onFocusComment,
+  sidePanel, onClose, project, projectId, site, files, currentUserId, comments, unreadMentions,
+  onMarkMentionRead, onMarkAllMentionsRead, targetCommentId, targetReplyId, onFocusComment,
   onToggleComment, onReplyComment, onEditComment, onDeleteComment, onEditCommentReply,
   onDeleteCommentReply, dictionaryWords, onDictionaryChange, editorPreferences,
   onEditorPreferences, spellCheckCount, spellCheckUniqueCount, spellCheckIndex,
@@ -46,7 +52,14 @@ export function WorkspaceContextPanel({
   const { t } = useTranslation();
   if (!sidePanel) return null;
   return <><PanelResizeHandle className="resize-handle" /><Panel id="context" order={4} defaultSize={20} minSize={15} maxSize={38}><aside className="context-panel">
-    {sidePanel === "comments" && <><div className="drawer-title"><strong>{t("editor.sourceComments")}</strong><button aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div><div className="comments">{comments.map((comment) => <CommentThread key={comment.id} comment={comment} currentUserId={currentUserId} onFocus={() => onFocusComment(comment)} onToggle={() => void onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} />)}{comments.length === 0 && <p className="muted padded">{t("editor.noComments")}</p>}</div></>}
+    {sidePanel === "comments" && <><div className="drawer-title"><strong>{t("editor.sourceComments")}</strong><span className="drawer-title-actions">{unreadMentions.length > 0 && <button className="drawer-mention-read-all" type="button" onClick={() => void onMarkAllMentionsRead()} title={t("editor.markAllMentionsRead")}><AtSign aria-hidden size={13} /><span>{t("editor.markAllMentionsRead")}</span></button>}<button aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></span></div><div className="comments">{comments.map((comment) => {
+      const unreadCommentMentionId = unreadMentions.find((mention) => mention.commentId === comment.id && !mention.replyId)?.id;
+      const unreadReplyMentionIds = new Map(unreadMentions.filter((mention) => mention.commentId === comment.id && mention.replyId).map((mention) => [mention.replyId!, mention.id]));
+      return <CommentThread key={comment.id} projectId={projectId} comment={comment} currentUserId={currentUserId}
+        unreadCommentMentionId={unreadCommentMentionId} unreadReplyMentionIds={unreadReplyMentionIds}
+        highlightedComment={targetCommentId === comment.id && !targetReplyId} highlightedReplyId={targetCommentId === comment.id ? targetReplyId : null}
+        onMarkMentionRead={onMarkMentionRead} onFocus={() => onFocusComment(comment)} onToggle={() => void onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} />;
+    })}{comments.length === 0 && <p className="muted padded">{t("editor.noComments")}</p>}</div></>}
     {sidePanel === "settings" && <LazyPanel onClose={onClose}><ProjectSettings onClose={onClose} project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={onDictionaryChange} editorPreferences={editorPreferences} onEditorPreferences={onEditorPreferences} spellCheckCount={spellCheckCount} spellCheckUniqueCount={spellCheckUniqueCount} spellCheckIndex={spellCheckIndex} onSpellCheckNavigate={onSpellCheckNavigate} onProject={onProject} /></LazyPanel>}
   </aside></Panel></>;
 }

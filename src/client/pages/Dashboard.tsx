@@ -5,7 +5,7 @@ import { ConfirmDialog, Modal } from "../Dialog";
 import type { Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "../types";
 import i18n from "../i18n";
 import { errorMessage } from "../errors";
-import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
 import { LanguageSwitcher } from "../LanguageSwitcher";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
 import { ProjectListRow } from "./ProjectListRow";
@@ -74,7 +74,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   initialData: { projects: Project[]; tags: ProjectTag[]; pagination: ProjectListPagination } | null;
   onDataChange: (projects: Project[], tags: ProjectTag[], pagination: ProjectListPagination) => void;
   onUser: (user: User | null) => void;
-  onOpenProject: (id: string) => void;
+  onOpenProject: (id: string, mentionId?: string) => void;
 }) {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>(() => initialData?.projects ?? []);
@@ -365,6 +365,16 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     finally { setArchiveBusy(""); }
   };
 
+  const openUnreadMention = async (project: Project) => {
+    try {
+      const result = await api<{ mentions: Array<{ id: string }> }>(`/api/projects/${project.id}/mentions?unread=1&limit=1`);
+      const mention = result.mentions[0];
+      onOpenProject(project.id, mention?.id);
+    } catch (mentionError) {
+      setError(errorMessage(mentionError));
+    }
+  };
+
   const filtered = projects;
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
   const formatProjectCreatedDate = (value: string) => {
@@ -417,7 +427,15 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
         <div className="project-catalog-content">
           <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="tablist" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} role="tab" aria-selected={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} role="tab" aria-selected={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
       <div className={`project-grid ${view === "list" ? "list-view" : ""}${projectMenuId ? " project-list-menu-active" : ""}`}>
-        {view === "list" && filtered.length > 0 && <div className="project-list-header" aria-hidden="true"><span>{t("projects.title")}</span><span>{t("projects.owner")}</span><span>{t("projects.created")}</span><span>{t("projects.modified")}</span><span>{t("projects.actions")}</span></div>}
+        {view === "list" && filtered.length > 0 && <div className="project-list-header" aria-hidden="true">
+          <span className="project-list-header-avatar" />
+          <span>{t("projects.title")}</span>
+          <span>{t("projects.owner")}</span>
+          <span className="project-list-header-created">{t("projects.created")}</span>
+          <span>{t("projects.modified")}</span>
+          <span className="project-list-header-mentions">{t("projects.mentionsColumn")}</span>
+          <span className="project-list-header-actions">{t("projects.actions")}</span>
+        </div>}
         {view === "list"
           ? filtered.map((project) => <ProjectListRow
             key={project.id}
@@ -431,6 +449,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             formatUpdatedTime={formatProjectUpdatedTime}
             formatExactTime={formatTime}
             onOpenProject={() => { setProjectMenuId(null); onOpenProject(project.id); }}
+            onOpenMention={() => void openUnreadMention(project)}
             onToggleMenu={() => setProjectMenuId((current) => current === project.id ? null : project.id)}
             onCloseMenu={() => setProjectMenuId((current) => current === project.id ? null : current)}
             onAssignTags={() => { setTagAssignmentError(""); setTagProject(project); }}
@@ -458,6 +477,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             <div className="project-card-meta-row">
               <div className="project-card-badges">
                 <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}>{project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}</span>
+                {Boolean(project.unreadMentionCount && project.unreadMentionCount > 0) && <button className="project-mentions-badge" type="button" title={t("projects.unreadMentionsTooltip", { count: project.unreadMentionCount })} aria-label={t("projects.unreadMentionsTooltip", { count: project.unreadMentionCount })} onClick={(event) => { event.stopPropagation(); void openUnreadMention(project); }}><AtSign aria-hidden size={11} /><span>{project.unreadMentionCount}</span></button>}
               </div>
               <ProjectActionMenu
                 variant="grid"

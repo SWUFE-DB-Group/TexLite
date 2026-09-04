@@ -1,11 +1,12 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { CheckCircle2, Pencil, Reply, RotateCcw, Save, Send, Trash2, UserPlus, Users } from "lucide-react";
+import { AtSign, CheckCircle2, Pencil, Reply, RotateCcw, Save, Send, Trash2, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import i18n from "../i18n";
 import type { Comment, Project } from "../types";
+import { MentionTextarea } from "./MentionTextarea";
 
 function submitOnShortcut(event: ReactKeyboardEvent<HTMLTextAreaElement>, submit: () => Promise<void>): void {
   if (!(event.ctrlKey || event.metaKey) || event.key !== "Enter" || event.nativeEvent.isComposing) return;
@@ -14,9 +15,19 @@ function submitOnShortcut(event: ReactKeyboardEvent<HTMLTextAreaElement>, submit
   void submit();
 }
 
-export function CommentThread({ comment, currentUserId, onFocus, onToggle, onReply, onEdit, onDelete, onEditReply, onDeleteReply }: {
+export function CommentThread({
+  projectId, comment, currentUserId, unreadCommentMentionId, unreadReplyMentionIds,
+  highlightedComment, highlightedReplyId, onMarkMentionRead, onFocus, onToggle,
+  onReply, onEdit, onDelete, onEditReply, onDeleteReply
+}: {
+  projectId: string;
   comment: Comment;
   currentUserId: string;
+  unreadCommentMentionId?: string;
+  unreadReplyMentionIds?: ReadonlyMap<string, string>;
+  highlightedComment?: boolean;
+  highlightedReplyId?: string | null;
+  onMarkMentionRead: (mentionId: string) => Promise<boolean>;
   onFocus: () => void;
   onToggle: () => void;
   onReply: (content: string) => Promise<boolean>;
@@ -51,14 +62,22 @@ export function CommentThread({ comment, currentUserId, onFocus, onToggle, onRep
   };
   const username = comment.authorUsername;
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
-  return <><article className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}`} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
+  const markRead = async (mentionId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    await onMarkMentionRead(mentionId);
+  };
+  return <><article data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}`} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
     <header className="comment-header"><span className="comment-author"><strong>{comment.authorDisplayName ?? username ?? t("editor.deletedUser")}</strong>{username && <small>@{username}</small>}</span><span className="comment-times"><time dateTime={comment.createdAt} title={new Date(comment.createdAt).toISOString()}>{formatTime(comment.createdAt)}</time>{comment.editedAt && <small>{t("editor.editedAt", { time: formatTime(comment.editedAt) })}</small>}</span></header>
     <div className="comment-location">{comment.orphaned ? t("editor.orphaned") : t("editor.line", { line: comment.startLine })}</div>
     {comment.selectedText && <blockquote className="comment-selected-text">{comment.selectedText}</blockquote>}
-    {editingComment ? <form className="comment-reply-form comment-edit-form" onSubmit={(event) => void submitCommentEdit(event)} onClick={(event) => event.stopPropagation()}><textarea autoFocus rows={4} value={commentContent} onChange={(event) => setCommentContent(event.target.value)} onKeyDown={(event) => submitOnShortcut(event, submitCommentEdit)} /><div><button type="button" onClick={() => setEditingComment(false)}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!commentContent.trim()}><Save size={13} />{t("editor.saveChanges")}</button></div></form> : <p className="comment-content">{comment.content}</p>}
-    {comment.replies.length > 0 && <div className="comment-replies">{comment.replies.map((reply) => <div className="comment-reply" key={reply.id}><header><span className="comment-author"><strong>{reply.authorDisplayName ?? reply.authorUsername ?? t("editor.deletedUser")}</strong>{reply.authorUsername && <small>@{reply.authorUsername}</small>}</span><span className="comment-times"><time dateTime={reply.createdAt} title={new Date(reply.createdAt).toISOString()}>{formatTime(reply.createdAt)}</time>{reply.editedAt && <small>{t("editor.editedAt", { time: formatTime(reply.editedAt) })}</small>}</span></header>{editingReplyId === reply.id ? <form className="comment-reply-form comment-edit-form" onSubmit={(event) => void submitReplyEdit(event)} onClick={(event) => event.stopPropagation()}><textarea autoFocus rows={3} value={replyEditContent} onChange={(event) => setReplyEditContent(event.target.value)} onKeyDown={(event) => submitOnShortcut(event, submitReplyEdit)} /><div><button type="button" onClick={() => setEditingReplyId(null)}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!replyEditContent.trim()}><Save size={13} />{t("editor.saveChanges")}</button></div></form> : <p className="comment-content">{reply.content}</p>}{reply.authorId === currentUserId && editingReplyId !== reply.id && <div className="comment-owner-actions"><button title={t("editor.editReply")} aria-label={t("editor.editReply")} onClick={(event) => { event.stopPropagation(); setEditingReplyId(reply.id); setReplyEditContent(reply.content); }}><Pencil size={12} /></button><button className="danger-text" title={t("editor.deleteReply")} aria-label={t("editor.deleteReply")} onClick={(event) => { event.stopPropagation(); setDeleteReplyId(reply.id); }}><Trash2 size={12} /></button></div>}</div>)}</div>}
+    {editingComment ? <form className="comment-reply-form comment-edit-form" onSubmit={(event) => void submitCommentEdit(event)} onClick={(event) => event.stopPropagation()}><MentionTextarea projectId={projectId} autoFocus rows={4} value={commentContent} onChange={setCommentContent} onKeyDown={(event) => submitOnShortcut(event, submitCommentEdit)} /><div><button type="button" onClick={() => setEditingComment(false)}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!commentContent.trim()}><Save size={13} />{t("editor.saveChanges")}</button></div></form> : <p className="comment-content">{comment.content}</p>}
+    {unreadCommentMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t("editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadCommentMentionId, event)}>{t("editor.markMentionRead")}</button></div>}
+    {comment.replies.length > 0 && <div className="comment-replies">{comment.replies.map((reply) => {
+      const unreadMentionId = unreadReplyMentionIds?.get(reply.id);
+      return <div data-comment-reply-id={reply.id} className={`comment-reply${highlightedReplyId === reply.id ? " mention-target" : ""}`} key={reply.id}><header><span className="comment-author"><strong>{reply.authorDisplayName ?? reply.authorUsername ?? t("editor.deletedUser")}</strong>{reply.authorUsername && <small>@{reply.authorUsername}</small>}</span><span className="comment-times"><time dateTime={reply.createdAt} title={new Date(reply.createdAt).toISOString()}>{formatTime(reply.createdAt)}</time>{reply.editedAt && <small>{t("editor.editedAt", { time: formatTime(reply.editedAt) })}</small>}</span></header>{editingReplyId === reply.id ? <form className="comment-reply-form comment-edit-form" onSubmit={(event) => void submitReplyEdit(event)} onClick={(event) => event.stopPropagation()}><MentionTextarea projectId={projectId} autoFocus rows={3} value={replyEditContent} onChange={setReplyEditContent} onKeyDown={(event) => submitOnShortcut(event, submitReplyEdit)} /><div><button type="button" onClick={() => setEditingReplyId(null)}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!replyEditContent.trim()}><Save size={13} />{t("editor.saveChanges")}</button></div></form> : <p className="comment-content">{reply.content}</p>}{unreadMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t("editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadMentionId, event)}>{t("editor.markMentionRead")}</button></div>}{reply.authorId === currentUserId && editingReplyId !== reply.id && <div className="comment-owner-actions"><button title={t("editor.editReply")} aria-label={t("editor.editReply")} onClick={(event) => { event.stopPropagation(); setEditingReplyId(reply.id); setReplyEditContent(reply.content); }}><Pencil size={12} /></button><button className="danger-text" title={t("editor.deleteReply")} aria-label={t("editor.deleteReply")} onClick={(event) => { event.stopPropagation(); setDeleteReplyId(reply.id); }}><Trash2 size={12} /></button></div>}</div>;
+    })}</div>}
     <div className="comment-actions"><button className="resolve" onClick={(event) => { event.stopPropagation(); onToggle(); }}>{comment.resolved ? <RotateCcw size={13} /> : <CheckCircle2 size={13} />}{comment.resolved ? t("editor.reopen") : t("editor.resolve")}</button><button className="reply-action" onClick={(event) => { event.stopPropagation(); setReplying((current) => !current); }}><Reply size={13} />{t("editor.reply")}</button>{comment.authorId === currentUserId && !editingComment && <span className="comment-owner-actions"><button title={t("editor.editComment")} aria-label={t("editor.editComment")} onClick={(event) => { event.stopPropagation(); setCommentContent(comment.content); setEditingComment(true); }}><Pencil size={13} /></button><button className="danger-text" title={t("editor.deleteComment")} aria-label={t("editor.deleteComment")} onClick={(event) => { event.stopPropagation(); setDeleteCommentOpen(true); }}><Trash2 size={13} /></button></span>}</div>
-    {replying && <form className="comment-reply-form" onSubmit={(event) => void submitReply(event)} onClick={(event) => event.stopPropagation()}><textarea autoFocus rows={3} value={replyContent} placeholder={t("editor.replyPlaceholder")} onChange={(event) => setReplyContent(event.target.value)} onKeyDown={(event) => submitOnShortcut(event, submitReply)} /><div><button type="button" onClick={() => { setReplying(false); setReplyContent(""); }}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!replyContent.trim()}><Send size={13} />{t("editor.sendReply")}</button></div></form>}
+    {replying && <form className="comment-reply-form" onSubmit={(event) => void submitReply(event)} onClick={(event) => event.stopPropagation()}><MentionTextarea projectId={projectId} autoFocus rows={3} value={replyContent} placeholder={t("editor.replyPlaceholder")} onChange={setReplyContent} onKeyDown={(event) => submitOnShortcut(event, submitReply)} /><div><button type="button" onClick={() => { setReplying(false); setReplyContent(""); }}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!replyContent.trim()}><Send size={13} />{t("editor.sendReply")}</button></div></form>}
   </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription", { count: comment.replies.length })} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void onDelete().then((deleted) => { if (deleted) setDeleteCommentOpen(false); })} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void onDeleteReply(deleteReplyId).then((deleted) => { if (deleted) setDeleteReplyId(null); }); }} /></>;
 }
 

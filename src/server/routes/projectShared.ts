@@ -102,7 +102,7 @@ export function projectJson(project: ProjectRow & {
   last_modified_username?: string | null;
   last_modified_display_name?: string | null;
   archived?: boolean | number;
-}, tags: ProjectTag[] = [], commentsSummary?: { totalCount: number; unresolvedCount: number }) {
+}, tags: ProjectTag[] = [], commentsSummary?: { totalCount: number; unresolvedCount: number }, unreadMentionCount = 0) {
   return {
     id: project.id,
     ownerId: project.owner_id,
@@ -120,6 +120,7 @@ export function projectJson(project: ProjectRow & {
     tags,
     unresolvedCommentCount: commentsSummary?.unresolvedCount ?? 0,
     commentCount: commentsSummary?.totalCount ?? 0,
+    unreadMentionCount,
     archived: Boolean(project.archived),
     createdAt: project.created_at,
     updatedAt: project.updated_at

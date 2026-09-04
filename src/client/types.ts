@@ -41,6 +41,8 @@ export interface Project {
   tags: ProjectTag[];
   unresolvedCommentCount?: number;
   commentCount?: number;
+  /** Unread @mentions addressed to the currently signed-in user only. */
+  unreadMentionCount?: number;
   archived?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -211,4 +213,23 @@ export interface CommentReply {
   createdAt: string;
   updatedAt: string;
   editedAt: string | null;
+}
+
+export interface MentionableUser {
+  id: string;
+  username: string;
+  displayName: string;
+}
+
+export interface CommentMention {
+  id: string;
+  projectId: string;
+  commentId: string;
+  replyId: string | null;
+  filePath: string;
+  content: string;
+  resolved: boolean;
+  createdAt: string;
+  readAt: string | null;
+  readReason: "opened" | "resolved" | "manual" | null;
 }

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import type { Project, ProjectListPagination, ProjectTag, SiteConfig, User } from "./types";
 import {
-  isProjectHistoryState, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath,
+  isProjectHistoryState, mentionIdFromReturn, mentionIdFromSearch, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath,
   type TexLiteHistoryState
 } from "./routes";
 import { loadPdfPreview, loadProjectWorkspace, preloadWorkspace, type WorkspacePreload } from "./workspacePreload";
@@ -25,6 +25,7 @@ export function App() {
   const userRef = useRef<User | null | undefined>(user);
   userRef.current = user;
   const [projectId, setProjectId] = useState<string | null>(() => typeof window === "undefined" ? null : projectIdFromPath(window.location.pathname));
+  const [projectMentionId, setProjectMentionId] = useState<string | null>(() => typeof window === "undefined" ? null : mentionIdFromSearch(window.location.search));
   // Do not start project or PDF runtime work before /api/me confirms that the
   // current browser session may access the requested project.
   const [workspacePreload, setWorkspacePreload] = useState<WorkspacePreload | null>(null);
@@ -33,23 +34,27 @@ export function App() {
     const returnProjectId = projectIdFromPath(window.location.pathname);
     if (!returnProjectId) return;
     const state: TexLiteHistoryState = { texliteRoute: "dashboard" };
-    window.history.replaceState(state, "", projectLoginPath(returnProjectId));
+    window.history.replaceState(state, "", projectLoginPath(returnProjectId, mentionIdFromSearch(window.location.search)));
     setProjectId(null);
+    setProjectMentionId(null);
     setWorkspacePreload(null);
   };
   const completeAuthentication = (authenticatedUser: User) => {
     const canOpenWorkspace = !authenticatedUser.mustChangePassword;
     const returnProjectId = projectIdFromReturn(window.location.search);
+    const returnMentionId = mentionIdFromReturn(window.location.search);
     let targetProjectId: string | null = null;
     if (returnProjectId) {
       const state: TexLiteHistoryState = { texliteRoute: "project", projectId: returnProjectId, fromDashboard: false };
-      window.history.replaceState(state, "", projectPath(returnProjectId));
+      window.history.replaceState(state, "", projectPath(returnProjectId, returnMentionId));
       setProjectId(returnProjectId);
+      setProjectMentionId(returnMentionId);
       targetProjectId = returnProjectId;
     } else if (new URLSearchParams(window.location.search).has("return")) {
       const state: TexLiteHistoryState = { texliteRoute: "dashboard" };
       window.history.replaceState(state, "", "/");
       setProjectId(null);
+      setProjectMentionId(null);
     } else if (projectIdFromPath(window.location.pathname)) {
       // Authenticated deep links mount the workspace immediately below.
       targetProjectId = projectIdFromPath(window.location.pathname);
@@ -67,13 +72,15 @@ export function App() {
 
   useEffect(() => {
     const initialProjectId = projectIdFromPath(window.location.pathname);
-    if (initialProjectId && window.location.pathname !== projectPath(initialProjectId)) {
+    const initialMentionId = mentionIdFromSearch(window.location.search);
+    if (initialProjectId && `${window.location.pathname}${window.location.search}` !== projectPath(initialProjectId, initialMentionId)) {
       const state: TexLiteHistoryState = { texliteRoute: "project", projectId: initialProjectId, fromDashboard: false };
-      window.history.replaceState(state, "", projectPath(initialProjectId));
+      window.history.replaceState(state, "", projectPath(initialProjectId, initialMentionId));
     }
     const handlePopState = () => {
       const nextProjectId = projectIdFromPath(window.location.pathname);
       setProjectId(nextProjectId);
+      setProjectMentionId(nextProjectId ? mentionIdFromSearch(window.location.search) : null);
       const currentUser = userRef.current;
       if (nextProjectId && currentUser && !currentUser.mustChangePassword) {
         preloadRoute(loadProjectWorkspace);
@@ -95,15 +102,16 @@ export function App() {
     };
   }, []);
 
-  const openProject = (id: string) => {
-    const nextPath = projectPath(id);
-    if (window.location.pathname !== nextPath) {
+  const openProject = (id: string, mentionId?: string) => {
+    const nextPath = projectPath(id, mentionId);
+    if (`${window.location.pathname}${window.location.search}` !== nextPath) {
       const state: TexLiteHistoryState = { texliteRoute: "project", projectId: id, fromDashboard: true };
       window.history.pushState(state, "", nextPath);
     }
     preloadRoute(loadProjectWorkspace);
     setWorkspacePreload(preloadWorkspace(id));
     setProjectId(id);
+    setProjectMentionId(mentionId ?? null);
   };
   const leaveProject = () => {
     const state = window.history.state;
@@ -114,6 +122,7 @@ export function App() {
     const dashboardState: TexLiteHistoryState = { texliteRoute: "dashboard" };
     window.history.replaceState(dashboardState, "", "/");
     setProjectId(null);
+    setProjectMentionId(null);
     setWorkspacePreload(null);
   };
 
@@ -160,7 +169,22 @@ export function App() {
   if (user.mustChangePassword) return <ChangePassword site={site} user={user} onChanged={(updated) => setUser(updated)} />;
   if (projectId) {
     return <LazyPage key={`project:${projectId}`} onClose={leaveProject}><ProjectWorkspace key={projectId} site={site} user={user} projectId={projectId}
-      preload={workspacePreload?.projectId === projectId ? workspacePreload : null} onBack={leaveProject} /></LazyPage>;
+      preload={workspacePreload?.projectId === projectId ? workspacePreload : null} mentionId={projectMentionId}
+      onMentionTargeted={() => {
+        const currentState = window.history.state;
+        const state: TexLiteHistoryState = isProjectHistoryState(currentState)
+          ? { ...currentState, projectId }
+          : { texliteRoute: "project", projectId, fromDashboard: false };
+        window.history.replaceState(state, "", projectPath(projectId));
+        setProjectMentionId(null);
+      }}
+      onMentionsRead={(count, all) => setDashboardCache((current) => current && current.userId === user.id ? {
+        ...current,
+        projects: current.projects.map((project) => project.id === projectId
+          ? { ...project, unreadMentionCount: all ? 0 : Math.max(0, (project.unreadMentionCount ?? 0) - count) }
+          : project)
+      } : current)}
+      onBack={leaveProject} /></LazyPage>;
   }
   const cachedDashboard = dashboardCache?.userId === user.id ? dashboardCache : null;
   return <LazyPage key="dashboard"><Dashboard site={site} user={user}

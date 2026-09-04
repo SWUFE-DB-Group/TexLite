@@ -1,7 +1,7 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api";
-import type { CitationLibraryEntry, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
+import type { CitationLibraryEntry, CommentMention, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
 import i18n from "../i18n";
 import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
@@ -13,6 +13,7 @@ import { errorMessage } from "../errors";
 import type { WordCountMode, WorkspaceLayout } from "../workspace/types";
 import type { CompileCleanMode } from "../workspace/useProjectCompilation";
 import { useProjectComments, type SourceSelection } from "../workspace/useProjectComments";
+import { useProjectMentions } from "../workspace/useProjectMentions";
 import { useProjectCollaboration } from "../workspace/useProjectCollaboration";
 import { useProjectCompilation } from "../workspace/useProjectCompilation";
 import { isEditableTextFile, parentFolders, pathContains, useProjectFiles } from "../workspace/useProjectFiles";
@@ -58,8 +59,15 @@ interface SourceAnalysisSnapshot { filePath: string; content: string }
 // source. They do not need to run on every keystroke.
 const SOURCE_ANALYSIS_DEBOUNCE_MS = 300;
 
-export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
-  site: SiteConfig; user: User; projectId: string; preload: WorkspacePreload | null; onBack: () => void;
+export function ProjectWorkspace({ site, user, projectId, preload, mentionId = null, onMentionTargeted, onMentionsRead, onBack }: {
+  site: SiteConfig;
+  user: User;
+  projectId: string;
+  preload: WorkspacePreload | null;
+  mentionId?: string | null;
+  onMentionTargeted?: (mentionId: string) => void;
+  onMentionsRead?: (count: number, all?: boolean) => void;
+  onBack: () => void;
 }) {
   const { t } = useTranslation();
   const [project, setProject] = useState<Project | null>(null);
@@ -109,6 +117,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     setSelectionState(next);
   };
   const [sidePanel, setSidePanel] = useState<"comments" | "settings" | null>(null);
+  const [targetMention, setTargetMention] = useState<CommentMention | null>(null);
   const [filesCollapsed, setFilesCollapsed] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
@@ -143,10 +152,16 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
   const dictionaryRequest = useRef<AbortController | null>(null);
   const refreshRequest = useRef<AbortController | null>(null);
   const wordCountRequest = useRef<AbortController | null>(null);
+  const mentionTargetRequest = useRef<AbortController | null>(null);
+  const scrolledMentionId = useRef<string | null>(null);
   const formattingRef = useRef(false);
   const formattingTaskRef = useRef<Promise<void> | null>(null);
   const onBackRef = useRef(onBack);
+  const onMentionTargetedRef = useRef(onMentionTargeted);
+  const onMentionsReadRef = useRef(onMentionsRead);
   onBackRef.current = onBack;
+  onMentionTargetedRef.current = onMentionTargeted;
+  onMentionsReadRef.current = onMentionsRead;
   activeMainFileRef.current = activeMainFile;
 
   useEffect(() => {
@@ -178,6 +193,10 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     setFormatterDiagnostics("");
     wordCountRequest.current?.abort();
     wordCountRequest.current = null;
+    mentionTargetRequest.current?.abort();
+    mentionTargetRequest.current = null;
+    scrolledMentionId.current = null;
+    setTargetMention(null);
     setWordCountOpen(false);
     setWordCountBusy(false);
     setWordCountError("");
@@ -217,6 +236,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     dismissPermissionDowngrade,
     discardLocalDraft
   } = useProjectCollaboration(projectId, user, activeMainFile, project?.permission ?? "read", collaborationReady, () => setSaveState("editor.offlineDraft"));
+
+  const { unreadMentions, refresh: refreshMentions, markMentionRead, markAllMentionsRead } = useProjectMentions(projectId, commentsRevision, setError);
 
   const {
     pdfTarget, pdfViewport, sourceJump, setPdfViewport, clearPdfViewport,
@@ -400,6 +421,33 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       refreshRequest.current?.abort(); refreshRequest.current = null;
     };
   }, [projectId, preload]);
+
+  // A project-list @ badge carries one notification id in the route. Resolve
+  // it to a real file/thread here, but deliberately do not mark it read: that
+  // remains an explicit action in the source-comments panel.
+  useEffect(() => {
+    if (!mentionId || !project) return;
+    mentionTargetRequest.current?.abort();
+    const controller = new AbortController();
+    mentionTargetRequest.current = controller;
+    void api<{ mention: CommentMention }>(`/api/projects/${projectId}/mentions/${encodeURIComponent(mentionId)}`, { signal: controller.signal })
+      .then(({ mention }) => {
+        if (controller.signal.aborted) return;
+        setTargetMention(mention);
+        setSidePanel("comments");
+        setActiveFile(mention.filePath);
+        onMentionTargetedRef.current?.(mention.id);
+      })
+      .catch((mentionError) => {
+        if (isAbortError(mentionError) || controller.signal.aborted) return;
+        setError(errorMessage(mentionError));
+        onMentionTargetedRef.current?.(mentionId);
+      })
+      .finally(() => {
+        if (mentionTargetRequest.current === controller) mentionTargetRequest.current = null;
+      });
+    return () => controller.abort();
+  }, [mentionId, project?.id, projectId]);
 
   useEffect(() => {
     if (dictionaryRevision) void loadDictionary();
@@ -896,8 +944,38 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
     selection,
     save,
     onError: setError,
-    onAdded: () => setSidePanel("comments")
+    onAdded: () => setSidePanel("comments"),
+    onChanged: () => { void refreshMentions(); }
   });
+  const markVisibleMentionRead = async (nextMentionId: string): Promise<boolean> => {
+    const marked = await markMentionRead(nextMentionId);
+    if (marked) onMentionsReadRef.current?.(1);
+    return marked;
+  };
+  const markAllVisibleMentionsRead = async (): Promise<boolean> => {
+    const count = unreadMentions.length;
+    const marked = await markAllMentionsRead();
+    if (marked && count) onMentionsReadRef.current?.(count, true);
+    return marked;
+  };
+  useEffect(() => {
+    if (!targetMention || activeFile !== targetMention.filePath || sidePanel !== "comments") return;
+    const comment = comments.find((item) => item.id === targetMention.commentId);
+    if (!comment || (targetMention.replyId && !comment.replies.some((reply) => reply.id === targetMention.replyId))) return;
+    const selector = targetMention.replyId
+      ? `[data-comment-reply-id="${targetMention.replyId}"]`
+      : `[data-comment-id="${targetMention.commentId}"]`;
+    const element = document.querySelector<HTMLElement>(selector);
+    if (!element || scrolledMentionId.current === targetMention.id) return;
+    scrolledMentionId.current = targetMention.id;
+    setFocusComment({ ...comment });
+    const frame = window.requestAnimationFrame(() => element.scrollIntoView({ block: "center", behavior: "smooth" }));
+    const timer = window.setTimeout(() => setTargetMention((current) => current?.id === targetMention.id ? null : current), 3_000);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [activeFile, comments, sidePanel, targetMention]);
   const {
     pdfUrl, pdfCompiledAt, pdfLoadingMode, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
     artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cancelling, cleaning,
@@ -1152,7 +1230,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, onBack }: {
       />}
       <WorkspaceContextPanel
         sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
-        site={site} files={files} currentUserId={user.id} comments={comments}
+        site={site} files={files} currentUserId={user.id} comments={comments} unreadMentions={unreadMentions}
+        onMarkMentionRead={markVisibleMentionRead} onMarkAllMentionsRead={markAllVisibleMentionsRead}
+        targetCommentId={targetMention?.commentId} targetReplyId={targetMention?.replyId}
         onFocusComment={(comment) => setFocusComment({ ...comment })} onToggleComment={toggleComment}
         onReplyComment={replyToComment} onEditComment={editComment} onDeleteComment={deleteComment}
         onEditCommentReply={editCommentReply} onDeleteCommentReply={deleteCommentReply}
