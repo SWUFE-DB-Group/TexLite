@@ -328,8 +328,10 @@ History records initial state, acknowledged collaborative saves, file/source
 operations, compiler settings, Git operations, checkpoints, and restores.
 Autosaves by the same author are coalesced within a two-minute window. File
 contents are complete SHA-256-addressed objects; unchanged files are reused
-across manifests. The retention defaults are 200 ordinary unlabeled versions
-and 128 MB of deduplicated objects per project. Initial and labeled versions,
+across manifests. By default, ordinary version count is unlimited (`history.maxVersions: 0`),
+and retention is primarily governed by the soft storage limit (default 128 MB of deduplicated
+objects per project). An optional positive `history.maxVersions` limit can also be configured
+to cap the count of ordinary versions. Initial and labeled versions,
 plus the current internal baseline, are protected and can make the soft limit
 temporarily exceed its target. Retention pruning batches reference accounting
 and removes unreferenced objects.

@@ -26,7 +26,7 @@ export const CONFIG_DEFAULTS = {
   maxFileSizeMB: 50,
   pdfLoadingStrategy: "auto" as PdfLoadingStrategy,
   pdfRangeThresholdMB: 5,
-  historyMaxVersions: 200,
+  historyMaxVersions: 0,
   historyMaxStorageMB: 128,
   git: "git",
   gitOperationTimeoutSeconds: 120,
@@ -40,7 +40,7 @@ const CONFIG_LIMITS = {
   maxCompileJobs: [1, 32],
   maxFileSizeMB: [1, 2_048],
   pdfRangeThresholdMB: [1, 2_048],
-  historyMaxVersions: [10, 5_000],
+  historyMaxVersions: [0, 50_000],
   historyMaxStorageMB: [16, 102_400],
   gitOperationTimeoutSeconds: [1, 3_600]
 } as const;

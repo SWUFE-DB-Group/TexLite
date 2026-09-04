@@ -84,6 +84,22 @@ describe("project history retention", () => {
     expect(versions).toHaveLength(3);
   });
 
+  it("does not prune ordinary versions by count when maxVersions is 0 (unlimited)", () => {
+    const fixture = createFixture({ maxVersions: 0, maxStorageBytes: 512 * 1024 * 1024 });
+    fixture.history.record(fixture.projectId, "user-1", "initial");
+
+    for (let i = 1; i <= 6; i++) {
+      writeSource(fixture, "main.tex", `version-${i}`);
+      fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"]);
+    }
+
+    const stats = fixture.history.stats(fixture.projectId);
+    expect(stats.ordinaryVersionCount).toBe(6);
+    expect(stats.maxVersions).toBe(0);
+    const versions = fixture.history.list(fixture.projectId).filter((v) => v.reason !== "initial" && !v.label);
+    expect(versions).toHaveLength(6);
+  });
+
   it("can defer retention without delaying the durable history version", () => {
     vi.useFakeTimers();
     const fixture = createFixture({ maxVersions: 2, maxStorageBytes: 512 * 1024 * 1024 });

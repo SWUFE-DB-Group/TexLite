@@ -17,7 +17,7 @@
     "rangeThresholdMB": 5
   },
   "history": {
-    "maxVersions": 200,
+    "maxVersions": 0,
     "maxStorageMB": 128
   },
   "git": {

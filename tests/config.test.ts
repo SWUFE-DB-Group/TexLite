@@ -69,7 +69,7 @@ describe("configuration", () => {
       compileTimeoutMs: 600_000, maxCompileJobs: 10, defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
       pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: 200, historyMaxStorageBytes: 128 * 1024 * 1024,
+      historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024,
       git: "git", gitOperationTimeoutMs: 120_000, githubApiBaseUrl: "https://api.github.com"
     });
   });
@@ -85,9 +85,9 @@ describe("configuration", () => {
   it("validates history retention limits", () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-history-"));
     const configPath = path.join(root, "texlite.config.json");
-    fs.writeFileSync(configPath, JSON.stringify({ history: { maxVersions: 9, maxStorageMB: 15 } }));
+    fs.writeFileSync(configPath, JSON.stringify({ history: { maxVersions: -1, maxStorageMB: 15 } }));
     process.env.TEXLITE_CONFIG = configPath;
-    expect(() => loadConfig()).toThrow(/history\.maxVersions.*10 to 5000/);
+    expect(() => loadConfig()).toThrow(/history\.maxVersions.*0 to 50000/);
   });
 
   it("validates the PDF loading strategy and range threshold", () => {

@@ -423,8 +423,8 @@ export class ProjectHistoryService {
       }
     };
 
-    // 1. Cap by historyMaxVersions (prune excess ordinary versions from newest to oldest offset)
-    if (ordinaryDesc.length > this.config.historyMaxVersions) {
+    // 1. Cap by historyMaxVersions (prune excess ordinary versions when configured; 0 = unlimited)
+    if (this.config.historyMaxVersions > 0 && ordinaryDesc.length > this.config.historyMaxVersions) {
       const obsolete = ordinaryDesc.slice(this.config.historyMaxVersions);
       for (const row of obsolete) removeVersionRefs(row.id);
     }

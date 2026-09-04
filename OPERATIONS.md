@@ -181,7 +181,7 @@ starting point. It intentionally uses `.texlite` for repository development;
 | `sessionDays` | `14` | Login-session lifetime. |
 | `uploads.maxFileSizeMB` | `50` MB | Limit for uploads, ZIP entries, and attachments. |
 | `pdf.loadingStrategy` / `pdf.rangeThresholdMB` | `auto` / `5` MB | Chooses full transfer for small PDFs and byte ranges for larger ones. |
-| `history.maxVersions` / `history.maxStorageMB` | `200` / `128` MB | Per-project ordinary-version count and soft storage limit. |
+| `history.maxVersions` / `history.maxStorageMB` | `0` (unlimited) / `128` MB | Per-project ordinary-version count (`0` = unlimited) and soft storage limit. |
 | `latex.latexmk` | `latexmk` | Host command. |
 | `latex.defaultEngine` | `xelatex` | Must appear in the allowed list. |
 | `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` | Engines available in the UI. |
@@ -216,7 +216,7 @@ actionable error. Explicit invalid values are never silently replaced with a
 default. `texlite init` applies the same validation.
 
 Accepted limits are: port `1–65535`, sessions `1–3650` days, upload size
-`1–2048` MB, history count `10–5000`, history size `16–102400` MB, PDF range
+`1–2048` MB, history count `0–50000` (`0` = unlimited), history size `16–102400` MB, PDF range
 threshold `1–2048` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
 and Git timeout `1–3600` seconds.
 
