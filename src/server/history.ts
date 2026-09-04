@@ -57,12 +57,26 @@ export interface HistoryStats {
   storageLimitExceeded: boolean;
 }
 
+export interface HistoryRecordOptions {
+  /**
+   * Keep the durable version write in the caller's path, but defer expensive
+   * retention work (manifest scans and object garbage collection).
+   */
+  deferRetention?: boolean;
+}
+
 const AUTOSAVE_COALESCE_MS = 2 * 60_000;
 
 export class ProjectHistoryService {
   constructor(private readonly config: Config, private readonly db: DatabaseConnection) {}
 
-  record(projectId: string, authorId: string | null, reason: HistoryReason, changedRoots?: readonly string[]): HistoryVersion | null {
+  record(
+    projectId: string,
+    authorId: string | null,
+    reason: HistoryReason,
+    changedRoots?: readonly string[],
+    options: HistoryRecordOptions = {}
+  ): HistoryVersion | null {
     const project = this.project(projectId);
     const previous = this.latestRow(projectId);
     const previousManifest = this.baseline(projectId) ?? (previous ? parseManifest(previous.manifest_json) : null);
@@ -95,10 +109,12 @@ export class ProjectHistoryService {
         SET manifest_json = ?, changed_paths_json = ? WHERE id = ?`)
         .run(JSON.stringify(manifest), JSON.stringify(merged), previous.id);
       this.saveBaseline(projectId, manifest);
-      this.removeUnreferencedObjects(projectId, new Set(previousManifest
-        ? Object.values(previousManifest.files).map((file) => file.digest)
-        : []));
-      this.pruneVersions(projectId);
+      if (!options.deferRetention) {
+        this.removeUnreferencedObjects(projectId, new Set(previousManifest
+          ? Object.values(previousManifest.files).map((file) => file.digest)
+          : []));
+        this.pruneVersions(projectId);
+      }
       return this.version(previous.id)!;
     }
 
@@ -108,7 +124,7 @@ export class ProjectHistoryService {
       VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .run(id, projectId, authorId, reason, JSON.stringify(manifest), JSON.stringify(changedPaths), createdAt);
     this.saveBaseline(projectId, manifest);
-    this.pruneVersions(projectId);
+    if (!options.deferRetention) this.pruneVersions(projectId);
     return this.version(id)!;
   }
 
@@ -154,6 +170,11 @@ export class ProjectHistoryService {
 
   enforceRetention(projectId: string): void {
     this.pruneVersions(projectId);
+    // Deferred autosave maintenance can leave an object from a coalesced
+    // version without any manifest referring to it. Scan the small
+    // content-addressed object store here (never in the save path) so a
+    // restart also recovers objects left behind before a timer could run.
+    this.removeUnreferencedObjects(projectId, this.storedObjectDigests(projectId));
   }
 
   deleteVersion(projectId: string, versionId: string): boolean {
@@ -325,6 +346,22 @@ export class ProjectHistoryService {
   private objectPath(projectId: string, digest: string): string {
     if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid history object digest");
     return path.join(outputRoot(this.config, projectId), ".texlite", "history", "objects", digest.slice(0, 2), digest);
+  }
+
+  private storedObjectDigests(projectId: string): Set<string> {
+    const objectsRoot = path.join(outputRoot(this.config, projectId), ".texlite", "history", "objects");
+    if (!fs.existsSync(objectsRoot)) return new Set();
+    const digests = new Set<string>();
+    for (const prefix of fs.readdirSync(objectsRoot, { withFileTypes: true })) {
+      if (!prefix.isDirectory() || !/^[a-f0-9]{2}$/.test(prefix.name)) continue;
+      const prefixPath = path.join(objectsRoot, prefix.name);
+      for (const entry of fs.readdirSync(prefixPath, { withFileTypes: true })) {
+        if (entry.isFile() && /^[a-f0-9]{64}$/.test(entry.name) && entry.name.startsWith(prefix.name)) {
+          digests.add(entry.name);
+        }
+      }
+    }
+    return digests;
   }
 
   private pruneVersions(projectId: string): void {

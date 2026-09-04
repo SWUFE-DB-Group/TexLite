@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
@@ -81,6 +82,47 @@ describe("project history retention", () => {
     expect(stats.ordinaryVersionCount).toBe(3);
     const versions = fixture.history.list(fixture.projectId).filter((v) => v.reason !== "initial" && !v.label);
     expect(versions).toHaveLength(3);
+  });
+
+  it("can defer retention without delaying the durable history version", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture({ maxVersions: 2, maxStorageBytes: 512 * 1024 * 1024 });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    fixture.history.record(fixture.projectId, "user-1", "initial");
+
+    for (let i = 1; i <= 3; i++) {
+      vi.setSystemTime(new Date(`2026-01-01T00:0${i * 3}:00.000Z`));
+      writeSource(fixture, "main.tex", `version-${i}`);
+      fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"], { deferRetention: true });
+    }
+
+    expect(fixture.history.stats(fixture.projectId).ordinaryVersionCount).toBe(3);
+    fixture.history.enforceRetention(fixture.projectId);
+    expect(fixture.history.stats(fixture.projectId).ordinaryVersionCount).toBe(2);
+  });
+
+  it("removes unreferenced objects left by a deferred coalesced autosave", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    fixture.history.record(fixture.projectId, "user-1", "initial");
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:10.000Z"));
+    writeSource(fixture, "main.tex", "first autosave");
+    fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"], { deferRetention: true });
+    const staleDigest = createHash("sha256").update("first autosave").digest("hex");
+    const staleObject = path.join(
+      fixture.config.projectsDir, fixture.projectId, "output", ".texlite", "history", "objects", staleDigest.slice(0, 2), staleDigest
+    );
+    expect(fs.existsSync(staleObject)).toBe(true);
+
+    vi.setSystemTime(new Date("2026-01-01T00:01:00.000Z"));
+    writeSource(fixture, "main.tex", "merged autosave");
+    fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"], { deferRetention: true });
+    expect(fs.existsSync(staleObject)).toBe(true);
+
+    fixture.history.enforceRetention(fixture.projectId);
+    expect(fs.existsSync(staleObject)).toBe(false);
   });
 
   it("keeps a correct current baseline after deleting the latest visible version", () => {

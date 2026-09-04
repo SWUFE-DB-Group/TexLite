@@ -23,6 +23,7 @@ import { ProjectMutationCoordinator } from "./projectMutations.js";
 import { ProjectGitService } from "./git.js";
 import { LatexCompletionService } from "./latexCompletion.js";
 import { ProjectHistoryService, type HistoryReason } from "./history.js";
+import { HistoryRetentionScheduler } from "./historyRetention.js";
 import { ProjectOutlineService } from "./projectOutline.js";
 import { MetricRegistry } from "./metrics.js";
 import { apiError, HttpError } from "./http.js";
@@ -64,6 +65,9 @@ export async function buildApp(
   const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
   eventLoopDelay.enable();
   const history = new ProjectHistoryService(config, db);
+  const historyRetention = new HistoryRetentionScheduler(history, {
+    onError: (error, projectId) => app.log.error({ err: error, projectId }, "Failed to enforce project history retention")
+  });
   const latexCompletions = new LatexCompletionService(config);
   const projectOutlines = new ProjectOutlineService(config);
   const harper = new HarperService();
@@ -72,7 +76,11 @@ export async function buildApp(
   // supported: the browser spellchecker remains the writing-check fallback.
   void harper.preload().catch((error) => app.log.info({ err: error }, "Optional Harper CLI is unavailable"));
   const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => {
-    try { return history.record(projectId, userId, reason, paths); }
+    try {
+      const version = history.record(projectId, userId, reason, paths, { deferRetention: reason === "autosave" });
+      if (version && reason === "autosave") historyRetention.schedule(projectId);
+      return version;
+    }
     catch (error) {
       app.log.error({ err: error, projectId }, "Failed to record project history");
       return null;
@@ -119,6 +127,7 @@ export async function buildApp(
   }
   app.addHook("onClose", async () => {
     eventLoopDelay.disable();
+    historyRetention.dispose();
     await harper.dispose();
     await texcount.dispose();
   });
