@@ -49,6 +49,27 @@ describe("project history retention", () => {
     expect(fixture.history.list(fixture.projectId).filter((version) => version.reason === "autosave")).toHaveLength(2);
   });
 
+  it("pages snapshots with a stable cursor when several records share a timestamp", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const ids: string[] = [];
+    for (let index = 1; index <= 5; index++) {
+      writeSource(fixture, "main.tex", `snapshot-${index}`);
+      ids.push(fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!.id);
+    }
+
+    const newest = fixture.history.listPage(fixture.projectId, 2);
+    const middle = fixture.history.listPage(fixture.projectId, 2, newest.nextCursor!);
+    const oldest = fixture.history.listPage(fixture.projectId, 2, middle.nextCursor!);
+
+    expect(newest.nextCursor).not.toBeNull();
+    expect(middle.nextCursor).not.toBeNull();
+    expect(oldest.nextCursor).toBeNull();
+    expect([...newest.versions, ...middle.versions, ...oldest.versions].map((version) => version.id)).toEqual([...ids].reverse());
+    expect(() => fixture.history.listPage(fixture.projectId, 2, "not-a-history-cursor")).toThrow();
+  });
+
   it("retains protected versions while enforcing count and storage soft limits", () => {
     const fixture = createFixture({ maxVersions: 2, maxStorageBytes: 20 });
     const initial = fixture.history.record(fixture.projectId, "user-1", "initial")!;
@@ -184,6 +205,7 @@ describe("project history retention", () => {
       pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
       historyMaxVersions: options.maxVersions ?? 200,
       historyMaxStorageBytes: options.maxStorageBytes ?? 512 * 1024 * 1024,
+      editHistoryMaxStorageBytes: 32 * 1024 * 1024,
       git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
     };
     const db = openDatabase(config);

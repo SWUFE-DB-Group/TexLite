@@ -17,6 +17,7 @@ import { LazyModal } from "../LazyLoadBoundary";
 const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then((module) => ({ default: module.CitationLibraryDialog })));
 const GitDialog = lazy(() => import("../GitDialog").then((module) => ({ default: module.GitDialog })));
 const HistoryDialog = lazy(() => import("../HistoryDialog").then((module) => ({ default: module.HistoryDialog })));
+const SelectionHistoryDialog = lazy(() => import("../SelectionHistoryDialog").then((module) => ({ default: module.SelectionHistoryDialog })));
 const ProjectSearchDialog = lazy(() => import("../ProjectNavigationDialogs").then((module) => ({ default: module.ProjectSearchDialog })));
 const QuickOpenDialog = lazy(() => import("../ProjectNavigationDialogs").then((module) => ({ default: module.QuickOpenDialog })));
 
@@ -83,6 +84,8 @@ export interface WorkspaceDialogsProps {
   setProjectSearchOpen: (open: boolean) => void;
   openFile: (entry: FileEntry) => void;
   jumpToSource: (path: string, line: number, column: number) => void;
+  selectionHistoryOpen: boolean;
+  setSelectionHistoryOpen: (open: boolean) => void;
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
   gitOpen: boolean;
@@ -104,7 +107,7 @@ export function WorkspaceDialogs({
   setDeleteEntry, deleteActiveSessions, removePath, commentOpen, setCommentOpen, selection, commentText,
   setCommentText, addComment, shareOpen, setShareOpen, citationLibraryOpen, setCitationLibraryOpen,
   insertCitationAtCursor, quickOpen, setQuickOpen, projectSearchOpen, setProjectSearchOpen, openFile,
-  jumpToSource, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
+  jumpToSource, selectionHistoryOpen, setSelectionHistoryOpen, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
   permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
 }: WorkspaceDialogsProps) {
   const { t } = useTranslation();
@@ -134,6 +137,7 @@ export function WorkspaceDialogs({
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
     {projectSearchOpen && <Suspense fallback={null}><ProjectSearchDialog open project={project} onOpenChange={setProjectSearchOpen} onJump={(filePath, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(filePath, line, column); }} /></Suspense>}
+    {selectionHistoryOpen && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={setSelectionHistoryOpen} project={project} filePath={activeFile} selection={selection} currentSource={content} /></Suspense>}
     {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}
     {project.ownerId === user.id && gitOpen && <Suspense fallback={null}><GitDialog open onOpenChange={setGitOpen} project={project} onBeforeMutation={save} /></Suspense>}
   </>;

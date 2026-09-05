@@ -46,7 +46,7 @@ describe("texLite application", () => {
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "pdflatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
       maxUploadBytes: 50 * 1024 * 1024, pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024
+      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024, editHistoryMaxStorageBytes: 32 * 1024 * 1024
       , git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
     };
     fs.mkdirSync(path.join(config.clientDir, "assets"), { recursive: true });
@@ -829,6 +829,16 @@ Another UniqueTerm appears here.
       versionCount: expect.any(Number), ordinaryVersionCount: expect.any(Number),
       objectBytes: expect.any(Number), maxVersions: 200, maxStorageBytes: 512 * 1024 * 1024
     });
+    const latestHistoryPage = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history?limit=1`, headers: { cookie } });
+    expect(latestHistoryPage.statusCode).toBe(200);
+    expect(latestHistoryPage.json().versions).toHaveLength(1);
+    expect(latestHistoryPage.json().nextCursor).toEqual(expect.any(String));
+    const olderHistoryPage = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/history?limit=1&before=${encodeURIComponent(latestHistoryPage.json().nextCursor)}`, headers: { cookie }
+    });
+    expect(olderHistoryPage.statusCode).toBe(200);
+    expect(olderHistoryPage.json().versions[0].id).not.toBe(latestHistoryPage.json().versions[0].id);
+    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/history?before=invalid`, headers: { cookie } })).statusCode).toBe(400);
     const selectedVersion = versions.json().versions[0];
     expect(selectedVersion.changedPaths).toContain("sections/intro.tex");
 

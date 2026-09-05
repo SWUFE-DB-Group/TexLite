@@ -136,6 +136,9 @@ function writeInitialConfig(configPath: string, siteName: string, adminEmail: st
       maxVersions: CONFIG_DEFAULTS.historyMaxVersions,
       maxStorageMB: CONFIG_DEFAULTS.historyMaxStorageMB
     },
+    editHistory: {
+      maxStorageMB: CONFIG_DEFAULTS.editHistoryMaxStorageMB
+    },
     git: {
       binary: CONFIG_DEFAULTS.git,
       operationTimeoutSeconds: CONFIG_DEFAULTS.gitOperationTimeoutSeconds,
@@ -304,6 +307,7 @@ async function printConfig(options: CliOptions): Promise<void> {
     pdfRangeThresholdMB: config.pdfRangeThresholdBytes / (1024 * 1024),
     historyMaxVersions: config.historyMaxVersions,
     historyMaxStorageBytes: config.historyMaxStorageBytes,
+    editHistoryMaxStorageBytes: config.editHistoryMaxStorageBytes,
     git: config.git
   }, null, 2));
 }

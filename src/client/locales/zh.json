@@ -211,17 +211,24 @@
     "matchSummary": "共 {{count}} 个匹配", "truncated": "仅显示前 {{count}} 个匹配。", "replaceAll": "替换全部 {{count}} 项", "replaceConfirmTitle": "在项目中批量替换", "replaceConfirmDescription": "确定替换全部 {{count}} 个匹配？自动历史会记录所有修改文件。", "replaced": "已在 {{files}} 个文件中替换 {{count}} 项。"
   },
   "history": {
-    "title": "历史", "description": "浏览自动项目版本、比较文件，并安全恢复较早的工作。", "empty": "尚无历史版本。",
+    "title": "历史", "projectSnapshots": "项目快照", "description": "浏览自动项目快照、比较文件，并安全恢复较早的工作。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",
     "changedCount": "{{count}} 个文件有变化", "fileCount": "{{count}} 个文件", "changed": "有修改", "labelPlaceholder": "为此版本命名", "saveLabel": "保存标签",
-    "compareCurrent": "与当前版本比较", "comparingCurrent": "历史版本与当前文件的比较", "chooseFile": "选择文件后，可与当前源码进行比较。",
-    "changedFilesHeading": "修改的文件 ({{count}})", "noChangedFiles": "此版本没有修改的文件。", "noDifferences": "文件在此历史版本与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "historicalVersion": "历史版本", "currentVersion": "当前版本",
-    "diffMode": "对比模式", "diffModeCommit": "本次修改", "diffModeCommitHint": "查看此历史版本相比上一版本的改动", "diffModeCurrent": "与当前对比", "diffModeCurrentHint": "查看此历史版本与当前工作区源码的差异", "changedAt": "修改于 {{time}}", "createdAt": "创建于 {{time}}", "previousVersion": "上一版本",
-    "restore": "恢复", "restoreFile": "恢复文件", "restoreProject": "恢复项目", "restoreFileTitle": "恢复此文件", "restoreProjectTitle": "恢复此项目版本",
-    "restoreFileDescription": "从此版本恢复 {{path}}？系统会先为当前项目创建安全检查点。", "restoreProjectDescription": "恢复此版本的全部源码和编译器设置？系统会先为当前项目创建安全检查点。",
-    "storage": "历史存储", "storageUsage": "已使用 {{used}}，上限 {{limit}}", "versionUsage": "普通版本 {{count}} / {{limit}}", "protectedVersions": "{{count}} 个已标记版本", "storageExceeded": "受保护版本或当前基线已超过存储软上限。",
-    "deleteVersion": "删除版本", "deleteVersionTitle": "删除此历史版本", "deleteVersionDescription": "永久删除“{{name}}”？当前项目文件不会改变。",
-    "clearAll": "清空历史", "clearAllTitle": "清空全部项目历史", "clearAllDescription": "永久删除全部历史版本及不再引用的存储数据？当前项目文件不会改变。",
+    "compareCurrent": "与当前版本比较", "comparingCurrent": "历史快照与当前文件的比较", "chooseFile": "选择文件后，可与当前源码进行比较。",
+    "changedFilesHeading": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "historicalVersion": "历史快照", "currentVersion": "当前版本",
+    "diffMode": "对比模式", "diffModeCommit": "本次修改", "diffModeCommitHint": "查看此快照相比上一快照的改动", "diffModeCurrent": "与当前对比", "diffModeCurrentHint": "查看此快照与当前工作区源码的差异", "changedAt": "修改于 {{time}}", "createdAt": "创建于 {{time}}", "previousVersion": "上一快照",
+    "restore": "恢复", "restoreFile": "恢复文件", "restoreProject": "恢复项目", "restoreFileTitle": "恢复此文件", "restoreProjectTitle": "恢复此项目快照",
+    "restoreFileDescription": "从此快照恢复 {{path}}？系统会先为当前项目创建安全检查点。", "restoreProjectDescription": "恢复此快照的全部源码和编译器设置？系统会先为当前项目创建安全检查点。",
+    "storage": "快照存储", "storageUsage": "已使用 {{used}}，上限 {{limit}}", "versionUsage": "普通快照 {{count}} / {{limit}}", "protectedVersions": "{{count}} 个已标记快照", "storageExceeded": "受保护快照或当前基线已超过存储软上限。",
+    "deleteVersion": "删除快照", "deleteVersionTitle": "删除此项目快照", "deleteVersionDescription": "永久删除“{{name}}”？当前项目文件和选区历史不会改变。",
+    "clearAll": "清空项目快照", "clearAllTitle": "清空全部项目快照", "clearAllDescription": "永久删除全部项目快照及不再引用的存储数据？当前项目文件和选区历史不会改变。",
     "reasons": { "initial": "项目创建", "autosave": "自动保存", "file": "文件操作", "settings": "编译器设置", "git": "Git 操作", "restore": "恢复版本", "checkpoint": "安全检查点" }
+  },
+  "selectionHistory": {
+    "limited": "仅显示最近 {{count}} 个编辑窗口，更早的记录未展示。", "sourceChanged": "源码已发生变化。请等待同步完成，重新选择文本后再打开历史。",
+    "title": "选区历史", "selectSourceHint": "请先选中源码，再查看其编辑历史。", "description": "{{path}} 中所选 {{count}} 个字符的编辑记录。",
+    "emptyTitle": "此选区还没有已保存的编辑记录", "emptyDescription": "继续编辑并保存后，这里会显示相关的编辑记录。",
+    "boundary": "由于文件替换、恢复操作或较早记录已清理，此选区的历史从这里开始。",
+    "changedBy": "修改者：", "contentTab": "内容", "diffTab": "差异", "view": "选区历史展示方式", "previousVersion": "上一状态", "currentVersion": "当前状态", "noPrevious": "没有更早的选区状态可供比较。", "diffUnavailable": "其中一个选区状态无法精确还原，暂无法比较。", "noDiff": "与上一选区状态没有文本差异。", "contentTruncated": "选区内容已缩短。", "contentUnavailable": "由于一次过大的修改无法精确还原，无法显示这个较早状态的选区内容。"
   },
   "projectSettings": {
     "mainFile": "主文档", "invalidMainFileOption": "{{path}}（不是主文档）", "engine": "编译引擎", "latexmkrc": "项目 latexmkrc", "save": "保存项目设置", "members": "共享成员",

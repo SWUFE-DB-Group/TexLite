@@ -28,6 +28,7 @@ export const CONFIG_DEFAULTS = {
   pdfRangeThresholdMB: 5,
   historyMaxVersions: 0,
   historyMaxStorageMB: 128,
+  editHistoryMaxStorageMB: 32,
   git: "git",
   gitOperationTimeoutSeconds: 120,
   githubApiBaseUrl: "https://api.github.com"
@@ -42,6 +43,7 @@ const CONFIG_LIMITS = {
   pdfRangeThresholdMB: [1, 2_048],
   historyMaxVersions: [0, 50_000],
   historyMaxStorageMB: [16, 102_400],
+  editHistoryMaxStorageMB: [4, 102_400],
   gitOperationTimeoutSeconds: [1, 3_600]
 } as const;
 
@@ -68,6 +70,7 @@ export interface Config {
   pdfRangeThresholdBytes: number;
   historyMaxVersions: number;
   historyMaxStorageBytes: number;
+  editHistoryMaxStorageBytes: number;
   git: string;
   gitOperationTimeoutMs: number;
   githubApiBaseUrl: string;
@@ -132,6 +135,10 @@ export function loadConfig(configPathOverride?: string): Config {
     "history.maxStorageMB", process.env.TEXLITE_HISTORY_MAX_STORAGE_MB,
     fileConfig.history?.maxStorageMB, CONFIG_DEFAULTS.historyMaxStorageMB, CONFIG_LIMITS.historyMaxStorageMB
   );
+  const editHistoryMaxStorageMB = integerSetting(
+    "editHistory.maxStorageMB", process.env.TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB,
+    fileConfig.editHistory?.maxStorageMB, CONFIG_DEFAULTS.editHistoryMaxStorageMB, CONFIG_LIMITS.editHistoryMaxStorageMB
+  );
   const gitOperationTimeoutSeconds = integerSetting(
     "git.operationTimeoutSeconds", process.env.TEXLITE_GIT_TIMEOUT,
     fileConfig.git?.operationTimeoutSeconds, CONFIG_DEFAULTS.gitOperationTimeoutSeconds, CONFIG_LIMITS.gitOperationTimeoutSeconds
@@ -160,6 +167,7 @@ export function loadConfig(configPathOverride?: string): Config {
     pdfRangeThresholdBytes: pdfRangeThresholdMB * 1024 * 1024,
     historyMaxVersions,
     historyMaxStorageBytes: historyMaxStorageMB * 1024 * 1024,
+    editHistoryMaxStorageBytes: editHistoryMaxStorageMB * 1024 * 1024,
     git: stringSetting("git.binary", process.env.TEXLITE_GIT, fileConfig.git?.binary, CONFIG_DEFAULTS.git, { min: 1, max: 256 }),
     gitOperationTimeoutMs: gitOperationTimeoutSeconds * 1000,
     githubApiBaseUrl: stringSetting("git.githubApiBaseUrl", process.env.TEXLITE_GITHUB_API_URL, fileConfig.git?.githubApiBaseUrl, CONFIG_DEFAULTS.githubApiBaseUrl, { min: 1, max: 2_048 }).replace(/\/+$/, "")
@@ -199,6 +207,7 @@ export function validateConfig(config: Config): void {
   validateInteger("pdf.rangeThresholdMB", config.pdfRangeThresholdBytes / (1024 * 1024), CONFIG_LIMITS.pdfRangeThresholdMB);
   validateInteger("history.maxVersions", config.historyMaxVersions, CONFIG_LIMITS.historyMaxVersions);
   validateInteger("history.maxStorageMB", config.historyMaxStorageBytes / (1024 * 1024), CONFIG_LIMITS.historyMaxStorageMB);
+  validateInteger("editHistory.maxStorageMB", config.editHistoryMaxStorageBytes / (1024 * 1024), CONFIG_LIMITS.editHistoryMaxStorageMB);
   validateInteger("git.operationTimeoutSeconds", config.gitOperationTimeoutMs / 1000, CONFIG_LIMITS.gitOperationTimeoutSeconds);
 }
 
@@ -220,6 +229,7 @@ interface FileConfig {
   uploads?: { maxFileSizeMB?: number };
   pdf?: { loadingStrategy?: string; rangeThresholdMB?: number };
   history?: { maxVersions?: number; maxStorageMB?: number };
+  editHistory?: { maxStorageMB?: number };
   git?: { binary?: string; operationTimeoutSeconds?: number; githubApiBaseUrl?: string };
 }
 
@@ -268,6 +278,8 @@ function validateFileConfig(config: FileConfig): void {
   const history = optionalSection(config.history, "history");
   optionalInteger(history?.maxVersions, "history.maxVersions", CONFIG_LIMITS.historyMaxVersions);
   optionalInteger(history?.maxStorageMB, "history.maxStorageMB", CONFIG_LIMITS.historyMaxStorageMB);
+  const editHistory = optionalSection(config.editHistory, "editHistory");
+  optionalInteger(editHistory?.maxStorageMB, "editHistory.maxStorageMB", CONFIG_LIMITS.editHistoryMaxStorageMB);
 
   const latex = optionalSection(config.latex, "latex");
   optionalString(latex?.latexmk, "latex.latexmk", { min: 1, max: 256 });

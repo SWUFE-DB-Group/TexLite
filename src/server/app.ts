@@ -23,6 +23,7 @@ import { ProjectMutationCoordinator } from "./projectMutations.js";
 import { ProjectGitService } from "./git.js";
 import { LatexCompletionService } from "./latexCompletion.js";
 import { ProjectHistoryService, type HistoryReason } from "./history.js";
+import { ProjectEditHistoryService } from "./editHistory.js";
 import { HistoryRetentionScheduler } from "./historyRetention.js";
 import { ProjectOutlineService } from "./projectOutline.js";
 import { MetricRegistry } from "./metrics.js";
@@ -65,6 +66,7 @@ export async function buildApp(
   const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
   eventLoopDelay.enable();
   const history = new ProjectHistoryService(config, db);
+  const editHistory = new ProjectEditHistoryService(db, config.editHistoryMaxStorageBytes);
   const historyRetention = new HistoryRetentionScheduler(history, {
     onError: (error, projectId) => app.log.error({ err: error, projectId }, "Failed to enforce project history retention")
   });
@@ -86,8 +88,10 @@ export async function buildApp(
       return null;
     }
   };
-  const collaboration = new CollaborationService(config, db, ({ projectId, userId, paths, durationMs }) => {
+  const collaboration = new CollaborationService(config, db, ({ projectId, userId, paths, edits, durationMs }) => {
     metrics.record("collaboration.persist", durationMs);
+    try { editHistory.record(projectId, edits); }
+    catch (error) { app.log.error({ err: error, projectId }, "Failed to record project edit history"); }
     recordHistory(projectId, userId, "autosave", paths);
   });
   const projectMutations = new ProjectMutationCoordinator(collaboration);
@@ -122,6 +126,7 @@ export async function buildApp(
   await pruneTrashDirectory(config);
   for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
     history.enforceRetention(row.id);
+    editHistory.enforceRetention(row.id);
     pruneCompileRuns(row.id);
     pruneOrphanedCompileRuns(config, row.id);
   }
@@ -206,7 +211,7 @@ export async function buildApp(
     metrics,
     recordHistory
   });
-  registerProjectHistoryRoutes(app, { config, db, history, projectMutations, recordHistory });
+  registerProjectHistoryRoutes(app, { config, db, history, editHistory, projectMutations, recordHistory });
   registerProjectGitRoutes(app, { config, db, collaboration, projectMutations, projectGit, recordHistory });
   registerProjectCatalogRoutes(app, {
     config,

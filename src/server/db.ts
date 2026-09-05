@@ -227,6 +227,36 @@ function migrate(db: DatabaseConnection): void {
       updated_at TEXT NOT NULL
     );
 
+    -- Recovery snapshots and collaborative edit records serve different
+    -- purposes. Snapshots are content-addressed restore points; these rows
+    -- retain the ordered, author-attributed text changes that led to the
+    -- current source, so a selected range can show who changed it.
+    CREATE TABLE IF NOT EXISTS project_edit_segments (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      author_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('edit', 'format')),
+      before_hash TEXT NOT NULL,
+      after_hash TEXT NOT NULL,
+      steps_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS project_edit_segments_project_file_updated
+      ON project_edit_segments(project_id, file_path, updated_at DESC);
+
+    -- Records the newest missing delta per file after retention drops an edit
+    -- segment. Selection history uses it to stop at a known boundary instead
+    -- of presenting an incomplete attribution as a full edit trail.
+    CREATE TABLE IF NOT EXISTS project_edit_history_boundaries (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      after_hash TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (project_id, file_path)
+    );
+
     CREATE TABLE IF NOT EXISTS project_dictionary_words (
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       word TEXT NOT NULL COLLATE NOCASE,

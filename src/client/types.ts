@@ -129,6 +129,36 @@ export interface HistoryVersionDetail {
   files: Array<{ path: string; size: number }>;
 }
 
+/** A cursor page from the immutable project-snapshot timeline. */
+export interface HistoryPage {
+  versions: HistoryVersion[];
+  nextCursor: string | null;
+  stats: HistoryStats | null;
+}
+
+export interface SelectionHistoryAuthor {
+  id: string | null;
+  username: string | null;
+  name: string | null;
+}
+
+export interface SelectionHistoryEntry {
+  id: string;
+  filePath: string;
+  createdAt: string;
+  updatedAt: string;
+  authors: SelectionHistoryAuthor[];
+  content: string | null;
+  contentTruncated: boolean;
+}
+
+export interface SelectionHistoryResult {
+  entries: SelectionHistoryEntry[];
+  baseline: { content: string | null; contentTruncated: boolean } | null;
+  hasMore: boolean;
+  chainComplete: boolean;
+}
+
 export interface HistoryStats {
   versionCount: number;
   ordinaryVersionCount: number;

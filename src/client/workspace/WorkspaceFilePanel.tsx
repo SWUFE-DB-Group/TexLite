@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { BookOpen, ChevronDown, ChevronRight, FilePlus2, FileSearch, FileText, Folder, FolderOpen, FolderPlus, Hash, ListTree, LoaderCircle, Move, PanelLeftClose, Search, Trash2, Upload } from "lucide-react";
+import { AlignLeft, BookOpen, ChevronDown, ChevronRight, FilePlus2, FileSearch, FileText, Folder, FolderOpen, FolderPlus, Hash, ListTree, LoaderCircle, Move, PanelLeftClose, Search, Trash2, Upload } from "lucide-react";
 import { useState, useSyncExternalStore, type ChangeEvent, type RefObject } from "react";
 import { Panel, type ImperativePanelHandle } from "react-resizable-panels";
 import type { FileEntry, Project } from "../types";
@@ -19,11 +19,16 @@ export interface WorkspaceFilePanelProps {
   fileDragActive: boolean;
   uploadingFiles: boolean;
   readOnly: boolean;
+  formatting: boolean;
+  canFormat: boolean;
+  activeFormatLease: boolean;
+  collaborationSynced: boolean;
   editorFontSize: number;
   outline: ProjectOutlineItem[];
   sourceCursorStore: SourceCursorStore;
   wordCountBusy: boolean;
   hasSelection: boolean;
+  hasFormatSelection: boolean;
   uploadInput: RefObject<HTMLInputElement | null>;
   setSelectedFolder: (folder: string) => void;
   setExpandedFolders: (updater: (current: Set<string>) => Set<string>) => void;
@@ -44,6 +49,8 @@ export interface WorkspaceFilePanelProps {
   uploadFiles: (files: File[]) => Promise<void>;
   upload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   openFile: (entry: FileEntry) => void;
+  onFormatFile: () => void;
+  onFormatSelection: () => void;
   jumpToSource: (path: string, line: number, column: number) => void;
   syncSourceToPdf: (path: string, line: number, column: number) => Promise<void>;
   onWordCount: (mode: WordCountMode) => void;
@@ -51,11 +58,12 @@ export interface WorkspaceFilePanelProps {
 
 export function WorkspaceFilePanel({
   project, filesPanel, files, visibleEntries, activeFile, activeMainFile, rootDocuments, selectedFolder,
-  expandedFolders, fileDragActive, uploadingFiles, readOnly, editorFontSize, outline, sourceCursorStore,
-  wordCountBusy, hasSelection, uploadInput, setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
+  expandedFolders, fileDragActive, uploadingFiles, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
+  editorFontSize, outline, sourceCursorStore, wordCountBusy, hasSelection, hasFormatSelection, uploadInput,
+  setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
   setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen,
   setQuickOpen, setProjectSearchOpen, setFileDragActive, setFilesCollapsed, toggleFilesPanel, uploadFiles, upload, openFile,
-  jumpToSource, syncSourceToPdf, onWordCount
+  onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
   const [showFileSizes, setShowFileSizes] = useState(false);
@@ -77,6 +85,13 @@ export function WorkspaceFilePanel({
             return <div className={`file-entry${activeFile === entry.path ? " active" : ""}${rootDocument ? " root-document" : ""}${compileTarget ? " compile-target" : ""}`} style={{ paddingLeft: `${depth * 13 + 18}px` }} key={entry.path}><button className="file-entry-main" title={compileTarget ? t("editor.currentMainDocument", { path: entry.path }) : rootDocument ? t("editor.mainDocumentCandidate", { path: entry.path }) : entry.path} onClick={() => openFile(entry)}>{rootDocument ? <BookOpen size={13} /> : <FileText size={13} />}<span>{name}</span>{compileTarget && <small>{t("editor.currentMainShort")}</small>}</button>{showFileSizes && typeof entry.size === "number" && <span className="file-entry-size" title={`${entry.size.toLocaleString()} B`}>{formatFileSize(entry.size)}</span>}{!readOnly && <><button className="file-entry-action" title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>{canDelete && <button className="file-entry-action danger-text" title={t("editor.deletePath")} aria-label={t("editor.deletePath")} onClick={() => { setDeleteEntry(entry); setFileDialogError(""); }}><Trash2 size={13} /></button>}</>}</div>;
           })}
         </div>
+        {!readOnly && canFormat && <div className="file-format-footer" role="group" aria-label={t("editor.format")} aria-busy={formatting}>
+          <div className="file-format-label"><AlignLeft size={13} />{t("editor.format")}</div>
+          <div className="file-format-actions">
+            <button className={!hasFormatSelection ? "active" : ""} type="button" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={onFormatFile} disabled={formatting || activeFormatLease || !collaborationSynced}>{t("editor.formatFile")}</button>
+            <button className={hasFormatSelection ? "active" : ""} type="button" title={hasFormatSelection ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={onFormatSelection} disabled={formatting || activeFormatLease || !collaborationSynced || !hasFormatSelection}>{t("editor.formatSelected")}</button>
+          </div>
+        </div>}
       </section>
       <WorkspaceOutlinePanel outline={outline} activeFile={activeFile} activeMainFile={activeMainFile} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy} hasSelection={hasSelection} jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={onWordCount} />
     </aside>

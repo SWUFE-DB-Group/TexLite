@@ -24,6 +24,7 @@ import {
   type CollaborationProjectAccess
 } from "./projects.js";
 import { reanchorFileComments } from "./anchors.js";
+import { hashText, type EditHistorySegmentInput, type EditHistorySpan, type EditHistoryStep } from "./editHistory.js";
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -57,6 +58,12 @@ const STATE_SAVE_DELAY_MS = 750;
 const ROOM_IDLE_MS = 30_000;
 const FORMAT_LEASE_TTL_MS = 45_000;
 const MAX_FORMAT_LEASE_WAITERS = MAX_PROJECT_SESSIONS * 2;
+// A normal typing burst produces a few small Yjs updates. Keep adjacent
+// updates from the same user together without ever merging across another
+// collaborator's edit, so the resulting record remains attributable.
+const EDIT_SEGMENT_IDLE_MS = 30_000;
+const MAX_EDIT_SPANS_PER_STEP = 96;
+const MAX_EDIT_PREVIEW_CHARS = 1_200;
 // Completion notifications are useful only to browsers that were already
 // present when the operation finished. The database and retained manifests
 // are the authority for a later workspace open.
@@ -101,7 +108,11 @@ interface Room {
   awarenessOwners: Map<number, Connection>;
   allowedPaths: Set<string>;
   persistedContent: Map<string, string>;
+  /** Last observed Y.Text contents, used to turn a Yjs delta into text ranges. */
+  observedContent: Map<string, string>;
   dirtyPaths: Set<string>;
+  /** Author-isolated updates waiting for their corresponding source write. */
+  pendingEditSegments: EditHistorySegmentInput[];
   textObservers: Map<string, (event: Y.YTextEvent, transaction: Y.Transaction) => void>;
   saveTimer: NodeJS.Timeout | null;
   stateSaveTimer: NodeJS.Timeout | null;
@@ -138,6 +149,7 @@ export interface CollaborationPersistEvent {
   projectId: string;
   userId: string | null;
   paths: string[];
+  edits: EditHistorySegmentInput[];
   durationMs: number;
 }
 
@@ -773,7 +785,9 @@ export class CollaborationService {
       awarenessOwners: new Map(),
       allowedPaths: new Set(),
       persistedContent: new Map(),
+      observedContent: new Map(),
       dirtyPaths: new Set(),
+      pendingEditSegments: [],
       textObservers: new Map(),
       saveTimer: null,
       stateSaveTimer: null,
@@ -815,11 +829,16 @@ export class CollaborationService {
         } else {
           replaceText(text, file.content);
         }
+        room.observedContent.set(file.path, text.toString());
       }
       for (const name of room.doc.share.keys()) {
         if (!name.startsWith(SOURCE_PREFIX)) continue;
         const filePath = name.slice(SOURCE_PREFIX.length);
-        if (!diskPaths.has(filePath)) replaceText(room.doc.getText(name), "");
+        if (!diskPaths.has(filePath)) {
+          const text = room.doc.getText(name);
+          replaceText(text, "");
+          room.observedContent.set(filePath, text.toString());
+        }
       }
     }, DISK_ORIGIN);
     const rejectedRecoveredPaths = this.rejectOversizedTexts(room);
@@ -917,8 +936,17 @@ export class CollaborationService {
   private trackedText(room: Room, filePath: string): Y.Text {
     const text = room.doc.getText(typeName(filePath));
     if (room.textObservers.has(filePath)) return text;
-    const observer = (_event: Y.YTextEvent, transaction: Y.Transaction): void => {
-      if (transaction.origin === DISK_ORIGIN || transaction.origin === HTTP_ORIGIN || transaction.origin === META_ORIGIN) return;
+    const observer = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
+      const before = room.observedContent.get(filePath) ?? text.toString();
+      const after = text.toString();
+      if (transaction.origin === DISK_ORIGIN || transaction.origin === HTTP_ORIGIN || transaction.origin === META_ORIGIN) {
+        // Non-collaborative mutations deliberately reset the source chain.
+        // They are represented by recovery snapshots, not by a guessed user
+        // edit record; keeping this mirror current prevents later edits from
+        // being mapped across such a replacement.
+        room.observedContent.set(filePath, after);
+        return;
+      }
       if (!room.allowedPaths.has(filePath)) {
         // A client can still have the old Y.Text bound briefly after another
         // session deletes or moves a file. Correct any late update immediately;
@@ -927,11 +955,66 @@ export class CollaborationService {
         room.doc.transact(() => replaceText(text, ""), DISK_ORIGIN);
         return;
       }
+      if (isConnectionOrigin(transaction.origin) && before !== after) {
+        const connection = transaction.origin;
+        this.recordEditStep(room, filePath, connection, event, before, after);
+      }
+      room.observedContent.set(filePath, after);
       room.dirtyPaths.add(filePath);
     };
     text.observe(observer);
     room.textObservers.set(filePath, observer);
     return text;
+  }
+
+  /**
+   * Keep live collaborative changes in short, author-isolated segments. The
+   * segment is only handed to the history service after `flushRoom()` has
+   * made the matching source content durable.
+   */
+  private recordEditStep(
+    room: Room,
+    filePath: string,
+    connection: Connection,
+    event: Y.YTextEvent,
+    before: string,
+    after: string
+  ): void {
+    const spans = editSpansFromYDelta(event.delta, before, after);
+    if (!spans.length) return;
+    const createdAt = new Date().toISOString();
+    const activeLease = this.activeFormatLease(room, filePath);
+    const kind: EditHistorySegmentInput["kind"] = activeLease?.connection === connection ? "format" : "edit";
+    const step: EditHistoryStep = {
+      beforeHash: hashText(before),
+      afterHash: hashText(after),
+      createdAt,
+      spans
+    };
+    const previous = room.pendingEditSegments.at(-1);
+    const previousTime = previous ? Date.parse(previous.updatedAt) : Number.NaN;
+    if (previous
+      && previous.filePath === filePath
+      && previous.authorId === connection.user.id
+      && previous.kind === kind
+      && previous.afterHash === step.beforeHash
+      && Number.isFinite(previousTime)
+      && Date.parse(createdAt) - previousTime <= EDIT_SEGMENT_IDLE_MS) {
+      previous.steps.push(step);
+      previous.afterHash = step.afterHash;
+      previous.updatedAt = createdAt;
+      return;
+    }
+    room.pendingEditSegments.push({
+      filePath,
+      authorId: connection.user.id,
+      kind,
+      beforeHash: step.beforeHash,
+      afterHash: step.afterHash,
+      createdAt,
+      updatedAt: createdAt,
+      steps: [step]
+    });
   }
 
   private handleMessage(room: Room, connection: Connection, bytes: Uint8Array): void {
@@ -1347,21 +1430,24 @@ export class CollaborationService {
     const startedAt = performance.now();
     if (room.saveTimer) clearTimeout(room.saveTimer);
     room.saveTimer = null;
-    this.rejectOversizedTexts(room);
+    const rejectedDuringFlush = this.rejectOversizedTexts(room);
     this.persistRoomState(room);
     let changed = false;
     const changedPaths: string[] = [];
     const failedPaths: string[] = [...room.rejectedPaths];
+    const finalizedPaths = new Set<string>(rejectedDuringFlush);
     const dirtyPaths = [...room.dirtyPaths];
     for (const filePath of dirtyPaths) {
       if (!room.allowedPaths.has(filePath)) {
         room.dirtyPaths.delete(filePath);
+        finalizedPaths.add(filePath);
         continue;
       }
       const next = this.trackedText(room, filePath).toString();
       const previous = room.persistedContent.get(filePath) ?? "";
       if (next === previous) {
         room.dirtyPaths.delete(filePath);
+        finalizedPaths.add(filePath);
         continue;
       }
       if (Buffer.byteLength(next, "utf8") > maxCollaborativeFileBytes(this.config)) {
@@ -1386,10 +1472,18 @@ export class CollaborationService {
       }
       room.persistedContent.set(filePath, next);
       room.dirtyPaths.delete(filePath);
+      finalizedPaths.add(filePath);
       try { reanchorFileComments(this.db, room.projectId, filePath, previous, next); }
       catch { /* Source durability is primary; comments can still be re-anchored by a later edit. */ }
       changed = true;
       changedPaths.push(filePath);
+    }
+    const persistedPaths = new Set(changedPaths);
+    const edits = room.pendingEditSegments.filter((segment) => persistedPaths.has(segment.filePath));
+    // A reverted edit or rejected oversized file did not produce a durable
+    // source revision, so it must not become a misleading edit-history row.
+    if (finalizedPaths.size > 0) {
+      room.pendingEditSegments = room.pendingEditSegments.filter((segment) => !finalizedPaths.has(segment.filePath));
     }
     if (changed && room.lastModifiedUserId) {
       this.db.prepare("UPDATE projects SET updated_at = ?, last_modified_by = ? WHERE id = ?")
@@ -1397,7 +1491,7 @@ export class CollaborationService {
     }
     if (changed) this.signalComments(room.projectId);
     if (changed && this.onPersist) {
-      try { this.onPersist({ projectId: room.projectId, userId: room.lastModifiedUserId, paths: changedPaths, durationMs: performance.now() - startedAt }); }
+      try { this.onPersist({ projectId: room.projectId, userId: room.lastModifiedUserId, paths: changedPaths, edits, durationMs: performance.now() - startedAt }); }
       catch { /* Source durability must not depend on optional history bookkeeping. */ }
     }
     const ok = failedPaths.length === 0 && room.dirtyPaths.size === 0;
@@ -1561,6 +1655,129 @@ function replaceText(text: Y.Text, content: string): void {
   if (text.toString() === content) return;
   if (text.length) text.delete(0, text.length);
   if (content) text.insert(0, content);
+}
+
+/**
+ * Turn Y.Text's transaction delta into compact positional spans. We retain
+ * lengths for exact range mapping, while previews keep a pasted/formatter
+ * change from turning the edit-history database into a second source store.
+ */
+function editSpansFromYDelta(delta: readonly unknown[], before: string, after: string): EditHistorySpan[] {
+  if (before === after) return [];
+  let beforeOffset = 0;
+  let afterOffset = 0;
+  let invalid = false;
+  const spans: EditHistorySpan[] = [];
+  let pending: { beforeStart: number; afterStart: number; deleted: string; inserted: string } | null = null;
+  const flushPending = () => {
+    if (!pending) return;
+    const deletedLength = pending.deleted.length;
+    const insertedLength = pending.inserted.length;
+    if (deletedLength || insertedLength) {
+      spans.push(editSpan(
+        pending.beforeStart, pending.beforeStart + deletedLength,
+        pending.afterStart, pending.afterStart + insertedLength,
+        pending.deleted, pending.inserted
+      ));
+    }
+    pending = null;
+  };
+  const startPending = () => {
+    if (!pending) pending = { beforeStart: beforeOffset, afterStart: afterOffset, deleted: "", inserted: "" };
+    return pending;
+  };
+
+  for (const raw of delta) {
+    if (!raw || typeof raw !== "object") { invalid = true; break; }
+    const operation = raw as { retain?: unknown; delete?: unknown; insert?: unknown };
+    if (typeof operation.retain === "number" && Number.isInteger(operation.retain) && operation.retain >= 0) {
+      flushPending();
+      beforeOffset += operation.retain;
+      afterOffset += operation.retain;
+      continue;
+    }
+    if (typeof operation.delete === "number" && Number.isInteger(operation.delete) && operation.delete >= 0) {
+      const length = operation.delete;
+      if (beforeOffset + length > before.length) { invalid = true; break; }
+      startPending().deleted += before.slice(beforeOffset, beforeOffset + length);
+      beforeOffset += length;
+      continue;
+    }
+    if (typeof operation.insert === "string") {
+      startPending().inserted += operation.insert;
+      afterOffset += operation.insert.length;
+      continue;
+    }
+    invalid = true;
+    break;
+  }
+  flushPending();
+  // Yjs normally emits retains for all unchanged text. Be defensive about
+  // omitted trailing retains, then reject anything whose coordinate model does
+  // not reconstruct the actual strings.
+  const beforeRemaining = before.length - beforeOffset;
+  const afterRemaining = after.length - afterOffset;
+  if (beforeRemaining === afterRemaining && beforeRemaining >= 0) {
+    beforeOffset = before.length;
+    afterOffset = after.length;
+  }
+  if (invalid || beforeOffset !== before.length || afterOffset !== after.length || spans.length > MAX_EDIT_SPANS_PER_STEP) {
+    return [wholeDocumentEditSpan(before, after)];
+  }
+  return spans.length ? spans : [wholeDocumentEditSpan(before, after)];
+}
+
+function wholeDocumentEditSpan(before: string, after: string): EditHistorySpan {
+  const prefix = commonPrefixLength(before, after);
+  const suffix = commonSuffixLength(before, after, prefix);
+  return editSpan(
+    prefix, before.length - suffix,
+    prefix, after.length - suffix,
+    before.slice(prefix, before.length - suffix), after.slice(prefix, after.length - suffix)
+  );
+}
+
+function editSpan(
+  beforeStart: number,
+  beforeEnd: number,
+  afterStart: number,
+  afterEnd: number,
+  deleted: string,
+  inserted: string
+): EditHistorySpan {
+  const deletedPreview = previewEditText(deleted);
+  const insertedPreview = previewEditText(inserted);
+  return {
+    beforeStart,
+    beforeEnd,
+    afterStart,
+    afterEnd,
+    deletedLength: deleted.length,
+    insertedLength: inserted.length,
+    deletedPreview,
+    insertedPreview,
+    truncated: deletedPreview.length < deleted.length || insertedPreview.length < inserted.length
+  };
+}
+
+function previewEditText(value: string): string {
+  if (value.length <= MAX_EDIT_PREVIEW_CHARS) return value;
+  const edge = Math.floor((MAX_EDIT_PREVIEW_CHARS - 1) / 2);
+  return `${value.slice(0, edge)}…${value.slice(value.length - edge)}`;
+}
+
+function commonPrefixLength(left: string, right: string): number {
+  const max = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < max && left.charCodeAt(index) === right.charCodeAt(index)) index += 1;
+  return index;
+}
+
+function commonSuffixLength(left: string, right: string, prefixLength: number): number {
+  const max = Math.min(left.length, right.length) - prefixLength;
+  let index = 0;
+  while (index < max && left.charCodeAt(left.length - 1 - index) === right.charCodeAt(right.length - 1 - index)) index += 1;
+  return index;
 }
 
 function syncUpdateMessage(update: Uint8Array): Uint8Array {

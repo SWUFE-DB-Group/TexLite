@@ -1,4 +1,4 @@
-import { AlignLeft, ArrowLeft, BookMarked, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, Users, X } from "lucide-react";
+import { ArrowLeft, BookMarked, FileClock, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, Users, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ActiveSession, CollaborationStatus, SharedCompileState } from "../collaboration";
 import type { EditorPreferences } from "../editorPreferences";
@@ -27,16 +27,13 @@ export interface WorkspaceTopbarProps {
   showCitationLibrary: boolean;
   citationLibraryOpen: boolean;
   onCitationLibrary: () => void;
+  onSelectionHistory: () => void;
   onHistory: () => void;
   onGit: () => void;
   canManageGit: boolean;
   formatting: boolean;
-  canFormat: boolean;
   readOnly: boolean;
   collaborationSynced: boolean;
-  activeFormatLease: boolean;
-  onFormatFile: () => void;
-  onFormatSelection: () => void;
   hasSelection: boolean;
   onAddComment: () => void;
   onToggleComments: () => void;
@@ -58,8 +55,8 @@ export function WorkspaceTopbar({
   site, project, activeFile, saveStateLabel, editorPreferences, activeSessions, collaborationStatus,
   reconnectCollaboration, protocolUpgradeRequired, showEditor, filesCollapsed, toggleFilesPanel, workspaceLayout,
   changeWorkspaceLayout, onBack, onShare, showCitationLibrary, citationLibraryOpen,
-  onCitationLibrary, onHistory, onGit, canManageGit, formatting, readOnly, collaborationSynced,
-  canFormat, activeFormatLease, onFormatFile, onFormatSelection, hasSelection, onAddComment,
+  onCitationLibrary, onSelectionHistory, onHistory, onGit, canManageGit, formatting, readOnly, collaborationSynced,
+  hasSelection, onAddComment,
   onToggleComments, commentsOpen, unresolvedCommentCount, hasActiveFile, onToggleSettings,
   settingsOpen, compileBusy, sharedCompiling, localCompiling, cancelling, compileState, onCompile, onCancelCompile
 }: WorkspaceTopbarProps) {
@@ -76,20 +73,13 @@ export function WorkspaceTopbar({
       <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} />
       <button onClick={onShare}><Users size={15} />{t("projectSettings.share")}</button>
       {showCitationLibrary && <button className={citationLibraryOpen ? "active" : ""} onClick={onCitationLibrary}><BookMarked size={15} />{t("citationLibrary.title")}</button>}
-      <div className="version-action" role="group" aria-label={t("common.version")}>
-        <div className="version-action-label"><GitBranch size={14} /><span>{t("common.version")}</span></div>
-        <div className="version-action-options">
-          <button type="button" className="version-action-history" title={t("history.title")} onClick={onHistory}>{t("history.title")}</button>
-          <button type="button" className="version-action-git" title={canManageGit ? t("git.title") : t("git.ownerOnly")} disabled={!canManageGit} onClick={onGit}>Git</button>
+      <div className="history-action" role="group" aria-label={t("history.title")}>
+        <div className="history-action-label"><FileClock size={14} /><span>{t("history.title")}</span></div>
+        <div className="history-action-options">
+          <button type="button" className="history-action-selection" title={hasSelection ? t("selectionHistory.title") : t("selectionHistory.selectSourceHint")} onMouseDown={(event) => event.preventDefault()} onClick={onSelectionHistory} disabled={!hasSelection || !hasActiveFile}>{t("selectionHistory.title")}</button>
+          <button type="button" className="history-action-snapshots" title={t("history.projectSnapshots")} onClick={onHistory}>{t("history.projectSnapshots")}</button>
         </div>
       </div>
-      {showEditor && project.permission !== "read" && canFormat && <div className="format-action" role="group" aria-label={t("editor.format")} aria-busy={formatting}>
-        <div className="format-action-label"><AlignLeft size={14} /><span>{t("editor.format")}</span></div>
-        <div className="format-action-options">
-          <button type="button" className="format-action-file" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={onFormatFile} disabled={formatting || activeFormatLease || !collaborationSynced}>{t("editor.formatFile")}</button>
-          <button type="button" className="format-action-selected" title={hasSelection ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={onFormatSelection} disabled={formatting || activeFormatLease || !collaborationSynced || !hasSelection}>{t("editor.formatSelected")}</button>
-        </div>
-      </div>}
       <div className="comments-action" role="group" aria-label={t("common.comments")}>
         <div className="comments-action-label"><MessageSquare size={14} /><span>{t("common.comments")}</span></div>
         <div className="comments-action-options">
@@ -97,6 +87,7 @@ export function WorkspaceTopbar({
           <button type="button" className={`comments-action-all${commentsOpen ? " active" : ""}`} title={t("editor.commentsAll")} onClick={onToggleComments}>{t("editor.commentsAll")} {unresolvedCommentCount || ""}</button>
         </div>
       </div>
+      <button className="git-action" title={canManageGit ? t("git.title") : t("git.ownerOnly")} disabled={!canManageGit} onClick={onGit}><GitBranch size={15} />Git</button>
       <button className={settingsOpen ? "active" : ""} onClick={onToggleSettings}><Settings size={15} />{t("common.settings")}</button>
       {sharedCompiling || localCompiling
         ? <button className="compile cancel-compile" title={t("compileControls.cancel")} onClick={onCancelCompile} disabled={cancelling || formatting || readOnly || !collaborationSynced}>{cancelling ? <LoaderCircle className="spin" size={15} /> : <X size={15} />}{cancelling ? t("compileControls.cancelling") : t("compileControls.cancel")}</button>

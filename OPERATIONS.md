@@ -182,6 +182,7 @@ starting point. It intentionally uses `.texlite` for repository development;
 | `uploads.maxFileSizeMB` | `50` MB | Limit for uploads, ZIP entries, and attachments. |
 | `pdf.loadingStrategy` / `pdf.rangeThresholdMB` | `auto` / `5` MB | Chooses full transfer for small PDFs and byte ranges for larger ones. |
 | `history.maxVersions` / `history.maxStorageMB` | `0` (unlimited) / `128` MB | Per-project ordinary-version count (`0` = unlimited) and soft storage limit. |
+| `editHistory.maxStorageMB` | `32` MB | Independent per-project cap for author-attributed selection-edit deltas; retains the newest records and never consumes snapshot storage. |
 | `latex.latexmk` | `latexmk` | Host command. |
 | `latex.defaultEngine` | `xelatex` | Must appear in the allowed list. |
 | `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` | Engines available in the UI. |
@@ -203,6 +204,7 @@ TEXLITE_DATA_DIR                TEXLITE_CLIENT_DIR
 TEXLITE_SESSION_DAYS            TEXLITE_MAX_UPLOAD_SIZE_MB
 TEXLITE_PDF_LOADING_STRATEGY    TEXLITE_PDF_RANGE_THRESHOLD_MB
 TEXLITE_HISTORY_MAX_VERSIONS    TEXLITE_HISTORY_MAX_STORAGE_MB
+TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB
 TEXLITE_LATEXMK                 TEXLITE_DEFAULT_ENGINE
 TEXLITE_COMPILE_TIMEOUT         TEXLITE_MAX_COMPILE_JOBS
 TEXLITE_GIT                     TEXLITE_GIT_TIMEOUT
@@ -216,7 +218,8 @@ actionable error. Explicit invalid values are never silently replaced with a
 default. `texlite init` applies the same validation.
 
 Accepted limits are: port `1–65535`, sessions `1–3650` days, upload size
-`1–2048` MB, history count `0–50000` (`0` = unlimited), history size `16–102400` MB, PDF range
+`1–2048` MB, history count `0–50000` (`0` = unlimited), snapshot history size `16–102400` MB,
+edit-history size `4–102400` MB, PDF range
 threshold `1–2048` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
 and Git timeout `1–3600` seconds.
 

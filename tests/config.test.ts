@@ -11,6 +11,7 @@ describe("configuration", () => {
     "TEXLITE_MAX_COMPILE_JOBS", "TEXLITE_LATEXMK", "TEXLITE_DEFAULT_ENGINE", "TEXLITE_MAX_UPLOAD_SIZE_MB",
     "TEXLITE_PDF_LOADING_STRATEGY", "TEXLITE_PDF_RANGE_THRESHOLD_MB",
     "TEXLITE_HISTORY_MAX_VERSIONS", "TEXLITE_HISTORY_MAX_STORAGE_MB",
+    "TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB",
     "TEXLITE_GIT", "TEXLITE_GIT_TIMEOUT", "TEXLITE_GITHUB_API_URL"
   ] as const;
   const originalEnvironment = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -36,6 +37,7 @@ describe("configuration", () => {
       uploads: { maxFileSizeMB: 25 },
       pdf: { loadingStrategy: "range", rangeThresholdMB: 7 },
       history: { maxVersions: 120, maxStorageMB: 256 },
+      editHistory: { maxStorageMB: 48 },
       git: { binary: "/usr/local/bin/git", operationTimeoutSeconds: 45, githubApiBaseUrl: "https://github.example/api/v3/" },
       latex: { defaultEngine: "lualatex", allowedEngines: ["lualatex"], allowProjectLatexmkrc: false }
     }));
@@ -51,6 +53,7 @@ describe("configuration", () => {
     expect(config.pdfRangeThresholdBytes).toBe(7 * 1024 * 1024);
     expect(config.historyMaxVersions).toBe(120);
     expect(config.historyMaxStorageBytes).toBe(256 * 1024 * 1024);
+    expect(config.editHistoryMaxStorageBytes).toBe(48 * 1024 * 1024);
     expect(config.git).toBe("/usr/local/bin/git");
     expect(config.gitOperationTimeoutMs).toBe(45_000);
     expect(config.githubApiBaseUrl).toBe("https://github.example/api/v3");
@@ -70,6 +73,7 @@ describe("configuration", () => {
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
       pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
       historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024,
+      editHistoryMaxStorageBytes: 32 * 1024 * 1024,
       git: "git", gitOperationTimeoutMs: 120_000, githubApiBaseUrl: "https://api.github.com"
     });
   });
@@ -88,6 +92,14 @@ describe("configuration", () => {
     fs.writeFileSync(configPath, JSON.stringify({ history: { maxVersions: -1, maxStorageMB: 15 } }));
     process.env.TEXLITE_CONFIG = configPath;
     expect(() => loadConfig()).toThrow(/history\.maxVersions.*0 to 50000/);
+  });
+
+  it("validates the independent selection edit-history storage limit", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-edit-history-"));
+    const configPath = path.join(root, "texlite.config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ editHistory: { maxStorageMB: 3 } }));
+    process.env.TEXLITE_CONFIG = configPath;
+    expect(() => loadConfig()).toThrow(/editHistory\.maxStorageMB.*4 to 102400/);
   });
 
   it("validates the PDF loading strategy and range threshold", () => {

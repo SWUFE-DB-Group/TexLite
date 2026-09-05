@@ -122,6 +122,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const [shareOpen, setShareOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectionHistoryOpen, setSelectionHistoryOpen] = useState(false);
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
@@ -191,6 +192,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     setOpenTabs([]);
     setFormatterRecovery(null);
     setFormatterDiagnostics("");
+    setSelectionHistoryOpen(false);
     wordCountRequest.current?.abort();
     wordCountRequest.current = null;
     mentionTargetRequest.current?.abort();
@@ -1150,10 +1152,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       toggleFilesPanel={toggleFilesPanel} workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
       onBack={onBack} onShare={() => setShareOpen(true)} showCitationLibrary={showEditor && /\.bib$/i.test(activeFile)}
       citationLibraryOpen={citationLibraryOpen} onCitationLibrary={() => setCitationLibraryOpen(true)}
-      onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
-      formatting={formatting} canFormat={isFormattableLatexFile(activeFile)} readOnly={readOnly} collaborationSynced={collaborationSynced}
-      activeFormatLease={Boolean(activeFormatLease)} onFormatFile={() => void formatCurrentFile()}
-      onFormatSelection={() => void formatSelectedSource()} hasSelection={Boolean(selection.selectedText.trim())}
+      onSelectionHistory={() => setSelectionHistoryOpen(true)} onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
+      formatting={formatting} readOnly={readOnly} collaborationSynced={collaborationSynced}
+      hasSelection={Boolean(selection.selectedText.trim())}
       onAddComment={() => setCommentOpen(true)} onToggleComments={() => setSidePanel(sidePanel === "comments" ? null : "comments")}
       commentsOpen={sidePanel === "comments"} unresolvedCommentCount={comments.filter((item) => !item.resolved).length}
       hasActiveFile={Boolean(activeFile)} onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
@@ -1179,9 +1180,12 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         project={project} filesPanel={filesPanel} files={files} visibleEntries={visibleEntries}
         activeFile={activeFile} activeMainFile={activeMainFile} rootDocuments={rootDocuments}
         selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
-        uploadingFiles={uploadingFiles} readOnly={readOnly} editorFontSize={editorPreferences.fontSize}
+        uploadingFiles={uploadingFiles} readOnly={readOnly} formatting={formatting}
+        canFormat={isFormattableLatexFile(activeFile)} activeFormatLease={Boolean(activeFormatLease)} collaborationSynced={collaborationSynced}
+        editorFontSize={editorPreferences.fontSize}
         outline={outline} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy}
-        hasSelection={Boolean(selection.selectedText.trim()) && /\.(?:tex|sty|cls)$/i.test(activeFile)} uploadInput={uploadInput}
+        hasSelection={Boolean(selection.selectedText.trim()) && /\.(?:tex|sty|cls)$/i.test(activeFile)}
+        hasFormatSelection={Boolean(selection.selectedText.trim())} uploadInput={uploadInput}
         setSelectedFolder={setSelectedFolder} setExpandedFolders={setExpandedFolders}
         setMoveEntry={setMoveEntry} setMoveName={setMoveName} setMoveDestination={setMoveDestination}
         setDeleteEntry={setDeleteEntry} setFileDialogError={setFileDialogError}
@@ -1190,6 +1194,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         setQuickOpen={setQuickOpen} setProjectSearchOpen={setProjectSearchOpen}
         setFileDragActive={setFileDragActive} setFilesCollapsed={setFilesCollapsed} toggleFilesPanel={toggleFilesPanel}
         uploadFiles={uploadFiles} upload={upload} openFile={openFile}
+        onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
         jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
       />}
       {showEditor && <PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle>}
@@ -1267,6 +1272,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
       quickOpen={quickOpen} setQuickOpen={setQuickOpen} projectSearchOpen={projectSearchOpen}
       setProjectSearchOpen={setProjectSearchOpen} openFile={openFile} jumpToSource={jumpToSource}
+      selectionHistoryOpen={selectionHistoryOpen} setSelectionHistoryOpen={setSelectionHistoryOpen}
       historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} gitOpen={gitOpen} setGitOpen={setGitOpen}
       save={save} permissionDowngrade={permissionDowngrade} permissionDowngradeBusy={permissionDowngradeBusy}
       dismissPermissionDowngrade={dismissPermissionDowngrade} discardPermissionDraft={discardPermissionDraft}

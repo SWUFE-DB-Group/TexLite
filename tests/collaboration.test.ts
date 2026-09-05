@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { OutgoingHttpHeaders } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
@@ -44,7 +44,7 @@ describe("project collaboration", () => {
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "pdflatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
       maxUploadBytes: 50 * 1024 * 1024, pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
+      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024, editHistoryMaxStorageBytes: 32 * 1024 * 1024,
       git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
     };
     db = openDatabase(config);
@@ -134,6 +134,24 @@ describe("project collaboration", () => {
       Y.applyUpdate(persistedDoc, fs.readFileSync(collaborationStatePath(config, projectId)));
       expect(persistedDoc.getText("source:main.tex").toString()).toBe(diskContent);
       persistedDoc.destroy();
+
+      const ownerEditStart = diskContent.indexOf("% owner session");
+      expect(ownerEditStart).toBeGreaterThanOrEqual(0);
+      const selectionHistory = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/edit-history?path=main.tex&start=${ownerEditStart}&end=${ownerEditStart + "% owner session".length}&sourceHash=${createHash("sha256").update(diskContent).digest("hex")}`,
+        headers: { cookie: adminCookie }
+      });
+      expect(selectionHistory.statusCode).toBe(200);
+      const staleHistory = await app.inject({
+        method: "GET", url: `/api/projects/${projectId}/edit-history?path=main.tex&start=0&end=4&sourceHash=${createHash("sha256").update(`prefix${diskContent}`).digest("hex")}`,
+        headers: { cookie: adminCookie }
+      });
+      expect(staleHistory.statusCode).toBe(409);
+      expect(staleHistory.json().code).toBe("SELECTION_HISTORY_SOURCE_CHANGED");
+      expect(selectionHistory.json().entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ authors: expect.arrayContaining([expect.objectContaining({ id: adminId })]) })
+      ]));
 
       const acceptedContent = ownerText.toString();
       readPeer.doc.getText("source:main.tex").insert(0, "% forbidden read-only edit\n");

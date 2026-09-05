@@ -7,7 +7,7 @@ import {
 import { api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { formatCommitTime, formatVersionTitle, generateUnifiedDiff } from "./diff";
-import type { HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
+import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
 
 interface HistoryComparison {
   path: string;
@@ -15,6 +15,8 @@ interface HistoryComparison {
   comparison: string;
   against: string;
 }
+
+const HISTORY_PAGE_SIZE = 100;
 
 export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }: {
   open: boolean;
@@ -36,30 +38,72 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const [restoreTarget, setRestoreTarget] = useState<"project" | string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<HistoryVersion | "all" | null>(null);
   const [busy, setBusy] = useState("");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState("");
   const diffSectionRef = useRef<HTMLDivElement>(null);
+  const olderPageAbortRef = useRef<AbortController | null>(null);
 
   const canRestore = project.permission !== "read";
   const isOwner = project.permission === "owner";
+  const controlsBusy = Boolean(busy) || loadingOlder;
 
   useEffect(() => {
     if (!open) {
+      olderPageAbortRef.current?.abort();
+      olderPageAbortRef.current = null;
+      setLoadingOlder(false);
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
       setDiffFullscreen(false);
       return;
     }
+    olderPageAbortRef.current?.abort();
+    olderPageAbortRef.current = null;
     const controller = new AbortController();
-    setBusy("load"); setError(""); setComparison(null);
-    void api<{ versions: HistoryVersion[]; stats: HistoryStats | null }>(`/api/projects/${project.id}/history`, { signal: controller.signal })
+    setBusy("load"); setError(""); setComparison(null); setNextCursor(null); setLoadingOlder(false);
+    void api<HistoryPage>(`/api/projects/${project.id}/history?limit=${HISTORY_PAGE_SIZE}`, { signal: controller.signal })
       .then((result) => {
         setVersions(result.versions);
         setStats(result.stats);
+        setNextCursor(result.nextCursor);
         setSelectedId((current) => result.versions.some((version) => version.id === current) ? current : result.versions[0]?.id ?? "");
       })
       .catch((reason) => { if (!isAbort(reason)) setError(message(reason)); })
       .finally(() => { if (!controller.signal.aborted) setBusy(""); });
     return () => controller.abort();
   }, [open, project.id]);
+
+  useEffect(() => () => {
+    olderPageAbortRef.current?.abort();
+    olderPageAbortRef.current = null;
+  }, [project.id]);
+
+  const loadOlder = async () => {
+    const cursor = nextCursor;
+    if (!cursor || loadingOlder || busy) return;
+    olderPageAbortRef.current?.abort();
+    const controller = new AbortController();
+    olderPageAbortRef.current = controller;
+    setLoadingOlder(true); setError("");
+    try {
+      const query = new URLSearchParams({ limit: String(HISTORY_PAGE_SIZE), before: cursor });
+      const result = await api<HistoryPage>(`/api/projects/${project.id}/history?${query.toString()}`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setVersions((current) => {
+        const loaded = new Set(current.map((version) => version.id));
+        return [...current, ...result.versions.filter((version) => !loaded.has(version.id))];
+      });
+      setStats(result.stats);
+      setNextCursor(result.nextCursor);
+    } catch (reason) {
+      if (!isAbort(reason)) setError(message(reason));
+    } finally {
+      if (olderPageAbortRef.current === controller) {
+        olderPageAbortRef.current = null;
+        setLoadingOlder(false);
+      }
+    }
+  };
 
   useEffect(() => {
     const onFullscreenChange = () => setDiffFullscreen(document.fullscreenElement === diffSectionRef.current);
@@ -177,7 +221,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       const result = await api<{ ok: true; stats: HistoryStats }>(endpoint, { method: "DELETE" });
       setStats(result.stats);
       if (target === "all") {
-        setVersions([]); setSelectedId(""); setDetail(null); setComparison(null);
+        setVersions([]); setSelectedId(""); setDetail(null); setComparison(null); setNextCursor(null);
       } else {
         const remaining = versions.filter((version) => version.id !== target.id);
         setVersions(remaining);
@@ -235,14 +279,14 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     ? formatVersionTitle(deleteTarget, t(`history.reasons.${deleteTarget.reason}`), i18n.resolvedLanguage)
     : "";
 
-  return <><Modal open={open} extraWide className="history-dialog-modal" title={t("history.title")} description={t("history.description")} onOpenChange={onOpenChange}
+  return <><Modal open={open} extraWide draggable className="history-dialog-modal" title={t("history.projectSnapshots")} description={t("history.description")} onOpenChange={onOpenChange}
     footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
     <div className="history-dialog">
       {error && <p className="error history-message">{error}</p>}
       {busy === "load" && versions.length === 0 ? <div className="history-loading"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div> : <div className="history-dialog-layout">
         <aside className="history-timeline">
           {isOwner && stats && <div className={`history-stats${stats.storageLimitExceeded ? " exceeded" : ""}`}>
-            <header><span><HardDrive size={14} />{t("history.storage")}</span><button type="button" disabled={Boolean(busy) || versions.length === 0} title={t("history.clearAll")} aria-label={t("history.clearAll")} onClick={() => setDeleteTarget("all")}><Trash2 size={13} /></button></header>
+            <header><span><HardDrive size={14} />{t("history.storage")}</span><button type="button" disabled={controlsBusy || versions.length === 0} title={t("history.clearAll")} aria-label={t("history.clearAll")} onClick={() => setDeleteTarget("all")}><Trash2 size={13} /></button></header>
             <strong>{t("history.storageUsage", { used: formatBytes(stats.objectBytes), limit: formatBytes(stats.maxStorageBytes) })}</strong>
             <progress max={stats.maxStorageBytes} value={Math.min(stats.objectBytes, stats.maxStorageBytes)} />
             <small>{t("history.versionUsage", { count: stats.ordinaryVersionCount, limit: stats.maxVersions > 0 ? stats.maxVersions : "∞" })}{stats.labeledVersionCount > 0 ? ` · ${t("history.protectedVersions", { count: stats.labeledVersionCount })}` : ""}</small>
@@ -266,6 +310,12 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
               </button>
             );
           })}
+          {nextCursor && <div className="history-load-more">
+            <button type="button" disabled={controlsBusy} aria-busy={loadingOlder} onClick={() => void loadOlder()}>
+              {loadingOlder ? <LoaderCircle className="spin" size={13} /> : <Clock3 size={13} />}
+              {loadingOlder ? t("common.loading") : t("history.loadOlder")}
+            </button>
+          </div>}
           {versions.length === 0 && <p className="muted padded">{t("history.empty")}</p>}
         </aside>
         <section className="history-detail">
@@ -279,13 +329,13 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                 <small><Clock3 size={12} />{new Date(detail.version.createdAt).toLocaleString(i18n.resolvedLanguage)} · {authorName} · {t("history.fileCount", { count: detail.version.fileCount })}</small>
               </div>
               <span className="history-detail-actions">
-                {isOwner && <button className="danger-text" disabled={Boolean(busy)} onClick={() => setDeleteTarget(detail.version)}><Trash2 size={14} />{t("history.deleteVersion")}</button>}
-                {canRestore && <button className="danger-text" disabled={Boolean(busy)} onClick={() => setRestoreTarget("project")}><RotateCcw size={14} />{t("history.restoreProject")}</button>}
+                {isOwner && <button className="danger-text" disabled={controlsBusy} onClick={() => setDeleteTarget(detail.version)}><Trash2 size={14} />{t("history.deleteVersion")}</button>}
+                {canRestore && <button className="danger-text" disabled={controlsBusy} onClick={() => setRestoreTarget("project")}><RotateCcw size={14} />{t("history.restoreProject")}</button>}
               </span>
             </header>
             {canRestore && <div className="history-label">
               <label><Tag size={14} /><input value={label} maxLength={80} placeholder={t("history.labelPlaceholder")} onChange={(event) => setLabel(event.target.value)} /></label>
-              <button disabled={busy === "label" || label.trim() === (detail.version.label ?? "")} onClick={() => void saveLabel()}>{busy === "label" ? <LoaderCircle className="spin" size={13} /> : <Save size={13} />}{t("history.saveLabel")}</button>
+              <button disabled={controlsBusy || label.trim() === (detail.version.label ?? "")} onClick={() => void saveLabel()}>{busy === "label" ? <LoaderCircle className="spin" size={13} /> : <Save size={13} />}{t("history.saveLabel")}</button>
             </div>}
             <div className="history-files">
               <div className="history-files-toolbar">
@@ -294,7 +344,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                   <span>{t("history.changedFilesHeading", { count: changedFiles.length })}</span>
                 </div>
                 <div className="history-file-actions">
-                  {canRestore && <button disabled={!selectedPath || Boolean(busy)} onClick={() => setRestoreTarget(selectedPath)}><RotateCcw size={13} />{t("history.restoreFile")}</button>}
+                  {canRestore && <button disabled={!selectedPath || controlsBusy} onClick={() => setRestoreTarget(selectedPath)}><RotateCcw size={13} />{t("history.restoreFile")}</button>}
                 </div>
               </div>
               {changedFiles.length > 0 ? (

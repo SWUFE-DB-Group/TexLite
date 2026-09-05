@@ -168,6 +168,29 @@ was intentionally held in memory. If a collaborative text edit exceeds the
 configured limit, it is restored to the last durable content and the flush
 receipt identifies the rejected path.
 
+After a source write succeeds, connection-originated Yjs text deltas are also
+stored as ordered edit segments. Each segment belongs to exactly one user, one
+file, and one operation type (`edit` or `format`). The edit records store only
+positional replacements and bounded source previews, not duplicate complete
+files. They live in SQLite separately from recovery snapshots and are retained
+as the newest 5,000 project segments within an independent 32 MB serialized
+payload budget (`editHistory.maxStorageMB`). This budget never shares or
+reduces the 128 MB recovery-snapshot budget. A too-large individual edit burst
+is omitted, and retention removes the oldest records; both deliberately create
+a visible history boundary rather than presenting an unsafe attribution. When selection history is viewed,
+adjacent records affecting the selection are consolidated into a bounded
+two-minute editing window. Its raw per-user records remain separate, while the
+timeline lists every contributor to that window. Each entry maps the selected
+passage backward through the durable edit chain and presents the resulting
+selected content, a semantic character-level comparison with the preceding
+older state, contributors, and latest edit time in reverse chronological order.
+Long unchanged runs are compacted around the local rewrite; truncated passage
+previews are never compared. Consecutive windows whose
+fully reconstructed selected content is identical are coalesced, so the
+timeline only shows effective text states. If a file was replaced, restored, imported,
+or reached an edit-record retention boundary, mapping stops instead of guessing
+across the gap.
+
 Yjs state persistence is reserved for source and HTTP-originated text updates.
 Ephemeral metadata such as compile status, file-list revisions, and comment or
 dictionary invalidation markers is broadcast live and reconstructed from the
@@ -324,8 +347,24 @@ result for each root is retained.
 
 ## History and recovery
 
-History records initial state, acknowledged collaborative saves, file/source
-operations, compiler settings, Git operations, checkpoints, and restores.
+Selection-history requests bind their offsets to a SHA-256 hash of the
+browser's source. After flushing, the server rejects a mismatched revision
+with a retryable conflict instead of inspecting a different passage. The
+dialog keeps its inspected selection fixed while collaborators keep editing.
+Responses include the earliest reconstructed baseline for diffing, and an
+explicit `hasMore` flag when the 60-window display limit is reached. This
+display limit is separate from missing or pruned history boundaries.
+
+Project snapshots record initial state, acknowledged collaborative saves,
+file/source operations, compiler settings, Git operations, checkpoints, and
+restores. They are a recovery mechanism: a snapshot can restore a file or the
+whole project, but it intentionally does not attempt to assign individual lines
+to collaborators. The separate selection-history stream provides that
+author-attributed editing view and never changes snapshot retention or restore
+semantics.
+Its edit segments have their own `editHistory.maxStorageMB` hard payload cap
+(32 MB by default), so selection-history retention cannot consume the snapshot
+budget or affect recovery capacity.
 Autosaves by the same author are coalesced within a two-minute window. File
 contents are complete SHA-256-addressed objects; unchanged files are reused
 across manifests. By default, ordinary version count is unlimited (`history.maxVersions: 0`),
@@ -335,6 +374,10 @@ to cap the count of ordinary versions. Initial and labeled versions,
 plus the current internal baseline, are protected and can make the soft limit
 temporarily exceed its target. Retention pruning batches reference accounting
 and removes unreferenced objects.
+
+The snapshot timeline initially loads the newest 100 versions. Older versions
+are appended on demand through a stable cursor rather than offset pages, so
+new saves or removals cannot reorder, repeat, or skip a version already shown.
 
 Owners can view storage statistics, delete one version, or clear all history
 without changing current source files. Restore is an exclusive source

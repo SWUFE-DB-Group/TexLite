@@ -20,6 +20,9 @@
     "maxVersions": 0,
     "maxStorageMB": 128
   },
+  "editHistory": {
+    "maxStorageMB": 32
+  },
   "git": {
     "binary": "git",
     "operationTimeoutSeconds": 120,

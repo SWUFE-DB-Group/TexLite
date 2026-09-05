@@ -48,7 +48,7 @@ describe("database migrations", () => {
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
       maxUploadBytes: 50 * 1024 * 1024, pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024,
+      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024, editHistoryMaxStorageBytes: 32 * 1024 * 1024,
       git: "git", gitOperationTimeoutMs: 30_000,
       githubApiBaseUrl: "https://api.github.com"
     };
