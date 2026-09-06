@@ -213,7 +213,7 @@
   "history": {
     "saveWarning": "源码已保存，但部分历史未能保存。近期失败会自动重试，较早的历史可能不完整。请检查服务器日志及可用存储空间。",
     "storageBreakdown": "文件 {{objects}} · 元数据 {{metadata}} · 受保护 {{protected}}",
-    "title": "历史", "projectSnapshots": "项目快照", "description": "浏览自动项目快照、比较文件，并安全恢复较早的工作。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",
+    "title": "历史", "projectSnapshots": "项目快照", "projectSnapshotsButton": "项目快照", "description": "浏览自动项目快照、比较文件，并安全恢复较早的工作。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",
     "changedCount": "{{count}} 个文件有变化", "fileCount": "{{count}} 个文件", "changed": "有修改", "labelPlaceholder": "为此版本命名", "saveLabel": "保存标签",
     "compareCurrent": "与当前版本比较", "comparingCurrent": "历史快照与当前文件的比较", "chooseFile": "选择文件后，可与当前源码进行比较。",
     "changedFilesHeading": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "historicalVersion": "历史快照", "currentVersion": "当前版本",
@@ -230,7 +230,7 @@
     "storageDescription": "统计整个项目的修改数据，与项目快照独立；不包含共享数据库开销。",
     "clearAll": "清空项目选区历史", "clearDescription": "删除本项目所有文件的修改记录？源码和项目快照将保留，后续修改仍会继续记录。此操作不可撤销。",
     "limited": "仅显示最近 {{count}} 个编辑窗口，更早的记录未展示。", "sourceChanged": "源码已发生变化。请等待同步完成，重新选择文本后再打开历史。",
-    "title": "选区历史", "selectSourceHint": "请先选中源码，再查看其编辑历史。", "description": "{{path}} 中所选 {{count}} 个字符的编辑记录。",
+    "title": "选区历史", "buttonLabel": "编辑记录", "selectSourceHint": "请先选中源码，再查看其编辑历史。", "description": "{{path}} 中所选 {{count}} 个字符的编辑记录。",
     "emptyTitle": "此选区还没有已保存的编辑记录", "emptyDescription": "继续编辑并保存后，这里会显示相关的编辑记录。",
     "boundary": "由于文件替换、恢复操作或较早记录已清理，此选区的历史从这里开始。",
     "changedBy": "修改者：", "contentTab": "内容", "diffTab": "差异", "view": "选区历史展示方式", "previousVersion": "上一状态", "currentVersion": "当前状态", "noPrevious": "没有更早的选区状态可供比较。", "diffUnavailable": "其中一个选区状态无法精确还原，暂无法比较。", "noDiff": "与上一选区状态没有文本差异。", "contentTruncated": "选区内容已缩短。", "contentUnavailable": "由于一次过大的修改无法精确还原，无法显示这个较早状态的选区内容。"

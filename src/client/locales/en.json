@@ -222,7 +222,7 @@
   "history": {
     "saveWarning": "Source files were saved, but some history could not be saved. Recent failures are retried automatically; older history may be incomplete. Check server logs and available storage.",
     "storageBreakdown": "Files {{objects}} · Metadata {{metadata}} · Protected {{protected}}",
-    "title": "History", "projectSnapshots": "Project snapshots", "description": "Browse automatic project snapshots, compare files and safely restore earlier work.", "empty": "No project snapshots yet.", "loadOlder": "Load older snapshots",
+    "title": "History", "projectSnapshots": "Project snapshots", "projectSnapshotsButton": "Snapshots", "description": "Browse automatic project snapshots, compare files and safely restore earlier work.", "empty": "No project snapshots yet.", "loadOlder": "Load older snapshots",
     "changedCount": "{{count}} changed files", "fileCount": "{{count}} files", "changed": "changed", "labelPlaceholder": "Name this version", "saveLabel": "Save label",
     "compareCurrent": "Compare with current", "comparingCurrent": "Earlier snapshot compared with the current file", "chooseFile": "Choose a file, then compare it with the current source.",
     "changedFilesHeading": "Changed files ({{count}})", "noChangedFiles": "No files were changed in this snapshot.", "noDifferences": "This file is identical between the snapshot and current version.", "noDifferencesInCommit": "This file was not changed in this edit.", "historicalVersion": "Historical snapshot", "currentVersion": "Current version",
@@ -239,7 +239,7 @@
     "storageDescription": "Project-wide edit payload, separate from snapshots. Shared database overhead is excluded.",
     "clearAll": "Clear project edit history", "clearDescription": "Delete edit history for every file in this project? Source files and recovery snapshots will remain. New edits will continue to be recorded. This cannot be undone.",
     "limited": "Showing the latest {{count}} editing windows. Older edits are not displayed.", "sourceChanged": "The source changed. Wait for synchronization, then select the passage and open its history again.",
-    "title": "Selection history", "selectSourceHint": "Select source text to inspect its edit history.", "description": "Editing windows affecting {{path}} · {{count}} selected characters.",
+    "title": "Selection history", "buttonLabel": "Edits", "selectSourceHint": "Select source text to inspect its edit history.", "description": "Editing windows affecting {{path}} · {{count}} selected characters.",
     "emptyTitle": "No saved edits for this selection", "emptyDescription": "Continue editing and saving to build its edit history.",
     "boundary": "This selection's history begins after a file replacement, restore, or older-record retention boundary.",
     "changedBy": "Changed by", "contentTab": "Content", "diffTab": "Diff", "view": "Selection history view", "previousVersion": "Earlier state", "currentVersion": "This state", "noPrevious": "No earlier selected state is available for comparison.", "diffUnavailable": "A comparison is unavailable because one selected state could not be reconstructed exactly.", "noDiff": "No textual difference from the preceding selected state.", "contentTruncated": "Selected content shortened.", "contentUnavailable": "Selected content for this earlier state is unavailable because a very large change could not be reconstructed exactly."

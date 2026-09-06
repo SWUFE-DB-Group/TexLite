@@ -76,8 +76,8 @@ export function WorkspaceTopbar({
       <div className="history-action" role="group" aria-label={t("history.title")}>
         <div className="history-action-label"><FileClock size={14} /><span>{t("history.title")}</span></div>
         <div className="history-action-options">
-          <button type="button" className="history-action-selection" title={hasSelection ? t("selectionHistory.title") : t("selectionHistory.selectSourceHint")} onMouseDown={(event) => event.preventDefault()} onClick={onSelectionHistory} disabled={!hasSelection || !hasActiveFile}>{t("selectionHistory.title")}</button>
-          <button type="button" className="history-action-snapshots" title={t("history.projectSnapshots")} onClick={onHistory}>{t("history.projectSnapshots")}</button>
+          <button type="button" className="history-action-selection" title={hasSelection ? t("selectionHistory.title") : t("selectionHistory.selectSourceHint")} onMouseDown={(event) => event.preventDefault()} onClick={onSelectionHistory} disabled={!hasSelection || !hasActiveFile}>{t("selectionHistory.buttonLabel")}</button>
+          <button type="button" className="history-action-snapshots" title={t("history.projectSnapshots")} onClick={onHistory}>{t("history.projectSnapshotsButton")}</button>
         </div>
       </div>
       <div className="comments-action" role="group" aria-label={t("common.comments")}>
