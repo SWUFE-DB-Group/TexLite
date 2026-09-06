@@ -240,6 +240,7 @@ function migrate(db: DatabaseConnection): void {
       before_hash TEXT NOT NULL,
       after_hash TEXT NOT NULL,
       steps_json TEXT NOT NULL,
+      steps_bytes INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -312,6 +313,13 @@ function migrate(db: DatabaseConnection): void {
     );
   `);
 
+  const editColumns = db.prepare("PRAGMA table_info(project_edit_segments)").all() as Array<{ name: string }>;
+  if (!editColumns.some((column) => column.name === "steps_bytes")) {
+    db.transaction(() => {
+      db.exec("ALTER TABLE project_edit_segments ADD COLUMN steps_bytes INTEGER NOT NULL DEFAULT 0");
+      db.exec("UPDATE project_edit_segments SET steps_bytes = LENGTH(CAST(steps_json AS BLOB))");
+    })();
+  }
   const projectColumns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
   if (!projectColumns.some((column) => column.name === "latexmkrc")) {
     db.exec("ALTER TABLE projects ADD COLUMN latexmkrc TEXT");

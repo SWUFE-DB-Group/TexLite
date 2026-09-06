@@ -37,6 +37,7 @@ export function useProjectCollaboration(
   const [compileState, setCompileState] = useState<SharedCompileState | null>(null);
   const [filesEvent, setFilesEvent] = useState<FilesEvent | null>(null);
   const [commentsRevision, setCommentsRevision] = useState("");
+  const [historyWarning, setHistoryWarning] = useState(false);
   const [dictionaryRevision, setDictionaryRevision] = useState("");
   const [formatLeaseStates, setFormatLeaseStates] = useState<FormatLeaseState[]>([]);
   const [localDraftReady, setLocalDraftReady] = useState(false);
@@ -63,6 +64,7 @@ export function useProjectCollaboration(
       setCompileState(null);
       setFilesEvent(null);
       setCommentsRevision("");
+      setHistoryWarning(false);
       setDictionaryRevision("");
       setFormatLeaseStates([]);
       onDisconnectedRef.current();
@@ -80,6 +82,7 @@ export function useProjectCollaboration(
       clearDisconnectedState();
     };
     const handleMeta = () => {
+      setHistoryWarning(collaboration.meta.get("historyWarning") === true);
       const nextFilesEvent = collaboration.meta.get("filesEvent");
       if (isFilesEvent(nextFilesEvent)) setFilesEvent(nextFilesEvent);
       const nextCommentsRevision = collaboration.meta.get("commentsRevision");
@@ -241,6 +244,7 @@ export function useProjectCollaboration(
     formatLeaseStates,
     filesEvent,
     commentsRevision,
+    historyWarning,
     dictionaryRevision,
     localDraftReady,
     permission,

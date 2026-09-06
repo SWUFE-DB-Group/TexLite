@@ -3,7 +3,7 @@ import { Clock3, LoaderCircle, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { digest } from "lib0/hash/sha256";
-import { Modal } from "./Dialog";
+import { ConfirmDialog, Modal } from "./Dialog";
 import { generateSelectionHistoryDiff, type SelectionHistoryDiffPiece, type SelectionHistorySemanticDiff } from "./selectionHistoryDiff";
 import type { Project, SelectionHistoryAuthor, SelectionHistoryEntry, SelectionHistoryResult } from "./types";
 
@@ -30,6 +30,32 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
   const [chainComplete, setChainComplete] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [stats, setStats] = useState<{ segmentCount: number; payloadBytes: number; maxStorageBytes: number } | null>(null);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState("");
+  const [statsRevision, setStatsRevision] = useState(0);
+  useEffect(() => {
+    setStats(null);
+    if (!open || project.permission !== "owner") return;
+    const controller = new AbortController();
+    void api<NonNullable<typeof stats>>(`/api/projects/${project.id}/edit-history/stats`, { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setStats(result); })
+      .catch((reason) => { if (!controller.signal.aborted && !isAbort(reason)) setError(message(reason)); });
+    return () => controller.abort();
+  }, [open, project.id, project.permission, statsRevision]);
+
+  const clearHistory = async () => {
+    if (clearing) return;
+    setClearing(true); setClearError("");
+    try {
+      await api(`/api/projects/${project.id}/edit-history`, { method: "DELETE" });
+      setEntries([]); setBaseline(null); setHasMore(false); setChainComplete(true);
+      setStatsRevision((revision) => revision + 1);
+      setClearOpen(false);
+    } catch (reason) { setClearError(message(reason)); }
+    finally { setClearing(false); }
+  };
   const [entryViews, setEntryViews] = useState<Record<string, "content" | "diff">>({});
   const selectedLength = Math.max(0, selection.endOffset - selection.startOffset);
 
@@ -71,6 +97,12 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
 
   return <Modal open={open} wide draggable className="selection-history-modal" title={t("selectionHistory.title")} description={description} onOpenChange={onOpenChange} footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
     <div className="selection-history-dialog">
+      {project.permission === "owner" && stats && <div className="history-stats">
+        <strong>{t("selectionHistory.storageUsage", { used: (stats.payloadBytes / 1048576).toFixed(2), limit: (stats.maxStorageBytes / 1048576).toFixed(0), count: stats.segmentCount })}</strong>
+        <small>{t("selectionHistory.storageDescription")}</small>
+        <button type="button" className="danger-text" disabled={busy || clearing || stats.segmentCount === 0} onClick={() => { setClearError(""); setClearOpen(true); }}>{t("selectionHistory.clearAll")}</button>
+      </div>}
+      <ConfirmDialog open={clearOpen} title={t("selectionHistory.clearAll")} description={t("selectionHistory.clearDescription")} confirmLabel={t("common.delete")} danger busy={clearing} error={clearError} onConfirm={() => void clearHistory()} onCancel={() => { if (!clearing) setClearOpen(false); }} />
       {error && <p className="error selection-history-message">{error}</p>}
       {busy ? <div className="selection-history-loading"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div> : <>
         {!chainComplete && <p className="selection-history-boundary">{t("selectionHistory.boundary")}</p>}

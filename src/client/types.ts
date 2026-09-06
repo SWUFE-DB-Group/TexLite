@@ -165,6 +165,9 @@ export interface HistoryStats {
   labeledVersionCount: number;
   objectCount: number;
   objectBytes: number;
+  metadataBytes: number;
+  totalBytes: number;
+  protectedBytes: number;
   maxVersions: number;
   maxStorageBytes: number;
   storageLimitExceeded: boolean;

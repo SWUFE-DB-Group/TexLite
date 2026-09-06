@@ -70,6 +70,21 @@ describe("project history retention", () => {
     expect(() => fixture.history.listPage(fixture.projectId, 2, "not-a-history-cursor")).toThrow();
   });
 
+  it("finds the immediately preceding snapshot independently of a loaded page", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const first = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!;
+    writeSource(fixture, "main.tex", "second");
+    const second = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!;
+    writeSource(fixture, "main.tex", "third");
+    const third = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!;
+
+    expect(fixture.history.previousVersion(fixture.projectId, third.id)?.id).toBe(second.id);
+    expect(fixture.history.previousVersion(fixture.projectId, second.id)?.id).toBe(first.id);
+    expect(fixture.history.previousVersion(fixture.projectId, first.id)).toBeNull();
+  });
+
   it("retains protected versions while enforcing count and storage soft limits", () => {
     const fixture = createFixture({ maxVersions: 2, maxStorageBytes: 20 });
     const initial = fixture.history.record(fixture.projectId, "user-1", "initial")!;
@@ -88,6 +103,7 @@ describe("project history retention", () => {
     const stats = fixture.history.stats(fixture.projectId);
     expect(stats.ordinaryVersionCount).toBeLessThanOrEqual(2);
     expect(stats.storageLimitExceeded).toBe(true);
+    expect(stats.protectedBytes).toBeGreaterThan(stats.maxStorageBytes);
   });
 
   it("strictly enforces ordinary version count cap without counting deviation", () => {
@@ -181,17 +197,51 @@ describe("project history retention", () => {
   });
 
   it("batch-prunes multiple obsolete versions in a single pass when storage limit is exceeded", () => {
-    const fixture = createFixture({ maxVersions: 10, maxStorageBytes: 30 });
+    const fixture = createFixture({ maxVersions: 10, maxStorageBytes: 3_000 });
     fixture.history.record(fixture.projectId, "user-1", "initial");
 
     for (let i = 1; i <= 5; i++) {
-      writeSource(fixture, "main.tex", `payload-${i}-${"X".repeat(10)}`);
+      writeSource(fixture, "main.tex", `payload-${i}-${"X".repeat(1000)}`);
       fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"]);
     }
 
     const stats = fixture.history.stats(fixture.projectId);
     expect(stats.storageLimitExceeded).toBe(false);
-    expect(stats.objectBytes).toBeLessThanOrEqual(30);
+    expect(stats.totalBytes).toBeLessThanOrEqual(3_000);
+    expect(stats.versionCount).toBeLessThan(6);
+  });
+
+  it("bounds metadata even when settings-only snapshots reuse all file objects", () => {
+    const fixture = createFixture({ maxVersions: 0, maxStorageBytes: 3_000 });
+    fixture.history.record(fixture.projectId, "user-1", "initial");
+    for (let index = 0; index < 30; index++) {
+      fixture.db.prepare("UPDATE projects SET latexmkrc = ? WHERE id = ?").run(String(index % 2), fixture.projectId);
+      fixture.history.record(fixture.projectId, "user-1", "settings", []);
+    }
+    const stats = fixture.history.stats(fixture.projectId);
+    expect(stats.objectBytes).toBe(5);
+    expect(stats.metadataBytes).toBeGreaterThan(0);
+    expect(stats.totalBytes).toBe(stats.metadataBytes + stats.objectBytes);
+    expect(stats.totalBytes).toBeLessThanOrEqual(3_000);
+    expect(stats.versionCount).toBeLessThan(31);
+    expect(stats.protectedBytes).toBeLessThanOrEqual(stats.totalBytes);
+    fixture.history.clear(fixture.projectId);
+    expect(fixture.history.stats(fixture.projectId)).toMatchObject({ totalBytes: 0, metadataBytes: 0, protectedBytes: 0 });
+  });
+
+  it("coalesces different authors within one project window without attributing the snapshot to one author", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    fixture.db.prepare(`INSERT INTO users SELECT 'user-2', 'peer', 'Peer', password_hash, role, disabled, must_change_password, can_create_projects, created_at FROM users WHERE id = 'user-1'`).run();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const first = fixture.history.record(fixture.projectId, "user-1", "autosave")!;
+    vi.setSystemTime(new Date("2026-01-01T00:01:00Z"));
+    writeSource(fixture, "main.tex", "peer edit");
+    expect(fixture.history.record(fixture.projectId, "user-2", "autosave", ["main.tex"])?.id).toBe(first.id);
+    expect(fixture.history.version(first.id)?.author).toBeNull();
+    vi.setSystemTime(new Date("2026-01-01T00:02:01Z"));
+    writeSource(fixture, "main.tex", "next window");
+    expect(fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])?.id).not.toBe(first.id);
   });
 
   function createFixture(options: { maxVersions?: number; maxStorageBytes?: number } = {}): HistoryFixture {

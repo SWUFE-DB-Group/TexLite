@@ -47,5 +47,5 @@
     "lead": "TexLite is open source, self-hosted, and made for the way research teams actually write.",
     "button": "在 GitHub 查看 TexLite"
   },
-  "footer": { "tagline": "轻量、私有、可协作的 LaTeX 工作台", "license": "AGPL-3.0-only" }
+  "footer": { "tagline": "轻量、自托管、可协作的 LaTeX 工作台", "license": "AGPL-3.0-only" }
 }

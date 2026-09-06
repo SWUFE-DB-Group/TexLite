@@ -154,6 +154,19 @@ describe("project collaboration", () => {
       ]));
 
       const acceptedContent = ownerText.toString();
+      for (const cookie of [editorCookie, readerCookie]) {
+        expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/edit-history/stats`, headers: { cookie } })).statusCode).toBe(403);
+        expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/edit-history`, headers: { cookie } })).statusCode).toBe(403);
+      }
+      const editStats = await app.inject({ method: "GET", url: `/api/projects/${projectId}/edit-history/stats`, headers: { cookie: adminCookie } });
+      expect(editStats.statusCode).toBe(200);
+      expect(editStats.json().payloadBytes).toBeGreaterThan(0);
+      const snapshotCount = db.prepare("SELECT COUNT(*) AS n FROM project_history_versions WHERE project_id = ?").get(projectId);
+      const cleared = await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/edit-history`, headers: { cookie: adminCookie } });
+      expect(cleared.statusCode).toBe(200);
+      expect(cleared.json()).toMatchObject({ segmentCount: 0, payloadBytes: 0 });
+      expect(db.prepare("SELECT COUNT(*) AS n FROM project_history_versions WHERE project_id = ?").get(projectId)).toEqual(snapshotCount);
+      expect(fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8")).toBe(acceptedContent);
       readPeer.doc.getText("source:main.tex").insert(0, "% forbidden read-only edit\n");
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(ownerText.toString()).toBe(acceptedContent);
@@ -621,6 +634,33 @@ describe("project collaboration", () => {
       expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
     } finally {
       vi.restoreAllMocks();
+      service.destroy();
+    }
+  });
+
+  it("restores a transient history warning when an idle room is recreated", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "History warning room" }
+    });
+    const projectId = created.json().project.id as string;
+    const service = new CollaborationService(config, db);
+    type RoomLike = { meta: Y.Map<unknown> };
+    const internals = service as unknown as {
+      initializeRoom: (id: string, generation: number) => Promise<RoomLike>;
+      destroyRoom: (room: RoomLike) => void;
+    };
+    try {
+      const first = await internals.initializeRoom(projectId, 0);
+      service.setHistoryWarning(projectId, true);
+      expect(first.meta.get("historyWarning")).toBe(true);
+
+      internals.destroyRoom(first);
+      const recreated = await internals.initializeRoom(projectId, 0);
+      expect(recreated.meta.get("historyWarning")).toBe(true);
+
+      service.setHistoryWarning(projectId, false);
+      expect(recreated.meta.get("historyWarning")).toBe(false);
+    } finally {
       service.destroy();
     }
   });

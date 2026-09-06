@@ -47,5 +47,5 @@
     "lead": "TexLite is open source, self-hosted, and made for the way research teams actually write.",
     "button": "View TexLite on GitHub"
   },
-  "footer": { "tagline": "A lightweight, private, collaborative LaTeX workspace", "license": "AGPL-3.0-only" }
+  "footer": { "tagline": "A lightweight, self-hosted, collaborative LaTeX workspace", "license": "AGPL-3.0-only" }
 }

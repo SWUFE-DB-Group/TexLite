@@ -121,6 +121,16 @@ requested. TexLite never installs or updates TeX packages.
 or systemd. `start`, `status`, `stop`, `restart`, and `logs` use the bundled
 PM2 dependency. Managed startup waits for both PM2 and the HTTP health probe;
 status has a colored systemctl-style view and a `--json` form for scripts.
+Managed processes use fixed `logs/stdout.log` and `logs/stderr.log` paths
+under the configured data directory. An internal asynchronous copy/truncate
+rotator checks at startup (after the instance lock) and every minute, rotates
+at 10 MiB, and retains three uncompressed backups for each stream. Checks do
+not overlap and shutdown waits for any active rotation before releasing the
+instance lock. Copy failures leave the original log intact. Copy/truncate can
+lose concurrent diagnostic messages, and this is not a strict disk quota or
+an audit trail. No external PM2 module is installed; old numbered PM2 logs,
+daemon logs and other applications' logs are untouched. Existing processes
+adopt these paths on `texlite restart`; foreground output remains caller-managed.
 PM2 7.0.3 currently declares `js-yaml@4.3.0`, so dependency audits may report
 the upstream GHSA-5p4m-2wfm-xmqj advisory. TexLite invokes PM2 through its
 JavaScript API and does not load user- or project-supplied YAML configuration;
@@ -365,22 +375,34 @@ semantics.
 Its edit segments have their own `editHistory.maxStorageMB` hard payload cap
 (32 MB by default), so selection-history retention cannot consume the snapshot
 budget or affect recovery capacity.
-Autosaves by the same author are coalesced within a two-minute window. File
+Autosaves across authors are coalesced within a fixed two-minute project window.
+A mixed-author snapshot has no single author attribution; selection edit history
+retains the individual contributions independently. File
 contents are complete SHA-256-addressed objects; unchanged files are reused
 across manifests. By default, ordinary version count is unlimited (`history.maxVersions: 0`),
-and retention is primarily governed by the soft storage limit (default 128 MB of deduplicated
-objects per project). An optional positive `history.maxVersions` limit can also be configured
-to cap the count of ordinary versions. Initial and labeled versions,
+and retention is primarily governed by the soft storage limit (default 128 MiB of deduplicated
+objects plus snapshot row text and baseline manifests per project). This includes
+metadata for settings-only snapshots even when all file objects are reused.
+SQLite pages, indexes, free pages and WAL are shared overhead, not part of this
+logical per-project quota. Deleting records releases reusable database pages;
+it does not necessarily shrink the database file. An optional positive `history.maxVersions` limit can also be configured
+to cap the count of ordinary versions. Initial, labeled and latest versions,
 plus the current internal baseline, are protected and can make the soft limit
-temporarily exceed its target. Retention pruning batches reference accounting
+persistently exceed its target. The UI reports file, metadata and protected
+usage separately. Protected usage is a subset of total usage, not an additional
+charge. Retention pruning batches reference accounting
 and removes unreferenced objects.
 
 The snapshot timeline initially loads the newest 100 versions. Older versions
 are appended on demand through a stable cursor rather than offset pages, so
 new saves or removals cannot reorder, repeat, or skip a version already shown.
 
-Owners can view storage statistics, delete one version, or clear all history
-without changing current source files. Restore is an exclusive source
+Owners can view storage statistics, delete one version, or clear all recovery
+snapshots without changing current source files. Selection history has a separate owner-only project-wide payload
+usage display and confirmed clear operation. Clearing edit history flushes
+pending edits first and deletes edit segments and retention boundaries;
+it preserves recovery snapshots and source files. Future edits start a new trail.
+Restore is an exclusive source
 operation, reanchors comments against the before/after text, updates project
 settings when restoring a complete version, and resets the collaboration epoch.
 History is a recovery mechanism, not a substitute for backing up the complete

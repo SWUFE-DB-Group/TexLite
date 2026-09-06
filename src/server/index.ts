@@ -6,6 +6,7 @@ import { activeAdminCount, openDatabase } from "./db.js";
 import { buildApp } from "./app.js";
 import { assertEnvironment } from "./environment.js";
 import { acquireDataDirectoryLock } from "./instanceLock.js";
+import { LogRotation } from "./logRotation.js";
 
 export interface RunningServer {
   close: () => Promise<void>;
@@ -17,7 +18,10 @@ export async function startServer(configPath?: string): Promise<RunningServer> {
   const lock = acquireDataDirectoryLock(config);
   let db: ReturnType<typeof openDatabase> | null = null;
   let app: FastifyInstance | null = null;
+  const logs = process.env.TEXLITE_MANAGED_LOGS === "1"
+    ? new LogRotation(config.dataDir, (error) => console.error("TexLite log rotation failed:", error)) : null;
   try {
+    await logs?.start();
     const environment = await assertEnvironment(config);
     db = openDatabase(config);
     if (activeAdminCount(db) === 0) {
@@ -37,6 +41,7 @@ export async function startServer(configPath?: string): Promise<RunningServer> {
           try {
             db?.close();
           } finally {
+            await logs?.stop();
             lock.release();
           }
         }
@@ -49,6 +54,7 @@ export async function startServer(configPath?: string): Promise<RunningServer> {
       try {
         db?.close();
       } finally {
+        await logs?.stop();
         lock.release();
       }
     }

@@ -68,7 +68,7 @@ const MAX_EDIT_PREVIEW_CHARS = 1_200;
 // present when the operation finished. The database and retained manifests
 // are the authority for a later workspace open.
 const COMPLETED_COMPILE_STATE_TTL_MS = 60_000;
-const EPHEMERAL_META_KEYS = ["compileStates", "filesEvent", "commentsRevision", "dictionaryRevision"] as const;
+const EPHEMERAL_META_KEYS = ["compileStates", "filesEvent", "commentsRevision", "dictionaryRevision", "historyWarning"] as const;
 const COLORS = [
   ["#1677c8", "#1677c833"], ["#d65745", "#d6574533"], ["#16866a", "#16866a33"],
   ["#9a58b5", "#9a58b533"], ["#d27b18", "#d27b1833"], ["#3f7d20", "#3f7d2033"],
@@ -171,6 +171,8 @@ export class CollaborationService {
   private readonly projectGenerations = new Map<string, number>();
   private readonly snapshotBarriers = new Map<string, number>();
   private readonly pendingConnections = new Map<string, number>();
+  /** Transient server-side status, restored into each newly opened room. */
+  private readonly historyWarnings = new Set<string>();
   private closed = false;
   private readonly userByIdStatement;
   private readonly collaborationProjectAccessStatement;
@@ -502,6 +504,14 @@ export class CollaborationService {
     this.bumpFiles(room, { kind: "update", path: filePath });
   }
 
+  setHistoryWarning(projectId: string, warning: boolean): void {
+    if (warning) this.historyWarnings.add(projectId);
+    else this.historyWarnings.delete(projectId);
+    const room = this.rooms.get(projectId);
+    if (!room || room.meta.get("historyWarning") === warning) return;
+    room.doc.transact(() => room.meta.set("historyWarning", warning), META_ORIGIN);
+  }
+
   signalComments(projectId: string): void {
     const room = this.rooms.get(projectId);
     if (!room) return;
@@ -674,6 +684,7 @@ export class CollaborationService {
     this.roomInitializations.clear();
     this.snapshotBarriers.clear();
     this.pendingConnections.clear();
+    this.historyWarnings.clear();
   }
 
   private initializeRoom(projectId: string, generation: number): Promise<Room> {
@@ -810,6 +821,12 @@ export class CollaborationService {
     // longer exists. The database/source tree are authoritative after a
     // restart; clear the markers before any browser can sync them back.
     const recoveredMetadataChanged = bootstrap.recoveredState && this.clearRecoveredMetadata(room);
+    // History bookkeeping is not stored in a project Yjs document, but a
+    // temporary failure must remain visible if its room was idled out before
+    // the editor reconnects.
+    if (this.historyWarnings.has(projectId)) {
+      room.doc.transact(() => room.meta.set("historyWarning", true), META_ORIGIN);
+    }
     this.sanitizeCompileStates(room);
     let recoveredDirty = false;
     const diskPaths = new Set<string>();

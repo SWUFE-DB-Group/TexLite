@@ -4,6 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import type { ProcessDescription, StartOptions } from "pm2";
 import type { Config } from "./config.js";
+import { managedLogPaths } from "./logRotation.js";
 import { defaultConfigPath, packageRootDirectory, packageServerEntry } from "./runtimePaths.js";
 
 export interface ManagedProcess {
@@ -101,12 +102,15 @@ export async function managedProcess(configPath: string): Promise<ManagedProcess
 }
 
 function startOptions(config: Config): StartOptions {
+  const logs = managedLogPaths(config.dataDir);
+  fs.mkdirSync(path.dirname(logs.stdout), { recursive: true, mode: 0o700 });
   const packageRoot = packageRootDirectory();
   const script = packageServerEntry();
   const environment: Record<string, string> = {
     ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
     NODE_ENV: "production",
     TEXLITE_CONFIG: path.resolve(config.configPath),
+    TEXLITE_MANAGED_LOGS: "1",
     TEXLITE_CLIENT_DIR: path.resolve(config.clientDir)
   };
   return {
@@ -115,6 +119,9 @@ function startOptions(config: Config): StartOptions {
     cwd: packageRoot,
     exec_mode: "fork",
     instances: 1,
+    output: logs.stdout,
+    error: logs.stderr,
+    merge_logs: true,
     autorestart: true,
     watch: false,
     wait_ready: true,

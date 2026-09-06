@@ -25,6 +25,7 @@ import { LatexCompletionService } from "./latexCompletion.js";
 import { ProjectHistoryService, type HistoryReason } from "./history.js";
 import { ProjectEditHistoryService } from "./editHistory.js";
 import { HistoryRetentionScheduler } from "./historyRetention.js";
+import { EditHistoryRetry } from "./editHistoryRetry.js";
 import { ProjectOutlineService } from "./projectOutline.js";
 import { MetricRegistry } from "./metrics.js";
 import { apiError, HttpError } from "./http.js";
@@ -77,22 +78,43 @@ export async function buildApp(
   // Probe the optional host Harper CLI without delaying startup. Its absence is
   // supported: the browser spellchecker remains the writing-check fallback.
   void harper.preload().catch((error) => app.log.info({ err: error }, "Optional Harper CLI is unavailable"));
+  const failedSnapshots = new Set<string>();
+  const failedEdits = new Map<string, "retrying" | "incomplete">();
+  const signalHistory = (id: string) => collaboration.setHistoryWarning(id, failedSnapshots.has(id) || failedEdits.has(id));
+  const editRetry = new EditHistoryRetry((id, edits) => editHistory.record(id, edits),
+    (id) => Boolean(db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)),
+    (id, state, error) => {
+      if (state === "discarded") {
+        failedEdits.delete(id);
+        failedSnapshots.delete(id);
+        signalHistory(id);
+        return;
+      }
+      if (failedEdits.get(id) !== "incomplete") {
+        if (state === "ok") failedEdits.delete(id); else failedEdits.set(id, state);
+      }
+      if (error) app.log.error({ err: error, projectId: id }, "Failed to record project edit history");
+      signalHistory(id);
+    });
   const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => {
     try {
-      const version = history.record(projectId, userId, reason, paths, { deferRetention: reason === "autosave" });
+      const version = history.record(projectId, userId, reason, failedSnapshots.has(projectId) ? undefined : paths, { deferRetention: reason === "autosave" });
+      if (failedSnapshots.delete(projectId)) signalHistory(projectId);
       if (version && reason === "autosave") historyRetention.schedule(projectId);
       return version;
     }
     catch (error) {
+      failedSnapshots.add(projectId);
+      signalHistory(projectId);
       app.log.error({ err: error, projectId }, "Failed to record project history");
       return null;
     }
   };
   const collaboration = new CollaborationService(config, db, ({ projectId, userId, paths, edits, durationMs }) => {
-    metrics.record("collaboration.persist", durationMs);
-    try { editHistory.record(projectId, edits); }
-    catch (error) { app.log.error({ err: error, projectId }, "Failed to record project edit history"); }
+    const started = performance.now();
+    editRetry.save(projectId, edits);
     recordHistory(projectId, userId, "autosave", paths);
+    metrics.record("collaboration.persist", durationMs + performance.now() - started);
   });
   const projectMutations = new ProjectMutationCoordinator(collaboration);
   const projectGit = new ProjectGitService(config, db, options.githubFetch);
@@ -133,6 +155,7 @@ export async function buildApp(
   app.addHook("onClose", async () => {
     eventLoopDelay.disable();
     historyRetention.dispose();
+    editRetry.dispose();
     await harper.dispose();
     await texcount.dispose();
   });
@@ -211,7 +234,9 @@ export async function buildApp(
     metrics,
     recordHistory
   });
-  registerProjectHistoryRoutes(app, { config, db, history, editHistory, projectMutations, recordHistory });
+  registerProjectHistoryRoutes(app, { config, db, history, editHistory, projectMutations, recordHistory,
+    clearPendingEdits: (id) => { editRetry.clear(id); failedEdits.delete(id); signalHistory(id); },
+    scheduleHistoryRetention: (id) => historyRetention.schedule(id) });
   registerProjectGitRoutes(app, { config, db, collaboration, projectMutations, projectGit, recordHistory });
   registerProjectCatalogRoutes(app, {
     config,

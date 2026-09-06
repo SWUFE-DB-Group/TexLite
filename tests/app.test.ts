@@ -838,6 +838,16 @@ Another UniqueTerm appears here.
     });
     expect(olderHistoryPage.statusCode).toBe(200);
     expect(olderHistoryPage.json().versions[0].id).not.toBe(latestHistoryPage.json().versions[0].id);
+    const crossPageComparison = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/history/${latestHistoryPage.json().versions[0].id}/file?path=main.tex&against=__previous__`,
+      headers: { cookie }
+    });
+    expect(crossPageComparison.statusCode).toBe(200);
+    expect(crossPageComparison.json()).toMatchObject({
+      against: olderHistoryPage.json().versions[0].id,
+      previousVersion: { id: olderHistoryPage.json().versions[0].id }
+    });
     expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/history?before=invalid`, headers: { cookie } })).statusCode).toBe(400);
     const selectedVersion = versions.json().versions[0];
     expect(selectedVersion.changedPaths).toContain("sections/intro.tex");
@@ -870,6 +880,12 @@ Another UniqueTerm appears here.
       method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie }, payload: { label: "Before terminology update" }
     });
     expect(labeled.json().version.label).toBe("Before terminology update");
+    expect(labeled.json().retentionScheduled).toBe(false);
+    const unlabeled = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie }, payload: { label: null }
+    });
+    expect(unlabeled.json().retentionScheduled).toBe(true);
+    expect(unlabeled.json().retentionRefreshAfterMs).toBeGreaterThan(30_000);
 
     await app.inject({
       method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },

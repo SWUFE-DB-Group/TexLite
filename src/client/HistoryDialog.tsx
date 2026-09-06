@@ -14,6 +14,7 @@ interface HistoryComparison {
   historical: string;
   comparison: string;
   against: string;
+  previousVersion: HistoryVersion | null;
 }
 
 const HISTORY_PAGE_SIZE = 100;
@@ -43,6 +44,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const [error, setError] = useState("");
   const diffSectionRef = useRef<HTMLDivElement>(null);
   const olderPageAbortRef = useRef<AbortController | null>(null);
+  const retentionRefreshRef = useRef<number | null>(null);
 
   const canRestore = project.permission !== "read";
   const isOwner = project.permission === "owner";
@@ -50,6 +52,8 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
 
   useEffect(() => {
     if (!open) {
+      if (retentionRefreshRef.current !== null) window.clearTimeout(retentionRefreshRef.current);
+      retentionRefreshRef.current = null;
       olderPageAbortRef.current?.abort();
       olderPageAbortRef.current = null;
       setLoadingOlder(false);
@@ -76,6 +80,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   useEffect(() => () => {
     olderPageAbortRef.current?.abort();
     olderPageAbortRef.current = null;
+    if (retentionRefreshRef.current !== null) window.clearTimeout(retentionRefreshRef.current);
   }, [project.id]);
 
   const loadOlder = async () => {
@@ -134,12 +139,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     return () => controller.abort();
   }, [open, project.id, selectedId]);
 
-  const previousVersion = useMemo(() => {
-    if (!selectedId || versions.length === 0) return null;
-    const index = versions.findIndex((v) => v.id === selectedId);
-    if (index === -1 || index >= versions.length - 1) return null;
-    return versions[index + 1];
-  }, [selectedId, versions]);
+  const previousVersion = comparison?.previousVersion ?? null;
 
   useEffect(() => {
     if (!open || !selectedId || !selectedPath) {
@@ -150,7 +150,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     setBusy("compare");
     setError("");
     const againstParam = diffMode === "commit"
-      ? (previousVersion ? `&against=${encodeURIComponent(previousVersion.id)}` : "&against=__none__")
+      ? "&against=__previous__"
       : "";
     void api<HistoryComparison>(
       `/api/projects/${project.id}/history/${selectedId}/file?path=${encodeURIComponent(selectedPath)}${againstParam}`,
@@ -166,7 +166,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         if (!controller.signal.aborted) setBusy((current) => (current === "compare" ? "" : current));
       });
     return () => controller.abort();
-  }, [open, project.id, selectedId, selectedPath, diffMode, previousVersion]);
+  }, [open, project.id, selectedId, selectedPath, diffMode]);
 
   const changedFiles = useMemo(() => {
     if (!detail) return [];
@@ -199,12 +199,24 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     if (!detail) return;
     setBusy("label"); setError("");
     try {
-      const result = await api<{ version: HistoryVersion; stats: HistoryStats | null }>(`/api/projects/${project.id}/history/${detail.version.id}`, {
+      const result = await api<{ version: HistoryVersion; retentionScheduled: boolean; retentionRefreshAfterMs: number; stats: HistoryStats | null }>(`/api/projects/${project.id}/history/${detail.version.id}`, {
         method: "PATCH", body: JSON.stringify({ label: label.trim() || null })
       });
       setDetail((current) => current ? { ...current, version: result.version } : current);
       setVersions((current) => current.map((version) => version.id === result.version.id ? result.version : version));
       setStats(result.stats);
+      if (result.retentionScheduled) {
+        if (retentionRefreshRef.current !== null) window.clearTimeout(retentionRefreshRef.current);
+        retentionRefreshRef.current = window.setTimeout(() => {
+          retentionRefreshRef.current = null;
+          void api<HistoryPage>(`/api/projects/${project.id}/history?limit=1`).then((page) => {
+            // Retention runs asynchronously. Refresh only capacity here so a
+            // delayed cleanup never discards the user's loaded pages or moves
+            // them away from the snapshot they chose to inspect.
+            setStats(page.stats);
+          }).catch(() => undefined);
+        }, result.retentionRefreshAfterMs);
+      }
     } catch (reason) { setError(message(reason)); }
     finally { setBusy(""); }
   };
@@ -287,8 +299,9 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         <aside className="history-timeline">
           {isOwner && stats && <div className={`history-stats${stats.storageLimitExceeded ? " exceeded" : ""}`}>
             <header><span><HardDrive size={14} />{t("history.storage")}</span><button type="button" disabled={controlsBusy || versions.length === 0} title={t("history.clearAll")} aria-label={t("history.clearAll")} onClick={() => setDeleteTarget("all")}><Trash2 size={13} /></button></header>
-            <strong>{t("history.storageUsage", { used: formatBytes(stats.objectBytes), limit: formatBytes(stats.maxStorageBytes) })}</strong>
-            <progress max={stats.maxStorageBytes} value={Math.min(stats.objectBytes, stats.maxStorageBytes)} />
+            <strong>{t("history.storageUsage", { used: formatBytes(stats.totalBytes), limit: formatBytes(stats.maxStorageBytes) })}</strong>
+            <progress max={stats.maxStorageBytes} value={Math.min(stats.totalBytes, stats.maxStorageBytes)} />
+            <small>{t("history.storageBreakdown", { objects: formatBytes(stats.objectBytes), metadata: formatBytes(stats.metadataBytes), protected: formatBytes(stats.protectedBytes) })}</small>
             <small>{t("history.versionUsage", { count: stats.ordinaryVersionCount, limit: stats.maxVersions > 0 ? stats.maxVersions : "∞" })}{stats.labeledVersionCount > 0 ? ` · ${t("history.protectedVersions", { count: stats.labeledVersionCount })}` : ""}</small>
             {stats.storageLimitExceeded && <small className="history-storage-warning">{t("history.storageExceeded")}</small>}
           </div>}

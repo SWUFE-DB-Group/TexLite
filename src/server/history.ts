@@ -58,6 +58,9 @@ export interface HistoryStats {
   labeledVersionCount: number;
   objectCount: number;
   objectBytes: number;
+  metadataBytes: number;
+  totalBytes: number;
+  protectedBytes: number;
   maxVersions: number;
   maxStorageBytes: number;
   storageLimitExceeded: boolean;
@@ -72,6 +75,10 @@ export interface HistoryRecordOptions {
 }
 
 const AUTOSAVE_COALESCE_MS = 2 * 60_000;
+// Logical stored payload; SQLite pages, indexes and WAL are shared database overhead.
+function historyMetadataBytes(row: HistoryRow): number {
+  return Object.values(row).reduce<number>((sum, value) => sum + (typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0), 0);
+}
 const DEFAULT_HISTORY_PAGE_SIZE = 100;
 const MAX_HISTORY_PAGE_SIZE = 100;
 
@@ -122,12 +129,12 @@ export class ProjectHistoryService {
     }
 
     const createdAt = new Date().toISOString();
-    if (reason === "autosave" && previous?.reason === "autosave" && !previous.label && previous.author_id === authorId
+    if (reason === "autosave" && previous?.reason === "autosave" && !previous.label
       && Date.parse(createdAt) - Date.parse(previous.created_at) < AUTOSAVE_COALESCE_MS) {
       const merged = [...new Set([...parseStringArray(previous.changed_paths_json), ...changedPaths])].sort();
       this.db.prepare(`UPDATE project_history_versions
-        SET manifest_json = ?, changed_paths_json = ? WHERE id = ?`)
-        .run(JSON.stringify(manifest), JSON.stringify(merged), previous.id);
+        SET manifest_json = ?, changed_paths_json = ?, author_id = ? WHERE id = ?`)
+        .run(JSON.stringify(manifest), JSON.stringify(merged), previous.author_id === authorId ? authorId : null, previous.id);
       this.saveBaseline(projectId, manifest);
       if (!options.deferRetention) {
         this.removeUnreferencedObjects(projectId, new Set(previousManifest
@@ -187,22 +194,33 @@ export class ProjectHistoryService {
   }
 
   stats(projectId: string): HistoryStats {
-    const rows = this.db.prepare(`SELECT reason, label, manifest_json FROM project_history_versions
-      WHERE project_id = ?`).all(projectId) as Array<Pick<HistoryRow, "reason" | "label" | "manifest_json">>;
+    const rows = this.db.prepare(`SELECT * FROM project_history_versions
+      WHERE project_id = ? ORDER BY created_at DESC, rowid DESC`).all(projectId) as HistoryRow[];
     const objects = new Map<string, number>();
+    const protectedObjects = new Map<string, number>();
+    let metadataBytes = 0;
+    let protectedMetadataBytes = 0;
     let ordinaryVersionCount = 0;
     let labeledVersionCount = 0;
     for (const row of rows) {
+      const protectedVersion = row === rows[0] || row.reason === "initial" || Boolean(row.label);
+      metadataBytes += historyMetadataBytes(row);
+      if (protectedVersion) protectedMetadataBytes += historyMetadataBytes(row);
       if (row.label) labeledVersionCount += 1;
       else if (row.reason !== "initial") ordinaryVersionCount += 1;
       for (const file of Object.values(parseManifest(row.manifest_json).files)) {
         if (!objects.has(file.digest)) objects.set(file.digest, file.size);
+        if (protectedVersion) protectedObjects.set(file.digest, file.size);
       }
     }
     const baseline = this.baseline(projectId);
     if (baseline) {
+      const baselineBytes = Buffer.byteLength(JSON.stringify(baseline), "utf8");
+      metadataBytes += baselineBytes;
+      protectedMetadataBytes += baselineBytes;
       for (const file of Object.values(baseline.files)) {
         if (!objects.has(file.digest)) objects.set(file.digest, file.size);
+        protectedObjects.set(file.digest, file.size);
       }
     }
     const objectBytes = [...objects.values()].reduce((sum, size) => sum + size, 0);
@@ -212,9 +230,12 @@ export class ProjectHistoryService {
       labeledVersionCount,
       objectCount: objects.size,
       objectBytes,
+      metadataBytes,
+      totalBytes: objectBytes + metadataBytes,
+      protectedBytes: [...protectedObjects.values()].reduce((sum, size) => sum + size, protectedMetadataBytes),
       maxVersions: this.config.historyMaxVersions,
       maxStorageBytes: this.config.historyMaxStorageBytes,
-      storageLimitExceeded: objectBytes > this.config.historyMaxStorageBytes
+      storageLimitExceeded: objectBytes + metadataBytes > this.config.historyMaxStorageBytes
     };
   }
 
@@ -274,6 +295,15 @@ export class ProjectHistoryService {
       throw httpError(404, "HISTORY_FILE_NOT_FOUND");
     }
     this.assertRestoreTargetIsFile(projectId, filePath);
+  }
+
+  previousVersion(projectId: string, versionId: string): HistoryVersion | null {
+    const row = this.db.prepare(`SELECT older.id FROM project_history_versions older
+      JOIN project_history_versions selected ON selected.id = ? AND selected.project_id = older.project_id
+      WHERE older.project_id = ? AND (older.created_at < selected.created_at
+        OR (older.created_at = selected.created_at AND older.rowid < selected.rowid))
+      ORDER BY older.created_at DESC, older.rowid DESC LIMIT 1`).get(versionId, projectId) as { id: string } | undefined;
+    return row ? this.version(row.id, projectId) : null;
   }
 
   setLabel(projectId: string, versionId: string, label: string | null): HistoryVersion | null {
@@ -415,11 +445,9 @@ export class ProjectHistoryService {
   }
 
   private pruneVersions(projectId: string): void {
-    const rows = this.db.prepare(`SELECT id, reason, label, manifest_json, created_at
+    const rows = this.db.prepare(`SELECT *
       FROM project_history_versions WHERE project_id = ?
-      ORDER BY created_at DESC, rowid DESC`).all(projectId) as Array<{
-        id: string; reason: HistoryReason; label: string | null; manifest_json: string; created_at: string;
-      }>;
+      ORDER BY created_at DESC, rowid DESC`).all(projectId) as HistoryRow[];
     if (!rows.length) return;
 
     // Parse manifests and build reference counts & object size tracking in a single pass
@@ -444,9 +472,10 @@ export class ProjectHistoryService {
       }
     }
 
-    let currentObjectBytes = 0;
+    let retainedBytes = rows.reduce((sum, row) => sum + historyMetadataBytes(row), 0)
+      + (baseline ? Buffer.byteLength(JSON.stringify(baseline), "utf8") : 0);
     for (const [digest, count] of refCounts.entries()) {
-      if (count > 0) currentObjectBytes += sizeMap.get(digest) ?? 0;
+      if (count > 0) retainedBytes += sizeMap.get(digest) ?? 0;
     }
 
     const latestId = rows[0]?.id;
@@ -454,10 +483,12 @@ export class ProjectHistoryService {
     const ordinaryDesc = rows.filter((row) => row.label === null && row.reason !== "initial");
 
     const toDeleteIds = new Set<string>();
+    const rowsById = new Map(rows.map((row) => [row.id, row]));
 
     const removeVersionRefs = (versionId: string) => {
       if (toDeleteIds.has(versionId)) return;
       toDeleteIds.add(versionId);
+      retainedBytes -= historyMetadataBytes(rowsById.get(versionId)!);
       const manifest = manifests.get(versionId);
       if (!manifest) return;
       for (const file of Object.values(manifest.files)) {
@@ -465,7 +496,7 @@ export class ProjectHistoryService {
         if (count !== undefined) {
           if (count === 1) {
             refCounts.set(file.digest, 0);
-            currentObjectBytes -= sizeMap.get(file.digest) ?? 0;
+            retainedBytes -= sizeMap.get(file.digest) ?? 0;
           } else if (count > 1) {
             refCounts.set(file.digest, count - 1);
           }
@@ -480,12 +511,12 @@ export class ProjectHistoryService {
     }
 
     // 2. Cap by historyMaxStorageBytes (prune remaining eligible versions from oldest to newest)
-    if (currentObjectBytes > this.config.historyMaxStorageBytes) {
+    if (retainedBytes > this.config.historyMaxStorageBytes) {
       const remainingEligibleAsc = ordinaryDesc
         .filter((row) => row.id !== latestId && !toDeleteIds.has(row.id))
         .reverse();
       for (const row of remainingEligibleAsc) {
-        if (currentObjectBytes <= this.config.historyMaxStorageBytes) break;
+        if (retainedBytes <= this.config.historyMaxStorageBytes) break;
         removeVersionRefs(row.id);
       }
     }

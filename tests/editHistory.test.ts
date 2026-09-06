@@ -25,6 +25,28 @@ interface FixtureOptions {
 const fixtures: Fixture[] = [];
 
 describe("selection edit history", () => {
+  it("reports payload usage and clears only this project's edit records and boundaries", () => {
+    const fixture = createFixture();
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit")]);
+    expect(fixture.history.stats(fixture.projectId).segmentCount).toBe(1);
+    expect(fixture.history.stats(fixture.projectId).payloadBytes).toBeGreaterThan(0);
+    fixture.history.clear("another-project");
+    expect(fixture.history.stats(fixture.projectId).segmentCount).toBe(1);
+    fixture.db.prepare("INSERT INTO project_edit_history_boundaries VALUES (?, ?, ?, ?)")
+      .run(fixture.projectId, "main.tex", hashText("old"), "2026-01-01T10:00:00.000Z");
+    fixture.history.clear(fixture.projectId);
+    expect(fixture.history.stats(fixture.projectId)).toMatchObject({ segmentCount: 0, payloadBytes: 0 });
+    expect(fixture.db.prepare("SELECT COUNT(*) AS n FROM project_edit_history_boundaries WHERE project_id = ?").get(fixture.projectId)).toEqual({ n: 0 });
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", "2026-01-01T10:03:00.000Z", "new", "next", "edit")]);
+    expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", "next", 0, 4).baseline?.content).toBe("new");
+  });
+
+  it("uses the stored payload byte count for quota statistics", () => {
+    const fixture = createFixture();
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit")]);
+    fixture.db.prepare("UPDATE project_edit_segments SET steps_bytes = 17 WHERE project_id = ?").run(fixture.projectId);
+    expect(fixture.history.stats(fixture.projectId).payloadBytes).toBe(17);
+  });
   it("keeps adjacent replacements outside the selection on both sides", () => {
     for (const [original, first, second, final, start] of [
       ["abcBAD", "abcOLD", "abcXYZ", "abQQXYZ", 4],
@@ -194,12 +216,14 @@ describe("selection edit history", () => {
 
     fixture.history.record(fixture.projectId, inputs);
 
-    const stored = fixture.db.prepare(`SELECT after_hash, LENGTH(CAST(steps_json AS BLOB)) AS bytes
-      FROM project_edit_segments WHERE project_id = ? ORDER BY updated_at DESC, rowid DESC`).all(fixture.projectId) as Array<{ after_hash: string; bytes: number }>;
+    const stored = fixture.db.prepare(`SELECT after_hash, LENGTH(CAST(steps_json AS BLOB)) AS bytes, steps_bytes
+      FROM project_edit_segments WHERE project_id = ? ORDER BY updated_at DESC, rowid DESC`).all(fixture.projectId) as Array<{ after_hash: string; bytes: number; steps_bytes: number }>;
     const totalBytes = stored.reduce((total, row) => total + row.bytes, 0);
     expect(stored.length).toBeLessThan(inputs.length);
     expect(stored[0]?.after_hash).toBe(hashText(source));
     expect(totalBytes).toBeLessThanOrEqual(maxStorageBytes);
+    expect(fixture.history.stats(fixture.projectId).payloadBytes).toBe(totalBytes);
+    expect(stored.every((row) => row.steps_bytes === row.bytes)).toBe(true);
 
     const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", source, 0, source.length);
     expect(result.chainComplete).toBe(false);

@@ -51,7 +51,7 @@ function isAbortError(error: unknown): boolean {
 }
 type FormatterRecoveryAction = "file" | "selection";
 interface FormatterRecovery { action: FormatterRecoveryAction; kind: TexFmtFailureKind; detail: string }
-interface FormattedSource { formatted: string; diagnostics: string }
+interface FormattedSource { formatted: string }
 interface LoadOptions { signal?: AbortSignal; isCurrent?: () => boolean }
 interface SourceAnalysisSnapshot { filePath: string; content: string }
 
@@ -135,7 +135,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const [wordCountResult, setWordCountResult] = useState<WordCountResult | null>(null);
   const [formatting, setFormatting] = useState(false);
   const [formatterRecovery, setFormatterRecovery] = useState<FormatterRecovery | null>(null);
-  const [formatterDiagnostics, setFormatterDiagnostics] = useState("");
   const [permissionDowngradeBusy, setPermissionDowngradeBusy] = useState(false);
   const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(() => loadEditorPreferences(user.id, projectId));
   const [openTabs, setOpenTabs] = useState<string[]>([]);
@@ -191,7 +190,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     openTabsRef.current = [];
     setOpenTabs([]);
     setFormatterRecovery(null);
-    setFormatterDiagnostics("");
     setSelectionHistoryOpen(false);
     wordCountRequest.current?.abort();
     wordCountRequest.current = null;
@@ -229,6 +227,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     setCompileState,
     filesEvent,
     commentsRevision,
+    historyWarning,
     dictionaryRevision,
     localDraftReady,
     permission: collaborationPermission,
@@ -630,7 +629,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     if (/\.bib$/i.test(filePath)) {
       const citationLibrary = await loadCitationLibrary();
       try {
-        return { formatted: citationLibrary.formatBibtex(source, site.maxCitationBibtexBytes), diagnostics: "" };
+        return { formatted: citationLibrary.formatBibtex(source, site.maxCitationBibtexBytes) };
       } catch (formatError) {
         if (!(formatError instanceof citationLibrary.BibtexFormatError)) throw formatError;
         if (formatError.kind === "too-large") {
@@ -640,7 +639,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       }
     }
     const result = await formatWithTexFmt(source, texFmtConfig);
-    return { formatted: result.output, diagnostics: result.logs.trim() };
+    return { formatted: result.output };
   };
   const formatCurrentFile = async (texFmtConfig?: string): Promise<void> => {
     if (!project || project.permission === "read" || !collaborationSynced || formattingRef.current
@@ -652,14 +651,13 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     let finishFormattingTask: () => void = () => {};
     const formattingTask = new Promise<void>((resolve) => { finishFormattingTask = resolve; });
     formattingTaskRef.current = formattingTask;
-    setFormatterDiagnostics("");
     let lease: FormatLease | null = null;
     try {
       // Acquire before taking the source snapshot. Other formatters queue on
       // this file, while ordinary Yjs editing remains available.
       lease = await collaboration.acquireFormatLease(filePath);
       const source = sharedText.toString();
-      const { formatted, diagnostics } = await formatSource(filePath, source, texFmtConfig);
+      const { formatted } = await formatSource(filePath, source, texFmtConfig);
       if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
         setError(t("editor.formatSourceChanged"));
         return;
@@ -681,7 +679,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       if (edits.length) collaboration.applyTextEdits(filePath, edits);
       if (edits.length) await persistPendingEdits();
       setFormatterRecovery(null);
-      setFormatterDiagnostics(diagnostics);
       setError("");
       setNotice(t("editor.formatFileComplete"));
     } catch (formatError) {
@@ -704,12 +701,11 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     const sharedText = collaboration.getText(filePath);
     formattingRef.current = true;
     setFormatting(true);
-    setFormatterDiagnostics("");
     let lease: FormatLease | null = null;
     try {
       lease = await collaboration.acquireFormatLease(filePath);
       const source = sharedText.toString();
-      const { formatted, diagnostics } = await formatSource(filePath, source);
+      const { formatted } = await formatSource(filePath, source);
       await lease.confirm();
       const edits = await createLatexTextEdits(source, formatted);
       if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
@@ -724,7 +720,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       // compile save that follows may still issue its normal idempotent flush.
       if (edits.length) await collaboration.flush();
       setFormatterRecovery(null);
-      setFormatterDiagnostics(diagnostics);
     } catch (formatError) {
       if (isTexFmtError(formatError)) {
         setFormatterRecovery({ action: "file", kind: formatError.kind, detail: formatError.message });
@@ -761,7 +756,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     let finishFormattingTask: () => void = () => {};
     const formattingTask = new Promise<void>((resolve) => { finishFormattingTask = resolve; });
     formattingTaskRef.current = formattingTask;
-    setFormatterDiagnostics("");
     let lease: FormatLease | null = null;
     try {
       lease = await collaboration.acquireFormatLease(filePath);
@@ -786,7 +780,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       if (edits.length) collaboration.applyTextEdits(filePath, edits);
       if (edits.length) await persistPendingEdits();
       setFormatterRecovery(null);
-      setFormatterDiagnostics(result.diagnostics);
       setError("");
       setNotice(t("editor.formatSelectionComplete"));
     } catch (formatError) {
@@ -1034,7 +1027,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     const recovery = formatterRecovery;
     if (!recovery) return;
     setFormatterRecovery(null);
-    setFormatterDiagnostics("");
     setError("");
     if (resetOptions) updateEditorPreferences({ ...editorPreferences, texFmtConfig: "" });
     const configOverride = resetOptions ? "" : undefined;
@@ -1167,12 +1159,12 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       <button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button>
     </div>}
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
-    {(spellCheck.error || formatterRecovery || formatterDiagnostics || remoteFormatLease) && <div className="client-tool-recoveries">
+    {(spellCheck.error || formatterRecovery || remoteFormatLease) && <div className="client-tool-recoveries">
       {spellCheck.error && <div className="client-tool-recovery" role="alert" title={spellCheck.error}><AlertTriangle size={15} /><span><strong>{t("editor.harperRecoveryTitle")}</strong>{t("editor.harperFallbackHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={spellCheck.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={spellCheck.dismissError}><X size={13} /></button></div>}
       {formatterRecovery && <div className="client-tool-recovery" role="alert" title={formatterRecovery.detail}><AlertTriangle size={15} /><span><strong>{t(formatterRecovery.kind === "format" ? "editor.texFmtOptionsRecoveryTitle" : formatterRecovery.kind === "load" ? "editor.texFmtRecoveryTitle" : "editor.texFmtRuntimeRecoveryTitle")}</strong>{t("editor.clientToolRecoveryHint")}</span><div className="client-tool-recovery-actions"><button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter()}>{t("common.retry")}</button>{formatterRecovery.kind === "format" && editorPreferences.texFmtConfig.trim() && <button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter(true)}>{t("editor.resetFormatterOptions")}</button>}<button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={() => setFormatterRecovery(null)}><X size={13} /></button></div>}
-      {formatterDiagnostics && <div className="client-tool-recovery formatter-diagnostics" role="status"><AlertTriangle size={15} /><span><strong>{t("editor.texFmtDiagnosticsTitle")}</strong>{t("editor.texFmtDiagnosticsHint")}</span><details><summary>{t("editor.viewFormatterDiagnostics")}</summary><pre>{formatterDiagnostics}</pre></details><button type="button" className="formatter-diagnostics-dismiss" title={t("editor.dismissFormatterDiagnostics")} aria-label={t("editor.dismissFormatterDiagnostics")} onClick={() => setFormatterDiagnostics("")}><X size={13} /></button></div>}
       {remoteFormatLease && <div className="client-tool-recovery format-lease-status" role="status"><LoaderCircle className="spin" size={15} /><span>{t("editor.formattingBy", { name: remoteFormatLease.holderName })}</span></div>}
     </div>}
+    {historyWarning && <div className="client-tool-recovery" role="status"><AlertTriangle size={15} /><span>{t("history.saveWarning")}</span></div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
     <PanelGroup autoSaveId="texlite-workspace-layout" direction="horizontal" className="work-grid">

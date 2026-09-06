@@ -142,6 +142,20 @@ with the global npm package—no separate global PM2 install is necessary.
 Managed startup waits for the HTTP health endpoint, and `restart` recreates the
 managed process so it uses paths from the newly installed npm version.
 
+Managed logs are stored under the configured `storage.dataDir`, in
+`logs/stdout.log` and `logs/stderr.log`. TexLite checks at startup and every
+minute, rotating files at 10 MiB and retaining three uncompressed backups per
+stream (`.1` is newest). No PM2 module or host logrotate configuration is needed.
+Rotation uses asynchronous copy/truncate; a small number of concurrent log
+messages may be lost, and the size can exceed the threshold between checks.
+Checks run inside the server, so they do not run while it is stopped or unable
+to start. Foreground `serve` output is still managed by its caller.
+
+After upgrading, run `texlite restart` to switch an existing PM2 process to
+these fixed paths. Already-running `texlite start` is a no-op. Old numbered
+logs in `~/.pm2/logs` and PM2's own daemon log are not deleted or rotated by
+TexLite; other PM2 applications are unaffected.
+
 For a source checkout, `ecosystem.config.cjs` and the `npm run pm2:*` scripts
 remain available. Run exactly one forked instance: cluster mode and multiple
 TexLite processes sharing one data directory are unsupported because
@@ -181,7 +195,7 @@ starting point. It intentionally uses `.texlite` for repository development;
 | `sessionDays` | `14` | Login-session lifetime. |
 | `uploads.maxFileSizeMB` | `50` MB | Limit for uploads, ZIP entries, and attachments. |
 | `pdf.loadingStrategy` / `pdf.rangeThresholdMB` | `auto` / `5` MB | Chooses full transfer for small PDFs and byte ranges for larger ones. |
-| `history.maxVersions` / `history.maxStorageMB` | `0` (unlimited) / `128` MB | Per-project ordinary-version count (`0` = unlimited) and soft storage limit. |
+| `history.maxVersions` / `history.maxStorageMB` | `0` (unlimited) / `128` MiB | Per-project ordinary-version count (`0` = unlimited) and soft limit for deduplicated files plus snapshot metadata. Protected snapshots may exceed the limit; shared SQLite overhead is excluded. |
 | `editHistory.maxStorageMB` | `32` MB | Independent per-project cap for author-attributed selection-edit deltas; retains the newest records and never consumes snapshot storage. |
 | `latex.latexmk` | `latexmk` | Host command. |
 | `latex.defaultEngine` | `xelatex` | Must appear in the allowed list. |

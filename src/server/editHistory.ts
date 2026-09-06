@@ -91,6 +91,7 @@ export const DEFAULT_EDIT_HISTORY_MAX_STORAGE_BYTES = 32 * 1024 * 1024;
 interface StoredSegment {
   segment: EditHistorySegmentInput;
   stepsJson: string;
+  stepsBytes: number;
 }
 
 interface SegmentStorageRow {
@@ -132,24 +133,40 @@ export class ProjectEditHistoryService {
     const skipped: EditHistorySegmentInput[] = [];
     for (const segment of normalized) {
       const stepsJson = JSON.stringify(segment.steps);
+      const stepsBytes = Buffer.byteLength(stepsJson, "utf8");
       // A single oversized burst would make the quota ineffective. Dropping it
       // creates an explicit, safe history boundary rather than retaining a
       // partial delta that could misattribute an older selection.
-      if (Buffer.byteLength(stepsJson, "utf8") > this.maxStorageBytes) skipped.push(segment);
-      else segments.push({ segment, stepsJson });
+      if (stepsBytes > this.maxStorageBytes) skipped.push(segment);
+      else segments.push({ segment, stepsJson, stepsBytes });
     }
     const insert = this.db.prepare(`INSERT INTO project_edit_segments
-      (id, project_id, file_path, author_id, kind, before_hash, after_hash, steps_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      (id, project_id, file_path, author_id, kind, before_hash, after_hash, steps_json, created_at, updated_at, steps_bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     this.db.transaction(() => {
-      for (const { segment, stepsJson } of segments) {
+      for (const { segment, stepsJson, stepsBytes } of segments) {
         insert.run(
           randomUUID(), projectId, segment.filePath, segment.authorId, segment.kind,
-          segment.beforeHash, segment.afterHash, stepsJson, segment.createdAt, segment.updatedAt
+          segment.beforeHash, segment.afterHash, stepsJson, segment.createdAt, segment.updatedAt, stepsBytes
         );
       }
       for (const segment of skipped) this.recordRetentionBoundary(projectId, segment.filePath, segment.afterHash, segment.updatedAt);
       this.prune(projectId);
+    })();
+  }
+
+  /** Logical edit payload; shared SQLite pages and indexes are not included. */
+  stats(projectId: string): { segmentCount: number; payloadBytes: number; maxStorageBytes: number } {
+    const row = this.db.prepare(`SELECT COUNT(*) AS segmentCount,
+      COALESCE(SUM(steps_bytes), 0) AS payloadBytes
+      FROM project_edit_segments WHERE project_id = ?`).get(projectId) as { segmentCount: number; payloadBytes: number };
+    return { ...row, maxStorageBytes: this.maxStorageBytes };
+  }
+
+  clear(projectId: string): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM project_edit_segments WHERE project_id = ?").run(projectId);
+      this.db.prepare("DELETE FROM project_edit_history_boundaries WHERE project_id = ?").run(projectId);
     })();
   }
 
@@ -160,7 +177,7 @@ export class ProjectEditHistoryService {
 
   /** Keep the newest contiguous suffix within both record and payload limits. */
   private prune(projectId: string): void {
-    const rows = this.db.prepare(`SELECT id, file_path, after_hash, updated_at, LENGTH(CAST(steps_json AS BLOB)) AS steps_bytes
+    const rows = this.db.prepare(`SELECT id, file_path, after_hash, updated_at, steps_bytes
       FROM project_edit_segments WHERE project_id = ?
       ORDER BY updated_at DESC, rowid DESC`).all(projectId) as SegmentStorageRow[];
     let retainedBytes = 0;
