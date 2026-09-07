@@ -171,44 +171,104 @@
         <section class="section highlights-section" id="highlights">
           <div class="section-heading">
             <p class="section-kicker" data-i18n="highlights.kicker">核心亮点</p>
-            <h2 data-i18n="highlights.title">一个工作区，覆盖从源码到成稿</h2>
-            <p data-i18n="highlights.lead">
-              用简洁的方式了解 TexLite 的核心取舍：保留熟悉的 LaTeX
-              环境，同时把写作、编译和协作放在同一个私有空间。
-            </p>
+            <h2 data-i18n="highlights.title">一个工作区，从源码到成稿</h2>
           </div>
           <ul class="highlight-list" id="highlight-list">
             <li class="highlight-item" id="features">
               <span class="highlight-mark" aria-hidden="true">↗</span>
-              <strong data-i18n="highlights.items.0.title">核心能力</strong>
+              <strong data-i18n="highlights.items.0.title">真实 LaTeX</strong>
               <p data-i18n="highlights.items.0.body">
-                在浏览器中编辑、编译、预览和协作，支持大纲、批注、SyncTeX
-                与结构化诊断。
+                使用你实际的 TeX 环境、宏包、字体与工具链。
               </p>
             </li>
             <li class="highlight-item" id="why">
               <span class="highlight-mark" aria-hidden="true">↗</span>
-              <strong data-i18n="highlights.items.1.title"
-                >为什么选择 TexLite</strong
-              >
+              <strong data-i18n="highlights.items.1.title">私有协作</strong>
               <p data-i18n="highlights.items.1.body">
-                数据留在自己的服务器，编译资源不与公共实例共享；服务保持轻量，适合已经拥有
-                LaTeX 环境的团队。
+                将源码、PDF、批注与历史记录保留在你完全掌控的基础设施上。
               </p>
             </li>
             <li class="highlight-item" id="workflow">
               <span class="highlight-mark" aria-hidden="true">↗</span>
-              <strong data-i18n="highlights.items.2.title">从源码到成稿</strong>
+              <strong data-i18n="highlights.items.2.title">设计上不内置 AI</strong>
               <p data-i18n="highlights.items.2.body">
-                直接使用宿主机 LaTeX，打开项目即可查看最新 PDF，需要时编译并从
-                PDF、源码和批注之间继续工作。
+                TexLite 让编辑器专注写作本身。如果你需要 AI 辅助，可以使用你偏好的模型与工作流。
               </p>
             </li>
           </ul>
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead>
+                <tr>
+                  <th scope="col" data-i18n="highlights.table.headers.capability">特性</th>
+                  <th scope="col" class="col-highlight"><strong data-i18n="highlights.table.headers.texlite">TexLite</strong></th>
+                  <th scope="col" data-i18n="highlights.table.headers.overleafHosted">Overleaf 托管版</th>
+                  <th scope="col" data-i18n="highlights.table.headers.overleafCe">Overleaf 社区版</th>
+                  <th scope="col" data-i18n="highlights.table.headers.texlyre">TeXlyre</th>
+                  <th scope="col" data-i18n="highlights.table.headers.texbrain">TeXbrain</th>
+                  <th scope="col" data-i18n="highlights.table.headers.prism">Prism</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong data-i18n="highlights.table.rows.texEnvironment.capability">TeX 环境</strong></td>
+                  <td class="col-highlight"><strong data-i18n="highlights.table.rows.texEnvironment.texlite">宿主机真实 TeX Live</strong></td>
+                  <td data-i18n="highlights.table.rows.texEnvironment.overleafHosted">托管环境</td>
+                  <td data-i18n="highlights.table.rows.texEnvironment.overleafCe">服务端 TeX</td>
+                  <td data-i18n="highlights.table.rows.texEnvironment.texlyre">浏览器 WASM TeX</td>
+                  <td data-i18n="highlights.table.rows.texEnvironment.texbrain">浏览器 WASM pdfTeX</td>
+                  <td data-i18n="highlights.table.rows.texEnvironment.prism">托管环境</td>
+                </tr>
+                <tr>
+                  <td><strong data-i18n="highlights.table.rows.compileResources.capability">编译资源</strong></td>
+                  <td class="col-highlight"><strong data-i18n="highlights.table.rows.compileResources.texlite">团队私有服务器</strong></td>
+                  <td data-i18n="highlights.table.rows.compileResources.overleafHosted">公共共享托管云</td>
+                  <td data-i18n="highlights.table.rows.compileResources.overleafCe">自建部署环境</td>
+                  <td data-i18n="highlights.table.rows.compileResources.texlyre">用户浏览器端</td>
+                  <td data-i18n="highlights.table.rows.compileResources.texbrain">用户浏览器端</td>
+                  <td data-i18n="highlights.table.rows.compileResources.prism">公共共享托管云</td>
+                </tr>
+                <tr>
+                  <td><strong data-i18n="highlights.table.rows.comments.capability">源码级批注</strong></td>
+                  <td class="col-highlight"><strong data-i18n="highlights.table.rows.comments.texlite">内置支持</strong></td>
+                  <td data-i18n="highlights.table.rows.comments.overleafHosted">内置支持</td>
+                  <td><strong data-i18n="highlights.table.rows.comments.overleafCe">不支持</strong></td>
+                  <td data-i18n="highlights.table.rows.comments.texlyre">内置支持</td>
+                  <td data-i18n="highlights.table.rows.comments.texbrain">非核心功能</td>
+                  <td data-i18n="highlights.table.rows.comments.prism">内置支持</td>
+                </tr>
+                <tr>
+                  <td><strong data-i18n="highlights.table.rows.history.capability">选区级编辑历史</strong></td>
+                  <td class="col-highlight"><strong data-i18n="highlights.table.rows.history.texlite">✓ 内置支持</strong></td>
+                  <td><strong data-i18n="highlights.table.rows.history.overleafHosted">✗ 无对应功能</strong></td>
+                  <td><strong data-i18n="highlights.table.rows.history.overleafCe">✗</strong></td>
+                  <td><strong data-i18n="highlights.table.rows.history.texlyre">✗ 无相关支持记录</strong></td>
+                  <td><strong data-i18n="highlights.table.rows.history.texbrain">✗</strong></td>
+                  <td><strong data-i18n="highlights.table.rows.history.prism">✗ 无相关支持记录</strong></td>
+                </tr>
+                <tr>
+                  <td><strong data-i18n="highlights.table.rows.snapshots.capability">项目快照与可视化 Diff</strong></td>
+                  <td class="col-highlight"><strong data-i18n="highlights.table.rows.snapshots.texlite">✓ 内置 Diff 风格快照对比</strong></td>
+                  <td data-i18n="highlights.table.rows.snapshots.overleafHosted">△ 完整历史与对比为 Premium 付费功能</td>
+                  <td data-i18n="highlights.table.rows.snapshots.overleafCe">△ 功能受限</td>
+                  <td data-i18n="highlights.table.rows.snapshots.texlyre">✗ 无相关快照记录</td>
+                  <td data-i18n="highlights.table.rows.snapshots.texbrain">△ 功能受限</td>
+                  <td data-i18n="highlights.table.rows.snapshots.prism">△ 功能受限</td>
+                </tr>
+                <tr>
+                  <td><strong data-i18n="highlights.table.rows.ai.capability">编辑界面内置 AI</strong></td>
+                  <td class="col-highlight"><strong data-i18n="highlights.table.rows.ai.texlite">无，设计上不内置</strong></td>
+                  <td data-i18n="highlights.table.rows.ai.overleafHosted">提供可选 AI</td>
+                  <td data-i18n="highlights.table.rows.ai.overleafCe">非 AI 导向</td>
+                  <td data-i18n="highlights.table.rows.ai.texlyre">非 AI 导向</td>
+                  <td data-i18n="highlights.table.rows.ai.texbrain">非 AI 导向</td>
+                  <td><strong data-i18n="highlights.table.rows.ai.prism">AI 原生</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <p class="highlight-note" data-i18n="highlights.note">
-            补充说明：Overleaf
-            在线服务在用户高峰时可能出现排队、卡顿或编译超时；Overleaf 开源
-            Docker 部署版本需要维护较复杂的服务栈，不包含批注等关键协作功能。
+            使用 TexLite，你的团队可以完全掌控 TeX 环境、编译资源、用户、权限以及数据。同时提供实时协作编辑、源码级批注、选区级编辑历史、SyncTeX、项目快照以及可选的 Git 备份 —— 没有外部强加的编译超时限制，设计上也坚决不内置 AI。
           </p>
         </section>
 
