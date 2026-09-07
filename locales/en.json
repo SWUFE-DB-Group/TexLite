@@ -16,14 +16,80 @@
   },
   "highlights": {
     "kicker": "Core highlights",
-    "title": "One workspace from source to paper",
-    "lead": "A concise view of TexLite's trade-offs: keep the LaTeX environment you know while bringing writing, compilation, and collaboration into one private space.",
-    "note": "One practical distinction: Overleaf's hosted service can queue, slow down, or time out during usage peaks; Overleaf's open-source Docker deployment requires a more involved service stack and does not include key collaboration features such as comments.",
+    "title": "One workspace, from source to paper",
     "items": [
-      { "anchor": "features", "title": "Core capabilities", "body": "Edit, compile, preview, and collaborate in the browser with outline navigation, comments, SyncTeX, and structured diagnostics." },
-      { "anchor": "why", "title": "Why choose TexLite", "body": "Keep data on your server without sharing compilation resources with a public instance; keep the service small for teams that already have LaTeX." },
-      { "anchor": "workflow", "title": "From source to paper", "body": "Use the host's LaTeX directly, open the latest PDF when you return, and move between PDF, source, and comments as you work." }
-    ]
+      { "anchor": "features", "title": "Real LaTeX", "body": "Use your actual TeX environment, packages, fonts, and toolchain." },
+      { "anchor": "why", "title": "Private collaboration", "body": "Keep sources, PDFs, comments, and history on infrastructure you control." },
+      { "anchor": "workflow", "title": "No AI by design", "body": "TexLite keeps the editor focused on writing. If you want AI assistance, use the model and workflow you already prefer." }
+    ],
+    "table": {
+      "headers": {
+        "capability": "Capability",
+        "texlite": "TexLite",
+        "overleafHosted": "Overleaf Hosted",
+        "overleafCe": "Overleaf CE",
+        "texlyre": "TeXlyre",
+        "texbrain": "TeXbrain",
+        "prism": "Prism"
+      },
+      "rows": {
+        "texEnvironment": {
+          "capability": "TeX environment",
+          "texlite": "Your actual host TeX Live",
+          "overleafHosted": "Managed",
+          "overleafCe": "Server-side TeX",
+          "texlyre": "Browser WASM TeX",
+          "texbrain": "Browser WASM pdfTeX",
+          "prism": "Managed"
+        },
+        "compileResources": {
+          "capability": "Compile resources",
+          "texlite": "Your team's server",
+          "overleafHosted": "Shared managed cloud",
+          "overleafCe": "Your deployment",
+          "texlyre": "User's browser",
+          "texbrain": "User's browser",
+          "prism": "Shared managed cloud"
+        },
+        "comments": {
+          "capability": "Source-anchored comments",
+          "texlite": "Built in",
+          "overleafHosted": "Built in",
+          "overleafCe": "Not available",
+          "texlyre": "Built in",
+          "texbrain": "Not core",
+          "prism": "Built in"
+        },
+        "history": {
+          "capability": "Selection-level edit history",
+          "texlite": "✓ Built in",
+          "overleafHosted": "✗ No equivalent",
+          "overleafCe": "✗",
+          "texlyre": "✗ No documented equivalent",
+          "texbrain": "✗",
+          "prism": "✗ No documented equivalent"
+        },
+        "snapshots": {
+          "capability": "Project snapshots with visual diff",
+          "texlite": "✓ Built-in diff-style snapshot comparison",
+          "overleafHosted": "△ Full history & comparison is Premium",
+          "overleafCe": "△ Limited",
+          "texlyre": "✗ No documented snapshots",
+          "texbrain": "△ Limited",
+          "prism": "△ Limited"
+        },
+        "ai": {
+          "capability": "AI in the writing surface",
+          "texlite": "None, by design",
+          "overleafHosted": "AI available",
+          "overleafCe": "Not AI-centered",
+          "texlyre": "Not AI-centered",
+          "texbrain": "Not AI-centered",
+          "prism": "AI-native"
+        }
+      }
+    },
+    "note": "With TexLite, your team controls the TeX environment, compile resources, users, permissions, and data. It also includes real-time editing, source-anchored comments, selection-level edit history, SyncTeX, project snapshots, and optional Git backup — with no externally imposed compile timeout and no built-in AI."
   },
   "deploy": {
     "kicker": "Start on your server",

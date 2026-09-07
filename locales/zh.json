@@ -16,14 +16,80 @@
   },
   "highlights": {
     "kicker": "核心亮点",
-    "title": "一个工作区，覆盖从源码到成稿",
-    "lead": "用简洁的方式了解 TexLite 的核心取舍：保留熟悉的 LaTeX 环境，同时把写作、编译和协作放在同一个私有空间。",
-    "note": "补充说明：Overleaf 在线服务在用户高峰时可能出现排队、卡顿或编译超时；Overleaf 开源 Docker 部署版本需要维护较复杂的服务栈，不包含批注等关键协作功能。",
+    "title": "一个工作区，从源码到成稿",
     "items": [
-      { "anchor": "features", "title": "核心能力", "body": "在浏览器中编辑、编译、预览和协作，支持大纲、批注、SyncTeX 与结构化诊断。" },
-      { "anchor": "why", "title": "为什么选择 TexLite", "body": "数据留在自己的服务器，编译资源不与公共实例共享；服务保持轻量，适合已经拥有 LaTeX 环境的团队。" },
-      { "anchor": "workflow", "title": "从源码到成稿", "body": "直接使用宿主机 LaTeX，打开项目即可查看最新 PDF，需要时编译并从 PDF、源码和批注之间继续工作。" }
-    ]
+      { "anchor": "features", "title": "真实 LaTeX", "body": "使用你实际的 TeX 环境、宏包、字体与工具链。" },
+      { "anchor": "why", "title": "私有协作", "body": "将源码、PDF、批注与历史记录保留在你完全掌控的基础设施上。" },
+      { "anchor": "workflow", "title": "设计上不内置 AI", "body": "TexLite 让编辑器专注写作本身。如果你需要 AI 辅助，可以使用你偏好的模型与工作流。" }
+    ],
+    "table": {
+      "headers": {
+        "capability": "特性",
+        "texlite": "TexLite",
+        "overleafHosted": "Overleaf 托管版",
+        "overleafCe": "Overleaf 社区版",
+        "texlyre": "TeXlyre",
+        "texbrain": "TeXbrain",
+        "prism": "Prism"
+      },
+      "rows": {
+        "texEnvironment": {
+          "capability": "TeX 环境",
+          "texlite": "宿主机真实 TeX Live",
+          "overleafHosted": "托管环境",
+          "overleafCe": "服务端 TeX",
+          "texlyre": "浏览器 WASM TeX",
+          "texbrain": "浏览器 WASM pdfTeX",
+          "prism": "托管环境"
+        },
+        "compileResources": {
+          "capability": "编译资源",
+          "texlite": "团队私有服务器",
+          "overleafHosted": "公共共享托管云",
+          "overleafCe": "自建部署环境",
+          "texlyre": "用户浏览器端",
+          "texbrain": "用户浏览器端",
+          "prism": "公共共享托管云"
+        },
+        "comments": {
+          "capability": "源码级批注",
+          "texlite": "内置支持",
+          "overleafHosted": "内置支持",
+          "overleafCe": "不支持",
+          "texlyre": "内置支持",
+          "texbrain": "非核心功能",
+          "prism": "内置支持"
+        },
+        "history": {
+          "capability": "选区级编辑历史",
+          "texlite": "✓ 内置支持",
+          "overleafHosted": "✗ 无对应功能",
+          "overleafCe": "✗",
+          "texlyre": "✗ 无相关支持记录",
+          "texbrain": "✗",
+          "prism": "✗ 无相关支持记录"
+        },
+        "snapshots": {
+          "capability": "项目快照与可视化 Diff",
+          "texlite": "✓ 内置 Diff 风格快照对比",
+          "overleafHosted": "△ 完整历史与对比为 Premium 付费功能",
+          "overleafCe": "△ 功能受限",
+          "texlyre": "✗ 无相关快照记录",
+          "texbrain": "△ 功能受限",
+          "prism": "△ 功能受限"
+        },
+        "ai": {
+          "capability": "编辑界面内置 AI",
+          "texlite": "无，设计上不内置",
+          "overleafHosted": "提供可选 AI",
+          "overleafCe": "非 AI 导向",
+          "texlyre": "非 AI 导向",
+          "texbrain": "非 AI 导向",
+          "prism": "AI 原生"
+        }
+      }
+    },
+    "note": "使用 TexLite，你的团队可以完全掌控 TeX 环境、编译资源、用户、权限以及数据。同时提供实时协作编辑、源码级批注、选区级编辑历史、SyncTeX、项目快照以及可选的 Git 备份 —— 没有外部强加的编译超时限制，设计上也坚决不内置 AI。"
   },
   "deploy": {
     "kicker": "从本机开始",
