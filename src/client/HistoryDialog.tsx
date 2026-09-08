@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  CheckCircle2, Clock3, FileClock, FileCode2, FileText, GitCommitHorizontal, HardDrive,
+  CheckCircle2, Clock3, FileClock, FileCode2, FileText, HardDrive,
   LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Save, Tag, Trash2
 } from "lucide-react";
 import { ApiError, api } from "./api";
@@ -419,11 +419,11 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                 </div>
                 <small><Clock3 size={12} />{new Date(detail.version.createdAt).toLocaleString(i18n.resolvedLanguage)} · {authorName} · {t("history.fileCount", { count: detail.version.fileCount })}</small>
               </div>
-              <span className="history-detail-actions">
-                {isOwner && <button className="danger-text" disabled={controlsBusy} onClick={() => setDeleteTarget(detail.version)}><Trash2 size={14} />{t("history.deleteVersion")}</button>}
-                {canRestore && <button className="danger-text" disabled={controlsBusy} onClick={() => setRestoreTarget("project")}><RotateCcw size={14} />{t("history.restoreProject")}</button>}
-              </span>
             </header>
+            {(isOwner || canRestore) && <div className="history-snapshot-actions">
+              {isOwner && <button type="button" className="history-delete-action" disabled={controlsBusy} title={t("history.deleteVersionTitle")} onClick={() => setDeleteTarget(detail.version)}><Trash2 size={14} />{t("history.deleteVersion")}</button>}
+              {canRestore && <button type="button" className="history-restore-project" disabled={controlsBusy} title={t("history.restoreProjectTitle")} onClick={() => setRestoreTarget("project")}><RotateCcw size={14} />{t("history.restoreProject")}</button>}
+            </div>}
             {canRestore && <div className="history-label">
               <label><Tag size={14} /><input value={label} maxLength={80} placeholder={t("history.labelPlaceholder")} onChange={(event) => setLabel(event.target.value)} /></label>
               <button disabled={controlsBusy || label.trim() === (detail.version.label ?? "")} onClick={() => void saveLabel()}>{busy === "label" ? <LoaderCircle className="spin" size={13} /> : <Save size={13} />}{t("history.saveLabel")}</button>
@@ -434,17 +434,19 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                   <FileCode2 size={13} />
                   <span>{t("history.changedFilesHeading", { count: changedFiles.length })}</span>
                 </div>
-                <div className="history-file-actions">
-                  {canRestore && <button disabled={!selectedPath || controlsBusy} onClick={() => setRestoreTarget(selectedPath)}><RotateCcw size={13} />{t("history.restoreFile")}</button>}
-                </div>
               </div>
               {changedFiles.length > 0 ? (
-                <div className="history-file-list">{changedFiles.map((file) => (
-                  <button type="button" className={file.path === selectedPath ? "active" : ""} key={file.path} title={file.path} onClick={() => setSelectedPath(file.path)}>
-                    <FileText size={13} />
-                    <span>{file.path}</span>
-                  </button>
-                ))}</div>
+                <div className="history-file-tabs-row">
+                  <div className="history-file-list">{changedFiles.map((file) => (
+                    <button type="button" className={file.path === selectedPath ? "active" : ""} key={file.path} title={file.path} onClick={() => setSelectedPath(file.path)}>
+                      <FileText size={13} />
+                      <span>{file.path}</span>
+                    </button>
+                  ))}</div>
+                  {canRestore && <div className="history-file-actions">
+                    <button type="button" disabled={!selectedPath || controlsBusy} title={t("history.restoreFileTitle")} onClick={() => setRestoreTarget(selectedPath)}><RotateCcw size={13} />{t("history.restoreFile")}</button>
+                  </div>}
+                </div>
               ) : (
                 <p className="muted padded-small">{t("history.noChangedFiles")}</p>
               )}
@@ -463,32 +465,40 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                     </small>
                   </div>
                   <div className="history-diff-controls">
-                    <div className="history-mode-toggle" role="group" aria-label={t("history.diffMode")}>
+                    <div className="history-diff-control-group">
+                      <div className="history-mode-toggle" role="group" aria-label={t("history.diffMode")}>
                       <button
                         type="button"
                         className={diffMode === "commit" ? "active" : ""}
+                        aria-pressed={diffMode === "commit"}
                         onClick={() => setDiffMode("commit")}
                         title={t("history.diffModeCommitHint")}
                       >
-                        <GitCommitHorizontal size={13} />
                         <span>{t("history.diffModeCommit")}</span>
                       </button>
                       <button
                         type="button"
                         className={diffMode === "current" ? "active" : ""}
+                        aria-pressed={diffMode === "current"}
                         onClick={() => setDiffMode("current")}
                         title={t("history.diffModeCurrentHint")}
                       >
-                        <FileClock size={13} />
                         <span>{t("history.diffModeCurrent")}</span>
                       </button>
+                      </div>
                     </div>
-                    <div className="git-diff-font-controls" role="group" aria-label={t("git.diffFontSize")}>
-                      <button type="button" className="git-diff-font-button" disabled={diffFontSize <= 8} title={t("git.diffFontDecrease")} aria-label={t("git.diffFontDecrease")} onClick={() => setDiffFontSize((current) => Math.max(8, current - 1))}><Minus size={14} /></button>
-                      <span className="git-diff-font-value" aria-live="polite">{diffFontSize}px</span>
-                      <button type="button" className="git-diff-font-button" disabled={diffFontSize >= 24} title={t("git.diffFontIncrease")} aria-label={t("git.diffFontIncrease")} onClick={() => setDiffFontSize((current) => Math.min(24, current + 1))}><Plus size={14} /></button>
+                    <span className="history-diff-control-divider" aria-hidden="true" />
+                    <div className="history-diff-control-group">
+                      <div className="git-diff-font-controls" role="group" aria-label={t("git.diffFontSize")}>
+                        <button type="button" className="git-diff-font-button" disabled={diffFontSize <= 8} title={t("git.diffFontDecrease")} aria-label={t("git.diffFontDecrease")} onClick={() => setDiffFontSize((current) => Math.max(8, current - 1))}><Minus size={14} /></button>
+                        <span className="git-diff-font-value" aria-live="polite">{diffFontSize}px</span>
+                        <button type="button" className="git-diff-font-button" disabled={diffFontSize >= 24} title={t("git.diffFontIncrease")} aria-label={t("git.diffFontIncrease")} onClick={() => setDiffFontSize((current) => Math.min(24, current + 1))}><Plus size={14} /></button>
+                      </div>
                     </div>
-                    <button type="button" className="git-diff-fullscreen" title={diffFullscreen ? t("git.exitFullscreenDiff") : t("git.fullscreenDiff")} aria-label={diffFullscreen ? t("git.exitFullscreenDiff") : t("git.fullscreenDiff")} onClick={() => void toggleDiffFullscreen()}>{diffFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button>
+                    <span className="history-diff-control-divider" aria-hidden="true" />
+                    <div className="history-diff-control-group">
+                      <button type="button" className="git-diff-fullscreen" title={diffFullscreen ? t("git.exitFullscreenDiff") : t("git.fullscreenDiff")} aria-label={diffFullscreen ? t("git.exitFullscreenDiff") : t("git.fullscreenDiff")} onClick={() => void toggleDiffFullscreen()}>{diffFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button>
+                    </div>
                   </div>
                 </header>
                 {busy === "compare" && !comparison ? <div className="history-comparison-empty"><LoaderCircle className="spin" size={24} /><span>{t("common.loading")}</span></div>
