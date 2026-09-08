@@ -772,10 +772,12 @@ function toMarks(comments: Comment[]): CommentMark[] {
 }
 
 function buildCommentDecorations(marks: CommentMark[], documentLength: number): DecorationSet {
-  const ranges = marks.filter((mark) => !mark.orphaned).flatMap((mark) => {
+  // Resolved discussions remain available in the comments panel, but should
+  // leave the source completely unmarked so finished work reads normally.
+  const ranges = marks.filter((mark) => !mark.orphaned && !mark.resolved).flatMap((mark) => {
     const from = Math.max(0, Math.min(documentLength, mark.from));
     const to = Math.max(from, Math.min(documentLength, mark.to));
-    const className = `cm-source-comment${mark.resolved ? " cm-source-comment-resolved" : ""}`;
+    const className = "cm-source-comment";
     if (from === to) {
       return [Decoration.widget({ widget: new CommentPin(mark.id, className), side: 1 }).range(from)];
     }

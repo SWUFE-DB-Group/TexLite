@@ -558,7 +558,6 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .texlite-math-hover .katex-display { margin: 0; }
 .texlite-math-hover-error { color: #9b3e36; font-size: 11px; white-space: normal; }
 .cm-source-comment { background: #ffe49b99; border-bottom: 2px solid #d68b00; cursor: text; }
-.cm-source-comment-resolved { background: #dce5de99; border-bottom-color: #829087; }
 .cm-comment-pin { color: #d68b00; font-size: 9px; padding: 0 2px; cursor: pointer; }
 .preview-panel { display: flex; flex-direction: column; background: #6f7471; }
 .preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 5px 6px 0; background: #4d544f; }
@@ -688,7 +687,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .padded { padding: 14px; }
 .comments { padding: 9px; }
 .comments article { margin-bottom: 9px; padding: 10px; border: 1px solid #dde2de; border-radius: 7px; font-size: 12px; cursor: pointer; user-select: text; -webkit-user-select: text; }
-.comments article.resolved { opacity: .55; background: #f3f5f3; }
+.comments article.resolved { opacity: .55; background: transparent; }
 .comments article.orphaned { border-color: #d8847d; background: #fff4f2; }
 .comments article.mention-target, .comment-reply.mention-target { border-color: #d5a83f; background: #fff9e9; box-shadow: 0 0 0 3px #e8c46933; }
 .comments header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
