@@ -25,7 +25,8 @@ import type { ProjectOutlineService } from "../projectOutline.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { writeProjectArchive } from "../archive.js";
 import { extractProjectZip, ZipValidationError } from "../zip.js";
-import { HarperUnavailableError, type HarperService } from "../harper.js";
+import { HarperLintSupersededError, HarperUnavailableError, type HarperService } from "../harper.js";
+import { digestToken } from "../security.js";
 import { unreadMentionCountsForProjects } from "../commentMentions.js";
 import {
   commentsSummaryForProject,
@@ -52,6 +53,8 @@ interface ProjectCatalogRouteContext {
   harper: HarperService;
   recordHistory: (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => unknown;
 }
+
+const clientIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 /** Register project catalog, metadata, archive, dictionary, tag, export, and deletion routes. */
 export function registerProjectCatalogRoutes(app: FastifyInstance, context: ProjectCatalogRouteContext): void {
@@ -398,14 +401,44 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const body = request.body as { path?: unknown; source?: unknown } | undefined;
-    if (typeof body?.source !== "string" || typeof body.path !== "string") return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
-    if (Buffer.byteLength(body.source, "utf8") > maxCollaborativeFileBytes(config)) {
+    const body = request.body as { path?: unknown; source?: unknown; clientId?: unknown; sequence?: unknown } | undefined;
+    const source = body?.source;
+    const sourcePath = body?.path;
+    const clientId = body?.clientId;
+    const sequence = body?.sequence;
+    if (typeof source !== "string" || typeof sourcePath !== "string") {
+      return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
+    }
+    // Accept already-open clients during a rolling update. Current clients
+    // pair a page-local UUID with a monotonically increasing sequence so a
+    // delayed HTTP request cannot replace a newer queued check.
+    if (clientId !== undefined && (typeof clientId !== "string" || !clientIdPattern.test(clientId))) {
+      return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
+    }
+    if (sequence !== undefined && (typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= 0 || clientId === undefined)) {
+      return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
+    }
+    if (Buffer.byteLength(source, "utf8") > maxCollaborativeFileBytes(config)) {
       return apiError(reply, 413, "SPELLCHECK_SOURCE_TOO_LARGE");
     }
+    let filePath: string;
     try {
-      return { lints: await harper.lint(body.source, body.path) };
+      filePath = safeRelativePath(sourcePath);
+    } catch {
+      return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
+    }
+    // A login session is shared by browser tabs. Pair the authenticated user
+    // with the page-local client ID so each new editor can replace only its
+    // own obsolete waiting work. Legacy clients retain their former session
+    // grouping until their page is refreshed.
+    const laneClientId = clientId ?? `legacy:${digestToken(request.cookies.texlite_session ?? "")}`;
+    const lane = `${id}\0${user.id}\0${laneClientId}\0${filePath}`;
+    try {
+      return { lints: await harper.lint(source, filePath, lane, typeof sequence === "number" ? sequence : undefined) };
     } catch (error) {
+      if (error instanceof HarperLintSupersededError) {
+        return apiError(reply, 409, "SPELLCHECK_SUPERSEDED");
+      }
       // A missing optional command is an expected fallback condition. Keep it
       // out of normal logs while preserving diagnostics for an actual failure.
       if (error instanceof HarperUnavailableError) request.log.debug({ projectId: id }, "Host Harper CLI unavailable; using browser fallback");

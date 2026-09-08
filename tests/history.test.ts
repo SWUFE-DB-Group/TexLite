@@ -222,6 +222,46 @@ describe("project history retention", () => {
     expect(fixture.history.readTextFile(fixture.projectId, rebuilt.id, "chapters/intro.tex")).toBe("current companion");
   });
 
+  it("returns an actionable error when a stored snapshot object is missing", () => {
+    const fixture = createFixture();
+    writeSource(fixture, "main.tex", "snapshot payload");
+    const version = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!;
+    const digest = createHash("sha256").update("snapshot payload").digest("hex");
+    const object = path.join(
+      fixture.config.projectsDir, fixture.projectId, "output", ".texlite", "history", "objects", digest.slice(0, 2), digest
+    );
+    fs.rmSync(object);
+
+    let previewError: unknown;
+    try {
+      fixture.history.readTextFile(fixture.projectId, version.id, "main.tex");
+    } catch (error) {
+      previewError = error;
+    }
+    expect(previewError).toMatchObject({ statusCode: 410, code: "HISTORY_OBJECT_MISSING", details: { path: "main.tex" } });
+
+    let restoreError: unknown;
+    try {
+      fixture.history.restore(fixture.projectId, version.id, "main.tex");
+    } catch (error) {
+      restoreError = error;
+    }
+    expect(restoreError).toMatchObject({ statusCode: 410, code: "HISTORY_OBJECT_MISSING", details: { path: "main.tex" } });
+    expect(fs.readdirSync(sourceRoot(fixture.config, fixture.projectId)).some((entry) => entry.includes(".history-") && entry.endsWith(".tmp"))).toBe(false);
+
+    writeSource(fixture, "main.tex", "current live source");
+    let treeRestoreError: unknown;
+    try {
+      fixture.history.restore(fixture.projectId, version.id);
+    } catch (error) {
+      treeRestoreError = error;
+    }
+    expect(treeRestoreError).toMatchObject({ statusCode: 410, code: "HISTORY_OBJECT_MISSING", details: { path: "main.tex" } });
+    expect(fs.readFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "main.tex"), "utf8")).toBe("current live source");
+    expect(fs.readdirSync(path.dirname(sourceRoot(fixture.config, fixture.projectId)))
+      .some((entry) => entry.startsWith(".history-restore-") || entry.startsWith(".history-backup-"))).toBe(false);
+  });
+
   it("batch-prunes multiple obsolete versions in a single pass when storage limit is exceeded", () => {
     const fixture = createFixture({ maxVersions: 10, maxStorageBytes: 3_000 });
     fixture.history.record(fixture.projectId, "user-1", "initial");

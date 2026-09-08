@@ -31,6 +31,21 @@ interface CachedLintResult {
   lints: RawHarperLint[];
 }
 
+interface ScheduledLint {
+  key: string;
+  source: string;
+  filePath: string;
+  started: boolean;
+  cancelled: boolean;
+  /** Browser lanes currently waiting for this shared queued operation. */
+  lanes: Set<string>;
+  /** A caller without a lane still expects this operation to run. */
+  hasUnscopedWaiter: boolean;
+  promise: Promise<RawHarperLint[]>;
+  resolve: (lints: RawHarperLint[]) => void;
+  reject: (error: unknown) => void;
+}
+
 const commandProbeTimeoutMs = 5_000;
 const lintTimeoutMs = 30_000;
 const maxCommandOutputBytes = 8 * 1024 * 1024;
@@ -38,11 +53,32 @@ const maxCachedSourceBytes = 512 * 1024;
 const maxCachedResults = 24;
 const cacheTtlMs = 15_000;
 const unavailableRetryMs = 15_000;
+// A browser can send an older request after a newer one when HTTP requests
+// race. Keep the latest sequence briefly so that late arrivals cannot replace
+// a newer queued revision. The bound is intentionally generous for a small
+// collaborative installation while keeping abandoned browser-page lanes from
+// accumulating forever.
+const laneSequenceRetentionMs = 10 * 60_000;
+const maxTrackedLaneSequences = 512;
+
+interface LaneSequence {
+  sequence: number;
+  key: string;
+  seenAt: number;
+}
 
 export class HarperUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "HarperUnavailableError";
+  }
+}
+
+/** A newer source revision made a waiting writing check irrelevant. */
+export class HarperLintSupersededError extends Error {
+  constructor() {
+    super("A newer writing check replaced this request.");
+    this.name = "HarperLintSupersededError";
   }
 }
 
@@ -107,8 +143,20 @@ export class HarperService {
   private availability: "unknown" | "available" | "unavailable" = "unknown";
   private lastUnavailableAt = 0;
   private probePromise: Promise<void> | null = null;
-  private queue: Promise<void> = Promise.resolve();
+  /** One harper-cli process at a time; Harper itself is comparatively heavy. */
+  private queueRunner: Promise<void> | null = null;
+  // Set preserves insertion order, giving the scheduler FIFO behaviour while
+  // allowing a superseded waiting item to be removed immediately. An array
+  // would otherwise retain its complete source string until the active check
+  // finishes.
+  private readonly queued = new Set<ScheduledLint>();
+  /** Only waiting work belongs here; a running process must finish safely. */
+  private readonly waitingByLane = new Map<string, ScheduledLint>();
+  /** Latest accepted browser revision for each project/user/page/file lane. */
+  private readonly latestSequenceByLane = new Map<string, LaneSequence>();
   private readonly inFlight = new Map<string, Promise<RawHarperLint[]>>();
+  /** Lets coalesced browser lanes share one queued operation safely. */
+  private readonly scheduledByKey = new Map<string, ScheduledLint>();
   private readonly cache = new Map<string, CachedLintResult>();
   private activeChild: ChildProcess | null = null;
   private disposed = false;
@@ -119,24 +167,75 @@ export class HarperService {
     await this.ensureAvailable();
   }
 
-  async lint(source: string, filePath = "main.tex"): Promise<RawHarperLint[]> {
+  /**
+   * Schedule one host-side check. A lane represents one browser page's
+   * current file, so an edit can replace only its own stale waiting request
+   * without cancelling checks requested by collaborators.
+   */
+  async lint(source: string, filePath = "main.tex", lane?: string, sequence?: number): Promise<RawHarperLint[]> {
     if (this.disposed) throw new HarperUnavailableError("Harper service stopped.");
     const key = lintCacheKey(source, filePath);
+    const laneKey = lane || null;
+    if (laneKey && sequence !== undefined) this.acceptLaneSequence(laneKey, sequence, key);
+    const waiting = laneKey ? this.waitingByLane.get(laneKey) : undefined;
+    // Repeated requests for the same queued revision share it. A newer
+    // revision replaces only work that has not started yet.
+    if (waiting?.key === key) return waiting.promise;
+    if (laneKey && waiting) this.releaseWaitingLane(laneKey, waiting);
+
     const cacheable = Buffer.byteLength(source, "utf8") <= maxCachedSourceBytes;
     const cached = cacheable ? this.cachedResult(key) : null;
     if (cached) return cached;
-    const existing = cacheable ? this.inFlight.get(key) : undefined;
-    if (existing) return existing;
+    // Result caching is deliberately size-bounded, but duplicate active work
+    // is still coalesced for large files. The latter is transient and avoids
+    // starting multiple expensive CLI processes for identical content.
+    const existing = this.inFlight.get(key);
+    if (existing) {
+      const scheduled = this.scheduledByKey.get(key);
+      if (laneKey && scheduled) this.addWaitingLane(scheduled, laneKey);
+      else if (scheduled && !scheduled.started) scheduled.hasUnscopedWaiter = true;
+      return existing;
+    }
 
-    const operation = this.queue.then(() => this.lintOnce(source, filePath));
-    this.queue = operation.then(() => undefined, () => undefined);
+    let resolve!: (lints: RawHarperLint[]) => void;
+    let reject!: (error: unknown) => void;
+    const operation = new Promise<RawHarperLint[]>((resolveOperation, rejectOperation) => {
+      resolve = resolveOperation;
+      reject = rejectOperation;
+    });
+    const scheduled: ScheduledLint = {
+      key,
+      source,
+      filePath,
+      started: false,
+      cancelled: false,
+      lanes: laneKey ? new Set([laneKey]) : new Set(),
+      hasUnscopedWaiter: laneKey === null,
+      promise: operation,
+      resolve,
+      reject
+    };
+    this.inFlight.set(key, operation);
+    this.scheduledByKey.set(key, scheduled);
+    if (laneKey) this.waitingByLane.set(laneKey, scheduled);
+    this.queued.add(scheduled);
+    this.startQueue();
+
     if (cacheable) {
-      this.inFlight.set(key, operation);
       void operation.then(
         (lints) => this.cacheResult(key, lints),
         () => undefined
       ).finally(() => {
         if (this.inFlight.get(key) === operation) this.inFlight.delete(key);
+        if (this.scheduledByKey.get(key) === scheduled) this.scheduledByKey.delete(key);
+      });
+    } else {
+      // Attach a rejection handler even for uncached results. This keeps a
+      // superseded request from becoming an unhandled rejection when a client
+      // disconnects before it awaits the response.
+      void operation.catch(() => undefined).finally(() => {
+        if (this.inFlight.get(key) === operation) this.inFlight.delete(key);
+        if (this.scheduledByKey.get(key) === scheduled) this.scheduledByKey.delete(key);
       });
     }
     return operation;
@@ -144,10 +243,117 @@ export class HarperService {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    const stopped = new HarperUnavailableError("Harper service stopped.");
+    for (const scheduled of [...this.queued]) {
+      if (!scheduled.cancelled && !scheduled.started) {
+        scheduled.cancelled = true;
+        this.discardQueuedLint(scheduled);
+        scheduled.reject(stopped);
+      }
+    }
+    this.waitingByLane.clear();
+    this.latestSequenceByLane.clear();
     this.activeChild?.kill("SIGTERM");
-    await this.queue.catch(() => undefined);
+    await this.queueRunner?.catch(() => undefined);
     this.inFlight.clear();
+    this.scheduledByKey.clear();
     this.cache.clear();
+  }
+
+  private addWaitingLane(scheduled: ScheduledLint, lane: string): void {
+    if (scheduled.started || scheduled.cancelled) return;
+    scheduled.lanes.add(lane);
+    this.waitingByLane.set(lane, scheduled);
+  }
+
+  private releaseWaitingLane(lane: string, scheduled: ScheduledLint): void {
+    if (this.waitingByLane.get(lane) === scheduled) this.waitingByLane.delete(lane);
+    scheduled.lanes.delete(lane);
+    // The exact same queued source can be requested by multiple sessions.
+    // Discard it only after every interested lane has moved on.
+    if (scheduled.started || scheduled.cancelled || scheduled.hasUnscopedWaiter || scheduled.lanes.size > 0) return;
+    this.cancelScheduledLint(scheduled);
+  }
+
+  private cancelScheduledLint(scheduled: ScheduledLint): void {
+    if (scheduled.started || scheduled.cancelled) return;
+    scheduled.cancelled = true;
+    for (const lane of scheduled.lanes) {
+      if (this.waitingByLane.get(lane) === scheduled) this.waitingByLane.delete(lane);
+    }
+    scheduled.lanes.clear();
+    // Remove this rejected promise immediately so a later return to the same
+    // text can enqueue fresh work instead of inheriting a stale rejection.
+    if (this.inFlight.get(scheduled.key) === scheduled.promise) {
+      this.inFlight.delete(scheduled.key);
+    }
+    if (this.scheduledByKey.get(scheduled.key) === scheduled) {
+      this.scheduledByKey.delete(scheduled.key);
+    }
+    this.discardQueuedLint(scheduled);
+    scheduled.reject(new HarperLintSupersededError());
+  }
+
+  /** Remove a waiting task and promptly release its potentially large text. */
+  private discardQueuedLint(scheduled: ScheduledLint): void {
+    this.queued.delete(scheduled);
+    scheduled.source = "";
+    scheduled.filePath = "";
+  }
+
+  /** Reject an out-of-order request before it can alter queued work. */
+  private acceptLaneSequence(lane: string, sequence: number, key: string): void {
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) {
+      throw new HarperLintSupersededError();
+    }
+    const now = Date.now();
+    this.pruneLaneSequences(now);
+    const previous = this.latestSequenceByLane.get(lane);
+    if (previous && (sequence < previous.sequence || (sequence === previous.sequence && previous.key !== key))) {
+      throw new HarperLintSupersededError();
+    }
+    // Refresh insertion order so the bounded map evicts the least recently
+    // used abandoned page lane first.
+    this.latestSequenceByLane.delete(lane);
+    this.latestSequenceByLane.set(lane, { sequence, key, seenAt: now });
+    while (this.latestSequenceByLane.size > maxTrackedLaneSequences) {
+      const oldest = this.latestSequenceByLane.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.latestSequenceByLane.delete(oldest);
+    }
+  }
+
+  private pruneLaneSequences(now: number): void {
+    for (const [lane, state] of this.latestSequenceByLane) {
+      if (now - state.seenAt <= laneSequenceRetentionMs) continue;
+      this.latestSequenceByLane.delete(lane);
+    }
+  }
+
+  private startQueue(): void {
+    if (this.queueRunner) return;
+    this.queueRunner = (async () => {
+      while (!this.disposed) {
+        const scheduled = this.queued.values().next().value as ScheduledLint | undefined;
+        if (!scheduled) return;
+        this.queued.delete(scheduled);
+        if (scheduled.cancelled) continue;
+        scheduled.started = true;
+        for (const lane of scheduled.lanes) {
+          if (this.waitingByLane.get(lane) === scheduled) this.waitingByLane.delete(lane);
+        }
+        scheduled.lanes.clear();
+        try {
+          scheduled.resolve(await this.lintOnce(scheduled.source, scheduled.filePath));
+        } catch (error) {
+          scheduled.reject(error);
+        }
+      }
+    })().finally(() => {
+      this.queueRunner = null;
+      // A request can arrive just after the loop observes an empty queue.
+      if (!this.disposed && this.queued.size) this.startQueue();
+    });
   }
 
   private async ensureAvailable(): Promise<void> {
@@ -212,7 +418,7 @@ export class HarperService {
     }
   }
 
-  private runCommand(args: string[], timeoutMs: number, outputLimit: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  protected runCommand(args: string[], timeoutMs: number, outputLimit: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       let child: ChildProcess;
       try {

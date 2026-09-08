@@ -1,6 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HarperService, HarperUnavailableError, parseHarperCliOutput } from "../src/server/harper";
+import {
+  HarperLintSupersededError as ServerHarperLintSupersededError,
+  HarperService,
+  HarperUnavailableError,
+  parseHarperCliOutput
+} from "../src/server/harper";
 import { maskLatexSource } from "../src/server/latexSpellMask";
 import { HarperLintSupersededError, lintLatex, mapLatexLints, type RawHarperLint } from "../src/client/spellCheck";
 
@@ -14,6 +19,37 @@ function scalarOffset(source: string, text: string): { start: number; end: numbe
 function rawLint(source: string, text: string, kind = "Spelling", suggestions: string[] = []): RawHarperLint {
   const { start, end } = scalarOffset(source, text);
   return { start, end, problem: text, kind, message: `Issue in ${text}`, suggestions };
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+/** A deterministic CLI substitute for testing scheduler behaviour. */
+class DelayedHarperService extends HarperService {
+  readonly firstLintStarted = deferred();
+  private readonly releaseFirstLint = deferred();
+  private lintRuns = 0;
+
+  get lintRunCount(): number {
+    return this.lintRuns;
+  }
+
+  releaseFirstLintRun(): void {
+    this.releaseFirstLint.resolve();
+  }
+
+  protected override async runCommand(args: string[], _timeoutMs: number, _outputLimit: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    if (args[0] === "--version") return { code: 0, stdout: "harper-cli test", stderr: "" };
+    this.lintRuns += 1;
+    if (this.lintRuns === 1) {
+      this.firstLintStarted.resolve();
+      await this.releaseFirstLint.promise;
+    }
+    return { code: 0, stdout: "[]", stderr: "" };
+  }
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -93,6 +129,23 @@ Visible misspeled prose.`;
       "mispeledDocumentCommand", "mispeledOperator", "mispeledVerbatim", "mispeledCases", "mispeledAligned"
     ]) expect(masked).not.toContain(hidden);
     expect(masked).toContain("Visible misspeled prose.");
+  });
+
+  it("keeps an incomplete inline literal command on its own line", () => {
+    const source = String.raw`\verb|mispeled literal code
+Visible | misspeled prose.
+\lstinline!another mispeled literal
+Later ! wrng prose.
+\lstinline{unclosed braced literal
+Visible } misspeled braced prose.`;
+    const masked = maskLatexSource(source);
+
+    expect(masked).not.toContain("mispeled literal code");
+    expect(masked).not.toContain("another mispeled literal");
+    expect(masked).not.toContain("unclosed braced literal");
+    expect(masked).toContain("Visible | misspeled prose.");
+    expect(masked).toContain("Later ! wrng prose.");
+    expect(masked).toContain("Visible } misspeled braced prose.");
   });
 
   it("keeps comments, literal commands, and literal environments from leaking into prose", () => {
@@ -195,21 +248,135 @@ Visible wrng prose.`;
     expect((await mapLatexLints(source, [], styLints, "theme.sty")).map((issue) => issue.word)).toEqual(["TexLite"]);
   });
 
-  it("keeps only the newest waiting request in one browser", async () => {
+  it("submits a newer revision before an older request resolves", async () => {
+    const requests: Array<{ source: string; clientId: string; sequence: number }> = [];
+    let resolveFirst!: () => void;
+    const firstResponse = new Promise<void>((resolve) => { resolveFirst = resolve; });
     vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body ?? "{}")) as { source?: string };
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const body = JSON.parse(String(init?.body ?? "{}")) as { source?: string; clientId?: string; sequence?: number };
       const source = body.source ?? "";
+      requests.push({ source, clientId: body.clientId ?? "", sequence: body.sequence ?? 0 });
+      if (source === "Firstt sentence.") await firstResponse;
       const word = source.split(" ")[0] || "word";
       return Response.json({ lints: [rawLint(source, word)] });
     });
     const active = lintLatex("project", "main.tex", "Firstt sentence.");
-    const obsolete = lintLatex("project", "main.tex", "Secondd sentence.");
-    const latest = lintLatex("project", "main.tex", "Thirdd sentence.");
+    expect(requests).toHaveLength(1);
+    const latest = lintLatex("project", "main.tex", "Secondd sentence.");
 
-    await expect(obsolete).rejects.toBeInstanceOf(HarperLintSupersededError);
+    // This assertion runs while the first network response is deliberately
+    // held back. The current source must not wait behind it in the browser.
+    expect(requests.map((request) => request.source)).toEqual(["Firstt sentence.", "Secondd sentence."]);
+    expect(requests[1].clientId).toBe(requests[0].clientId);
+    expect(requests[1].sequence).toBe(requests[0].sequence + 1);
+    expect(requests[0].clientId).toMatch(/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i);
+
+    resolveFirst();
     await expect(active).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ word: "Firstt" })]));
-    await expect(latest).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ word: "Thirdd" })]));
+    await expect(latest).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ word: "Secondd" })]));
+  });
+
+  it("treats a server-side supersession as a normal stale writing check", async () => {
+    vi.stubGlobal("fetch", async () => Response.json({
+      code: "SPELLCHECK_SUPERSEDED",
+      error: "A newer writing check replaced this request."
+    }, { status: 409 }));
+
+    await expect(lintLatex("project", "main.tex", "Obsolete sentence.")).rejects.toBeInstanceOf(HarperLintSupersededError);
+  });
+
+  it("skips stale waiting host checks while preserving the newest revision", async () => {
+    const harper = new DelayedHarperService();
+    try {
+      const active = harper.lint("First source.", "main.tex", "project\0session\0main.tex");
+      await harper.firstLintStarted.promise;
+      const obsolete = harper.lint("Second source.", "main.tex", "project\0session\0main.tex");
+      const obsoleteExpectation = expect(obsolete).rejects.toBeInstanceOf(ServerHarperLintSupersededError);
+      const latest = harper.lint("Third source.", "main.tex", "project\0session\0main.tex");
+
+      await obsoleteExpectation;
+      harper.releaseFirstLintRun();
+      await expect(active).resolves.toEqual([]);
+      await expect(latest).resolves.toEqual([]);
+      expect(harper.lintRunCount).toBe(2);
+    } finally {
+      await harper.dispose();
+    }
+  });
+
+  it("rejects a delayed older sequence without replacing the newest queued revision", async () => {
+    const harper = new DelayedHarperService();
+    const lane = "project\0user\0page-a\0main.tex";
+    try {
+      const running = harper.lint("First source.", "main.tex", lane, 1);
+      await harper.firstLintStarted.promise;
+      const newest = harper.lint("Newest source.", "main.tex", lane, 3);
+      // Network delivery can invert request order: sequence 2 arrives after
+      // the current sequence 3 was already accepted by the scheduler.
+      const delayedOlder = harper.lint("Delayed older source.", "main.tex", lane, 2);
+
+      await expect(delayedOlder).rejects.toBeInstanceOf(ServerHarperLintSupersededError);
+      harper.releaseFirstLintRun();
+      await expect(Promise.all([running, newest])).resolves.toEqual([[], []]);
+      expect(harper.lintRunCount).toBe(2);
+    } finally {
+      await harper.dispose();
+    }
+  });
+
+  it("allows an idempotent retry but rejects conflicting content with the same sequence", async () => {
+    const harper = new DelayedHarperService();
+    const lane = "project\0user\0page-a\0main.tex";
+    try {
+      const blocker = harper.lint("Blocking source.", "main.tex", "project\0user\0blocker\0main.tex", 1);
+      await harper.firstLintStarted.promise;
+      const current = harper.lint("Current source.", "main.tex", lane, 7);
+      const retry = harper.lint("Current source.", "main.tex", lane, 7);
+      const conflictingRetry = harper.lint("Conflicting source.", "main.tex", lane, 7);
+
+      await expect(conflictingRetry).rejects.toBeInstanceOf(ServerHarperLintSupersededError);
+      harper.releaseFirstLintRun();
+      await expect(Promise.all([blocker, current, retry])).resolves.toEqual([[], [], []]);
+      expect(harper.lintRunCount).toBe(2);
+    } finally {
+      await harper.dispose();
+    }
+  });
+
+  it("keeps separate browser pages under one login from superseding each other", async () => {
+    const harper = new DelayedHarperService();
+    try {
+      const blocker = harper.lint("Blocking source.", "main.tex", "project\0user\0blocker\0main.tex", 1);
+      await harper.firstLintStarted.promise;
+      // These lanes represent two tabs using the same authenticated cookie
+      // (same project and user) but distinct page-local client IDs.
+      const firstCollaborator = harper.lint("Shared source.", "main.tex", "project\0user\0page-a\0main.tex", 1);
+      const secondCollaborator = harper.lint("Shared source.", "main.tex", "project\0user\0page-b\0main.tex", 1);
+      const newerFirstCollaborator = harper.lint("Newer source.", "main.tex", "project\0user\0page-a\0main.tex", 2);
+
+      harper.releaseFirstLintRun();
+      await expect(Promise.all([blocker, firstCollaborator, secondCollaborator, newerFirstCollaborator]))
+        .resolves.toEqual([[], [], [], []]);
+      expect(harper.lintRunCount).toBe(3);
+    } finally {
+      await harper.dispose();
+    }
+  });
+
+  it("coalesces identical in-flight checks even when their source is too large to cache", async () => {
+    const harper = new DelayedHarperService();
+    const largeSource = `Visible ${"prose ".repeat(100_000)}`;
+    try {
+      const active = harper.lint(largeSource, "main.tex", "project\0session-a\0main.tex");
+      await harper.firstLintStarted.promise;
+      const duplicate = harper.lint(largeSource, "main.tex", "project\0session-b\0main.tex");
+
+      harper.releaseFirstLintRun();
+      await expect(Promise.all([active, duplicate])).resolves.toEqual([[], []]);
+      expect(harper.lintRunCount).toBe(1);
+    } finally {
+      await harper.dispose();
+    }
   });
 
   it("maps Unicode scalar offsets and preserves grammar suggestions", async () => {

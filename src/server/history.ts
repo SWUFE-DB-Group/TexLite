@@ -334,7 +334,7 @@ export class ProjectHistoryService {
     const filePath = safeRelativePath(filePathInput);
     const entry = this.manifest(projectId, versionId)?.files[filePath];
     if (!entry || entry.size > MAX_TEXT_PREVIEW_BYTES) return null;
-    return fs.readFileSync(this.objectPath(projectId, entry.digest), "utf8");
+    return this.readStoredObject(projectId, entry.digest, filePath);
   }
 
   restore(projectId: string, versionId: string, filePathInput?: string): { restoredPaths: string[]; manifest: HistoryManifest } {
@@ -349,7 +349,7 @@ export class ProjectHistoryService {
       fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
       const temporary = `${target}.history-${randomUUID()}.tmp`;
       try {
-        fs.copyFileSync(this.objectPath(projectId, entry.digest), temporary);
+        this.copyStoredObject(projectId, entry.digest, filePath, temporary);
         fs.chmodSync(temporary, 0o600);
         fs.renameSync(temporary, target);
       } finally {
@@ -444,6 +444,36 @@ export class ProjectHistoryService {
   private objectPath(projectId: string, digest: string): string {
     if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid history object digest");
     return path.join(outputRoot(this.config, projectId), ".texlite", "history", "objects", digest.slice(0, 2), digest);
+  }
+
+  /**
+   * A history manifest can outlive a damaged or manually removed object. Keep
+   * that operational failure distinct from an absent path in the snapshot so
+   * the UI can tell the user why viewing or restoring it is impossible.
+   */
+  private readStoredObject(projectId: string, digest: string, filePath: string): string {
+    try {
+      return fs.readFileSync(this.objectPath(projectId, digest), "utf8");
+    } catch (error) {
+      this.rethrowHistoryObjectError(error, filePath);
+    }
+  }
+
+  private copyStoredObject(projectId: string, digest: string, filePath: string, target: string): void {
+    try {
+      fs.copyFileSync(this.objectPath(projectId, digest), target);
+    } catch (error) {
+      this.rethrowHistoryObjectError(error, filePath);
+    }
+  }
+
+  private rethrowHistoryObjectError(error: unknown, filePath: string): never {
+    const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+      ? error.code : "";
+    if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") {
+      throw httpError(410, "HISTORY_OBJECT_MISSING", { path: filePath });
+    }
+    throw error;
   }
 
   private storedObjectDigests(projectId: string): Set<string> {
@@ -593,7 +623,7 @@ export class ProjectHistoryService {
       for (const [filePath, entry] of Object.entries(manifest.files)) {
         const target = path.join(temporary, safeRelativePath(filePath));
         fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
-        fs.copyFileSync(this.objectPath(projectId, entry.digest), target);
+        this.copyStoredObject(projectId, entry.digest, filePath, target);
         fs.chmodSync(target, 0o600);
       }
       fs.renameSync(live, backup);

@@ -1,4 +1,5 @@
-import { api } from "./api";
+import { ApiError, api } from "./api";
+import { clientUuid } from "./uuid";
 
 export interface RawHarperLint {
   start: number;
@@ -28,18 +29,13 @@ interface Span {
 const maxSuggestions = 5;
 const lintResultCache = new Map<string, { path: string; source: string; dictionary: string; issues: SpellCheckIssue[] }>();
 const maxCachedLintResults = 12;
-
-interface PendingLintRequest {
-  projectId: string;
-  path: string;
-  source: string;
-  customWords: string[];
-  resolve: (issues: SpellCheckIssue[]) => void;
-  reject: (error: unknown) => void;
-}
-
-let activeLintRequest = false;
-let pendingLintRequest: PendingLintRequest | null = null;
+// A module is loaded once per browser tab. This deliberately differs from
+// the login session, which is shared by every tab in the same browser.
+const writingCheckClientId = clientUuid();
+// HTTP requests can arrive out of order. This counter is compared only within
+// the page-local lane on the server, so it does not need to be global across
+// tabs, users, projects, or files.
+let writingCheckSequence = 0;
 
 export class HarperLintSupersededError extends Error {
   constructor() {
@@ -66,12 +62,22 @@ function dictionaryKey(words: string[]): string {
   return [...new Set(words.map((word) => word.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right)).join("\u0000");
 }
 
-async function requestHarperLints(projectId: string, path: string, source: string): Promise<RawHarperLint[]> {
-  const result = await api<{ lints: RawHarperLint[] }>(`/api/projects/${projectId}/spellcheck`, {
-    method: "POST",
-    body: JSON.stringify({ path, source })
-  });
-  return result.lints;
+async function requestHarperLints(projectId: string, path: string, source: string, sequence: number): Promise<RawHarperLint[]> {
+  try {
+    const result = await api<{ lints: RawHarperLint[] }>(`/api/projects/${projectId}/spellcheck`, {
+      method: "POST",
+      body: JSON.stringify({ path, source, clientId: writingCheckClientId, sequence })
+    });
+    return result.lints;
+  } catch (error) {
+    // The server has the same latest-revision scheduler as the browser. Treat
+    // its explicit stale response as a normal supersession, not a Harper
+    // outage that would show a failure banner or trigger browser fallback.
+    if (error instanceof ApiError && error.code === "SPELLCHECK_SUPERSEDED") {
+      throw new HarperLintSupersededError();
+    }
+    throw error;
+  }
 }
 
 function resolveLintSpan(source: string, lint: RawHarperLint, scalarOffsetsMap: number[]): Span | null {
@@ -159,30 +165,14 @@ async function lintLatexNow(projectId: string, path: string, source: string, cus
   const dictionary = dictionaryKey(customWords);
   const cached = cachedLintResult(path, source, dictionary);
   if (cached) return cached;
-  const lints = await requestHarperLints(projectId, path, source);
+  const lints = await requestHarperLints(projectId, path, source, ++writingCheckSequence);
   return mapLatexLints(source, customWords, lints, path);
 }
 
-async function runLatestLintRequest(): Promise<void> {
-  if (activeLintRequest || !pendingLintRequest) return;
-  const request = pendingLintRequest;
-  pendingLintRequest = null;
-  activeLintRequest = true;
-  try {
-    request.resolve(await lintLatexNow(request.projectId, request.path, request.source, request.customWords));
-  } catch (error) {
-    request.reject(error);
-  } finally {
-    activeLintRequest = false;
-    void runLatestLintRequest();
-  }
-}
-
-/** Run the latest Harper check, replacing obsolete checks still waiting in the global queue. */
+/**
+ * Submit every debounced revision promptly. The server owns per-tab queue
+ * supersession, while the workspace hook ignores results for stale content.
+ */
 export function lintLatex(projectId: string, path: string, source: string, customWords: string[] = []): Promise<SpellCheckIssue[]> {
-  return new Promise((resolve, reject) => {
-    pendingLintRequest?.reject(new HarperLintSupersededError());
-    pendingLintRequest = { projectId, path, source, customWords: [...customWords], resolve, reject };
-    void runLatestLintRequest();
-  });
+  return lintLatexNow(projectId, path, source, customWords);
 }

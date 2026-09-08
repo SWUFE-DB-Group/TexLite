@@ -154,18 +154,49 @@ function maskMacroDefinition(source: string, start: number, definitionArgumentCo
 function maskDelimitedCode(source: string, start: number, ranges: Span[]): number {
   const delimiter = source[start];
   if (!delimiter || isWhitespace(delimiter)) return start;
-  const end = source.indexOf(delimiter, start + 1);
-  if (end < 0) return start;
-  addRange(ranges, start, end + 1);
-  return skipTrivia(source, end + 1, ranges);
+  // TeX's delimiter-based inline literal commands cannot span a line. If a
+  // user is still typing the closing delimiter, hide only the incomplete
+  // current line rather than accidentally suppressing all later prose until a
+  // matching character happens to occur.
+  for (let cursor = start + 1; cursor < source.length; cursor += 1) {
+    const character = source[cursor];
+    if (character === delimiter) {
+      addRange(ranges, start, cursor + 1);
+      return skipTrivia(source, cursor + 1, ranges);
+    }
+    if (character === "\r" || character === "\n") {
+      addRange(ranges, start, cursor);
+      return cursor;
+    }
+  }
+  addRange(ranges, start, source.length);
+  return source.length;
 }
 
 function maskDelimitedOrBracedCode(source: string, start: number, ranges: Span[]): number {
   if (source[start] !== "{") return maskDelimitedCode(source, start, ranges);
-  const argument = balancedArgument(source, start, "{", "}", true);
-  if (!argument) return start;
-  addRange(ranges, start, argument.to);
-  return argument.to;
+  // The brace form is also inline literal code. Preserve nested braces and
+  // escaped characters, but never let an unfinished argument conceal a later
+  // source line from the writing checker.
+  let depth = 1;
+  for (let cursor = start + 1; cursor < source.length; cursor += 1) {
+    const character = source[cursor];
+    if (character === "\\" && source[cursor + 1] !== "\r" && source[cursor + 1] !== "\n") {
+      cursor += 1;
+      continue;
+    }
+    if (character === "\r" || character === "\n") {
+      addRange(ranges, start, cursor);
+      return cursor;
+    }
+    if (character === "{") depth += 1;
+    else if (character === "}" && --depth === 0) {
+      addRange(ranges, start, cursor + 1);
+      return cursor + 1;
+    }
+  }
+  addRange(ranges, start, source.length);
+  return source.length;
 }
 
 function rawUrlEnd(source: string, start: number): number | null {
