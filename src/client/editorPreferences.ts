@@ -11,8 +11,15 @@ export interface EditorPreferences {
   formatOnCompile: boolean;
   /** TOML options passed to the browser-side tex-fmt WASM formatter. */
   texFmtConfig: string;
+  /**
+   * Lets us migrate the old empty default to the new no-wrap default without
+   * changing an explicit empty configuration saved by a current client.
+   */
+  texFmtConfigInitialized: boolean;
   openFilesInTabs: boolean;
 }
+
+export const defaultTexFmtConfig = "wrap = false";
 
 export const editorFonts: Array<{ id: EditorFont; labelKey: string; stack: string }> = [
   { id: "jetbrains", labelKey: "projectSettings.fontJetBrains", stack: '"JetBrains Mono", ui-monospace, monospace' },
@@ -31,7 +38,8 @@ export const defaultEditorPreferences: EditorPreferences = {
   mathPreviewOnHover: false,
   vimMode: false,
   formatOnCompile: false,
-  texFmtConfig: "",
+  texFmtConfig: defaultTexFmtConfig,
+  texFmtConfigInitialized: true,
   openFilesInTabs: false
 };
 
@@ -48,6 +56,17 @@ export function editorFontStack(font: EditorFont): string {
 export function loadEditorPreferences(userId: string, projectId: string): EditorPreferences {
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey(userId, projectId)) ?? "{}") as Partial<EditorPreferences>;
+    const storedTexFmtConfig = typeof stored.texFmtConfig === "string" && stored.texFmtConfig.length <= 16 * 1024
+      ? stored.texFmtConfig
+      : null;
+    // Before TexLite defaulted to no wrapping, an empty string represented the
+    // implicit tex-fmt default. Upgrade that legacy default, while preserving
+    // a non-empty custom TOML value. Newer saves use the marker so users can
+    // still intentionally clear the field and opt back into tex-fmt defaults.
+    const texFmtConfig = storedTexFmtConfig !== null
+      && (stored.texFmtConfigInitialized === true || storedTexFmtConfig.trim().length > 0)
+      ? storedTexFmtConfig
+      : defaultEditorPreferences.texFmtConfig;
     return {
       font: editorFonts.some((option) => option.id === stored.font) ? stored.font! : defaultEditorPreferences.font,
       fontSize: [12, 13, 14, 15, 16, 18, 20].includes(Number(stored.fontSize)) ? Number(stored.fontSize) : defaultEditorPreferences.fontSize,
@@ -57,7 +76,8 @@ export function loadEditorPreferences(userId: string, projectId: string): Editor
       mathPreviewOnHover: typeof stored.mathPreviewOnHover === "boolean" ? stored.mathPreviewOnHover : defaultEditorPreferences.mathPreviewOnHover,
       vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode,
       formatOnCompile: typeof stored.formatOnCompile === "boolean" ? stored.formatOnCompile : defaultEditorPreferences.formatOnCompile,
-      texFmtConfig: typeof stored.texFmtConfig === "string" && stored.texFmtConfig.length <= 16 * 1024 ? stored.texFmtConfig : defaultEditorPreferences.texFmtConfig,
+      texFmtConfig,
+      texFmtConfigInitialized: true,
       openFilesInTabs: typeof stored.openFilesInTabs === "boolean" ? stored.openFilesInTabs : defaultEditorPreferences.openFilesInTabs
     };
   } catch {

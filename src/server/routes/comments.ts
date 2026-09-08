@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { requireUser } from "../auth.js";
 import { createSourceAnchor, offsetToLine } from "../anchors.js";
@@ -115,6 +115,17 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       const source = fs.readFileSync(absolute, "utf8");
       if (!Number.isInteger(body.startOffset) || !Number.isInteger(body.endOffset)) {
         return apiError(reply, 400, "COMMENT_RANGE_INVALID");
+      }
+      // The browser supplies the exact source revision the user selected.
+      // Keep this optional for an already-open client during an upgrade;
+      // current clients never bind an annotation to offsets from a different
+      // revision.
+      if (body.sourceHash !== undefined) {
+        if (typeof body.sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(body.sourceHash)) {
+          return apiError(reply, 400, "REQUEST_INVALID");
+        }
+        const currentHash = createHash("sha256").update(source, "utf8").digest("hex");
+        if (currentHash !== body.sourceHash) return apiError(reply, 409, "COMMENT_SOURCE_CHANGED");
       }
       const anchor = createSourceAnchor(source, Number(body.startOffset), Number(body.endOffset));
       const comment = {

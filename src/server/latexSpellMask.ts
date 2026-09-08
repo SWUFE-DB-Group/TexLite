@@ -6,16 +6,35 @@ interface Span {
 // This intentionally recognizes only the parts of LaTeX that are clearly not
 // prose. It is a single-pass lexer, not a parser: malformed delimiters remain
 // narrow, so they never hide the rest of a document or cause backtracking.
+const literalEnvironments = new Set([
+  "verbatim", "verbatim*", "bverbatim", "bverbatim*", "lverbatim", "lverbatim*", "saveverbatim", "saveverbatim*", "verbatimout",
+  "lstlisting", "minted", "minted*", "filecontents", "filecontents*", "luacode", "luacodestar", "comment"
+]);
 const nonProseEnvironments = new Set([
-  "math", "displaymath", "equation", "equation*", "align", "align*", "alignat", "alignat*", "gather", "gather*", "multline", "multline*", "flalign", "flalign*",
-  "tikzpicture", "axis", "scope", "pgfonlayer", "pgfpicture",
-  "tabular", "tabularx", "tabulary", "longtable", "array", "matrix", "pmatrix", "bmatrix", "vmatrix",
-  "verbatim", "lstlisting", "minted", "comment", "algorithmic"
+  // Display and helper math environments commonly used by amsmath/mathtools.
+  "math", "displaymath", "equation", "equation*", "align", "align*", "alignat", "alignat*", "aligned", "alignedat", "gather", "gather*", "gathered", "multline", "multline*", "multlined", "flalign", "flalign*", "split", "cases", "dcases", "rcases", "drcases",
+  "array", "matrix", "pmatrix", "bmatrix", "vmatrix", "smallmatrix", "psmallmatrix", "bsmallmatrix", "vsmallmatrix",
+  // Diagram, table, and literal/code environments. Keep prose containers such
+  // as figure, table, theorem, and caption outside this list.
+  "tikzpicture", "tikzcd", "axis", "scope", "pgfonlayer", "pgfpicture",
+  "tabular", "tabularx", "tabulary", "longtable",
+  "verbatim", "verbatim*", "bverbatim", "bverbatim*", "lverbatim", "lverbatim*", "saveverbatim", "saveverbatim*", "verbatimout",
+  "lstlisting", "minted", "minted*", "filecontents", "filecontents*", "luacode", "luacodestar", "comment", "algorithmic"
 ]);
 const opaqueArgumentCommands = new Set([
   "documentclass", "usepackage", "requirepackage", "includegraphics", "tikzset", "pgfplotsset", "hypersetup", "lstset",
   "label", "hypertarget", "ref", "pageref", "autoref", "nameref", "hyperref", "index", "gls", "glspl",
-  "bibliography", "addbibresource", "input", "include", "url", "path", "setlength", "setcounter", "color", "textcolor", "colorbox", "pagecolor"
+  "bibliography", "addbibresource", "input", "include", "url", "path", "setlength", "setcounter", "color", "textcolor", "colorbox", "pagecolor",
+  // These arguments are code, identifiers, or paths rather than prose.
+  "texttt", "detokenize", "lstinputlisting"
+]);
+
+/** Number of brace arguments after a macro/environment target. */
+const macroDefinitionArgumentCounts = new Map<string, number>([
+  ["newcommand", 1], ["renewcommand", 1], ["providecommand", 1], ["declarerobustcommand", 1],
+  ["newenvironment", 2], ["renewenvironment", 2],
+  ["newdocumentcommand", 2], ["renewdocumentcommand", 2], ["providedocumentcommand", 2], ["declaredocumentcommand", 2],
+  ["declaremathoperator", 1], ["declarepaireddelimiter", 2]
 ]);
 
 function addRange(ranges: Span[], from: number, to: number): void {
@@ -33,12 +52,18 @@ function isCommandNameCharacter(character: string | undefined): boolean {
     || character === "@" || character === ":" || character === "_";
 }
 
-function balancedArgument(source: string, start: number, open: string, close: string): Span | null {
+function balancedArgument(source: string, start: number, open: string, close: string, literal = false): Span | null {
   if (source[start] !== open) return null;
   let depth = 1;
   for (let index = start + 1; index < source.length; index += 1) {
     if (source[index] === "\\") {
       index += 1;
+      continue;
+    }
+    if (!literal && source[index] === "%") {
+      const lineEnd = source.indexOf("\n", index);
+      if (lineEnd < 0) return null;
+      index = lineEnd;
       continue;
     }
     if (source[index] === open) depth += 1;
@@ -50,6 +75,18 @@ function balancedArgument(source: string, start: number, open: string, close: st
 function skipWhitespace(source: string, start: number): number {
   let index = start;
   while (index < source.length && isWhitespace(source[index])) index += 1;
+  return index;
+}
+
+/** Skip whitespace and TeX comments between arguments while masking comments. */
+function skipTrivia(source: string, start: number, ranges: Span[]): number {
+  let index = skipWhitespace(source, start);
+  while (source[index] === "%") {
+    const lineEnd = source.indexOf("\n", index);
+    const end = lineEnd < 0 ? source.length : lineEnd;
+    addRange(ranges, index, end);
+    index = skipWhitespace(source, lineEnd < 0 ? source.length : lineEnd + 1);
+  }
   return index;
 }
 
@@ -67,22 +104,68 @@ function isCitationCommand(name: string): boolean {
   return normalized === "cite" || normalized.startsWith("cite") || normalized.endsWith("cite");
 }
 
-function masksOpaqueArguments(name: string): boolean {
+function opaqueArgumentCount(name: string): number {
   const normalized = name.toLocaleLowerCase("en-US");
-  return opaqueArgumentCommands.has(normalized) || isCitationCommand(normalized) || normalized === "definecolor" || normalized === "colorlet" || normalized === "href";
+  if (normalized === "definecolor" || normalized === "colorlet") return 3;
+  if (normalized === "mint" || normalized === "inputminted") return 2;
+  return opaqueArgumentCommands.has(normalized) || isCitationCommand(normalized) || normalized === "href" ? 1 : 0;
 }
 
-function maskOpaqueArguments(source: string, start: number, name: string, ranges: Span[]): number {
+function maskBraceArguments(source: string, start: number, count: number, ranges: Span[]): number {
   let cursor = start;
-  const normalized = name.toLocaleLowerCase("en-US");
-  const count = normalized === "definecolor" || normalized === "colorlet" ? 3 : 1;
   for (let index = 0; index < count; index += 1) {
     const argument = balancedArgument(source, cursor, "{", "}");
     if (!argument) break;
     addRange(ranges, argument.from, argument.to);
-    cursor = skipWhitespace(source, argument.to);
+    cursor = skipTrivia(source, argument.to, ranges);
   }
   return cursor;
+}
+
+function maskMacroTarget(source: string, start: number, ranges: Span[]): number {
+  const bracedTarget = balancedArgument(source, start, "{", "}");
+  if (bracedTarget) {
+    addRange(ranges, bracedTarget.from, bracedTarget.to);
+    return skipTrivia(source, bracedTarget.to, ranges);
+  }
+  if (source[start] === "\\") {
+    const target = readCommand(source, start);
+    addRange(ranges, start, target.end);
+    return skipTrivia(source, target.end, ranges);
+  }
+  return start;
+}
+
+function maskMacroDefinition(source: string, start: number, definitionArgumentCount: number, ranges: Span[]): number {
+  let cursor = maskMacroTarget(source, start, ranges);
+  if (cursor === start) return cursor;
+  // newcommand-style macros may have both an argument-count option and a
+  // default-argument option. Mask every immediately following option before
+  // their definition bodies, while keeping malformed input narrow.
+  for (;;) {
+    const option = balancedArgument(source, cursor, "[", "]");
+    if (!option) break;
+    addRange(ranges, option.from, option.to);
+    cursor = skipTrivia(source, option.to, ranges);
+  }
+  return maskBraceArguments(source, cursor, definitionArgumentCount, ranges);
+}
+
+function maskDelimitedCode(source: string, start: number, ranges: Span[]): number {
+  const delimiter = source[start];
+  if (!delimiter || isWhitespace(delimiter)) return start;
+  const end = source.indexOf(delimiter, start + 1);
+  if (end < 0) return start;
+  addRange(ranges, start, end + 1);
+  return skipTrivia(source, end + 1, ranges);
+}
+
+function maskDelimitedOrBracedCode(source: string, start: number, ranges: Span[]): number {
+  if (source[start] !== "{") return maskDelimitedCode(source, start, ranges);
+  const argument = balancedArgument(source, start, "{", "}", true);
+  if (!argument) return start;
+  addRange(ranges, start, argument.to);
+  return argument.to;
 }
 
 function rawUrlEnd(source: string, start: number): number | null {
@@ -117,6 +200,33 @@ export function ignoredLatexRanges(source: string): Span[] {
   let pendingMath: { close: string; range: Span } | null = null;
 
   for (let index = 0; index < source.length;) {
+    // An open literal environment owns its full body. Do not parse
+    // dollars, comments, or nested commands within it: literal code often
+    // contains all of those. Only look for its matching \end marker.
+    const activeNonProse = nonProseStack.at(-1);
+    if (activeNonProse && literalEnvironments.has(activeNonProse.name)) {
+      if (source[index] === "\\") {
+        const command = readCommand(source, index);
+        if (command.name === "end") {
+          const cursor = skipTrivia(source, command.end, ranges);
+          const environment = balancedArgument(source, cursor, "{", "}");
+          const environmentName = environment
+            ? source.slice(environment.from + 1, environment.to - 1).trim().toLocaleLowerCase("en-US")
+            : "";
+          if (environment && environmentName === activeNonProse.name) {
+            activeNonProse.range.to = skipTrivia(source, environment.to, ranges);
+            nonProseStack.pop();
+            index = activeNonProse.range.to;
+            continue;
+          }
+        }
+        index = Math.max(index + 1, command.end);
+      } else {
+        index += 1;
+      }
+      continue;
+    }
+
     if (pendingMath?.close.startsWith("\\") && source.startsWith(pendingMath.close, index)) {
       pendingMath.range.to = index + pendingMath.close.length;
       index += pendingMath.close.length;
@@ -176,17 +286,19 @@ export function ignoredLatexRanges(source: string): Span[] {
     }
 
     const command = readCommand(source, commandStart);
-    let cursor = skipWhitespace(source, command.end);
-    if (command.name === "verb") {
-      addRange(ranges, commandStart, command.end);
-      const delimiter = source[cursor];
-      if (delimiter && !isWhitespace(delimiter)) {
-        const end = source.indexOf(delimiter, cursor + 1);
-        if (end >= 0) {
-          addRange(ranges, cursor, end + 1);
-          cursor = end + 1;
-        }
+    const commandName = command.name.toLocaleLowerCase("en-US");
+    // Reserve the command span before scanning trivia, which may append spans.
+    const commandRange = { from: commandStart, to: command.end };
+    ranges.push(commandRange);
+    let cursor = commandName === "verb" || commandName === "lstinline"
+      ? command.end : skipTrivia(source, command.end, ranges);
+    if (commandName === "verb") {
+      const options = command.name === "Verb" ? balancedArgument(source, cursor, "[", "]") : null;
+      if (options) {
+        addRange(ranges, options.from, options.to);
+        cursor = skipWhitespace(source, options.to);
       }
+      cursor = maskDelimitedOrBracedCode(source, cursor, ranges);
       index = Math.max(command.end, cursor);
       continue;
     }
@@ -194,46 +306,56 @@ export function ignoredLatexRanges(source: string): Span[] {
     if (command.name === "begin" || command.name === "end") {
       const environment = balancedArgument(source, cursor, "{", "}");
       if (!environment) {
-        addRange(ranges, commandStart, command.end);
         index = command.end;
         continue;
       }
       const environmentName = source.slice(environment.from + 1, environment.to - 1).trim().toLocaleLowerCase("en-US");
-      cursor = skipWhitespace(source, environment.to);
+      addRange(ranges, environment.from, environment.to);
+      cursor = skipTrivia(source, environment.to, ranges);
       let options: Span | null = null;
       if (command.name === "begin") {
         options = balancedArgument(source, cursor, "[", "]");
-        if (options) cursor = skipWhitespace(source, options.to);
+        if (options) {
+          addRange(ranges, options.from, options.to);
+          cursor = skipTrivia(source, options.to, ranges);
+        }
         if (nonProseEnvironments.has(environmentName)) {
-          const range = { from: commandStart, to: cursor };
-          ranges.push(range);
-          nonProseStack.push({ name: environmentName, range });
-        } else {
-          addRange(ranges, commandStart, command.end);
-          addRange(ranges, environment.from, environment.to);
-          if (options) addRange(ranges, options.from, options.to);
+          commandRange.to = cursor;
+          nonProseStack.push({ name: environmentName, range: commandRange });
         }
       } else {
         const open = nonProseStack.at(-1);
         if (open?.name === environmentName) {
           nonProseStack.pop();
           open.range.to = cursor;
-        } else {
-          addRange(ranges, commandStart, command.end);
-          addRange(ranges, environment.from, environment.to);
         }
       }
       index = Math.max(command.end, cursor);
       continue;
     }
 
-    addRange(ranges, commandStart, command.end);
     const options = balancedArgument(source, cursor, "[", "]");
     if (options) {
       addRange(ranges, options.from, options.to);
-      cursor = skipWhitespace(source, options.to);
+      cursor = commandName === "lstinline" ? skipWhitespace(source, options.to) : skipTrivia(source, options.to, ranges);
     }
-    if (masksOpaqueArguments(command.name)) cursor = maskOpaqueArguments(source, cursor, command.name, ranges);
+    if (commandName === "lstinline") {
+      cursor = maskDelimitedOrBracedCode(source, cursor, ranges);
+    } else if (commandName === "mintinline") {
+      const language = balancedArgument(source, cursor, "{", "}");
+      if (language) {
+        addRange(ranges, language.from, language.to);
+        cursor = maskDelimitedOrBracedCode(source, skipWhitespace(source, language.to), ranges);
+      }
+    } else {
+      const macroDefinitionArgumentCount = macroDefinitionArgumentCounts.get(commandName);
+      if (macroDefinitionArgumentCount !== undefined) {
+        cursor = maskMacroDefinition(source, cursor, macroDefinitionArgumentCount, ranges);
+      } else {
+        const opaqueCount = opaqueArgumentCount(commandName);
+        if (opaqueCount > 0) cursor = maskBraceArguments(source, cursor, opaqueCount, ranges);
+      }
+    }
     index = Math.max(command.end, cursor);
   }
 

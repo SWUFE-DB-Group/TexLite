@@ -37,6 +37,8 @@ interface HistoryRow {
 
 export interface HistoryVersion {
   id: string;
+  /** Fingerprint of the immutable manifest currently stored for this row. */
+  snapshotHash: string;
   reason: HistoryReason;
   label: string | null;
   createdAt: string;
@@ -277,6 +279,22 @@ export class ProjectHistoryService {
     const row = this.db.prepare("SELECT manifest_json FROM project_history_versions WHERE id = ? AND project_id = ?")
       .get(versionId, projectId) as { manifest_json: string } | undefined;
     return row ? parseManifest(row.manifest_json) : null;
+  }
+
+  /**
+   * A short autosave window deliberately coalesces updates into one row. A
+   * client that has been inspecting that row must not restore newer contents
+   * it has not reviewed, so verify the manifest fingerprint immediately
+   * before a restore mutates the project.
+   */
+  assertSnapshotHash(projectId: string, versionId: string, expectedHash: string | undefined): void {
+    if (!expectedHash) return;
+    const row = this.db.prepare("SELECT manifest_json FROM project_history_versions WHERE id = ? AND project_id = ?")
+      .get(versionId, projectId) as { manifest_json: string } | undefined;
+    if (!row) throw httpError(404, "HISTORY_VERSION_NOT_FOUND");
+    if (historySnapshotHash(row.manifest_json) !== expectedHash) {
+      throw httpError(409, "HISTORY_VERSION_CHANGED");
+    }
   }
 
   /**
@@ -662,6 +680,7 @@ function versionJson(row: HistoryRow & { author_username?: string | null; author
   const files = Object.values(manifest.files);
   return {
     id: row.id,
+    snapshotHash: historySnapshotHash(row.manifest_json),
     reason: row.reason,
     label: row.label,
     createdAt: row.created_at,
@@ -674,4 +693,8 @@ function versionJson(row: HistoryRow & { author_username?: string | null; author
     fileCount: files.length,
     totalSize: files.reduce((sum, file) => sum + file.size, 0)
   };
+}
+
+function historySnapshotHash(manifestJson: string): string {
+  return createHash("sha256").update(manifestJson, "utf8").digest("hex");
 }

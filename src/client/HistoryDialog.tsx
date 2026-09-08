@@ -4,7 +4,7 @@ import {
   CheckCircle2, Clock3, FileClock, FileCode2, FileText, GitCommitHorizontal, HardDrive,
   LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Save, Tag, Trash2
 } from "lucide-react";
-import { api } from "./api";
+import { ApiError, api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { formatCommitTime, formatVersionTitle, generateUnifiedDiff } from "./diff";
 import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
@@ -32,6 +32,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const [detail, setDetail] = useState<HistoryVersionDetail | null>(null);
   const [selectedPath, setSelectedPath] = useState("");
   const [comparison, setComparison] = useState<HistoryComparison | null>(null);
+  const [comparisonRevision, setComparisonRevision] = useState(0);
   const [diffMode, setDiffMode] = useState<"commit" | "current">("commit");
   const [diffFontSize, setDiffFontSize] = useState(11);
   const [diffFullscreen, setDiffFullscreen] = useState(false);
@@ -44,7 +45,14 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const [error, setError] = useState("");
   const diffSectionRef = useRef<HTMLDivElement>(null);
   const olderPageAbortRef = useRef<AbortController | null>(null);
+  const snapshotRefreshAbortRef = useRef<AbortController | null>(null);
+  const selectedIdRef = useRef(selectedId);
+  const projectIdRef = useRef(project.id);
+  const preserveErrorForComparisonRef = useRef(false);
   const retentionRefreshRef = useRef<number | null>(null);
+
+  selectedIdRef.current = selectedId;
+  projectIdRef.current = project.id;
 
   const canRestore = project.permission !== "read";
   const isOwner = project.permission === "owner";
@@ -52,6 +60,8 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
 
   useEffect(() => {
     if (!open) {
+      snapshotRefreshAbortRef.current?.abort();
+      snapshotRefreshAbortRef.current = null;
       if (retentionRefreshRef.current !== null) window.clearTimeout(retentionRefreshRef.current);
       retentionRefreshRef.current = null;
       olderPageAbortRef.current?.abort();
@@ -80,8 +90,15 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   useEffect(() => () => {
     olderPageAbortRef.current?.abort();
     olderPageAbortRef.current = null;
+    snapshotRefreshAbortRef.current?.abort();
+    snapshotRefreshAbortRef.current = null;
     if (retentionRefreshRef.current !== null) window.clearTimeout(retentionRefreshRef.current);
   }, [project.id]);
+
+  useEffect(() => {
+    snapshotRefreshAbortRef.current?.abort();
+    snapshotRefreshAbortRef.current = null;
+  }, [selectedId]);
 
   const loadOlder = async () => {
     const cursor = nextCursor;
@@ -143,12 +160,15 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
 
   useEffect(() => {
     if (!open || !selectedId || !selectedPath) {
+      preserveErrorForComparisonRef.current = false;
       setComparison(null);
       return;
     }
     const controller = new AbortController();
     setBusy("compare");
-    setError("");
+    const preserveError = preserveErrorForComparisonRef.current;
+    preserveErrorForComparisonRef.current = false;
+    if (!preserveError) setError("");
     const againstParam = diffMode === "commit"
       ? "&against=__previous__"
       : "";
@@ -166,7 +186,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         if (!controller.signal.aborted) setBusy((current) => (current === "compare" ? "" : current));
       });
     return () => controller.abort();
-  }, [open, project.id, selectedId, selectedPath, diffMode]);
+  }, [open, project.id, selectedId, selectedPath, diffMode, comparisonRevision]);
 
   const changedFiles = useMemo(() => {
     if (!detail) return [];
@@ -195,12 +215,35 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     setDiffFullscreen(true);
   };
 
+  const refreshSnapshot = async (versionId: string, preserveError = false): Promise<boolean> => {
+    const projectId = project.id;
+    snapshotRefreshAbortRef.current?.abort();
+    const controller = new AbortController();
+    snapshotRefreshAbortRef.current = controller;
+    try {
+      const refreshed = await api<HistoryVersionDetail>(`/api/projects/${projectId}/history/${versionId}`, { signal: controller.signal });
+      if (controller.signal.aborted || projectIdRef.current !== projectId || selectedIdRef.current !== versionId) return false;
+      setDetail(refreshed);
+      setLabel(refreshed.version.label ?? "");
+      setSelectedPath((current) => current && refreshed.files.some((file) => file.path === current)
+        ? current
+        : refreshed.version.changedPaths.find((filePath) => refreshed.files.some((file) => file.path === filePath)) ?? "");
+      setComparison(null);
+      if (preserveError) preserveErrorForComparisonRef.current = true;
+      setComparisonRevision((current) => current + 1);
+      setVersions((current) => current.map((version) => version.id === refreshed.version.id ? refreshed.version : version));
+      return true;
+    } finally {
+      if (snapshotRefreshAbortRef.current === controller) snapshotRefreshAbortRef.current = null;
+    }
+  };
+
   const saveLabel = async () => {
     if (!detail) return;
     setBusy("label"); setError("");
     try {
       const result = await api<{ version: HistoryVersion; retentionScheduled: boolean; retentionRefreshAfterMs: number; stats: HistoryStats | null }>(`/api/projects/${project.id}/history/${detail.version.id}`, {
-        method: "PATCH", body: JSON.stringify({ label: label.trim() || null })
+        method: "PATCH", body: JSON.stringify({ label: label.trim() || null, snapshotHash: detail.version.snapshotHash })
       });
       setDetail((current) => current ? { ...current, version: result.version } : current);
       setVersions((current) => current.map((version) => version.id === result.version.id ? result.version : version));
@@ -217,7 +260,18 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
           }).catch(() => undefined);
         }, result.retentionRefreshAfterMs);
       }
-    } catch (reason) { setError(message(reason)); }
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "HISTORY_VERSION_CHANGED") {
+        try {
+          if (!(await refreshSnapshot(detail.version.id, true))) return;
+        } catch (refreshReason) {
+          if (isAbort(refreshReason)) return;
+          setError(message(refreshReason));
+          return;
+        }
+      }
+      setError(message(reason));
+    }
     finally { setBusy(""); }
   };
 
@@ -253,10 +307,34 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     try {
       if (!(await onBeforeMutation())) throw new Error(t("errors.collaborationUnavailable"));
       await api(`/api/projects/${project.id}/history/${detail.version.id}/restore`, {
-        method: "POST", body: JSON.stringify(target === "project" ? {} : { path: target })
+        method: "POST", body: JSON.stringify(target === "project"
+          ? { snapshotHash: detail.version.snapshotHash }
+          : { path: target, snapshotHash: detail.version.snapshotHash })
       });
       window.location.reload();
-    } catch (reason) { setError(message(reason)); setBusy(""); }
+    } catch (reason) {
+      // Autosaves within a short window intentionally reuse their timeline
+      // item. If its manifest changed after this dialog was opened, reload it
+      // here instead of restoring data the user has not inspected.
+      if (reason instanceof ApiError && reason.code === "HISTORY_VERSION_CHANGED") {
+        try {
+          if (!(await refreshSnapshot(detail.version.id, true))) {
+            setBusy("");
+            return;
+          }
+        } catch (refreshReason) {
+          if (isAbort(refreshReason)) {
+            setBusy("");
+            return;
+          }
+          setError(message(refreshReason));
+          setBusy("");
+          return;
+        }
+      }
+      setError(message(reason));
+      setBusy("");
+    }
   };
 
   const authorName = detail?.version.author?.name

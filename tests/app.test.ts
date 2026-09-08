@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile, spawnSync } from "node:child_process";
 import type { OutgoingHttpHeaders } from "node:http";
 import { promisify } from "node:util";
@@ -224,7 +224,10 @@ It works.
     expect(removedDictionaryWord.json()).toEqual({ words: [] });
 
     const helloOffset = source.indexOf("Hello");
-    const comment = await app.inject({ method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie }, payload: { path: "main.tex", startOffset: helloOffset, endOffset: helloOffset + 5, content: "Check this heading" } });
+    const comment = await app.inject({ method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie }, payload: {
+      path: "main.tex", startOffset: helloOffset, endOffset: helloOffset + 5, content: "Check this heading",
+      sourceHash: createHash("sha256").update(source, "utf8").digest("hex")
+    } });
     expect(comment.statusCode).toBe(201);
     const commentId = comment.json().comment.id;
     expect(comment.json().comment).toMatchObject({ authorUsername: "admin", authorDisplayName: "Administrator", replies: [] });
@@ -496,6 +499,33 @@ Standalone document.
     } finally {
       stable.mockRestore();
     }
+  });
+
+  it("rejects a source comment whose selected revision is no longer current", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Comment revision" } });
+    const projectId = created.json().project.id as string;
+    const original = "First sentence.\nSecond sentence.\n";
+    expect((await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "main.tex", content: original }
+    })).statusCode).toBe(200);
+    const staleHash = createHash("sha256").update(original, "utf8").digest("hex");
+    const changed = `Preface.\n${original}`;
+    expect((await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+      payload: { path: "main.tex", content: changed }
+    })).statusCode).toBe(200);
+
+    const response = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie },
+      payload: {
+        path: "main.tex", startOffset: 0, endOffset: 5, content: "This must not attach to the new preface.", sourceHash: staleHash
+      }
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "COMMENT_SOURCE_CHANGED" });
+    const comments = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?path=main.tex`, headers: { cookie } });
+    expect(comments.json()).toEqual({ comments: [] });
   });
 
   it("allows an editor to cancel an active compilation without publishing output", async () => {
@@ -851,6 +881,13 @@ Another UniqueTerm appears here.
     expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/history?before=invalid`, headers: { cookie } })).statusCode).toBe(400);
     const selectedVersion = versions.json().versions[0];
     expect(selectedVersion.changedPaths).toContain("sections/intro.tex");
+    expect(selectedVersion.snapshotHash).toMatch(/^[a-f0-9]{64}$/);
+    const staleRestore = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/history/${selectedVersion.id}/restore`, headers: { cookie },
+      payload: { path: "main.tex", snapshotHash: "0".repeat(64) }
+    });
+    expect(staleRestore.statusCode).toBe(409);
+    expect(staleRestore.json()).toMatchObject({ code: "HISTORY_VERSION_CHANGED" });
 
     const outline = await app.inject({ method: "GET", url: `/api/projects/${projectId}/outline`, headers: { cookie } });
     expect(outline.json().outline).toEqual([
@@ -876,13 +913,21 @@ Another UniqueTerm appears here.
     });
     expect(comparison.json().historical).toContain("UniqueTerm");
     expect(comparison.json().comparison).toContain("ChangedTerm");
+    const staleLabel = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie },
+      payload: { label: "This label must not be applied", snapshotHash: "0".repeat(64) }
+    });
+    expect(staleLabel.statusCode).toBe(409);
+    expect(staleLabel.json()).toMatchObject({ code: "HISTORY_VERSION_CHANGED" });
     const labeled = await app.inject({
-      method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie }, payload: { label: "Before terminology update" }
+      method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie },
+      payload: { label: "Before terminology update", snapshotHash: selectedVersion.snapshotHash }
     });
     expect(labeled.json().version.label).toBe("Before terminology update");
     expect(labeled.json().retentionScheduled).toBe(false);
     const unlabeled = await app.inject({
-      method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie }, payload: { label: null }
+      method: "PATCH", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie },
+      payload: { label: null, snapshotHash: selectedVersion.snapshotHash }
     });
     expect(unlabeled.json().retentionScheduled).toBe(true);
     expect(unlabeled.json().retentionRefreshAfterMs).toBeGreaterThan(30_000);

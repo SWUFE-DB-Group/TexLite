@@ -157,8 +157,13 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     const { id, versionId } = request.params as { id: string; versionId: string };
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN");
-    const body = request.body as { label?: unknown };
-    const label = body.label === null || body.label === "" ? null : text(body.label, 80);
+    const body = request.body as { label?: unknown; snapshotHash?: unknown } | undefined;
+    if (body?.snapshotHash !== undefined && (typeof body.snapshotHash !== "string" || !/^[a-f0-9]{64}$/.test(body.snapshotHash))) {
+      return apiError(reply, 400, "REQUEST_INVALID");
+    }
+    const snapshotHash = typeof body?.snapshotHash === "string" ? body.snapshotHash : undefined;
+    history.assertSnapshotHash(id, versionId, snapshotHash);
+    const label = body?.label === null || body?.label === "" ? null : text(body?.label, 80);
     const version = history.setLabel(id, versionId, label);
     if (!version) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND");
     if (!label) context.scheduleHistoryRetention(id);
@@ -201,10 +206,17 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     const { id, versionId } = request.params as { id: string; versionId: string };
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN");
-    const body = request.body as { path?: unknown } | undefined;
+    const body = request.body as { path?: unknown; snapshotHash?: unknown } | undefined;
     const filePath = typeof body?.path === "string" ? safeRelativePath(body.path) : undefined;
+    // Current clients bind a restore to the snapshot they displayed. Accept
+    // an omitted fingerprint only for already-open clients during an upgrade.
+    if (body?.snapshotHash !== undefined && (typeof body.snapshotHash !== "string" || !/^[a-f0-9]{64}$/.test(body.snapshotHash))) {
+      return apiError(reply, 400, "REQUEST_INVALID");
+    }
+    const snapshotHash = typeof body?.snapshotHash === "string" ? body.snapshotHash : undefined;
     return await projectMutations.runExclusive(id, "history restore", () => {
       const currentProject = requireEditableProject(db, id, user);
+      history.assertSnapshotHash(id, versionId, snapshotHash);
       recordHistory(id, user.id, "checkpoint");
       const before = projectTextSnapshot(config, id);
       const restored = history.restore(id, versionId, filePath);

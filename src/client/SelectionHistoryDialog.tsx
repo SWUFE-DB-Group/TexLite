@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Clock3, LoaderCircle, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
-import { digest } from "lib0/hash/sha256";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { generateSelectionHistoryDiff, type SelectionHistoryDiffPiece, type SelectionHistorySemanticDiff } from "./selectionHistoryDiff";
+import { sourceHash } from "./sourceHash";
 import type { Project, SelectionHistoryAuthor, SelectionHistoryEntry, SelectionHistoryResult } from "./types";
 
 interface SourceSelection {
@@ -72,7 +72,7 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
       path: filePath,
       start: String(selection.startOffset),
       end: String(selection.endOffset),
-      sourceHash: Array.from(digest(new TextEncoder().encode(source)), (byte) => byte.toString(16).padStart(2, "0")).join("")
+      sourceHash: sourceHash(source)
     });
     void api<SelectionHistoryResult>(`/api/projects/${project.id}/edit-history?${params}`, { signal: controller.signal })
       .then((result) => {

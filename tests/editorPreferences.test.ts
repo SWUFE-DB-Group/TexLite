@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { defaultEditorPreferences, loadEditorPreferences, saveEditorPreferences } from "../src/client/editorPreferences";
+import { defaultEditorPreferences, defaultTexFmtConfig, loadEditorPreferences, saveEditorPreferences } from "../src/client/editorPreferences";
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -37,7 +37,7 @@ describe("editor preference scope", () => {
   it("keeps newer opt-in editor preferences off for preferences saved before the options existed", () => {
     storage.setItem("texlite-editor-preferences:alice:legacy", JSON.stringify({ fontSize: 18 }));
     expect(loadEditorPreferences("alice", "legacy").formatOnCompile).toBe(false);
-    expect(loadEditorPreferences("alice", "legacy").texFmtConfig).toBe("");
+    expect(loadEditorPreferences("alice", "legacy").texFmtConfig).toBe(defaultTexFmtConfig);
     expect(loadEditorPreferences("alice", "legacy").openFilesInTabs).toBe(false);
     expect(loadEditorPreferences("alice", "legacy").mathPreviewOnHover).toBe(false);
   });
@@ -46,6 +46,17 @@ describe("editor preference scope", () => {
     const preferences = { ...defaultEditorPreferences, texFmtConfig: "wrap = true\nwraplen = 90" };
     saveEditorPreferences("alice", "paper", preferences);
     expect(loadEditorPreferences("alice", "paper").texFmtConfig).toBe(preferences.texFmtConfig);
-    expect(loadEditorPreferences("bob", "paper").texFmtConfig).toBe("");
+    expect(loadEditorPreferences("bob", "paper").texFmtConfig).toBe(defaultTexFmtConfig);
+  });
+
+  it("upgrades the previous empty default without overriding custom or newly cleared TOML", () => {
+    storage.setItem("texlite-editor-preferences:alice:legacy-empty", JSON.stringify({ texFmtConfig: "" }));
+    storage.setItem("texlite-editor-preferences:alice:legacy-custom", JSON.stringify({ texFmtConfig: "wrap = true\nwraplen = 100" }));
+
+    expect(loadEditorPreferences("alice", "legacy-empty").texFmtConfig).toBe(defaultTexFmtConfig);
+    expect(loadEditorPreferences("alice", "legacy-custom").texFmtConfig).toBe("wrap = true\nwraplen = 100");
+
+    saveEditorPreferences("alice", "current-empty", { ...defaultEditorPreferences, texFmtConfig: "" });
+    expect(loadEditorPreferences("alice", "current-empty").texFmtConfig).toBe("");
   });
 });

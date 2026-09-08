@@ -49,6 +49,32 @@ describe("project history retention", () => {
     expect(fixture.history.list(fixture.projectId).filter((version) => version.reason === "autosave")).toHaveLength(2);
   });
 
+  it("rejects restoring an autosave that changed after it was inspected", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    fixture.history.record(fixture.projectId, "user-1", "initial");
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:10.000Z"));
+    writeSource(fixture, "main.tex", "first inspected autosave");
+    const inspected = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])!;
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:30.000Z"));
+    writeSource(fixture, "main.tex", "newer content in the same autosave window");
+    const merged = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])!;
+
+    expect(merged.id).toBe(inspected.id);
+    expect(merged.snapshotHash).not.toBe(inspected.snapshotHash);
+    let failure: unknown;
+    try {
+      fixture.history.assertSnapshotHash(fixture.projectId, inspected.id, inspected.snapshotHash);
+    } catch (reason) {
+      failure = reason;
+    }
+    expect(failure).toMatchObject({ statusCode: 409, code: "HISTORY_VERSION_CHANGED" });
+    expect(() => fixture.history.assertSnapshotHash(fixture.projectId, merged.id, merged.snapshotHash)).not.toThrow();
+  });
+
   it("pages snapshots with a stable cursor when several records share a timestamp", () => {
     vi.useFakeTimers();
     const fixture = createFixture();

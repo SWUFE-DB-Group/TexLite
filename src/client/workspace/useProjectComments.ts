@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { errorMessage } from "../errors";
+import { sourceHash } from "../sourceHash";
 import type { Comment, Project } from "../types";
 
 export interface SourceSelection {
@@ -12,13 +13,21 @@ export interface SourceSelection {
 interface UseProjectCommentsOptions {
   projectId: string;
   activeFile: string;
+  content: string;
   permission: Project["permission"] | undefined;
   revision: string;
   selection: SourceSelection;
   save: () => Promise<boolean>;
+  saveFailureMessage: string;
   onError: (message: string) => void;
   onAdded: () => void;
   onChanged?: () => void;
+}
+
+interface CommentDraft {
+  filePath: string;
+  selection: SourceSelection;
+  sourceHash: string;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -26,13 +35,17 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function useProjectComments({
-  projectId, activeFile, permission, revision, selection, save, onError, onAdded, onChanged
+  projectId, activeFile, content, permission, revision, selection, save, saveFailureMessage, onError, onAdded, onChanged
 }: UseProjectCommentsOptions) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [focusComment, setFocusComment] = useState<Comment | null>(null);
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentText, setCommentText] = useState("");
+  const [commentDraft, setCommentDraft] = useState<CommentDraft | null>(null);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState("");
   const request = useRef<AbortController | null>(null);
+  const submittingComment = useRef(false);
   const activeFileRef = useRef(activeFile);
   const saveRef = useRef(save);
   const onErrorRef = useRef(onError);
@@ -63,6 +76,9 @@ export function useProjectComments({
 
   useEffect(() => {
     setFocusComment(null);
+    setCommentOpen(false);
+    setCommentDraft(null);
+    setCommentError("");
   }, [projectId, activeFile]);
 
   useEffect(() => {
@@ -74,21 +90,50 @@ export function useProjectComments({
     };
   }, [projectId, activeFile, revision]);
 
+  const openComment = () => {
+    if (!activeFile) return;
+    setCommentError("");
+    // Keep the source revision and selection that the user actually reviewed.
+    // Remote edits while the composer is open must never silently retarget it.
+    setCommentDraft({ filePath: activeFile, selection: { ...selection }, sourceHash: sourceHash(content) });
+    setCommentOpen(true);
+  };
+
+  const closeComment = () => {
+    if (submittingComment.current) return;
+    setCommentOpen(false);
+    setCommentDraft(null);
+    setCommentError("");
+  };
+
   const addComment = async () => {
-    if (!commentText.trim() || !activeFile) return;
+    const draft = commentDraft;
+    if (!commentText.trim() || !draft || submittingComment.current) return;
+    submittingComment.current = true;
+    setCommentSubmitting(true);
+    setCommentError("");
     try {
-      if (permission !== "read" && !(await saveRef.current())) return;
+      if (permission !== "read" && !(await saveRef.current())) {
+        setCommentError(saveFailureMessage);
+        return;
+      }
       await api(`/api/projects/${projectId}/comments`, {
         method: "POST",
-        body: JSON.stringify({ path: activeFile, content: commentText, ...selection })
+        body: JSON.stringify({ path: draft.filePath, content: commentText, ...draft.selection, sourceHash: draft.sourceHash })
       });
-      await loadComments(activeFile);
+      await loadComments(draft.filePath);
       setCommentOpen(false);
+      setCommentDraft(null);
       setCommentText("");
       onAddedRef.current();
       onChangedRef.current?.();
     } catch (error) {
-      onErrorRef.current(errorMessage(error));
+      // Keep the composer and its draft visible so a source-revision conflict
+      // can be resolved by reselecting the passage without losing the note.
+      setCommentError(errorMessage(error));
+    } finally {
+      submittingComment.current = false;
+      setCommentSubmitting(false);
     }
   };
 
@@ -160,9 +205,13 @@ export function useProjectComments({
     focusComment,
     setFocusComment,
     commentOpen,
-    setCommentOpen,
+    openComment,
+    closeComment,
     commentText,
     setCommentText,
+    commentSelection: commentDraft?.selection ?? selection,
+    commentSubmitting,
+    commentError,
     addComment,
     toggleComment,
     replyToComment,

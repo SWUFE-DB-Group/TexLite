@@ -20,7 +20,9 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("Harper writing checks", () => {
   it("linearly masks complex LaTeX syntax while preserving prose and Unicode scalar offsets", () => {
-    const source = String.raw`\section{A mispeled heading}
+    const source = String.raw`\documentclass{article}
+\usepackage[final]{acl}
+\section{A mispeled heading}
 Visible mispeled prose.
 % comment mispeled 😀
 \cite[compare]{missingCitation} \label{sec:mispeled} \ref{sec:mispeled}
@@ -41,7 +43,7 @@ https://example.invalid/mispeled`;
     expect([...masked]).toHaveLength([...source].length);
     expect(masked).toContain("A mispeled heading");
     expect(masked).toContain("Visible mispeled prose.");
-    for (const syntax of ["comment mispeled", "missingCitation", "sec:mispeled", "rqblue", "colorbar", "llll", "\\node", "https://example.invalid/mispeled"]) {
+    for (const syntax of ["article", "acl", "final", "comment mispeled", "missingCitation", "sec:mispeled", "rqblue", "colorbar", "llll", "\\node", "https://example.invalid/mispeled"]) {
       expect(masked).not.toContain(syntax);
     }
   });
@@ -67,6 +69,77 @@ Later misspeled prose.`;
     expect(masked).toContain("The literal rate is 20");
     expect(masked).not.toContain("ignored mispeled comment");
     expect(masked).toContain("Later misspeled prose.");
+  });
+
+  it("masks common inline code, macro definitions, and non-prose environment variants", () => {
+    const source = String.raw`\texttt{isValid} \Verb|mispeledVerb| \lstinline|mispeledLstinline| \mintinline{python}|mispeledMintinline| \mintinline{python}{mispeledMintBrace}
+\newcommand{\sys}[1][default]{\texttt{mispeledMacro #1}}
+\NewDocumentCommand{\tool}{m}{\texttt{mispeledDocumentCommand #1}}
+\DeclareMathOperator{\argmax}{mispeledOperator}
+\begin{verbatim*}
+mispeledVerbatim
+\end{verbatim*}
+\begin{cases}
+mispeledCases & x > 0 \\
+\end{cases}
+\begin{aligned}
+mispeledAligned &= x
+\end{aligned}
+Visible misspeled prose.`;
+    const masked = maskLatexSource(source);
+
+    for (const hidden of [
+      "isValid", "mispeledVerb", "mispeledLstinline", "mispeledMintinline", "mispeledMintBrace", "mispeledMacro",
+      "mispeledDocumentCommand", "mispeledOperator", "mispeledVerbatim", "mispeledCases", "mispeledAligned"
+    ]) expect(masked).not.toContain(hidden);
+    expect(masked).toContain("Visible misspeled prose.");
+  });
+
+  it("keeps comments, literal commands, and literal environments from leaking into prose", () => {
+    const source = String.raw`\newcommand{\first}% A comment containing a fake closing brace }
+{mispeledMacroAfterComment}
+\newcommand{\second}{% Another fake closing brace }
+mispeledMacroBody}
+\Verb[formatcom=\small]|mispeledVerbOption|
+\lstinline[language=Python]{mispeledLstBraces} Visible misspeled prose.
+\begin{verbatim*}
+$ literal math marker and mispeledVerbatim
+\end{verbatim*}
+After $x$ misspeled prose.`;
+    const masked = maskLatexSource(source);
+
+    for (const hidden of [
+      "mispeledMacroAfterComment", "mispeledMacroBody", "mispeledVerbOption", "mispeledLstBraces", "mispeledVerbatim", "literal math marker"
+    ]) expect(masked).not.toContain(hidden);
+    expect(masked).toContain("Visible misspeled prose.");
+    expect(masked).toContain("After ");
+    expect(masked).toContain("misspeled prose.");
+    expect(masked).not.toContain("$x$");
+  });
+
+  it("preserves ordered masks, literal percent signs, and nested ordinary environments", () => {
+    const source = String.raw`\documentclass% comment
+{article}
+\begin{axis}% comment
+mispeledAxis
+\end{axis}
+\mintinline{python}{x % 2} Visible misspeled prose.
+\verb%code% More misspeled prose.
+\begin{tabular}{l}
+\begin{tabular}{l}inner\end{tabular}
+mispeledOuter
+\end{tabular}
+\begin{align}
+% \end{align}
+mispeledMath = x
+\end{align}
+Final prose.`;
+    const masked = maskLatexSource(source);
+    for (const hidden of ["documentclass", "begin", "article", "mispeledAxis", "mispeledOuter", "mispeledMath", "code", "x % 2"]) {
+      expect(masked).not.toContain(hidden);
+    }
+    for (const prose of ["Visible misspeled prose.", "More misspeled prose.", "Final prose."]) expect(masked).toContain(prose);
+    expect([...masked]).toHaveLength([...source].length);
   });
 
   it("does not backtrack on repeated LaTeX line-break options or unmatched math", () => {
@@ -199,7 +272,16 @@ After the comment, typoo prose remains visible.
 \begin{axis}[colorbar,draw=rqblue!80!black]
 \node {wrng};
 \end{axis}
-Inline $wrng$ math.`;
+Inline $wrng$ math.
+\texttt{isValid} \Verb|mispeledVerb| \lstinline|mispeledLstinline|
+\mintinline{python}{mispeledMint}
+\newcommand{\tool}{mispeledMacro}
+\begin{verbatim*}
+mispeledVerbatim
+\end{verbatim*}
+\begin{cases}
+mispeledCases & x > 0
+\end{cases}`;
     try {
       await harper.preload();
       const lints = await harper.lint(source, "main.tex");
@@ -207,6 +289,9 @@ Inline $wrng$ math.`;
       expect(lints.map((lint) => lint.problem)).toContain("typoo");
       expect(lints.map((lint) => lint.problem)).not.toContain("badcitation");
       expect(lints.map((lint) => lint.problem)).not.toContain("rqblue");
+      for (const hidden of ["isValid", "mispeledVerb", "mispeledLstinline", "mispeledMint", "mispeledMacro", "mispeledVerbatim", "mispeledCases"]) {
+        expect(lints.map((lint) => lint.problem)).not.toContain(hidden);
+      }
       const issues = await mapLatexLints(source, [], lints);
       expect(issues.find((issue) => issue.word === "wrng")).toMatchObject({ from: source.indexOf("wrng") });
       expect(issues.find((issue) => issue.word === "typoo")).toMatchObject({ from: source.indexOf("typoo") });

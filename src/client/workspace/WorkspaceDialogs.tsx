@@ -68,10 +68,15 @@ export interface WorkspaceDialogsProps {
   deleteActiveSessions: ActiveSession[];
   removePath: () => Promise<void>;
   commentOpen: boolean;
-  setCommentOpen: (open: boolean) => void;
+  closeComment: () => void;
+  /** Frozen when the comment composer opens. */
+  commentSelection: SourceSelection;
+  /** Always follows the live editor selection. */
   selection: SourceSelection;
   commentText: string;
   setCommentText: (text: string) => void;
+  commentSubmitting: boolean;
+  commentError: string;
   addComment: () => Promise<void>;
   shareOpen: boolean;
   setShareOpen: (open: boolean) => void;
@@ -104,8 +109,8 @@ export function WorkspaceDialogs({
   setNewFileOpen, newFilePath, setNewFilePath, newFolderOpen, setNewFolderOpen, newFolderName,
   setNewFolderName, selectedFolder, fileDialogError, setFileDialogError, createFile, createFolder, moveEntry,
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
-  setDeleteEntry, deleteActiveSessions, removePath, commentOpen, setCommentOpen, selection, commentText,
-  setCommentText, addComment, shareOpen, setShareOpen, citationLibraryOpen, setCitationLibraryOpen,
+  setDeleteEntry, deleteActiveSessions, removePath, commentOpen, closeComment, commentSelection, selection, commentText,
+  setCommentText, commentSubmitting, commentError, addComment, shareOpen, setShareOpen, citationLibraryOpen, setCitationLibraryOpen,
   insertCitationAtCursor, quickOpen, setQuickOpen, projectSearchOpen, setProjectSearchOpen, openFile,
   jumpToSource, selectionHistoryOpen, setSelectionHistoryOpen, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
   permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
@@ -132,7 +137,42 @@ export function WorkspaceDialogs({
     <Modal open={newFolderOpen} title={t("editor.newFolder")} description={t("editor.folderDestination", { folder: selectedFolder || t("editor.projectRoot") })} onOpenChange={(open) => { setNewFolderOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFolderOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFolder()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.folderName")}<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></label></></Modal>
     <Modal open={Boolean(moveEntry)} title={t("editor.moveTitle", { name: moveEntry?.path.split("/").at(-1) ?? "" })} description={t("editor.moveDescription")} onOpenChange={(open) => { if (!open) { setMoveEntry(null); setMoveName(""); setFileDialogError(""); } }} footer={<><button onClick={() => setMoveEntry(null)}>{t("common.cancel")}</button><button className="primary" disabled={!moveName.trim()} onClick={() => void movePath()}>{t("editor.moveApply")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.pathName")}<input autoFocus value={moveName} onChange={(event) => setMoveName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void movePath(); }} /></label><label className="form-field">{t("editor.destinationFolder")}<select value={moveDestination} onChange={(event) => setMoveDestination(event.target.value)}><option value="">{t("editor.projectRoot")}</option>{directoryEntries.filter((directory) => moveEntry?.type !== "directory" || (directory.path !== moveEntry.path && !directory.path.startsWith(`${moveEntry.path}/`))).map((directory) => <option value={directory.path} key={directory.path}>{directory.path}</option>)}</select></label></></Modal>
     <Modal open={Boolean(deleteEntry)} title={t("editor.deletePathTitle", { name: deleteEntry?.path.split("/").at(-1) ?? "" })} description={deleteActiveSessions.length ? t("editor.deletePathActiveDescription", { path: deleteEntry?.path ?? "", users: [...new Set(deleteActiveSessions.map((session) => session.name))].join(", ") }) : t("editor.deletePathDescription", { path: deleteEntry?.path ?? "" })} onOpenChange={(open) => { if (!open) { setDeleteEntry(null); setFileDialogError(""); } }} footer={<><button onClick={() => setDeleteEntry(null)}>{t("common.cancel")}</button><button className="danger" onClick={() => void removePath()}>{t("common.delete")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}{deleteActiveSessions.length > 0 && <p className="warning"><AlertTriangle size={15} />{t("editor.deletePathWillClose")}</p>}</></Modal>
-    <Modal open={commentOpen} title={t("editor.addComment")} description={selection.selectedText ? t("editor.commentDescription", { count: selection.endOffset - selection.startOffset }) : t("editor.pointComment")} onOpenChange={setCommentOpen} footer={<><button onClick={() => setCommentOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void addComment()}>{t("editor.addComment")}</button></>}><label className="form-field">{t("editor.commentContent")}<MentionTextarea projectId={projectId} autoFocus rows={5} value={commentText} onChange={setCommentText} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); void addComment(); } }} /></label>{selection.selectedText && <blockquote className="selection-preview">{selection.selectedText}</blockquote>}</Modal>
+    <Modal
+      open={commentOpen}
+      title={t("editor.addComment")}
+      description={commentSelection.selectedText
+        ? t("editor.commentDescription", { count: commentSelection.endOffset - commentSelection.startOffset })
+        : t("editor.pointComment")}
+      onOpenChange={(open) => { if (!open) closeComment(); }}
+      footer={<>
+        <button type="button" disabled={commentSubmitting} onClick={closeComment}>{t("common.cancel")}</button>
+        <button type="button" className="primary" disabled={commentSubmitting || !commentText.trim()} onClick={() => void addComment()}>
+          {commentSubmitting && <LoaderCircle className="spin" size={14} />}
+          {t("editor.addComment")}
+        </button>
+      </>}
+    >
+      {commentError && <p className="error dialog-error">{commentError}</p>}
+      <label className="form-field">
+        {t("editor.commentContent")}
+        <MentionTextarea
+          projectId={projectId}
+          autoFocus
+          rows={5}
+          disabled={commentSubmitting}
+          value={commentText}
+          onChange={setCommentText}
+          onKeyDown={(event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              event.stopPropagation();
+              void addComment();
+            }
+          }}
+        />
+      </label>
+      {commentSelection.selectedText && <blockquote className="selection-preview">{commentSelection.selectedText}</blockquote>}
+    </Modal>
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} />
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}

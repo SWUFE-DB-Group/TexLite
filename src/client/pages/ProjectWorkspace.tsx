@@ -929,15 +929,18 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     });
   }, [files, editorPreferences.openFilesInTabs]);
   const {
-    comments, focusComment, setFocusComment, commentOpen, setCommentOpen, commentText, setCommentText,
-    addComment, toggleComment, replyToComment, editComment, deleteComment, editCommentReply, deleteCommentReply
+    comments, focusComment, setFocusComment, commentOpen, openComment, closeComment, commentText, setCommentText,
+    commentSelection, commentSubmitting, commentError, addComment, toggleComment, replyToComment, editComment,
+    deleteComment, editCommentReply, deleteCommentReply
   } = useProjectComments({
     projectId,
     activeFile,
+    content,
     permission: project?.permission,
     revision: commentsRevision,
     selection,
     save,
+    saveFailureMessage: t("errors.collaborationUnavailable"),
     onError: setError,
     onAdded: () => setSidePanel("comments"),
     onChanged: () => { void refreshMentions(); }
@@ -1147,7 +1150,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       onSelectionHistory={() => setSelectionHistoryOpen(true)} onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
       formatting={formatting} readOnly={readOnly} collaborationSynced={collaborationSynced}
       hasSelection={Boolean(selection.selectedText.trim())}
-      onAddComment={() => setCommentOpen(true)} onToggleComments={() => setSidePanel(sidePanel === "comments" ? null : "comments")}
+      onAddComment={openComment} onToggleComments={() => setSidePanel(sidePanel === "comments" ? null : "comments")}
       commentsOpen={sidePanel === "comments"} unresolvedCommentCount={comments.filter((item) => !item.resolved).length}
       hasActiveFile={Boolean(activeFile)} onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
       settingsOpen={sidePanel === "settings"} compileBusy={compileBusy} sharedCompiling={sharedCompiling}
@@ -1258,8 +1261,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       setMoveEntry={setMoveEntry} moveName={moveName} setMoveName={setMoveName}
       moveDestination={moveDestination} setMoveDestination={setMoveDestination} movePath={movePath}
       deleteEntry={deleteEntry} setDeleteEntry={setDeleteEntry} deleteActiveSessions={deleteActiveSessions}
-      removePath={removePath} commentOpen={commentOpen} setCommentOpen={setCommentOpen}
-      selection={selection} commentText={commentText} setCommentText={setCommentText} addComment={addComment}
+      removePath={removePath} commentOpen={commentOpen} closeComment={closeComment}
+      commentSelection={commentSelection} selection={selection} commentText={commentText} setCommentText={setCommentText} commentSubmitting={commentSubmitting}
+      commentError={commentError} addComment={addComment}
       shareOpen={shareOpen} setShareOpen={setShareOpen} citationLibraryOpen={citationLibraryOpen}
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
       quickOpen={quickOpen} setQuickOpen={setQuickOpen} projectSearchOpen={projectSearchOpen}

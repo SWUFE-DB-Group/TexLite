@@ -114,6 +114,7 @@ export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git"
 
 export interface HistoryVersion {
   id: string;
+  snapshotHash: string;
   reason: HistoryReason;
   label: string | null;
   createdAt: string;
