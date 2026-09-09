@@ -1189,11 +1189,13 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .history-detail-title-row strong { font-size: 15px; color: #1d2b22; word-break: break-word; }
 .history-detail-header small { display: flex; align-items: center; gap: 4px; color: #68736b; }
 .history-snapshot-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 14px; padding: 8px 0 13px; border-bottom: 1px solid #e2e7e3; }
+.history-snapshot-actions button, .history-file-list button, .history-file-actions button { -webkit-appearance: none; appearance: none; }
 .history-snapshot-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; white-space: nowrap; }
 .history-delete-action { border: 0; border-radius: 6px; padding: 6px 4px; background: transparent; color: #a3342c; font-size: 11px; font-weight: 600; }
 .history-delete-action:hover:not(:disabled) { background: #fff0ee; color: #8d2720; }
 .history-restore-project { margin-left: auto; border: 1px solid #176b44; border-radius: 7px; padding: 7px 11px; background: #176b44; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 1px 2px #123c2a26; }
 .history-restore-project:hover:not(:disabled) { border-color: #115736; background: #115f3b; box-shadow: 0 2px 5px #123c2a2b; }
+.history-snapshot-actions button:focus-visible, .history-file-actions button:focus-visible { outline: 2px solid #70ad88; outline-offset: 2px; }
 .history-label { display: flex; gap: 8px; margin-bottom: 12px; }
 .history-label label { flex: 1; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid #cdd6cf; border-radius: 6px; background: #fff; }
 .history-label input { width: 100%; border: 0; padding: 8px 0; outline: 0; }
@@ -1203,13 +1205,18 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .history-files-heading span { line-height: 1; }
 .history-file-tabs-row { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .history-file-list { min-width: 0; flex: 1; display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px; min-height: 34px; }
-.history-file-list button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 230px; }
+.history-file-list button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; min-height: 32px; max-width: 230px; border: 1px solid #cbd5ce; border-radius: 6px; padding: 6px 9px; background: #fff; color: #435047; font-size: 11px; font-weight: 600; line-height: 1.2; box-shadow: none; }
 .history-file-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-file-list button small { padding: 1px 4px; border-radius: 8px; background: #f2d675; color: #695414; font-size: 9px; }
-.history-file-list button.active { border-color: #418060; background: #e7f0ea; }
+.history-file-list button:hover:not(:disabled) { border-color: #91ae9c; background: #f4f8f5; color: #245a3d; }
+.history-file-list button.active { border-color: #418060; background: #e7f0ea; color: #1d5c3b; box-shadow: inset 3px 0 #3ba86c; }
+.history-file-list button:focus-visible { outline: 2px solid #70ad88; outline-offset: 2px; }
 .history-file-actions { flex: none; display: flex; gap: 5px; padding-left: 10px; border-left: 1px solid #e1e6e2; }
 .history-file-actions button { display: inline-flex; align-items: center; gap: 5px; min-height: 31px; border: 1px solid #bdc9c0; border-radius: 6px; padding: 6px 9px; background: #fff; color: #31523e; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .history-file-actions button:hover:not(:disabled) { border-color: #8eaa98; background: #edf4ef; color: #176b44; }
+@supports not selector(:focus-visible) {
+  .history-snapshot-actions button:focus, .history-file-list button:focus, .history-file-actions button:focus { outline: 2px solid #70ad88; outline-offset: 2px; }
+}
 .history-comparison { min-height: 360px; margin-top: 10px; border: 1px solid #d8dfda; border-radius: 7px; overflow: hidden; background: #202522; display: flex; flex-direction: column; }
 .history-comparison > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #36413a; background: #28302b; color: #d9e1dc; }
 .history-comparison-meta { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
