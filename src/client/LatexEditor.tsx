@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Annotation, Compartment, EditorState, Facet, Prec, StateEffect, StateField, Transaction } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Facet, Prec, type Range, StateEffect, StateField, Transaction } from "@codemirror/state";
 import {
   Decoration, type DecorationSet, EditorView, keymap, lineNumbers,
-  highlightActiveLine, drawSelection, highlightSpecialChars, ViewPlugin, WidgetType
+  highlightActiveLine, drawSelection, highlightSpecialChars, ViewPlugin, type ViewUpdate, WidgetType
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
@@ -27,6 +27,7 @@ import { bibtexLanguage, latexLanguage } from "./latexLanguage";
 import { supportsLatexMathHover } from "./latexMath";
 import { latexMathHover } from "./mathHover";
 import { latexAutoPair, latexAutoPairAtCursor } from "./latexAutoPairs";
+import { findLatexReferences, type LatexReference } from "../shared/latexReferences";
 import type { SpellCheckIssue } from "./spellCheck";
 export type { SpellCheckIssue } from "./spellCheck";
 
@@ -48,6 +49,7 @@ interface Props {
   onSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onCommentClick: (commentId: string) => void;
   onSpellCheckReplace: (issue: SpellCheckIssue, replacement: string) => void;
+  onReferenceNavigate: (reference: LatexReference) => void;
   onCursor: (line: number, column: number, offset: number) => void;
 }
 
@@ -137,6 +139,113 @@ const activeSpellCheckIssueMarks = StateField.define<DecorationSet>({
   },
   provide: (field) => EditorView.decorations.from(field)
 });
+
+interface ReferenceNavigationSettings {
+  enabled: boolean;
+  title: (reference: LatexReference) => string;
+}
+
+const noReferenceNavigation: ReferenceNavigationSettings = {
+  enabled: false,
+  title: () => ""
+};
+
+const referenceNavigationSettings = Facet.define<ReferenceNavigationSettings, ReferenceNavigationSettings>({
+  combine: (values) => values.at(-1) ?? noReferenceNavigation
+});
+
+/**
+ * Decorate only the visible editor region. The scanner still starts at the
+ * document prefix so literal environments retain their state; Ctrl/Cmd-click
+ * performs the authoritative project-wide target lookup.
+ */
+const latexReferenceMarks = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+
+  constructor(private readonly view: EditorView) {
+    this.decorations = buildReferenceDecorations(view);
+  }
+
+  update(update: ViewUpdate): void {
+    if (update.docChanged || update.viewportChanged
+      || update.startState.facet(referenceNavigationSettings) !== update.state.facet(referenceNavigationSettings)) {
+      this.decorations = buildReferenceDecorations(this.view);
+    }
+  }
+}, {
+  decorations: (plugin) => plugin.decorations
+});
+
+function buildReferenceDecorations(view: EditorView): DecorationSet {
+  const settings = view.state.facet(referenceNavigationSettings);
+  if (!settings.enabled || view.state.doc.length === 0) return Decoration.none;
+  const windows = referenceScanWindows(view);
+  // Scan from the start of the document through the visible region. A
+  // verbatim-like environment can start far above the viewport, so scanning
+  // each visible slice independently would incorrectly decorate its contents.
+  // We still emit decorations only in the small visible windows below.
+  const scanTo = windows.reduce((maximum, window) => Math.max(maximum, window.to), 0);
+  const source = view.state.sliceDoc(0, scanTo);
+  const ranges: Range<Decoration>[] = [];
+  const seen = new Set<string>();
+  for (const reference of findLatexReferences(source)) {
+    const from = reference.from;
+    const to = reference.to;
+    if (!windows.some((window) => from >= window.from && to <= window.to)) continue;
+    const signature = [reference.kind, reference.key, String(from), String(to)].join(":");
+    if (seen.has(signature) || to <= from) continue;
+    seen.add(signature);
+    ranges.push(Decoration.mark({
+      class: reference.kind === "citation" ? "cm-latex-citation-key" : "cm-latex-label-key",
+      attributes: {
+        title: settings.title(reference),
+        spellcheck: "false",
+        "data-latex-reference-kind": reference.kind,
+        "data-latex-reference-key": reference.key,
+        "data-latex-reference-from": String(from),
+        "data-latex-reference-to": String(to),
+        "data-latex-reference-command": reference.command
+      }
+    }).range(from, to));
+  }
+  return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
+}
+
+function referenceScanWindows(view: EditorView): Array<{ from: number; to: number }> {
+  const document = view.state.doc;
+  const context = 1_024;
+  const raw = (view.visibleRanges.length ? view.visibleRanges : [{ from: 0, to: document.length }])
+    .map((range) => {
+      const fromOffset = Math.max(0, range.from - context);
+      const toOffset = Math.min(document.length, range.to + context);
+      const from = document.lineAt(fromOffset).from;
+      const to = document.lineAt(Math.max(fromOffset, Math.max(0, toOffset - 1))).to;
+      return { from, to };
+    })
+    .sort((left, right) => left.from - right.from);
+  const merged: Array<{ from: number; to: number }> = [];
+  for (const range of raw) {
+    const previous = merged.at(-1);
+    if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
+    else merged.push(range);
+  }
+  return merged;
+}
+
+function referenceFromElement(element: EventTarget | null): LatexReference | null {
+  if (!(element instanceof HTMLElement)) return null;
+  const target = element.closest<HTMLElement>("[data-latex-reference-kind][data-latex-reference-key]");
+  const kind = target?.dataset.latexReferenceKind;
+  const key = target?.dataset.latexReferenceKey;
+  if ((kind !== "citation" && kind !== "label") || !key) return null;
+  return {
+    kind,
+    key,
+    from: Number(target.dataset.latexReferenceFrom) || 0,
+    to: Number(target.dataset.latexReferenceTo) || 0,
+    command: target.dataset.latexReferenceCommand ?? ""
+  };
+}
 
 const fallbackCommandLabels = [
   "\\noindent", "\\indent", "\\par", "\\leavevmode", "\\newline", "\\linebreak", "\\nolinebreak", "\\pagebreak", "\\nopagebreak", "\\newpage", "\\clearpage", "\\cleardoublepage",
@@ -385,7 +494,7 @@ const latexFold = foldService.of((state, lineStart) => {
 
 export function LatexEditor({
   value, filePath, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
-  nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onCommentClick, onSpellCheckReplace, onCursor
+  nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor
 }: Props) {
   const { t, i18n } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -394,11 +503,13 @@ export function LatexEditor({
   const onSelectionRef = useRef(onSelection);
   const onCommentClickRef = useRef(onCommentClick);
   const onSpellCheckReplaceRef = useRef(onSpellCheckReplace);
+  const onReferenceNavigateRef = useRef(onReferenceNavigate);
   const onCursorRef = useRef(onCursor);
   const spellCheckIssuesRef = useRef(spellCheckIssues);
   const handledSearchRequest = useRef(searchRequest);
   const completionIndexRef = useRef(completionIndex);
   const appearance = useRef(new Compartment());
+  const referenceNavigation = useRef(new Compartment());
   const mathHover = useRef(new Compartment());
   const vimMode = useRef(new Compartment());
   const vimStatusCleanup = useRef<(() => void) | null>(null);
@@ -408,6 +519,7 @@ export function LatexEditor({
   onSelectionRef.current = onSelection;
   onCommentClickRef.current = onCommentClick;
   onSpellCheckReplaceRef.current = onSpellCheckReplace;
+  onReferenceNavigateRef.current = onReferenceNavigate;
   onCursorRef.current = onCursor;
   spellCheckIssuesRef.current = spellCheckIssues;
   completionIndexRef.current = completionIndex;
@@ -442,6 +554,7 @@ export function LatexEditor({
         lineNumbers(), foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
         /\.bib$/i.test(filePath) ? bibtexLanguage : latexLanguage, syntaxHighlighting(defaultHighlightStyle), bracketMatching(),
         Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
+        referenceNavigation.current.of(referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))), latexReferenceMarks,
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
@@ -458,6 +571,22 @@ export function LatexEditor({
         ...(collaboration ? [yCollab(collaboration.text, collaboration.awareness, { undoManager: collaborationUndoManager ?? false })] : []),
         EditorState.readOnly.of(readOnly), appearance.current.of(editorAppearance(preferences, nativeSpellCheck)),
         EditorView.domEventHandlers({
+          mousedown(event) {
+            const reference = referenceFromElement(event.target);
+            if (!reference || !(event.ctrlKey || event.metaKey)) return false;
+            event.preventDefault();
+            onReferenceNavigateRef.current(reference);
+            return true;
+          },
+          mousemove(event, editor) {
+            const reference = referenceFromElement(event.target);
+            editor.dom.classList.toggle("cm-reference-navigation-active", Boolean(reference && (event.ctrlKey || event.metaKey)));
+            return false;
+          },
+          mouseleave(_event, editor) {
+            editor.dom.classList.remove("cm-reference-navigation-active");
+            return false;
+          },
           click(event) {
             const element = (event.target as HTMLElement).closest<HTMLElement>("[data-comment-id]");
             if (element?.dataset.commentId) onCommentClickRef.current(element.dataset.commentId);
@@ -533,13 +662,14 @@ export function LatexEditor({
     if (!editor) return;
     editor.dispatch({ effects: [
       appearance.current.reconfigure(editorAppearance(preferences, nativeSpellCheck)),
+      referenceNavigation.current.reconfigure(referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))),
       mathHover.current.reconfigure(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
         loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
       }) : []),
       vimMode.current.reconfigure(preferences.vimMode ? vim() : [])
     ] });
     syncVimStatus(editor, preferences.vimMode);
-  }, [preferences, nativeSpellCheck]);
+  }, [preferences, nativeSpellCheck, filePath, i18n.resolvedLanguage]);
 
   useEffect(() => {
     const editor = view.current;
@@ -745,6 +875,16 @@ function editorAppearance(preferences: EditorPreferences, nativeSpellCheck: bool
     }),
     preferences.lineWrapping ? EditorView.lineWrapping : []
   ];
+}
+
+function referenceNavigationOptions(filePath: string, t: TFunction): ReferenceNavigationSettings {
+  const enabled = /\.(?:tex|sty|cls)$/i.test(filePath);
+  return {
+    enabled,
+    title: (reference) => reference.kind === "citation"
+      ? t("editor.citationJumpHint", { key: reference.key })
+      : t("editor.labelJumpHint", { key: reference.key })
+  };
 }
 
 function buildSpellCheckIssueDecorations(issues: SpellCheckIssue[], documentLength: number): DecorationSet {

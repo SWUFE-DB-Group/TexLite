@@ -36,6 +36,7 @@ import { registerCitationRoutes } from "./routes/citations.js";
 import { registerCommentRoutes } from "./routes/comments.js";
 import { registerProjectMemberRoutes } from "./routes/projectMembers.js";
 import { registerProjectFileRoutes } from "./routes/projectFiles.js";
+import { registerProjectReferenceRoutes } from "./routes/projectReferences.js";
 import { registerProjectHistoryRoutes } from "./routes/projectHistory.js";
 import { registerProjectGitRoutes } from "./routes/projectGit.js";
 import { registerProjectCatalogRoutes } from "./routes/projects.js";
@@ -234,6 +235,7 @@ export async function buildApp(
     metrics,
     recordHistory
   });
+  registerProjectReferenceRoutes(app, { config, db, projectMutations });
   registerProjectHistoryRoutes(app, { config, db, history, editHistory, projectMutations, recordHistory,
     clearPendingEdits: (id) => { editRetry.clear(id); failedEdits.delete(id); signalHistory(id); },
     scheduleHistoryRetention: (id) => historyRetention.schedule(id) });

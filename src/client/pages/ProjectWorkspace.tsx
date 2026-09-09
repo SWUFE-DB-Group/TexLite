@@ -32,6 +32,7 @@ import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
 import { createSourceCursorStore, type SourceCursorStore } from "../workspace/sourceCursorStore";
 import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
 import { LazyModal } from "../LazyLoadBoundary";
+import type { LatexReference } from "../../shared/latexReferences";
 
 const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
 let citationLibraryModule: Promise<typeof import("../citationLibrary")> | null = null;
@@ -146,6 +147,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const persistedEditSequence = useRef(0);
   const activeFileRef = useRef("");
   const activeMainFileRef = useRef("");
+  const workspaceLayoutRef = useRef<WorkspaceLayout>(workspaceLayout);
   const projectLoadSequence = useRef(0);
   const completionRequest = useRef<AbortController | null>(null);
   const outlineRequest = useRef<AbortController | null>(null);
@@ -153,6 +155,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const refreshRequest = useRef<AbortController | null>(null);
   const wordCountRequest = useRef<AbortController | null>(null);
   const mentionTargetRequest = useRef<AbortController | null>(null);
+  const referenceNavigationRequest = useRef<AbortController | null>(null);
   const scrolledMentionId = useRef<string | null>(null);
   const formattingRef = useRef(false);
   const formattingTaskRef = useRef<Promise<void> | null>(null);
@@ -162,7 +165,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   onBackRef.current = onBack;
   onMentionTargetedRef.current = onMentionTargeted;
   onMentionsReadRef.current = onMentionsRead;
+  activeFileRef.current = activeFile;
   activeMainFileRef.current = activeMainFile;
+  workspaceLayoutRef.current = workspaceLayout;
 
   useEffect(() => {
     if (!notice) return;
@@ -175,6 +180,11 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   }, [sourceCursorStore]);
 
   useEffect(() => () => sourceCursorStore.dispose(), [sourceCursorStore]);
+
+  useEffect(() => () => {
+    referenceNavigationRequest.current?.abort();
+    referenceNavigationRequest.current = null;
+  }, []);
 
   const updateOpenTabs = (updater: (current: string[]) => string[]) => {
     const current = openTabsRef.current;
@@ -195,6 +205,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     wordCountRequest.current = null;
     mentionTargetRequest.current?.abort();
     mentionTargetRequest.current = null;
+    referenceNavigationRequest.current?.abort();
+    referenceNavigationRequest.current = null;
     scrolledMentionId.current = null;
     setTargetMention(null);
     setWordCountOpen(false);
@@ -1065,6 +1077,41 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     setWorkspaceLayout(next);
     if (next === "pdf-only") selectPreviewTab("pdf");
   };
+  const navigateToReference = useCallback((reference: LatexReference) => {
+    referenceNavigationRequest.current?.abort();
+    const controller = new AbortController();
+    referenceNavigationRequest.current = controller;
+    const preferredPath = activeFileRef.current;
+    const mainFile = activeMainFileRef.current;
+    const query = new URLSearchParams({
+      kind: reference.kind,
+      key: reference.key,
+      ...(preferredPath ? { path: preferredPath } : {}),
+      ...(mainFile ? { mainFile } : {})
+    });
+    void api<{ target: { path: string; line: number; column: number } | null }>(
+      `/api/projects/${projectId}/references/resolve?${query}`,
+      { signal: controller.signal }
+    ).then(({ target }) => {
+      // Do not pull someone back to the old file if they moved elsewhere
+      // while a project-wide lookup was still in flight.
+      if (controller.signal.aborted
+        || activeFileRef.current !== preferredPath
+        || activeMainFileRef.current !== mainFile) return;
+      if (!target) {
+        setError(t(reference.kind === "citation" ? "editor.citationTargetNotFound" : "editor.labelTargetNotFound", {
+          key: reference.key
+        }));
+        return;
+      }
+      if (workspaceLayoutRef.current === "pdf-only") changeWorkspaceLayout("editor-pdf");
+      jumpToSource(target.path, target.line, target.column);
+    }).catch((navigationError) => {
+      if (!controller.signal.aborted && !isAbortError(navigationError)) setError(errorMessage(navigationError));
+    }).finally(() => {
+      if (referenceNavigationRequest.current === controller) referenceNavigationRequest.current = null;
+    });
+  }, [jumpToSource, projectId, t]);
   const deleteActiveSessions = deleteEntry
     ? activeSessions.filter((session) => session.filePath && pathContains(deleteEntry.path, session.filePath))
     : [];
@@ -1204,7 +1251,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         handleTabKeyDown={handleTabKeyDown} updateEditorContent={updateEditorContent}
         setSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })}
         onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) { setFocusComment({ ...comment }); setSidePanel("comments"); } }}
-        onSpellCheckReplace={replaceSpellCheckIssue} onCursor={updateSourceCursor}
+        onSpellCheckReplace={replaceSpellCheckIssue} onReferenceNavigate={navigateToReference} onCursor={updateSourceCursor}
       />}
       {showPreview && <WorkspacePreviewPanel
         projectId={projectId} activeMainFile={activeMainFile} previewTab={previewTab} diagnosticTab={diagnosticTab}

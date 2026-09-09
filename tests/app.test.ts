@@ -187,6 +187,15 @@ It works.
       method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
       payload: { path: "refs.bib", content: "@article{smith2025, author={Smith}, title={A Test}}\n" }
     });
+    const citationTarget = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.id}/references/resolve?kind=citation&key=smith2025&path=main.tex`,
+      headers: { cookie }
+    });
+    expect(citationTarget.statusCode).toBe(200);
+    expect(citationTarget.json()).toMatchObject({
+      target: { path: "refs.bib", line: 1, column: 1, kind: "citation", source: "bibtex" }
+    });
     const completionIndex = await app.inject({ method: "GET", url: `/api/projects/${project.id}/completions`, headers: { cookie } });
     expect(completionIndex.statusCode).toBe(200);
     expect(completionIndex.json().index.commands).toEqual(expect.arrayContaining([
