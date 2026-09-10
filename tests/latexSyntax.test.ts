@@ -241,7 +241,7 @@ Normal prose after a literal environment.`
     expect(highlighted).toContain("% Generated bibliography");
   });
 
-  it("enables codemirror-lang-bib folding, diagnostics, and field completion", () => {
+  it("enables internal BibTeX folding, diagnostics, and field completion", () => {
     const incompleteSource = String.raw`@article{example,
   title = {An incomplete entry}
 }`;

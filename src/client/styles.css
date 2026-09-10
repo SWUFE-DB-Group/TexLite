@@ -565,6 +565,16 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .texlite-math-hover.display { padding: 13px 17px; white-space: normal; }
 .texlite-math-hover .katex-display { margin: 0; }
 .texlite-math-hover-error { color: #9b3e36; font-size: 11px; white-space: normal; }
+.cm-tooltip:has(.cm-bibtex-tooltip) { max-width: min(420px, calc(100vw - 28px)); border: 1px solid #d7e2da; border-radius: 8px; padding: 0; background: #fff; box-shadow: 0 10px 26px #1b34261f; color: #1d3025; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.cm-bibtex-tooltip { max-width: min(396px, calc(100vw - 52px)); padding: 10px 12px; font-size: 12px; line-height: 1.45; }
+.cm-bibtex-tooltip-field-name { margin-bottom: 3px; color: #1c573c; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 700; }
+.cm-bibtex-tooltip-description { color: #314438; }
+.cm-bibtex-tooltip-required { margin-top: 6px; color: #9a4a20; }
+.cm-bibtex-tooltip-optional { margin-top: 3px; color: #557064; }
+.cm-bibtex-tooltip-example-label { margin-top: 7px; color: #65776c; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .035em; }
+.cm-bibtex-tooltip-example { max-height: 160px; margin: 3px 0 0; overflow: auto; padding: 7px 8px; border-radius: 5px; background: #f3f7f4; color: #294334; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.cm-bibtex-tooltip-example-inline { margin-top: 7px; color: #40584a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.cm-bibtex-tooltip-note { margin-top: 7px; color: #5e685f; font-size: 11px; }
 .cm-source-comment { background: #ffe49b99; border-bottom: 2px solid #d68b00; cursor: text; }
 .cm-comment-pin { color: #d68b00; font-size: 9px; padding: 0 2px; cursor: pointer; }
 .preview-panel { display: flex; flex-direction: column; background: #6f7471; }

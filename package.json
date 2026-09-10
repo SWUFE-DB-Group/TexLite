@@ -28,6 +28,7 @@
     "DESIGN.md",
     "NPM_TESTING.md",
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "preview-1.png",
     "preview-2.png",
     "texlite.config.example.json"
@@ -41,9 +42,9 @@
   "type": "module",
   "scripts": {
     "dev": "npm run generate:lucide-icons && tsx watch src/server/index.ts",
-    "dev:web": "vite",
+    "dev:web": "npm run generate:bibtex-parser && vite",
     "build": "npm run build:web && npm run build:server",
-    "build:web": "vite build",
+    "build:web": "npm run generate:bibtex-parser && vite build",
     "build:server": "tsc -p tsconfig.server.json && npm run generate:lucide-icons",
     "start": "node dist/server/index.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
@@ -55,8 +56,9 @@
     "init": "tsx src/server/cli.ts init",
     "prepack": "npm run build",
     "generate:lucide-icons": "node scripts/generate-lucide-static-icons.mjs",
-    "pretest": "npm run generate:lucide-icons",
+    "pretest": "npm run generate:lucide-icons && npm run generate:bibtex-parser",
     "test": "vitest run --config vitest.config.ts",
+    "generate:bibtex-parser": "node scripts/generate-bibtex-parser.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
@@ -73,12 +75,13 @@
     "@fastify/multipart": "^9.2.1",
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.3.0",
+    "@lezer/common": "^1.5.2",
     "@lezer/highlight": "^1.2.3",
+    "@lezer/lr": "^1.4.10",
     "@radix-ui/react-dialog": "^1.1.15",
     "@replit/codemirror-vim": "^6.4.0",
     "better-sqlite3": "^13.0.2",
     "bibtex-tidy": "1.14.0",
-    "codemirror-lang-bib": "^0.2.4",
     "diff-match-patch": "^1.0.5",
     "fastify": "^5.4.0",
     "i18next": "^25.3.2",
@@ -103,6 +106,7 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
+    "@lezer/generator": "^1.8.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/diff-match-patch": "^1.0.36",
     "@types/node": "^24.1.0",

@@ -1,13 +1,5 @@
 import { StreamLanguage, type StreamParser, type StringStream } from "@codemirror/language";
-import { linter } from "@codemirror/lint";
 import { stex } from "@codemirror/legacy-modes/mode/stex";
-import { tags, styleTags } from "@lezer/highlight";
-import {
-  bibtexBracketMatching,
-  bibtexCompletionSource,
-  bibtexLanguage as baseBibtexLanguage,
-  bibtexLinter
-} from "codemirror-lang-bib";
 import { inlineLatexLiteralEnd, isLatexLiteralEnvironment, literalEnvironmentEnd } from "./latexLiterals";
 
 const bracketCharacters = new Set(["(", ")", "[", "]", "{", "}"]);
@@ -90,20 +82,16 @@ export const latexStream: StreamParser<LatexStreamState> = {
 
 export const latexLanguage = StreamLanguage.define(latexStream);
 
-// codemirror-lang-bib provides the BibTeX grammar and incremental parser. Its
-// 0.2.x grammar emits LineComment nodes without assigning their semantic
-// highlight tag, so preserve comment highlighting with a parser property only.
-export const bibtexLanguage = baseBibtexLanguage.configure({
-  props: [styleTags({ LineComment: tags.lineComment })]
-}, "bibtex");
-
-// Use codemirror-lang-bib's parser-backed folding, diagnostics, and completion
-// source. The editor owns the shared completion UI, so this deliberately does
-// not use the package's all-in-one `bibtex()` helper (which would register a
-// second autocompletion instance and duplicate its key bindings).
-export const bibtexEditorExtensions = [
+// BibTeX lives in a self-contained internal CodeMirror 6 module. Keeping this
+// re-export preserves the editor's existing language boundary while avoiding a
+// separately published language package and duplicate generic extensions.
+export {
   bibtexBracketMatching,
-  linter(bibtexLinter())
-];
-
-export { bibtexCompletionSource, bibtexLinter };
+  bibtexCompletionSource,
+  createBibtexEditorExtensions,
+  bibtexEditorExtensions,
+  bibtexHoverTooltip,
+  bibtexLanguage,
+  bibtexLinter,
+  localizedBibtexMessages
+} from "./bibtex";

@@ -1,0 +1,112 @@
+// BibTeX treats the names of its three special entry forms as
+// case-insensitive. An external specializer keeps that behavior without
+// enumerating every possible spelling in the grammar.
+@external specialize { EntryType } specializeEntryType from "./bibtexSpecializer.mjs" {
+  StringEntryType[@name=EntryType]
+  PreambleEntryType[@name=EntryType]
+  CommentEntryType[@name=EntryType]
+}
+
+@top File { entry* }
+
+entry {
+  StringEntry |
+  PreambleEntry |
+  CommentEntry |
+  Entry
+}
+
+StringEntry {
+  StringEntryType (
+    EntryBraceOpen StringName "=" Value EntryBraceClose |
+    EntryParenOpen StringName "=" Value EntryParenClose
+  )
+}
+
+PreambleEntry {
+  PreambleEntryType (
+    EntryBraceOpen Value EntryBraceClose |
+    EntryParenOpen Value EntryParenClose
+  )
+}
+
+CommentEntry {
+  CommentEntryType (CommentBracedBlock | CommentParenBlock)
+}
+
+// `@comment` is deliberately parsed with an empty skip set so that whitespace
+// and percent signs stay part of the opaque comment body. The upstream grammar
+// used a second `commentText` token here; it overlapped with `bracedText`, so
+// the global precedence could reject ordinary text in an @comment entry.
+@skip {} {
+  CommentBracedBlock { CommentBraceOpen commentBracedContent* CommentBraceClose }
+  CommentParenBlock { CommentParenOpen commentParenContent* CommentParenClose }
+  CommentBraceOpen { "{" }
+  CommentBraceClose { "}" }
+  CommentParenOpen { "(" }
+  CommentParenClose { ")" }
+  commentBracedContent { BracedValue | Escape | bracedText }
+  commentParenContent { CommentParenValue | Escape | parenText }
+  CommentParenValue { "(" commentParenContent* ")" }
+  BracedValue { "{" bracedContent* "}" }
+  QuotedValue { "\"" quotedContent* "\"" }
+}
+
+Entry {
+  EntryType (
+    EntryBraceOpen EntryKey ("," Field)* ","? EntryBraceClose |
+    EntryParenOpen EntryKey ("," Field)* ","? EntryParenClose
+  )
+}
+
+// Keep the delimiter nodes named: CodeMirror's foldInside uses a node's
+// first and last children as fold boundaries.
+EntryBraceOpen { "{" }
+EntryBraceClose { "}" }
+EntryParenOpen { "(" }
+EntryParenClose { ")" }
+
+Field {
+  FieldName "=" Value
+}
+
+Value {
+  ValueAtom (Concat ValueAtom)*
+}
+
+ValueAtom {
+  BracedValue |
+  QuotedValue |
+  Number |
+  StringRef
+}
+
+bracedContent { BracedValue | Escape | bracedText }
+quotedContent { BracedValue | Escape | quotedText }
+
+EntryKey  { keyIdentifier }
+FieldName { nameIdentifier }
+StringName { nameIdentifier }
+StringRef  { nameIdentifier }
+
+@tokens {
+  EntryType { "@" $[a-zA-Z]+ }
+
+  nameIdentifier { $[a-zA-Z_] $[a-zA-Z0-9_-]* }
+  keyIdentifier  { $[a-zA-Z0-9_] $[a-zA-Z0-9_:./-]* }
+
+  Number { $[0-9]+ }
+  Concat { "#" }
+
+  Escape { "\\" _ }
+
+  bracedText  { ![{}\\]+ }
+  quotedText  { !["{}\\]+ }
+  parenText   { ![()\\]+ }
+  LineComment { "%" ![\n]* }
+  whitespace  { $[ \t\r\n]+ }
+
+  @precedence { Escape, bracedText, quotedText }
+}
+
+@skip { whitespace | LineComment }

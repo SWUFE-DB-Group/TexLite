@@ -22,7 +22,7 @@ import type { Awareness } from "y-protocols/awareness";
 import type { Comment, LatexCompletionIndex } from "./types";
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
 import { countSearchMatches, searchQuerySignature } from "./editorSearch";
-import { bibtexCompletionSource, bibtexEditorExtensions, bibtexLanguage, latexLanguage } from "./latexLanguage";
+import { bibtexCompletionSource, bibtexLanguage, createBibtexEditorExtensions, latexLanguage, localizedBibtexMessages } from "./latexLanguage";
 import { supportsLatexMathHover } from "./latexMath";
 import { latexMathHover } from "./mathHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
@@ -309,7 +309,7 @@ export function LatexEditor({
       doc: collaboration?.text.toString() ?? value,
       extensions: [
         lineNumbers(), foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
-        isBibtexFile ? [bibtexLanguage, ...bibtexEditorExtensions] : latexLanguage, syntaxHighlighting(defaultHighlightStyle),
+        isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : latexLanguage, syntaxHighlighting(defaultHighlightStyle),
         ...(isBibtexFile ? [] : [bracketMatching(), Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexSkippedBracePair, latexFold]),
         closeBrackets(), indentOnInput(), commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
         referenceNavigation.current.of(referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))), latexReferenceMarks,
