@@ -14,6 +14,7 @@ import {
 import { latexFold, findMatchingLatexEnvironmentEnd } from "../src/client/latexFolding";
 import { latexCitationCompletionContext, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "../src/client/latexCompletionContexts";
 import { hasDocumentClass } from "../src/client/latexRoot";
+import { hasLatexDocumentClass } from "../src/shared/latexRoot";
 import { inlineLatexLiteralEnd } from "../src/client/latexLiterals";
 
 describe("LaTeX syntax handling", () => {
@@ -21,6 +22,7 @@ describe("LaTeX syntax handling", () => {
     String.raw`\lstinline{a{b}c}`,
     String.raw`\mintinline{python}{print("ok")}`,
     String.raw`\lstinline[language=C]{value \{ nested \}}`,
+    String.raw`\Verb[formatcom=\color{red}]{a{b}c}`,
     String.raw`\verb{literal{`
   ])("ends inline literals before following normal text: %s", (literal) => {
     const source = literal + String.raw` Normal prose \textbf{after}`;
@@ -80,6 +82,24 @@ describe("LaTeX syntax handling", () => {
     expect(hasDocumentClass("\\documentclass[11pt]{article}\n")).toBe(true);
   });
 
+  it("uses one literal-aware root detector for all source entry points", () => {
+    const nonRoots = [
+      String.raw`\verb|\documentclass{article}|`,
+      String.raw`\begin{alltt}
+\documentclass{article}
+\end{alltt}`,
+      String.raw`\begin{tcblisting}
+\documentclass{article}
+\end{tcblisting}`,
+      String.raw`\\documentclass{article}`
+    ];
+    for (const source of nonRoots) {
+      expect(hasLatexDocumentClass(source)).toBe(false);
+      expect(hasDocumentClass(source)).toBe(false);
+    }
+    expect(hasLatexDocumentClass(String.raw`\documentclass{article}`)).toBe(true);
+  });
+
   it("does not let raw literal content leave subsequent prose in math mode", () => {
     for (const source of [
       String.raw`\verb|$|
@@ -87,6 +107,10 @@ Normal prose after an inline literal.`,
       String.raw`\begin{verbatim}
 $
 \end{verbatim}
+Normal prose after a literal environment.`,
+      String.raw`\begin{alltt}
+$
+\end{alltt}
 Normal prose after a literal environment.`
     ]) {
       const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
@@ -142,6 +166,16 @@ Normal prose after a literal environment.`
     const noEndFrom = withoutEnd.doc.length - "fig".length;
     expect(latexEnvironmentCompletionPlan(withoutEnd.doc, noEndFrom, withoutEnd.doc.length, "figure"))
       .toMatchObject({ insert: "figure}\n  \t\n  \\end{figure}", reusesExistingEnd: false });
+  });
+
+  it("does not steal an outer close while completing a nested environment", () => {
+    const source = String.raw`\begin{itemize}
+  \begin{ite}
+\end{itemize}`;
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const from = source.indexOf("\\begin{ite}") + "\\begin{".length;
+    expect(latexEnvironmentCompletionPlan(state.doc, from, from + "ite".length, "itemize"))
+      .toMatchObject({ reusesExistingEnd: false, insert: "itemize}\n  \t\n  \\end{itemize}" });
   });
 
   it("parses TeX accent escapes in BibTeX values without losing brace matching", () => {

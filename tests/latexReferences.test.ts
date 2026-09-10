@@ -97,6 +97,13 @@ See \citep[see][p. 4]{smith2025, doe2024} and \cref{fig:result, tab:summary}.`;
     ].join("\n"), "citation", true).map((definition) => definition.key)).toEqual(["real"]);
   });
 
+  it("uses TeX's raw inline verb delimiters before scanning later references", () => {
+    const percentDelimiter = String.raw`\verb%literal% \cite{after-percent}`;
+    const backslashBeforeDelimiter = String.raw`\verb|a\| \cite{after-pipe}`;
+    expect(findLatexReferences(percentDelimiter).map((reference) => reference.key)).toEqual(["after-percent"]);
+    expect(findLatexReferences(backslashBeforeDelimiter).map((reference) => reference.key)).toEqual(["after-pipe"]);
+  });
+
   it("keeps literal-environment state across a long source prefix", () => {
     const source = [
       "\\begin{verbatim}",

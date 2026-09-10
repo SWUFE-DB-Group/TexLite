@@ -1,23 +1,12 @@
-import { EditorState, Transaction } from "@codemirror/state";
+import { EditorState, Text, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { latexOpaqueContextAt } from "../shared/latexLiterals";
+import { findReusableLatexEnvironmentEnd, latexEnvironmentBeginStart } from "./latexFolding";
 
 export interface LatexAutoPair {
   insert: string;
   cursorOffset: number;
   kind: "environment" | "delimiter";
-}
-
-function isCommentBeforeCursor(line: string): boolean {
-  let backslashes = 0;
-  for (const character of line) {
-    if (character === "\\") {
-      backslashes += 1;
-      continue;
-    }
-    if (character === "%" && backslashes % 2 === 0) return true;
-    backslashes = 0;
-  }
-  return false;
 }
 
 function lineContext(source: string, from: number, text: string): {
@@ -38,23 +27,27 @@ function lineContext(source: string, from: number, text: string): {
   };
 }
 
-function environmentPair(context: ReturnType<typeof lineContext>): LatexAutoPair | null {
-  const match = context.prefix.match(/^([ \t]*)\\begin\s*\{\s*([A-Za-z][A-Za-z0-9*:_-]*)\s*\}\s*$/);
-  if (!match || context.suffix.trim() || isCommentBeforeCursor(context.prefix)) return null;
+function environmentMatch(context: ReturnType<typeof lineContext>): RegExpMatchArray | null {
+  if (context.suffix.trim()) return null;
+  return context.prefix.match(/^([ \t]*)\\begin\s*\{\s*([A-Za-z][A-Za-z0-9*:_-]*)\s*\}\s*$/);
+}
+
+function environmentPair(context: ReturnType<typeof lineContext>, match: RegExpMatchArray): LatexAutoPair | null {
   const environment = match[2];
-  const escaped = environment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const alreadyClosed = new RegExp("^[ \\t]*\\n[ \\t]*\\\\end\\s*\\{\\s*" + escaped + "\\s*\\}")
-    .test(context.nextSource.slice(context.cursor));
-  if (alreadyClosed) return null;
+  const doc = Text.of(context.nextSource.split("\n"));
+  const beginStart = latexEnvironmentBeginStart(doc, context.cursor);
+  if (beginStart !== null && findReusableLatexEnvironmentEnd(doc, beginStart, context.cursor, environment)) return null;
   const bodyIndent = match[1] + "\t";
   const insert = "\n" + bodyIndent + "\n" + match[1] + "\\end{" + environment + "}";
   return { insert, cursorOffset: 1 + bodyIndent.length, kind: "environment" };
 }
 
-function delimiterPair(context: ReturnType<typeof lineContext>): LatexAutoPair | null {
-  if (context.suffix.trim() || isCommentBeforeCursor(context.prefix)) return null;
-  const match = context.prefix.match(/^(.*\\left\s*)(\\[{}]|[()[\]|.])\s*$/);
-  if (!match) return null;
+function delimiterMatch(context: ReturnType<typeof lineContext>): RegExpMatchArray | null {
+  if (context.suffix.trim()) return null;
+  return context.prefix.match(/^(.*\\left\s*)(\\[{}]|[()[\]|.])\s*$/);
+}
+
+function delimiterPair(match: RegExpMatchArray): LatexAutoPair | null {
   const closing: Record<string, string> = {
     "(": "\\right)",
     ")": "\\right(",
@@ -82,13 +75,25 @@ export function latexAutoPair(
 ): LatexAutoPair | null {
   if (from !== to || !text) return null;
   const context = lineContext(source, from, text);
-  return environmentPair(context) ?? delimiterPair(context);
+  const environment = environmentMatch(context);
+  const delimiter = environment ? null : delimiterMatch(context);
+  if (!environment && !delimiter) return null;
+  if (latexOpaqueContextAt(context.nextSource, context.cursor)) return null;
+  if (environment) return environmentPair(context, environment);
+  if (delimiter) return delimiterPair(delimiter);
+  return null;
 }
 
 export function latexAutoPairAtCursor(source: string, cursor: number): LatexAutoPair | null {
   if (cursor < 0 || cursor > source.length) return null;
   const context = lineContext(source, cursor, "");
-  return environmentPair(context) ?? delimiterPair(context);
+  const environment = environmentMatch(context);
+  const delimiter = environment ? null : delimiterMatch(context);
+  if (!environment && !delimiter) return null;
+  if (latexOpaqueContextAt(context.nextSource, context.cursor)) return null;
+  if (environment) return environmentPair(context, environment);
+  if (delimiter) return delimiterPair(delimiter);
+  return null;
 }
 
 /** Keep automatic pairs atomic for undo, collaboration and source observers. */

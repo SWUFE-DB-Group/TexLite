@@ -54,6 +54,31 @@ describe("LaTeX auto pairs", () => {
     expect(latexAutoPair(source, from, from, "}")).toBeNull();
   });
 
+  it("does not reuse an outer closing environment for a nested completion", () => {
+    const source = "\\begin{itemize}\n  \\begin{itemize\n\\end{itemize}";
+    const from = source.indexOf("\n  \\begin{itemize") + "\n  \\begin{itemize".length;
+    expect(latexAutoPair(source, from, from, "}")).toEqual({
+      insert: "\n  \t\n  \\end{itemize}", cursorOffset: 4, kind: "environment"
+    });
+  });
+
+  it("recognizes an existing matching close beyond the next line", () => {
+    const source = "\\begin{figure\n  body\n\\end{figure}";
+    const from = "\\begin{figure".length;
+    expect(latexAutoPair(source, from, from, "}")).toBeNull();
+    const skippedBraceSource = "\\begin{figure}\n  body\n\\end{figure}";
+    expect(latexAutoPairAtCursor(skippedBraceSource, "\\begin{figure}".length)).toBeNull();
+  });
+
+  it("does not pair inside opaque source, but resumes after a completed inline literal", () => {
+    const literal = "\\begin{lstlisting}\n\\begin{itemize";
+    expect(latexAutoPair(literal, literal.length, literal.length, "}")).toBeNull();
+    const afterInlineLiteral = String.raw`\verb|%|
+\begin{itemize`;
+    expect(latexAutoPair(afterInlineLiteral, afterInlineLiteral.length, afterInlineLiteral.length, "}"))
+      .toMatchObject({ kind: "environment" });
+  });
+
   it("can complete an environment after a close-bracket handler moves over its brace", () => {
     const source = "\\begin{itemize}";
     expect(latexAutoPairAtCursor(source, source.length)).toEqual({

@@ -67,6 +67,38 @@ describe("editor LaTeX completion source", () => {
     expect(complete(String.raw`\noind`)?.options.find((entry) => entry.label === "\\noindent")?.detail).toBeUndefined();
   });
 
+  it("does not complete inside literal source, but resumes after an inline percent delimiter", () => {
+    expect(complete(String.raw`\begin{lstlisting}
+\noind`)).toBeNull();
+    expect(complete(String.raw`\begin{alltt}
+\noind`)).toBeNull();
+    expect(complete(String.raw`\verb|%| \noind`)?.options.some((entry) => entry.label === "\\noindent")).toBe(true);
+  });
+
+  it("builds local command snippets with optional arguments and ignores literal examples", () => {
+    const source = String.raw`\newcommand{\note}[2][blue]{#2}
+\NewDocumentCommand{\demo}{O{red} m}{#2}
+\begin{verbatim}
+\newcommand{\fake}[1]{#1}
+\end{verbatim}
+\not`;
+    let state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const result = latexCompletions(new CompletionContext(state, state.doc.length, true), t, index)!;
+    const note = result.options.find((entry) => entry.label === "\\note")!;
+    expect(result.options.some((entry) => entry.label === "\\fake")).toBe(false);
+    expect(typeof note.apply).toBe("function");
+    const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as unknown as EditorView;
+    (note.apply as Exclude<Completion["apply"], string | undefined>)(view, note, result.from, state.doc.length);
+    expect(state.doc.toString()).toBe(source.slice(0, source.lastIndexOf("\\not")) + String.raw`\note[]{}`);
+
+    const demoSource = source.slice(0, source.lastIndexOf("\\not")) + String.raw`\dem`;
+    state = EditorState.create({ doc: demoSource, extensions: [latexLanguage] });
+    const demoResult = latexCompletions(new CompletionContext(state, state.doc.length, true), t, index)!;
+    const demo = demoResult.options.find((entry) => entry.label === "\\demo")!;
+    (demo.apply as Exclude<Completion["apply"], string | undefined>)(view, demo, demoResult.from, state.doc.length);
+    expect(state.doc.toString()).toBe(demoSource.slice(0, demoSource.lastIndexOf("\\dem")) + String.raw`\demo[]{}`);
+  });
+
   it("does not flatten the full document for symbol extraction while typing prose", () => {
     const state = EditorState.create({ doc: "Ordinary prose without a completion context." });
     const flatten = vi.spyOn(state.doc, "toString");

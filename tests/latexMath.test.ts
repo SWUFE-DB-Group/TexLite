@@ -14,7 +14,7 @@ describe("LaTeX math hover ranges", () => {
     expect(rangeAt(String.raw`Text $a\par b$ done`, "a")).toBeNull();
   });
 
-  it.each(["Verbatim", "verbatim*", "tcblisting*", "filecontents", "luacode"])("skips math inside %s", (environment) => {
+  it.each(["Verbatim", "verbatim*", "tcblisting*", "filecontents", "luacode", "alltt"])("skips math inside %s", (environment) => {
     const source = `\\begin{${environment}}\n$hidden$ % \\end{${environment}}\n$visible$`;
     expect(rangeAt(source, "hidden")).toBeNull();
     expect(rangeAt(source, "visible")).toMatchObject({ source: "visible" });

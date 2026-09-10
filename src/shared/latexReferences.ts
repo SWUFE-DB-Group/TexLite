@@ -5,7 +5,7 @@
  * comments, and the literal forms which must never be interpreted as TeX.
  */
 
-import { literalEnvironmentNames } from "./latexLiterals.js";
+import { inlineLatexLiteralEnd, literalEnvironmentEnd, literalEnvironmentNames } from "./latexLiterals.js";
 
 export type LatexReferenceKind = "citation" | "label";
 
@@ -46,8 +46,6 @@ interface ArgumentSpan {
 }
 
 const literalEnvironments = new Set<string>(literalEnvironmentNames);
-
-const inlineLiteralCommands = new Set(["verb", "Verb", "lstinline", "mintinline"]);
 
 function isCommandNameCharacter(character: string): boolean {
   return /[A-Za-z@0-9:_-]/.test(character);
@@ -161,42 +159,8 @@ function readOptionalArguments(source: string, start: number, maximum: number): 
   return argumentsFound;
 }
 
-function skipDelimitedLiteral(source: string, start: number): number {
-  const index = skipTrivia(source, start);
-  if (index >= source.length) return source.length;
-  if (source[index] === "{") return readBalancedArgument(source, index, "{", "}")?.to ?? source.length;
-  const delimiter = source[index];
-  if (/\s/.test(delimiter)) return index + 1;
-  for (let cursor = index + 1; cursor < source.length; cursor += 1) {
-    if (source[cursor] === "\\" && cursor + 1 < source.length) {
-      cursor += 1;
-      continue;
-    }
-    if (source[cursor] === delimiter) return cursor + 1;
-    if (source[cursor] === "\n") return cursor;
-  }
-  return source.length;
-}
-
 function skipInlineLiteral(source: string, command: LatexCommand): number {
-  if (!inlineLiteralCommands.has(command.name)) return command.to;
-  let index = skipTrivia(source, command.to);
-  while (source[index] === "[") {
-    const optional = readBalancedArgument(source, index, "[", "]");
-    if (!optional) return source.length;
-    index = skipTrivia(source, optional.to);
-  }
-  if (command.name === "mintinline") {
-    const language = readBalancedArgument(source, index, "{", "}");
-    if (!language) return skipDelimitedLiteral(source, index);
-    index = skipTrivia(source, language.to);
-    while (source[index] === "[") {
-      const optional = readBalancedArgument(source, index, "[", "]");
-      if (!optional) return source.length;
-      index = skipTrivia(source, optional.to);
-    }
-  }
-  return skipDelimitedLiteral(source, index);
+  return inlineLatexLiteralEnd(source, command.from) ?? command.to;
 }
 
 function skipLiteralEnvironment(source: string, command: LatexCommand): number {
@@ -205,11 +169,7 @@ function skipLiteralEnvironment(source: string, command: LatexCommand): number {
   if (!environment) return command.to;
   const name = source.slice(environment.contentFrom, environment.contentTo).trim();
   if (!literalEnvironments.has(name)) return command.to;
-  const escapedName = name.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
-  const closingPattern = new RegExp("\\\\end\\s*\\{\\s*" + escapedName + "\\s*\\}", "g");
-  closingPattern.lastIndex = environment.to;
-  const match = closingPattern.exec(source);
-  return match ? match.index + match[0].length : source.length;
+  return literalEnvironmentEnd(source, environment.to, name)?.to ?? source.length;
 }
 
 function forEachLatexCommand(source: string, visitor: (command: LatexCommand) => void): void {

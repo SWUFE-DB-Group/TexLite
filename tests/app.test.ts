@@ -211,7 +211,7 @@ It works.
     expect(completionIndex.json().index.commands).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: "\\noindent", source: "LaTeX" }),
       expect.objectContaining({ label: "\\reviewnote", source: "paper.sty", apply: "\\reviewnote{${1}}" }),
-      expect.objectContaining({ label: "\\reviewpair", source: "paper.sty", apply: "\\reviewpair{${1}}{${2}}" }),
+      expect.objectContaining({ label: "\\reviewpair", source: "paper.sty", apply: "\\reviewpair{${1}}[${2}]" }),
       expect.objectContaining({ label: "\\macroPair", source: "paper.sty", apply: "\\macroPair{${1}}{${2}}" }),
       expect.objectContaining({ label: "\\argmax", source: "paper.sty" })
     ]));

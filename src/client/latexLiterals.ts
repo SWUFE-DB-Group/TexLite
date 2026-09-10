@@ -1,1 +1,8 @@
-export { inlineLatexLiteralEnd, isLatexLiteralEnvironment, literalEnvironmentEnd } from "../shared/latexLiterals";
+export {
+  inlineLatexLiteralEnd,
+  isLatexLiteralEnvironment,
+  maskLatexComments,
+  latexOpaqueContextAt,
+  literalEnvironmentEnd,
+  maskLatexLiteralContent
+} from "../shared/latexLiterals";

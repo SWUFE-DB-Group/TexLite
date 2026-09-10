@@ -25,6 +25,34 @@ describe("LaTeX completion cache", () => {
     expect(result.packages.map((item) => item.label)).toContain("mypackage");
     expect(result.citations.map((item) => item.label)).toContain("paper2026");
   });
+
+  it("keeps custom command argument shapes while ignoring literal examples", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-completions-"));
+    roots.push(root);
+    const source = path.join(root, "projects", "paper", "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), String.raw`\newcommand{\note}[2][blue]{#2}
+\NewDocumentCommand{\demo}{O{red} m}{#2}
+\begin{lstlisting}
+\newcommand{\fake}[1]{#1}
+\end{lstlisting}
+% \begin{verbatim}
+\newcommand{\realaftercomment}[1]{#1}
+\end{verbatim}
+\\begin{verbatim}
+\newcommand{\realafterescaped}[1]{#1}
+\end{verbatim}
+\verb|\newcommand{\inlinefake}[1]{#1}| \verb|%| \newcommand{\realafterverb}[1]{#1}`);
+
+    const result = await new LatexCompletionService(completionConfig(root)).build("paper");
+    expect(result.commands.find((item) => item.label === "\\note")).toMatchObject({ apply: "\\note[${1}]{${2}}" });
+    expect(result.commands.find((item) => item.label === "\\demo")).toMatchObject({ apply: "\\demo[${1}]{${2}}" });
+    expect(result.commands.find((item) => item.label === "\\realaftercomment")).toMatchObject({ apply: "\\realaftercomment{${1}}" });
+    expect(result.commands.find((item) => item.label === "\\realafterescaped")).toMatchObject({ apply: "\\realafterescaped{${1}}" });
+    expect(result.commands.find((item) => item.label === "\\realafterverb")).toMatchObject({ apply: "\\realafterverb{${1}}" });
+    expect(result.commands.map((item) => item.label)).not.toEqual(expect.arrayContaining(["\\fake", "\\inlinefake"]));
+  });
+
   afterEach(() => {
     for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
   });

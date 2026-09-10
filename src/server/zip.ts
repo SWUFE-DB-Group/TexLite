@@ -3,6 +3,7 @@ import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import yauzl, { type Entry, type ZipFile } from "yauzl";
+import { hasLatexDocumentClass } from "../shared/latexRoot.js";
 import { assertNoSymbolicLinks, safeRelativePath } from "./files.js";
 
 const MAX_ENTRIES = 1_000;
@@ -181,19 +182,7 @@ function discoverMainFile(root: string, files: string[]): string {
 }
 
 export function hasDocumentClass(source: string): boolean {
-  const withoutComments = source.split(/(?<=\n)/).map((line) => {
-    for (let index = 0; index < line.length; index += 1) {
-      if (line[index] !== "%") continue;
-      let slashes = 0;
-      for (let cursor = index - 1; cursor >= 0 && line[cursor] === "\\"; cursor -= 1) slashes += 1;
-      if (slashes % 2 === 0) return `${line.slice(0, index)}${line.endsWith("\n") ? "\n" : ""}`;
-    }
-    return line;
-  }).join("");
-  const withoutVerbatim = withoutComments
-    .replace(/\\verb\*?([^\s]).*?\1/g, "")
-    .replace(/\\begin\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}(?:\[[^\]]*\])?[\s\S]*?\\end\{(?:verbatim\*?|Verbatim|lstlisting|minted)\}/g, "");
-  return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{/.test(withoutVerbatim);
+  return hasLatexDocumentClass(source);
 }
 
 function formatMB(bytes: number): number {

@@ -10,6 +10,7 @@ interface EnvironmentCommand {
 }
 
 const environmentCommand = /^\\(begin|end)\s*\{\s*([A-Za-z0-9@:_*.\-]+)\s*\}/;
+const incompleteBeginCommand = /\\begin\s*\{\s*[A-Za-z0-9@:_*.\-]*\s*\}?$/;
 const sectionCommand = /^\s*\\(part|chapter|section|subsection|subsubsection)(?![A-Za-z@])\*?/;
 const sectionLevels: Record<string, number> = { part: 0, chapter: 0, section: 1, subsection: 2, subsubsection: 3 };
 
@@ -88,6 +89,46 @@ export function findMatchingLatexEnvironmentEnd(doc: Text, from: number, name: s
     }
   }
   return null;
+}
+
+/** Locate the beginning command currently being completed on the same line. */
+export function latexEnvironmentBeginStart(doc: Text, position: number): number | null {
+  const line = doc.lineAt(Math.min(position, doc.length));
+  const prefix = line.text.slice(0, Math.max(0, position - line.from));
+  const match = incompleteBeginCommand.exec(prefix);
+  return match ? line.from + match.index : null;
+}
+
+function existingEnvironmentOwnsEnd(doc: Text, beginStart: number, endStart: number, name: string): boolean {
+  const stack: Array<{ name: string; from: number }> = [];
+  const literal: { name: string | null } = { name: null };
+  for (let number = 1; number <= doc.lines; number += 1) {
+    const line = doc.line(number);
+    const commands = environmentCommands(line.text, 0, literal);
+    for (const command of commands) {
+      const from = line.from + command.from;
+      if (from >= endStart) return stack.at(-1)?.name === name && (stack.at(-1)?.from ?? beginStart) < beginStart;
+      // This is the unfinished command being completed. Its existing spelling
+      // must not make a later end look like an old matching pair.
+      if (from === beginStart && command.kind === "begin") continue;
+      if (command.kind === "begin") {
+        stack.push({ name: command.name, from });
+      } else if (stack.at(-1)?.name === command.name) {
+        stack.pop();
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Find an end command that belongs to an unfinished begin command, while
+ * preserving an already balanced outer environment of the same name.
+ */
+export function findReusableLatexEnvironmentEnd(doc: Text, beginStart: number, afterBegin: number, name: string): { from: number; to: number } | null {
+  const end = findMatchingLatexEnvironmentEnd(doc, afterBegin, name);
+  if (!end || existingEnvironmentOwnsEnd(doc, beginStart, end.from, name)) return null;
+  return end;
 }
 
 function findSectionFold(state: EditorState, lineStart: number): { from: number; to: number } | null {

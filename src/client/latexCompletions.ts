@@ -2,7 +2,9 @@ import type { TFunction } from "i18next";
 import { Transaction } from "@codemirror/state";
 import { pickedCompletion, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { LatexCompletionIndex, LatexCompletionItem } from "./types";
-import { latexArgumentCompletionContext, latexCitationCompletionContext, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "./latexCompletionContexts";
+import { latexArgumentCompletionContext, latexCitationCompletionContext, latexCompletionPrefix, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "./latexCompletionContexts";
+import { commandSnippet, newCommandArguments, xparseCommandArguments, xparseCommandDefinitions } from "../shared/latexCommandSnippets";
+import { latexOpaqueContextAt, maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals";
 
 const fallbackCommandLabels = [
   "\\noindent", "\\indent", "\\par", "\\leavevmode", "\\newline", "\\linebreak", "\\nolinebreak", "\\pagebreak", "\\nopagebreak", "\\newpage", "\\clearpage", "\\cleardoublepage",
@@ -39,27 +41,21 @@ function localCompletionIndex(content: string): LatexCompletionIndex {
   const citations: LatexCompletionItem[] = [];
   const packages: LatexCompletionItem[] = [];
   const files: LatexCompletionItem[] = [];
-  const source = content.split("\n").map((line) => line.replace(/(^|[^\\])%.*$/, "$1")).join("\n");
-  const commandSnippet = (name: string, argumentCount: number): string | undefined => {
-    if (argumentCount <= 0) return undefined;
-    const placeholder = (index: number) => `\${${index}}`;
-    return name + Array.from({ length: argumentCount }, (_, index) => `{${placeholder(index + 1)}}`).join("");
-  };
-  const xparseArgumentCount = (specification: string): number => [...specification.matchAll(/[moOrRdDsStvb]/g)].length;
+  const source = maskLatexComments(maskLatexLiteralContent(content));
   const add = (target: LatexCompletionItem[], label: string, detail: string, kind: LatexCompletionItem["kind"], apply?: string) => {
     if (label && !target.some((entry) => entry.label === label)) target.push({ label, detail, kind, source: "Current file", ...(apply ? { apply } : {}) });
   };
-  for (const match of source.matchAll(/\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\s*\*?\s*(?:\{\s*)?\\([A-Za-z@][A-Za-z@0-9:_]*)\s*(?:\})?\s*(?:\[(\d+)\])?/g)) {
-    const args = Number.parseInt(match[2] ?? "0", 10);
-    add(commands, `\\${match[1]}`, "Project command", "function", commandSnippet(`\\${match[1]}`, args));
+  for (const match of source.matchAll(/\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\s*\*?\s*(?:\{\s*)?\\([A-Za-z@][A-Za-z@0-9:_]*)\s*(?:\})?\s*(?:\[(\d+)\])?(?:\s*(\[[^\]]*\]))?/g)) {
+    const arguments_ = newCommandArguments(Number.parseInt(match[2] ?? "0", 10), Boolean(match[3]));
+    add(commands, `\\${match[1]}`, "Project command", "function", commandSnippet(`\\${match[1]}`, arguments_));
   }
-  for (const match of source.matchAll(/\\(?:NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|DeclareExpandableDocumentCommand|RenewExpandableDocumentCommand|ProvideExpandableDocumentCommand)\s*\{\s*\\([A-Za-z@][A-Za-z@0-9:_]*)\s*\}\s*\{([^}]*)\}/g)) {
-    const args = xparseArgumentCount(match[2]);
-    add(commands, `\\${match[1]}`, "Project command", "function", commandSnippet(`\\${match[1]}`, args));
+  for (const definition of xparseCommandDefinitions(source)) {
+    const arguments_ = xparseCommandArguments(definition.specification);
+    add(commands, `\\${definition.name}`, "Project command", "function", arguments_ ? commandSnippet(`\\${definition.name}`, arguments_) : undefined);
   }
   for (const match of source.matchAll(/\\(?:def|gdef|edef|xdef)\s*\\([A-Za-z@][A-Za-z@0-9:_]*)((?:\s*#\d+)*)/g)) {
     const args = [...(match[2] ?? "").matchAll(/#\d+/g)].length;
-    add(commands, `\\${match[1]}`, "Project macro", "function", commandSnippet(`\\${match[1]}`, args));
+    add(commands, `\\${match[1]}`, "Project macro", "function", commandSnippet(`\\${match[1]}`, newCommandArguments(args, false)));
   }
   for (const match of source.matchAll(/\\DeclarePairedDelimiter\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) add(commands, `\\${match[1]}`, "Project math delimiter", "function");
   for (const match of source.matchAll(/\\cs_(?:new|set|gset|provide|generate)(?:_protected)?\:[A-Za-z]+\s+\\([A-Za-z@][A-Za-z@0-9:_]*)/g)) add(commands, `\\${match[1]}`, "Expl3 project command", "function");
@@ -131,21 +127,6 @@ function withoutSnippets(items: LatexCompletionItem[]): LatexCompletionItem[] {
   return items.map(({ apply: _apply, ...item }) => item);
 }
 
-function isLatexComment(context: CompletionContext): boolean {
-  const line = context.state.doc.lineAt(context.pos);
-  let backslashes = 0;
-  for (let index = 0; index < context.pos - line.from; index += 1) {
-    const character = line.text[index];
-    if (character === "\\") {
-      backslashes += 1;
-      continue;
-    }
-    if (character === "%" && backslashes % 2 === 0) return true;
-    backslashes = 0;
-  }
-  return false;
-}
-
 function environmentCompletion(entry: Completion, command: "begin" | "end"): Completion {
   return {
     ...entry,
@@ -162,12 +143,13 @@ function environmentCompletion(entry: Completion, command: "begin" | "end"): Com
 }
 
 export function latexCompletions(context: CompletionContext, t: TFunction, index: LatexCompletionIndex | null) {
-  if (isLatexComment(context)) return null;
   // Do not build the current-file symbol index during ordinary prose input.
   // CodeMirror reuses results while validFor matches the current token.
   const local = () => localCompletionIndexForDocument(context);
+  const opaque = () => latexOpaqueContextAt(latexCompletionPrefix(context), context.pos) !== null;
   const environment = latexEnvironmentCompletionContext(context);
   if (environment) {
+    if (opaque()) return null;
     const options = mergeCompletionItems(t, withoutSnippets(local().environments), withoutSnippets(index?.environments ?? []));
     return {
       from: environment.from,
@@ -177,16 +159,22 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
   }
   const label = latexArgumentCompletionContext(context, /\\(?:ref|pageref|autoref|nameref|cref|Cref|eqref|vref)\*?(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/, true)
     ?? latexArgumentCompletionContext(context, /\\hyperref\[([^\[\]]*)$/);
+  if (label && opaque()) return null;
   if (label) return { from: label.from, options: mergeCompletionItems(t, local().labels, index?.labels ?? []), validFor: /^[^,{}\s]*$/ };
   const citation = latexCitationCompletionContext(context);
+  if (citation && opaque()) return null;
   if (citation) return { from: citation.from, options: mergeCompletionItems(t, local().citations, index?.citations ?? []), validFor: /^[^,{}\s]*$/ };
   const file = latexArgumentCompletionContext(context, /\\(?:input|include|subfile|includegraphics|bibliography|addbibresource)(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/);
+  if (file && opaque()) return null;
   if (file) return { from: file.from, options: mergeCompletionItems(t, local().files, index?.files ?? []), validFor: /^[^{}]*$/ };
   const packageName = latexArgumentCompletionContext(context, /\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/, true);
+  if (packageName && opaque()) return null;
   if (packageName) return { from: packageName.from, options: mergeCompletionItems(t, local().packages, index?.packages ?? []), validFor: /^[^,{}\s]*$/ };
   const documentClass = latexArgumentCompletionContext(context, /\\documentclass(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/);
+  if (documentClass && opaque()) return null;
   if (documentClass) return { from: documentClass.from, options: mergeCompletionItems(t, index?.classes ?? []), validFor: /^[^{}]*$/ };
   const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);
+  if ((command || context.explicit) && opaque()) return null;
   if (command || context.explicit) {
     return { from: command?.from ?? context.pos, options: withoutCompletionDetails(mergeCompletionItems(t, local().commands, index?.commands ?? [], completionOptions())), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
   }

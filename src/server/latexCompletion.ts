@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import type { Config } from "./config.js";
 import { listProjectFiles, listProjectFilesAsync, resolveSourcePath } from "./files.js";
+import { commandSnippet, newCommandArguments, xparseCommandArguments, xparseCommandDefinitions } from "../shared/latexCommandSnippets.js";
+import { maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals.js";
 
 export type LatexCompletionKind = "keyword" | "function" | "class" | "constant" | "text";
 
@@ -148,7 +150,7 @@ function createIndex(): MutableIndex {
 }
 
 function withoutComments(content: string): string {
-  return content.split("\n").map((line) => line.replace(/(^|[^\\])%.*$/, "$1")).join("\n");
+  return maskLatexComments(maskLatexLiteralContent(content));
 }
 
 function commandItem(index: MutableIndex, name: string, detail: string, source: string, apply?: string): void {
@@ -160,32 +162,23 @@ function commandItem(index: MutableIndex, name: string, detail: string, source: 
   if (!existing || (existing.source === "LaTeX" && source !== "LaTeX")) index.commands.set(name, item(name, detail, "function", source, apply));
 }
 
-function commandSnippet(name: string, argumentCount: number): string | undefined {
-  if (argumentCount <= 0) return undefined;
-  const placeholder = (index: number) => `\${${index}}`;
-  return name + Array.from({ length: argumentCount }, (_, index) => `{${placeholder(index + 1)}}`).join("");
-}
-
-function xparseArgumentCount(specification: string): number {
-  // The common xparse argument types all consume one user supplied value.
-  // Modifiers such as `+` and argument delimiters are intentionally ignored.
-  return [...specification.matchAll(/[moOrRdDsStvb]/g)].length;
-}
-
 function extractSymbols(index: MutableIndex, filePath: string, original: string): void {
   const content = withoutComments(original);
   const source = filePath;
-  for (const match of content.matchAll(/\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\s*\*?\s*(?:\{\s*)?\\([A-Za-z@][A-Za-z@0-9:_]*)\s*(?:\})?\s*(?:\[(\d+)\])?/g)) {
-    const args = Number.parseInt(match[2] ?? "0", 10);
-    commandItem(index, `\\${match[1]}`, `Project command (${args} argument${args === 1 ? "" : "s"})`, source, commandSnippet(`\\${match[1]}`, args));
+  for (const match of content.matchAll(/\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\s*\*?\s*(?:\{\s*)?\\([A-Za-z@][A-Za-z@0-9:_]*)\s*(?:\})?\s*(?:\[(\d+)\])?(?:\s*(\[[^\]]*\]))?/g)) {
+    const arguments_ = newCommandArguments(Number.parseInt(match[2] ?? "0", 10), Boolean(match[3]));
+    commandItem(index, `\\${match[1]}`, `Project command (${arguments_.length} argument${arguments_.length === 1 ? "" : "s"})`, source, commandSnippet(`\\${match[1]}`, arguments_));
   }
-  for (const match of content.matchAll(/\\(?:NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|DeclareExpandableDocumentCommand|RenewExpandableDocumentCommand|ProvideExpandableDocumentCommand)\s*\{\s*\\([A-Za-z@][A-Za-z@0-9:_]*)\s*\}\s*\{([^}]*)\}/g)) {
-    const args = xparseArgumentCount(match[2]);
-    commandItem(index, `\\${match[1]}`, `Project command (${args} argument${args === 1 ? "" : "s"})`, source, commandSnippet(`\\${match[1]}`, args));
+  for (const definition of xparseCommandDefinitions(content)) {
+    const arguments_ = xparseCommandArguments(definition.specification);
+    const detail = arguments_
+      ? `Project command (${arguments_.length} argument${arguments_.length === 1 ? "" : "s"})`
+      : "Project command";
+    commandItem(index, `\\${definition.name}`, detail, source, arguments_ ? commandSnippet(`\\${definition.name}`, arguments_) : undefined);
   }
   for (const match of content.matchAll(/\\(?:def|gdef|edef|xdef)\s*\\([A-Za-z@][A-Za-z@0-9:_]*)((?:\s*#\d+)*)/g)) {
     const args = [...(match[2] ?? "").matchAll(/#\d+/g)].length;
-    commandItem(index, `\\${match[1]}`, "Project macro", source, commandSnippet(`\\${match[1]}`, args));
+    commandItem(index, `\\${match[1]}`, "Project macro", source, commandSnippet(`\\${match[1]}`, newCommandArguments(args, false)));
   }
   for (const match of content.matchAll(/\\DeclareMathOperator\s*\*?\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) commandItem(index, `\\${match[1]}`, "Project math operator", source);
   for (const match of content.matchAll(/\\DeclarePairedDelimiter\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) commandItem(index, `\\${match[1]}`, "Project math delimiter", source);

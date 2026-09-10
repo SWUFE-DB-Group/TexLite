@@ -1,6 +1,6 @@
 import type { CompletionContext } from "@codemirror/autocomplete";
 import type { Text } from "@codemirror/state";
-import { findMatchingLatexEnvironmentEnd } from "./latexFolding";
+import { findReusableLatexEnvironmentEnd, latexEnvironmentBeginStart } from "./latexFolding";
 
 export interface LatexArgumentCompletionContext {
   from: number;
@@ -17,6 +17,11 @@ function prefixFor(context: CompletionContext): string {
     prefixCache.set(context, prefix);
   }
   return prefix;
+}
+
+/** Reuse the materialized prefix when another completion check needs source context. */
+export function latexCompletionPrefix(context: CompletionContext): string {
+  return prefixFor(context);
 }
 
 export function latexArgumentCompletionContext(context: CompletionContext, pattern: RegExp, commaSeparated = false): LatexArgumentCompletionContext | null {
@@ -70,7 +75,9 @@ export interface LatexEnvironmentCompletionPlan {
 export function latexEnvironmentCompletionPlan(doc: Text, from: number, to: number, name: string, command: "begin" | "end" = "begin"): LatexEnvironmentCompletionPlan {
   const closingBrace = doc.sliceString(to, to + 1) === "}" ? 1 : 0;
   const replacement = `${name}}`;
-  if (command === "end" || findMatchingLatexEnvironmentEnd(doc, to + closingBrace, name)) {
+  const beginStart = latexEnvironmentBeginStart(doc, from);
+  const reusableEnd = beginStart === null ? null : findReusableLatexEnvironmentEnd(doc, beginStart, to + closingBrace, name);
+  if (command === "end" || reusableEnd) {
     return {
       to: to + closingBrace,
       insert: replacement,
