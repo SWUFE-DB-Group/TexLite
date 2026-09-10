@@ -1,5 +1,13 @@
 import { StreamLanguage, type StreamParser } from "@codemirror/language";
+import { linter } from "@codemirror/lint";
 import { stex } from "@codemirror/legacy-modes/mode/stex";
+import { tags, styleTags } from "@lezer/highlight";
+import {
+  bibtexBracketMatching,
+  bibtexCompletionSource,
+  bibtexLanguage as baseBibtexLanguage,
+  bibtexLinter
+} from "codemirror-lang-bib";
 
 const bracketCharacters = new Set(["(", ")", "[", "]", "{", "}"]);
 
@@ -19,47 +27,20 @@ export const latexStream: StreamParser<unknown> = {
 
 export const latexLanguage = StreamLanguage.define(latexStream);
 
-interface BibtexState {
-  quoted: boolean;
-}
+// codemirror-lang-bib provides the BibTeX grammar and incremental parser. Its
+// 0.2.x grammar emits LineComment nodes without assigning their semantic
+// highlight tag, so preserve comment highlighting with a parser property only.
+export const bibtexLanguage = baseBibtexLanguage.configure({
+  props: [styleTags({ LineComment: tags.lineComment })]
+}, "bibtex");
 
-/** A small BibTeX mode for entry types, fields, values, comments and delimiters. */
-const bibtexStream: StreamParser<BibtexState> = {
-  startState: () => ({ quoted: false }),
-  token(stream, state) {
-    if (state.quoted) {
-      let escaped = false;
-      while (!stream.eol()) {
-        const character = stream.next();
-        if (character === '"' && !escaped) {
-          state.quoted = false;
-          break;
-        }
-        if (character === "\\" && !escaped) escaped = true;
-        else escaped = false;
-      }
-      return "string";
-    }
-    if (stream.eatSpace()) return null;
-    if (stream.peek() === "%") {
-      stream.skipToEnd();
-      return "comment";
-    }
-    if (stream.match(/^@[A-Za-z][A-Za-z0-9_-]*/)) return "keyword";
-    if (stream.match(/^[A-Za-z][A-Za-z0-9_-]*(?=\s*=)/)) return "propertyName";
-    if (stream.match(/^\\[A-Za-z@][A-Za-z@0-9:_-]*/)) return "meta";
-    if (stream.match(/^\d+(?:\.\d+)?/)) return "number";
-    const character = stream.next();
-    if (character === '"') {
-      state.quoted = true;
-      return "string";
-    }
-    if (character === "{" || character === "}" || character === "(" || character === ")") return "bracket";
-    if (character === "=" || character === "#") return "operator";
-    if (character === ",") return "separator";
-    stream.eatWhile(/[A-Za-z0-9_.:/+*?!-]/);
-    return "string";
-  }
-};
+// Use codemirror-lang-bib's parser-backed folding, diagnostics, and completion
+// source. The editor owns the shared completion UI, so this deliberately does
+// not use the package's all-in-one `bibtex()` helper (which would register a
+// second autocompletion instance and duplicate its key bindings).
+export const bibtexEditorExtensions = [
+  bibtexBracketMatching,
+  linter(bibtexLinter())
+];
 
-export const bibtexLanguage = StreamLanguage.define(bibtexStream);
+export { bibtexCompletionSource, bibtexLinter };

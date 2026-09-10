@@ -133,7 +133,7 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
     };
   }, [failure, active]);
 
-  const visible = checkedFile === activeFile && checkedSource === content;
+  const visible = active && checkedFile === activeFile && checkedSource === content;
   const summary = useMemo(() => visible ? {
     total: issues.length,
     unique: new Set(issues.map((issue) => `${issue.kind}:${issue.word.toLocaleLowerCase("en-US")}`)).size
@@ -153,7 +153,7 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
     index,
     summary,
     jumpToIssue,
-    error: failureDismissed ? null : failure,
+    error: active && !failureDismissed ? failure : null,
     nativeFallback: active && Boolean(failure),
     retry: () => {
       autoRetryRef.current = false;

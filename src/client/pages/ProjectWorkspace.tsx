@@ -21,6 +21,7 @@ import { useSpellCheck } from "../workspace/useSpellCheck";
 import { useSyncTeX } from "../workspace/useSyncTeX";
 import { useWorkspaceLayout } from "../workspace/useWorkspaceLayout";
 import type { SpellCheckIssue } from "../spellCheck";
+import { supportsWritingChecks } from "../../shared/writingChecks";
 import { loadPdfPreview, type WorkspacePreload } from "../workspacePreload";
 import { hasDocumentClass as hasDocumentClassInSource } from "../latexRoot";
 import { WorkspaceTopbar } from "../workspace/WorkspaceTopbar";
@@ -265,7 +266,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   });
 
   const spellCheck = useSpellCheck({
-    active: Boolean(project && activeFile && collaborationSynced && editorPreferences.spellCheck),
+    active: Boolean(project && activeFile && collaborationSynced && editorPreferences.spellCheck && supportsWritingChecks(activeFile)),
     projectId,
     activeFile,
     content,

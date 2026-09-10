@@ -27,6 +27,7 @@ import { writeProjectArchive } from "../archive.js";
 import { extractProjectZip, ZipValidationError } from "../zip.js";
 import { HarperLintSupersededError, HarperUnavailableError, type HarperService } from "../harper.js";
 import { digestToken } from "../security.js";
+import { supportsWritingChecks } from "../../shared/writingChecks.js";
 import { unreadMentionCountsForProjects } from "../commentMentions.js";
 import {
   commentsSummaryForProject,
@@ -427,6 +428,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     } catch {
       return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
     }
+    // Bibliography files are structured reference data rather than prose.
+    // Keep this server-side guard for legacy clients and direct API callers.
+    if (!supportsWritingChecks(filePath)) return { lints: [] };
     // A login session is shared by browser tabs. Pair the authenticated user
     // with the page-local client ID so each new editor can replace only its
     // own obsolete waiting work. Legacy clients retain their former session

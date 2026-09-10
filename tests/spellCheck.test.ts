@@ -8,6 +8,7 @@ import {
 } from "../src/server/harper";
 import { maskLatexSource } from "../src/server/latexSpellMask";
 import { HarperLintSupersededError, lintLatex, mapLatexLints, type RawHarperLint } from "../src/client/spellCheck";
+import { supportsWritingChecks } from "../src/shared/writingChecks";
 
 function scalarOffset(source: string, text: string): { start: number; end: number } {
   const index = source.indexOf(text);
@@ -55,6 +56,18 @@ class DelayedHarperService extends HarperService {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Harper writing checks", () => {
+  it("always disables writing checks for BibTeX files", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+
+    expect(supportsWritingChecks("references.bib")).toBe(false);
+    expect(supportsWritingChecks("REFERENCES.BIB")).toBe(false);
+    expect(supportsWritingChecks("main.tex")).toBe(true);
+    await expect(lintLatex("project", "references.bib", "author = {Mispeled}"))
+      .resolves.toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("linearly masks complex LaTeX syntax while preserving prose and Unicode scalar offsets", () => {
     const source = String.raw`\documentclass{article}
 \usepackage[final]{acl}

@@ -1,5 +1,6 @@
 import { ApiError, api } from "./api";
 import { clientUuid } from "./uuid";
+import { supportsWritingChecks } from "../shared/writingChecks";
 
 export interface RawHarperLint {
   start: number;
@@ -174,5 +175,6 @@ async function lintLatexNow(projectId: string, path: string, source: string, cus
  * supersession, while the workspace hook ignores results for stale content.
  */
 export function lintLatex(projectId: string, path: string, source: string, customWords: string[] = []): Promise<SpellCheckIssue[]> {
+  if (!supportsWritingChecks(path)) return Promise.resolve([]);
   return lintLatexNow(projectId, path, source, customWords);
 }

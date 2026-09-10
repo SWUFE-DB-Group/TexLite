@@ -23,7 +23,7 @@ import type { Awareness } from "y-protocols/awareness";
 import type { Comment, LatexCompletionIndex, LatexCompletionItem } from "./types";
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
 import { countSearchMatches, searchQuerySignature } from "./editorSearch";
-import { bibtexLanguage, latexLanguage } from "./latexLanguage";
+import { bibtexCompletionSource, bibtexEditorExtensions, bibtexLanguage, latexLanguage } from "./latexLanguage";
 import { supportsLatexMathHover } from "./latexMath";
 import { latexMathHover } from "./mathHover";
 import { latexAutoPair, latexAutoPairAtCursor } from "./latexAutoPairs";
@@ -547,19 +547,24 @@ export function LatexEditor({
 
   useEffect(() => {
     if (!host.current) return;
+    const isBibtexFile = /\.bib$/i.test(filePath);
     const collaborationUndoManager = collaboration && !readOnly ? collaboration.undoManager ?? null : null;
     const state = EditorState.create({
       doc: collaboration?.text.toString() ?? value,
       extensions: [
         lineNumbers(), foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
-        /\.bib$/i.test(filePath) ? bibtexLanguage : latexLanguage, syntaxHighlighting(defaultHighlightStyle), bracketMatching(),
-        Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), closeBrackets(), indentOnInput(), latexFold, commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
+        isBibtexFile ? [bibtexLanguage, ...bibtexEditorExtensions] : latexLanguage, syntaxHighlighting(defaultHighlightStyle),
+        ...(isBibtexFile ? [] : [bracketMatching(), Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexFold]),
+        closeBrackets(), indentOnInput(), commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
         referenceNavigation.current.of(referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))), latexReferenceMarks,
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
         search({ top: false }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
-        autocompletion({ override: [(context) => latexCompletions(context, t, completionIndexRef.current)], activateOnTyping: true }),
+        autocompletion({
+          override: [isBibtexFile ? bibtexCompletionSource : (context) => latexCompletions(context, t, completionIndexRef.current)],
+          activateOnTyping: true
+        }),
         ...(collaborationUndoManager ? [vimHistoryCommands.of({
           undo: () => collaborationUndoManager.undo() !== null,
           redo: () => collaborationUndoManager.redo() !== null
@@ -628,7 +633,7 @@ export function LatexEditor({
             onChangeRef.current(update.state.doc.toString());
           }
           if (update.docChanged) setSpellSuggestionMenu(null);
-          if (update.selectionSet && !update.docChanged && update.transactions.some((transaction) => transaction.isUserEvent("input"))) {
+          if (!isBibtexFile && update.selectionSet && !update.docChanged && update.transactions.some((transaction) => transaction.isUserEvent("input"))) {
             const cursor = update.state.selection.main.head;
             const pair = latexAutoPairAtCursor(update.state.doc.toString(), cursor);
             if (pair) update.view.dispatch({

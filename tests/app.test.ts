@@ -143,6 +143,16 @@ describe("texLite application", () => {
     expect(response.json().lints).toEqual(expect.arrayContaining([expect.objectContaining({ problem: "wrng" })]));
   });
 
+  it("always skips writing checks for BibTeX files", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Bibliography writing checks" } });
+    const response = await app.inject({
+      method: "POST", url: `/api/projects/${created.json().project.id}/spellcheck`, headers: { cookie },
+      payload: { path: "references.BIB", source: "author = {Mispeled}" }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ lints: [] });
+  });
+
   it("uses one collaboration size limit for the API and editable text files", async () => {
     const publicConfig = await app.inject({ method: "GET", url: "/api/config" });
     expect(publicConfig.json()).toMatchObject({ maxUploadSizeMB: 50, maxCollaborativeFileSizeMB: 5 });
