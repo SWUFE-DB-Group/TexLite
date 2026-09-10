@@ -1,7 +1,41 @@
 import { describe, expect, it } from "vitest";
-import { latexAutoPair, latexAutoPairAtCursor } from "../src/client/latexAutoPairs";
+import { EditorState, Transaction } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+import { history, undo } from "@codemirror/commands";
+import { latexAutoPair, latexAutoPairAtCursor, latexAutoPairInput, latexSkippedBracePair } from "../src/client/latexAutoPairs";
 
 describe("LaTeX auto pairs", () => {
+  it("emits one transaction and undoes input plus auto pair together", () => {
+    const source = String.raw`\left`;
+    let state = EditorState.create({ doc: source, selection: { anchor: source.length }, extensions: [history()] });
+    const updates: Transaction[] = [];
+    const view = {
+      get state() { return state; },
+      composing: false,
+      dispatch(transaction: Transaction) { updates.push(transaction); state = transaction.state; }
+    } as unknown as EditorView;
+    expect(latexAutoPairInput(view, source.length, source.length, "(", () => state.update({
+      changes: { from: source.length, insert: "(" }, selection: { anchor: source.length + 1 }, userEvent: "input.type"
+    }))).toBe(true);
+    expect(updates).toHaveLength(1);
+    expect(state.doc.toString()).toBe(String.raw`\left(\right)`);
+    expect(state.selection.main.head).toBe(source.length + 1);
+    expect(undo(view)).toBe(true);
+    expect(state.doc.toString()).toBe(source);
+  });
+
+  it("pairs skipped environment braces in the original transaction", () => {
+    const source = String.raw`\begin{figure}`;
+    const state = EditorState.create({ doc: source, selection: { anchor: source.length - 1 }, extensions: [latexSkippedBracePair] });
+    const transaction = state.update({ selection: { anchor: source.length }, userEvent: "input" });
+    expect(transaction.newDoc.toString()).toBe(source + "\n\t\n\\end{figure}");
+    expect(transaction.newSelection.main.head).toBe(source.length + 2);
+  });
+
+  it("does not guess a closing delimiter for an invisible left delimiter", () => {
+    const source = String.raw`\left`;
+    expect(latexAutoPair(source, source.length, source.length, ".")).toBeNull();
+  });
   it("closes an environment after the closing brace is typed", () => {
     const source = "\\begin{itemize";
     const pair = latexAutoPair(source, source.length, source.length, "}");

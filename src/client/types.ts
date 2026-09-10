@@ -217,6 +217,7 @@ export interface LatexCompletionIndex {
   labels: LatexCompletionItem[];
   citations: LatexCompletionItem[];
   packages: LatexCompletionItem[];
+  classes: LatexCompletionItem[];
   files: LatexCompletionItem[];
 }
 

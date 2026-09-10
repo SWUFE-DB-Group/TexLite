@@ -14,8 +14,46 @@ import {
 import { latexFold, findMatchingLatexEnvironmentEnd } from "../src/client/latexFolding";
 import { latexCitationCompletionContext, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "../src/client/latexCompletionContexts";
 import { hasDocumentClass } from "../src/client/latexRoot";
+import { inlineLatexLiteralEnd } from "../src/client/latexLiterals";
 
 describe("LaTeX syntax handling", () => {
+  it.each([
+    String.raw`\lstinline{a{b}c}`,
+    String.raw`\mintinline{python}{print("ok")}`,
+    String.raw`\lstinline[language=C]{value \{ nested \}}`,
+    String.raw`\verb{literal{`
+  ])("ends inline literals before following normal text: %s", (literal) => {
+    const source = literal + String.raw` Normal prose \textbf{after}`;
+    expect(inlineLatexLiteralEnd(source, 0)).toBe(literal.length);
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    expect(syntaxTree(state).resolveInner(source.indexOf("Normal") + 1).name).not.toBe("string");
+  });
+
+  it("folds after literal percent signs and ignores nested-looking raw commands", () => {
+    for (const body of [String.raw`\verb|%|`, String.raw`\lstinline{%}`, String.raw`\begin{verbatim}
+\begin{figure}
+100% \end{verbatim}`]) {
+      const source = `\\begin{figure}\n${body} \\end{figure}`;
+      const state = EditorState.create({ doc: source });
+      expect(findMatchingLatexEnvironmentEnd(state.doc, source.indexOf("}") + 1, "figure")?.from)
+        .toBe(source.lastIndexOf("\\end{figure}"));
+    }
+  });
+
+  it("folds a literal block at its raw close even after percent signs", () => {
+    const source = String.raw`\begin{verbatim}
+\begin{verbatim}
+% \end{verbatim}`;
+    const state = EditorState.create({ doc: source });
+    expect(findMatchingLatexEnvironmentEnd(state.doc, source.indexOf("}") + 1, "verbatim")?.from)
+      .toBe(source.indexOf("\\end{verbatim}"));
+  });
+
+  it("already ignores minted language arguments during root detection", () => {
+    expect(hasDocumentClass(String.raw`\begin{minted}[linenos]{latex}
+\documentclass{article}
+\end{minted}`)).toBe(false);
+  });
   it("matches an outer resizebox brace after a nested tabular environment", () => {
     const source = String.raw`\resizebox{\linewidth}{!}{
   \begin{tabular}{ll}

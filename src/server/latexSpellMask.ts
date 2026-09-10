@@ -1,3 +1,5 @@
+import { literalEnvironmentNames } from "../shared/latexLiterals.js";
+
 interface Span {
   from: number;
   to: number;
@@ -6,11 +8,9 @@ interface Span {
 // This intentionally recognizes only the parts of LaTeX that are clearly not
 // prose. It is a single-pass lexer, not a parser: malformed delimiters remain
 // narrow, so they never hide the rest of a document or cause backtracking.
-const literalEnvironments = new Set([
-  "verbatim", "verbatim*", "bverbatim", "bverbatim*", "lverbatim", "lverbatim*", "saveverbatim", "saveverbatim*", "verbatimout",
-  "lstlisting", "minted", "minted*", "filecontents", "filecontents*", "luacode", "luacodestar", "comment"
-]);
+const literalEnvironments = new Set(literalEnvironmentNames.map((name) => name.toLowerCase()));
 const nonProseEnvironments = new Set([
+  ...literalEnvironments,
   // Display and helper math environments commonly used by amsmath/mathtools.
   "math", "displaymath", "equation", "equation*", "align", "align*", "alignat", "alignat*", "aligned", "alignedat", "gather", "gather*", "gathered", "multline", "multline*", "multlined", "flalign", "flalign*", "split", "cases", "dcases", "rcases", "drcases",
   "array", "matrix", "pmatrix", "bmatrix", "vmatrix", "smallmatrix", "psmallmatrix", "bsmallmatrix", "vsmallmatrix",

@@ -1,3 +1,5 @@
+import { inlineLatexLiteralEnd, isLatexLiteralEnvironment, literalEnvironmentEnd } from "./latexLiterals";
+
 export interface LatexMathRange {
   /** Inclusive source offset of the opening delimiter or environment. */
   from: number;
@@ -12,11 +14,6 @@ const mathEnvironments = new Set([
   "math", "displaymath", "equation", "align", "alignat", "flalign", "gather", "multline",
   "split", "aligned", "alignedat", "gathered", "matrix", "pmatrix", "bmatrix", "vmatrix",
   "cases", "dcases", "rcases", "smallmatrix", "subarray", "array"
-]);
-
-const verbatimEnvironments = new Set([
-  "verbatim", "verbatimwrite", "bverbatim", "lverbatim", "saveverbatim", "lstlisting",
-  "minted", "comment", "alltt", "tcblisting", "pygmented"
 ]);
 
 interface EnvironmentCommand {
@@ -49,18 +46,13 @@ function readEnvironmentCommand(source: string, position: number): EnvironmentCo
 
 function skipInlineVerb(source: string, position: number): number | null {
   if (source[position] !== "\\" || isEscaped(source, position)) return null;
-  const match = /^\\verb\*?(?![A-Za-z@])/.exec(source.slice(position));
-  if (!match) return null;
-  const delimiterPosition = position + match[0].length;
-  const delimiter = source[delimiterPosition];
-  if (!delimiter || delimiter === "\n" || delimiter === "\r") return skipComment(source, delimiterPosition);
-  const end = source.indexOf(delimiter, delimiterPosition + 1);
-  return end < 0 ? skipComment(source, delimiterPosition) : end + 1;
+  return inlineLatexLiteralEnd(source, position);
 }
 
-function findDelimitedEnd(source: string, position: number, delimiter: "dollar" | "paren" | "bracket", stopAtLineBreak = false): number {
+function findDelimitedEnd(source: string, position: number, delimiter: "dollar" | "paren" | "bracket", stopAtParagraph = false): number {
   for (let cursor = position; cursor < source.length; cursor += 1) {
-    if (stopAtLineBreak && (source[cursor] === "\n" || source[cursor] === "\r")) return -1;
+    if (stopAtParagraph && ((source[cursor] === "\n" && /^[\t \r]*\n/.test(source.slice(cursor + 1)))
+      || (source[cursor] === "\\" && !isEscaped(source, cursor) && /^\\par(?![A-Za-z@])/.test(source.slice(cursor))))) return -1;
     if (source[cursor] === "%" && !isEscaped(source, cursor)) {
       cursor = skipComment(source, cursor) - 1;
       continue;
@@ -152,7 +144,7 @@ export function supportsLatexMathHover(filePath: string): boolean {
  */
 export function findLatexMathRangeAt(source: string, position: number, side: -1 | 1 = 1): LatexMathRange | null {
   const target = Math.max(0, Math.min(source.length, position));
-  for (let cursor = 0; cursor < source.length; cursor += 1) {
+  for (let cursor = 0; cursor < source.length && cursor <= target; cursor += 1) {
     if (source[cursor] === "%" && !isEscaped(source, cursor)) {
       cursor = skipComment(source, cursor) - 1;
       continue;
@@ -167,10 +159,11 @@ export function findLatexMathRangeAt(source: string, position: number, side: -1 
     const environment = readEnvironmentCommand(source, cursor);
     if (environment?.type === "begin") {
       const normalized = normalizeEnvironmentName(environment.name);
-      const isVerbatim = verbatimEnvironments.has(normalized);
+      const isVerbatim = isLatexLiteralEnvironment(environment.name);
       const isMath = mathEnvironments.has(normalized);
       if (!isVerbatim && !isMath) continue;
-      const end = findEnvironmentEnd(source, environment.end, environment.name);
+      const end = isVerbatim ? literalEnvironmentEnd(source, environment.end, environment.name)
+        : findEnvironmentEnd(source, environment.end, environment.name);
       if (isVerbatim) {
         if (end) cursor = end.to - 1;
         else cursor = source.length;

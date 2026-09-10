@@ -8,6 +8,23 @@ import { LatexCompletionService } from "../src/server/latexCompletion.js";
 const roots: string[] = [];
 
 describe("LaTeX completion cache", () => {
+  it("separates document classes from files and indexes optional package/bibitem arguments", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-completions-"));
+    roots.push(root);
+    const source = path.join(root, "projects", "paper", "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), String.raw`\documentclass[review]{custom}
+\usepackage[options]{mypackage}
+\bibitem[Author(2026)]{paper2026} Reference text`);
+    fs.writeFileSync(path.join(source, "local.cls"), "");
+    fs.writeFileSync(path.join(source, "figure.png"), "image");
+    const result = await new LatexCompletionService(completionConfig(root)).build("paper");
+    expect(result.classes.map((item) => item.label)).toEqual(expect.arrayContaining(["article", "custom", "local"]));
+    expect(result.classes.map((item) => item.label)).not.toContain("figure.png");
+    expect(result.files.map((item) => item.label)).not.toContain("article");
+    expect(result.packages.map((item) => item.label)).toContain("mypackage");
+    expect(result.citations.map((item) => item.label)).toContain("paper2026");
+  });
   afterEach(() => {
     for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
   });

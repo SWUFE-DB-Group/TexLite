@@ -5,6 +5,8 @@
  * comments, and the literal forms which must never be interpreted as TeX.
  */
 
+import { literalEnvironmentNames } from "./latexLiterals.js";
+
 export type LatexReferenceKind = "citation" | "label";
 
 export interface LatexReference {
@@ -43,38 +45,7 @@ interface ArgumentSpan {
   contentTo: number;
 }
 
-const literalEnvironments = new Set([
-  "verbatim",
-  "verbatim*",
-  "Verbatim",
-  "BVerbatim",
-  "LVerbatim",
-  "SaveVerbatim",
-  "VerbatimOut",
-  "bverbatim",
-  "bverbatim*",
-  "lverbatim",
-  "lverbatim*",
-  "saveverbatim",
-  "saveverbatim*",
-  "verbatimout",
-  "verbatimwrite",
-  "lstlisting",
-  "lstlisting*",
-  "minted",
-  "minted*",
-  "tcblisting",
-  "tcblisting*",
-  "alltt",
-  "pygmented",
-  "algorithmic",
-  "algorithmicx",
-  "filecontents",
-  "filecontents*",
-  "luacode",
-  "luacodestar",
-  "comment"
-]);
+const literalEnvironments = new Set<string>(literalEnvironmentNames);
 
 const inlineLiteralCommands = new Set(["verb", "Verb", "lstinline", "mintinline"]);
 

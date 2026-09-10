@@ -19,6 +19,7 @@ export interface LatexCompletionIndex {
   labels: LatexCompletionItem[];
   citations: LatexCompletionItem[];
   packages: LatexCompletionItem[];
+  classes: LatexCompletionItem[];
   files: LatexCompletionItem[];
 }
 
@@ -28,6 +29,7 @@ interface MutableIndex {
   labels: Map<string, LatexCompletionItem>;
   citations: Map<string, LatexCompletionItem>;
   packages: Map<string, LatexCompletionItem>;
+  classes: Map<string, LatexCompletionItem>;
   files: Map<string, LatexCompletionItem>;
 }
 
@@ -141,7 +143,7 @@ function item(label: string, detail: string, kind: LatexCompletionKind, source?:
 
 function createIndex(): MutableIndex {
   return {
-    commands: new Map(), environments: new Map(), labels: new Map(), citations: new Map(), packages: new Map(), files: new Map()
+    commands: new Map(), environments: new Map(), labels: new Map(), citations: new Map(), packages: new Map(), classes: new Map(), files: new Map()
   };
 }
 
@@ -210,18 +212,18 @@ function extractSymbols(index: MutableIndex, filePath: string, original: string)
     const file = (match[1] ?? match[2] ?? "").trim();
     if (file) index.files.set(file, item(file, "Project file", "text", source));
   }
-  for (const match of content.matchAll(/\\(?:usepackage|RequirePackage|documentclass)\s*(?:\[[^]]*\])?\s*\{([^}]+)\}/g)) {
+  for (const match of content.matchAll(/\\(?:usepackage|RequirePackage|documentclass)\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)) {
     for (const packageName of match[1].split(",").map((value) => value.trim()).filter(Boolean)) {
-      const target = /documentclass|documentstyle/.test(match[0]) ? index.files : index.packages;
-      if (!target.has(packageName)) target.set(packageName, item(packageName, target === index.files ? "Document class" : "Package", "text", source));
+      const target = /documentclass|documentstyle/.test(match[0]) ? index.classes : index.packages;
+      if (!target.has(packageName)) target.set(packageName, item(packageName, target === index.classes ? "Document class" : "Package", target === index.classes ? "class" : "text", source));
     }
   }
-  for (const match of content.matchAll(/\\(?:cite|citep|citet|parencite|textcite|autocite|footcite)(?:\w*)?\s*(?:\[[^]]*\])?\s*\{([^}]+)\}/g)) {
+  for (const match of content.matchAll(/\\(?:cite|citep|citet|parencite|textcite|autocite|footcite)(?:\w*)?\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)) {
     for (const key of match[1].split(",").map((value) => value.trim()).filter(Boolean)) {
       if (!index.citations.has(key)) index.citations.set(key, item(key, "Citation key", "constant", source));
     }
   }
-  for (const match of content.matchAll(/\\bibitem\s*(?:\[[^]]*\])?\s*\{([^}]+)\}/g)) {
+  for (const match of content.matchAll(/\\bibitem\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)) {
     const key = match[1].trim();
     if (key && !index.citations.has(key)) index.citations.set(key, item(key, "Bibliography key", "constant", source));
   }
@@ -240,14 +242,22 @@ function standardIndex(): MutableIndex {
   for (const [label, detail, apply] of standardCommands) commandItem(index, label, detail, "LaTeX", apply);
   for (const [label, detail, apply] of standardEnvironments) index.environments.set(label, item(label, detail, "keyword", "LaTeX", apply));
   for (const packageName of standardPackages) index.packages.set(packageName.trim(), item(packageName.trim(), "Package", "text", "LaTeX"));
-  for (const className of standardClasses) index.files.set(className, item(className, "Document class", "class", "LaTeX"));
+  for (const className of standardClasses) index.classes.set(className, item(className, "Document class", "class", "LaTeX"));
   return index;
+}
+
+function addProjectFile(index: MutableIndex, filePath: string): void {
+  index.files.set(filePath, item(filePath, "Project file", "text", "Project"));
+  if (/\.cls$/i.test(filePath)) {
+    const name = filePath.replace(/\.cls$/i, "");
+    index.classes.set(name, item(name, "Document class", "class", filePath));
+  }
 }
 
 export function buildLatexCompletionIndex(config: Config, projectId: string): LatexCompletionIndex {
   const index = standardIndex();
   const allEntries = listProjectFiles(config, projectId).filter((entry) => entry.type === "file").slice(0, maxIndexedFiles);
-  for (const entry of allEntries) index.files.set(entry.path, item(entry.path, "Project file", "text", "Project"));
+  for (const entry of allEntries) addProjectFile(index, entry.path);
   const entries = allEntries.filter((entry) => textExtensions.test(entry.path));
   let indexedBytes = 0;
   for (const entry of entries) {
@@ -265,7 +275,7 @@ export function buildLatexCompletionIndex(config: Config, projectId: string): La
   }
   return {
     commands: sorted(index.commands), environments: sorted(index.environments), labels: sorted(index.labels),
-    citations: sorted(index.citations), packages: sorted(index.packages), files: sorted(index.files)
+    citations: sorted(index.citations), packages: sorted(index.packages), classes: sorted(index.classes), files: sorted(index.files)
   };
 }
 
@@ -325,7 +335,7 @@ export class LatexCompletionService {
     this.cache.set(projectId, projectCache);
     const livePaths = new Set(allEntries.map((entry) => entry.path));
     for (const cachedPath of [...projectCache.keys()]) if (!livePaths.has(cachedPath)) projectCache.delete(cachedPath);
-    for (const entry of allEntries) index.files.set(entry.path, item(entry.path, "Project file", "text", "Project"));
+    for (const entry of allEntries) addProjectFile(index, entry.path);
 
     let indexedBytes = 0;
     for (const entry of allEntries.filter((candidate) => textExtensions.test(candidate.path))) {
@@ -347,7 +357,7 @@ export class LatexCompletionService {
     }
     const result = {
       commands: sorted(index.commands), environments: sorted(index.environments), labels: sorted(index.labels),
-      citations: sorted(index.citations), packages: sorted(index.packages), files: sorted(index.files)
+      citations: sorted(index.citations), packages: sorted(index.packages), classes: sorted(index.classes), files: sorted(index.files)
     };
     this.resultCache.set(projectId, { signature, index: result });
     this.touch(projectId);
@@ -381,7 +391,7 @@ export class LatexCompletionService {
 
 function mergeIndex(target: MutableIndex, source: MutableIndex): void {
   for (const value of source.commands.values()) commandItem(target, value.label, value.detail, value.source ?? "Project", value.apply);
-  for (const key of ["environments", "labels", "citations", "packages", "files"] as const) {
+  for (const key of ["environments", "labels", "citations", "packages", "classes", "files"] as const) {
     for (const [label, value] of source[key]) {
       const existing = target[key].get(label);
       if (!existing || (existing.source === "LaTeX" && value.source !== "LaTeX")) target[key].set(label, value);

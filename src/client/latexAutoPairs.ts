@@ -1,3 +1,6 @@
+import { EditorState, Transaction } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+
 export interface LatexAutoPair {
   insert: string;
   cursorOffset: number;
@@ -15,11 +18,6 @@ function isCommentBeforeCursor(line: string): boolean {
     backslashes = 0;
   }
   return false;
-}
-
-function escapeRegExp(value: string): string {
-  const metacharacters = ".+?^$()[]{}|\\";
-  return [...value].map((character) => metacharacters.includes(character) ? "\\" + character : character).join("");
 }
 
 function lineContext(source: string, from: number, text: string): {
@@ -44,10 +42,9 @@ function environmentPair(context: ReturnType<typeof lineContext>): LatexAutoPair
   const match = context.prefix.match(/^([ \t]*)\\begin\s*\{\s*([A-Za-z][A-Za-z0-9*:_-]*)\s*\}\s*$/);
   if (!match || context.suffix.trim() || isCommentBeforeCursor(context.prefix)) return null;
   const environment = match[2];
-  const escaped = escapeRegExp(environment);
-  const alreadyClosed = new RegExp(
-    "^[ \\t]*\\n[ \\t]*\\\\end\\s*\\{\\s*" + escaped + "\\s*\\}"
-  ).test(context.nextSource.slice(context.cursor));
+  const escaped = environment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const alreadyClosed = new RegExp("^[ \\t]*\\n[ \\t]*\\\\end\\s*\\{\\s*" + escaped + "\\s*\\}")
+    .test(context.nextSource.slice(context.cursor));
   if (alreadyClosed) return null;
   const bodyIndent = match[1] + "\t";
   const insert = "\n" + bodyIndent + "\n" + match[1] + "\\end{" + environment + "}";
@@ -64,7 +61,6 @@ function delimiterPair(context: ReturnType<typeof lineContext>): LatexAutoPair |
     "[": "\\right]",
     "]": "\\right[",
     "|": "\\right|",
-    ".": "\\right.",
     "\\{": "\\right\\}",
     "\\}": "\\right\\{"
   };
@@ -76,7 +72,7 @@ function delimiterPair(context: ReturnType<typeof lineContext>): LatexAutoPair |
 /**
  * Returns a closing insertion when a user has just completed a safe, standalone
  * LaTeX environment or scalable delimiter expression. The caller can apply the
- * returned insertion after the original input transaction.
+ * returned insertion in the same transaction as the original input.
  */
 export function latexAutoPair(
   source: string,
@@ -94,3 +90,37 @@ export function latexAutoPairAtCursor(source: string, cursor: number): LatexAuto
   const context = lineContext(source, cursor, "");
   return environmentPair(context) ?? delimiterPair(context);
 }
+
+/** Keep automatic pairs atomic for undo, collaboration and source observers. */
+export function latexAutoPairInput(view: EditorView, from: number, to: number, text: string, insert: () => Transaction): boolean {
+  if (view.state.readOnly || view.composing || view.state.selection.ranges.length !== 1) return false;
+  const pair = latexAutoPair(view.state.doc.toString(), from, to, text);
+  if (!pair) return false;
+  const input = insert();
+  if (!input.docChanged) return false;
+  const cursor = input.newSelection.main.head;
+  view.dispatch(view.state.update(input, {
+    sequential: true,
+    changes: { from: cursor, insert: pair.insert },
+    selection: { anchor: cursor + pair.cursorOffset },
+    annotations: Transaction.userEvent.of("input.type")
+  }));
+  return true;
+}
+
+// closeBrackets may skip an already inserted '}' instead of changing the doc.
+// Extend that transaction, never dispatch recursively from an update listener.
+export const latexSkippedBracePair = EditorState.transactionFilter.of((transaction) => {
+  if (transaction.docChanged || !transaction.selection || !transaction.isUserEvent("input")
+    || transaction.startState.readOnly || transaction.newSelection.ranges.length !== 1
+    || !transaction.newSelection.main.empty) return transaction;
+  const cursor = transaction.newSelection.main.head;
+  const pair = latexAutoPairAtCursor(transaction.newDoc.toString(), cursor);
+  if (!pair) return transaction;
+  return [transaction, {
+    sequential: true,
+    changes: { from: cursor, insert: pair.insert },
+    selection: { anchor: cursor + pair.cursorOffset },
+    userEvent: "input.complete"
+  }];
+});

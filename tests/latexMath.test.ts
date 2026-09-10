@@ -8,6 +8,24 @@ function rangeAt(source: string, text: string) {
 }
 
 describe("LaTeX math hover ranges", () => {
+  it("previews inline math across source line breaks but not paragraphs", () => {
+    expect(rangeAt("Text $a +\nb$ done", "b$")).toMatchObject({ source: "a +\nb", displayMode: false });
+    expect(rangeAt("Text $a\n\nb$ done", "a")).toBeNull();
+    expect(rangeAt(String.raw`Text $a\par b$ done`, "a")).toBeNull();
+  });
+
+  it.each(["Verbatim", "verbatim*", "tcblisting*", "filecontents", "luacode"])("skips math inside %s", (environment) => {
+    const source = `\\begin{${environment}}\n$hidden$ % \\end{${environment}}\n$visible$`;
+    expect(rangeAt(source, "hidden")).toBeNull();
+    expect(rangeAt(source, "visible")).toMatchObject({ source: "visible" });
+  });
+
+  it("ignores minted and listings inline math without hiding following formulas", () => {
+    const source = String.raw`\mintinline{python}{$hidden$} \lstinline|$alsoHidden$| $visible$`;
+    expect(rangeAt(source, "hidden")).toBeNull();
+    expect(rangeAt(source, "alsoHidden")).toBeNull();
+    expect(rangeAt(source, "visible")).toMatchObject({ source: "visible" });
+  });
   it("finds inline and display delimiters without including them in preview source", () => {
     const source = String.raw`Inline $a^2 + b^2$ and \[\frac{1}{2}\].`;
     expect(rangeAt(source, "b^2")).toMatchObject({ source: "a^2 + b^2", displayMode: false });
