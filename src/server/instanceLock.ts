@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
+import { basePathHref } from "../shared/basePath.js";
 
 export const LOCK_FILE_NAME = ".texlite.lock";
 
@@ -12,6 +13,7 @@ export interface DataDirectoryLockInfo {
   configPath: string;
   host: string;
   port: number;
+  basePath?: string;
 }
 
 export interface DataDirectoryLock {
@@ -62,7 +64,8 @@ export function acquireDataDirectoryLock(config: Config): DataDirectoryLock {
     token: randomUUID(),
     configPath: config.configPath,
     host: config.host,
-    port: config.port
+    port: config.port,
+    basePath: config.basePath
   };
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -121,7 +124,7 @@ export function acquireDataDirectoryLock(config: Config): DataDirectoryLock {
           `The data directory is already locked by another TexLite instance:\n` +
           `  - PID: ${existing.pid}\n` +
           `  - Config: ${existing.configPath}\n` +
-          `  - Address: http://${existing.host}:${existing.port}\n` +
+          `  - Address: http://${existing.host}:${existing.port}${basePathHref(existing.basePath ?? "/")}\n` +
           `  - Started: ${existing.startedAt}\n` +
           `  - Data directory: ${config.dataDir}\n` +
           `Do not run multiple TexLite instances with the same data directory.`

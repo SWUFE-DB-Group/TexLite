@@ -1,8 +1,10 @@
+import { appPath, currentBasePath, stripAppBasePath } from "./basePath";
+
 const projectRoutePattern = /^\/projects?\/([^/]+)\/?$/;
 
 /** Return the canonical browser URL for a project. */
-export function projectPath(projectId: string, mentionId?: string | null): string {
-  const path = `/project/${encodeURIComponent(projectId)}`;
+export function projectPath(projectId: string, mentionId?: string | null, basePath = currentBasePath()): string {
+  const path = appPath(`/project/${encodeURIComponent(projectId)}`, basePath);
   return mentionId ? `${path}?${new URLSearchParams({ mention: mentionId }).toString()}` : path;
 }
 
@@ -13,8 +15,9 @@ export function mentionIdFromSearch(search: string): string | null {
 }
 
 /** Read a project id from either the canonical route or its plural alias. */
-export function projectIdFromPath(pathname: string): string | null {
-  const match = projectRoutePattern.exec(pathname);
+export function projectIdFromPath(pathname: string, basePath = currentBasePath()): string | null {
+  const relativePath = stripAppBasePath(pathname, basePath);
+  const match = relativePath ? projectRoutePattern.exec(relativePath) : null;
   if (!match) return null;
   try {
     const projectId = decodeURIComponent(match[1]);
@@ -25,9 +28,9 @@ export function projectIdFromPath(pathname: string): string | null {
 }
 
 /** Build the login URL that remembers one validated project destination. */
-export function projectLoginPath(projectId: string, mentionId?: string | null): string {
-  const query = new URLSearchParams({ return: projectPath(projectId, mentionId) });
-  return "/?" + query.toString();
+export function projectLoginPath(projectId: string, mentionId?: string | null, basePath = currentBasePath()): string {
+  const query = new URLSearchParams({ return: projectPath(projectId, mentionId, basePath) });
+  return appPath("/", basePath) + "?" + query.toString();
 }
 
 /** Accept only an internal project route from the login return parameter. */
@@ -41,14 +44,14 @@ function projectReturnUrl(search: string): URL | null {
   }
 }
 
-export function projectIdFromReturn(search: string): string | null {
+export function projectIdFromReturn(search: string, basePath = currentBasePath()): string | null {
   const url = projectReturnUrl(search);
-  return url ? projectIdFromPath(url.pathname) : null;
+  return url ? projectIdFromPath(url.pathname, basePath) : null;
 }
 
-export function mentionIdFromReturn(search: string): string | null {
+export function mentionIdFromReturn(search: string, basePath = currentBasePath()): string | null {
   const url = projectReturnUrl(search);
-  return url ? mentionIdFromSearch(url.search) : null;
+  return url && projectIdFromPath(url.pathname, basePath) ? mentionIdFromSearch(url.search) : null;
 }
 
 export type TexLiteHistoryState =

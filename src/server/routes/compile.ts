@@ -137,7 +137,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         } : null
       } : null,
       hasPdf: Boolean(pdf),
-      pdfUrl: pdf ? compilePdfUrl(id, mainFile, pdfVersion ?? pdf.version) : null,
+      pdfUrl: pdf ? compilePdfUrl(config, id, mainFile, pdfVersion ?? pdf.version) : null,
       pdfCompiledAt: publishedRun?.finished_at ?? latestSuccess?.finished_at ?? null,
       ...pdfMetadata
     };
@@ -704,7 +704,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     ].filter(Boolean).join(", "));
     return {
       mainFile, runId: result.runId, ok: result.ok, cancelled: result.cancelled === true, skipped: result.skipped === true, log: result.log, diagnostics: result.diagnostics,
-      pdfUrl: result.ok ? compilePdfUrl(id, mainFile, result.runId) : null,
+      pdfUrl: result.ok ? compilePdfUrl(config, id, mainFile, result.runId) : null,
       pdfCompiledAt: result.ok ? completed?.finished_at ?? null : null,
       ...pdfMetadata,
       timings

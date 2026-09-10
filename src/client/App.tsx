@@ -9,6 +9,7 @@ import {
 import { loadPdfPreview, loadProjectWorkspace, preloadWorkspace, type WorkspacePreload } from "./workspacePreload";
 import { ChangePassword, Login } from "./pages/AuthPages";
 import { LazyPage } from "./LazyLoadBoundary";
+import { appPath } from "./basePath";
 
 const loadDashboard = () => import("./pages/Dashboard");
 const Dashboard = lazy(() => loadDashboard().then((module) => ({ default: module.Dashboard })));
@@ -52,7 +53,7 @@ export function App() {
       targetProjectId = returnProjectId;
     } else if (new URLSearchParams(window.location.search).has("return")) {
       const state: TexLiteHistoryState = { texliteRoute: "dashboard" };
-      window.history.replaceState(state, "", "/");
+      window.history.replaceState(state, "", appPath("/"));
       setProjectId(null);
       setProjectMentionId(null);
     } else if (projectIdFromPath(window.location.pathname)) {
@@ -120,7 +121,7 @@ export function App() {
       return;
     }
     const dashboardState: TexLiteHistoryState = { texliteRoute: "dashboard" };
-    window.history.replaceState(dashboardState, "", "/");
+    window.history.replaceState(dashboardState, "", appPath("/"));
     setProjectId(null);
     setProjectMentionId(null);
     setWorkspacePreload(null);

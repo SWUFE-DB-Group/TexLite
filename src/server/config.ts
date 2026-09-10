@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defaultDataDirectory, packageClientDirectory, resolveConfigPath } from "./runtimePaths.js";
+import { normalizeBasePath, ROOT_BASE_PATH } from "../shared/basePath.js";
 
 export const LATEX_ENGINES = ["pdflatex", "xelatex", "lualatex"] as const;
 export type LatexEngine = typeof LATEX_ENGINES[number];
@@ -13,6 +14,7 @@ export const CONFIG_DEFAULTS = {
   adminEmail: "",
   host: "127.0.0.1",
   port: 3000,
+  basePath: ROOT_BASE_PATH,
   dataDir: defaultDataDirectory(),
   clientDir: packageClientDirectory(),
   sessionDays: 14,
@@ -53,6 +55,7 @@ export interface Config {
   adminEmail: string;
   host: string;
   port: number;
+  basePath: string;
   dataDir: string;
   databasePath: string;
   projectsDir: string;
@@ -143,6 +146,7 @@ export function loadConfig(configPathOverride?: string): Config {
     "git.operationTimeoutSeconds", process.env.TEXLITE_GIT_TIMEOUT,
     fileConfig.git?.operationTimeoutSeconds, CONFIG_DEFAULTS.gitOperationTimeoutSeconds, CONFIG_LIMITS.gitOperationTimeoutSeconds
   );
+  const basePath = resolveBasePath(fileConfig);
 
   const config: Config = {
     configPath,
@@ -150,6 +154,7 @@ export function loadConfig(configPathOverride?: string): Config {
     adminEmail: stringSetting("adminEmail", process.env.TEXLITE_ADMIN_EMAIL, fileConfig.adminEmail, CONFIG_DEFAULTS.adminEmail, { min: 0, max: 320 }),
     host: stringSetting("server.host", process.env.TEXLITE_HOST, fileConfig.server?.host, CONFIG_DEFAULTS.host, { min: 1, max: 255 }),
     port: integerSetting("server.port", process.env.TEXLITE_PORT, fileConfig.server?.port, CONFIG_DEFAULTS.port, CONFIG_LIMITS.port),
+    basePath,
     dataDir,
     databasePath: path.join(dataDir, "texlite.db"),
     projectsDir: path.join(dataDir, "projects"),
@@ -177,6 +182,18 @@ export function loadConfig(configPathOverride?: string): Config {
   return config;
 }
 
+/**
+ * Read only the configured public mount path. Vite uses this during local UI
+ * development, where checking server data paths would be unnecessary and can
+ * prevent the frontend from starting before the API server is configured.
+ */
+export function loadBasePath(configPathOverride?: string): string {
+  const configPath = resolveConfigPath(configPathOverride);
+  const fileConfig = readConfigFile(configPath);
+  validateFileConfig(fileConfig);
+  return resolveBasePath(fileConfig);
+}
+
 /** Validate an already materialized configuration (useful for startup/tests). */
 export function validateConfig(config: Config): void {
   if (!config.dataDir || path.parse(config.dataDir).root === config.dataDir) {
@@ -197,6 +214,9 @@ export function validateConfig(config: Config): void {
     throw configurationError("latex.defaultEngine", "must be one of the engines listed in latex.allowedEngines");
   }
   validateInteger("server.port", config.port, CONFIG_LIMITS.port);
+  if (normalizeBasePath(config.basePath) !== config.basePath) {
+    throw configurationError("server.basePath", "must be / or a normalized URL path such as /texlite or /tools/texlite");
+  }
   validateInteger("sessionDays", config.sessionDays, CONFIG_LIMITS.sessionDays);
   validateInteger("latex.compileTimeoutSeconds", config.compileTimeoutMs / 1000, CONFIG_LIMITS.compileTimeoutSeconds);
   validateInteger("latex.maxCompileJobs", config.maxCompileJobs, CONFIG_LIMITS.maxCompileJobs);
@@ -215,7 +235,7 @@ interface FileConfig {
   siteName?: string;
   adminEmail?: string;
   sessionDays?: number;
-  server?: { host?: string; port?: number };
+  server?: { host?: string; port?: number; basePath?: string };
   storage?: { dataDir?: string };
   latex?: {
     latexmk?: string;
@@ -231,6 +251,21 @@ interface FileConfig {
   history?: { maxVersions?: number; maxStorageMB?: number };
   editHistory?: { maxStorageMB?: number };
   git?: { binary?: string; operationTimeoutSeconds?: number; githubApiBaseUrl?: string };
+}
+
+function resolveBasePath(fileConfig: FileConfig): string {
+  const configuredBasePath = stringSetting(
+    "server.basePath", process.env.TEXLITE_BASE_PATH, fileConfig.server?.basePath,
+    CONFIG_DEFAULTS.basePath, { min: 1, max: 1_024 }
+  );
+  const basePath = normalizeBasePath(configuredBasePath);
+  if (!basePath) {
+    throw configurationError(
+      "server.basePath",
+      `must be / or a URL path such as /texlite or /tools/texlite; received ${displayValue(configuredBasePath)}`
+    );
+  }
+  return basePath;
 }
 
 function isEngine(value: unknown): value is LatexEngine {
@@ -262,6 +297,7 @@ function validateFileConfig(config: FileConfig): void {
   const server = optionalSection(config.server, "server");
   optionalString(server?.host, "server.host", { min: 1, max: 255 });
   optionalInteger(server?.port, "server.port", CONFIG_LIMITS.port);
+  optionalString(server?.basePath, "server.basePath", { min: 1, max: 1_024 });
   const storage = optionalSection(config.storage, "storage");
   optionalString(storage?.dataDir, "storage.dataDir", { min: 1, max: 4_096 });
   const uploads = optionalSection(config.uploads, "uploads");

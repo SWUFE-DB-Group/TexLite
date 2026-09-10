@@ -34,6 +34,7 @@ import { createSourceCursorStore, type SourceCursorStore } from "../workspace/so
 import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
 import { LazyModal } from "../LazyLoadBoundary";
 import type { LatexReference } from "../../shared/latexReferences";
+import { scopedStorageKey } from "../basePath";
 
 const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
 let citationLibraryModule: Promise<typeof import("../citationLibrary")> | null = null;
@@ -1218,7 +1219,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     {historyWarning && <div className="client-tool-recovery" role="status"><AlertTriangle size={15} /><span>{t("history.saveWarning")}</span></div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
-    <PanelGroup autoSaveId="texlite-workspace-layout" direction="horizontal" className="work-grid">
+    <PanelGroup autoSaveId={scopedStorageKey("texlite-workspace-layout")} direction="horizontal" className="work-grid">
       {showEditor && <WorkspaceFilePanel
         project={project} filesPanel={filesPanel} files={files} visibleEntries={visibleEntries}
         activeFile={activeFile} activeMainFile={activeMainFile} rootDocuments={rootDocuments}

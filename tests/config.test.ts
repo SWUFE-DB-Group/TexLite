@@ -2,11 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadConfig } from "../src/server/config.js";
+import { loadBasePath, loadConfig } from "../src/server/config.js";
 
 describe("configuration", () => {
   const envKeys = [
-    "TEXLITE_CONFIG", "TEXLITE_SITE_NAME", "TEXLITE_ADMIN_EMAIL", "TEXLITE_HOST", "TEXLITE_PORT",
+    "TEXLITE_CONFIG", "TEXLITE_SITE_NAME", "TEXLITE_ADMIN_EMAIL", "TEXLITE_HOST", "TEXLITE_PORT", "TEXLITE_BASE_PATH",
     "TEXLITE_DATA_DIR", "TEXLITE_CLIENT_DIR", "TEXLITE_SESSION_DAYS", "TEXLITE_COMPILE_TIMEOUT",
     "TEXLITE_MAX_COMPILE_JOBS", "TEXLITE_LATEXMK", "TEXLITE_DEFAULT_ENGINE", "TEXLITE_MAX_UPLOAD_SIZE_MB",
     "TEXLITE_PDF_LOADING_STRATEGY", "TEXLITE_PDF_RANGE_THRESHOLD_MB",
@@ -33,6 +33,7 @@ describe("configuration", () => {
     fs.writeFileSync(configPath, JSON.stringify({
       siteName: "Lab TeX",
       adminEmail: "latex@example.test",
+      server: { basePath: "/tools/texlite/" },
       storage: { dataDir: "data" },
       uploads: { maxFileSizeMB: 25 },
       pdf: { loadingStrategy: "range", rangeThresholdMB: 7 },
@@ -44,6 +45,7 @@ describe("configuration", () => {
     process.env.TEXLITE_CONFIG = configPath;
     const config = loadConfig();
     expect(config.siteName).toBe("Lab TeX");
+    expect(config.basePath).toBe("/tools/texlite");
     expect(config.dataDir).toBe(path.join(root, "data"));
     expect(config.defaultEngine).toBe("lualatex");
     expect(config.allowedEngines).toEqual(["lualatex"]);
@@ -68,7 +70,7 @@ describe("configuration", () => {
     delete process.env.TEXLITE_SITE_NAME;
     const config = loadConfig();
     expect(config).toMatchObject({
-      siteName: "TexLite", host: "127.0.0.1", port: 3000, sessionDays: 14,
+      siteName: "TexLite", host: "127.0.0.1", port: 3000, basePath: "/", sessionDays: 14,
       compileTimeoutMs: 600_000, maxCompileJobs: 10, defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
       pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
@@ -119,6 +121,33 @@ describe("configuration", () => {
     process.env.TEXLITE_CONFIG = configPath;
     process.env.TEXLITE_MAX_COMPILE_JOBS = "many";
     expect(() => loadConfig()).toThrow(/latex\.maxCompileJobs.*many/);
+  });
+
+  it("validates a deployment base path from files and the environment", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-base-path-"));
+    const configPath = path.join(root, "texlite.config.json");
+    process.env.TEXLITE_CONFIG = configPath;
+    process.env.TEXLITE_DATA_DIR = path.join(root, "data");
+    fs.writeFileSync(configPath, JSON.stringify({ server: { basePath: "texlite" } }));
+    expect(() => loadConfig()).toThrow(/server\.basePath.*\/texlite/);
+    fs.writeFileSync(configPath, JSON.stringify({ server: { basePath: "/tools/../texlite" } }));
+    expect(() => loadConfig()).toThrow(/server\.basePath/);
+    process.env.TEXLITE_BASE_PATH = "/lab/texlite/";
+    expect(loadConfig().basePath).toBe("/lab/texlite");
+  });
+
+  it("reads a development base path without validating server storage", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-base-path-only-"));
+    const configPath = path.join(root, "texlite.config.json");
+    const blockedPath = path.join(root, "not-a-directory");
+    fs.writeFileSync(blockedPath, "file");
+    fs.writeFileSync(configPath, JSON.stringify({
+      server: { basePath: "/tools/texlite" },
+      storage: { dataDir: blockedPath }
+    }));
+    process.env.TEXLITE_CONFIG = configPath;
+    expect(loadBasePath()).toBe("/tools/texlite");
+    expect(() => loadConfig()).toThrow(/storage\.dataDir/);
   });
 
   it("rejects an engine list that omits the selected default", () => {

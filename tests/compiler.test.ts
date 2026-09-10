@@ -402,7 +402,7 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
 function testConfig(root: string): Config {
   return {
     configPath: path.join(root, "config.json"), siteName: "Test", adminEmail: "admin@example.test",
-    host: "127.0.0.1", port: 3000, dataDir: root, databasePath: path.join(root, "texlite.db"),
+    host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath: path.join(root, "texlite.db"),
     projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
     compileTimeoutMs: 30_000, maxCompileJobs: 3, latexmk: "latexmk", defaultEngine: "pdflatex",
     allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,

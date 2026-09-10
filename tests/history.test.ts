@@ -314,7 +314,7 @@ describe("project history retention", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-history-"));
     const config: Config = {
       configPath: path.join(root, "config.json"), siteName: "History Test", adminEmail: "",
-      host: "127.0.0.1", port: 3000, dataDir: root, databasePath: path.join(root, "texlite.db"),
+      host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath: path.join(root, "texlite.db"),
       projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
       allowedEngines: ["xelatex"], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024 * 1024,

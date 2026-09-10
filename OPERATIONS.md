@@ -180,8 +180,10 @@ it. The data directory contains the SQLite database, project sources, compiled
 output, history objects, and Git-token encryption key.
 
 Use [texlite.config.example.json](texlite.config.example.json) as a complete
-starting point. It intentionally uses `.texlite` for repository development;
-`texlite init` instead writes the XDG data-directory default.
+starting point. It omits `storage.dataDir`, so copied configurations retain the
+XDG data-directory default. A source checkout may set `.texlite` explicitly in
+its ignored local configuration when repository-local development data is
+preferred.
 
 ### Important settings and effective defaults
 
@@ -190,6 +192,7 @@ starting point. It intentionally uses `.texlite` for repository development;
 | `siteName` | `TexLite` | Site title. |
 | `adminEmail` | empty | Optional administrator contact address. |
 | `server.host` / `server.port` | `127.0.0.1` / `3000` | Keep localhost unless the deployment is separately secured. |
+| `server.basePath` | `/` | Public URL mount point, such as `/texlite` or `/tools/texlite`. |
 | `storage.dataDir` | XDG data directory | Stores all persistent project data. |
 | `clientDir` | Installed package's `dist/client` | Normally changed only for development or a custom deployment. |
 | `sessionDays` | `14` | Login-session lifetime. |
@@ -214,6 +217,7 @@ TEXLITE_CONFIG
 XDG_CONFIG_HOME                 XDG_DATA_HOME
 TEXLITE_SITE_NAME               TEXLITE_ADMIN_EMAIL
 TEXLITE_HOST                    TEXLITE_PORT
+TEXLITE_BASE_PATH
 TEXLITE_DATA_DIR                TEXLITE_CLIENT_DIR
 TEXLITE_SESSION_DAYS            TEXLITE_MAX_UPLOAD_SIZE_MB
 TEXLITE_PDF_LOADING_STRATEGY    TEXLITE_PDF_RANGE_THRESHOLD_MB
@@ -237,6 +241,59 @@ edit-history size `4–102400` MB, PDF range
 threshold `1–2048` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
 and Git timeout `1–3600` seconds.
 
+### Reverse proxy subpath
+
+Set `server.basePath` when TexLite shares one origin with other services:
+
+~~~json
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 3000,
+    "basePath": "/texlite"
+  }
+}
+~~~
+
+The browser URL is then `https://example.com/texlite/`, project links use
+`/texlite/project/...`, and API, PDF, asset, and collaboration WebSocket URLs
+all use the same prefix. The npm package contains one path-independent frontend
+build; changing `basePath` does not require rebuilding TexLite.
+
+The reverse proxy must preserve the prefix when forwarding requests. For
+Nginx, omitting a URI from `proxy_pass` keeps `/texlite` intact:
+
+~~~nginx
+location = /texlite {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ^~ /texlite/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+~~~
+
+For Caddy, use a path matcher with `reverse_proxy`; do not use `handle_path`,
+because `handle_path` strips the matched prefix:
+
+~~~caddyfile
+@texlite path /texlite /texlite/*
+handle @texlite {
+    reverse_proxy 127.0.0.1:3000
+}
+~~~
+
+Valid base paths start with `/`, contain URL-safe path segments, and have no
+query, fragment, `.` or `..` segment. A trailing slash in configuration is
+accepted and normalized. Restart TexLite after changing this setting.
+
 Before every compile TexLite passes `-norc` to `latexmk`. A `.latexmkrc` found
 in a ZIP upload, Git checkout, or project file tree is ignored. It is used only
 when the owner explicitly saves it through Project Settings, which passes it
@@ -255,7 +312,17 @@ npm run dev       # API/server: http://127.0.0.1:3000
 npm run dev:web   # Vite UI:    http://127.0.0.1:5173
 ~~~
 
-Vite proxies `/api` requests to the server. Validate a production-style build
+When testing a configured `server.basePath`, export the same configuration path
+in both terminals. Vite reads it, serves the matching prefix, and proxies the
+prefixed API and WebSocket endpoints:
+
+~~~bash
+export TEXLITE_CONFIG="$PWD/texlite.config.json"
+npm run dev       # API/server, for example http://127.0.0.1:3000/texlite/
+npm run dev:web   # Vite UI, for example http://127.0.0.1:5173/texlite/
+~~~
+
+Vite proxies API requests to the server. Validate a production-style build
 with:
 
 ~~~bash

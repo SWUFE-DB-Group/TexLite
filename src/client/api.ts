@@ -1,4 +1,5 @@
 import i18n from "./i18n";
+import { appPath } from "./basePath";
 
 export interface ApiRequestInit extends RequestInit {
   /**
@@ -38,7 +39,7 @@ export async function api<T>(url: string, options: ApiRequestInit = {}): Promise
   if (requestOptions.body && !isFormData(requestOptions.body) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(appPath(url), {
       ...requestOptions,
       headers
     });

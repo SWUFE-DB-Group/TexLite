@@ -7,6 +7,7 @@ import * as decoding from "lib0/decoding";
 import * as syncProtocol from "y-protocols/sync";
 import { IndexeddbPersistence } from "y-indexeddb";
 import type { Project, User } from "./types";
+import { appPath, scopedStorageKey } from "./basePath";
 
 const COLORS = [
   ["#1677c8", "#1677c833"], ["#d65745", "#d6574533"], ["#16866a", "#16866a33"],
@@ -192,7 +193,7 @@ export class ProjectCollaboration {
 
   constructor(readonly projectId: string, private readonly user: User) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    this.draftTabId = getOrCreateDraftTabId(`texlite:collaboration-tab:${user.id}:${projectId}`);
+    this.draftTabId = getOrCreateDraftTabId(scopedStorageKey(`texlite:collaboration-tab:${user.id}:${projectId}`));
     const storedDraft = this.readOwnWritableDraftMarker();
     this.draftGeneration = storedDraft?.generation ?? 0;
     this.draftUpdatedAt = storedDraft?.updatedAt ?? 0;
@@ -205,7 +206,7 @@ export class ProjectCollaboration {
       this.setOwnDraftActivity(true);
       this.startDraftHeartbeat();
     }
-    this.persistence = new IndexeddbPersistence(`texlite:${user.id}:${projectId}`, this.doc);
+    this.persistence = new IndexeddbPersistence(scopedStorageKey(`texlite:${user.id}:${projectId}`), this.doc);
     this.localDraftTransactionObserver = (transaction) => {
       if (!transaction.local) return;
       // CodeMirror's yCollab binding writes directly to Y.Text. Keep the
@@ -225,7 +226,7 @@ export class ProjectCollaboration {
       for (const listener of this.draftListeners) listener();
     });
     this.provider = new WebsocketProvider(
-      `${protocol}//${window.location.host}/api/collaboration`,
+      `${protocol}//${window.location.host}${appPath("/api/collaboration")}`,
       projectId,
       this.doc,
       // Project metadata and the retained PDF are loaded before opening the
@@ -781,11 +782,11 @@ export class ProjectCollaboration {
   }
 
   private epochStorageKey(): string {
-    return `texlite:collaboration-epoch:${this.user.id}:${this.projectId}`;
+    return scopedStorageKey(`texlite:collaboration-epoch:${this.user.id}:${this.projectId}`);
   }
 
   private writableDraftStoragePrefix(): string {
-    return `texlite:collaboration-writable:${this.user.id}:${this.projectId}:`;
+    return `${scopedStorageKey(`texlite:collaboration-writable:${this.user.id}:${this.projectId}`)}:`;
   }
 
   private ownWritableDraftStorageKey(): string {

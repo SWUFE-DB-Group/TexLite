@@ -99,6 +99,13 @@ configuration file. The effective defaults and accepted ranges are documented
 in the [operations guide](OPERATIONS.md) and are also available through
 `texlite config`.
 
+`server.basePath` mounts the complete application below an origin path while
+retaining one distributable frontend build. Fastify scopes API, WebSocket,
+static-resource, and SPA routes to that prefix; the generated HTML declares the
+runtime base for relative Vite assets and client URL helpers. Browser-side
+collaboration drafts and layout preferences include the mount point in their
+storage namespace so two instances under one origin cannot share local state.
+
 `texlite init` creates the configuration when necessary and creates the first
 administrator. The server refuses to start without at least one active
 administrator; public registration is not enabled. Configuration values are

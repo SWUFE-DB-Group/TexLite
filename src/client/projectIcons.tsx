@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
+import { appPath } from "./basePath";
 import {
   Archive,
   Atom,
@@ -164,7 +165,7 @@ export function ProjectIconGlyph({ icon, fallback, size = 18 }: {
   if (Icon) return <Icon aria-hidden="true" size={size} strokeWidth={1.9} />;
   const advancedName = normalizeLucideIconName(icon);
   if (advancedName) {
-    const iconUrl = `/api/project-icons/${encodeURIComponent(advancedName)}`;
+    const iconUrl = appPath(`/api/project-icons/${encodeURIComponent(advancedName)}`);
     const mask = `url(${iconUrl})`;
     const style: CSSProperties = { maskImage: mask, WebkitMaskImage: mask };
     return <span aria-hidden="true" className="project-icon-external-glyph" style={style} />;

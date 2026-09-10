@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { Archive, ArchiveRestore, ArrowRightLeft, Copy, Download, MoreHorizontal, Pencil, Tags, Trash2 } from "lucide-react";
 import type { Project, User } from "../types";
+import { appPath } from "../basePath";
 
 type ProjectMenuItem = {
   id: string;
@@ -75,7 +76,7 @@ export function ProjectActionMenu({
     { id: "tags", label: t("tags.assign"), icon: <Tags aria-hidden size={15} />, section: "main", onSelect: onAssignTags },
     ...(canRename ? [{ id: "rename", label: t("projects.rename"), icon: <Pencil aria-hidden size={15} />, section: "main" as const, onSelect: onRename }] : []),
     ...(canDuplicate ? [{ id: "duplicate", label: t("projects.duplicate"), icon: <Copy aria-hidden size={15} />, section: "main" as const, onSelect: onDuplicate }] : []),
-    { id: "download", label: t("projects.download"), icon: <Download aria-hidden size={15} />, section: "main", href: `/api/projects/${project.id}/download` },
+    { id: "download", label: t("projects.download"), icon: <Download aria-hidden size={15} />, section: "main", href: appPath(`/api/projects/${project.id}/download`) },
     { id: "archive", label: showArchived ? t("projects.unarchive") : t("projects.archive"), icon: showArchived ? <ArchiveRestore aria-hidden size={15} /> : <Archive aria-hidden size={15} />, section: "main", disabled: archiveBusy, onSelect: onArchive },
     ...(canTransfer ? [{ id: "transfer", label: t("projects.transfer"), icon: <ArrowRightLeft aria-hidden size={15} />, section: "main" as const, onSelect: onTransfer }] : []),
     ...(canDelete ? [{ id: "delete", label: t("common.delete"), icon: <Trash2 aria-hidden size={15} />, section: "danger" as const, onSelect: onDelete }] : [])

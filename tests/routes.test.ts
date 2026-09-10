@@ -35,6 +35,19 @@ describe("client project routes", () => {
     expect(mentionIdFromReturn("?return=%2Fproject%2Fabc-123%3Fmention%3Dmention-1")).toBe("mention-1");
   });
 
+  it("keeps navigation inside a configured deployment base path", () => {
+    const basePath = "/tools/texlite";
+    expect(projectPath("abc-123", null, basePath)).toBe("/tools/texlite/project/abc-123");
+    expect(projectIdFromPath("/tools/texlite/project/abc-123", basePath)).toBe("abc-123");
+    expect(projectIdFromPath("/project/abc-123", basePath)).toBeNull();
+    expect(projectLoginPath("abc-123", "mention-1", basePath))
+      .toBe("/tools/texlite/?return=%2Ftools%2Ftexlite%2Fproject%2Fabc-123%3Fmention%3Dmention-1");
+    const search = "?return=%2Ftools%2Ftexlite%2Fproject%2Fabc-123%3Fmention%3Dmention-1";
+    expect(projectIdFromReturn(search, basePath)).toBe("abc-123");
+    expect(mentionIdFromReturn(search, basePath)).toBe("mention-1");
+    expect(projectIdFromReturn("?return=%2Fproject%2Fabc-123", basePath)).toBeNull();
+  });
+
   it("validates route history markers before using browser back", () => {
     expect(isProjectHistoryState({ texliteRoute: "project", projectId: "p", fromDashboard: true })).toBe(true);
     expect(isProjectHistoryState({ texliteRoute: "project", projectId: "p", fromDashboard: false })).toBe(true);

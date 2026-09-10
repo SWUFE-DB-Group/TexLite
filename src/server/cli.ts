@@ -13,6 +13,7 @@ import { assertEnvironment, hostRequirementsSatisfied, inspectHostEnvironment, i
 import { serve } from "./index.js";
 import { processStatus, restartManaged, startManaged, stopManaged, streamLogs, waitForOnline, type ProcessStatus } from "./pm2.js";
 import { defaultDataDirectory, resolveConfigPath } from "./runtimePaths.js";
+import { basePathHref } from "../shared/basePath.js";
 
 export interface CliOptions {
   command: string;
@@ -125,7 +126,7 @@ function writeInitialConfig(configPath: string, siteName: string, adminEmail: st
     siteName,
     adminEmail,
     sessionDays: CONFIG_DEFAULTS.sessionDays,
-    server: { host: CONFIG_DEFAULTS.host, port: CONFIG_DEFAULTS.port },
+    server: { host: CONFIG_DEFAULTS.host, port: CONFIG_DEFAULTS.port, basePath: CONFIG_DEFAULTS.basePath },
     storage: { dataDir: dataDirectory },
     uploads: { maxFileSizeMB: CONFIG_DEFAULTS.maxFileSizeMB },
     pdf: {
@@ -292,6 +293,7 @@ async function printConfig(options: CliOptions): Promise<void> {
     siteName: config.siteName,
     host: config.host,
     port: config.port,
+    basePath: config.basePath,
     dataDir: config.dataDir,
     databasePath: config.databasePath,
     projectsDir: config.projectsDir,
@@ -320,7 +322,7 @@ async function start(options: CliOptions, restart = false): Promise<void> {
   const managed = await waitForOnline(config);
   const status = managed.description?.pm2_env?.status ?? "unknown";
   output(`TexLite ${status}: ${config.siteName}`);
-  output(`Address: http://${config.host}:${config.port}`);
+  output(`Address: http://${config.host}:${config.port}${basePathHref(config.basePath)}`);
   output(`Configuration file: ${configPath}`);
   output(`PM2 process: ${managed.name}`);
 }

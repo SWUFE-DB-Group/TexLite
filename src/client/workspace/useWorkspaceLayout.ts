@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import type { WorkspaceLayout } from "./types";
+import { scopedStorageKey } from "../basePath";
 
 function storageKey(userId: string, projectId: string): string {
-  return `texlite.workspaceLayout:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`;
+  return scopedStorageKey(`texlite.workspaceLayout:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`);
 }
 
 function loadWorkspaceLayout(userId: string, projectId: string): WorkspaceLayout {

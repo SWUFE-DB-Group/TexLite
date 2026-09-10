@@ -25,6 +25,7 @@ describe("instance lock", () => {
       configPath,
       host: "127.0.0.1",
       port: 3000,
+      basePath: "/",
       databasePath: path.join(dataDir, "texlite.db"),
       projectsDir: path.join(dataDir, "projects"),
       clientDir: "/test/client",

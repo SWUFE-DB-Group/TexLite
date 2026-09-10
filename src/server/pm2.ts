@@ -4,6 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import type { ProcessDescription, StartOptions } from "pm2";
 import type { Config } from "./config.js";
+import { basePathHref, withBasePath } from "../shared/basePath.js";
 import { managedLogPaths } from "./logRotation.js";
 import { defaultConfigPath, packageRootDirectory, packageServerEntry } from "./runtimePaths.js";
 
@@ -236,7 +237,7 @@ export async function processStatus(config: Config): Promise<ProcessStatus> {
     uptimeSeconds: startedAt === null ? null : Math.max(0, Math.floor((Date.now() - startedAt) / 1000)),
     restarts: env?.restart_time ?? 0,
     version: packageVersion(),
-    address: `http://${config.host}:${config.port}`,
+    address: `http://${config.host}:${config.port}${basePathHref(config.basePath)}`,
     dataDir: config.dataDir,
     cwd: env?.pm_cwd ?? packageRootDirectory(),
     outputLog: env?.pm_out_log_path ?? null,
@@ -292,7 +293,7 @@ function probeHost(host: string): string {
 function healthUrl(config: Config): string {
   const host = probeHost(config.host);
   const formattedHost = host.includes(":") ? `[${host}]` : host;
-  return `http://${formattedHost}:${config.port}/api/health`;
+  return `http://${formattedHost}:${config.port}${withBasePath(config.basePath, "/api/health")}`;
 }
 
 function probeService(config: Config, timeoutMs = 1_500): Promise<HealthProbe> {

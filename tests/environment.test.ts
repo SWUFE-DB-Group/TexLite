@@ -8,7 +8,7 @@ function testConfig(): Config {
   const root = path.join(os.tmpdir(), "texlite-environment-test");
   return {
     configPath: path.join(root, "config.json"), siteName: "Test", adminEmail: "",
-    host: "127.0.0.1", port: 3000, dataDir: root, databasePath: path.join(root, "db.sqlite"),
+    host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath: path.join(root, "db.sqlite"),
     projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
     compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: process.execPath, defaultEngine: "xelatex",
     allowedEngines: [], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024,

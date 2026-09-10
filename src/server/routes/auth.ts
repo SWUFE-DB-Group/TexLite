@@ -10,6 +10,7 @@ import {
   verifyPassword
 } from "../security.js";
 import { apiError, ValidationError } from "../http.js";
+import { basePathHref } from "../../shared/basePath.js";
 
 interface AuthRouteContext {
   config: Config;
@@ -54,8 +55,9 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthRouteConte
     db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
       .run(session.digest, user.id, expires.toISOString(), createdAt);
     const isSecure = request.protocol === "https" || request.headers["x-forwarded-proto"] === "https";
+    const cookiePath = basePathHref(config.basePath);
     reply.setCookie("texlite_session", session.token, {
-      path: "/",
+      path: cookiePath,
       httpOnly: true,
       sameSite: "strict",
       secure: isSecure,
@@ -67,7 +69,8 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthRouteConte
   app.post("/api/auth/logout", async (request, reply) => {
     const token = request.cookies.texlite_session;
     if (token) db.prepare("DELETE FROM sessions WHERE id = ?").run(digestToken(token));
-    reply.clearCookie("texlite_session", { path: "/" });
+    const cookiePath = basePathHref(config.basePath);
+    reply.clearCookie("texlite_session", { path: cookiePath });
     return { ok: true };
   });
 

@@ -67,6 +67,8 @@ texlite status
 
 访问 <http://127.0.0.1:3000>。`texlite init` 会创建配置并建立第一个管理员；TexLite
 不开放公众注册。
+如需把 TexLite 挂载到现有域名的 `/texlite` 等子路径，请设置
+`server.basePath`，并参考[反向代理说明（英文）](OPERATIONS.md#reverse-proxy-subpath)。
 
 升级与日常管理：
 

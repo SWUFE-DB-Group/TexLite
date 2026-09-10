@@ -43,7 +43,7 @@ describe("database migrations", () => {
 
     const config: Config = {
       configPath: path.join(root, "config.json"), siteName: "Migration", adminEmail: "",
-      host: "127.0.0.1", port: 3000, dataDir: root, databasePath,
+      host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath,
       projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
       compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,

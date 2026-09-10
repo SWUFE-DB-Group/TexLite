@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import staticPlugin from "@fastify/static";
@@ -45,12 +45,38 @@ import { registerUserManagementRoutes } from "./routes/users.js";
 import { registerWordCountRoutes } from "./routes/wordCount.js";
 import { HarperService } from "./harper.js";
 import { TexcountService } from "./texcount.js";
+import { basePathHref, basePathPrefix, withoutBasePath } from "../shared/basePath.js";
 
 // Retained public helper for callers and tests; implementation lives with the file routes.
 export { escapeGlobPattern } from "./routes/projectShared.js";
 
 const SESSION_CLEANUP_INTERVAL_MS = 15 * 60_000;
 const now = (): string => new Date().toISOString();
+
+/** Inject the runtime mount point into a single, path-independent Vite build. */
+export function renderClientIndex(source: string, basePath: string): string {
+  const href = escapeHtmlAttribute(basePathHref(basePath));
+  const value = escapeHtmlAttribute(basePath);
+  const baseElement = `<base href="${href}" />`;
+  const metaElement = `<meta name="texlite-base-path" content="${value}" />`;
+  let hadBase = false;
+  let rendered = source.replace(/<base\s+href=(?:"[^"]*"|'[^']*')\s*\/?\s*>/i, () => {
+    hadBase = true;
+    return baseElement;
+  });
+  if (!hadBase) rendered = rendered.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}\n    ${baseElement}`);
+  let hadMeta = false;
+  rendered = rendered.replace(/<meta\s+name=(?:"texlite-base-path"|'texlite-base-path')\s+content=(?:"[^"]*"|'[^']*')\s*\/?\s*>/i, () => {
+    hadMeta = true;
+    return metaElement;
+  });
+  if (!hadMeta) rendered = rendered.replace(baseElement, `${baseElement}\n    ${metaElement}`);
+  return rendered;
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
 
 
 export async function buildApp(
@@ -170,7 +196,10 @@ export async function buildApp(
   app.addHook("onResponse", async (request) => {
     const startedAt = requestStarts.get(request);
     if (startedAt === undefined) return;
-    const route = request.routeOptions.url;
+    const registeredRoute = request.routeOptions.url;
+    const route = registeredRoute
+      ? withoutBasePath(config.basePath, registeredRoute) ?? registeredRoute
+      : null;
     if (!route) return;
     const metric = ({
       "/api/projects/:id": "workspace.project",
@@ -202,97 +231,111 @@ export async function buildApp(
     }
   });
 
-  registerSystemRoutes(app, {
-    config,
-    db,
-    queue,
-    collaboration,
-    latexCompletions,
-    projectOutlines,
-    metrics,
-    eventLoopDelay
-  });
-  registerCollaborationRoutes(app, { db, collaboration, metrics });
-  registerAuthRoutes(app, { config, db, loginLimiter });
-  registerCitationRoutes(app, { db });
-  registerUserManagementRoutes(app, {
-    config,
-    db,
-    collaboration,
-    projectMutations,
-    latexCompletions,
-    projectOutlines
-  });
-  registerCommentRoutes(app, { config, db, collaboration, projectMutations });
-  registerProjectMemberRoutes(app, { db, collaboration, projectMutations });
-  registerProjectFileRoutes(app, {
-    config,
-    db,
-    collaboration,
-    projectMutations,
-    latexCompletions,
-    projectOutlines,
-    metrics,
-    recordHistory
-  });
-  registerProjectReferenceRoutes(app, { config, db, projectMutations });
-  registerProjectHistoryRoutes(app, { config, db, history, editHistory, projectMutations, recordHistory,
-    clearPendingEdits: (id) => { editRetry.clear(id); failedEdits.delete(id); signalHistory(id); },
-    scheduleHistoryRetention: (id) => historyRetention.schedule(id) });
-  registerProjectGitRoutes(app, { config, db, collaboration, projectMutations, projectGit, recordHistory });
-  registerProjectCatalogRoutes(app, {
-    config,
-    db,
-    collaboration,
-    projectMutations,
-    latexCompletions,
-    projectOutlines,
-    harper,
-    recordHistory
-  });
-
-  registerWordCountRoutes(app, { config, db, projectMutations, texcount });
-
-  registerCompileRoutes(app, { config, db, collaboration, projectMutations, compileCoordinator, metrics, pruneCompileRuns });
-
-  // The factory owns shared services and lifecycle hooks; route modules own endpoint behavior.
-
-  app.addHook("onRequest", async (request) => {
-    if (request.url.startsWith("/api/") && request.url !== "/api/auth/login" && request.url !== "/api/health" && request.url !== "/api/config") {
-      const token = request.cookies.texlite_session;
-      if (token && !currentUser(request, db)) {
-        db.prepare("DELETE FROM sessions WHERE id = ?").run(digestToken(token));
-      }
-    }
-  });
-
   app.addHook("onClose", async () => collaboration.destroy());
 
-  if (fs.existsSync(config.clientDir)) {
-    await app.register(staticPlugin, {
-      root: config.clientDir,
-      wildcard: false,
-      // Vite fingerprints everything under assets/. These large JS/WASM files
-      // are safe to cache indefinitely; a new build produces a new URL. Keep
-      // index.html fresh so it always points at the current fingerprints.
-      cacheControl: false,
-      setHeaders(reply, filePath) {
-        const relativePath = path.relative(config.clientDir, filePath).split(path.sep).join("/");
-        if (relativePath === "index.html") {
-          reply.header("Cache-Control", "no-store");
-        } else if (relativePath.startsWith("assets/")) {
-          reply.header("Cache-Control", "public, max-age=31536000, immutable");
-        } else {
-          reply.header("Cache-Control", "public, max-age=3600");
+  const indexPath = path.join(config.clientDir, "index.html");
+  const renderedIndex = fs.existsSync(indexPath)
+    ? renderClientIndex(fs.readFileSync(indexPath, "utf8"), config.basePath)
+    : null;
+  const routePrefix = basePathPrefix(config.basePath);
+  await app.register(async (routes) => {
+    routes.addHook("onRequest", async (request) => {
+      const requestPath = withoutBasePath(config.basePath, request.url) ?? request.url;
+      if (requestPath.startsWith("/api/")
+        && requestPath !== "/api/auth/login"
+        && requestPath !== "/api/health"
+        && requestPath !== "/api/config") {
+        const token = request.cookies.texlite_session;
+        if (token && !currentUser(request, db)) {
+          db.prepare("DELETE FROM sessions WHERE id = ?").run(digestToken(token));
         }
       }
     });
-    app.get("/*", async (request, reply) => {
-      if (request.url.startsWith("/api/")) return apiError(reply, 404, "API_NOT_FOUND");
-      reply.header("Cache-Control", "no-store");
-      return reply.sendFile("index.html");
+
+    registerSystemRoutes(routes, {
+      config,
+      db,
+      queue,
+      collaboration,
+      latexCompletions,
+      projectOutlines,
+      metrics,
+      eventLoopDelay
     });
-  }
+    registerCollaborationRoutes(routes, { db, collaboration, metrics });
+    registerAuthRoutes(routes, { config, db, loginLimiter });
+    registerCitationRoutes(routes, { db });
+    registerUserManagementRoutes(routes, {
+      config,
+      db,
+      collaboration,
+      projectMutations,
+      latexCompletions,
+      projectOutlines
+    });
+    registerCommentRoutes(routes, { config, db, collaboration, projectMutations });
+    registerProjectMemberRoutes(routes, { db, collaboration, projectMutations });
+    registerProjectFileRoutes(routes, {
+      config,
+      db,
+      collaboration,
+      projectMutations,
+      latexCompletions,
+      projectOutlines,
+      metrics,
+      recordHistory
+    });
+    registerProjectReferenceRoutes(routes, { config, db, projectMutations });
+    registerProjectHistoryRoutes(routes, { config, db, history, editHistory, projectMutations, recordHistory,
+      clearPendingEdits: (id) => { editRetry.clear(id); failedEdits.delete(id); signalHistory(id); },
+      scheduleHistoryRetention: (id) => historyRetention.schedule(id) });
+    registerProjectGitRoutes(routes, { config, db, collaboration, projectMutations, projectGit, recordHistory });
+    registerProjectCatalogRoutes(routes, {
+      config,
+      db,
+      collaboration,
+      projectMutations,
+      latexCompletions,
+      projectOutlines,
+      harper,
+      recordHistory
+    });
+    registerWordCountRoutes(routes, { config, db, projectMutations, texcount });
+    registerCompileRoutes(routes, { config, db, collaboration, projectMutations, compileCoordinator, metrics, pruneCompileRuns });
+
+    // The factory owns shared services and lifecycle hooks; route modules own endpoint behavior.
+    if (renderedIndex !== null) {
+      await routes.register(staticPlugin, {
+        root: config.clientDir,
+        wildcard: false,
+        index: false,
+        globIgnore: ["index.html"],
+        // Vite fingerprints everything under assets/. These large JS/WASM
+        // files are safe to cache indefinitely; a new build produces a new
+        // URL. The rendered SPA shell below always remains fresh.
+        cacheControl: false,
+        setHeaders(reply, filePath) {
+          const relativePath = path.relative(config.clientDir, filePath).split(path.sep).join("/");
+          if (relativePath.startsWith("assets/")) {
+            reply.header("Cache-Control", "public, max-age=31536000, immutable");
+          } else {
+            reply.header("Cache-Control", "public, max-age=3600");
+          }
+        }
+      });
+      const sendIndex = async (_request: FastifyRequest, reply: FastifyReply) => {
+        reply.header("Cache-Control", "no-store");
+        return reply.type("text/html; charset=utf-8").send(renderedIndex);
+      };
+      routes.get("/", sendIndex);
+      routes.get("/index.html", sendIndex);
+      routes.get("/*", async (request, reply) => {
+        const requestPath = withoutBasePath(config.basePath, request.url) ?? request.url;
+        if (requestPath.startsWith("/api/")) return apiError(reply, 404, "API_NOT_FOUND");
+        return sendIndex(request, reply);
+      });
+    }
+  }, { prefix: routePrefix });
 
   const cleanupExpiredSessions = (): void => {
     try {

@@ -3,6 +3,7 @@ import { AlertTriangle, Download, Eraser, FileText, LoaderCircle, PackageOpen, S
 import type { CompileDiagnostic } from "../compileDiagnostics";
 import type { FileEntry } from "../types";
 import type { CompileArtifact } from "./types";
+import { appPath } from "../basePath";
 
 export function CompileDiagnosticOutput({ diagnostics, files, empty, tone, onJump }: {
   diagnostics: CompileDiagnostic[];
@@ -40,7 +41,7 @@ export function CompileArtifacts({ projectId, mainFile, artifacts, preview, load
   onView: (artifact: CompileArtifact) => void;
 }) {
   const { t } = useTranslation();
-  const downloadUrl = (filePath: string) => `/api/projects/${projectId}/compile/artifacts?mainFile=${encodeURIComponent(mainFile)}&path=${encodeURIComponent(filePath)}&download=1`;
+  const downloadUrl = (filePath: string) => appPath(`/api/projects/${projectId}/compile/artifacts?mainFile=${encodeURIComponent(mainFile)}&path=${encodeURIComponent(filePath)}&download=1`);
   if (!artifacts.length) return <div className="compile-empty"><PackageOpen size={26} /><span>{t("editor.noArtifacts")}</span></div>;
   return <div className="artifact-browser">
     <div className="artifact-list">

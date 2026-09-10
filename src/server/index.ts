@@ -7,6 +7,7 @@ import { buildApp } from "./app.js";
 import { assertEnvironment } from "./environment.js";
 import { acquireDataDirectoryLock } from "./instanceLock.js";
 import { LogRotation } from "./logRotation.js";
+import { basePathHref } from "../shared/basePath.js";
 
 export interface RunningServer {
   close: () => Promise<void>;
@@ -30,10 +31,11 @@ export async function startServer(configPath?: string): Promise<RunningServer> {
     app = await buildApp(config, db);
     await app.listen({ host: config.host, port: config.port });
     app.log.info(`Environment ready: ${environment.map((item) => `${item.name} ${item.version}`).join(", ")}`);
-    app.log.info(`${config.siteName} running at http://${config.host}:${config.port}`);
+    const address = `http://${config.host}:${config.port}${basePathHref(config.basePath)}`;
+    app.log.info(`${config.siteName} running at ${address}`);
     if (typeof process.send === "function") process.send("ready");
     return {
-      address: `http://${config.host}:${config.port}`,
+      address,
       close: async () => {
         try {
           if (app) await app.close();

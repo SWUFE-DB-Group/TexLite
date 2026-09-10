@@ -1,6 +1,7 @@
 export interface SiteConfig {
   siteName: string;
   adminEmail: string;
+  basePath: string;
   /** Server-enforced password policy, exposed for immediate form validation. */
   minPasswordLength: number;
   /** Server-enforced cap for one citation-library BibTeX entry. */

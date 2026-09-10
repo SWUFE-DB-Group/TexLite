@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError, localizedResponseError, normalizeNetworkError, responseErrorCode } from "../api";
 import { errorMessage } from "../errors";
 import type { FileEntry, Project, SiteConfig } from "../types";
+import { appPath } from "../basePath";
 
 export type ResourcePreviewKind = "image" | "pdf" | "text" | "unsupported" | "large";
 export interface ResourcePreview {
@@ -61,7 +62,7 @@ function resourcePreviewKind(filePath: string): ResourcePreviewKind {
 }
 
 function rawFileUrl(projectId: string, filePath: string): string {
-  return `/api/projects/${projectId}/file/raw?path=${encodeURIComponent(filePath)}`;
+  return appPath(`/api/projects/${projectId}/file/raw?path=${encodeURIComponent(filePath)}`);
 }
 
 interface UseProjectFilesOptions {

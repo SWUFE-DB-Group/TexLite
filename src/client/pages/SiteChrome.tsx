@@ -1,9 +1,10 @@
 import { version as texliteVersion } from "../../../package.json";
 import { useTranslation } from "react-i18next";
+import { appPath } from "../basePath";
 
 export function SiteLogo({ siteName, compact = false, auth = false }: { siteName: string; compact?: boolean; auth?: boolean }) {
   return <span className={`site-logo${compact ? " compact" : ""}${auth ? " auth-logo" : ""}`}>
-    <img src="/logo.svg" alt={siteName} />
+    <img src={appPath("/logo.svg")} alt={siteName} />
   </span>;
 }
 export function SiteFooter() {

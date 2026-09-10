@@ -1,3 +1,5 @@
+import { scopedStorageKey } from "./basePath";
+
 export type EditorFont = "jetbrains" | "source-code" | "ibm-plex" | "fira-code" | "iosevka";
 
 export interface EditorPreferences {
@@ -46,7 +48,7 @@ export const defaultEditorPreferences: EditorPreferences = {
 const storageKeyPrefix = "texlite-editor-preferences";
 
 function storageKey(userId: string, projectId: string): string {
-  return `${storageKeyPrefix}:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`;
+  return scopedStorageKey(`${storageKeyPrefix}:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`);
 }
 
 export function editorFontStack(font: EditorFont): string {

@@ -5,6 +5,7 @@ import { publishedCompileArtifacts } from "./compiler.js";
 import { outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, texFileStem } from "./files.js";
 import { isMainDocumentCandidateSync } from "./latexRoot.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
+import { withBasePath } from "../shared/basePath.js";
 
 export type PdfLoadingMode = "full" | "range";
 
@@ -100,8 +101,8 @@ export function compileMainFile(
   return mainFile;
 }
 
-export function compilePdfUrl(projectId: string, mainFile: string, version: string): string {
-  return `/api/projects/${projectId}/pdf?mainFile=${encodeURIComponent(mainFile)}&run=${encodeURIComponent(version)}`;
+export function compilePdfUrl(config: Pick<Config, "basePath">, projectId: string, mainFile: string, version: string): string {
+  return withBasePath(config.basePath, `/api/projects/${projectId}/pdf?mainFile=${encodeURIComponent(mainFile)}&run=${encodeURIComponent(version)}`);
 }
 
 export function listCompileArtifacts(directory: string): CompileArtifact[] {

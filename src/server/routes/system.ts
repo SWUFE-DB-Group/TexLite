@@ -30,6 +30,7 @@ export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteC
   app.get("/api/config", async () => ({
     siteName: config.siteName,
     adminEmail: config.adminEmail,
+    basePath: config.basePath,
     minPasswordLength: MIN_PASSWORD_LENGTH,
     maxCitationBibtexBytes: MAX_CITATION_BIBTEX_BYTES,
     maxUploadSizeMB: Math.floor(config.maxUploadBytes / 1024 / 1024),

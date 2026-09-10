@@ -78,6 +78,8 @@ texlite status
 
 Open <http://127.0.0.1:3000>. `texlite init` creates the configuration and the
 first administrator; public registration is deliberately unavailable.
+To mount TexLite below an existing domain path such as `/texlite`, configure
+`server.basePath` and follow the [reverse-proxy guide](OPERATIONS.md#reverse-proxy-subpath).
 
 For upgrades and routine management:
 

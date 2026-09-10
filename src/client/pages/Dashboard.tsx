@@ -12,6 +12,7 @@ import { ProjectListRow } from "./ProjectListRow";
 import { ProjectActionMenu } from "./ProjectActionMenu";
 import { ProjectIconAvatar } from "../projectIcons";
 import { LazyModal, LazyPage } from "../LazyLoadBoundary";
+import { appPath, scopedStorageKey } from "../basePath";
 
 const SystemMetricsDialog = lazy(() => import("../SystemMetricsDialog").then((module) => ({ default: module.SystemMetricsDialog })));
 const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then((module) => ({ default: module.CitationLibraryDialog })));
@@ -121,8 +122,8 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [transferUserId, setTransferUserId] = useState("");
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferError, setTransferError] = useState("");
-  const [view, setView] = useState<"grid" | "list">(() => localStorage.getItem("texlite-project-view") === "list" ? "list" : "grid");
-  const [sort, setSort] = useState<"updated" | "created">(() => localStorage.getItem("texlite-project-sort") === "created" ? "created" : "updated");
+  const [view, setView] = useState<"grid" | "list">(() => localStorage.getItem(scopedStorageKey("texlite-project-view")) === "list" ? "list" : "grid");
+  const [sort, setSort] = useState<"updated" | "created">(() => localStorage.getItem(scopedStorageKey("texlite-project-sort")) === "created" ? "created" : "updated");
   const [showArchived, setShowArchived] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState("");
   const [projectMenuId, setProjectMenuId] = useState<string | null>(null);
@@ -180,8 +181,8 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [tagFiltersOpen]);
-  const changeView = (next: "grid" | "list") => { setProjectMenuId(null); setView(next); localStorage.setItem("texlite-project-view", next); };
-  const changeSort = (next: "updated" | "created") => { setSort(next); setPage(1); localStorage.setItem("texlite-project-sort", next); };
+  const changeView = (next: "grid" | "list") => { setProjectMenuId(null); setView(next); localStorage.setItem(scopedStorageKey("texlite-project-view"), next); };
+  const changeSort = (next: "updated" | "created") => { setSort(next); setPage(1); localStorage.setItem(scopedStorageKey("texlite-project-sort"), next); };
   const changeScope = (archived: boolean) => { setShowArchived(archived); setPage(1); };
   const changeTagFilter = (next: string) => { setTagFilter(next); setPage(1); };
   const createProject = async () => {
@@ -391,7 +392,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
 
   return <div className="page">
     <header className="topbar">
-      <a className="brand-link" href="/" aria-label={site.siteName}><span className="site-title">{site.siteName}</span><SiteLogo siteName={site.siteName} /></a>
+      <a className="brand-link" href={appPath("/")} aria-label={site.siteName}><span className="site-title">{site.siteName}</span><SiteLogo siteName={site.siteName} /></a>
       <div className="top-actions">
         {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen((current) => !current); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
         <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
