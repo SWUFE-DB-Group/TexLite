@@ -1,10 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { AlignLeft, BookOpen, ChevronDown, ChevronRight, FilePlus2, FileSearch, FileText, Folder, FolderOpen, FolderPlus, Hash, ListTree, LoaderCircle, Move, PanelLeftClose, Search, Trash2, Upload } from "lucide-react";
-import { useState, useSyncExternalStore, type ChangeEvent, type RefObject } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent, type RefObject } from "react";
 import { Panel, type ImperativePanelHandle } from "react-resizable-panels";
 import type { FileEntry, Project } from "../types";
 import type { WordCountMode, ProjectOutlineItem } from "./types";
 import type { SourceCursorStore } from "./sourceCursorStore";
+import { buildOutlineTree, visibleOutlineTreeItems } from "./outlineTree";
 
 export interface WorkspaceFilePanelProps {
   project: Project;
@@ -117,7 +118,40 @@ function WorkspaceOutlinePanel({
     sourceCursorStore.getOutlineLine,
     sourceCursorStore.getOutlineLine
   );
-  return <section className="outline-panel"><div className="panel-title"><span className="outline-heading"><ListTree size={14} />{t("common.outline")}</span><span className="word-count-actions" role="group" aria-label={t("editor.wordCountTitle")}><button type="button" title={t("editor.wordCountFullHint")} onClick={() => onWordCount("full")} disabled={wordCountBusy || !activeMainFile}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountFull")}</button><button type="button" title={t("editor.wordCountSelectionHint")} onClick={() => onWordCount("selection")} disabled={wordCountBusy || !hasSelection}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountSelection")}</button></span></div><div className="outline">{outline.map((item, i) => <button className={`outline-item${activeFile === item.path && sourceCursorLine === item.line ? " current" : ""}`} key={`${item.path}-${item.line}-${i}`} title={`${item.path}:${item.line}`} onClick={() => { jumpToSource(item.path, item.line, 1); void syncSourceToPdf(item.path, item.line, 1); }}><span className="outline-guides" aria-hidden style={{ width: `${item.level * 12}px` }} /><small>{item.path === activeFile ? item.line : item.path.split("/").at(-1)}</small><span className="outline-title">{item.title}</span></button>)}{outline.length === 0 && <p className="muted padded">{t("editor.noOutline")}</p>}</div></section>;
+  const tree = useMemo(() => buildOutlineTree(outline), [outline]);
+  const collapsibleKeys = useMemo(() => tree.filter((entry) => entry.hasChildren).map((entry) => entry.key), [tree]);
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const validKeys = new Set(collapsibleKeys);
+    setCollapsedKeys((current) => {
+      const next = new Set([...current].filter((key) => validKeys.has(key)));
+      return next.size === current.size ? current : next;
+    });
+  }, [collapsibleKeys]);
+
+  const allCollapsed = collapsibleKeys.length > 0 && collapsibleKeys.every((key) => collapsedKeys.has(key));
+  const visibleItems = useMemo(() => visibleOutlineTreeItems(tree, collapsedKeys), [tree, collapsedKeys]);
+  const toggleAll = () => setCollapsedKeys((current) => {
+    if (allCollapsed) return new Set([...current].filter((key) => !collapsibleKeys.includes(key)));
+    return new Set([...current, ...collapsibleKeys]);
+  });
+  const toggleItem = (key: string) => setCollapsedKeys((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+
+  return <section className="outline-panel"><div className="panel-title"><button className="outline-heading" type="button" aria-expanded={!allCollapsed} title={t(allCollapsed ? "editor.expandOutline" : "editor.collapseOutline")} onClick={toggleAll} disabled={collapsibleKeys.length === 0}><ListTree size={14} />{t("common.outline")}</button><span className="word-count-actions" role="group" aria-label={t("editor.wordCountTitle")}><button type="button" title={t("editor.wordCountFullHint")} onClick={() => onWordCount("full")} disabled={wordCountBusy || !activeMainFile}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountFull")}</button><button type="button" title={t("editor.wordCountSelectionHint")} onClick={() => onWordCount("selection")} disabled={wordCountBusy || !hasSelection}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountSelection")}</button></span></div><div className="outline">{visibleItems.map((entry) => {
+    const { item } = entry;
+    const collapsed = collapsedKeys.has(entry.key);
+    const current = activeFile === item.path && sourceCursorLine === item.line;
+    return <div className={`outline-row${current ? " current" : ""}`} key={entry.key}>
+      <span className="outline-guides" aria-hidden style={{ width: `${item.level * 12}px` }} />
+      {entry.hasChildren ? <button className="outline-toggle" type="button" aria-label={t(collapsed ? "editor.expandOutlineItem" : "editor.collapseOutlineItem", { title: item.title })} aria-expanded={!collapsed} onClick={() => toggleItem(entry.key)}>{collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}</button> : <span className="outline-toggle-spacer" aria-hidden />}
+      <button className="outline-item" type="button" title={`${item.path}:${item.line}`} onClick={() => { jumpToSource(item.path, item.line, 1); void syncSourceToPdf(item.path, item.line, 1); }}><small>{item.path === activeFile ? item.line : item.path.split("/").at(-1)}</small><span className="outline-title">{item.title}</span></button>
+    </div>;
+  })}{outline.length === 0 && <p className="muted padded">{t("editor.noOutline")}</p>}</div></section>;
 }
 
 function formatFileSize(bytes: number): string {

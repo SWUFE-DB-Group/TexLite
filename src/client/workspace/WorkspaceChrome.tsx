@@ -14,8 +14,8 @@ export function CollaborationPresence({ sessions, status }: { sessions: ActiveSe
     if (sessions.length <= 5) setExpanded(false);
   }, [sessions.length]);
   if (sessions.length <= 1) return null;
-  return <div className={`collaboration-presence collaboration-${status}`} title={t(`editor.collaboration.${status}`)}>
-    <span className="collaboration-status-dot" aria-label={t(`editor.collaboration.${status}`)} />
+  return <div className={`collaboration-presence collaboration-${status}`}>
+    <span className="collaboration-status-dot" data-tooltip={t(`editor.collaboration.${status}`)} aria-label={t(`editor.collaboration.${status}`)} />
     <div className="collaboration-avatars" aria-label={t("editor.collaboration.activeSessions", { count: sessions.length })}>
       {visibleSessions.map((session) => {
         const activity = session.editing ? t("editor.collaboration.editing") : t("editor.collaboration.viewing");
@@ -26,7 +26,6 @@ export function CollaborationPresence({ sessions, status }: { sessions: ActiveSe
         return <span
           className={`collaboration-avatar${session.editing ? " editing" : ""}${session.local ? " local" : ""}`}
           style={{ "--session-color": session.color } as CSSProperties}
-          title={title}
           aria-label={title}
           tabIndex={0}
           key={session.clientId}
