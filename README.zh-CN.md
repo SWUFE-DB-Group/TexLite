@@ -11,7 +11,8 @@
 
 **网站：** [TexLite GitHub Pages](https://swufe-db-group.github.io/TexLite/)
 
-**反馈：** 如果你正在使用 TexLite，欢迎填写这份[简短的使用问卷](https://forms.gle/Zj2rekCGmM9vsX6L7)，帮助我们改进后续版本。
+> [!TIP]
+> **反馈：** 如果你正在使用 TexLite，欢迎填写简短的使用问卷：[Google Form](https://docs.google.com/forms/d/e/1FAIpQLSfc40WWMJpXsYm0FsSadZ-FBu6gdcPZVnoMulcQdkJxIoJtCA/viewform?usp=dialog) 或 [飞书问卷](https://swufe-dbg.feishu.cn/share/base/form/shrcnqKcPJwCCXXF6Vu52AfSy1d)，帮助我们改进后续版本。
 
 ![TexLite 工作区](preview-1.png)
 ![TexLite 项目视图](preview-2.png)
