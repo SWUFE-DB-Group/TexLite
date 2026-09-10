@@ -9,7 +9,7 @@ import {
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   bracketMatching, defaultHighlightStyle, foldGutter, foldKeymap,
-  foldService, indentOnInput, syntaxHighlighting
+  indentOnInput, syntaxHighlighting
 } from "@codemirror/language";
 import {
   autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap,
@@ -27,6 +27,8 @@ import { bibtexCompletionSource, bibtexEditorExtensions, bibtexLanguage, latexLa
 import { supportsLatexMathHover } from "./latexMath";
 import { latexMathHover } from "./mathHover";
 import { latexAutoPair, latexAutoPairAtCursor } from "./latexAutoPairs";
+import { latexFold } from "./latexFolding";
+import { latexArgumentCompletionContext, latexCitationCompletionContext, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "./latexCompletionContexts";
 import { findLatexReferences, type LatexReference } from "../shared/latexReferences";
 import type { SpellCheckIssue } from "./spellCheck";
 export type { SpellCheckIssue } from "./spellCheck";
@@ -312,7 +314,7 @@ function localCompletionIndex(content: string): LatexCompletionIndex {
     for (const packageName of match[1].split(",")) add(packages, packageName.trim(), "Package", "text");
   }
   for (const match of source.matchAll(/\\(?:input|include|subfile)\s*(?:\{([^}]+)\}|\s+([^\s%]+))/g)) add(files, (match[1] ?? match[2] ?? "").trim(), "Project file", "text");
-  for (const match of source.matchAll(/\\(?:cite|citep|citet|parencite|textcite|autocite|footcite)(?:\w*)?\s*(?:\[[^]]*\])?\s*\{([^}]+)\}/g)) {
+  for (const match of source.matchAll(/\\(?:cite|citep|citet|parencite|textcite|autocite|footcite)(?:\w*)?(?:\s*\[[^]]*\])*\s*\{([^}]+)\}/g)) {
     for (const key of match[1].split(",")) add(citations, key.trim(), "Citation key", "constant");
   }
   return { commands, environments, labels, citations, packages, files };
@@ -374,20 +376,6 @@ function withoutSnippets(items: LatexCompletionItem[]): LatexCompletionItem[] {
   return items.map(({ apply: _apply, ...item }) => item);
 }
 
-function contextCompletion(context: CompletionContext, pattern: RegExp): { from: number; query: string } | null {
-  const before = context.state.sliceDoc(0, context.pos);
-  const match = before.match(pattern);
-  if (!match || match.index === undefined) return null;
-  return { from: context.pos - match[1].length, query: match[1] };
-}
-
-function environmentCompletionContext(context: CompletionContext): { from: number; query: string; command: "begin" | "end" } | null {
-  const before = context.state.sliceDoc(0, context.pos);
-  const match = before.match(/\\(begin|end)\{([^{}]*)$/);
-  if (!match || match.index === undefined) return null;
-  return { from: context.pos - match[2].length, query: match[2], command: match[1] as "begin" | "end" };
-}
-
 function isLatexComment(context: CompletionContext): boolean {
   const line = context.state.doc.lineAt(context.pos);
   let backslashes = 0;
@@ -407,15 +395,11 @@ function environmentCompletion(entry: Completion): Completion {
   return {
     ...entry,
     apply(view, completion, from, to) {
-      const line = view.state.doc.lineAt(from);
-      const indent = line.text.match(/^\s*/)?.[0] ?? "";
       const name = completion.label;
-      const insert = name + "}\n" + indent + "\t\n" + indent + "\\end{" + name + "}";
-      const cursor = from + name.length + 1 + 1 + indent.length + 1;
-      const closingBrace = view.state.sliceDoc(to, to + 1) === "}" ? 1 : 0;
+      const plan = latexEnvironmentCompletionPlan(view.state.doc, from, to, name);
       view.dispatch({
-        changes: { from, to: to + closingBrace, insert },
-        selection: { anchor: cursor },
+        changes: { from, to: plan.to, insert: plan.insert },
+        selection: { anchor: plan.cursor },
         annotations: [pickedCompletion.of(completion), Transaction.userEvent.of("input.complete")]
       });
     }
@@ -438,11 +422,7 @@ function latexAutoPairInput(view: EditorView, from: number, to: number, text: st
 function latexCompletions(context: CompletionContext, t: TFunction, index: LatexCompletionIndex | null) {
   if (isLatexComment(context)) return null;
   const local = localCompletionIndexForDocument(context);
-  const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);
-  if (command || context.explicit) {
-    return { from: command?.from ?? context.pos, options: withoutCompletionDetails(mergeCompletionItems(t, local.commands, index?.commands ?? [], completionOptions())), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
-  }
-  const environment = environmentCompletionContext(context);
+  const environment = latexEnvironmentCompletionContext(context);
   if (environment) {
     const options = mergeCompletionItems(t, withoutSnippets(local.environments), withoutSnippets(index?.environments ?? []));
     return {
@@ -451,46 +431,23 @@ function latexCompletions(context: CompletionContext, t: TFunction, index: Latex
       validFor: /^[A-Za-z0-9*:_-]*$/
     };
   }
-  const label = contextCompletion(context, /\\(?:ref|pageref|autoref|nameref|cref|Cref|eqref|vref)\s*(?:\[[^]]*\])?\{([^{}]*)$/)
-    ?? contextCompletion(context, /\\hyperref\[([^\[\]]*)$/);
+  const label = latexArgumentCompletionContext(context, /\\(?:ref|pageref|autoref|nameref|cref|Cref|eqref|vref)(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/)
+    ?? latexArgumentCompletionContext(context, /\\hyperref\[([^\[\]]*)$/);
   if (label) return { from: label.from, options: mergeCompletionItems(t, local.labels, index?.labels ?? []), validFor: /^[^{}]*$/ };
-  const citation = contextCompletion(context, /\\(?:cite|citep|citet|parencite|textcite|autocite|footcite)(?:\w*)?(?:\[[^]]*\])?\{([^{}]*)$/);
-  if (citation) return { from: citation.from, options: mergeCompletionItems(t, local.citations, index?.citations ?? []), validFor: /^[^{}]*$/ };
-  const file = contextCompletion(context, /\\(?:input|include|subfile|includegraphics|bibliography|addbibresource)\s*(?:\[[^]]*\])?\{([^{}]*)$/);
+  const citation = latexCitationCompletionContext(context);
+  if (citation) return { from: citation.from, options: mergeCompletionItems(t, local.citations, index?.citations ?? []), validFor: /^[^,{}\s]*$/ };
+  const file = latexArgumentCompletionContext(context, /\\(?:input|include|subfile|includegraphics|bibliography|addbibresource)(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/);
   if (file) return { from: file.from, options: mergeCompletionItems(t, local.files, index?.files ?? []), validFor: /^[^{}]*$/ };
-  const packageName = contextCompletion(context, /\\(?:usepackage|RequirePackage)\s*(?:\[[^]]*\])?\{([^{}]*)$/);
+  const packageName = latexArgumentCompletionContext(context, /\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/);
   if (packageName) return { from: packageName.from, options: mergeCompletionItems(t, local.packages, index?.packages ?? []), validFor: /^[^{}]*$/ };
-  const documentClass = contextCompletion(context, /\\documentclass\s*(?:\[[^]]*\])?\{([^{}]*)$/);
+  const documentClass = latexArgumentCompletionContext(context, /\\documentclass(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/);
   if (documentClass) return { from: documentClass.from, options: mergeCompletionItems(t, index?.files ?? []), validFor: /^[^{}]*$/ };
+  const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);
+  if (command || context.explicit) {
+    return { from: command?.from ?? context.pos, options: withoutCompletionDetails(mergeCompletionItems(t, local.commands, index?.commands ?? [], completionOptions())), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
+  }
   return null;
 }
-
-const latexFold = foldService.of((state, lineStart) => {
-  const line = state.doc.lineAt(lineStart);
-  const begin = line.text.match(/\\begin\{([^}]+)\}/);
-  if (begin) {
-    let depth = 1;
-    for (let number = line.number + 1; number <= state.doc.lines; number += 1) {
-      const candidate = state.doc.line(number);
-      const escaped = begin[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      depth += (candidate.text.match(new RegExp(`\\\\begin\\{${escaped}\\}`, "g")) ?? []).length;
-      depth -= (candidate.text.match(new RegExp(`\\\\end\\{${escaped}\\}`, "g")) ?? []).length;
-      if (depth === 0 && candidate.from > line.to) return { from: line.to, to: candidate.from };
-    }
-  }
-  const section = line.text.match(/^\s*\\(part|chapter|section|subsection|subsubsection)\*?/);
-  if (section) {
-    const levels: Record<string, number> = { part: 0, chapter: 0, section: 1, subsection: 2, subsubsection: 3 };
-    const level = levels[section[1]];
-    for (let number = line.number + 1; number <= state.doc.lines; number += 1) {
-      const candidate = state.doc.line(number);
-      const next = candidate.text.match(/^\s*\\(part|chapter|section|subsection|subsubsection)\*?/);
-      if (next && levels[next[1]] <= level) return { from: line.to, to: Math.max(line.to, candidate.from - 1) };
-    }
-    if (line.to < state.doc.length) return { from: line.to, to: state.doc.length };
-  }
-  return null;
-});
 
 export function LatexEditor({
   value, filePath, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,

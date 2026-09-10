@@ -11,6 +11,8 @@ import {
   bibtexLinter,
   latexLanguage
 } from "../src/client/latexLanguage";
+import { latexFold, findMatchingLatexEnvironmentEnd } from "../src/client/latexFolding";
+import { latexCitationCompletionContext, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "../src/client/latexCompletionContexts";
 import { hasDocumentClass } from "../src/client/latexRoot";
 
 describe("LaTeX syntax handling", () => {
@@ -38,6 +40,70 @@ describe("LaTeX syntax handling", () => {
     const listing = "\\begin{verbatim}[options]\n\\documentclass{article}\n\\end{verbatim}";
     expect(hasDocumentClass(listing)).toBe(false);
     expect(hasDocumentClass("\\documentclass[11pt]{article}\n")).toBe(true);
+  });
+
+  it("does not let raw literal content leave subsequent prose in math mode", () => {
+    for (const source of [
+      String.raw`\verb|$|
+Normal prose after an inline literal.`,
+      String.raw`\begin{verbatim}
+$
+\end{verbatim}
+Normal prose after a literal environment.`
+    ]) {
+      const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+      const proseStart = source.indexOf("Normal prose");
+      const proseEnd = source.length;
+      const highlighted: Array<{ from: number; to: number }> = [];
+      highlightTree(syntaxTree(state), defaultHighlightStyle, (from, to) => highlighted.push({ from, to }));
+      expect(highlighted.some((range) => range.from < proseEnd && range.to > proseStart)).toBe(false);
+    }
+  });
+
+  it("folds environments using real closing commands rather than commented or literal examples", () => {
+    const source = String.raw`\begin{figure}
+% \end{figure}
+\begin{verbatim}
+\end{figure}
+\end{verbatim}
+\caption{A real figure}
+\end{figure}`;
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage, latexFold] });
+    const opening = state.doc.line(1);
+    const closing = state.doc.line(7);
+    expect(foldable(state, opening.from, opening.to)).toMatchObject({ from: opening.to, to: closing.from });
+
+    const beginEnd = source.indexOf("}") + 1;
+    expect(findMatchingLatexEnvironmentEnd(state.doc, beginEnd, "figure")).toMatchObject({ from: closing.from });
+  });
+
+  it("finds only the current citation key after commas and optional citation arguments", () => {
+    const source = String.raw`\citep[see][p. 5]{smith2024, jo`;
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const context = new CompletionContext(state, source.length, true);
+    expect(latexCitationCompletionContext(context)).toEqual({ from: source.lastIndexOf("jo"), query: "jo" });
+  });
+
+  it("recognizes spaced begin and end environment arguments", () => {
+    const source = String.raw`\begin {fig`;
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const context = new CompletionContext(state, source.length, true);
+    expect(latexEnvironmentCompletionContext(context)).toEqual({ from: source.lastIndexOf("fig"), query: "fig", command: "begin" });
+  });
+
+  it("reuses an existing environment close instead of inserting a duplicate", () => {
+    const source = String.raw`\begin{fig}
+  \caption{Already written below}
+\end{figure}`;
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const from = source.indexOf("fig");
+    const plan = latexEnvironmentCompletionPlan(state.doc, from, from + "fig".length, "figure");
+    expect(plan).toMatchObject({ insert: "figure}", reusesExistingEnd: true });
+
+    const withoutEnd = EditorState.create({ doc: String.raw`  \begin{fig`, extensions: [latexLanguage] });
+    const noEndFrom = withoutEnd.doc.length - "fig".length;
+    expect(latexEnvironmentCompletionPlan(withoutEnd.doc, noEndFrom, withoutEnd.doc.length, "figure"))
+      .toMatchObject({ insert: "figure}\n  \t\n  \\end{figure}", reusesExistingEnd: false });
   });
 
   it("parses TeX accent escapes in BibTeX values without losing brace matching", () => {
