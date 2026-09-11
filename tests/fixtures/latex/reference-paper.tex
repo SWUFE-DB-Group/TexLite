@@ -1,0 +1,25 @@
+% Representative paper-style source used to protect the lightweight scanner.
+\documentclass[11pt]{article}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\addbibresource{bibliography/primary.bib}
+\bibliography{bibliography/legacy, bibliography/extra}
+\input{chapters/methods}
+\import{appendices}{proof}
+
+\setcitestyle{round}
+\DeclareCiteCommand{\smartcite}{}{}{}
+
+\section{Introduction}\label{sec:introduction}
+We compare prior work~\citep[see {Table~[1]}]{smith2024,
+  jones2025} with \cites[also]{alpha2026}[and]{beta2026}.
+\crefrange{fig:overview}{fig:result} summarizes the pipeline.
+\hyperref[sec:introduction]{Return to the introduction.}
+
+% \cite{commented} and \ref{commented} must stay invisible.
+\verb|\cite{inline-literal}| \lstinline|\ref{listing-literal}|
+\begin{minted}{latex}
+\cite{literal-environment}
+\label{literal-label}
+\end{minted}

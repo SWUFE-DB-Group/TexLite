@@ -1,0 +1,20 @@
+% Typical export-style records with comments, escaped accents, URLs, and both
+% braced and parenthesized entry delimiters.
+@string{venue = "Proceedings of Examples"}
+@comment{ @article{not-a-reference, title = {Opaque}} }
+
+@inproceedings{smith2024,
+  author = {Rombach, Robin and Ommer, Bj{\"o}rn},
+  title = {A {B}raced Title with \% punctuation},
+  booktitle = venue # " 2024",
+  url = {https://example.test/search?q=100%20coverage}
+}
+
+@article(jones2025,
+  title = "A quoted title with ) punctuation",
+  note = {Nested {braces} remain valid}
+)
+
+@misc{after-record,
+  title = {A following record remains visible}
+}

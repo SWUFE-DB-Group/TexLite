@@ -68,6 +68,18 @@ export function GlobalTooltip() {
     let pointerTarget: HTMLElement | null = null;
     let focusTarget: HTMLElement | null = null;
 
+    // A route transition can unmount the element that owns a tooltip before
+    // it emits pointerout/focusout (for example, the workspace back button).
+    // Clear the shared overlay as soon as an interaction begins navigation so
+    // it cannot remain above the next page without an anchor.
+    const dismiss = () => {
+      pointerTarget = null;
+      focusTarget = null;
+      restoreNativeTitle(active.current);
+      active.current = null;
+      setTooltip(null);
+    };
+
     const updateActive = () => {
       const next = pointerTarget ?? focusTarget;
       if (next === active.current) {
@@ -128,15 +140,23 @@ export function GlobalTooltip() {
     document.addEventListener("pointerout", onPointerOut, true);
     document.addEventListener("focusin", onFocusIn, true);
     document.addEventListener("focusout", onFocusOut, true);
+    document.addEventListener("click", dismiss, true);
     window.addEventListener("resize", refreshPosition);
     window.addEventListener("scroll", refreshPosition, true);
+    window.addEventListener("blur", dismiss);
+    window.addEventListener("pagehide", dismiss);
+    window.addEventListener("popstate", dismiss);
     return () => {
       document.removeEventListener("pointerover", onPointerOver, true);
       document.removeEventListener("pointerout", onPointerOut, true);
       document.removeEventListener("focusin", onFocusIn, true);
       document.removeEventListener("focusout", onFocusOut, true);
+      document.removeEventListener("click", dismiss, true);
       window.removeEventListener("resize", refreshPosition);
       window.removeEventListener("scroll", refreshPosition, true);
+      window.removeEventListener("blur", dismiss);
+      window.removeEventListener("pagehide", dismiss);
+      window.removeEventListener("popstate", dismiss);
       restoreNativeTitle(active.current);
       active.current = null;
     };
