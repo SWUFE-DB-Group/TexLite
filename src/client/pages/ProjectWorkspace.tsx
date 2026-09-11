@@ -152,6 +152,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const workspaceLayoutRef = useRef<WorkspaceLayout>(workspaceLayout);
   const projectLoadSequence = useRef(0);
   const completionRequest = useRef<AbortController | null>(null);
+  const completionScopeProject = useRef<string | null>(null);
   const outlineRequest = useRef<AbortController | null>(null);
   const dictionaryRequest = useRef<AbortController | null>(null);
   const refreshRequest = useRef<AbortController | null>(null);
@@ -345,13 +346,14 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     return () => controller.abort();
   }, [collaborationStatus, projectId, t]);
 
-  const loadCompletionIndex = async (options: LoadOptions = {}) => {
+  const loadCompletionIndex = async (options: LoadOptions = {}, mainFile = activeMainFileRef.current) => {
     completionRequest.current?.abort();
     completionRequest.current = null;
     const controller = options.signal ? null : new AbortController();
     if (controller) completionRequest.current = controller;
     try {
-      const result = await api<{ index: LatexCompletionIndex }>(`/api/projects/${projectId}/completions`, { signal: options.signal ?? controller?.signal });
+      const query = mainFile ? `?mainFile=${encodeURIComponent(mainFile)}` : "";
+      const result = await api<{ index: LatexCompletionIndex }>(`/api/projects/${projectId}/completions${query}`, { signal: options.signal ?? controller?.signal });
       if (!options.isCurrent || options.isCurrent()) setCompletionIndex(result.index);
     } catch (error) {
       if (isAbortError(error)) return;
@@ -396,6 +398,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     const controller = new AbortController();
     const isCurrent = () => !cancelled && projectLoadSequence.current === sequence;
     let projectLoaded = false;
+    let initialMainFile = "";
     setProject(null); setFiles([]); setProjectOutline([]); setActiveFile(""); setActiveMainFile(""); setRootDocuments(new Set()); setContent(""); setLoadedFile(""); setCompileState(null);
     clearPdfViewport(); setCompletionIndex(null); setDictionaryWords([]);
     void loadPdfPreview();
@@ -404,8 +407,10 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       : api<{ project: Project }>(`/api/projects/${projectId}`, { signal: controller.signal })).then((result) => {
       if (!isCurrent()) return;
       projectLoaded = true;
+      initialMainFile = result.project.mainFile;
       setProject(result.project);
       setActiveFile(result.project.mainFile);
+      activeMainFileRef.current = result.project.mainFile;
       setActiveMainFile(result.project.mainFile);
       setRootDocuments(new Set());
       setExpandedFolders(new Set(parentFolders(result.project.mainFile)));
@@ -421,7 +426,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       deferredTimer = window.setTimeout(() => {
         if (!isCurrent()) return;
         void Promise.all([
-          loadCompletionIndex({ signal: controller.signal, isCurrent }),
+          loadCompletionIndex({ signal: controller.signal, isCurrent }, activeMainFileRef.current || initialMainFile),
           loadDictionary({ signal: controller.signal, isCurrent })
         ]);
       }, 0);
@@ -436,6 +441,19 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       refreshRequest.current?.abort(); refreshRequest.current = null;
     };
   }, [projectId, preload]);
+
+  // Completion candidates depend on the root document selected by this user:
+  // another root can declare an entirely different bibliography. The initial
+  // project load remains deferred above so PDF and editor paint first; only
+  // later root changes trigger an immediate scoped refresh.
+  useEffect(() => {
+    if (!project || !activeMainFile) return;
+    if (completionScopeProject.current !== projectId) {
+      completionScopeProject.current = projectId;
+      return;
+    }
+    void loadCompletionIndex({}, activeMainFile);
+  }, [activeMainFile, project?.id, projectId]);
 
   // A project-list @ badge carries one notification id in the route. Resolve
   // it to a real file/thread here, but deliberately do not mark it read: that

@@ -8,14 +8,20 @@ import { LatexCompletionService } from "../src/server/latexCompletion.js";
 const roots: string[] = [];
 
 describe("LaTeX completion cache", () => {
-  it("separates document classes from files and indexes optional package/bibitem arguments", async () => {
+  it("separates document classes from files and indexes bibliography definitions, not cite uses", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-completions-"));
     roots.push(root);
     const source = path.join(root, "projects", "paper", "source");
     fs.mkdirSync(source, { recursive: true });
     fs.writeFileSync(path.join(source, "main.tex"), String.raw`\documentclass[review]{custom}
 \usepackage[options]{mypackage}
+\cite{used2026}
 \bibitem[Author(2026)]{paper2026} Reference text`);
+    fs.writeFileSync(path.join(source, "references.bib"), [
+      "@comment{fake2026, title = {Not a reference}}",
+      "@article(frombib2026, url = {https://example.com/%20}, title = {A reference})",
+      "@book{afterpercent2026, title = {Still indexed}}"
+    ].join("\n"));
     fs.writeFileSync(path.join(source, "local.cls"), "");
     fs.writeFileSync(path.join(source, "figure.png"), "image");
     const result = await new LatexCompletionService(completionConfig(root)).build("paper");
@@ -23,7 +29,10 @@ describe("LaTeX completion cache", () => {
     expect(result.classes.map((item) => item.label)).not.toContain("figure.png");
     expect(result.files.map((item) => item.label)).not.toContain("article");
     expect(result.packages.map((item) => item.label)).toContain("mypackage");
-    expect(result.citations.map((item) => item.label)).toContain("paper2026");
+    expect(result.citations.map((item) => item.label)).toEqual(expect.arrayContaining(["frombib2026", "afterpercent2026"]));
+    expect(result.citations.map((item) => item.label)).not.toContain("paper2026");
+    expect(result.citations.map((item) => item.label)).not.toContain("used2026");
+    expect(result.citations.map((item) => item.label)).not.toContain("fake2026");
   });
 
   it("keeps custom command argument shapes while ignoring literal examples", async () => {
@@ -51,6 +60,51 @@ describe("LaTeX completion cache", () => {
     expect(result.commands.find((item) => item.label === "\\realafterescaped")).toMatchObject({ apply: "\\realafterescaped{${1}}" });
     expect(result.commands.find((item) => item.label === "\\realafterverb")).toMatchObject({ apply: "\\realafterverb{${1}}" });
     expect(result.commands.map((item) => item.label)).not.toEqual(expect.arrayContaining(["\\fake", "\\inlinefake"]));
+  });
+
+  it("uses the shared reference scanner for project labels", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-completions-"));
+    roots.push(root);
+    const source = path.join(root, "projects", "paper", "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), String.raw`\\label{escaped-label}
+\label{visible-label}
+\hypertarget{target-label}{Anchor}`);
+
+    const result = await new LatexCompletionService(completionConfig(root)).build("paper");
+    expect(result.labels.map((item) => item.label)).toEqual(expect.arrayContaining(["visible-label", "target-label"]));
+    expect(result.labels.map((item) => item.label)).not.toContain("escaped-label");
+  });
+
+  it("scopes BibTeX candidates to the selected root document and its input graph", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-completions-"));
+    roots.push(root);
+    const source = path.join(root, "projects", "paper", "source");
+    fs.mkdirSync(path.join(source, "chapters"), { recursive: true });
+    fs.mkdirSync(path.join(source, "bibliography"), { recursive: true });
+    fs.writeFileSync(path.join(source, "first.tex"), String.raw`\documentclass{article}
+\input{chapters/first}`);
+    fs.writeFileSync(path.join(source, "chapters", "first.tex"), String.raw`\addbibresource{../bibliography/first.bib}`);
+    fs.writeFileSync(path.join(source, "second.tex"), String.raw`\documentclass{article}
+\bibliography{bibliography/second}`);
+    fs.writeFileSync(path.join(source, "empty.tex"), String.raw`\documentclass{article}`);
+    fs.writeFileSync(path.join(source, "bibliography", "first.bib"), "@article{firstOnly, title={First}}\n@article{shared, title={Selected}}\n");
+    fs.writeFileSync(path.join(source, "bibliography", "second.bib"), "@article{secondOnly, title={Second}}\n");
+    fs.writeFileSync(path.join(source, "archive.bib"), "@article{shared, title={Stale}}\n@article{archiveOnly, title={Archive}}\n");
+    const service = new LatexCompletionService(completionConfig(root));
+
+    const first = await service.build("paper", "first.tex");
+    expect(first.citations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "firstOnly", source: "bibliography/first.bib" }),
+      expect.objectContaining({ label: "shared", source: "bibliography/first.bib" })
+    ]));
+    expect(first.citations.map((item) => item.label)).not.toEqual(expect.arrayContaining(["secondOnly", "archiveOnly"]));
+
+    const second = await service.build("paper", "second.tex");
+    expect(second.citations).toEqual([expect.objectContaining({ label: "secondOnly", source: "bibliography/second.bib" })]);
+
+    const empty = await service.build("paper", "empty.tex");
+    expect(empty.citations).toEqual([]);
   });
 
   afterEach(() => {

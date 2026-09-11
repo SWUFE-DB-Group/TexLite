@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { CompletionContext } from "@codemirror/autocomplete";
-import { defaultHighlightStyle, foldable, matchBrackets, syntaxTree } from "@codemirror/language";
+import { defaultHighlightStyle, foldable, matchBrackets, StringStream, syntaxTree } from "@codemirror/language";
 import { highlightTree } from "@lezer/highlight";
 import {
   bibtexCompletionSource,
   bibtexEditorExtensions,
   bibtexLanguage,
   bibtexLinter,
-  latexLanguage
+  latexLanguage,
+  latexStream
 } from "../src/client/latexLanguage";
 import { latexFold, findMatchingLatexEnvironmentEnd } from "../src/client/latexFolding";
 import { latexCitationCompletionContext, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "../src/client/latexCompletionContexts";
@@ -18,6 +19,30 @@ import { hasLatexDocumentClass } from "../src/shared/latexRoot";
 import { inlineLatexLiteralEnd } from "../src/client/latexLiterals";
 
 describe("LaTeX syntax handling", () => {
+  it("keeps legacy stex command plugins independent across copied parser states", () => {
+    const tokenize = (line: string, state: ReturnType<NonNullable<typeof latexStream.startState>>) => {
+      const stream = new StringStream(line, 4, 2);
+      const tokens: Array<{ text: string; style: string | null }> = [];
+      while (!stream.eol()) {
+        stream.start = stream.pos;
+        const style = latexStream.token(stream, state);
+        tokens.push({ text: line.slice(stream.start, stream.pos), style });
+      }
+      return tokens;
+    };
+    const original = latexStream.startState!(2);
+    const fresh = latexStream.startState!(2);
+    tokenize(String.raw`\documentclass`, original);
+    tokenize(String.raw`\documentclass`, fresh);
+    const copied = latexStream.copyState!(original);
+    tokenize("[11pt]", copied);
+
+    const resumed = tokenize("[11pt]{article}", original);
+    const expected = tokenize("[11pt]{article}", fresh);
+    expect(resumed).toEqual(expected);
+    expect(resumed.find((token) => token.text === "article")?.style).toBe("atom");
+  });
+
   it.each([
     String.raw`\lstinline{a{b}c}`,
     String.raw`\mintinline{python}{print("ok")}`,
@@ -122,6 +147,16 @@ Normal prose after a literal environment.`
     }
   });
 
+  it("treats a percent sign immediately after a number as a comment", () => {
+    const source = "100% comment containing $ that must not enter math mode\nNormal prose after the comment.";
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const proseStart = source.indexOf("Normal prose");
+    const highlighted: Array<{ from: number; to: number }> = [];
+    highlightTree(syntaxTree(state), defaultHighlightStyle, (from, to) => highlighted.push({ from, to }));
+
+    expect(highlighted.some((range) => range.to > proseStart)).toBe(false);
+  });
+
   it("folds environments using real closing commands rather than commented or literal examples", () => {
     const source = String.raw`\begin{figure}
 % \end{figure}
@@ -144,6 +179,25 @@ Normal prose after a literal environment.`
     const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
     const context = new CompletionContext(state, source.length, true);
     expect(latexCitationCompletionContext(context)).toEqual({ from: source.lastIndexOf("jo"), query: "jo" });
+  });
+
+  it.each([
+    [String.raw`\cite% a comment between the command and its argument
+{paper`, "paper"],
+    [String.raw`\cite[prenote={see [also]}]{paper`, "paper"],
+    [String.raw`\cite{first,% a comment before the next key
+  second`, "second"]
+  ])("finds an unfinished citation key through TeX trivia: %s", (source, query) => {
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const context = new CompletionContext(state, source.length, true);
+    expect(latexCitationCompletionContext(context)).toEqual({ from: source.lastIndexOf(query), query });
+  });
+
+  it("does not mistake an escaped command for an unfinished citation", () => {
+    const source = String.raw`\\cite{paper`;
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const context = new CompletionContext(state, source.length, true);
+    expect(latexCitationCompletionContext(context)).toBeNull();
   });
 
   it("recognizes spaced begin and end environment arguments", () => {

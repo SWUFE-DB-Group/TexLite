@@ -3,6 +3,8 @@ import type { Config } from "./config.js";
 import { listProjectFiles, listProjectFilesAsync, resolveSourcePath } from "./files.js";
 import { commandSnippet, newCommandArguments, xparseCommandArguments, xparseCommandDefinitions } from "../shared/latexCommandSnippets.js";
 import { maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals.js";
+import { findLatexReferenceDefinitions } from "../shared/latexReferences.js";
+import { declaredBibliographyPaths, latexDocumentDirectives, type LatexDocumentDirectives } from "./latexDocumentGraph.js";
 
 export type LatexCompletionKind = "keyword" | "function" | "class" | "constant" | "text";
 
@@ -41,6 +43,7 @@ const maxIndexedFileBytes = 3 * 1024 * 1024;
 const maxIndexedBytes = 24 * 1024 * 1024;
 const maxIndexedFiles = 500;
 const maxCachedProjects = 64;
+const maxCachedRootScopes = 8;
 
 // Core LaTeX commands are kept in the completion index even when the project
 // has not loaded a package-specific definition yet.  Keep the catalogue
@@ -197,8 +200,9 @@ function extractSymbols(index: MutableIndex, filePath: string, original: string)
       index.environments.set(name, item(name, "Theorem environment", "keyword", source));
     }
   }
-  for (const match of content.matchAll(/\\(?:label|hypertarget)\s*\{([^}]+)\}/g)) {
-    const label = match[1].trim();
+  for (const definition of findLatexReferenceDefinitions(content, "label")) {
+    if (definition.source !== "label") continue;
+    const label = definition.key;
     if (label && !index.labels.has(label)) index.labels.set(label, item(label, "Label", "constant", source));
   }
   for (const match of content.matchAll(/\\(?:input|include|subfile|import)\s*(?:\{([^}]+)\}|\s+([^\s%]+))/g)) {
@@ -211,18 +215,15 @@ function extractSymbols(index: MutableIndex, filePath: string, original: string)
       if (!target.has(packageName)) target.set(packageName, item(packageName, target === index.classes ? "Document class" : "Package", target === index.classes ? "class" : "text", source));
     }
   }
-  for (const match of content.matchAll(/\\(?:cite|citep|citet|parencite|textcite|autocite|footcite)(?:\w*)?\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)) {
-    for (const key of match[1].split(",").map((value) => value.trim()).filter(Boolean)) {
-      if (!index.citations.has(key)) index.citations.set(key, item(key, "Citation key", "constant", source));
+  // `\\bibitem` suggestions are scoped by the client to the file currently
+  // open in the editor. Keep the server index reserved for standalone
+  // project BibTeX databases, so old cite uses and other source files do
+  // not leak into a citation menu.
+  if (/\.bib$/i.test(filePath)) {
+    for (const definition of findLatexReferenceDefinitions(original, "citation", true)) {
+      const key = definition.key;
+      if (key && !index.citations.has(key)) index.citations.set(key, item(key, "BibTeX key", "constant", source));
     }
-  }
-  for (const match of content.matchAll(/\\bibitem\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)) {
-    const key = match[1].trim();
-    if (key && !index.citations.has(key)) index.citations.set(key, item(key, "Bibliography key", "constant", source));
-  }
-  for (const match of content.matchAll(/@(?:\w+)\s*\{\s*([^,\s]+)\s*,/g)) {
-    const key = match[1].trim();
-    if (key && !index.citations.has(key)) index.citations.set(key, item(key, "BibTeX key", "constant", source));
   }
 }
 
@@ -275,29 +276,40 @@ export function buildLatexCompletionIndex(config: Config, projectId: string): La
 interface CachedSymbols {
   signature: string;
   index: MutableIndex;
+  directives?: LatexDocumentDirectives;
+}
+
+interface CachedCompletionResult {
+  signature: string;
+  index: LatexCompletionIndex;
 }
 
 /** Reuses extracted symbols for files whose mtime and size did not change. */
 export class LatexCompletionService {
   private readonly cache = new Map<string, Map<string, CachedSymbols>>();
-  private readonly resultCache = new Map<string, { signature: string; index: LatexCompletionIndex }>();
+  // One project can have several selectable root documents. Keep a small
+  // result cache per project so switching roots does not accidentally reuse
+  // citation keys collected for another manuscript.
+  private readonly resultCache = new Map<string, Map<string, CachedCompletionResult>>();
   private readonly pending = new Map<string, Promise<LatexCompletionIndex>>();
 
   constructor(private readonly config: Config) {}
 
-  build(projectId: string): Promise<LatexCompletionIndex> {
-    const existing = this.pending.get(projectId);
+  build(projectId: string, mainFile?: string): Promise<LatexCompletionIndex> {
+    const scope = completionScope(mainFile);
+    const pendingKey = `${projectId}\0${scope}`;
+    const existing = this.pending.get(pendingKey);
     if (existing) return existing;
-    const request = this.buildIncremental(projectId)
+    const request = this.buildIncremental(projectId, mainFile)
       // Do not retain a partial per-file cache when a project scan fails.
       .catch((error) => {
         this.invalidate(projectId);
         throw error;
       })
       .finally(() => {
-        if (this.pending.get(projectId) === request) this.pending.delete(projectId);
+        if (this.pending.get(pendingKey) === request) this.pending.delete(pendingKey);
       });
-    this.pending.set(projectId, request);
+    this.pending.set(pendingKey, request);
     return request;
   }
 
@@ -315,13 +327,14 @@ export class LatexCompletionService {
     };
   }
 
-  private async buildIncremental(projectId: string): Promise<LatexCompletionIndex> {
+  private async buildIncremental(projectId: string, mainFile?: string): Promise<LatexCompletionIndex> {
+    const scope = completionScope(mainFile);
     const index = standardIndex();
     const allEntries = (await listProjectFilesAsync(this.config, projectId)).filter((entry) => entry.type === "file").slice(0, maxIndexedFiles);
     const signature = allEntries.map((entry) => `${entry.path}:${entry.size ?? 0}:${entry.mtimeMs ?? 0}`).sort().join("\n");
-    const cachedResult = this.resultCache.get(projectId);
+    const cachedResult = this.resultCache.get(projectId)?.get(scope);
     if (cachedResult?.signature === signature) {
-      this.touch(projectId);
+      this.touch(projectId, scope);
       return cachedResult.index;
     }
     const projectCache = this.cache.get(projectId) ?? new Map<string, CachedSymbols>();
@@ -330,6 +343,8 @@ export class LatexCompletionService {
     for (const cachedPath of [...projectCache.keys()]) if (!livePaths.has(cachedPath)) projectCache.delete(cachedPath);
     for (const entry of allEntries) addProjectFile(index, entry.path);
 
+    const indexedFiles: Array<{ path: string; symbols: CachedSymbols }> = [];
+    const sourceDirectives = new Map<string, LatexDocumentDirectives>();
     let indexedBytes = 0;
     for (const entry of allEntries.filter((candidate) => textExtensions.test(candidate.path))) {
       const size = entry.size ?? 0;
@@ -343,27 +358,66 @@ export class LatexCompletionService {
         catch { projectCache.delete(entry.path); continue; }
         const fileIndex = createIndex();
         if (definitionExtensions.test(entry.path) || /\.bib$/i.test(entry.path)) extractSymbols(fileIndex, entry.path, content);
-        cached = { signature, index: fileIndex };
+        cached = {
+          signature,
+          index: fileIndex,
+          ...(definitionExtensions.test(entry.path) ? { directives: latexDocumentDirectives(content) } : {})
+        };
         projectCache.set(entry.path, cached);
       }
-      mergeIndex(index, cached.index);
+      if (cached.directives) sourceDirectives.set(entry.path, cached.directives);
+      indexedFiles.push({ path: entry.path, symbols: cached });
+      mergeIndex(index, cached.index, false);
+    }
+
+    // A project can hold templates, archives, and unrelated bibliography
+    // databases. Citation completion follows the selected root's \input graph
+    // and only includes BibTeX resources it explicitly declares. If a caller
+    // does not provide a root (the backwards-compatible service API), keep the
+    // former project-wide bibliography behavior.
+    const bibPaths = allEntries.filter((entry) => /\.bib$/i.test(entry.path)).map((entry) => entry.path);
+    const selectedBibliographies = mainFile
+      ? declaredBibliographyPaths(sourceDirectives, mainFile, bibPaths)
+      : null;
+    const allowedBibliographies = new Set(selectedBibliographies ?? bibPaths);
+    for (const { path: filePath, symbols } of indexedFiles) {
+      if (!allowedBibliographies.has(filePath)) continue;
+      mergeCitations(index, symbols.index);
     }
     const result = {
       commands: sorted(index.commands), environments: sorted(index.environments), labels: sorted(index.labels),
       citations: sorted(index.citations), packages: sorted(index.packages), classes: sorted(index.classes), files: sorted(index.files)
     };
-    this.resultCache.set(projectId, { signature, index: result });
-    this.touch(projectId);
+    const projectResults = this.resultCache.get(projectId) ?? new Map<string, CachedCompletionResult>();
+    this.resultCache.set(projectId, projectResults);
+    // A root document is user-selectable, so do not let a project with many
+    // standalone examples retain an unbounded number of full completion
+    // result arrays. The per-file symbol cache remains shared by all roots.
+    if (projectResults.has(scope)) projectResults.delete(scope);
+    projectResults.set(scope, { signature, index: result });
+    while (projectResults.size > maxCachedRootScopes) {
+      const oldestScope = projectResults.keys().next().value as string | undefined;
+      if (oldestScope === undefined) break;
+      projectResults.delete(oldestScope);
+    }
+    this.touch(projectId, scope);
     this.evictLeastRecentlyUsedProjects();
     return result;
   }
 
   /** Keep result and per-file symbol caches on the same project-level LRU. */
-  private touch(projectId: string): void {
-    const result = this.resultCache.get(projectId);
-    if (result) {
+  private touch(projectId: string, scope?: string): void {
+    const results = this.resultCache.get(projectId);
+    if (results) {
+      if (scope !== undefined) {
+        const result = results.get(scope);
+        if (result) {
+          results.delete(scope);
+          results.set(scope, result);
+        }
+      }
       this.resultCache.delete(projectId);
-      this.resultCache.set(projectId, result);
+      this.resultCache.set(projectId, results);
     }
     const symbols = this.cache.get(projectId);
     if (symbols) {
@@ -382,12 +436,24 @@ export class LatexCompletionService {
   }
 }
 
-function mergeIndex(target: MutableIndex, source: MutableIndex): void {
+function completionScope(mainFile: string | undefined): string {
+  return mainFile ?? "";
+}
+
+function mergeIndex(target: MutableIndex, source: MutableIndex, includeCitations: boolean): void {
   for (const value of source.commands.values()) commandItem(target, value.label, value.detail, value.source ?? "Project", value.apply);
   for (const key of ["environments", "labels", "citations", "packages", "classes", "files"] as const) {
+    if (key === "citations" && !includeCitations) continue;
     for (const [label, value] of source[key]) {
       const existing = target[key].get(label);
       if (!existing || (existing.source === "LaTeX" && value.source !== "LaTeX")) target[key].set(label, value);
     }
+  }
+}
+
+function mergeCitations(target: MutableIndex, source: MutableIndex): void {
+  for (const [label, value] of source.citations) {
+    const existing = target.citations.get(label);
+    if (!existing || (existing.source === "LaTeX" && value.source !== "LaTeX")) target.citations.set(label, value);
   }
 }

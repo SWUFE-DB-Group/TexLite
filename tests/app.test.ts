@@ -177,6 +177,8 @@ describe("texLite application", () => {
 \begin{document}
 \section{Hello}
 It works.
+\bibliographystyle{plain}
+\bibliography{refs}
 \end{document}
 `;
     const saved = await app.inject({ method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie }, payload: { path: "main.tex", content: source } });
@@ -226,6 +228,20 @@ It works.
       expect.objectContaining({ label: "paper.sty", source: "Project" }),
       expect.objectContaining({ label: "refs.bib", source: "Project" })
     ]));
+    await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "appendix.tex", content: String.raw`\documentclass{article}
+\bibliography{appendix-refs}` }
+    });
+    await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "appendix-refs.bib", content: "@article{appendix2026, title={Appendix only}}\n" }
+    });
+    const alternateCompletions = await app.inject({ method: "GET", url: `/api/projects/${project.id}/completions?mainFile=appendix.tex`, headers: { cookie } });
+    expect(alternateCompletions.statusCode).toBe(200);
+    expect(alternateCompletions.json().index.citations).toEqual([
+      expect.objectContaining({ label: "appendix2026", source: "appendix-refs.bib" })
+    ]);
     const configured = await app.inject({ method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie }, payload: { engine: "pdflatex", latexmkrc: ".latexmkrc" } });
     expect(configured.statusCode).toBe(200);
     expect(configured.json().project.latexmkrc).toBe(".latexmkrc");

@@ -275,6 +275,22 @@ describe("internal BibTeX CodeMirror language", () => {
     ]));
   });
 
+  it("does not reuse concatenated BibTeX values as literal field text", () => {
+    const source = String.raw`@string{venue = "Proceedings of Examples"}
+@article{derived,
+  journal = venue # " 2026",
+  author = {Ada Lovelace}
+}
+@article{literal,
+  journal = {Journal of Examples}
+}`;
+    const values = collectDocumentValues(bibtexState(source));
+
+    expect(values.journals).toEqual(new Set(["Journal of Examples"]));
+    expect(values.byField.get("journal")).toEqual(new Set(["Journal of Examples"]));
+    expect(values.authors).toEqual(new Set(["Ada Lovelace"]));
+  });
+
   it("keeps braced corporate authors intact and replaces complete value atoms", () => {
     expect(splitAuthors("{Research and Development} and Ada")).toEqual([
       "{Research and Development}", "Ada"
@@ -315,6 +331,26 @@ describe("internal BibTeX CodeMirror language", () => {
     });
     const withPerson = applyCompletion(state, personCompletion!, "Grace Hopper");
     expect(withPerson.doc.toString()).toContain("author = {{Research and Development} and Grace Hopper}");
+  });
+
+  it("preserves standalone braced corporate authors for reuse", () => {
+    const corporateSource = String.raw`@article{corporate,
+  author = {{Research and Development}}
+}
+@article{target,
+  author = {Res}
+}`;
+    const corporateState = bibtexState(corporateSource);
+    expect(collectDocumentValues(corporateState).authors).toEqual(
+      new Set(["{Research and Development}", "Res"])
+    );
+    const corporateCursor = corporateSource.lastIndexOf("Res}") + "Res".length;
+    const corporateCompletion = bibtexCompletionSource(new CompletionContext(corporateState, corporateCursor, true));
+    expect(corporateCompletion?.options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "{Research and Development}" })
+    ]));
+    const withCorporate = applyCompletion(corporateState, corporateCompletion!, "{Research and Development}");
+    expect(withCorporate.doc.toString()).toContain("author = {{Research and Development}}");
   });
 
   it("exposes entry and field hover details while suppressing ignored fields", () => {

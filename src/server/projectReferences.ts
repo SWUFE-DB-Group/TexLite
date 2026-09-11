@@ -1,14 +1,18 @@
 import fs from "node:fs";
-import path from "node:path";
 import type { Config } from "./config.js";
 import { listProjectFilesAsync, resolveSourcePath } from "./files.js";
 import {
-  findLatexBibliographyFiles,
   findLatexReferenceDefinitions,
-  findLatexSourceIncludes,
   lineAndColumnAt,
   type LatexReferenceKind
 } from "../shared/latexReferences.js";
+import {
+  documentSourceOrder,
+  latexDocumentDirectives,
+  resolveProjectReferencePath,
+  uniqueProjectPaths,
+  type LatexDocumentDirectives
+} from "./latexDocumentGraph.js";
 
 export interface ProjectReferenceTarget {
   path: string;
@@ -69,20 +73,22 @@ export async function resolveProjectReference(
   const sourceContents = await readProjectSources(config, projectId, sourceEntries.map((entry) => entry.path));
   const sourcePaths = [...sourceContents.keys()].sort((left, right) => left.localeCompare(right));
   const bibPaths = bibEntries.map((entry) => entry.path).sort((left, right) => left.localeCompare(right));
+  const sourceDirectives = new Map<string, LatexDocumentDirectives>();
+  for (const [entryPath, source] of sourceContents) sourceDirectives.set(entryPath, latexDocumentDirectives(source));
 
   const preferredPath = sourceContents.has(lookup.preferredPath ?? "") ? lookup.preferredPath ?? "" : "";
   const mainFile = sourceContents.has(lookup.mainFile ?? "") && texExtension.test(lookup.mainFile ?? "")
     ? lookup.mainFile ?? ""
     : "";
-  const documentSources = documentSourceOrder(sourceContents, mainFile);
-  const prioritizedSources = uniquePaths([
+  const documentSources = documentSourceOrder(sourceDirectives, mainFile);
+  const prioritizedSources = uniqueProjectPaths([
     ...(preferredPath ? [preferredPath] : []),
     ...documentSources
   ]);
 
   const orderedPaths = kind === "label"
-    ? uniquePaths([...prioritizedSources, ...sourcePaths])
-    : citationLookupOrder(sourceContents, prioritizedSources, bibPaths, sourcePaths);
+    ? uniqueProjectPaths([...prioritizedSources, ...sourcePaths])
+    : citationLookupOrder(sourceDirectives, prioritizedSources, bibPaths, sourcePaths);
 
   for (const entryPath of orderedPaths) {
     const source = sourceContents.get(entryPath)
@@ -122,99 +128,29 @@ async function readProjectFile(config: Config, projectId: string, entryPath: str
   }
 }
 
-function documentSourceOrder(contents: ReadonlyMap<string, string>, mainFile: string): string[] {
-  if (!mainFile || !contents.has(mainFile)) return [];
-  const result: string[] = [];
-  const queued = [mainFile];
-  const seen = new Set<string>();
-  while (queued.length) {
-    const current = queued.shift();
-    if (!current || seen.has(current)) continue;
-    const source = contents.get(current);
-    if (source === undefined) continue;
-    seen.add(current);
-    result.push(current);
-    for (const include of findLatexSourceIncludes(source)) {
-      const resolved = resolveProjectReferencePath(include.path, current, ".tex", contents, false);
-      if (resolved && !seen.has(resolved)) queued.push(resolved);
-    }
-  }
-  return result;
-}
-
 function citationLookupOrder(
-  sourceContents: ReadonlyMap<string, string>,
+  sourceDirectives: ReadonlyMap<string, LatexDocumentDirectives>,
   documentSources: readonly string[],
   bibPaths: readonly string[],
   sourcePaths: readonly string[]
 ): string[] {
   // Callers without a selected root retain the conservative legacy behavior:
   // prefer in-source thebibliography entries before standalone .bib files.
-  if (documentSources.length === 0) return uniquePaths([...sourcePaths, ...bibPaths]);
+  if (documentSources.length === 0) return uniqueProjectPaths([...sourcePaths, ...bibPaths]);
   const bibPathSet = new Set(bibPaths);
   const declaredBibliographies: string[] = [];
   for (const sourcePath of documentSources) {
-    const source = sourceContents.get(sourcePath);
-    if (source === undefined) continue;
-    for (const bibliography of findLatexBibliographyFiles(source)) {
-      const resolved = resolveProjectReferencePath(bibliography.path, sourcePath, ".bib", bibPathSet, true);
+    const directives = sourceDirectives.get(sourcePath);
+    if (!directives) continue;
+    for (const bibliography of directives.bibliographies) {
+      const resolved = resolveProjectReferencePath(bibliography, sourcePath, ".bib", bibPathSet, true);
       if (resolved) declaredBibliographies.push(resolved);
     }
   }
-  return uniquePaths([
+  return uniqueProjectPaths([
     ...documentSources,
     ...declaredBibliographies,
     ...bibPaths,
     ...sourcePaths
   ]);
-}
-
-function resolveProjectReferencePath(
-  rawPath: string,
-  currentPath: string,
-  extension: ".tex" | ".bib",
-  available: ReadonlySet<string> | ReadonlyMap<string, unknown>,
-  rootFirst: boolean
-): string | null {
-  const raw = normalizeReferenceInput(rawPath);
-  if (!raw) return null;
-  const parent = path.posix.dirname(currentPath);
-  // TeX resolves relative files against the file that declared them. A raw
-  // ../ reference is valid when this final candidate remains inside the
-  // project tree (for example chapters/intro.tex -> ../refs.bib).
-  const relative = normalizeProjectPath(parent === "." ? raw : path.posix.join(parent, raw));
-  const root = normalizeProjectPath(raw);
-  const roots = rootFirst ? [root, relative] : [relative, root];
-  const candidates = roots.flatMap((candidate) => {
-    if (!candidate) return [];
-    return candidate.toLowerCase().endsWith(extension)
-      ? [candidate]
-      : [candidate, candidate + extension];
-  });
-  for (const candidate of uniquePaths(candidates)) {
-    if (available.has(candidate)) return candidate;
-  }
-  return null;
-}
-
-function normalizeReferenceInput(value: string): string | null {
-  const trimmed = value.trim().replaceAll("\\", "/");
-  if (!trimmed || trimmed.startsWith("/") || /^[A-Za-z]:\//.test(trimmed) || trimmed.includes("\0")) return null;
-  return trimmed;
-}
-
-function normalizeProjectPath(value: string): string | null {
-  const normalized = path.posix.normalize(value);
-  if (normalized === "." || normalized === ".." || normalized.startsWith("../")) return null;
-  if (normalized.split("/").some((segment) => segment.toLowerCase() === ".git")) return null;
-  return normalized;
-}
-
-function uniquePaths(paths: readonly string[]): string[] {
-  const seen = new Set<string>();
-  return paths.filter((entryPath) => {
-    if (!entryPath || seen.has(entryPath)) return false;
-    seen.add(entryPath);
-    return true;
-  });
 }

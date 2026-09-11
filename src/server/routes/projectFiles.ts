@@ -169,12 +169,19 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    const project = accessibleProject(db, id, user);
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    const query = request.query as { mainFile?: unknown };
+    const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const startedAt = performance.now();
     try {
-      return await projectMutations.runConsistentRead(id, async () => ({ index: await latexCompletions.build(id) }), {
+      return await projectMutations.runConsistentRead(id, async () => ({ index: await latexCompletions.build(id, mainFile) }), {
         preflight: () => {
-          if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
+          const current = accessibleProject(db, id, user);
+          if (!current) throw httpError(404, "PROJECT_NOT_FOUND");
+          const selected = compileMainFile(config, id, current.main_file, query.mainFile);
+          if (!selected || selected !== mainFile) throw httpError(400, "MAIN_DOCUMENT_INVALID");
         }
       });
     }

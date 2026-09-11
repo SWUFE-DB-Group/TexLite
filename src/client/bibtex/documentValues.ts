@@ -106,12 +106,20 @@ export function splitAuthors(raw: string): string[] {
     return names;
 }
 
-function unwrap(text: string): string {
-    let s = text.trim();
-    while ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('"') && s.endsWith('"'))) {
-        s = s.slice(1, -1).trim();
+/**
+ * Remove the delimiter belonging to the BibTeX value atom, but retain any
+ * inner braces. In name lists, an inner pair of braces marks a corporate
+ * author and must remain visible to `splitAuthors`.
+ */
+function unwrapValueAtom(text: string): string {
+    const trimmed = text.trim();
+    if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    ) {
+        return trimmed.slice(1, -1).trim();
     }
-    return s;
+    return trimmed;
 }
 
 export function collectDocumentValues(state: EditorState): DocumentValues {
@@ -137,8 +145,14 @@ export function collectDocumentValues(state: EditorState): DocumentValues {
             const valueNode = field.getChild('Value');
             if (!nameNode || !valueNode) continue;
 
+            // A concatenation may include an unresolved @string macro. It
+            // cannot be safely inserted as a reusable field value, so keep
+            // it out of document-value completion rather than suggesting a
+            // literal `macro # {text}` fragment.
+            if (valueNode.getChild('Concat')) continue;
+
             const name = doc.sliceString(nameNode.from, nameNode.to).toLowerCase();
-            const value = unwrap(doc.sliceString(valueNode.from, valueNode.to));
+            const value = unwrapValueAtom(doc.sliceString(valueNode.from, valueNode.to));
             if (!value) continue;
 
             if (!result.byField.has(name)) result.byField.set(name, new Set());

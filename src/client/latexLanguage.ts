@@ -3,6 +3,7 @@ import { stex } from "@codemirror/legacy-modes/mode/stex";
 import { inlineLatexLiteralEnd, isLatexLiteralEnvironment, literalEnvironmentEnd } from "./latexLiterals";
 
 const bracketCharacters = new Set(["(", ")", "[", "]", "{", "}"]);
+const numberBeforeComment = /^\d[\w.]*(?=%)/;
 
 interface LatexStreamState {
   stexState: unknown;
@@ -32,6 +33,32 @@ function consumeLiteralEnvironment(stream: StringStream, name: string): string {
   return "tag";
 }
 
+function consumeNumberBeforeComment(stream: StringStream): boolean {
+  const match = stream.match(numberBeforeComment);
+  return Boolean(match && typeof match !== "boolean");
+}
+
+/**
+ * `stex.copyState` only copies its command stack array. The stack entries are
+ * mutable plugins (for example `\\documentclass` increments `bracketNo`), so
+ * sharing them between CodeMirror's incremental parsing branches can corrupt
+ * the older branch. Preserve each plugin's prototype and own methods while
+ * giving its mutable fields an independent object.
+ */
+function copyStexState(state: unknown): unknown {
+  const copied = stex.copyState?.(state) ?? state;
+  if (!copied || typeof copied !== "object") return copied;
+  const legacy = copied as { cmdState?: unknown };
+  if (!Array.isArray(legacy.cmdState)) return copied;
+  return {
+    ...legacy,
+    cmdState: legacy.cmdState.map((plugin) => {
+      if (!plugin || typeof plugin !== "object") return plugin;
+      return Object.assign(Object.create(Object.getPrototypeOf(plugin)), plugin);
+    })
+  };
+}
+
 // The legacy stex mode is deliberately retained because it is compact and
 // predictable for ordinary TeX. Its state machine does not understand raw
 // literal constructs, however: a `$` inside \verb or verbatim can otherwise
@@ -44,7 +71,7 @@ export const latexStream: StreamParser<LatexStreamState> = {
   },
   copyState(state) {
     return {
-      stexState: stex.copyState?.(state.stexState) ?? state.stexState,
+      stexState: copyStexState(state.stexState),
       literalEnvironment: state.literalEnvironment
     };
   },
@@ -73,6 +100,9 @@ export const latexStream: StreamParser<LatexStreamState> = {
       stream.pos = inlineLiteral;
       return "string";
     }
+    // stex consumes '%' as part of a number-like token (for example, `100%`).
+    // In TeX that percent starts a comment, so leave it for the next token call.
+    if (consumeNumberBeforeComment(stream)) return "atom";
     const from = stream.pos;
     const style = stex.token(stream, state.stexState);
     const token = stream.string.slice(from, stream.pos);

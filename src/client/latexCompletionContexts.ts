@@ -1,6 +1,7 @@
 import type { CompletionContext } from "@codemirror/autocomplete";
 import type { Text } from "@codemirror/state";
 import { findReusableLatexEnvironmentEnd, latexEnvironmentBeginStart } from "./latexFolding";
+import { findLatexCitationCompletion, findLatexLabelCompletion } from "../shared/latexReferences";
 
 export interface LatexArgumentCompletionContext {
   from: number;
@@ -40,15 +41,11 @@ export function latexEnvironmentCompletionContext(context: CompletionContext): (
 }
 
 export function latexCitationCompletionContext(context: CompletionContext): LatexArgumentCompletionContext | null {
-  const argument = latexArgumentCompletionContext(
-    context,
-    /\\(?:nocite|(?:cite|parencite|textcite|autocite|footcite|smartcite|supercite)\w*)\*?(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/i
-  ) ?? latexArgumentCompletionContext(
-    context,
-    /\\(?:cites|parencites|textcites|autocites|footcites|smartcites|supercites)\*?(?:\s*\[[^\]]*\])*(?:\s*\{[^{}]*\}(?:\s*\[[^\]]*\])*)+\s*\{([^{}]*)$/i
-  );
-  if (!argument) return null;
-  return currentListItem(argument);
+  return findLatexCitationCompletion(prefixFor(context));
+}
+
+export function latexLabelCompletionContext(context: CompletionContext): LatexArgumentCompletionContext | null {
+  return findLatexLabelCompletion(prefixFor(context));
 }
 
 function currentListItem(argument: LatexArgumentCompletionContext): LatexArgumentCompletionContext {

@@ -16,9 +16,9 @@ const index: LatexCompletionIndex = {
   files: [{ label: "figure.png", kind: "text", detail: "Project file" }]
 };
 
-function complete(source: string, explicit = true) {
+function complete(source: string, explicit = true, completionIndex: LatexCompletionIndex = index) {
   const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
-  return latexCompletions(new CompletionContext(state, source.length, explicit), t, index);
+  return latexCompletions(new CompletionContext(state, source.length, explicit), t, completionIndex);
 }
 
 describe("editor LaTeX completion source", () => {
@@ -26,7 +26,10 @@ describe("editor LaTeX completion source", () => {
     [String.raw`\usepackage{amsmath, ams`, "amssymb", String.raw`\usepackage{amsmath, amssymb`],
     [String.raw`\RequirePackage[opt]{amsmath, ams`, "amssymb", String.raw`\RequirePackage[opt]{amsmath, amssymb`],
     [String.raw`\cref{fig:first, fig:`, "fig:second", String.raw`\cref{fig:first, fig:second`],
-    [String.raw`\Cref{fig:first, fig:`, "fig:second", String.raw`\Cref{fig:first, fig:second`]
+    [String.raw`\Cref{fig:first, fig:`, "fig:second", String.raw`\Cref{fig:first, fig:second`],
+    [String.raw`\crefrange{fig:first}{fig:`, "fig:second", String.raw`\crefrange{fig:first}{fig:second`],
+    [String.raw`\vpageref[on the next page]{fig:`, "fig:second", String.raw`\vpageref[on the next page]{fig:second`],
+    [String.raw`\hyperref[fig:`, "fig:second", String.raw`\hyperref[fig:second`]
   ])("preserves earlier list entries in %s", (source, label, expected) => {
     const result = complete(source)!;
     expect(result.options.some((item) => item.label === label)).toBe(true);
@@ -42,6 +45,43 @@ describe("editor LaTeX completion source", () => {
   it("completes subsequent multicite arguments", () => {
     const source = String.raw`\cites[see]{first}[p. 2]{seco`;
     expect(complete(source)?.from).toBe(source.lastIndexOf("seco"));
+  });
+
+  it("shares comment-aware citation parsing with reference navigation", () => {
+    const source = String.raw`\bibitem{known} A local bibliography item.
+\cite% a command comment
+{known}
+\cite{known,% a key comment
+  kn`;
+    const result = complete(source)!;
+    expect(result.from).toBe(source.lastIndexOf("kn"));
+    expect(result.options).toEqual(expect.arrayContaining([expect.objectContaining({ label: "known" })]));
+  });
+
+  it("shares label extraction with reference navigation", () => {
+    const source = String.raw`\\label{escaped-label}
+\label{visible-label}
+\hypertarget{target-label}{Anchor}
+\ref{vis`;
+    const options = complete(source)!.options.map((option) => option.label);
+    expect(options).toEqual(expect.arrayContaining(["visible-label", "target-label"]));
+    expect(options).not.toContain("escaped-label");
+  });
+
+  it("limits citation choices to project BibTeX entries and current-file bibitems", () => {
+    const source = String.raw`\bibitem{current-manual} A manual bibliography entry.
+\cite{cur`;
+    const scopedIndex: LatexCompletionIndex = {
+      ...index,
+      citations: [
+        { label: "linked-bib", detail: "BibTeX key", kind: "constant", source: "references.bib" },
+        { label: "historical-use", detail: "Citation key", kind: "constant", source: "main.tex" },
+        { label: "other-manual", detail: "Bibliography key", kind: "constant", source: "appendix.tex" }
+      ]
+    };
+    const options = complete(source, true, scopedIndex)!.options.map((option) => option.label);
+    expect(options).toEqual(expect.arrayContaining(["current-manual", "linked-bib"]));
+    expect(options).not.toEqual(expect.arrayContaining(["historical-use", "other-manual"]));
   });
 
   it("does not interpret a separate group after a single citation as another citation argument", () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   findLatexBibliographyFiles,
+  findLatexCitationCompletion,
+  findLatexLabelCompletion,
   findLatexReferenceDefinitions,
   findLatexReferences,
   findLatexSourceIncludes,
@@ -23,6 +25,12 @@ See \citep[see][p. 4]{smith2025, doe2024} and \cref{fig:result, tab:summary}.`;
     const keyOffset = source.indexOf("doe2024") + 2;
     expect(latexReferenceAt(source, keyOffset)).toMatchObject({ kind: "citation", key: "doe2024" });
     expect(latexReferenceAt(source, source.indexOf("doe2024") + "doe2024".length)).toBeNull();
+  });
+
+  it("treats comments between citation keys as trivia rather than part of a key", () => {
+    const source = String.raw`\cite{paper,% an explanatory comment
+  other}`;
+    expect(findLatexReferences(source).map((reference) => reference.key)).toEqual(["paper", "other"]);
   });
 
   it("finds source labels, in-file bibliography items, and BibTeX definitions", () => {
@@ -67,6 +75,44 @@ See \citep[see][p. 4]{smith2025, doe2024} and \cref{fig:result, tab:summary}.`;
     ]);
   });
 
+  it("does not treat citation-style configuration commands as citation keys", () => {
+    const source = String.raw`\citestyle{authoryear}
+\setcitestyle{round}
+\AtEveryCite{\emph{setup}}
+\DeclareCiteCommand{\smartcite}{}{}{}
+\citetext{See \cite{nested-key}} and \citeauthor{author-key}.`;
+
+    expect(findLatexReferences(source).map((reference) => [reference.command, reference.key])).toEqual([
+      ["cite", "nested-key"],
+      ["citeauthor", "author-key"]
+    ]);
+  });
+
+  it("shares reference completion contexts with navigation", () => {
+    const range = String.raw`\crefrange{fig:before}{fig:af`;
+    const vpageref = String.raw`\vpageref[on the next page]{sec:res`;
+    const hyperref = String.raw`\hyperref[tab:sum`;
+
+    expect(findLatexLabelCompletion(range)).toEqual({
+      from: range.lastIndexOf("fig:af"),
+      query: "fig:af"
+    });
+    expect(findLatexLabelCompletion(vpageref)).toEqual({
+      from: vpageref.lastIndexOf("sec:res"),
+      query: "sec:res"
+    });
+    expect(findLatexLabelCompletion(hyperref)).toEqual({
+      from: hyperref.lastIndexOf("tab:sum"),
+      query: "tab:sum"
+    });
+    expect(findLatexLabelCompletion(String.raw`\href{https://example.test}`)).toBeNull();
+  });
+
+  it("does not offer citation completion for citation-style configuration commands", () => {
+    expect(findLatexCitationCompletion(String.raw`\setcitestyle{auth`)).toBeNull();
+    expect(findLatexCitationCompletion(String.raw`\citep{auth`)).toEqual({ from: 7, query: "auth" });
+  });
+
   it("ignores reference-shaped text in comments and literal TeX forms", () => {
     const source = [
       "% \\cite{commented}",
@@ -95,6 +141,27 @@ See \citep[see][p. 4]{smith2025, doe2024} and \cref{fig:result, tab:summary}.`;
       "% @article{commented, title = {Nope}}",
       "@article{real, title = {A real entry}}"
     ].join("\n"), "citation", true).map((definition) => definition.key)).toEqual(["real"]);
+  });
+
+  it("keeps scanning BibTeX after quotes and percent signs inside braced values", () => {
+    const source = [
+      "% @article{top-level-comment, title = {Ignored}}",
+      "@article{quoted-value,",
+      "  title = {\"quoted},",
+      "  url = {https://example.com/%20},",
+      "}",
+      "@article{after-braced-value, title = {Still visible}}",
+      "@book(parenthesized,",
+      "  title = {A title with ) and \"quotes},",
+      "  note = \"A quoted ) value\"",
+      ")"
+    ].join("\n");
+
+    expect(findLatexReferenceDefinitions(source, "citation", true).map((definition) => definition.key)).toEqual([
+      "quoted-value",
+      "after-braced-value",
+      "parenthesized"
+    ]);
   });
 
   it("uses TeX's raw inline verb delimiters before scanning later references", () => {

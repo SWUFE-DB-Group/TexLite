@@ -2,9 +2,10 @@ import type { TFunction } from "i18next";
 import { Transaction } from "@codemirror/state";
 import { pickedCompletion, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { LatexCompletionIndex, LatexCompletionItem } from "./types";
-import { latexArgumentCompletionContext, latexCitationCompletionContext, latexCompletionPrefix, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "./latexCompletionContexts";
+import { latexArgumentCompletionContext, latexCitationCompletionContext, latexCompletionPrefix, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan, latexLabelCompletionContext } from "./latexCompletionContexts";
 import { commandSnippet, newCommandArguments, xparseCommandArguments, xparseCommandDefinitions } from "../shared/latexCommandSnippets";
 import { latexOpaqueContextAt, maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals";
+import { findLatexReferenceDefinitions } from "../shared/latexReferences";
 
 const fallbackCommandLabels = [
   "\\noindent", "\\indent", "\\par", "\\leavevmode", "\\newline", "\\linebreak", "\\nolinebreak", "\\pagebreak", "\\nopagebreak", "\\newpage", "\\clearpage", "\\cleardoublepage",
@@ -60,15 +61,25 @@ function localCompletionIndex(content: string): LatexCompletionIndex {
   for (const match of source.matchAll(/\\DeclarePairedDelimiter\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) add(commands, `\\${match[1]}`, "Project math delimiter", "function");
   for (const match of source.matchAll(/\\cs_(?:new|set|gset|provide|generate)(?:_protected)?\:[A-Za-z]+\s+\\([A-Za-z@][A-Za-z@0-9:_]*)/g)) add(commands, `\\${match[1]}`, "Expl3 project command", "function");
   for (const match of source.matchAll(/\\(?:newenvironment|renewenvironment|NewDocumentEnvironment|RenewDocumentEnvironment|DeclareDocumentEnvironment)\s*\*?\s*\{([^}]+)\}/g)) add(environments, match[1].trim(), "Project environment", "keyword");
-  for (const match of source.matchAll(/\\(?:label|hypertarget)\s*\{([^}]+)\}/g)) add(labels, match[1].trim(), "Label", "constant");
+  for (const definition of findLatexReferenceDefinitions(content, "label")) {
+    if (definition.source === "label") add(labels, definition.key, "Label", "constant");
+  }
   for (const match of source.matchAll(/\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)) {
     for (const packageName of match[1].split(",")) add(packages, packageName.trim(), "Package", "text");
   }
   for (const match of source.matchAll(/\\(?:input|include|subfile)\s*(?:\{([^}]+)\}|\s+([^\s%]+))/g)) add(files, (match[1] ?? match[2] ?? "").trim(), "Project file", "text");
-  for (const match of source.matchAll(/\\(?:cite|citep|citet|parencite|textcite|autocite|footcite)(?:\w*)?(?:\s*\[[^\]]*\])*\s*\{([^}]+)\}/g)) {
-    for (const key of match[1].split(",")) add(citations, key.trim(), "Citation key", "constant");
+  for (const definition of findLatexReferenceDefinitions(content, "citation")) {
+    if (definition.source === "bibitem") add(citations, definition.key, "Bibliography key", "constant");
   }
   return { commands, environments, labels, citations, packages, classes: [], files };
+}
+
+function bibtexCitationItems(index: LatexCompletionIndex | null): LatexCompletionItem[] {
+  // Only BibTeX entries are project-wide citation candidates. A
+  // `\\bibitem` belongs to the file currently open in the editor and is
+  // collected locally above; historical `\\cite` uses must never become
+  // completion suggestions.
+  return (index?.citations ?? []).filter((item) => /\.bib$/i.test(item.source ?? ""));
 }
 
 const localCompletionCache = new WeakMap<object, LatexCompletionIndex>();
@@ -157,13 +168,12 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
       validFor: /^[A-Za-z0-9*:_-]*$/
     };
   }
-  const label = latexArgumentCompletionContext(context, /\\(?:ref|pageref|autoref|nameref|cref|Cref|eqref|vref)\*?(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/, true)
-    ?? latexArgumentCompletionContext(context, /\\hyperref\[([^\[\]]*)$/);
+  const label = latexLabelCompletionContext(context);
   if (label && opaque()) return null;
   if (label) return { from: label.from, options: mergeCompletionItems(t, local().labels, index?.labels ?? []), validFor: /^[^,{}\s]*$/ };
   const citation = latexCitationCompletionContext(context);
   if (citation && opaque()) return null;
-  if (citation) return { from: citation.from, options: mergeCompletionItems(t, local().citations, index?.citations ?? []), validFor: /^[^,{}\s]*$/ };
+  if (citation) return { from: citation.from, options: mergeCompletionItems(t, local().citations, bibtexCitationItems(index)), validFor: /^[^,{}\s]*$/ };
   const file = latexArgumentCompletionContext(context, /\\(?:input|include|subfile|includegraphics|bibliography|addbibresource)(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/);
   if (file && opaque()) return null;
   if (file) return { from: file.from, options: mergeCompletionItems(t, local().files, index?.files ?? []), validFor: /^[^{}]*$/ };

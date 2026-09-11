@@ -85,6 +85,7 @@ function skipTrivia(source: string, start: number): number {
 function readBalancedArgument(source: string, start: number, opening: string, closing: string): ArgumentSpan | null {
   if (source[start] !== opening) return null;
   let depth = 0;
+  let braceDepth = 0;
   for (let index = start; index < source.length; index += 1) {
     const character = source[index];
     if (character === "\\" && index + 1 < source.length) {
@@ -94,6 +95,19 @@ function readBalancedArgument(source: string, start: number, opening: string, cl
     if (isCommentStart(source, index)) {
       index = skipComment(source, index) - 1;
       continue;
+    }
+    // An optional argument can contain braced content with literal square
+    // brackets. Those brackets must not close the outer optional argument.
+    if (opening === "[") {
+      if (character === "{") {
+        braceDepth += 1;
+        continue;
+      }
+      if (character === "}" && braceDepth > 0) {
+        braceDepth -= 1;
+        continue;
+      }
+      if (braceDepth > 0) continue;
     }
     if (character === opening) {
       depth += 1;
@@ -207,22 +221,43 @@ function forEachLatexCommand(source: string, visitor: (command: LatexCommand) =>
 
 function keyRanges(source: string, argument: ArgumentSpan): Array<{ key: string; from: number; to: number }> {
   const ranges: Array<{ key: string; from: number; to: number }> = [];
-  let segmentStart = argument.contentFrom;
-  for (let index = argument.contentFrom; index <= argument.contentTo; index += 1) {
-    if (index !== argument.contentTo && source[index] !== ",") continue;
+  // Preserve source offsets while treating comments as whitespace. In
+  // particular, a comment after a comma must not become part of the next
+  // citation or label key.
+  const masked = maskLatexComments(source.slice(argument.contentFrom, argument.contentTo));
+  let segmentStart = 0;
+  for (let index = 0; index <= masked.length; index += 1) {
+    if (index !== masked.length && masked[index] !== ",") continue;
     let from = segmentStart;
     let to = index;
-    while (from < to && /\s/.test(source[from])) from += 1;
-    while (to > from && /\s/.test(source[to - 1])) to -= 1;
-    if (to > from) ranges.push({ key: source.slice(from, to), from, to });
+    while (from < to && /\s/.test(masked[from])) from += 1;
+    while (to > from && /\s/.test(masked[to - 1])) to -= 1;
+    if (to > from) {
+      const absoluteFrom = argument.contentFrom + from;
+      const absoluteTo = argument.contentFrom + to;
+      ranges.push({ key: source.slice(absoluteFrom, absoluteTo), from: absoluteFrom, to: absoluteTo });
+    }
     segmentStart = index + 1;
   }
   return ranges;
 }
 
+// These commands contain "cite" but configure citation rendering rather than
+// accepting a citation key. Keeping the generic fallback below is useful for
+// package-defined cite commands, while this small exclusion list prevents
+// source navigation and completion from treating preamble settings as keys.
+const nonReferenceCitationCommands = new Set([
+  "citestyle", "setcitestyle", "newcites", "citetext",
+  "declarecitecommand", "declaremulticitecommand", "declareautocitecommand",
+  "declarecitewrappercommand", "declarecitepunctuation", "declarecitedelimiter",
+  "declarecitedriver", "declarecitealias",
+  "ateverycite", "ateverycitekey", "atnextcite", "atnextcitekey"
+]);
+
 function isCitationCommand(name: string): boolean {
   const normalized = name.toLowerCase();
-  return normalized === "nocite" || normalized.includes("cite");
+  return !nonReferenceCitationCommands.has(normalized)
+    && (normalized === "nocite" || normalized.includes("cite"));
 }
 
 function isLabelCommand(name: string): boolean {
@@ -239,6 +274,92 @@ function isRangeReferenceCommand(name: string): boolean {
 
 function isMultiCitationCommand(name: string): boolean {
   return name.toLowerCase().endsWith("cites");
+}
+
+function unfinishedCitationArgument(source: string, start: number, multiple: boolean): number | null {
+  let index = start;
+  while (index < source.length) {
+    index = skipTrivia(source, index);
+    while (source[index] === "[") {
+      const optional = readBalancedArgument(source, index, "[", "]");
+      if (!optional) return null;
+      index = skipTrivia(source, optional.to);
+    }
+    if (source[index] !== "{") return null;
+    const mandatory = readBalancedArgument(source, index, "{", "}");
+    if (!mandatory) return index + 1;
+    if (!multiple) return null;
+    index = mandatory.to;
+  }
+  return null;
+}
+
+function unfinishedLabelArgument(source: string, start: number, command: string): number | null {
+  let index = skipTrivia(source, start);
+  if (command.toLowerCase() === "hyperref") {
+    if (source[index] !== "[") return null;
+    const optional = readBalancedArgument(source, index, "[", "]");
+    return optional ? null : index + 1;
+  }
+
+  const maximum = isRangeReferenceCommand(command) ? 2 : 1;
+  for (let count = 0; count < maximum; count += 1) {
+    index = skipTrivia(source, index);
+    while (source[index] === "[") {
+      const optional = readBalancedArgument(source, index, "[", "]");
+      if (!optional) return null;
+      index = skipTrivia(source, optional.to);
+    }
+    if (source[index] !== "{") return null;
+    const mandatory = readBalancedArgument(source, index, "{", "}");
+    if (!mandatory) return index + 1;
+    index = mandatory.to;
+  }
+  return null;
+}
+
+function currentReferenceKey(source: string, start: number): { from: number; query: string } {
+  let itemStart = start;
+  for (let index = start; index < source.length; index += 1) {
+    if (isCommentStart(source, index)) {
+      index = skipComment(source, index) - 1;
+      continue;
+    }
+    if (source[index] === ",") itemStart = index + 1;
+  }
+  const from = skipTrivia(source, itemStart);
+  return { from, query: source.slice(from) };
+}
+
+/**
+ * Return the active key range while a citation command is still being
+ * written. This deliberately shares the reference scanner's treatment of
+ * command boundaries, comments, literals, and balanced optional arguments.
+ */
+export function findLatexCitationCompletion(source: string): { from: number; query: string } | null {
+  let argumentStart: number | null = null;
+  forEachLatexCommand(source, (command) => {
+    if (!isCitationCommand(command.name)) return;
+    const active = unfinishedCitationArgument(source, command.to, isMultiCitationCommand(command.name));
+    if (active !== null) argumentStart = active;
+  });
+  return argumentStart === null ? null : currentReferenceKey(source, argumentStart);
+}
+
+/**
+ * Return the active label range while a cross-reference command is being
+ * written. This shares the navigation scanner's command classification, so
+ * commands such as \vpageref and both arguments of \crefrange receive the
+ * same label candidates that can later be Ctrl/Cmd-clicked.
+ */
+export function findLatexLabelCompletion(source: string): { from: number; query: string } | null {
+  let argumentStart: number | null = null;
+  forEachLatexCommand(source, (command) => {
+    if (!isLabelCommand(command.name)) return;
+    const active = unfinishedLabelArgument(source, command.to, command.name);
+    if (active !== null) argumentStart = active;
+  });
+  return argumentStart === null ? null : currentReferenceKey(source, argumentStart);
 }
 
 /**
@@ -328,7 +449,14 @@ function readBibtexBlock(source: string, start: number): ArgumentSpan | null {
   const opening = source[start];
   const closing = opening === "{" ? "}" : ")";
   if (opening !== "{" && opening !== "(") return null;
+
+  // Braced and parenthesized BibTeX entries have subtly different nesting
+  // rules. In a braced entry, quotes are ordinary content: toggling a quote
+  // state there would make a value such as `title = {\"quoted}` swallow the
+  // rest of the file. Parenthesized entries need to protect their outer `)`
+  // from both braced and quoted values.
   let depth = 0;
+  let braceDepth = 0;
   let quoted = false;
   for (let index = start; index < source.length; index += 1) {
     const character = source[index];
@@ -336,16 +464,13 @@ function readBibtexBlock(source: string, start: number): ArgumentSpan | null {
       index += 1;
       continue;
     }
-    if (character === "\"" && !isEscaped(source, index)) {
-      quoted = !quoted;
-      continue;
-    }
-    if (quoted) continue;
-    if (character === opening) {
-      depth += 1;
-      continue;
-    }
-    if (character === closing) {
+
+    if (opening === "{") {
+      if (character === "{") {
+        depth += 1;
+        continue;
+      }
+      if (character !== "}") continue;
       depth -= 1;
       if (depth === 0) {
         return {
@@ -355,6 +480,39 @@ function readBibtexBlock(source: string, start: number): ArgumentSpan | null {
           contentTo: index
         };
       }
+      continue;
+    }
+
+    if (quoted) {
+      if (character === "\"") quoted = false;
+      continue;
+    }
+    if (braceDepth > 0) {
+      if (character === "{") braceDepth += 1;
+      else if (character === "}") braceDepth -= 1;
+      continue;
+    }
+    if (character === "{") {
+      braceDepth = 1;
+      continue;
+    }
+    if (character === "\"") {
+      quoted = true;
+      continue;
+    }
+    if (character === "(") {
+      depth += 1;
+      continue;
+    }
+    if (character !== closing) continue;
+    depth -= 1;
+    if (depth === 0) {
+      return {
+        from: start,
+        to: index + 1,
+        contentFrom: start + 1,
+        contentTo: index
+      };
     }
   }
   return null;
@@ -375,28 +533,35 @@ function bibtexKeyRange(source: string, entry: ArgumentSpan): { key: string; fro
 }
 
 function definitionsFromBibtex(source: string): LatexReferenceDefinition[] {
-  const masked = maskLatexComments(source);
   const definitions: LatexReferenceDefinition[] = [];
   let index = 0;
-  while (index < masked.length) {
-    if (masked[index] !== "@") {
+  while (index < source.length) {
+    // A percent sign introduces a comment only at top level. Once an entry
+    // starts, `%` is valid ordinary content in braced and quoted fields (for
+    // example a percent-encoded URL), so readBibtexBlock deliberately sees
+    // the original source unchanged.
+    if (isCommentStart(source, index)) {
+      index = skipComment(source, index);
+      continue;
+    }
+    if (source[index] !== "@") {
       index += 1;
       continue;
     }
     let typeEnd = index + 1;
-    while (typeEnd < masked.length && /[A-Za-z]/.test(masked[typeEnd])) typeEnd += 1;
+    while (typeEnd < source.length && /[A-Za-z]/.test(source[typeEnd])) typeEnd += 1;
     if (typeEnd === index + 1) {
       index += 1;
       continue;
     }
     let opening = typeEnd;
-    while (opening < masked.length && /\s/.test(masked[opening])) opening += 1;
-    const block = readBibtexBlock(masked, opening);
+    while (opening < source.length && /\s/.test(source[opening])) opening += 1;
+    const block = readBibtexBlock(source, opening);
     if (!block) {
       index = typeEnd;
       continue;
     }
-    const type = masked.slice(index + 1, typeEnd).toLowerCase();
+    const type = source.slice(index + 1, typeEnd).toLowerCase();
     if (type !== "string" && type !== "preamble" && type !== "comment") {
       const key = bibtexKeyRange(source, block);
       if (key) {
