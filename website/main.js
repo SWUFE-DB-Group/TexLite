@@ -2,6 +2,45 @@ const localeButtons = [...document.querySelectorAll("[data-locale]")];
 const localeCache = new Map();
 const defaultLocale = "en";
 const localeDirectory = new URL("./locales/", import.meta.url);
+const feedbackRibbon = document.querySelector(".feedback-ribbon");
+const feedbackPopover = document.querySelector("#feedback-popover");
+
+if (feedbackRibbon && feedbackPopover) {
+  const closePopover = () => {
+    feedbackPopover.classList.remove("is-open");
+    feedbackRibbon.setAttribute("aria-expanded", "false");
+  };
+
+  const togglePopover = () => {
+    const willOpen = !feedbackPopover.classList.contains("is-open");
+    feedbackPopover.classList.toggle("is-open", willOpen);
+    feedbackRibbon.setAttribute("aria-expanded", String(willOpen));
+  };
+
+  feedbackRibbon.addEventListener("click", (event) => {
+    event.stopPropagation();
+    togglePopover();
+  });
+
+  feedbackPopover.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", () => {
+      closePopover();
+    });
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!feedbackPopover.contains(event.target) && !feedbackRibbon.contains(event.target)) {
+      closePopover();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && feedbackPopover.classList.contains("is-open")) {
+      closePopover();
+      feedbackRibbon.focus();
+    }
+  });
+}
 
 function readStoredLocale() {
   try {

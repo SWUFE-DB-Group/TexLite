@@ -9,7 +9,7 @@
       content="TexLite — a lightweight, local-first collaborative LaTeX workspace."
     />
     <link rel="icon" type="image/svg+xml" href="./logo.svg" />
-    <link rel="stylesheet" href="./styles.css?v=2" />
+    <link rel="stylesheet" href="./styles.css?v=5" />
     <title>TexLite</title>
   </head>
   <body>
@@ -43,14 +43,63 @@
               <span class="eyebrow-dot"></span
               ><span data-i18n="hero.eyebrow">为论文写作而生的轻量工作台</span>
             </p>
-            <h1>
-              <span data-i18n="hero.titlePrefix">把 LaTeX 写作，</span
-              ><br /><span
-                class="hero-title-suffix"
-                data-i18n="hero.titleSuffix"
-                >变成一件顺手的事。</span
-              >
-            </h1>
+            <div class="hero-title-wrap">
+              <h1>
+                <span data-i18n="hero.titlePrefix">把 LaTeX 写作，</span
+                ><br /><span
+                  class="hero-title-suffix"
+                  data-i18n="hero.titleSuffix"
+                  >变成一件顺手的事。</span
+                >
+              </h1>
+              <div class="feedback-ribbon-wrap">
+                <button
+                  type="button"
+                  class="feedback-ribbon"
+                  aria-haspopup="dialog"
+                  aria-expanded="false"
+                  aria-controls="feedback-popover"
+                  title="Feedback"
+                >
+                  <span class="ribbon-tail ribbon-tail-left" aria-hidden="true"></span>
+                  <span class="ribbon-body">
+                    <span class="ribbon-sparkle" aria-hidden="true">✦</span>
+                    <span class="ribbon-text" data-i18n="feedback.ribbon">Feedback</span>
+                    <span class="ribbon-arrow" aria-hidden="true">↗</span>
+                  </span>
+                  <span class="ribbon-tail ribbon-tail-right" aria-hidden="true"></span>
+                </button>
+
+                <div class="feedback-popover" id="feedback-popover" role="dialog" aria-labelledby="feedback-popover-title">
+                  <div class="feedback-popover-arrow" aria-hidden="true"></div>
+                  <div class="feedback-popover-header">
+                    <span class="feedback-popover-kicker" data-i18n="feedback.kicker">Feedback</span>
+                    <strong id="feedback-popover-title" data-i18n="feedback.title">Help shape TexLite.</strong>
+                    <p data-i18n="feedback.lead">Tell us what would make your team's workflow better.</p>
+                  </div>
+                  <div class="feedback-popover-links">
+                    <a
+                      class="feedback-popover-link feedback-link-google"
+                      href="https://docs.google.com/forms/d/e/1FAIpQLSfc40WWMJpXsYm0FsSadZ-FBu6gdcPZVnoMulcQdkJxIoJtCA/viewform?usp=dialog"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span data-i18n="feedback.google">Google Form</span>
+                      <span aria-hidden="true">↗</span>
+                    </a>
+                    <a
+                      class="feedback-popover-link feedback-link-feishu"
+                      href="https://swufe-dbg.feishu.cn/share/base/form/shrcnqKcPJwCCXXF6Vu52AfSy1d"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span data-i18n="feedback.feishu">Feishu questionnaire</span>
+                      <span aria-hidden="true">↗</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
             <p class="hero-lead" data-i18n="hero.lead">
               TexLite
               将编辑、编译、预览和协作放进一个清爽的浏览器工作区，同时保留你熟悉的本机
@@ -399,6 +448,6 @@
         JavaScript for language switching.
       </div></noscript
     >
-    <script type="module" src="./main.js?v=highlights-list"></script>
+    <script type="module" src="./main.js?v=feedback-ribbon-v3"></script>
   </body>
 </html>

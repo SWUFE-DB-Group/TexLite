@@ -91,6 +91,14 @@
     },
     "note": "With TexLite, your team controls the TeX environment, compile resources, users, permissions, and data. It also includes real-time editing, source-anchored comments, selection-level edit history, SyncTeX, project snapshots, and optional Git backup — with no externally imposed compile timeout and no built-in AI."
   },
+  "feedback": {
+    "ribbon": "Feedback",
+    "kicker": "Feedback",
+    "title": "Help shape TexLite.",
+    "lead": "Tell us what would make your team's workflow better.",
+    "google": "Google Form",
+    "feishu": "Feishu questionnaire"
+  },
   "deploy": {
     "kicker": "Start on your server",
     "title": "A few commands to own your writing space.",
