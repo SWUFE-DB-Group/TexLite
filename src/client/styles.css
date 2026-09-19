@@ -380,7 +380,6 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .collaboration-avatar-tooltip span { color: #526158; }
 .collaboration-avatar-tooltip small { margin-top: 3px; color: #77837b; font-size: 11px; }
 .collaboration-avatar:hover .collaboration-avatar-tooltip, .collaboration-avatar:focus-visible .collaboration-avatar-tooltip { display: block; }
-.workspace[data-texlite-tooltips="off"] .collaboration-avatar-tooltip { display: none !important; }
 .collaboration-recovery { min-width: 0; display: inline-flex; align-items: center; gap: 7px; margin: 0 8px; border: 1px solid #e0716780; border-radius: 999px; padding: 4px 6px 4px 9px; background: #6f2b2b66; color: #ffe0dd; font-size: 10px; white-space: nowrap; }
 .collaboration-recovery button { border: 1px solid #ffffff55; border-radius: 999px; padding: 3px 7px; background: #ffffff18; color: inherit; font-size: 10px; }
 .collaboration-recovery button:hover { background: #ffffff2c; }
