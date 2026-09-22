@@ -1078,7 +1078,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     return () => window.clearTimeout(timer);
   }, [activeFile, comments, sidePanel, targetMention]);
   const {
-    pdfUrl, pdfCompiledAt, pdfLoadingMode, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
+    pdfUrl, pdfCompiledAt, pdfSizeBytes, pdfLoadingMode, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
     artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cancelling, cleaning,
     compile, cancelCompile, cleanCompile, viewArtifact
   } = useProjectCompilation({
@@ -1345,7 +1345,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       {showPreview && <WorkspacePreviewPanel
         projectId={projectId} activeMainFile={activeMainFile} previewTab={previewTab} diagnosticTab={diagnosticTab}
         pdfUrl={pdfUrl} pdfLoadingMode={pdfLoadingMode} pdfLoading={pdfLoading} pdfCompiledAt={pdfCompiledAt}
-        pdfCompiledLabel={pdfCompiledLabel} pdfTargetLabel={pdfTargetLabel} pdfDownloadUrl={pdfDownloadUrl}
+        pdfSizeBytes={pdfSizeBytes} pdfCompiledLabel={pdfCompiledLabel} pdfTargetLabel={pdfTargetLabel} pdfDownloadUrl={pdfDownloadUrl}
         pdfTarget={pdfTarget} pdfViewport={pdfViewport} activeFile={activeFile}
         compileBusy={compileBusy} compileLog={compileLog} compileDiagnostics={compileDiagnostics}
         compileMessages={compileMessages} artifacts={artifacts}

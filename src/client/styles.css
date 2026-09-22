@@ -600,7 +600,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .editor-host .cm-lineNumbers .cm-comment-add-button svg { width: 1.16em; height: 1.16em; fill: currentColor; }
 .preview-panel { display: flex; flex-direction: column; background: #6f7471; }
 .preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 5px 6px 0; background: #4d544f; }
-.preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(120px, 1fr); gap: 3px; }
+.preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px; }
 .preview-tabs button { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 6px 6px 0 0; background: transparent; color: #d7dcd8; font-size: 11px; }
 .preview-tabs button.active { background: #f3f4f1; color: #184f36; font-weight: 700; }
 .preview-tabs button span { min-width: 17px; padding: 1px 4px; border-radius: 999px; background: #ffffff20; font-size: 9px; }
@@ -611,6 +611,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .preview-tabs button.active .pdf-tab-label { background: transparent; }
 .preview-tabs .pdf-tab small { max-width: 100%; overflow: hidden; color: #bcc4bf; font-size: 8px; font-weight: 400; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
 .preview-tabs .pdf-tab.active small { color: #65756c; }
+.preview-tabs .diagnostics-tab { min-width: 112px; }
 .pdf-download-top { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; padding: 0 11px; border: 0; border-radius: 6px 6px 0 0; color: #a9cce8; font-size: 10px; text-decoration: none; white-space: nowrap; }
 .pdf-download-top:hover { background: #d7ecff24; color: #eaf5ff; }
 .preview-subtabs { height: 36px; flex: none; display: flex; align-items: center; gap: 3px; padding: 4px 7px; border-bottom: 1px solid #cfd6d1; background: #e4e9e5; }
