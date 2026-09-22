@@ -843,6 +843,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .tex-fmt-options-editor { min-height: 100px; }
 .dictionary-add { display: flex; align-items: stretch; gap: 7px; }
 .dictionary-add input { min-width: 0; flex: 1; }
+.dictionary-add input::placeholder { font-size: 11px; }
 .dictionary-add button { flex: none; color: #176b44; }
 .dictionary-words { display: flex; flex-wrap: wrap; gap: 6px; }
 .dictionary-word { display: inline-flex; align-items: center; gap: 3px; min-height: 27px; padding: 3px 5px 3px 8px; border: 1px solid #d5ded7; border-radius: 999px; background: #f1f6f2; color: #31523e; font-size: 11px; }
