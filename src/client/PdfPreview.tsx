@@ -17,6 +17,16 @@ interface CachedPdfDocument {
   lastUsed: number;
 }
 
+interface PdfDocumentLease {
+  promise: Promise<PDFDocumentProxy>;
+  release: () => void;
+}
+
+interface ActivePdfDocument extends PdfDocumentLease {
+  url: string;
+  loadingMode: PdfLoadingMode;
+}
+
 const cachedPdfDocuments = new Map<string, CachedPdfDocument>();
 
 /** Initialize the worker without fetching a project PDF. */
@@ -74,7 +84,7 @@ export function preloadPdf(url: string, loadingMode: PdfLoadingMode): void {
   void entry.promise.catch(() => undefined);
 }
 
-function acquirePdfDocument(url: string, loadingMode: PdfLoadingMode): { promise: Promise<PDFDocumentProxy>; release: () => void } {
+function acquirePdfDocument(url: string, loadingMode: PdfLoadingMode): PdfDocumentLease {
   const entry = pdfDocument(url, loadingMode);
   entry.consumers += 1;
   entry.lastUsed = Date.now();
@@ -118,11 +128,17 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   const { t } = useTranslation();
   const root = useRef<HTMLDivElement>(null);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
+  const [documentUrl, setDocumentUrl] = useState("");
   const [width, setWidth] = useState(0);
   const [zoom, setZoom] = useState(100);
   const [error, setError] = useState("");
   const pageElements = useRef(new Map<number, HTMLElement>());
   const viewportFrame = useRef<number | null>(null);
+  // Retain the current document's cache lease until the replacement has
+  // actually loaded. Otherwise cache pruning can destroy the old document
+  // while the new, potentially large PDF is still downloading.
+  const displayedDocument = useRef<ActivePdfDocument | null>(null);
+  const pendingDocument = useRef<PdfDocumentLease | null>(null);
   const onViewportLocationRef = useRef(onViewportLocation);
   onViewportLocationRef.current = onViewportLocation;
 
@@ -200,17 +216,44 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   }, []);
 
   useEffect(() => {
+    const current = displayedDocument.current;
+    if (current?.url === url && current.loadingMode === loadingMode) {
+      setError("");
+      return;
+    }
     let cancelled = false;
-    setDocument(null); setError("");
-    const cached = acquirePdfDocument(url, loadingMode);
-    void cached.promise.then((loaded) => {
-      if (!cancelled) setDocument(loaded);
-    }).catch(() => { if (!cancelled) setError(t("editor.pdfLoadFailed")); });
+    setError("");
+    const lease = acquirePdfDocument(url, loadingMode);
+    pendingDocument.current = lease;
+    void lease.promise.then((loaded) => {
+      if (cancelled) return;
+      const previous = displayedDocument.current;
+      displayedDocument.current = { ...lease, url, loadingMode };
+      if (pendingDocument.current === lease) pendingDocument.current = null;
+      setDocument(loaded);
+      setDocumentUrl(url);
+      previous?.release();
+    }).catch(() => {
+      if (cancelled) return;
+      if (pendingDocument.current === lease) pendingDocument.current = null;
+      lease.release();
+      setError(t("editor.pdfLoadFailed"));
+    });
     return () => {
       cancelled = true;
-      cached.release();
+      if (pendingDocument.current === lease) {
+        pendingDocument.current = null;
+        lease.release();
+      }
     };
-  }, [url, loadingMode]);
+  }, [url, loadingMode, t]);
+
+  useEffect(() => () => {
+    pendingDocument.current?.release();
+    pendingDocument.current = null;
+    displayedDocument.current?.release();
+    displayedDocument.current = null;
+  }, []);
 
   useEffect(() => {
     if (zoom > 100 || !root.current) return;
@@ -231,6 +274,8 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
     event.currentTarget.scrollLeft += event.deltaY;
     reportViewport();
   };
+  const replacingDocument = Boolean(document && documentUrl !== url && !error);
+  const displayedTarget = documentUrl === url ? target : null;
   return <div className="pdf-viewer">
     <div className="pdf-toolbar" role="toolbar" aria-label={t("editor.pdfZoomControls")}>
       <button disabled={zoom <= 50} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
@@ -238,17 +283,19 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
       <button disabled={zoom >= 200} title={t("editor.pdfZoomIn")} aria-label={t("editor.pdfZoomIn")} onClick={() => changeZoom(10)}><Plus size={14} /></button>
       <button className="pdf-fit-width" title={t("editor.pdfFitWidth")} onClick={fitWidth}><Maximize2 size={13} />{t("editor.pdfFitWidth")}</button>
     </div>
-    {compiling && <div className="pdf-compiling-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={20} /><span>{t("editor.compiling")}</span></div>}
+    {compiling && <div className="pdf-compiling-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.compiling")}</span></div>}
+    {replacingDocument && !compiling && <div className="pdf-loading-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.loadingPdf")}</span></div>}
+    {document && error && <div className="pdf-load-error-overlay" role="status" aria-live="polite"><span>{error}</span></div>}
     <div className="pdf-document" ref={root} onScroll={reportViewport} onWheel={scrollHorizontally}>
       <div className="pdf-pages" style={{ width: `${Math.max(1, width - 28) * Math.max(1, zoom / 100)}px` }}>
         {!document && !error && <div className="pdf-loading" role="status" aria-live="polite">
           <LoaderCircle className="spin" size={24} />
           <span>{t("editor.loadingPdf")}</span>
         </div>}
-        {error && <div className="preview-empty"><strong>{error}</strong></div>}
+        {error && !document && <div className="preview-empty"><strong>{error}</strong></div>}
         {document && width > 0 && Array.from({ length: document.numPages }, (_item, index) =>
           <PdfPage key={index + 1} document={document} pageNumber={index + 1} availableWidth={width - 28} zoom={zoom / 100}
-            target={target?.page === index + 1 ? target : null} onReady={reportViewport} onPageElement={registerPageElement}
+            target={displayedTarget?.page === index + 1 ? displayedTarget : null} onReady={reportViewport} onPageElement={registerPageElement}
             onInternalLink={navigateToDestination} onDoubleClickLocation={onDoubleClickLocation} />)}
       </div>
     </div>
