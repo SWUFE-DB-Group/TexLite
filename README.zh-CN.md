@@ -24,35 +24,6 @@
 - **无需庞大服务栈即可协作。** 默认部署只有一个 Node.js 进程、SQLite 和本地文件，
   同时提供实时编辑和源码级批注，适合少量可信协作者。
 
-## 与 Overleaf 的实际区别
-
-[Overleaf](https://www.overleaf.com/about/features-overview) 在团队需要其托管产品或更完整生态时
-仍然是很好的选择。TexLite 面向的是更窄的自托管场景：
-
-- 共享托管服务在使用高峰期可能排队、变慢或出现编译超时。
-- Overleaf 开源 [Community Edition](https://github.com/overleaf/overleaf) 的
-  [Docker 部署路径](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit) 更复杂，且源码批注等高级功能 [仅限 Server Pro](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions)。
-  *如果不介意一个更庞大的 Docker 镜像，[我们也准备好了](#docker-deployment) :)*
-
-自托管并不保证每份文档都编译得更快，速度仍取决于宿主机和文档本身；它带来的是对容量、
-TeX 更新、数据位置与协作工作流的掌控。
-
-若是以个人、本地桌面工作流为主，建议优先考虑
-[VS Code + LaTeX Workshop](https://github.com/James-Yu/LaTeX-Workshop) 或
-[TeXstudio](https://texstudio.org/)。TexLite 的目标是浏览器中的共同写作，而不是取代个人 IDE。
-
-## 核心写作工作流
-
-- 项目支持文件夹、ZIP 导入/导出、标签、分享、所有权转让、归档和私有的个人引用库。
-- 基于 CodeMirror 的编辑器提供 LaTeX/BibTeX 高亮、折叠、补全、可选 Vim 模式、格式化、
-  拼写/语法辅助、搜索替换及源码/PDF SyncTeX 跳转。
-- 基于 Yjs 的协同源码编辑支持活动会话、源码锚定批注、回复、解决状态，以及让审阅者
-  可批注但不能修改源码的权限模型。
-- 使用 `latexmk` 和可选择引擎进行编译，提供项目设置、结构化诊断、缓存的成功 PDF、
-  可下载产物以及可选的项目级 `latexmkrc`。
-- 每个项目拥有历史版本和仅所有者可用的 Git/GitHub 备份；Git 是可选依赖，仅在使用
-  集成时才检查。
-
 ## 快速开始
 
 安装 Node.js 24 或更高版本、`latexmk`，以及至少一个 TeX 引擎，例如 `pdflatex`、
@@ -84,6 +55,54 @@ texlite logs
 `texlite serve` 会以前台方式运行，适合调试、Docker 或 systemd。`start`、`stop`、
 `restart`、`status`、`logs` 使用 npm 包内置的 PM2 运行时；完整命令请执行
 `texlite help`。
+
+## 如何公开访问 TexLite
+
+建议让 TexLite 继续监听 `127.0.0.1`。如果需要方便、安全地公开访问，请使用
+[TexLite Share](https://share.zhongpu.info/)。确保 TexLite 已在默认端口启动，然后安装并
+运行隧道客户端：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
+~/.local/bin/texlite-tunnel-client --server-url https://share.zhongpu.info
+```
+
+如果 TexLite 使用非默认端口，请明确指定本地地址：
+
+```bash
+~/.local/bin/texlite-tunnel-client \
+  --server-url https://share.zhongpu.info \
+  --local-addr 127.0.0.1:8080
+```
+
+## 与 Overleaf 的实际区别
+
+[Overleaf](https://www.overleaf.com/about/features-overview) 在团队需要其托管产品或更完整生态时
+仍然是很好的选择。TexLite 面向的是更窄的自托管场景：
+
+- 共享托管服务在使用高峰期可能排队、变慢或出现编译超时。
+- Overleaf 开源 [Community Edition](https://github.com/overleaf/overleaf) 的
+  [Docker 部署路径](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit) 更复杂，且源码批注等高级功能 [仅限 Server Pro](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions)。
+  *如果不介意一个更庞大的 Docker 镜像，[我们也准备好了](#docker-deployment) :)*
+
+自托管并不保证每份文档都编译得更快，速度仍取决于宿主机和文档本身；它带来的是对容量、
+TeX 更新、数据位置与协作工作流的掌控。
+
+若是以个人、本地桌面工作流为主，建议优先考虑
+[VS Code + LaTeX Workshop](https://github.com/James-Yu/LaTeX-Workshop) 或
+[TeXstudio](https://texstudio.org/)。TexLite 的目标是浏览器中的共同写作，而不是取代个人 IDE。
+
+## 核心写作工作流
+
+- 项目支持文件夹、ZIP 导入/导出、标签、分享、所有权转让、归档和私有的个人引用库。
+- 基于 CodeMirror 的编辑器提供 LaTeX/BibTeX 高亮、折叠、补全、可选 Vim 模式、格式化、
+  拼写/语法辅助、搜索替换及源码/PDF SyncTeX 跳转。
+- 基于 Yjs 的协同源码编辑支持活动会话、源码锚定批注、回复、解决状态，以及让审阅者
+  可批注但不能修改源码的权限模型。
+- 使用 `latexmk` 和可选择引擎进行编译，提供项目设置、结构化诊断、缓存的成功 PDF、
+  可下载产物以及可选的项目级 `latexmkrc`。
+- 每个项目拥有历史版本和仅所有者可用的 Git/GitHub 备份；Git 是可选依赖，仅在使用
+  集成时才检查。
 
 <a id="docker-deployment"></a>
 
@@ -119,11 +138,14 @@ Docker 版的用户配置和日常运维请参见
 
 TexLite 是一个面向可信用户的单宿主机应用，并非 LaTeX 编译沙箱：LaTeX 本身以及启用的
 项目 `latexmkrc` 都可能执行强大的本机行为。
-如果需要让可信小团队安全协作而不直接暴露服务，可以考虑使用
-[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)。
-如果主机位于 NAT 后且确实需要公网访问，也可以考虑使用
-[rathole](https://github.com/rapiz1/rathole) 或 [frp](https://github.com/fatedier/frp)；
-在将 TexLite 暴露到公网前，请配置认证和 TLS 等安全措施。
+不要直接暴露其服务端口。
+
+[TexLite Share](https://share.zhongpu.info/) 是最简单、专门面向 TexLite 的分享方式。
+根据部署环境，也可以使用 [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
+构建私有 Tailnet，通过 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
+提供托管的公网入口，或使用 [frp](https://github.com/fatedier/frp) 自行维护反向隧道。
+无论采用哪一种访问层，都应保留 TexLite 登录认证、启用 HTTPS、限制访问范围，并注意
+LaTeX 编译环境并不是面向不可信代码的沙箱。
 
 ## 许可证
 

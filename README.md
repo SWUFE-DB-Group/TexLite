@@ -25,6 +25,60 @@ teams. Use your existing LaTeX distribution, with no heavyweight service stack.
   process, SQLite, and local files—plus real-time editing and source-level
   comments for a small trusted team.
 
+## Quick start
+
+Install Node.js 24 or newer, `latexmk`, and at least one TeX engine such as
+`pdflatex`, `xelatex`, or `lualatex`. Git is needed only for the optional
+Git/GitHub integration.
+
+After installation, `texlite requirements` checks the relevant host software
+and versions before initialization.
+
+```bash
+npm install --global texlite
+texlite requirements
+texlite init
+texlite start
+texlite status
+```
+
+Open <http://127.0.0.1:3000>. `texlite init` creates the configuration and the
+first administrator; public registration is deliberately unavailable.
+To mount TexLite below an existing domain path such as `/texlite`, configure
+`server.basePath` and follow the [reverse-proxy guide](OPERATIONS.md#reverse-proxy-subpath).
+
+For upgrades and routine management:
+
+```bash
+npm update --global texlite
+texlite restart
+texlite logs
+```
+
+`texlite serve` runs in the foreground for debugging, Docker, or systemd.
+`start`, `stop`, `restart`, `status`, and `logs` use the PM2 runtime bundled
+with the npm package. Run `texlite help` for the complete command list.
+
+## How to access TexLite publicly
+
+Keep TexLite bound to `127.0.0.1` and use
+[TexLite Share](https://share.zhongpu.info/) when you need convenient,
+HTTPS-protected public access. With TexLite running locally on its default
+port, install and launch the tunnel client with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
+~/.local/bin/texlite-tunnel-client --server-url https://share.zhongpu.info
+```
+
+For a non-default local port, specify the address explicitly:
+
+```bash
+~/.local/bin/texlite-tunnel-client \
+  --server-url https://share.zhongpu.info \
+  --local-addr 127.0.0.1:8080
+```
+
 ## A practical distinction from Overleaf
 
 [Overleaf](https://www.overleaf.com/about/features-overview) is a strong choice
@@ -62,40 +116,6 @@ shared browser writing, not a replacement for a personal IDE.
 - Per-project history and owner-only Git/GitHub backup. Git is optional and is
   checked only when its integration is used.
 
-## Quick start
-
-Install Node.js 24 or newer, `latexmk`, and at least one TeX engine such as
-`pdflatex`, `xelatex`, or `lualatex`. Git is needed only for the optional
-Git/GitHub integration.
-
-After installation, `texlite requirements` checks the relevant host software
-and versions before initialization.
-
-```bash
-npm install --global texlite
-texlite requirements
-texlite init
-texlite start
-texlite status
-```
-
-Open <http://127.0.0.1:3000>. `texlite init` creates the configuration and the
-first administrator; public registration is deliberately unavailable.
-To mount TexLite below an existing domain path such as `/texlite`, configure
-`server.basePath` and follow the [reverse-proxy guide](OPERATIONS.md#reverse-proxy-subpath).
-
-For upgrades and routine management:
-
-```bash
-npm update --global texlite
-texlite restart
-texlite logs
-```
-
-`texlite serve` runs in the foreground for debugging, Docker, or systemd.
-`start`, `stop`, `restart`, `status`, and `logs` use the PM2 runtime bundled
-with the npm package. Run `texlite help` for the complete command list.
-
 <a id="docker-deployment"></a>
 
 ### Docker deployment
@@ -131,12 +151,16 @@ for its user-facing configuration and operations guide.
 
 TexLite is a single-host application for trusted users. It is not a compiler
 sandbox: LaTeX and an enabled project `latexmkrc` can execute powerful local
-behaviour.
-For secure small-team access without exposing the service directly, consider
-[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve).
-If the host is behind NAT and public access is required, you may also consider
-[rathole](https://github.com/rapiz1/rathole) or [frp](https://github.com/fatedier/frp);
-configure authentication and TLS before exposing TexLite to the public Internet.
+behaviour. Do not expose its service port directly.
+
+[TexLite Share](https://share.zhongpu.info/) provides the simplest
+TexLite-specific sharing path. Depending on the deployment environment, common
+alternatives include [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
+for a private tailnet, [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
+for a managed public endpoint, and [frp](https://github.com/fatedier/frp) for a
+self-managed reverse tunnel. Whichever access layer is used, retain TexLite's
+authentication, enable HTTPS, restrict the audience, and remember that LaTeX
+compilation is not an untrusted-code sandbox.
 
 ## License
 
