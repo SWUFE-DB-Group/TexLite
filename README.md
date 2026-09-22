@@ -59,12 +59,15 @@ texlite logs
 `start`, `stop`, `restart`, `status`, and `logs` use the PM2 runtime bundled
 with the npm package. Run `texlite help` for the complete command list.
 
-## How to access TexLite publicly
+<details>
+<summary>How to access TexLite publicly</summary>
 
 Keep TexLite bound to `127.0.0.1` and use
 [TexLite Share](https://share.zhongpu.info/) when you need convenient,
-HTTPS-protected public access. With TexLite running locally on its default
-port, install and launch the tunnel client with:
+HTTPS-protected public access. TexLite Share is currently hosted in Hong Kong,
+so access from mainland China or regions outside Southeast Asia may be slower.
+With TexLite running locally on its default port, install and launch the tunnel
+client with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
@@ -78,6 +81,8 @@ For a non-default local port, specify the address explicitly:
   --server-url https://share.zhongpu.info \
   --local-addr 127.0.0.1:8080
 ```
+
+</details>
 
 ## A practical distinction from Overleaf
 

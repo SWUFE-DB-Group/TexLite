@@ -56,11 +56,12 @@ texlite logs
 `restart`、`status`、`logs` 使用 npm 包内置的 PM2 运行时；完整命令请执行
 `texlite help`。
 
-## 如何公开访问 TexLite
+<details>
+<summary>如何公开访问 TexLite</summary>
 
 建议让 TexLite 继续监听 `127.0.0.1`。如果需要方便、安全地公开访问，请使用
-[TexLite Share](https://share.zhongpu.info/)。确保 TexLite 已在默认端口启动，然后安装并
-运行隧道客户端：
+[TexLite Share](https://share.zhongpu.info/)。TexLite Share 目前部署在香港，来自中国大陆或
+东南亚以外地区的访问可能较慢。确保 TexLite 已在默认端口启动，然后安装并运行隧道客户端：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
@@ -74,6 +75,8 @@ curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/inst
   --server-url https://share.zhongpu.info \
   --local-addr 127.0.0.1:8080
 ```
+
+</details>
 
 ## 与 Overleaf 的实际区别
 
