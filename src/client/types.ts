@@ -38,6 +38,8 @@ export interface Project {
   engine: "pdflatex" | "xelatex" | "lualatex";
   /** A server-validated Lucide icon slug, or null to display the project initial. */
   icon: string | null;
+  /** Shared project setting: run the optional host ChkTeX checker after edits. */
+  chktexEnabled: boolean;
   permission: "read" | "edit" | "owner";
   tags: ProjectTag[];
   unresolvedCommentCount?: number;
@@ -127,7 +129,7 @@ export interface HistoryVersion {
 
 export interface HistoryVersionDetail {
   version: HistoryVersion;
-  settings: { mainFile: string; engine: Project["engine"]; latexmkrc: string | null };
+  settings: { mainFile: string; engine: Project["engine"]; latexmkrc: string | null; chktexEnabled?: boolean };
   files: Array<{ path: string; size: number }>;
 }
 

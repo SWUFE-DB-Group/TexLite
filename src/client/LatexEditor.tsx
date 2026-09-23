@@ -740,7 +740,7 @@ function buildSpellCheckIssueDecorations(issues: SpellCheckIssue[], documentLeng
     .filter((issue) => issue.to > issue.from)
     .sort((left, right) => left.from - right.from || left.to - right.to);
   return Decoration.set(ranges.map((issue) => Decoration.mark({
-    class: issue.kind === "spelling" ? "cm-spell-error" : "cm-grammar-warning",
+    class: issue.kind === "spelling" ? "cm-spell-error" : issue.kind === "latex" ? "cm-latex-writing-issue" : "cm-grammar-warning",
     attributes: {
       title: issue.message || issue.word,
       "data-spell-error": "true",

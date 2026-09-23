@@ -11,7 +11,7 @@ export interface RawHarperLint {
   suggestions: string[];
 }
 
-export type SpellCheckIssueKind = "spelling" | "grammar";
+export type SpellCheckIssueKind = "spelling" | "grammar" | "latex";
 
 export interface SpellCheckIssue {
   from: number;

@@ -105,6 +105,7 @@ export function localizedResponseError(body: unknown, status: number, fallbackKe
       WORD_COUNT_SOURCE_INVALID: "editor.wordCountSourceInvalid",
       WORD_COUNT_SOURCE_TOO_LARGE: "editor.wordCountSourceTooLarge",
       WORD_COUNT_UNAVAILABLE: "editor.wordCountUnavailable",
+      CHK_TEX_UNAVAILABLE: "chktex.unavailable",
     } as Record<string, string>)[code] ?? `errors.codes.${code}`;
     if (i18n.exists(key)) return i18n.t(key, { status, ...(typeof body === "object" && body !== null ? body : {}) });
   }

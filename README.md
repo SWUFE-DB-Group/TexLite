@@ -110,7 +110,7 @@ shared browser writing, not a replacement for a personal IDE.
 - Projects with folders, ZIP import/export, tags, sharing, ownership transfer,
   archiving, and a private per-user citation library.
 - CodeMirror editing with LaTeX/BibTeX highlighting, folding, completion,
-  optional Vim mode, formatting, spelling/grammar assistance, search/replace,
+  optional Vim mode, formatting, spelling/grammar/ChkTeX assistance, search/replace,
   and source/PDF SyncTeX navigation.
 - Yjs-based collaborative source editing, active-session presence, comments
   anchored to source text, replies, resolution, and permissions that let

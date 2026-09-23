@@ -25,7 +25,7 @@ and day-to-day operation.
 | Browser UI | React, Vite, CodeMirror, PDF.js |
 | Localization | Frontend JSON resources plus a server-side error-code catalog, selected from `Accept-Language` |
 | Editor language features | CodeMirror LaTeX syntax/folding, auto-pairs, project completion index, optional Vim mode |
-| Writing assistance | Optional host `harper-cli`, with a linear server-side LaTeX mask and native browser spellcheck fallback; project dictionary stored by the server |
+| Writing assistance | Optional host `harper-cli` plus opt-in host `chktex`; Harper provides spelling/grammar suggestions, ChkTeX provides LaTeX writing diagnostics, and the project dictionary is stored by the server |
 | API and static server | Fastify, WebSocket |
 | Collaboration | Yjs, y-websocket, awareness messages, y-codemirror.next |
 | Database | SQLite through better-sqlite3, foreign keys, WAL mode, and `synchronous=NORMAL` |
@@ -119,7 +119,7 @@ Startup checks Node.js, `latexmk`, and every configured LaTeX engine.
 default host commands, requiring Node.js, `latexmk`, and at least one supported
 LaTeX engine. `texlite doctor` also reports optional host tools in a
 requirement/status/version table: Git, TeXcount, bibliography/index tools,
-Harper CLI, and `harper-ls`. A host without Git can run the editor and compiler;
+ChkTeX, Harper CLI, and `harper-ls`. A host without Git can run the editor and compiler;
 Git is checked on demand when an owner opens or uses Git integration. Formatting is also optional: the browser loads
 the bundled npm `tex-fmt` WASM module and `bibtex-tidy` only when formatting is
 requested. TexLite never installs or updates TeX packages.
@@ -273,18 +273,16 @@ Editor tab remounts therefore preserve Ctrl/Cmd+Z and Vim undo history without
 leaving obsolete CodeMirror/Yjs observers behind. Managers are released when
 the collaboration object is destroyed or loses edit permission.
 
-TexLite probes the optional host `harper-cli` command at startup. It runs each
-check in a private temporary TeX file after a narrow, linear server-side LaTeX
-mask has removed comments, commands, references, math, tables, option syntax,
-and code-like environments. This avoids browser/WASM startup work and keeps
-malformed delimiters bounded. The service serializes checks, coalesces identical
-source inputs for a short window, and returns Harper's safe replacement
-suggestions. Spelling uses a red wavy underline and grammar uses yellow; a
-context menu offers suggestions, while read-only members can inspect but cannot
-apply them. The shared project dictionary is kept in SQLite and filters
-project-specific spelling results in the browser. If the command is absent or
-fails, CodeMirror enables the browser's built-in English spellchecker until it
-retries.
+TexLite probes the optional host `harper-cli` command at startup. Harper uses
+its native LaTeX-aware parser and returns safe replacement suggestions. The
+project dictionary is kept in SQLite and filters project-specific spelling
+results in the browser. If Harper is absent or fails, CodeMirror enables the
+browser's built-in English spellchecker until it retries. A project owner may
+also enable the optional host `chktex` compiler setting. ChkTeX starts only
+after two seconds of editor idle time, coalesces identical source inputs, and
+uses a process-wide queue capped at eight checks across projects and users. Its
+LaTeX writing diagnostics use a blue-gray wavy underline and never replace
+the compile diagnostics; the setting is off by default.
 
 Formatting is independent from the editor's local appearance. A user can
 manually format a selection or enable the per-user/per-project “format before

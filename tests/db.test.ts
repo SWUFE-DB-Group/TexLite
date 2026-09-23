@@ -79,12 +79,14 @@ describe("database migrations", () => {
         .some((column) => column.name === "revision")).toBe(true);
       expect((migrated.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>)
         .some((column) => column.name === "icon")).toBe(true);
+      expect((migrated.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>)
+        .some((column) => column.name === "chktex_enabled")).toBe(true);
       expect(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'sessions_expires_at'").get())
         .toEqual({ name: "sessions_expires_at" });
       expect(migrated.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
         .toEqual({ main_file: "main.tex" });
       expect(migrated.prepare("SELECT version, name FROM texlite_schema_migrations").all())
-        .toEqual([{ version: 1, name: "baseline_schema_and_legacy_upgrade" }]);
+        .toEqual([{ version: 1, name: "baseline_schema_and_legacy_upgrade" }, { version: 2, name: "add_project_chktex_enabled" }]);
 
       // The old untracked migration copied this tag at every startup. Once
       // the baseline has been recorded, a deliberate deletion stays deleted.
@@ -94,7 +96,7 @@ describe("database migrations", () => {
       expect(migrated.prepare("SELECT COUNT(*) AS count FROM user_tags WHERE id = 'tag-1'").get())
         .toEqual({ count: 0 });
       expect(migrated.prepare("SELECT version, name FROM texlite_schema_migrations").all())
-        .toEqual([{ version: 1, name: "baseline_schema_and_legacy_upgrade" }]);
+        .toEqual([{ version: 1, name: "baseline_schema_and_legacy_upgrade" }, { version: 2, name: "add_project_chktex_enabled" }]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
         .run("expired-session", "user-1", "2025-01-03T00:00:00.000Z", "2025-01-01T00:00:00.000Z");
@@ -133,7 +135,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -188,7 +190,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }]);
       } finally {
         migrated.close();
       }
@@ -205,13 +207,13 @@ describe("database migrations", () => {
       CREATE TABLE texlite_schema_migrations (
         version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL
       );
-      INSERT INTO texlite_schema_migrations VALUES (2, 'future_schema', '2026-01-01T00:00:00.000Z');
+      INSERT INTO texlite_schema_migrations VALUES (3, 'future_schema', '2026-01-01T00:00:00.000Z');
     `);
     database.close();
 
     try {
       expect(() => openDatabase(migrationConfig(root, databasePath)))
-        .toThrow(/version 2 is newer than this TexLite release/);
+        .toThrow(/version 3 is newer than this TexLite release/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

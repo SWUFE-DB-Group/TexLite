@@ -19,10 +19,11 @@ import { useProjectCollaboration } from "../workspace/useProjectCollaboration";
 import { useProjectCompilation } from "../workspace/useProjectCompilation";
 import { isEditableTextFile, parentFolders, pathContains, useProjectFiles } from "../workspace/useProjectFiles";
 import { useSpellCheck } from "../workspace/useSpellCheck";
+import { useChktex } from "../workspace/useChktex";
 import { useSyncTeX } from "../workspace/useSyncTeX";
 import { useWorkspaceLayout } from "../workspace/useWorkspaceLayout";
 import type { SpellCheckIssue } from "../spellCheck";
-import { supportsWritingChecks } from "../../shared/writingChecks";
+import { supportsChktexChecks, supportsWritingChecks } from "../../shared/writingChecks";
 import { loadPdfPreview, type WorkspacePreload } from "../workspacePreload";
 import { hasDocumentClass as hasDocumentClassInSource } from "../latexRoot";
 import { findLatexSourceIncludes } from "../../shared/latexDependencies";
@@ -262,6 +263,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     commentsRevision,
     historyWarning,
     dictionaryRevision,
+    chktexSettingsRevision,
     localDraftReady,
     permission: collaborationPermission,
     reconnect: reconnectCollaboration,
@@ -285,12 +287,25 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     onShowPdf: () => selectPreviewTab("pdf")
   });
 
+  const chktexActive = Boolean(project && project.chktexEnabled && activeFile && collaborationSynced && supportsChktexChecks(activeFile));
+  const chktex = useChktex({
+    active: chktexActive,
+    projectId,
+    activeFile,
+    content
+  });
+
+  const writingChecksActive = Boolean(project && activeFile && collaborationSynced && supportsWritingChecks(activeFile)
+    && (editorPreferences.spellCheck || (project.chktexEnabled && supportsChktexChecks(activeFile))));
   const spellCheck = useSpellCheck({
-    active: Boolean(project && activeFile && collaborationSynced && editorPreferences.spellCheck && supportsWritingChecks(activeFile)),
+    active: writingChecksActive,
+    harperEnabled: editorPreferences.spellCheck,
     projectId,
     activeFile,
     content,
-    dictionaryWords
+    dictionaryWords,
+    additionalIssues: chktex.issues,
+    additionalIssuesReady: !chktexActive || chktex.checked
   });
 
   useEffect(() => {
@@ -509,6 +524,20 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   useEffect(() => {
     if (dictionaryRevision) void loadDictionary();
   }, [dictionaryRevision, projectId]);
+
+  useEffect(() => {
+    if (!chktexSettingsRevision) return;
+    const controller = new AbortController();
+    void api<{ project: Project }>(`/api/projects/${projectId}`, { signal: controller.signal })
+      .then(({ project: currentProject }) => {
+        if (controller.signal.aborted) return;
+        setProject((current) => current
+          ? { ...current, chktexEnabled: currentProject.chktexEnabled }
+          : currentProject);
+      })
+      .catch((error) => { if (!isAbortError(error)) setError(errorMessage(error)); });
+    return () => controller.abort();
+  }, [chktexSettingsRevision, projectId]);
 
   useEffect(() => {
     if (!project || collaborationStatus !== "connected" || collaborationPermission === project.permission) return;
@@ -1296,8 +1325,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       <button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button>
     </div>}
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
-    {(spellCheck.error || formatterRecovery || remoteFormatLease) && <div className="client-tool-recoveries">
+    {(spellCheck.error || chktex.error || formatterRecovery || remoteFormatLease) && <div className="client-tool-recoveries">
       {spellCheck.error && <div className="client-tool-recovery" role="alert" title={spellCheck.error}><AlertTriangle size={15} /><span><strong>{t("editor.harperRecoveryTitle")}</strong>{t("editor.harperFallbackHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={spellCheck.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={spellCheck.dismissError}><X size={13} /></button></div>}
+      {chktex.error && <div className="client-tool-recovery" role="alert" title={chktex.error}><AlertTriangle size={15} /><span><strong>{t("chktex.recoveryTitle")}</strong>{t("chktex.recoveryHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={chktex.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={chktex.dismissError}><X size={13} /></button></div>}
       {formatterRecovery && <div className="client-tool-recovery" role="alert" title={formatterRecovery.detail}><AlertTriangle size={15} /><span><strong>{t(formatterRecovery.kind === "format" ? "editor.texFmtOptionsRecoveryTitle" : formatterRecovery.kind === "load" ? "editor.texFmtRecoveryTitle" : "editor.texFmtRuntimeRecoveryTitle")}</strong>{t("editor.clientToolRecoveryHint")}</span><div className="client-tool-recovery-actions"><button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter()}>{t("common.retry")}</button>{formatterRecovery.kind === "format" && editorPreferences.texFmtConfig.trim() && <button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter(true)}>{t("editor.resetFormatterOptions")}</button>}<button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={() => setFormatterRecovery(null)}><X size={13} /></button></div>}
       {remoteFormatLease && <div className="client-tool-recovery format-lease-status" role="status"><LoaderCircle className="spin" size={15} /><span>{t("editor.formattingBy", { name: remoteFormatLease.holderName })}</span></div>}
     </div>}

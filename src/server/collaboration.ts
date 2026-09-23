@@ -514,6 +514,12 @@ export class CollaborationService {
     room.doc.transact(() => room.meta.set("dictionaryRevision", randomUUID()), META_ORIGIN);
   }
 
+  signalChktexSetting(projectId: string): void {
+    const room = this.rooms.get(projectId);
+    if (!room) return;
+    room.doc.transact(() => room.meta.set("chktexSettingsRevision", randomUUID()), META_ORIGIN);
+  }
+
   signalCompileState(projectId: string, state: SharedCompileState): void {
     const room = this.rooms.get(projectId);
     if (!room) return;

@@ -8,7 +8,7 @@ import {
 } from "../src/server/harper";
 import { maskLatexSource } from "../src/server/latexSpellMask";
 import { HarperLintSupersededError, lintLatex, mapLatexLints, type RawHarperLint } from "../src/client/spellCheck";
-import { supportsWritingChecks } from "../src/shared/writingChecks";
+import { supportsChktexChecks, supportsWritingChecks } from "../src/shared/writingChecks";
 
 function scalarOffset(source: string, text: string): { start: number; end: number } {
   const index = source.indexOf(text);
@@ -65,6 +65,9 @@ describe("Harper writing checks", () => {
     expect(supportsWritingChecks("plain.bst")).toBe(false);
     expect(supportsWritingChecks("CUSTOM.BST")).toBe(false);
     expect(supportsWritingChecks("main.tex")).toBe(true);
+    expect(supportsChktexChecks("main.tex")).toBe(true);
+    expect(supportsChktexChecks("style.sty")).toBe(true);
+    expect(supportsChktexChecks("paper.bib")).toBe(false);
     await expect(lintLatex("project", "references.bib", "author = {Mispeled}"))
       .resolves.toEqual([]);
     await expect(lintLatex("project", "plain.bst", "FUNCTION {mispeled} {}"))

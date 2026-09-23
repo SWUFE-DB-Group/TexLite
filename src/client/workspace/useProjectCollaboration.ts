@@ -39,6 +39,7 @@ export function useProjectCollaboration(
   const [commentsRevision, setCommentsRevision] = useState("");
   const [historyWarning, setHistoryWarning] = useState(false);
   const [dictionaryRevision, setDictionaryRevision] = useState("");
+  const [chktexSettingsRevision, setChktexSettingsRevision] = useState("");
   const [formatLeaseStates, setFormatLeaseStates] = useState<FormatLeaseState[]>([]);
   const [localDraftReady, setLocalDraftReady] = useState(false);
   const [permission, setPermission] = useState<Project["permission"]>(projectPermission);
@@ -66,6 +67,7 @@ export function useProjectCollaboration(
       setCommentsRevision("");
       setHistoryWarning(false);
       setDictionaryRevision("");
+      setChktexSettingsRevision("");
       setFormatLeaseStates([]);
       onDisconnectedRef.current();
     };
@@ -89,6 +91,8 @@ export function useProjectCollaboration(
       if (typeof nextCommentsRevision === "string") setCommentsRevision(nextCommentsRevision);
       const nextDictionaryRevision = collaboration.meta.get("dictionaryRevision");
       if (typeof nextDictionaryRevision === "string") setDictionaryRevision(nextDictionaryRevision);
+      const nextChktexSettingsRevision = collaboration.meta.get("chktexSettingsRevision");
+      if (typeof nextChktexSettingsRevision === "string") setChktexSettingsRevision(nextChktexSettingsRevision);
       const states = collaboration.compileStates();
       setCompileState(states[activeMainFileRef.current] ?? null);
     };
@@ -246,6 +250,7 @@ export function useProjectCollaboration(
     commentsRevision,
     historyWarning,
     dictionaryRevision,
+    chktexSettingsRevision,
     localDraftReady,
     permission,
     protocolUpgradeRequired,

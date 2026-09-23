@@ -4,13 +4,17 @@ import type { SpellCheckIssue } from "../spellCheck";
 
 interface UseSpellCheckOptions {
   active: boolean;
+  /** Keep Harper independently switchable from other writing diagnostics. */
+  harperEnabled?: boolean;
   projectId: string;
   activeFile: string;
   content: string;
   dictionaryWords: string[];
+  additionalIssues?: SpellCheckIssue[];
+  additionalIssuesReady?: boolean;
 }
 
-export function useSpellCheck({ active, projectId, activeFile, content, dictionaryWords }: UseSpellCheckOptions) {
+export function useSpellCheck({ active, harperEnabled = true, projectId, activeFile, content, dictionaryWords, additionalIssues = [], additionalIssuesReady = true }: UseSpellCheckOptions) {
   const [issues, setIssues] = useState<SpellCheckIssue[]>([]);
   const [checkedSource, setCheckedSource] = useState("");
   const [checkedFile, setCheckedFile] = useState("");
@@ -39,16 +43,12 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
     // revision, where it would otherwise suppress checking indefinitely.
     setFailure(null);
     setFailureDismissed(false);
-  }, [activeFile, dictionaryWords]);
+  }, [activeFile, dictionaryWords, harperEnabled]);
 
   useEffect(() => {
     setFailure(null);
     setFailureDismissed(false);
   }, [projectId]);
-
-  useEffect(() => {
-    setIndex((current) => issues.length ? Math.min(current, issues.length - 1) : 0);
-  }, [issues]);
 
   useEffect(() => {
     const currentRequest = ++request.current;
@@ -57,6 +57,12 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
       setCheckedSource("");
       setCheckedFile("");
       setJump(null);
+      return;
+    }
+    if (!harperEnabled) {
+      setIssues([]);
+      setCheckedSource("");
+      setCheckedFile("");
       return;
     }
     if (failure) {
@@ -108,10 +114,10 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [active, projectId, activeFile, content, dictionaryWords, retryToken, failure]);
+  }, [active, harperEnabled, projectId, activeFile, content, dictionaryWords, retryToken, failure]);
 
   useEffect(() => {
-    if (!failure || !active) return;
+    if (!failure || !active || !harperEnabled) return;
     // Host Harper is a best-effort service. Keep the browser spellchecker fallback
     // active immediately, but retry in the background so one temporary
     // network/worker failure does not become a permanent state. Going back
@@ -131,30 +137,45 @@ export function useSpellCheck({ active, projectId, activeFile, content, dictiona
       window.clearTimeout(timer);
       window.removeEventListener("online", retry);
     };
-  }, [failure, active]);
+  }, [failure, active, harperEnabled]);
 
-  const visible = active && checkedFile === activeFile && checkedSource === content;
-  const summary = useMemo(() => visible ? {
-    total: issues.length,
-    unique: new Set(issues.map((issue) => `${issue.kind}:${issue.word.toLocaleLowerCase("en-US")}`)).size
-  } : null, [visible, issues]);
+  const harperVisible = harperEnabled && active && checkedFile === activeFile && checkedSource === content;
+  const visibleIssues = useMemo(() => {
+    if (!active) return [];
+    const merged = [...(harperVisible ? issues : []), ...additionalIssues]
+      .sort((left, right) => left.from - right.from || left.to - right.to);
+    const seen = new Set<string>();
+    return merged.filter((issue) => {
+      const key = `${issue.from}:${issue.to}:${issue.kind}:${issue.message}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [active, additionalIssues, harperVisible, issues]);
+  const summary = useMemo(() => active && (!harperEnabled || harperVisible) && additionalIssuesReady ? {
+    total: visibleIssues.length,
+    unique: new Set(visibleIssues.map((issue) => `${issue.kind}:${issue.word.toLocaleLowerCase("en-US")}`)).size
+  } : null, [active, additionalIssuesReady, harperEnabled, harperVisible, visibleIssues]);
+  useEffect(() => {
+    setIndex((current) => visibleIssues.length ? Math.min(current, visibleIssues.length - 1) : 0);
+  }, [visibleIssues]);
 
   const jumpToIssue = (requestedIndex: number) => {
-    if (!issues.length) return;
-    const nextIndex = Math.max(0, Math.min(requestedIndex, issues.length - 1));
-    const issue = issues[nextIndex];
+    if (!visibleIssues.length) return;
+    const nextIndex = Math.max(0, Math.min(requestedIndex, visibleIssues.length - 1));
+    const issue = visibleIssues[nextIndex];
     setIndex(nextIndex);
     setJump({ from: issue.from, to: issue.to, nonce: ++jumpNonce.current });
   };
 
   return {
-    issues: visible ? issues : [],
-    jump: visible ? jump : null,
+    issues: visibleIssues,
+    jump: active ? jump : null,
     index,
     summary,
     jumpToIssue,
-    error: active && !failureDismissed ? failure : null,
-    nativeFallback: active && Boolean(failure),
+    error: active && harperEnabled && !failureDismissed ? failure : null,
+    nativeFallback: active && harperEnabled && Boolean(failure),
     retry: () => {
       autoRetryRef.current = false;
       setFailure(null);

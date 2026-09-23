@@ -27,6 +27,7 @@ export interface ProjectRow {
   latexmkrc: string | null;
   engine: "pdflatex" | "xelatex" | "lualatex";
   icon: string | null;
+  chktex_enabled: number;
   created_at: string;
   updated_at: string;
 }
@@ -67,7 +68,11 @@ const migrationsTable = "texlite_schema_migrations";
 const databaseMigrations: readonly DatabaseMigration[] = [
   // Append future migrations below this entry. Never insert before or modify
   // the released baseline: recorded databases will intentionally skip it.
-  { version: 1, name: "baseline_schema_and_legacy_upgrade", apply: applyBaselineMigration }
+  { version: 1, name: "baseline_schema_and_legacy_upgrade", apply: applyBaselineMigration },
+  { version: 2, name: "add_project_chktex_enabled", apply: (db) => {
+    if (!missingColumn(db, "projects", "chktex_enabled")) return;
+    db.exec("ALTER TABLE projects ADD COLUMN chktex_enabled INTEGER NOT NULL DEFAULT 0 CHECK (chktex_enabled IN (0, 1))");
+  } }
 ];
 
 export function openDatabase(config: Config): DatabaseConnection {

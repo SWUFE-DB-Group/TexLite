@@ -132,6 +132,7 @@ function optionalToolDefinitions(gitCommand: string, gitTimeoutMs: number): Envi
     { id: "bibtex", name: "BibTeX", command: "bibtex", requirement: "optional", purpose: "BibTeX bibliography builds" },
     { id: "biber", name: "Biber", command: "biber", requirement: "optional", purpose: "Biber bibliography builds" },
     { id: "makeindex", name: "MakeIndex", command: "makeindex", requirement: "optional", purpose: "Index generation", versionArgs: [] },
+    { id: "chktex", name: "ChkTeX", command: "chktex", requirement: "optional", purpose: "LaTeX writing checks", versionArgs: ["--version"] },
     { id: "harper-cli", name: "Harper CLI", command: "harper-cli", requirement: "optional", purpose: "TexLite spelling and grammar checks" },
     { id: "harper-ls", name: "Harper language server", command: "harper-ls", requirement: "optional", purpose: "External editor integration (not used by TexLite)" }
   ];

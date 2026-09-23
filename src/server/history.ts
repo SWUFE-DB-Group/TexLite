@@ -21,6 +21,8 @@ export interface HistoryManifest {
     mainFile: string;
     engine: ProjectRow["engine"];
     latexmkrc: string | null;
+    /** Optional for snapshots created before ChkTeX was introduced. */
+    chktexEnabled?: boolean;
   };
 }
 
@@ -358,8 +360,8 @@ export class ProjectHistoryService {
       return { restoredPaths: [filePath], manifest };
     }
     this.restoreProjectTree(projectId, manifest);
-    this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ? WHERE id = ?")
-      .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, projectId);
+    this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ?, chktex_enabled = ? WHERE id = ?")
+      .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, manifest.settings.chktexEnabled ? 1 : 0, projectId);
     return { restoredPaths: Object.keys(manifest.files).sort(), manifest };
   }
 
@@ -653,7 +655,7 @@ export class ProjectHistoryService {
 }
 
 function settings(project: ProjectRow): HistoryManifest["settings"] {
-  return { mainFile: project.main_file, engine: project.engine, latexmkrc: project.latexmkrc };
+  return { mainFile: project.main_file, engine: project.engine, latexmkrc: project.latexmkrc, chktexEnabled: Boolean(project.chktex_enabled) };
 }
 
 function cloneManifest(manifest: HistoryManifest): HistoryManifest {
@@ -663,7 +665,7 @@ function cloneManifest(manifest: HistoryManifest): HistoryManifest {
 function parseManifest(value: string): HistoryManifest {
   const parsed = JSON.parse(value) as HistoryManifest;
   if (parsed.version !== 1 || !parsed.files || !parsed.settings) throw new Error("History manifest is invalid");
-  return parsed;
+  return { ...parsed, settings: { ...parsed.settings, chktexEnabled: parsed.settings.chktexEnabled === true } };
 }
 
 function parseStringArray(value: string): string[] {

@@ -26,8 +26,9 @@ import { accessibleProject, canEdit } from "../projects.js";
 import { writeProjectArchive } from "../archive.js";
 import { extractProjectZip, ZipValidationError } from "../zip.js";
 import { HarperLintSupersededError, HarperUnavailableError, type HarperService } from "../harper.js";
+import { ChktexLintSupersededError, ChktexUnavailableError, type ChktexService } from "../chktex.js";
 import { digestToken } from "../security.js";
-import { supportsWritingChecks } from "../../shared/writingChecks.js";
+import { supportsChktexChecks, supportsWritingChecks } from "../../shared/writingChecks.js";
 import { unreadMentionCountsForProjects } from "../commentMentions.js";
 import {
   commentsSummaryForProject,
@@ -52,6 +53,7 @@ interface ProjectCatalogRouteContext {
   latexCompletions: LatexCompletionService;
   projectOutlines: ProjectOutlineService;
   harper: HarperService;
+  chktex: ChktexService;
   recordHistory: (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => unknown;
 }
 
@@ -59,7 +61,7 @@ const clientIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 /** Register project catalog, metadata, archive, dictionary, tag, export, and deletion routes. */
 export function registerProjectCatalogRoutes(app: FastifyInstance, context: ProjectCatalogRouteContext): void {
-  const { config, db, collaboration, projectMutations, latexCompletions, projectOutlines, harper, recordHistory } = context;
+  const { config, db, collaboration, projectMutations, latexCompletions, projectOutlines, harper, chktex, recordHistory } = context;
 
   // Advanced project icons are served as cacheable SVG masks. The browser
   // therefore does not have to bundle Lucide's entire icon catalogue merely
@@ -234,12 +236,12 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const body = request.body as Record<string, unknown>;
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(body?.name, 120),
-      main_file: "main.tex", latexmkrc: null, engine: config.defaultEngine, icon: null, created_at: now(), updated_at: now()
+      main_file: "main.tex", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, created_at: now(), updated_at: now()
     };
     createProjectFiles(config, project.id);
     try {
-      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.created_at, project.updated_at);
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.chktex_enabled, project.created_at, project.updated_at);
     } catch (error) {
       removeProjectDirectory(config, project.id);
       throw error;
@@ -265,16 +267,16 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const fallbackName = path.basename(part.filename, path.extname(part.filename));
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(query.name || fallbackName, 120),
-      main_file: "", latexmkrc: null, engine: config.defaultEngine, icon: null, created_at: now(), updated_at: now()
+      main_file: "", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, created_at: now(), updated_at: now()
     };
     fs.mkdirSync(sourceRoot(config, project.id), { recursive: true, mode: 0o700 });
     fs.mkdirSync(outputRoot(config, project.id), { recursive: true, mode: 0o700 });
     try {
       const extracted = await extractProjectZip(await part.toBuffer(), sourceRoot(config, project.id), config.maxUploadBytes);
       project.main_file = extracted.mainFile;
-      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`)
-        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.engine, project.created_at, project.updated_at);
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.engine, project.chktex_enabled, project.created_at, project.updated_at);
     } catch (error) {
       removeProjectDirectory(config, project.id);
       if (error instanceof ZipValidationError) return apiError(reply, 400, error.code, error.details);
@@ -300,7 +302,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const requestedName = typeof body?.name === "string" && body.name.trim() ? body.name : `${source.name.slice(0, 115)} (1)`;
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(requestedName, 120),
-      main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, icon: source.icon, created_at: now(), updated_at: now()
+      main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, icon: source.icon, chktex_enabled: source.chktex_enabled, created_at: now(), updated_at: now()
     };
     try {
       // Duplicate the source tree only after flushing the live Yjs room and
@@ -314,9 +316,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
           }
         }
       });
-      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, icon, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.icon, project.created_at, project.updated_at);
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, icon, chktex_enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.icon, project.chktex_enabled, project.created_at, project.updated_at);
     } catch (error) {
       removeProjectDirectory(config, project.id);
       throw error;
@@ -451,6 +453,50 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     }
   });
 
+  app.post("/api/projects/:id/chktex", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    if (!project.chktex_enabled) return { issues: [] };
+    const body = request.body as { path?: unknown; source?: unknown; clientId?: unknown; sequence?: unknown } | undefined;
+    const source = body?.source;
+    const sourcePath = body?.path;
+    const clientId = body?.clientId;
+    const sequence = body?.sequence;
+    if (typeof source !== "string" || typeof sourcePath !== "string") return apiError(reply, 400, "CHK_TEX_SOURCE_INVALID");
+    if (clientId !== undefined && (typeof clientId !== "string" || !clientIdPattern.test(clientId))) {
+      return apiError(reply, 400, "CHK_TEX_SOURCE_INVALID");
+    }
+    if (sequence !== undefined && (typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= 0 || clientId === undefined)) {
+      return apiError(reply, 400, "CHK_TEX_SOURCE_INVALID");
+    }
+    if (Buffer.byteLength(source, "utf8") > maxCollaborativeFileBytes(config)) {
+      return apiError(reply, 413, "CHK_TEX_SOURCE_TOO_LARGE");
+    }
+    let filePath: string;
+    try {
+      filePath = safeRelativePath(sourcePath);
+    } catch {
+      return apiError(reply, 400, "CHK_TEX_SOURCE_INVALID");
+    }
+    if (!supportsChktexChecks(filePath)) return { issues: [] };
+    const laneClientId = clientId ?? `legacy:${digestToken(request.cookies.texlite_session ?? "")}`;
+    const lane = `${id}\0${user.id}\0${laneClientId}\0${filePath}`;
+    try {
+      return { issues: await chktex.lint(source, filePath, lane, typeof sequence === "number" ? sequence : undefined) };
+    } catch (error) {
+      if (error instanceof ChktexLintSupersededError) return apiError(reply, 409, "CHK_TEX_SUPERSEDED");
+      if (error instanceof ChktexUnavailableError) {
+        request.log.debug({ projectId: id }, "Optional ChkTeX command unavailable");
+      } else {
+        request.log.error({ err: error, projectId: id }, "ChkTeX writing check failed");
+      }
+      return apiError(reply, 503, "CHK_TEX_UNAVAILABLE");
+    }
+  });
+
   app.post("/api/projects/:id/dictionary", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
@@ -506,6 +552,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       }
       const engine = typeof body.engine === "string" && config.allowedEngines.includes(body.engine as typeof currentProject.engine)
         ? body.engine as typeof currentProject.engine : currentProject.engine;
+      const chktexEnabled = typeof body.chktexEnabled === "boolean" ? body.chktexEnabled : Boolean(currentProject.chktex_enabled);
       const latexmkrc = body.latexmkrc === null || body.latexmkrc === ""
         ? null
         : typeof body.latexmkrc === "string" ? safeRelativePath(body.latexmkrc) : currentProject.latexmkrc;
@@ -544,8 +591,10 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
           return apiError(reply, 400, "LATEXMKRC_INVALID", { path: latexmkrc });
         }
       }
-      db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
-        .run(name, mainFile, latexmkrc, engine, now(), user.id, id);
+      const chktexSettingChanged = Boolean(currentProject.chktex_enabled) !== chktexEnabled;
+      db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, chktex_enabled = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
+        .run(name, mainFile, latexmkrc, engine, chktexEnabled ? 1 : 0, now(), user.id, id);
+      if (chktexSettingChanged) collaboration.signalChktexSetting(id);
       recordHistory(id, user.id, "settings", []);
       return {
         project: projectJson(

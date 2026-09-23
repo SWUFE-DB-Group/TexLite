@@ -44,6 +44,7 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { registerUserManagementRoutes } from "./routes/users.js";
 import { registerWordCountRoutes } from "./routes/wordCount.js";
 import { HarperService } from "./harper.js";
+import { ChktexService } from "./chktex.js";
 import { TexcountService } from "./texcount.js";
 import { basePathHref, basePathPrefix, withoutBasePath } from "../shared/basePath.js";
 
@@ -101,10 +102,15 @@ export async function buildApp(
   const latexCompletions = new LatexCompletionService(config);
   const projectOutlines = new ProjectOutlineService(config);
   const harper = new HarperService();
+  const chktex = new ChktexService();
   const texcount = new TexcountService();
   // Probe the optional host Harper CLI without delaying startup. Its absence is
   // supported: the browser spellchecker remains the writing-check fallback.
   void harper.preload().catch((error) => app.log.info({ err: error }, "Optional Harper CLI is unavailable"));
+  // ChkTeX is optional and disabled by default. Probe it in the background so
+  // enabling the project setting does not make the first editor request pay a
+  // process-discovery cost.
+  void chktex.preload().catch((error) => app.log.info({ err: error }, "Optional ChkTeX command is unavailable"));
   const failedSnapshots = new Set<string>();
   const failedEdits = new Map<string, "retrying" | "incomplete">();
   const signalHistory = (id: string) => collaboration.setHistoryWarning(id, failedSnapshots.has(id) || failedEdits.has(id));
@@ -184,6 +190,7 @@ export async function buildApp(
     historyRetention.dispose();
     editRetry.dispose();
     await harper.dispose();
+    await chktex.dispose();
     await texcount.dispose();
   });
   await app.register(cookie, { hook: "onRequest" });
@@ -298,6 +305,7 @@ export async function buildApp(
       latexCompletions,
       projectOutlines,
       harper,
+      chktex,
       recordHistory
     });
     registerWordCountRoutes(routes, { config, db, projectMutations, texcount });

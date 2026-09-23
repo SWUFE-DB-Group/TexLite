@@ -17,6 +17,8 @@ import { sourceRoot } from "../src/server/files.js";
 
 const hostHarperAvailable = spawnSync("harper-cli", ["--version"], { stdio: "ignore" }).status === 0;
 const hostHarperIt = hostHarperAvailable ? it : it.skip;
+const hostChktexAvailable = spawnSync("chktex", ["--version"], { stdio: "ignore" }).status === 0;
+const hostChktexIt = hostChktexAvailable ? it : it.skip;
 
 function citationPayload(citationKey: string, title: string, bibtex: string, extras: Record<string, unknown> = {}): Record<string, unknown> {
   return { bibtex, citationKey, entryType: "article", title, authors: null, year: "2026", ...extras };
@@ -143,6 +145,26 @@ describe("texLite application", () => {
     expect(response.json().lints).toEqual(expect.arrayContaining([expect.objectContaining({ problem: "wrng" })]));
   });
 
+  hostChktexIt("runs ChkTeX only after the project setting is enabled", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Server ChkTeX" } });
+    const projectId = created.json().project.id as string;
+    const disabled = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/chktex`, headers: { cookie },
+      payload: { path: "main.tex", source: "\\documentclass{article}\n" }
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json()).toEqual({ issues: [] });
+    const enabled = await app.inject({ method: "PATCH", url: `/api/projects/${projectId}`, headers: { cookie }, payload: { chktexEnabled: true } });
+    expect(enabled.statusCode).toBe(200);
+    const checked = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/chktex`, headers: { cookie },
+      payload: { path: "main.tex", source: "\\documentclass{article}\n\\begin{document}\nSome text -- with two hyphens.\n\\begin{itemize}\n\\item First item $x^10$\n\\end{itemize}\n\\end{document}\n", clientId: randomUUID(), sequence: 1 }
+    });
+    expect(checked.statusCode).toBe(200);
+    expect(checked.json().issues).toEqual(expect.arrayContaining([expect.objectContaining({ number: 8, line: 3 })]));
+    expect(checked.json().issues).toEqual(expect.arrayContaining([expect.objectContaining({ number: 25, line: 5 })]));
+  });
+
   it("always skips writing checks for BibTeX files", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Bibliography writing checks" } });
     const response = await app.inject({
@@ -170,7 +192,7 @@ describe("texLite application", () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Paper" } });
     expect(created.statusCode).toBe(201);
     const project = created.json().project;
-    expect(project).toMatchObject({ ownerUsername: "admin", ownerDisplayName: "Administrator", lastModifiedUsername: "admin" });
+    expect(project).toMatchObject({ ownerUsername: "admin", ownerDisplayName: "Administrator", lastModifiedUsername: "admin", chktexEnabled: false });
     expect(new Date(project.createdAt).toISOString()).toBe(project.createdAt);
 
     const source = String.raw`\documentclass{article}
