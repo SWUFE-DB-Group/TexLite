@@ -10,8 +10,8 @@ const developmentEnvironment = {
   // server must never attach to the user's normal configuration or database.
   TEXLITE_CONFIG: path.join(developmentRoot, "texlite.config.json"),
   TEXLITE_DATA_DIR: path.join(developmentRoot, "data"),
-  TEXLITE_PORT: "3001",
-  TEXLITE_DEV_SERVER_PORT: "3001"
+  TEXLITE_PORT: "3009",
+  TEXLITE_DEV_SERVER_PORT: "3009"
 };
 
 const mode = process.argv[2] ?? "server";

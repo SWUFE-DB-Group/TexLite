@@ -1025,6 +1025,16 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .upload-picker > button:hover { border-color: #176b44; background: #e4efe8; }
 .upload-picker > .upload-clear { position: absolute; top: 7px; right: 7px; width: 26px; height: 26px; display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: #6c776f; }
 .upload-picker > .upload-clear:hover { background: #dce9e0; color: #9d2f27; }
+.upload-picker.is-disabled { opacity: .72; }
+.project-import-progress { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 10px 11px; border: 1px solid #dce7df; border-radius: 8px; background: #f7faf8; color: #496052; font-size: 12px; font-weight: 600; }
+.project-import-progress-label { display: contents; }
+.project-import-progress-label > span { grid-column: 1; align-self: center; line-height: 1.4; }
+.project-import-progress-label > small { grid-column: 2; grid-row: 1; align-self: center; color: #176b44; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 650; }
+.project-import-progress progress { grid-column: 1 / -1; width: 100%; height: 8px; overflow: hidden; border: 0; border-radius: 999px; background: #e2ebe5; accent-color: #176b44; }
+.project-import-progress progress::-webkit-progress-bar { border-radius: 999px; background: #e2ebe5; }
+.project-import-progress progress::-webkit-progress-value { border-radius: 999px; background: #27804f; transition: width .12s ease-out; }
+.project-import-progress progress::-moz-progress-bar { border-radius: 999px; background: #27804f; }
+.project-import-progress .import-progress-hint { grid-column: 1 / -1; color: #68786e; font-size: 11px; font-weight: 450; line-height: 1.45; }
 .choice-group { display: flex; flex-direction: column; gap: 10px; border: 1px solid #dfe3df; border-radius: 8px; padding: 14px; }
 .choice-group legend { padding: 0 5px; font-size: 12px; color: #69716b; }
 .choice-group label { font-size: 13px; }

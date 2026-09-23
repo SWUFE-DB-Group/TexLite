@@ -73,6 +73,56 @@ export async function api<T>(url: string, options: ApiRequestInit = {}): Promise
   return body as T;
 }
 
+/** Multipart upload helper with byte-level progress reporting (XHR exposes upload progress; fetch does not). */
+export function apiUpload<T>(
+  url: string,
+  body: FormData,
+  options: { onProgress?: (loaded: number, total: number | null) => void; onUploadComplete?: () => void; signal?: AbortSignal } = {}
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const signal = options.signal;
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    const abort = () => xhr.abort();
+    if (signal?.aborted) {
+      reject(signal.reason instanceof Error ? signal.reason : new DOMException("The operation was aborted", "AbortError"));
+      return;
+    }
+    xhr.open("POST", appPath(url), true);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Accept-Language", i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en");
+    xhr.upload.addEventListener("progress", (event) => {
+      options.onProgress?.(event.loaded, event.lengthComputable ? event.total : null);
+    });
+    xhr.upload.addEventListener("load", () => options.onUploadComplete?.());
+    xhr.addEventListener("load", () => {
+      cleanup();
+      const contentType = xhr.getResponseHeader("content-type") ?? "";
+      let responseBody: unknown = null;
+      if (contentType.includes("application/json")) {
+        try { responseBody = JSON.parse(xhr.responseText) as unknown; }
+        catch { reject(new ApiError(i18n.t("network.invalidResponse"), xhr.status, "INVALID_RESPONSE")); return; }
+      } else if (xhr.status >= 200 && xhr.status < 300) {
+        reject(new ApiError(i18n.t("network.invalidResponse"), xhr.status, "INVALID_RESPONSE"));
+        return;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        if (xhr.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("texlite:session-expired"));
+        reject(new ApiError(localizedResponseError(responseBody, xhr.status), xhr.status, responseErrorCode(responseBody)));
+        return;
+      }
+      resolve(responseBody as T);
+    });
+    xhr.addEventListener("error", () => { cleanup(); reject(normalizeNetworkError(new Error("Upload failed"))); });
+    xhr.addEventListener("abort", () => {
+      cleanup();
+      reject(signal?.reason instanceof Error ? signal.reason : new DOMException("The operation was aborted", "AbortError"));
+    });
+    signal?.addEventListener("abort", abort, { once: true });
+    xhr.send(body);
+  });
+}
+
 export function localizedResponseError(body: unknown, status: number, fallbackKey = "errors.request"): string {
   const serverMessage = typeof body === "object" && body !== null && "error" in body && typeof body.error === "string"
     ? body.error : "";
