@@ -101,8 +101,13 @@ export function useProjectCompilation({
   const [compilingMainFiles, setCompilingMainFiles] = useState<ReadonlySet<string>>(() => new Set());
   const [cancellingMainFiles, setCancellingMainFiles] = useState<ReadonlySet<string>>(() => new Set());
   const [editorNotice, setEditorNotice] = useState("");
+  // A new root must not render the previous root's results before its effect runs.
+  const [displaySelection, setDisplaySelection] = useState({ projectId, mainFile });
   const mainFileRef = useRef(mainFile);
   const pdfMainFileRef = useRef("");
+  const previousSelection = useRef({ projectId, mainFile });
+  // Ignore replayed completed states until a compile starts for the new root.
+  const allowCompletedAfterSwitch = useRef(true);
   const latestRequest = useRef<AbortController | null>(null);
   // The initial retained-PDF lookup is authoritative when a workspace opens.
   // Keep state-replay lookups separate so an old Yjs completed state cannot
@@ -128,6 +133,7 @@ export function useProjectCompilation({
   };
 
   const currentMainFile = (): string => callbacks.current.getCurrentMainFile?.() || mainFileRef.current;
+  const selectionVisible = displaySelection.projectId === projectId && displaySelection.mainFile === mainFile;
 
   const focusPdfAfterCompile = (runId: string) => {
     if (focusedCompileRun.current === runId) return;
@@ -163,6 +169,20 @@ export function useProjectCompilation({
 
   useEffect(() => {
     latestRequest.current?.abort();
+    latestRequest.current = null;
+    const previous = previousSelection.current;
+    const sameProject = previous.projectId === projectId;
+    const switchedMainFile = sameProject && Boolean(previous.mainFile)
+      && Boolean(mainFile) && previous.mainFile !== mainFile;
+    previousSelection.current = { projectId, mainFile };
+    setDisplaySelection((current) => current.projectId === projectId && current.mainFile === mainFile
+      ? current : { projectId, mainFile });
+    if (!sameProject) {
+      initialLatestRef.current = initialLatest;
+      initialLatestConsumed.current = false;
+      authoritativeCompileRun.current = null;
+      pdfMainFileRef.current = "";
+    }
     if (!mainFile) {
       // Project metadata and the selected root document are loaded separately.
       // Do not query the server with an implicit root while the real root is
@@ -178,6 +198,8 @@ export function useProjectCompilation({
       setCompileOutcome(null);
       setArtifacts([]);
       setArtifactPreview(null);
+      setArtifactLoading(false);
+      setEditorNotice("");
       authoritativeCompileRun.current = null;
       callbacks.current.onPdfChanged();
       return;
@@ -185,13 +207,37 @@ export function useProjectCompilation({
     if (authoritativeCompileRun.current?.mainFile !== mainFile) {
       authoritativeCompileRun.current = null;
     }
-    const controller = new AbortController();
-    latestRequest.current = controller;
-    setPdfLoading(true);
     setCompileLog("");
     setCompileDiagnostics(null);
     setCompileOutcome(null);
-    const retainPdf = Boolean(pdfUrl && mainFile && pdfMainFileRef.current === mainFile);
+    if (switchedMainFile) {
+      // This workspace needs a fresh compile of the newly selected root. An
+      // older retained result may still be loaded when the project is reopened.
+      allowCompletedAfterSwitch.current = false;
+      completedStateRequest.current?.abort();
+      artifactsRequest.current?.abort();
+      artifactPreviewRequest.current?.abort();
+      pdfMainFileRef.current = "";
+      setPdfUrl("");
+      setPdfCompiledAt(null);
+      setPdfSizeBytes(null);
+      setPdfLoadingMode("full");
+      setPdfLoading(false);
+      setArtifacts([]);
+      setArtifactPreview(null);
+      setArtifactLoading(false);
+      setEditorNotice("");
+      callbacks.current.onPdfChanged();
+      callbacks.current.onPreviewTab("pdf");
+      const outlineController = new AbortController();
+      void callbacks.current.loadOutline(outlineController.signal, mainFile).catch(() => undefined);
+      return () => outlineController.abort();
+    }
+    allowCompletedAfterSwitch.current = true;
+    const controller = new AbortController();
+    latestRequest.current = controller;
+    setPdfLoading(true);
+    const retainPdf = Boolean(sameProject && pdfUrl && mainFile && pdfMainFileRef.current === mainFile);
     if (!retainPdf) {
       setPdfUrl("");
       setPdfCompiledAt(null);
@@ -317,8 +363,16 @@ export function useProjectCompilation({
   }, [mainFile, sharedState?.mainFile, sharedState?.status]);
 
   useEffect(() => {
+    if (sharedState?.mainFile === mainFile
+      && (sharedState.status === "queued" || sharedState.status === "running")) {
+      allowCompletedAfterSwitch.current = true;
+    }
+  }, [mainFile, sharedState?.mainFile, sharedState?.status, sharedState?.runId]);
+
+  useEffect(() => {
     if (!sharedState || sharedState.mainFile !== mainFile
       || (sharedState.status !== "succeeded" && sharedState.status !== "failed")) return;
+    if (!allowCompletedAfterSwitch.current) return;
     let cancelled = false;
     completedStateRequest.current?.abort();
     artifactPreviewRequest.current?.abort();
@@ -374,11 +428,12 @@ export function useProjectCompilation({
     setCompileLog("");
     setCompileDiagnostics(null);
     setCompileOutcome(null);
-    callbacks.current.onPreviewTab(pdfUrl ? "pdf" : "log");
+    callbacks.current.onPreviewTab(selectionVisible && pdfUrl ? "pdf" : "log");
     const controller = new AbortController();
     compileRequests.current.set(requestedMainFile, controller);
     try {
       if (!(await callbacks.current.save())) return;
+      allowCompletedAfterSwitch.current = true;
       const result = await api<{ runId: string; mainFile: string; ok: boolean; cancelled?: boolean; skipped?: boolean; stale?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null; pdfSizeBytes: number | null; pdfLoadingMode: "full" | "range" | null }>(
         `/api/projects/${projectId}/compile`,
         { method: "POST", signal: controller.signal, body: JSON.stringify({ mainFile: requestedMainFile }) }
@@ -556,18 +611,18 @@ export function useProjectCompilation({
   };
 
   return {
-    pdfUrl,
-    pdfCompiledAt,
-    pdfSizeBytes,
+    pdfUrl: selectionVisible ? pdfUrl : "",
+    pdfCompiledAt: selectionVisible ? pdfCompiledAt : null,
+    pdfSizeBytes: selectionVisible ? pdfSizeBytes : null,
     pdfLoadingMode,
-    pdfLoading,
-    compileLog,
-    compileDiagnostics,
-    compileOutcome,
-    artifacts,
-    artifactPreview,
-    artifactLoading,
-    editorNotice,
+    pdfLoading: selectionVisible ? pdfLoading : false,
+    compileLog: selectionVisible ? compileLog : "",
+    compileDiagnostics: selectionVisible ? compileDiagnostics : null,
+    compileOutcome: selectionVisible ? compileOutcome : null,
+    artifacts: selectionVisible ? artifacts : [],
+    artifactPreview: selectionVisible ? artifactPreview : null,
+    artifactLoading: selectionVisible && artifactLoading,
+    editorNotice: selectionVisible ? editorNotice : "",
     localCompiling: compilingMainFiles.has(mainFile),
     cancelling: cancellingMainFiles.has(mainFile),
     cleaning,

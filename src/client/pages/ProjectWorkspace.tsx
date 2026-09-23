@@ -944,6 +944,19 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     onActiveMainFile: setActiveMainFile
   });
 
+  const applyProjectSettings = (updatedProject: Project): void => {
+    const mainFileChanged = updatedProject.mainFile !== project?.mainFile;
+    setProject(updatedProject);
+    if (!mainFileChanged) return;
+    activeMainFileRef.current = updatedProject.mainFile;
+    activeFileRef.current = updatedProject.mainFile;
+    setActiveMainFile(updatedProject.mainFile);
+    setActiveFile(updatedProject.mainFile);
+    setSelectedFolder(null);
+    setSelectedFile(updatedProject.mainFile);
+    setExpandedFolders((current) => new Set([...current, ...parentFolders(updatedProject.mainFile)]));
+  };
+
   const getCurrentMainFile = (): string => activeMainFileRef.current || project?.mainFile || "";
 
   // A compile may explicitly promote the currently open document when it is
@@ -1409,7 +1422,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         editorPreferences={editorPreferences} onEditorPreferences={updateEditorPreferences}
         spellCheckCount={spellCheck.summary?.total ?? null} spellCheckUniqueCount={spellCheck.summary?.unique ?? null}
         spellCheckIndex={spellCheck.summary ? spellCheck.index : -1} onSpellCheckNavigate={spellCheck.jumpToIssue}
-        onProject={setProject}
+        onProject={applyProjectSettings}
       />
     </PanelGroup>
     {wordCountOpen && <LazyModal title={t("editor.wordCountTitle")} onClose={() => setWordCountOpen(false)}><WordCountDialog open mode={wordCountMode} path={wordCountPath} busy={wordCountBusy}
