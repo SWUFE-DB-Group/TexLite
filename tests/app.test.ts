@@ -1523,6 +1523,46 @@ Second version.
     expect(download.rawPayload.subarray(0, 2).toString()).toBe("PK");
   });
 
+  it("keeps an imported latexmkrc disabled until selected and clears it when deleted", async () => {
+    const archive = makeZip({
+      "paper/main.tex": String.raw`\documentclass{article}\begin{document}Imported\end{document}`,
+      "paper/.latexmkrc": "$silent = 1;\n"
+    });
+    const multipart = multipartBody("paper.zip", archive);
+    const imported = await app.inject({
+      method: "POST", url: "/api/projects/import?name=RC%20project", headers: {
+        cookie, "content-type": `multipart/form-data; boundary=${multipart.boundary}`
+      }, payload: multipart.body
+    });
+    expect(imported.statusCode, imported.body).toBe(201);
+    const projectId = imported.json().project.id as string;
+    expect(imported.json().project.latexmkrc).toBeNull();
+    const files = await app.inject({ method: "GET", url: `/api/projects/${projectId}/files`, headers: { cookie } });
+    expect(files.json().files).toContainEqual(expect.objectContaining({ path: ".latexmkrc", type: "file" }));
+
+    const enabled = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}`, headers: { cookie }, payload: { latexmkrc: ".latexmkrc" }
+    });
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json().project.latexmkrc).toBe(".latexmkrc");
+
+    const disabled = await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}`, headers: { cookie }, payload: { latexmkrc: null }
+    });
+    expect(disabled.json().project.latexmkrc).toBeNull();
+    expect(fs.existsSync(path.join(sourceRoot(config, projectId), ".latexmkrc"))).toBe(true);
+    await app.inject({
+      method: "PATCH", url: `/api/projects/${projectId}`, headers: { cookie }, payload: { latexmkrc: ".latexmkrc" }
+    });
+
+    const deleted = await app.inject({
+      method: "DELETE", url: `/api/projects/${projectId}/file?path=.latexmkrc`, headers: { cookie }
+    });
+    expect(deleted.statusCode).toBe(200);
+    const project = await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers: { cookie } });
+    expect(project.json().project.latexmkrc).toBeNull();
+  });
+
   it("manages a private tag catalog without deleting associated projects", async () => {
     const firstProject = (await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Tag catalog first" }

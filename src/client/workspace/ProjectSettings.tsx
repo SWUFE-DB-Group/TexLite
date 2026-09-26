@@ -1,12 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Save, Settings, Sigma, SpellCheck2, Type, WrapText, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Save, Settings, Sigma, SpellCheck2, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
 import { errorMessage } from "../errors";
 import { preloadTexFmt, reloadTexFmt } from "../latexFormatter";
 import type { FileEntry, Project, SiteConfig } from "../types";
+import { projectLatexmkrcCandidates } from "./projectLatexmkrc";
 
 function BrowserToolStatus({ name, state, label, reloadLabel, onReload, compact = false }: {
   name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void; compact?: boolean;
@@ -40,7 +41,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
 }) {
   const { t } = useTranslation();
   const [engine, setEngine] = useState(project.engine);
-  const [rcText, setRcText] = useState("");
+  const [rcEnabled, setRcEnabled] = useState(Boolean(project.latexmkrc));
   const [name, setName] = useState(project.name);
   const [mainFile, setMainFile] = useState(project.mainFile);
   const [chktexEnabled, setChktexEnabled] = useState(project.chktexEnabled);
@@ -63,11 +64,15 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const reloadTexFmtRuntime = () => {
     void reloadTexFmt().catch(texFmtToolStatus.failed);
   };
+  const rcFiles = projectLatexmkrcCandidates(files, project.latexmkrc);
+  const selectedRcPath = project.latexmkrc && rcFiles.includes(project.latexmkrc) ? project.latexmkrc : rcFiles[0] ?? "";
+  const selectedRcMissing = files.length > 0 && project.latexmkrc !== null && !rcFiles.includes(project.latexmkrc);
   useEffect(() => {
-    if (!project.latexmkrc) return setRcText("");
-    void api<{ content: string }>(`/api/projects/${projectId}/file?path=${encodeURIComponent(project.latexmkrc)}`)
-      .then(({ content }) => setRcText(content)).catch((requestError) => setError(errorMessage(requestError)));
-  }, [project.latexmkrc]);
+    setRcEnabled(Boolean(project.latexmkrc));
+  }, [projectId, project.latexmkrc]);
+  useEffect(() => {
+    if (selectedRcMissing) setRcEnabled(false);
+  }, [selectedRcMissing]);
   useEffect(() => {
     if (settingsTab !== "compiler") return;
     const controller = new AbortController();
@@ -84,8 +89,12 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const invalidCurrentMainFile = mainFileOptions !== null && !mainFileOptions.includes(mainFile);
   const saveCompilerSettings = async () => {
     try {
-      const latexmkrc = rcText.trim() && site.allowProjectLatexmkrc !== false ? ".latexmkrc" : null;
-      if (latexmkrc) await api(`/api/projects/${projectId}/file`, { method: "PUT", body: JSON.stringify({ path: latexmkrc, content: rcText }) });
+      setError("");
+      // The project metadata can arrive before its file list. Do not clear an
+      // existing selection merely because the file-tree request is pending.
+      const latexmkrc = files.length === 0 && project.latexmkrc && site.allowProjectLatexmkrc !== false
+        ? project.latexmkrc
+        : rcEnabled && site.allowProjectLatexmkrc !== false ? selectedRcPath || null : null;
       const result = await api<{ project: Project }>(`/api/projects/${projectId}`, {
         method: "PATCH", body: JSON.stringify({ name, mainFile, engine, latexmkrc, chktexEnabled })
       });
@@ -175,9 +184,13 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>
       <label>{t("projects.name")}<input disabled={!canManage} value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label>{t("projectSettings.mainFile")}<select disabled={!canManage || mainFileOptions === null || mainFileOptions.length === 0} value={mainFile} onChange={(event) => setMainFile(event.target.value)}>{invalidCurrentMainFile && <option value={mainFile} disabled>{t("projectSettings.invalidMainFileOption", { path: mainFile })}</option>}{displayedMainFileOptions.map((filePath) => <option value={filePath} key={filePath}>{filePath}</option>)}</select></label>
-      <label>{t("projectSettings.engine")}<select disabled={!canManage} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label>{t(rcEnabled && rcFiles.length > 0 && site.allowProjectLatexmkrc !== false ? "projectSettings.defaultEngine" : "projectSettings.engine")}<select disabled={!canManage} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
       <div className="editor-preference compiler-check-option"><label className="editor-checkbox"><input type="checkbox" disabled={!canManage} checked={chktexEnabled} onChange={(event) => setChktexEnabled(event.target.checked)} /><FileCheck2 size={15} /><span>{t("chktex.enabled")}</span></label><p className="field-hint">{t("chktex.description")} <a href="https://www.nongnu.org/chktex/" target="_blank" rel="noreferrer">ChkTeX</a></p></div>
-      <label>{t("projectSettings.latexmkrc")}<textarea className="latexmkrc-editor" rows={10} spellCheck={false} disabled={!canManage || site.allowProjectLatexmkrc === false} value={rcText} placeholder={t("projectSettings.latexmkrcPlaceholder")} onChange={(event) => setRcText(event.target.value)} /></label>
+      {rcFiles.length > 0 && <div className="editor-preference latexmkrc-setting">
+        <label className="editor-checkbox"><input type="checkbox" disabled={!canManage || site.allowProjectLatexmkrc === false} checked={rcEnabled && site.allowProjectLatexmkrc !== false} onChange={(event) => setRcEnabled(event.target.checked)} /><span>{t("projectSettings.enableLatexmkrc")}</span></label>
+        <p className="field-hint">{t("projectSettings.latexmkrcSource", { path: selectedRcPath })}</p>
+        {site.allowProjectLatexmkrc === false ? <p className="field-hint">{t("projectSettings.latexmkrcUnavailable")}</p> : <p className="field-hint latexmkrc-warning"><AlertTriangle size={14} aria-hidden="true" /><span>{t("projectSettings.latexmkrcWarning")}</span></p>}
+      </div>}
       <div className="settings-actions">{canManage && <button className="settings-save" onClick={() => void saveCompilerSettings()}><Save size={15} />{t("projectSettings.saveCompiler")}</button>}</div>
     </section>}
   </div></>;

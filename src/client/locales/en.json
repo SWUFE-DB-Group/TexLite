@@ -272,10 +272,9 @@
     "changedBy": "Changed by", "contentTab": "Content", "diffTab": "Diff", "view": "Selection history view", "previousVersion": "Earlier state", "currentVersion": "This state", "noPrevious": "No earlier selected state is available for comparison.", "diffUnavailable": "A comparison is unavailable because one selected state could not be reconstructed exactly.", "noDiff": "No textual difference from the preceding selected state.", "contentTruncated": "Selected content shortened.", "contentUnavailable": "Selected content for this earlier state is unavailable because a very large change could not be reconstructed exactly."
   },
   "projectSettings": {
-    "mainFile": "Main document", "invalidMainFileOption": "{{path}} (not a root document)", "engine": "Compiler", "latexmkrc": "Project latexmkrc", "save": "Save project settings",
+    "mainFile": "Main document", "invalidMainFileOption": "{{path}} (not a root document)", "engine": "Compiler", "defaultEngine": "Default compiler", "enableLatexmkrc": "Use project latexmkrc", "latexmkrcSource": "When enabled, TexLite uses {{path}}. Edit this file in the file list.", "latexmkrcWarning": "A latexmkrc is executable Perl configuration. It may override the selected compiler and other options; anyone who can edit this file can change subsequent builds. Check the compile log for the actual commands.", "latexmkrcUnavailable": "Project latexmkrc files are disabled by the server administrator.", "save": "Save project settings",
     "members": "Shared members", "recentLog": "Latest compile log", "share": "Share",
     "shareDescription": "Projects can only be shared with users created by an administrator.", "chooseUser": "Choose a user",
-    "latexmkrcPlaceholder": "# Empty disables the project rc file\n$pdf_mode = 1;",
     "addMember": "Add member", "noMembers": "This project has not been shared with anyone.", "removeTitle": "Remove shared member",
     "removeDescription": "Remove {{username}}? Their account and other projects are unaffected.",
     "editorTab": "Editor appearance", "compilerTab": "LaTeX compiler", "compilerDescription": "Choose the main document and compiler options shared by everyone in this project.",

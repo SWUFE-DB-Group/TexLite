@@ -206,7 +206,7 @@ preferred.
 | `latex.extraArgs` | `[]` | Additional configured compiler arguments. |
 | `latex.compileTimeoutSeconds` | `600` | Per-job time limit. |
 | `latex.maxCompileJobs` | `10` | Global concurrent LaTeX-process limit. |
-| `latex.allowProjectLatexmkrc` | `true` | Enables an owner-configured, multi-line `latexmkrc`. |
+| `latex.allowProjectLatexmkrc` | `true` | Allows project owners to opt into an existing project `latexmkrc`; the per-project selection starts off. Edit the file in the project editor. |
 | `git.binary` / `git.operationTimeoutSeconds` | `git` / `120` seconds | Used only by optional Git integration. |
 | `git.githubApiBaseUrl` | `https://api.github.com` | GitHub REST API endpoint. |
 
@@ -294,11 +294,17 @@ Valid base paths start with `/`, contain URL-safe path segments, and have no
 query, fragment, `.` or `..` segment. A trailing slash in configuration is
 accepted and normalized. Restart TexLite after changing this setting.
 
-Before every compile TexLite passes `-norc` to `latexmk`. A `.latexmkrc` found
-in a ZIP upload, Git checkout, or project file tree is ignored. It is used only
-when the owner explicitly saves it through Project Settings, which passes it
-with `-r`. An `latexmkrc` is executable Perl configuration and should remain
-disabled for users you do not trust.
+Before every compile TexLite passes `-norc` to `latexmk`. A `.latexmkrc` or
+`latexmkrc` found in a ZIP upload, Git checkout, or project file tree is ignored
+until the owner enables it in Project Settings. TexLite then passes that file
+with `-r`. The setting appears only when an rc file exists; the file is edited
+in the project editor, not in settings. For an unconfigured project, a root
+`latexmkrc` is preferred over a root `.latexmkrc` when both exist; an existing
+selection is preserved. Removing an active rc file disables it. A `latexmkrc`
+is executable Perl configuration; it may override the selected engine and
+other compiler options, and collaborators who can edit the file can change
+subsequent builds. Keep the server-level option off when project editors are
+not trusted.
 
 TexLite never runs `tlmgr` or installs TeX packages. Updating the host TeX
 distribution changes the environment used by subsequent compiles.

@@ -496,6 +496,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .file-entry-main .file-type-icon-pdf { color: #b0444b; }
 .file-entry-main .file-type-icon-image { color: #7b55a5; }
 .file-entry-main .file-type-icon-bib { color: #176b8f; }
+.file-entry-main .file-type-icon-latexmkrc { color: #656c8d; }
 .file-entry-main .file-type-icon-markdown { color: #3d6da8; }
 .file-entry-main .file-type-icon-text { color: #69766f; }
 .file-entry-main .file-type-icon-code { color: #28724e; }
@@ -841,7 +842,9 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .password-generator button { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border: 1px solid #c9d0ca; border-radius: 6px; background: #f6f8f6; color: #31523e; font-size: 11px; white-space: nowrap; }
 .password-generator button:hover { border-color: #8eaa98; background: #edf3ef; }
 .settings-save { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.latexmkrc-editor, .tex-fmt-options-editor { resize: vertical; font: 12px/1.5 "SFMono-Regular", Consolas, monospace !important; }
+.tex-fmt-options-editor { resize: vertical; font: 12px/1.5 "SFMono-Regular", Consolas, monospace !important; }
+.settings .latexmkrc-warning { display: flex; align-items: flex-start; gap: 6px; color: #805a24; }
+.latexmkrc-warning svg { flex: none; margin-top: 1px; }
 .tex-fmt-options-editor { min-height: 100px; }
 .dictionary-add { display: flex; align-items: stretch; gap: 7px; }
 .dictionary-add input { min-width: 0; flex: 1; }

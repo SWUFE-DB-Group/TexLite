@@ -14,8 +14,8 @@ describe("project file icons", () => {
   });
 
   it("handles project control files and unknown extensions safely", () => {
-    expect(fileIconKind("latexmkrc")).toBe("code");
-    expect(fileIconKind(".latexmkrc")).toBe("code");
+    expect(fileIconKind("latexmkrc")).toBe("latexmkrc");
+    expect(fileIconKind(".latexmkrc")).toBe("latexmkrc");
     expect(fileIconKind("archive.zip")).toBe("archive");
     expect(fileIconKind("unknown.custom" )).toBe("file");
   });

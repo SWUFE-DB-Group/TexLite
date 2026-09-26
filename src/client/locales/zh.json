@@ -263,9 +263,8 @@
     "changedBy": "修改者：", "contentTab": "内容", "diffTab": "差异", "view": "选区历史展示方式", "previousVersion": "上一状态", "currentVersion": "当前状态", "noPrevious": "没有更早的选区状态可供比较。", "diffUnavailable": "其中一个选区状态无法精确还原，暂无法比较。", "noDiff": "与上一选区状态没有文本差异。", "contentTruncated": "选区内容已缩短。", "contentUnavailable": "由于一次过大的修改无法精确还原，无法显示这个较早状态的选区内容。"
   },
   "projectSettings": {
-    "mainFile": "主文档", "invalidMainFileOption": "{{path}}（不是主文档）", "engine": "编译引擎", "latexmkrc": "项目 latexmkrc", "save": "保存项目设置", "members": "共享成员",
+    "mainFile": "主文档", "invalidMainFileOption": "{{path}}（不是主文档）", "engine": "编译引擎", "defaultEngine": "默认编译引擎", "enableLatexmkrc": "使用项目 latexmkrc", "latexmkrcSource": "启用后将使用 {{path}}。请在文件列表中编辑该文件。", "latexmkrcWarning": "latexmkrc 是可执行的 Perl 配置，可能覆盖所选编译引擎及其他选项；能编辑此文件的协作者也能影响后续编译。实际执行命令以编译日志为准。", "latexmkrcUnavailable": "服务器管理员已禁用项目 latexmkrc。", "save": "保存项目设置", "members": "共享成员",
     "recentLog": "最近编译日志", "share": "共享", "shareDescription": "仅可共享给管理员已创建的用户。", "chooseUser": "请选择用户",
-    "latexmkrcPlaceholder": "# 留空表示不使用项目 rc 文件\n$pdf_mode = 1;",
     "addMember": "添加成员", "noMembers": "该项目尚未分享给其他成员。", "removeTitle": "移除共享成员", "removeDescription": "确认移除 {{username}}？其账号和其他项目不会受到影响。",
     "editorTab": "编辑器外观", "compilerTab": "LaTeX 编译器", "compilerDescription": "选择本项目所有成员共享的主文档和 LaTeX 编译选项。",
     "editorAppearance": "编辑器外观", "editorAppearanceDescription": "这些偏好仅作用于当前浏览器中的当前用户和项目；项目词典是共享的。",

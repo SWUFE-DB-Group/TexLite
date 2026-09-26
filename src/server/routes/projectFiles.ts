@@ -464,6 +464,9 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
         throw error;
       }
       fs.rmSync(absolute, { recursive: true, force: true });
+      if (currentProject.latexmkrc === relative || currentProject.latexmkrc?.startsWith(`${relative}/`)) {
+        db.prepare("UPDATE projects SET latexmkrc = NULL WHERE id = ?").run(id);
+      }
       const deleteResult = db.prepare("DELETE FROM comments WHERE project_id = ? AND (file_path = ? OR file_path GLOB ?)").run(id, relative, `${escapeGlobPattern(relative)}/*`);
       touchProject(db, id, user.id);
       collaboration.removePath(id, relative);

@@ -1,9 +1,9 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, File, FileArchive, FileAudio, FileCode2, FileImage, FileSpreadsheet, FileText, FileType2, FileVideo, LibraryBig, NotepadText } from "lucide-react";
+import { BookOpen, File, FileArchive, FileAudio, FileCode2, FileCog, FileImage, FileSpreadsheet, FileText, FileType2, FileVideo, LibraryBig, NotepadText } from "lucide-react";
 import { appPath } from "./basePath";
 
 /** Semantic groups used by the project file tree. */
-export type FileIconKind = "pdf" | "tex" | "bib" | "image" | "markdown" | "text" | "code" | "spreadsheet" | "archive" | "audio" | "video" | "file";
+export type FileIconKind = "pdf" | "tex" | "bib" | "latexmkrc" | "image" | "markdown" | "text" | "code" | "spreadsheet" | "archive" | "audio" | "video" | "file";
 
 const imageExtensions = new Set(["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp", "eps"]);
 const texExtensions = new Set(["latex", "ltx", "tex"]);
@@ -24,7 +24,8 @@ const videoExtensions = new Set(["avi", "mkv", "mov", "mp4", "webm"]);
  */
 export function fileIconKind(filePath: string): FileIconKind {
   const basename = filePath.split("/").at(-1)?.toLocaleLowerCase() ?? "";
-  if (basename === ".latexmkrc" || basename === "latexmkrc" || basename === "makefile" || basename === "dockerfile") return "code";
+  if (basename === ".latexmkrc" || basename === "latexmkrc") return "latexmkrc";
+  if (basename === "makefile" || basename === "dockerfile") return "code";
   if (basename === "readme" || basename.startsWith("readme.")) return "markdown";
   const extension = basename.includes(".") ? basename.slice(basename.lastIndexOf(".") + 1) : "";
   if (extension === "pdf") return "pdf";
@@ -45,6 +46,7 @@ const icons: Record<FileIconKind, LucideIcon> = {
   pdf: FileType2,
   tex: FileCode2,
   bib: LibraryBig,
+  latexmkrc: FileCog,
   image: FileImage,
   markdown: BookOpen,
   text: NotepadText,
