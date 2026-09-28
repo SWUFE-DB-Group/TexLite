@@ -103,12 +103,22 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
     if (pdfViewport) void syncPdfToSource(pdfViewport.page, pdfViewport.x, pdfViewport.y);
   };
 
+  const clearPdfViewport = () => {
+    // A new PDF invalidates coordinates and any in-flight lookup started from
+    // the previously displayed version.
+    request.current?.abort();
+    request.current = null;
+    setPdfViewport(null);
+    setPdfTarget(null);
+  };
+
   return {
     pdfTarget,
     pdfViewport,
     sourceJump,
     setPdfViewport,
-    clearPdfViewport: () => setPdfViewport(null),
+    resetPdfViewport: () => setPdfViewport(null),
+    clearPdfViewport,
     jumpToSource,
     syncSourceToPdf,
     syncPdfToSource,

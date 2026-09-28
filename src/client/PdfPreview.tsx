@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type WheelEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { getDocument, GlobalWorkerOptions, PDFWorker, type PDFDocumentLoadingTask, type PageViewport, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
-import { LoaderCircle, Maximize2, Minus, Plus } from "lucide-react";
+import { LoaderCircle, Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
@@ -14,6 +14,7 @@ interface CachedPdfDocument {
   promise: Promise<PDFDocumentProxy>;
   consumers: number;
   settled: boolean;
+  retired: boolean;
   lastUsed: number;
 }
 
@@ -51,6 +52,7 @@ function pdfDocument(url: string, loadingMode: PdfLoadingMode): CachedPdfDocumen
     promise: task.promise,
     consumers: 0,
     settled: false,
+    retired: false,
     lastUsed: Date.now()
   };
   cachedPdfDocuments.set(cacheKey, entry);
@@ -60,8 +62,21 @@ function pdfDocument(url: string, loadingMode: PdfLoadingMode): CachedPdfDocumen
   }, () => {
     entry.settled = true;
     if (cachedPdfDocuments.get(cacheKey) === entry) cachedPdfDocuments.delete(cacheKey);
+    if (!entry.retired) {
+      entry.retired = true;
+      if (entry.consumers === 0) void entry.task.destroy();
+    }
   });
   return entry;
+}
+
+function evictPdfDocument(url: string, loadingMode: PdfLoadingMode): void {
+  const cacheKey = `${loadingMode}:${url}`;
+  const entry = cachedPdfDocuments.get(cacheKey);
+  if (!entry) return;
+  cachedPdfDocuments.delete(cacheKey);
+  entry.retired = true;
+  if (entry.consumers === 0) void entry.task.destroy();
 }
 
 function prunePdfDocuments(): void {
@@ -73,6 +88,7 @@ function prunePdfDocuments(): void {
     const [url, entry] = candidates.shift()!;
     if (cachedPdfDocuments.get(url) !== entry) continue;
     cachedPdfDocuments.delete(url);
+    entry.retired = true;
     void entry.task.destroy();
   }
 }
@@ -96,6 +112,7 @@ function acquirePdfDocument(url: string, loadingMode: PdfLoadingMode): PdfDocume
       released = true;
       entry.consumers = Math.max(0, entry.consumers - 1);
       entry.lastUsed = Date.now();
+      if (entry.retired && entry.consumers === 0) void entry.task.destroy();
       prunePdfDocuments();
     }
   };
@@ -117,13 +134,14 @@ type PdfAnnotation = {
   title?: string | null;
 };
 
-export function PdfPreview({ url, loadingMode, target, compiling = false, onViewportLocation, onDoubleClickLocation }: {
+export function PdfPreview({ url, loadingMode, target, compiling = false, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange }: {
   url: string;
   loadingMode: PdfLoadingMode;
   target: PdfTarget | null;
   compiling?: boolean;
   onViewportLocation: (page: number, x: number, y: number) => void;
   onDoubleClickLocation?: (page: number, x: number, y: number) => void;
+  onDisplayedUrlChange?: (url: string) => void;
 }) {
   const { t } = useTranslation();
   const root = useRef<HTMLDivElement>(null);
@@ -132,6 +150,7 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   const [width, setWidth] = useState(0);
   const [zoom, setZoom] = useState(100);
   const [error, setError] = useState("");
+  const [retryVersion, setRetryVersion] = useState(0);
   const pageElements = useRef(new Map<number, HTMLElement>());
   const viewportFrame = useRef<number | null>(null);
   // Retain the current document's cache lease until the replacement has
@@ -141,6 +160,16 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   const pendingDocument = useRef<PdfDocumentLease | null>(null);
   const onViewportLocationRef = useRef(onViewportLocation);
   onViewportLocationRef.current = onViewportLocation;
+  const onDisplayedUrlChangeRef = useRef(onDisplayedUrlChange);
+  onDisplayedUrlChangeRef.current = onDisplayedUrlChange;
+  const displayedRetryVersion = useRef(0);
+
+  const retryDocument = () => {
+    evictPdfDocument(url, loadingMode);
+    onDisplayedUrlChangeRef.current?.("");
+    setError("");
+    setRetryVersion((value) => value + 1);
+  };
 
   const registerPageElement = useCallback((pageNumber: number, element: HTMLElement | null) => {
     if (element) pageElements.current.set(pageNumber, element);
@@ -217,7 +246,7 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
 
   useEffect(() => {
     const current = displayedDocument.current;
-    if (current?.url === url && current.loadingMode === loadingMode) {
+    if (current?.url === url && current.loadingMode === loadingMode && displayedRetryVersion.current === retryVersion) {
       setError("");
       return;
     }
@@ -229,6 +258,7 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
       if (cancelled) return;
       const previous = displayedDocument.current;
       displayedDocument.current = { ...lease, url, loadingMode };
+      displayedRetryVersion.current = retryVersion;
       if (pendingDocument.current === lease) pendingDocument.current = null;
       setDocument(loaded);
       setDocumentUrl(url);
@@ -246,9 +276,10 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
         lease.release();
       }
     };
-  }, [url, loadingMode, t]);
+  }, [url, loadingMode, retryVersion, t]);
 
   useEffect(() => () => {
+    onDisplayedUrlChangeRef.current?.("");
     pendingDocument.current?.release();
     pendingDocument.current = null;
     displayedDocument.current?.release();
@@ -276,6 +307,10 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   };
   const replacingDocument = Boolean(document && documentUrl !== url && !error);
   const displayedTarget = documentUrl === url ? target : null;
+  const pageReady = () => {
+    if (documentUrl === url) onDisplayedUrlChangeRef.current?.(url);
+    reportViewport();
+  };
   return <div className="pdf-viewer">
     <div className="pdf-toolbar" role="toolbar" aria-label={t("editor.pdfZoomControls")}>
       <button disabled={zoom <= 50} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
@@ -285,24 +320,24 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
     </div>
     {compiling && <div className="pdf-compiling-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.compiling")}</span></div>}
     {replacingDocument && !compiling && <div className="pdf-loading-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.loadingPdf")}</span></div>}
-    {document && error && <div className="pdf-load-error-overlay" role="status" aria-live="polite"><span>{error}</span></div>}
+    {document && error && <div className="pdf-load-error-overlay" role="status" aria-live="polite"><span>{error}</span><button type="button" onClick={retryDocument}><RefreshCw size={13} />{t("common.retry")}</button></div>}
     <div className="pdf-document" ref={root} onScroll={reportViewport} onWheel={scrollHorizontally}>
       <div className="pdf-pages" style={{ width: `${Math.max(1, width - 28) * Math.max(1, zoom / 100)}px` }}>
         {!document && !error && <div className="pdf-loading" role="status" aria-live="polite">
           <LoaderCircle className="spin" size={24} />
           <span>{t("editor.loadingPdf")}</span>
         </div>}
-        {error && !document && <div className="preview-empty"><strong>{error}</strong></div>}
+        {error && !document && <div className="preview-empty"><strong>{error}</strong><button type="button" onClick={retryDocument}><RefreshCw size={14} />{t("common.retry")}</button></div>}
         {document && width > 0 && Array.from({ length: document.numPages }, (_item, index) =>
-          <PdfPage key={index + 1} document={document} pageNumber={index + 1} availableWidth={width - 28} zoom={zoom / 100}
-            target={displayedTarget?.page === index + 1 ? displayedTarget : null} onReady={reportViewport} onPageElement={registerPageElement}
-            onInternalLink={navigateToDestination} onDoubleClickLocation={onDoubleClickLocation} />)}
+          <PdfPage key={`${documentUrl}:${index + 1}`} document={document} pageNumber={index + 1} availableWidth={width - 28} zoom={zoom / 100}
+            target={displayedTarget?.page === index + 1 ? displayedTarget : null} onReady={pageReady} onPageElement={registerPageElement}
+            onInternalLink={navigateToDestination} onDoubleClickLocation={documentUrl === url ? onDoubleClickLocation : undefined} onRetryDocument={retryDocument} />)}
       </div>
     </div>
   </div>;
 }
 
-function PdfPage({ document, pageNumber, availableWidth, zoom, target, onReady, onPageElement, onInternalLink, onDoubleClickLocation }: {
+function PdfPage({ document, pageNumber, availableWidth, zoom, target, onReady, onPageElement, onInternalLink, onDoubleClickLocation, onRetryDocument }: {
   document: PDFDocumentProxy;
   pageNumber: number;
   availableWidth: number;
@@ -312,7 +347,9 @@ function PdfPage({ document, pageNumber, availableWidth, zoom, target, onReady, 
   onPageElement: (pageNumber: number, element: HTMLElement | null) => void;
   onInternalLink: (destination: unknown) => void;
   onDoubleClickLocation?: (page: number, x: number, y: number) => void;
+  onRetryDocument: () => void;
 }) {
+  const { t } = useTranslation();
   const figure = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const marker = useRef<HTMLSpanElement>(null);
@@ -322,6 +359,7 @@ function PdfPage({ document, pageNumber, availableWidth, zoom, target, onReady, 
   const [rendered, setRendered] = useState(false);
   const [viewport, setViewport] = useState<PageViewport | null>(null);
   const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
+  const [pageError, setPageError] = useState(false);
 
   useEffect(() => {
     const element = figure.current;
@@ -347,9 +385,11 @@ function PdfPage({ document, pageNumber, availableWidth, zoom, target, onReady, 
     if (!shouldRender) return;
     let cancelled = false;
     let renderTask: RenderTask | null = null;
+    let readyFrame: number | null = null;
     setRendered(false);
     setViewport(null);
     setAnnotations([]);
+    setPageError(false);
     void document.getPage(pageNumber).then((page) => {
       if (cancelled) return;
       const base = page.getViewport({ scale: 1 });
@@ -373,11 +413,14 @@ function PdfPage({ document, pageNumber, availableWidth, zoom, target, onReady, 
       return renderTask.promise.then(() => {
         if (cancelled) return;
         setRendered(true);
-        window.requestAnimationFrame(onReady);
+        readyFrame = window.requestAnimationFrame(() => { if (!cancelled) onReady(); });
       });
-    }).catch(() => undefined);
+    }).catch((error: unknown) => {
+      if (!cancelled && !(error instanceof Error && error.name === "RenderingCancelledException")) setPageError(true);
+    });
     return () => {
       cancelled = true;
+      if (readyFrame !== null) window.cancelAnimationFrame(readyFrame);
       renderTask?.cancel();
     };
   }, [document, pageNumber, availableWidth, zoom, shouldRender]);
@@ -403,6 +446,7 @@ function PdfPage({ document, pageNumber, availableWidth, zoom, target, onReady, 
   const estimatedHeight = estimatedWidth * (792 / 612);
   return <figure ref={(element) => { figure.current = element; onPageElement(pageNumber, element); }} onDoubleClick={handleDoubleClick} className={`pdf-page${rendered ? " rendered" : " loading"}`} data-page={pageNumber} data-scale={scale} style={{ width: `${size.width || estimatedWidth}px`, minHeight: `${size.height || estimatedHeight}px` }}>
     <canvas ref={canvas} style={{ width: `${size.width || estimatedWidth}px`, height: `${size.height || estimatedHeight}px` }} />
+    {pageError && <div className="pdf-page-error" role="alert"><span>{t("editor.pdfPageLoadFailed", { page: pageNumber })}</span><button type="button" onClick={onRetryDocument}><RefreshCw size={14} />{t("common.retry")}</button></div>}
     {rendered && viewport && <PdfAnnotationLayer annotations={annotations} viewport={viewport} onInternalLink={onInternalLink} />}
     {target && <span ref={marker} className="pdf-sync-marker" style={{ left: target.x * scale, top: target.y * scale }} />}
     <figcaption>{pageNumber}</figcaption>

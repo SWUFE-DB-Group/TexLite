@@ -542,6 +542,21 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       if (!currentProject || currentProject.permission !== "owner") {
         return apiError(reply, 403, "PROJECT_OWNER_ONLY");
       }
+      if (body.expectedSettings !== undefined) {
+        if (!body.expectedSettings || typeof body.expectedSettings !== "object" || Array.isArray(body.expectedSettings)) {
+          return apiError(reply, 400, "REQUEST_INVALID");
+        }
+        const expected = body.expectedSettings as Record<string, unknown>;
+        const currentSettings = {
+          name: currentProject.name, mainFile: currentProject.main_file, engine: currentProject.engine,
+          latexmkrc: currentProject.latexmkrc, chktexEnabled: Boolean(currentProject.chktex_enabled)
+        };
+        for (const field of Object.keys(currentSettings) as Array<keyof typeof currentSettings>) {
+          if (Object.hasOwn(body, field) && (!Object.hasOwn(expected, field) || expected[field] !== currentSettings[field])) {
+            return apiError(reply, 409, "PROJECT_SETTINGS_CONFLICT");
+          }
+        }
+      }
       const name = typeof body.name === "string" ? text(body.name, 120) : currentProject.name;
       let mainFile = currentProject.main_file;
       if (body.mainFile !== undefined) {

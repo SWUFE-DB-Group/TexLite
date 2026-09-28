@@ -75,6 +75,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   onBack: () => void;
 }) {
   const { t } = useTranslation();
+  const currentProjectId = useRef(projectId);
+  currentProjectId.current = projectId;
   const [project, setProject] = useState<Project | null>(null);
   useEffect(() => {
     document.title = project?.name ? `${site.siteName} | ${project.name}` : site.siteName;
@@ -276,7 +278,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const { unreadMentions, refresh: refreshMentions, markMentionRead, markAllMentionsRead } = useProjectMentions(projectId, commentsRevision, setError);
 
   const {
-    pdfTarget, pdfViewport, sourceJump, setPdfViewport, clearPdfViewport,
+    pdfTarget, pdfViewport, sourceJump, setPdfViewport, resetPdfViewport, clearPdfViewport,
     jumpToSource, syncSourceToPdf, syncPdfToSource, syncVisiblePdfToSource
   } = useSyncTeX({
     projectId,
@@ -945,6 +947,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   });
 
   const applyProjectSettings = (updatedProject: Project): void => {
+    if (updatedProject.id !== currentProjectId.current) return;
     const mainFileChanged = updatedProject.mainFile !== project?.mainFile;
     setProject(updatedProject);
     if (!mainFileChanged) return;
@@ -1395,7 +1398,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         artifactPreview={artifactPreview} artifactLoading={artifactLoading} cleaning={cleaning}
         readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={showEditor && showPreview}
         diagnosticCount={diagnosticCount} selectPreviewTab={selectPreviewTab}
-        changeWorkspaceLayout={changeWorkspaceLayout} onSetNotice={setNotice} onSetPdfViewport={setPdfViewport}
+        changeWorkspaceLayout={changeWorkspaceLayout} onSetNotice={setNotice} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport}
         syncVisiblePdfToSource={syncVisiblePdfToSource}
         syncCurrentSourceToPdf={() => {
           const path = activeFileRef.current;

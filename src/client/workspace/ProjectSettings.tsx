@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertCircle, AlertTriangle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Save, Settings, Sigma, SpellCheck2, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
@@ -45,6 +45,13 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const [name, setName] = useState(project.name);
   const [mainFile, setMainFile] = useState(project.mainFile);
   const [chktexEnabled, setChktexEnabled] = useState(project.chktexEnabled);
+  const [savingCompiler, setSavingCompiler] = useState(false);
+  const compilerSaveRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+  const savedCompilerSettings = useRef({
+    name: project.name, mainFile: project.mainFile, engine: project.engine,
+    latexmkrc: project.latexmkrc, chktexEnabled: project.chktexEnabled
+  });
   const [mainFileOptions, setMainFileOptions] = useState<string[] | null>(null);
   const [error, setError] = useState("");
   const [dictionaryValue, setDictionaryValue] = useState("");
@@ -56,7 +63,10 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const canEdit = project.permission !== "read";
   const canManageDictionary = project.permission !== "read";
   useEffect(() => setAppearancePreferences(editorPreferences), [editorPreferences]);
-  useEffect(() => setChktexEnabled(project.chktexEnabled), [project.chktexEnabled]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   useEffect(() => {
     // Opening settings eagerly initializes the browser formatter Worker.
     void preloadTexFmt().catch(texFmtToolStatus.failed);
@@ -67,9 +77,6 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const rcFiles = projectLatexmkrcCandidates(files, project.latexmkrc);
   const selectedRcPath = project.latexmkrc && rcFiles.includes(project.latexmkrc) ? project.latexmkrc : rcFiles[0] ?? "";
   const selectedRcMissing = files.length > 0 && project.latexmkrc !== null && !rcFiles.includes(project.latexmkrc);
-  useEffect(() => {
-    setRcEnabled(Boolean(project.latexmkrc));
-  }, [projectId, project.latexmkrc]);
   useEffect(() => {
     if (selectedRcMissing) setRcEnabled(false);
   }, [selectedRcMissing]);
@@ -88,18 +95,53 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const displayedMainFileOptions = mainFileOptions ?? [project.mainFile];
   const invalidCurrentMainFile = mainFileOptions !== null && !mainFileOptions.includes(mainFile);
   const saveCompilerSettings = async () => {
+    if (compilerSaveRef.current) return;
+    const latexmkrc = files.length === 0 && project.latexmkrc && site.allowProjectLatexmkrc !== false
+      ? project.latexmkrc
+      : rcEnabled && site.allowProjectLatexmkrc !== false ? selectedRcPath || null : null;
+    const previous = savedCompilerSettings.current;
+    const changes: Record<string, string | boolean | null> = {};
+    if (name !== previous.name) changes.name = name;
+    if (mainFile !== previous.mainFile) changes.mainFile = mainFile;
+    if (engine !== previous.engine) changes.engine = engine;
+    if (latexmkrc !== previous.latexmkrc) changes.latexmkrc = latexmkrc;
+    if (chktexEnabled !== previous.chktexEnabled) changes.chktexEnabled = chktexEnabled;
+    if (Object.keys(changes).length === 0) return;
+    const expectedSettings = Object.fromEntries(
+      Object.keys(changes).map((field) => [field, previous[field as keyof typeof previous]])
+    );
+    const controller = new AbortController();
+    compilerSaveRef.current = controller;
+    setSavingCompiler(true);
     try {
       setError("");
-      // The project metadata can arrive before its file list. Do not clear an
-      // existing selection merely because the file-tree request is pending.
-      const latexmkrc = files.length === 0 && project.latexmkrc && site.allowProjectLatexmkrc !== false
-        ? project.latexmkrc
-        : rcEnabled && site.allowProjectLatexmkrc !== false ? selectedRcPath || null : null;
       const result = await api<{ project: Project }>(`/api/projects/${projectId}`, {
-        method: "PATCH", body: JSON.stringify({ name, mainFile, engine, latexmkrc, chktexEnabled })
+        method: "PATCH", signal: controller.signal, body: JSON.stringify({ ...changes, expectedSettings })
       });
+      if (!mountedRef.current) {
+        // Closing settings does not cancel a save already accepted by the
+        // server. Keep the workspace metadata current when it completes.
+        onProject(result.project);
+        return;
+      }
+      savedCompilerSettings.current = {
+        name: result.project.name, mainFile: result.project.mainFile, engine: result.project.engine,
+        latexmkrc: result.project.latexmkrc, chktexEnabled: result.project.chktexEnabled
+      };
+      setName(result.project.name);
+      setMainFile(result.project.mainFile);
+      setEngine(result.project.engine);
+      setChktexEnabled(result.project.chktexEnabled);
+      setRcEnabled(Boolean(result.project.latexmkrc));
       onProject(result.project);
-    } catch (requestError) { setError(errorMessage(requestError)); }
+    } catch (requestError) {
+      if (mountedRef.current) setError(errorMessage(requestError));
+    } finally {
+      if (compilerSaveRef.current === controller) {
+        compilerSaveRef.current = null;
+        if (mountedRef.current) setSavingCompiler(false);
+      }
+    }
   };
   const saveAppearanceSettings = () => onEditorPreferences(appearancePreferences);
   const saveCurrentSettings = () => {
@@ -127,7 +169,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       setDictionaryError("");
     } catch (requestError) { setDictionaryError(errorMessage(requestError)); }
   };
-  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <button type="button" className="drawer-settings-save" onClick={saveCurrentSettings}><Save size={14} /><span>{headerSaveLabel}</span></button>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div><div className="settings padded">
+  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <button type="button" className="drawer-settings-save" disabled={settingsTab === "compiler" && savingCompiler} aria-busy={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{settingsTab === "compiler" && savingCompiler ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}<span>{headerSaveLabel}</span></button>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div><div className="settings padded">
     {error && <p className="error">{error}</p>}
     <div className="settings-tabs" role="tablist" aria-label={t("common.settings")}>
       <button id="settings-tab-appearance" type="button" role="tab" aria-selected={settingsTab === "appearance"} aria-controls="settings-panel-appearance" className={`settings-tab${settingsTab === "appearance" ? " active" : ""}`} onClick={() => setSettingsTab("appearance")}>
@@ -182,16 +224,16 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     </section> : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
       <div className="settings-section-title"><Settings size={15} /><strong>{t("projectSettings.compilerTab")}</strong></div>
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>
-      <label>{t("projects.name")}<input disabled={!canManage} value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>{t("projectSettings.mainFile")}<select disabled={!canManage || mainFileOptions === null || mainFileOptions.length === 0} value={mainFile} onChange={(event) => setMainFile(event.target.value)}>{invalidCurrentMainFile && <option value={mainFile} disabled>{t("projectSettings.invalidMainFileOption", { path: mainFile })}</option>}{displayedMainFileOptions.map((filePath) => <option value={filePath} key={filePath}>{filePath}</option>)}</select></label>
-      <label>{t(rcEnabled && rcFiles.length > 0 && site.allowProjectLatexmkrc !== false ? "projectSettings.defaultEngine" : "projectSettings.engine")}<select disabled={!canManage} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
-      <div className="editor-preference compiler-check-option"><label className="editor-checkbox"><input type="checkbox" disabled={!canManage} checked={chktexEnabled} onChange={(event) => setChktexEnabled(event.target.checked)} /><FileCheck2 size={15} /><span>{t("chktex.enabled")}</span></label><p className="field-hint">{t("chktex.description")} <a href="https://www.nongnu.org/chktex/" target="_blank" rel="noreferrer">ChkTeX</a></p></div>
+      <label>{t("projects.name")}<input disabled={!canManage || savingCompiler} value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label>{t("projectSettings.mainFile")}<select disabled={!canManage || savingCompiler || mainFileOptions === null || mainFileOptions.length === 0} value={mainFile} onChange={(event) => setMainFile(event.target.value)}>{invalidCurrentMainFile && <option value={mainFile} disabled>{t("projectSettings.invalidMainFileOption", { path: mainFile })}</option>}{displayedMainFileOptions.map((filePath) => <option value={filePath} key={filePath}>{filePath}</option>)}</select></label>
+      <label>{t(rcEnabled && rcFiles.length > 0 && site.allowProjectLatexmkrc !== false ? "projectSettings.defaultEngine" : "projectSettings.engine")}<select disabled={!canManage || savingCompiler} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
+      <div className="editor-preference compiler-check-option"><label className="editor-checkbox"><input type="checkbox" disabled={!canManage || savingCompiler} checked={chktexEnabled} onChange={(event) => setChktexEnabled(event.target.checked)} /><FileCheck2 size={15} /><span>{t("chktex.enabled")}</span></label><p className="field-hint">{t("chktex.description")} <a href="https://www.nongnu.org/chktex/" target="_blank" rel="noreferrer">ChkTeX</a></p></div>
       {rcFiles.length > 0 && <div className="editor-preference latexmkrc-setting">
-        <label className="editor-checkbox"><input type="checkbox" disabled={!canManage || site.allowProjectLatexmkrc === false} checked={rcEnabled && site.allowProjectLatexmkrc !== false} onChange={(event) => setRcEnabled(event.target.checked)} /><span>{t("projectSettings.enableLatexmkrc")}</span></label>
+        <label className="editor-checkbox"><input type="checkbox" disabled={!canManage || savingCompiler || site.allowProjectLatexmkrc === false} checked={rcEnabled && site.allowProjectLatexmkrc !== false} onChange={(event) => setRcEnabled(event.target.checked)} /><span>{t("projectSettings.enableLatexmkrc")}</span></label>
         <p className="field-hint">{t("projectSettings.latexmkrcSource", { path: selectedRcPath })}</p>
         {site.allowProjectLatexmkrc === false ? <p className="field-hint">{t("projectSettings.latexmkrcUnavailable")}</p> : <p className="field-hint latexmkrc-warning"><AlertTriangle size={14} aria-hidden="true" /><span>{t("projectSettings.latexmkrcWarning")}</span></p>}
       </div>}
-      <div className="settings-actions">{canManage && <button className="settings-save" onClick={() => void saveCompilerSettings()}><Save size={15} />{t("projectSettings.saveCompiler")}</button>}</div>
+      <div className="settings-actions">{canManage && <button className="settings-save" disabled={savingCompiler} aria-busy={savingCompiler} onClick={() => void saveCompilerSettings()}>{savingCompiler ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}{t("projectSettings.saveCompiler")}</button>}</div>
     </section>}
   </div></>;
 }

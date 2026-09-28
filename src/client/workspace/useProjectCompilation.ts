@@ -69,16 +69,19 @@ function isAbortError(error: unknown): boolean {
 
 /**
  * The workspace owns Ctrl/Cmd+S so it can save and compile from CodeMirror.
- * Native form controls are used by dialogs and the settings panel, however,
- * where that shortcut should be consumed locally rather than compiling in
- * the background or opening the browser's Save Page dialog. Do not include
- * generic contenteditable elements here:
+ * Native form controls and open dialogs consume the shortcut locally rather
+ * than compiling in the background or opening the browser's Save Page dialog.
+ * Do not include generic contenteditable elements here:
  * CodeMirror itself is contenteditable.
  */
 function isNativeTextControl(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement
     || target instanceof HTMLTextAreaElement
     || target instanceof HTMLSelectElement;
+}
+
+function isOpenDialogTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('[role="dialog"], [role="alertdialog"]'));
 }
 
 export function useProjectCompilation({
@@ -105,6 +108,7 @@ export function useProjectCompilation({
   const [displaySelection, setDisplaySelection] = useState({ projectId, mainFile });
   const mainFileRef = useRef(mainFile);
   const pdfMainFileRef = useRef("");
+  const publishedPdfUrl = useRef("");
   const previousSelection = useRef({ projectId, mainFile });
   // Ignore replayed completed states until a compile starts for the new root.
   const allowCompletedAfterSwitch = useRef(true);
@@ -139,6 +143,18 @@ export function useProjectCompilation({
     if (focusedCompileRun.current === runId) return;
     focusedCompileRun.current = runId;
     callbacks.current.onCompileSuccess();
+  };
+
+  const publishPdf = (file: string, url: string, compiledAt: string | null, sizeBytes: number | null, loadingMode: "full" | "range" | null) => {
+    // The HTTP compile response and the shared completion replay can publish
+    // the same run. Preserve an in-flight SyncTeX lookup in that case.
+    if (publishedPdfUrl.current !== url || pdfMainFileRef.current !== file) callbacks.current.onPdfChanged();
+    publishedPdfUrl.current = url;
+    pdfMainFileRef.current = file;
+    setPdfUrl(url);
+    setPdfCompiledAt(compiledAt);
+    setPdfSizeBytes(sizeBytes);
+    setPdfLoadingMode(loadingMode ?? "full");
   };
 
   const loadArtifacts = async (requestedMainFile: string, signal?: AbortSignal) => {
@@ -182,6 +198,7 @@ export function useProjectCompilation({
       initialLatestConsumed.current = false;
       authoritativeCompileRun.current = null;
       pdfMainFileRef.current = "";
+      publishedPdfUrl.current = "";
     }
     if (!mainFile) {
       // Project metadata and the selected root document are loaded separately.
@@ -189,6 +206,7 @@ export function useProjectCompilation({
       // still unknown; the metadata response will rerun this effect exactly
       // once with the selected main file.
       setPdfLoading(false);
+      publishedPdfUrl.current = "";
       setPdfUrl("");
       setPdfCompiledAt(null);
       setPdfSizeBytes(null);
@@ -218,6 +236,7 @@ export function useProjectCompilation({
       artifactsRequest.current?.abort();
       artifactPreviewRequest.current?.abort();
       pdfMainFileRef.current = "";
+      publishedPdfUrl.current = "";
       setPdfUrl("");
       setPdfCompiledAt(null);
       setPdfSizeBytes(null);
@@ -239,6 +258,7 @@ export function useProjectCompilation({
     setPdfLoading(true);
     const retainPdf = Boolean(sameProject && pdfUrl && mainFile && pdfMainFileRef.current === mainFile);
     if (!retainPdf) {
+      publishedPdfUrl.current = "";
       setPdfUrl("");
       setPdfCompiledAt(null);
       setPdfSizeBytes(null);
@@ -299,11 +319,7 @@ export function useProjectCompilation({
         });
       }
       if (latest.pdfUrl) {
-        pdfMainFileRef.current = latest.mainFile;
-        setPdfUrl(latest.pdfUrl);
-        setPdfCompiledAt(latest.pdfCompiledAt);
-        setPdfSizeBytes(latest.pdfSizeBytes);
-        setPdfLoadingMode(latest.pdfLoadingMode ?? "full");
+        publishPdf(latest.mainFile, latest.pdfUrl, latest.pdfCompiledAt, latest.pdfSizeBytes, latest.pdfLoadingMode);
         callbacks.current.onPreviewTab("pdf");
       }
     }).catch((error) => {
@@ -337,6 +353,7 @@ export function useProjectCompilation({
       setCompileLog("");
       setCompileDiagnostics(null);
       setCompileOutcome(null);
+      publishedPdfUrl.current = "";
       setPdfUrl("");
       setPdfCompiledAt(null);
       setPdfSizeBytes(null);
@@ -390,11 +407,7 @@ export function useProjectCompilation({
       if (sharedState.status === "succeeded" && sharedState.stale) setEditorNotice(t("editor.compileSnapshotStale"));
       if (sharedState.status === "succeeded" && latest.pdfUrl) {
         authoritativeCompileRun.current = { mainFile, runId: sharedState.runId };
-        callbacks.current.onPdfChanged();
-        setPdfUrl(latest.pdfUrl);
-        setPdfCompiledAt(latest.pdfCompiledAt);
-        setPdfSizeBytes(latest.pdfSizeBytes);
-        setPdfLoadingMode(latest.pdfLoadingMode ?? "full");
+        publishPdf(mainFile, latest.pdfUrl, latest.pdfCompiledAt, latest.pdfSizeBytes, latest.pdfLoadingMode);
         callbacks.current.onPreviewTab("pdf");
         focusPdfAfterCompile(sharedState.runId);
         void loadArtifacts(mainFile);
@@ -449,11 +462,7 @@ export function useProjectCompilation({
       if (result.ok && result.stale) setEditorNotice(t("editor.compileSnapshotStale"));
       if (result.pdfUrl) {
         if (result.ok) authoritativeCompileRun.current = { mainFile: requestedMainFile, runId: result.runId };
-        callbacks.current.onPdfChanged();
-        setPdfUrl(result.pdfUrl);
-        setPdfCompiledAt(result.pdfCompiledAt);
-        setPdfSizeBytes(result.pdfSizeBytes);
-        setPdfLoadingMode(result.pdfLoadingMode ?? "full");
+        publishPdf(requestedMainFile, result.pdfUrl, result.pdfCompiledAt, result.pdfSizeBytes, result.pdfLoadingMode);
         callbacks.current.onPreviewTab("pdf");
         if (result.ok) {
           // A skipped request reuses the published run id and is not
@@ -536,6 +545,7 @@ export function useProjectCompilation({
         setCompileLog("");
         setCompileDiagnostics(null);
         setCompileOutcome(null);
+        publishedPdfUrl.current = "";
         setPdfUrl("");
         setPdfCompiledAt(null);
         setPdfSizeBytes(null);
@@ -563,7 +573,7 @@ export function useProjectCompilation({
   useEffect(() => {
     const handleCompileShortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== "s") return;
-      if (isNativeTextControl(event.target)) {
+      if (isNativeTextControl(event.target) || isOpenDialogTarget(event.target)) {
         event.preventDefault();
         return;
       }

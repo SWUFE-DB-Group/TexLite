@@ -188,6 +188,31 @@ describe("texLite application", () => {
     expect(response.json()).toMatchObject({ code: "FILE_TOO_LARGE" });
   });
 
+  it("saves only changed project settings and rejects stale values from another session", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Settings draft" } });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().project.id as string;
+    const url = `/api/projects/${id}`;
+    const renamed = await app.inject({
+      method: "PATCH", url, headers: { cookie },
+      payload: { name: "Settings final", expectedSettings: { name: "Settings draft" } }
+    });
+    expect(renamed.statusCode).toBe(200);
+    const unrelated = await app.inject({
+      method: "PATCH", url, headers: { cookie },
+      payload: { chktexEnabled: true, expectedSettings: { chktexEnabled: false } }
+    });
+    expect(unrelated.json().project).toMatchObject({ name: "Settings final", chktexEnabled: true });
+    const stale = await app.inject({
+      method: "PATCH", url, headers: { cookie },
+      payload: { name: "Outdated title", expectedSettings: { name: "Settings draft" } }
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ code: "PROJECT_SETTINGS_CONFLICT" });
+    const current = await app.inject({ method: "GET", url, headers: { cookie } });
+    expect(current.json().project).toMatchObject({ name: "Settings final", chktexEnabled: true });
+  });
+
   it("creates, edits, compiles and comments on a project", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Paper" } });
     expect(created.statusCode).toBe(201);
