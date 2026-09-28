@@ -3,17 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#10251d" />
+    <meta name="theme-color" content="#f4f1e9" />
     <meta
       name="description"
       content="TexLite — a lightweight, local-first collaborative LaTeX workspace."
     />
     <link rel="icon" type="image/svg+xml" href="./logo.svg" />
-    <link rel="stylesheet" href="./styles.css?v=5" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
     <title>TexLite</title>
   </head>
   <body>
-    <div class="site-noise" aria-hidden="true"></div>
     <div class="site-shell">
       <header class="site-header">
         <a class="brand" href="#top" aria-label="TexLite home">
@@ -63,7 +62,6 @@
                 >
                   <span class="ribbon-tail ribbon-tail-left" aria-hidden="true"></span>
                   <span class="ribbon-body">
-                    <span class="ribbon-sparkle" aria-hidden="true">✦</span>
                     <span class="ribbon-text" data-i18n="feedback.ribbon">Feedback</span>
                     <span class="ribbon-arrow" aria-hidden="true">↗</span>
                   </span>
@@ -72,6 +70,7 @@
 
                 <div class="feedback-popover" id="feedback-popover" role="dialog" aria-labelledby="feedback-popover-title">
                   <div class="feedback-popover-arrow" aria-hidden="true"></div>
+                  <button class="feedback-close" type="button" aria-label="Close feedback">×</button>
                   <div class="feedback-popover-header">
                     <span class="feedback-popover-kicker" data-i18n="feedback.kicker">Feedback</span>
                     <strong id="feedback-popover-title" data-i18n="feedback.title">Help shape TexLite.</strong>
@@ -122,99 +121,34 @@
               >
             </div>
           </div>
-          <div class="hero-visual" aria-label="TexLite workspace preview">
-            <div class="visual-glow"></div>
-            <div class="workspace-card">
-              <div class="workspace-topbar">
-                <div class="window-dots"><i></i><i></i><i></i></div>
-                <span>texlite / paper</span>
-                <span class="topbar-live"><b></b> live</span>
+          <figure class="hero-visual" aria-labelledby="manuscript-caption">
+            <div class="manuscript-stage" aria-hidden="true">
+              <span class="margin-label">SOURCE → PAPER</span>
+              <div class="source-slip">
+                <span class="source-label">main.tex</span>
+                <code><span>\section</span>{A shared idea}<br /><br />Every good paper begins<br />with a question.<br /><br /><span>\begin</span>{equation}<br />&nbsp; e^{i\pi} + 1 = 0<br /><span>\end</span>{equation}</code>
               </div>
-              <div class="workspace-body">
-                <aside class="workspace-files">
-                  <span class="mini-label">PROJECT</span>
-                  <strong>paper</strong>
-                  <span class="file active"><b>TeX</b> main.tex</span>
-                  <span class="file"><b>Bib</b> references.bib</span>
-                  <span class="file"><b>Img</b> figures/</span>
-                  <span class="file"><b>Cfg</b> latexmkrc</span>
-                  <span class="outline-line"></span>
-                  <span class="mini-label">OUTLINE</span>
-                  <span class="outline-item">01&nbsp; Introduction</span>
-                  <span class="outline-item">02&nbsp; Method</span>
-                  <span class="outline-item">03&nbsp; Results</span>
-                </aside>
-                <div class="workspace-editor">
-                  <div class="code-line">
-                    <em>01</em><span class="command">\\documentclass</span
-                    ><span>{article}</span>
-                  </div>
-                  <div class="code-line">
-                    <em>02</em><span class="command">\\usepackage</span
-                    ><span>{amsmath}</span>
-                  </div>
-                  <div class="code-line blank"><em>03</em></div>
-                  <div class="code-line">
-                    <em>04</em><span class="command">\\section</span
-                    ><span>{Introduction}</span>
-                  </div>
-                  <div class="code-line">
-                    <em>05</em
-                    ><span class="comment">% write, compile, review</span>
-                  </div>
-                  <div class="code-line">
-                    <em>06</em><span class="command">\\begin</span
-                    ><span>{document}</span>
-                  </div>
-                  <div class="code-line">
-                    <em>07</em
-                    ><span class="text">Your next paper starts here.</span>
-                  </div>
-                  <div class="code-line cursor-line">
-                    <em>08</em
-                    ><span class="text"
-                      >Collaborate with your team<span class="cursor"></span
-                    ></span>
-                  </div>
-                  <div class="code-line">
-                    <em>09</em><span class="command">\\end</span
-                    ><span>{document}</span>
-                  </div>
-                  <div class="editor-status">
-                    <span>NORMAL</span><span>main.tex · 08:31</span>
-                  </div>
-                </div>
-                <div class="workspace-pdf">
-                  <div class="pdf-label">
-                    <span data-i18n="hero.previewLabel">PDF 预览</span
-                    ><span class="pdf-check">✓</span>
-                  </div>
-                  <div class="pdf-sheet">
-                    <div class="pdf-heading"></div>
-                    <div class="pdf-rule short"></div>
-                    <div class="pdf-rule"></div>
-                    <div class="pdf-rule"></div>
-                    <div class="pdf-rule medium"></div>
-                    <div class="pdf-gap"></div>
-                    <div class="pdf-heading small"></div>
-                    <div class="pdf-columns">
-                      <div><i></i><i></i><i></i><i></i></div>
-                      <div><i></i><i></i><i></i><i></i></div>
-                    </div>
-                    <span class="pdf-link-mark">↗</span>
-                  </div>
-                </div>
-              </div>
+              <article class="manuscript">
+                <div class="paper-running-head"><span>NOTES ON A SHARED IDEA</span><span>01</span></div>
+                <p class="paper-title">Room<br />for thought.</p>
+                <div class="paper-authors">A. Researcher · B. Researcher</div>
+                <div class="paper-abstract"><strong>Abstract.</strong> A space to write, revise, and discover together. From the first question to the final page.</div>
+                <div class="paper-equation">e<sup>iπ</sup> + 1 = 0 <small>(1)</small></div>
+                <svg class="paper-figure" viewBox="0 0 300 116" fill="none">
+                  <path d="M12 94H286M32 104V12" stroke="currentColor" stroke-opacity=".25" />
+                  <path d="M32 85C65 85 65 23 110 23S150 86 192 86S238 27 278 27" stroke="#245c4c" stroke-width="1.7"/>
+                  <path d="M32 36C75 36 80 86 122 86S166 26 210 26S250 78 278 78" stroke="#a65339" stroke-width="1.4" stroke-dasharray="4 4"/>
+                  <circle cx="152" cy="62" r="4" fill="#a65339"/>
+                  <path d="M158 59L195 6" stroke="#a65339" stroke-width=".7"/>
+                  <text x="197" y="10" fill="#a65339" font-family="Georgia, serif" font-size="10" font-style="italic">a connection</text>
+                </svg>
+                <div class="paper-columns"><p>Ideas take shape through conversation. A sentence is written, a question is raised, a thought becomes clearer.</p><p>The tools stay close to the work. Your sources, your environment, and room for one more revision.</p></div>
+                <div class="paper-foot"><span>TexLite / Working paper</span><span>1</span></div>
+              </article>
+              <span class="proof-note">a work in progress.</span>
             </div>
-            <div class="floating-chip chip-compile">
-              <span>✓</span>
-              <span data-i18n="hero.chipCompile">编译耗时 2.4 秒</span>
-            </div>
-            <div class="floating-chip chip-collab">
-              <span class="avatar">Z</span>
-              <span data-i18n="hero.chipCollab">3 位协作者</span>
-            </div>
-          </div>
+            <figcaption id="manuscript-caption"><span>Fig. 01</span><span data-i18n="hero.figureCaption">从一个想法，到一篇论文。</span></figcaption>
+          </figure>
         </section>
 
         <section class="section highlights-section" id="highlights">
@@ -245,6 +179,8 @@
               </p>
             </li>
           </ul>
+          <details class="comparison-details">
+            <summary><span data-i18n="highlights.compare">查看工具对比</span><span class="details-sign" aria-hidden="true">+</span></summary>
           <div class="comparison-table-wrap">
             <table class="comparison-table">
               <thead>
@@ -316,6 +252,7 @@
               </tbody>
             </table>
           </div>
+          </details>
           <p class="highlight-note" data-i18n="highlights.note">
             使用 TexLite，你的团队可以完全掌控 TeX 环境、编译资源、用户、权限以及数据。同时提供实时协作编辑、源码级批注、选区级编辑历史、SyncTeX、项目快照以及可选的 Git 备份 —— 没有外部强加的编译超时限制，设计上也坚决不内置 AI。
           </p>
@@ -408,10 +345,9 @@
           <p class="section-kicker" data-i18n="closing.kicker">
             为下一篇论文准备
           </p>
-          <h2 data-i18n="closing.title">Let's build something great.</h2>
+          <h2 data-i18n="closing.title">为下一篇论文，留一片空间。</h2>
           <p data-i18n="closing.lead">
-            TexLite is open source, self-hosted, and made for the way research
-            teams actually write.
+            属于你和团队的写作空间，运行在自己的服务器上。开源，也由你定义。
           </p>
           <a
             class="button button-primary"
@@ -448,6 +384,6 @@
         JavaScript for language switching.
       </div></noscript
     >
-    <script type="module" src="./main.js?v=feedback-ribbon-v3"></script>
+    <script type="module" src="./main.js?v=editorial-v1"></script>
   </body>
 </html>

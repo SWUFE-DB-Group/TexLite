@@ -21,6 +21,10 @@ if (feedbackRibbon && feedbackPopover) {
     event.stopPropagation();
     togglePopover();
   });
+  feedbackPopover.querySelector(".feedback-close")?.addEventListener("click", () => {
+    closePopover();
+    feedbackRibbon.focus();
+  });
 
   feedbackPopover.querySelectorAll("a").forEach((link) => {
     link.addEventListener("click", () => {
@@ -71,26 +75,31 @@ async function loadLocale(locale) {
   const messages = localeCache.get(locale);
   document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
   document.title = valueAt(messages, "meta.title") ?? "TexLite";
+  feedbackPopover?.querySelector(".feedback-close")?.setAttribute("aria-label", messages.feedback.close);
   for (const element of document.querySelectorAll("[data-i18n]")) {
     const value = valueAt(messages, element.dataset.i18n ?? "");
     if (typeof value === "string") element.textContent = value;
   }
   renderHighlights(messages.highlights?.items ?? []);
-  localeButtons.forEach((button) => button.classList.toggle("active", button.dataset.locale === locale));
+  localeButtons.forEach((button) => {
+    const active = button.dataset.locale === locale;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
   storeLocale(locale);
 }
 
 function renderHighlights(highlights) {
   const list = document.querySelector("#highlight-list");
   if (!list || !highlights.length) return;
-  list.replaceChildren(...highlights.map((highlight) => {
+  list.replaceChildren(...highlights.map((highlight, index) => {
     const item = document.createElement("li");
     item.className = "highlight-item";
     if (highlight.anchor) item.id = highlight.anchor;
     const mark = document.createElement("span");
     mark.className = "highlight-mark";
     mark.setAttribute("aria-hidden", "true");
-    mark.textContent = "↗";
+    mark.textContent = String(index + 1).padStart(2, "0");
     const title = document.createElement("strong");
     title.textContent = highlight.title;
     const body = document.createElement("p");

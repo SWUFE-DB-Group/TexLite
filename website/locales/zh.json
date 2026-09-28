@@ -11,11 +11,13 @@
     "secondary": "了解 TexLite",
     "note": "本地优先 · 自托管 · AGPL-3.0-only",
     "previewLabel": "PDF 预览",
+    "figureCaption": "从一个想法，到一篇论文。",
     "chipCompile": "编译耗时 2.4 秒",
     "chipCollab": "3 位协作者"
   },
   "highlights": {
     "kicker": "核心亮点",
+    "compare": "查看写作环境对比",
     "title": "一个工作区，从源码到成稿",
     "items": [
       { "anchor": "features", "title": "真实 LaTeX", "body": "使用你实际的 TeX 环境、宏包、字体与工具链。" },
@@ -92,6 +94,7 @@
     "note": "使用 TexLite，你的团队可以完全掌控 TeX 环境、编译资源、用户、权限以及数据。同时提供实时协作编辑、源码级批注、选区级编辑历史、SyncTeX、项目快照以及可选的 Git 备份 —— 没有外部强加的编译超时限制，设计上也坚决不内置 AI。"
   },
   "feedback": {
+    "close": "关闭反馈",
     "ribbon": "反馈",
     "kicker": "问卷反馈",
     "title": "帮助我们把 TexLite 做得更好。",
@@ -117,8 +120,8 @@
   },
   "closing": {
     "kicker": "为下一篇论文准备",
-    "title": "Let's build something great.",
-    "lead": "TexLite is open source, self-hosted, and made for the way research teams actually write.",
+    "title": "为下一篇论文，留一片空间。",
+    "lead": "属于你和团队的写作空间，运行在自己的服务器上。开源，也由你定义。",
     "button": "在 GitHub 查看 TexLite"
   },
   "footer": { "tagline": "轻量、自托管、可协作的 LaTeX 工作台", "license": "AGPL-3.0-only" }
