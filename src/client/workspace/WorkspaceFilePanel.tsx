@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { AlignLeft, ChevronDown, ChevronRight, FilePlus2, FileSearch, Folder, FolderPlus, Hash, ListTree, LoaderCircle, Move, PanelLeftClose, Search, Trash2, Upload } from "lucide-react";
+import { AlignLeft, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FilePlus2, FileSearch, Folder, FolderPlus, Hash, ListTree, LoaderCircle, Move, PanelLeftClose, Search, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type DragEvent, type RefObject } from "react";
 import { Panel, type ImperativePanelHandle } from "react-resizable-panels";
 import type { FileEntry, Project } from "../types";
@@ -7,6 +7,7 @@ import type { WordCountMode, ProjectOutlineItem } from "./types";
 import type { SourceCursorStore } from "./sourceCursorStore";
 import { buildOutlineTree, visibleOutlineTreeItems } from "./outlineTree";
 import { FileTypeIcon } from "../fileIcons";
+import type { UploadFeedback } from "./useProjectFiles";
 
 const INTERNAL_PATH_DRAG_MIME = "application/x-texlite-project-path";
 const INTERNAL_PATH_DRAG_PREFIX = "texlite-path:";
@@ -23,6 +24,7 @@ export interface WorkspaceFilePanelProps {
   expandedFolders: Set<string>;
   fileDragActive: boolean;
   uploadingFiles: boolean;
+  uploadFeedback: UploadFeedback | null;
   readOnly: boolean;
   formatting: boolean;
   canFormat: boolean;
@@ -49,6 +51,7 @@ export interface WorkspaceFilePanelProps {
   setQuickOpen: (open: boolean) => void;
   setProjectSearchOpen: (open: boolean) => void;
   setFileDragActive: (active: boolean) => void;
+  dismissUploadFeedback: () => void;
   setFilesCollapsed: (collapsed: boolean) => void;
   toggleFilesPanel: () => void;
   onError: (message: string) => void;
@@ -65,11 +68,11 @@ export interface WorkspaceFilePanelProps {
 
 export function WorkspaceFilePanel({
   project, filesPanel, files, visibleEntries, activeFile, activeMainFile, selectedFile, selectedFolder,
-  expandedFolders, fileDragActive, uploadingFiles, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
+  expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
   editorFontSize, outline, sourceCursorStore, wordCountBusy, hasSelection, hasFormatSelection, uploadInput,
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
   setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen,
-  setQuickOpen, setProjectSearchOpen, setFileDragActive, setFilesCollapsed, toggleFilesPanel, uploadFiles, upload, openFile, movePathToFolder,
+  setQuickOpen, setProjectSearchOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, toggleFilesPanel, uploadFiles, upload, openFile, movePathToFolder,
   onError, onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
@@ -87,6 +90,17 @@ export function WorkspaceFilePanel({
     <aside className="left-panel">
       <section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly && !uploadingFiles) setFileDragActive(true); }} onDragOver={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly || uploadingFiles ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.stopPropagation(); return; } event.preventDefault(); setFileDragActive(false); if (readOnly || uploadingFiles) return; const files = Array.from(event.dataTransfer.files); if (containsDroppedFolder(event.dataTransfer) || files.length === 0) { onError(t("editor.dropFoldersUnsupported")); return; } void uploadFiles(files); }}>
         <div className="panel-title"><button className="file-size-toggle" type="button" aria-pressed={showFileSizes} title={t(showFileSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowFileSizes((current) => !current)}>{t("common.files")}</button><span className="file-tools"><button type="button" aria-label={t("navigation.quickOpen")} title={`${t("navigation.quickOpen")} (Ctrl/Cmd+P)`} onClick={() => setQuickOpen(true)}><FileSearch size={15} /></button><button type="button" aria-label={t("navigation.projectSearch")} title={`${t("navigation.projectSearch")} (Ctrl/Cmd+Shift+F)`} onClick={() => setProjectSearchOpen(true)}><Search size={15} /></button>{!readOnly && <><button type="button" disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} /></button><button type="button" aria-label={t("editor.newFolder")} title={t("editor.newFolder")} onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}><FolderPlus size={15} /></button><button type="button" aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} /></button><input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} /></>}<button type="button" aria-label={t("editor.collapseFiles")} title={t("editor.collapseFiles")} onClick={toggleFilesPanel}><PanelLeftClose size={15} /></button></span></div>
+        {uploadFeedback && <div className={`file-upload-feedback ${uploadFeedback.kind}`} role={uploadFeedback.kind === "error" ? "alert" : "status"} aria-live={uploadFeedback.kind === "error" ? "assertive" : "polite"} aria-busy={uploadFeedback.kind === "uploading"}>
+          {uploadFeedback.kind === "uploading"
+            ? <LoaderCircle className="spin" size={14} />
+            : uploadFeedback.kind === "success" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+          <span className="file-upload-feedback-text">
+            {uploadFeedback.kind === "uploading" && t("editor.uploadingFile", { file: uploadFeedback.fileName, current: uploadFeedback.current, total: uploadFeedback.total })}
+            {uploadFeedback.kind === "success" && t("editor.uploadSucceeded", { count: uploadFeedback.count })}
+            {uploadFeedback.kind === "error" && uploadFeedback.message}
+          </span>
+          {uploadFeedback.kind !== "uploading" && <button type="button" className="file-upload-feedback-dismiss" aria-label={t("common.close")} title={t("common.close")} onClick={dismissUploadFeedback}><X size={13} /></button>}
+        </div>}
         {fileDragActive && <div className="file-drop-overlay"><Upload size={24} /><strong>{t("editor.dropFiles")}</strong><span>{t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })}</span></div>}
         <div className={`file-list${selectedFolder !== null ? " folder-selected" : ""}${dropTargetFolder === "" ? " root-drop-target" : ""}`} style={{ fontSize: `${editorFontSize}px` }}
           onDragOver={(event) => {

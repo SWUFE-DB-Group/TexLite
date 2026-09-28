@@ -39,6 +39,7 @@ export interface WorkspaceDialogsProps {
   setResourcePreviewLoading: (loading: boolean) => void;
   uploadConflict: PendingUpload | null;
   setUploadConflict: (pending: PendingUpload | null) => void;
+  dismissUploadFeedback: () => void;
   uploadFiles: (files: File[], overwritePaths?: ReadonlySet<string>, directory?: string) => Promise<void>;
   cleanMode: CompileCleanMode | null;
   setCleanMode: (mode: CompileCleanMode | null) => void;
@@ -105,7 +106,7 @@ export interface WorkspaceDialogsProps {
 export function WorkspaceDialogs({
   user, project, projectId, activeFile, content, maxCitationBibtexBytes, files, directoryEntries, readOnly, workspaceLayout,
   changeWorkspaceLayout, resourcePreview, resourcePreviewLoading, setResourcePreview, setResourcePreviewLoading,
-  uploadConflict, setUploadConflict, uploadFiles, cleanMode, setCleanMode, cleanCompile, newFileOpen,
+  uploadConflict, setUploadConflict, dismissUploadFeedback, uploadFiles, cleanMode, setCleanMode, cleanCompile, newFileOpen,
   setNewFileOpen, newFilePath, setNewFilePath, newFolderOpen, setNewFolderOpen, newFolderName,
   setNewFolderName, selectedFolder, fileDialogError, setFileDialogError, createFile, createFolder, moveEntry,
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
@@ -131,7 +132,7 @@ export function WorkspaceDialogs({
       {resourcePreview?.kind === "pdf" && <iframe className="resource-pdf" src={resourcePreview.url} title={resourcePreview.path} />}
       {resourcePreview?.kind === "text" && (resourcePreviewLoading ? <div className="resource-preview-message"><LoaderCircle className="spin" size={24} /><span>{t("common.loading")}</span></div> : <pre className="resource-text">{resourcePreview.content}</pre>)}
     </Modal>
-    <ConfirmDialog open={Boolean(uploadConflict)} title={t("editor.uploadOverwriteTitle")} description={t("editor.uploadOverwriteDescription", { files: uploadConflict?.collisions.join(", ") ?? "" })} confirmLabel={t("editor.uploadOverwrite")} danger onCancel={() => setUploadConflict(null)} onConfirm={() => { const pending = uploadConflict; setUploadConflict(null); if (pending) void uploadFiles(pending.files, new Set(pending.collisions), pending.directory); }} />
+    <ConfirmDialog open={Boolean(uploadConflict)} title={t("editor.uploadOverwriteTitle")} description={t("editor.uploadOverwriteDescription", { files: uploadConflict?.collisions.join(", ") ?? "" })} confirmLabel={t("editor.uploadOverwrite")} danger onCancel={() => { setUploadConflict(null); dismissUploadFeedback(); }} onConfirm={() => { const pending = uploadConflict; setUploadConflict(null); if (pending) void uploadFiles(pending.files, new Set(pending.collisions), pending.directory); }} />
     <ConfirmDialog open={Boolean(cleanMode)} title={cleanMode === "cache" ? t("editor.cleanCacheConfirmTitle") : t("editor.cleanArtifactsConfirmTitle")} description={cleanMode === "cache" ? t("editor.cleanCacheConfirmDescription") : t("editor.cleanArtifactsConfirmDescription")} confirmLabel={t("editor.cleanConfirm")} danger={cleanMode === "artifacts"} onCancel={() => setCleanMode(null)} onConfirm={() => { const mode = cleanMode; setCleanMode(null); if (mode) void cleanCompile(mode); }} />
     <Modal open={newFileOpen} title={t("editor.newFile")} description={t("editor.newFileDescription")} onOpenChange={(open) => { setNewFileOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFileOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFile()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.filePath")}<input autoFocus value={newFilePath} onChange={(event) => setNewFilePath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void createFile(); } }} /></label></></Modal>
     <Modal open={newFolderOpen} title={t("editor.newFolder")} description={t("editor.folderDestination", { folder: selectedFolder || t("editor.projectRoot") })} onOpenChange={(open) => { setNewFolderOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFolderOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFolder()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.folderName")}<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></label></></Modal>

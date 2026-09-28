@@ -454,6 +454,15 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .file-drop-overlay { position: absolute; z-index: 8; inset: 42px 0 0; min-height: 130px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; padding: 16px; background: #e8f4edee; color: #185d3c; text-align: center; pointer-events: none; backdrop-filter: blur(2px); }
 .file-drop-overlay strong { font-size: 13px; }
 .file-drop-overlay span { max-width: 90%; overflow: hidden; color: #5e7668; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.file-upload-feedback { flex: none; display: grid; grid-template-columns: 15px minmax(0, 1fr) 22px; align-items: center; gap: 5px; padding: 6px 9px; border-bottom: 1px solid #e2e8e3; background: #f5f8f6; color: #52645a; }
+.file-upload-feedback.uploading { grid-template-columns: 15px minmax(0, 1fr); }
+.file-upload-feedback.success { background: #eff7f1; color: #286244; }
+.file-upload-feedback.error { background: #fff2f1; color: #a33030; border-color: #f0d4d1; }
+.file-upload-feedback-text { min-width: 0; overflow-wrap: anywhere; font-size: 10px; line-height: 1.35; }
+.file-upload-feedback-text small { margin-left: 5px; color: #69796f; font-size: 9px; white-space: nowrap; }
+.file-upload-feedback-dismiss { width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 4px; padding: 0; background: transparent; color: inherit; cursor: pointer; }
+.file-upload-feedback-dismiss:hover { background: #0000000b; }
+.file-upload-feedback-dismiss:focus-visible { outline: 2px solid #579474; outline-offset: 1px; }
 .outline-panel { min-height: 150px; flex: 2; overflow: auto; }
 .panel-title { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #e6e8e5; color: #647069; text-transform: uppercase; font-size: 11px; font-weight: 700; }
 .panel-title > span { min-width: 0; display: flex; align-items: center; gap: 6px; }

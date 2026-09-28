@@ -935,7 +935,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     moveEntry, setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination,
     deleteEntry, setDeleteEntry,
     fileDragActive, setFileDragActive,
-    uploadConflict, setUploadConflict, uploadingFiles,
+    uploadConflict, setUploadConflict, uploadingFiles, uploadFeedback, dismissUploadFeedback,
     directoryEntries, visibleEntries,
     createFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, removePath
   } = useProjectFiles({
@@ -1366,7 +1366,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         project={project} filesPanel={filesPanel} files={files} visibleEntries={visibleEntries}
         activeFile={activeFile} activeMainFile={activeMainFile} selectedFile={selectedFile}
         selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
-        uploadingFiles={uploadingFiles} readOnly={readOnly} formatting={formatting}
+        uploadingFiles={uploadingFiles} uploadFeedback={uploadFeedback} readOnly={readOnly} formatting={formatting}
         canFormat={isFormattableLatexFile(activeFile)} activeFormatLease={Boolean(activeFormatLease)} collaborationSynced={collaborationSynced}
         editorFontSize={editorPreferences.fontSize}
         outline={outline} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy}
@@ -1378,7 +1378,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         setNewFolderName={setNewFolderName} setNewFolderOpen={setNewFolderOpen}
         setNewFilePath={setNewFilePath} setNewFileOpen={setNewFileOpen}
         setQuickOpen={setQuickOpen} setProjectSearchOpen={setProjectSearchOpen}
-        setFileDragActive={setFileDragActive} setFilesCollapsed={setFilesCollapsed} toggleFilesPanel={toggleFilesPanel}
+        setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed} toggleFilesPanel={toggleFilesPanel}
         onError={setError}
         uploadFiles={uploadFiles} upload={upload} openFile={openFile} movePathToFolder={movePathToFolder}
         onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
@@ -1447,7 +1447,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
       resourcePreview={resourcePreview} resourcePreviewLoading={resourcePreviewLoading}
       setResourcePreview={setResourcePreview} setResourcePreviewLoading={setResourcePreviewLoading}
-      uploadConflict={uploadConflict} setUploadConflict={setUploadConflict} uploadFiles={uploadFiles}
+      uploadConflict={uploadConflict} setUploadConflict={setUploadConflict} dismissUploadFeedback={dismissUploadFeedback} uploadFiles={uploadFiles}
       cleanMode={cleanMode} setCleanMode={setCleanMode} cleanCompile={cleanCompile}
       newFileOpen={newFileOpen} setNewFileOpen={setNewFileOpen} newFilePath={newFilePath}
       setNewFilePath={setNewFilePath} newFolderOpen={newFolderOpen} setNewFolderOpen={setNewFolderOpen}

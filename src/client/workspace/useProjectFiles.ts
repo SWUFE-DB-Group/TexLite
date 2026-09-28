@@ -18,6 +18,10 @@ export interface PendingUpload {
   directory: string;
   collisions: string[];
 }
+export type UploadFeedback =
+  | { kind: "uploading"; fileName: string; current: number; total: number }
+  | { kind: "success"; count: number }
+  | { kind: "error"; message: string };
 export interface FileLoadOptions {
   signal?: AbortSignal;
   isCurrent?: () => boolean;
@@ -101,6 +105,9 @@ export function useProjectFiles({
   const [fileDragActive, setFileDragActive] = useState(false);
   const [uploadConflict, setUploadConflict] = useState<PendingUpload | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadFeedback, setUploadFeedback] = useState<UploadFeedback | null>(null);
+  const uploadInFlight = useRef(false);
+  const uploadFeedbackTimer = useRef<number | null>(null);
   const filesRequest = useRef<AbortController | null>(null);
   const resourceRequest = useRef<AbortController | null>(null);
 
@@ -159,24 +166,36 @@ export function useProjectFiles({
   const uploadFiles = async (
     filesToUpload: File[], overwritePaths: ReadonlySet<string> = new Set(), directoryOverride = selectedFolder
   ) => {
-    if (!filesToUpload.length) return;
+    if (!filesToUpload.length || uploadInFlight.current) return;
     const maxSize = site.maxUploadSizeMB;
     const oversized = filesToUpload.find((file) => file.size > maxSize * 1024 * 1024);
-    if (oversized) return onError(t("errors.fileTooLarge", { size: maxSize }));
+    if (oversized) {
+      setUploadFeedback({ kind: "error", message: t("errors.fileTooLarge", { size: maxSize }) });
+      return;
+    }
     const directory = directoryOverride ?? "";
     const uploadPaths = filesToUpload.map((file) => directory ? `${directory}/${file.name}` : file.name);
     const pathCounts = new Map<string, number>();
     for (const uploadPath of uploadPaths) pathCounts.set(uploadPath, (pathCounts.get(uploadPath) ?? 0) + 1);
     const duplicateNames = [...pathCounts.entries()].filter(([, count]) => count > 1).map(([uploadPath]) => uploadPath);
-    if (duplicateNames.length) return onError(t("errors.duplicateUploadNames", { files: duplicateNames.join(", ") }));
+    if (duplicateNames.length) {
+      setUploadFeedback({ kind: "error", message: t("errors.duplicateUploadNames", { files: duplicateNames.join(", ") }) });
+      return;
+    }
     const existingPaths = new Set(files.map((entry) => entry.path));
     const collisions = [...new Set(uploadPaths.filter((uploadPath) => existingPaths.has(uploadPath) && !overwritePaths.has(uploadPath)))];
     if (collisions.length) {
+      setUploadFeedback(null);
       setUploadConflict({ files: filesToUpload, directory, collisions });
       return;
     }
     setUploadConflict(null);
+    if (uploadFeedbackTimer.current !== null) window.clearTimeout(uploadFeedbackTimer.current);
+    uploadFeedbackTimer.current = null;
+    setUploadFeedback(null);
+    uploadInFlight.current = true;
     setUploadingFiles(true);
+    let uploaded = 0;
     try {
       const query = new URLSearchParams();
       if (directory) query.set("directory", directory);
@@ -189,11 +208,14 @@ export function useProjectFiles({
         const data = new FormData();
         data.append("file", file);
         try {
+          setUploadFeedback({ kind: "uploading", fileName: file.name, current: index + 1, total: filesToUpload.length });
           const result = await api<{ path?: unknown }>(`/api/projects/${projectId}/upload${destination}`, { method: "POST", body: data });
+          uploaded += 1;
           if (typeof result.path === "string" && isEditableTextFile(result.path)) lastTextPath = result.path;
         } catch (error) {
           if (error instanceof ApiError && error.status === 409 && !overwritePaths.has(uploadPath) && error.code === "FILE_EXISTS") {
-            if (index > 0) await loadFiles();
+            setUploadFeedback(null);
+            if (index > 0) try { await loadFiles(); } catch { /* The overwrite dialog still explains the conflict. */ }
             setUploadConflict({
               files: filesToUpload.slice(index),
               directory,
@@ -204,13 +226,43 @@ export function useProjectFiles({
           throw error;
         }
       }
-      await loadFiles();
+      try {
+        await loadFiles();
+      } catch (error) {
+        setUploadFeedback({
+          kind: "error",
+          message: t("editor.uploadSucceededRefreshFailed", { message: errorMessage(error) })
+        });
+        return;
+      }
       if (lastTextPath) {
         onActiveFile(lastTextPath);
         setSelectedFolder(null);
       }
-    } catch (error) { onError(errorMessage(error)); }
-    finally { setUploadingFiles(false); }
+      setUploadFeedback({ kind: "success", count: uploaded });
+      uploadFeedbackTimer.current = window.setTimeout(() => {
+        setUploadFeedback((current) => current?.kind === "success" ? null : current);
+        uploadFeedbackTimer.current = null;
+      }, 3000);
+    } catch (error) {
+      // Some earlier files may already have reached disk. Refresh even on a
+      // transport error because the failed request itself may have completed
+      // server-side before its response was lost.
+      try { await loadFiles(); } catch { /* Keep the upload error visible. */ }
+      const message = uploaded > 0
+        ? t("editor.uploadFailedPartial", { uploaded, total: filesToUpload.length, message: errorMessage(error) })
+        : t("editor.uploadFailed", { message: errorMessage(error) });
+      setUploadFeedback({ kind: "error", message });
+    } finally {
+      uploadInFlight.current = false;
+      setUploadingFiles(false);
+    }
+  };
+
+  const dismissUploadFeedback = () => {
+    if (uploadFeedbackTimer.current !== null) window.clearTimeout(uploadFeedbackTimer.current);
+    uploadFeedbackTimer.current = null;
+    setUploadFeedback(null);
   };
 
   const upload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -338,6 +390,7 @@ export function useProjectFiles({
   useEffect(() => () => {
     filesRequest.current?.abort();
     resourceRequest.current?.abort();
+    if (uploadFeedbackTimer.current !== null) window.clearTimeout(uploadFeedbackTimer.current);
   }, []);
 
   useEffect(() => {
@@ -364,7 +417,7 @@ export function useProjectFiles({
     moveEntry, setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination,
     deleteEntry, setDeleteEntry,
     fileDragActive, setFileDragActive,
-    uploadConflict, setUploadConflict, uploadingFiles,
+    uploadConflict, setUploadConflict, uploadingFiles, uploadFeedback, dismissUploadFeedback,
     directoryEntries, visibleEntries,
     createFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, removePath
   };
