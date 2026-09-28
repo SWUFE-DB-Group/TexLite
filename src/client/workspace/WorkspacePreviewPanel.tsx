@@ -53,6 +53,7 @@ export interface WorkspacePreviewPanelProps {
   syncCurrentSourceToPdf: () => Promise<void>;
   syncPdfToSource: (page: number, x: number, y: number) => Promise<void>;
   canSyncWithPdf: boolean;
+  canSyncPdfToSource: boolean;
   files: FileEntry[];
   jumpToSource: (path: string, line: number, column: number) => void;
   onSetCleanMode: (mode: CompileCleanMode | null) => void;
@@ -65,7 +66,7 @@ export function WorkspacePreviewPanel({
   pdfCompiledLabel, pdfTargetLabel, pdfDownloadUrl, pdfTarget, pdfViewport, activeFile, compileBusy, compileLog,
   compileDiagnostics, compileMessages, artifacts, artifactPreview, artifactLoading, cleaning, readOnly,
   collaborationSynced, workspaceLayout, showSyncResize, diagnosticCount, selectPreviewTab, changeWorkspaceLayout,
-  onSetNotice, onSetPdfViewport, onResetPdfViewport, syncVisiblePdfToSource, syncCurrentSourceToPdf, syncPdfToSource, canSyncWithPdf,
+  onSetNotice, onSetPdfViewport, onResetPdfViewport, syncVisiblePdfToSource, syncCurrentSourceToPdf, syncPdfToSource, canSyncWithPdf, canSyncPdfToSource,
   files, jumpToSource, onSetCleanMode, cleanCompile, viewArtifact
 }: WorkspacePreviewPanelProps) {
   const { t } = useTranslation();
@@ -77,14 +78,14 @@ export function WorkspacePreviewPanel({
     setDisplayedPdfUrl(loadedUrl);
     onResetPdfViewport();
   };
-  const canSyncWithDisplayedPdf = canSyncWithPdf && displayedPdfUrl === pdfUrl;
+  const canSyncWithDisplayedPdf = canSyncPdfToSource && Boolean(pdfUrl) && displayedPdfUrl === pdfUrl;
   const pdfSizeLabel = pdfSizeBytes == null ? "" : formatPdfSize(pdfSizeBytes);
   const pdfMetaLabel = [
     pdfSizeLabel,
     pdfCompiledLabel ? t("editor.pdfUpdatedAt", { time: pdfCompiledLabel }) : ""
   ].filter(Boolean).join(" · ");
   return <>
-    {showSyncResize && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfUrl || !pdfViewport || !canSyncWithDisplayedPdf} title={!canSyncWithPdf ? t("editor.syncTexOnlyForMain") : !canSyncWithDisplayedPdf ? t("editor.syncTexWaitingForPdf") : t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={() => { if (!canSyncWithDisplayedPdf) return; syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={!canSyncWithPdf ? t("editor.syncTexOnlyForMain") : t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={() => { if (!activeFile || !pdfUrl || !canSyncWithPdf) return; void syncCurrentSourceToPdf(); }}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
+    {showSyncResize && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfUrl || !pdfViewport || !canSyncWithDisplayedPdf} title={!canSyncPdfToSource ? t("editor.syncTexOnlyForMain") : !canSyncWithDisplayedPdf ? t("editor.syncTexWaitingForPdf") : t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={() => { if (!canSyncWithDisplayedPdf) return; syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={!canSyncWithPdf ? t("editor.syncTexOnlyForMain") : t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={() => { if (!activeFile || !pdfUrl || !canSyncWithPdf) return; void syncCurrentSourceToPdf(); }}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
     <Panel id="preview" order={3} defaultSize={42} minSize={22}>
       <section className="preview-panel">
         <div className="preview-tabs">
@@ -102,7 +103,7 @@ export function WorkspacePreviewPanel({
           <button role="tab" aria-selected={diagnosticTab === "clean"} className={diagnosticTab === "clean" ? "active" : ""} onClick={() => selectPreviewTab("clean")}><Eraser size={13} />{t("editor.clean")}</button>
         </div>}
         <div className={`preview-content preview-${previewTab} ${previewTab === "diagnostics" ? `preview-${diagnosticTab}` : ""}`}>
-          {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}><PdfPreview url={pdfUrl} loadingMode={pdfLoadingMode} target={pdfTarget} compiling={compileBusy} onDisplayedUrlChange={updateDisplayedPdfUrl} onViewportLocation={(page, x, y) => { if (displayedPdfUrlRef.current === pdfUrl) onSetPdfViewport({ page, x, y }); }} onDoubleClickLocation={(page, x, y) => { if (displayedPdfUrlRef.current !== pdfUrl || !canSyncWithPdf) return; onSetPdfViewport({ page, x, y }); void syncPdfToSource(page, x, y); }} /></Suspense> : pdfLoading ? <div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
+          {previewTab === "pdf" && (pdfUrl ? <Suspense fallback={<div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}><PdfPreview url={pdfUrl} loadingMode={pdfLoadingMode} target={pdfTarget} compiling={compileBusy} onDisplayedUrlChange={updateDisplayedPdfUrl} onViewportLocation={(page, x, y) => { if (displayedPdfUrlRef.current === pdfUrl) onSetPdfViewport({ page, x, y }); }} onDoubleClickLocation={(page, x, y) => { if (displayedPdfUrlRef.current !== pdfUrl || !canSyncWithDisplayedPdf) return; onSetPdfViewport({ page, x, y }); void syncPdfToSource(page, x, y); }} /></Suspense> : pdfLoading ? <div className="pdf-loading-state" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div> : <div className="preview-empty"><FileText size={28} /><strong>{t("editor.preview")}</strong><span>{t("editor.previewHint")}</span></div>)}
           {previewTab === "diagnostics" && diagnosticTab === "log" && <CompileOutput lines={compileLog ? compileLog.split("\n") : []} empty={compileBusy ? t("editor.compiling") : t("editor.noLog")} />}
           {previewTab === "diagnostics" && diagnosticTab === "warnings" && (compileDiagnostics ? <CompileDiagnosticOutput tone="warning" diagnostics={compileDiagnostics.warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} /> : <CompileOutput tone="warning" lines={compileMessages.warnings} empty={t("editor.noWarnings")} />)}
           {previewTab === "diagnostics" && diagnosticTab === "errors" && (compileDiagnostics ? <CompileDiagnosticOutput tone="error" diagnostics={compileDiagnostics.errors} files={files} empty={t("editor.noErrors")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} /> : <CompileOutput tone="error" lines={compileMessages.errors} empty={t("editor.noErrors")} />)}

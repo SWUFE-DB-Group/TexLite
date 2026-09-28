@@ -14,30 +14,33 @@ interface UseSyncTeXOptions {
   projectId: string;
   mainFile: string;
   activeFile: string;
-  onActiveFile: (path: string) => void;
+  onOpenSourceFile: (path: string) => void;
   onError: (message: string) => void;
   onShowPdf: () => void;
+  onShowEditor: () => void;
 }
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onError, onShowPdf }: UseSyncTeXOptions) {
+export function useSyncTeX({ projectId, mainFile, activeFile, onOpenSourceFile, onError, onShowPdf, onShowEditor }: UseSyncTeXOptions) {
   const [pdfTarget, setPdfTarget] = useState<PdfTarget | null>(null);
   const [pdfViewport, setPdfViewport] = useState<{ page: number; x: number; y: number } | null>(null);
   const [sourceJump, setSourceJump] = useState<SourceJump | null>(null);
   const request = useRef<AbortController | null>(null);
   const nonce = useRef(0);
   const activeFileRef = useRef(activeFile);
-  const onActiveFileRef = useRef(onActiveFile);
+  const onOpenSourceFileRef = useRef(onOpenSourceFile);
   const onErrorRef = useRef(onError);
   const onShowPdfRef = useRef(onShowPdf);
+  const onShowEditorRef = useRef(onShowEditor);
   const isMainTeX = (path: string): boolean => path === mainFile && /\.tex$/i.test(path);
   activeFileRef.current = activeFile;
-  onActiveFileRef.current = onActiveFile;
+  onOpenSourceFileRef.current = onOpenSourceFile;
   onErrorRef.current = onError;
   onShowPdfRef.current = onShowPdf;
+  onShowEditorRef.current = onShowEditor;
 
   useEffect(() => {
     request.current?.abort();
@@ -50,7 +53,7 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
 
   const jumpToSource = (path: string, line: number, column: number) => {
     setSourceJump({ path, line, column, nonce: ++nonce.current });
-    if (activeFileRef.current !== path) onActiveFileRef.current(path);
+    onOpenSourceFileRef.current(path);
   };
 
   const syncSourceToPdf = async (path: string, line: number, column: number, options: { silent?: boolean } = {}) => {
@@ -77,10 +80,9 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
   };
 
   const syncPdfToSource = async (page: number, x: number, y: number) => {
-    // A PDF belongs to the active root document. While a secondary TeX file is
-    // open, leave the cursor in that file instead of silently switching files
-    // from a PDF click.
-    if (!isMainTeX(activeFileRef.current)) return;
+    // A PDF belongs to the selected root document, regardless of which source
+    // tab is currently active. SyncTeX returns the actual source path, which
+    // may be an included TeX file rather than the root itself.
     const requestedFromFile = activeFileRef.current;
     request.current?.abort();
     const controller = new AbortController();
@@ -90,7 +92,8 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onActiveFile, onEr
         `/api/projects/${projectId}/sync/source?mainFile=${encodeURIComponent(mainFile)}&page=${page}&x=${x}&y=${y}`,
         { signal: controller.signal }
       );
-      if (request.current !== controller || activeFileRef.current !== requestedFromFile || !isMainTeX(activeFileRef.current)) return;
+      if (request.current !== controller || activeFileRef.current !== requestedFromFile) return;
+      onShowEditorRef.current();
       jumpToSource(location.path, location.line, location.column);
     } catch (error) {
       if (!isAbortError(error)) onErrorRef.current(errorMessage(error));

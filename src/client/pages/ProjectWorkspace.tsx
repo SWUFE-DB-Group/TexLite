@@ -169,6 +169,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const persistedEditSequence = useRef(0);
   const activeFileRef = useRef("");
   const activeMainFileRef = useRef("");
+  const openSourceFileRef = useRef<(path: string) => void>(() => undefined);
   const workspaceLayoutRef = useRef<WorkspaceLayout>(workspaceLayout);
   const projectLoadSequence = useRef(0);
   const completionRequest = useRef<AbortController | null>(null);
@@ -284,9 +285,12 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     projectId,
     mainFile: activeMainFile,
     activeFile,
-    onActiveFile: setActiveFile,
+    onOpenSourceFile: (path) => openSourceFileRef.current(path),
     onError: setError,
-    onShowPdf: () => selectPreviewTab("pdf")
+    onShowPdf: () => selectPreviewTab("pdf"),
+    onShowEditor: () => {
+      if (workspaceLayoutRef.current === "pdf-only") setWorkspaceLayout("editor-pdf");
+    }
   });
 
   const chktexActive = Boolean(project && project.chktexEnabled && activeFile && collaborationSynced && supportsChktexChecks(activeFile));
@@ -945,6 +949,12 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     onActiveFile: setActiveFile,
     onActiveMainFile: setActiveMainFile
   });
+  openSourceFileRef.current = (path) => {
+    setSelectedFolder(null);
+    setSelectedFile(path);
+    setExpandedFolders((current) => new Set([...current, ...parentFolders(path)]));
+    setActiveFile(path);
+  };
 
   const applyProjectSettings = (updatedProject: Project): void => {
     if (updatedProject.id !== currentProjectId.current) return;
@@ -1282,6 +1292,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const pdfDownloadUrl = pdfUrl ? `${pdfUrl}${pdfUrl.includes("?") ? "&" : "?"}download=1` : "";
   const syncMainFile = activeMainFile || project.mainFile;
   const canSyncWithPdf = Boolean(activeFile && activeFile === syncMainFile && /\.tex$/i.test(activeFile));
+  const canSyncPdfToSource = Boolean(syncMainFile && /\.tex$/i.test(syncMainFile));
   const activateTab = (tabPath: string): void => {
     const entry = files.find((file) => file.path === tabPath);
     if (entry && isEditableTextFile(entry.path)) openFile(entry);
@@ -1406,7 +1417,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
           const cursor = sourceCursorStore.getCursor();
           return syncSourceToPdf(path, cursor.line, cursor.column);
         }}
-        syncPdfToSource={syncPdfToSource} canSyncWithPdf={canSyncWithPdf} files={files}
+        syncPdfToSource={syncPdfToSource} canSyncWithPdf={canSyncWithPdf} canSyncPdfToSource={canSyncPdfToSource} files={files}
         jumpToSource={jumpToSource} onSetCleanMode={setCleanMode} cleanCompile={cleanCompile}
         viewArtifact={viewArtifact}
       />}
