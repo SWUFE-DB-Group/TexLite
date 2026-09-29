@@ -131,8 +131,6 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
       if (body.deleteProjects) {
         db.prepare("DELETE FROM projects WHERE owner_id = ?").run(id);
     } else {
-        db.prepare("UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE project_id IN (SELECT id FROM projects WHERE owner_id = ?)")
-          .run(now(), id);
         db.prepare("DELETE FROM project_members WHERE user_id = ? AND project_id IN (SELECT id FROM projects WHERE owner_id = ?)")
           .run(admin.id, id);
         db.prepare("UPDATE projects SET owner_id = ?, last_modified_by = ?, updated_at = ? WHERE owner_id = ?")

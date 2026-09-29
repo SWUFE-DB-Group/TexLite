@@ -69,11 +69,6 @@ export function registerProjectMemberRoutes(app: FastifyInstance, context: Proje
           .run(id, user.id, changedAt);
         db.prepare("UPDATE projects SET owner_id = ?, last_modified_by = ?, updated_at = ? WHERE id = ?")
           .run(currentTarget.id, user.id, changedAt, id);
-        // A project token belongs to the account that supplied it. Preserve the
-        // local repository/remote metadata, but require the new owner to add
-        // their own credential before the next GitHub operation.
-        db.prepare("UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE project_id = ?")
-          .run(changedAt, id);
         db.exec("COMMIT");
       } catch (error) {
         db.exec("ROLLBACK");

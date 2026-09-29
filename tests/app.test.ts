@@ -38,6 +38,7 @@ describe("texLite application", () => {
   let db: DatabaseConnection;
   let app: FastifyInstance;
   let cookie: string;
+  let githubFailure: { pathSuffix: string; status: number; message: string; headers?: Record<string, string> } | null = null;
 
   beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-test-"));
@@ -61,6 +62,9 @@ describe("texLite application", () => {
       .run(randomUUID(), await hashPassword("administrator password"), new Date().toISOString());
     const githubFetch: typeof fetch = async (input, init) => {
       const url = String(input);
+      if (githubFailure && url.endsWith(githubFailure.pathSuffix)) {
+        return Response.json({ message: githubFailure.message }, { status: githubFailure.status, headers: githubFailure.headers });
+      }
       if (url.endsWith("/user") && init?.method === "GET") {
         return Response.json({ login: "texlite-owner" });
       }
@@ -1092,6 +1096,40 @@ Another UniqueTerm appears here.
     expect((await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie: userCookie } })).statusCode).toBe(403);
   });
 
+  it("uses one actionable error for rejected GitHub tokens", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Git error diagnostics" } });
+    const projectId = created.json().project.id as string;
+    const localizedHeaders = { cookie, "accept-language": "zh-CN" };
+
+    try {
+      githubFailure = { pathSuffix: "/user", status: 401, message: "Bad credentials" };
+      const invalidToken = await app.inject({
+        method: "PUT", url: "/api/account/github", headers: localizedHeaders, payload: { token: "github_pat_expired_test_token_123456" }
+      });
+      expect(invalidToken.json()).toMatchObject({ code: "GIT_TOKEN_REJECTED" });
+      expect(invalidToken.json().error).toContain("无效、已过期或权限不足");
+      expect((await app.inject({ method: "GET", url: "/api/account/github", headers: { cookie } })).json().status)
+        .toEqual({ tokenConfigured: false, githubLogin: null });
+
+      githubFailure = null;
+      const configured = await app.inject({
+        method: "PUT", url: "/api/account/github", headers: localizedHeaders, payload: { token: "github_pat_valid_test_token_1234567890" }
+      });
+      expect(configured.statusCode).toBe(200);
+
+      githubFailure = { pathSuffix: "/user/repos", status: 403, message: "Resource not accessible by personal access token" };
+      const permissionDenied = await app.inject({
+        method: "POST", url: `/api/projects/${projectId}/git/repository`, headers: localizedHeaders,
+        payload: { name: "permission-denied", private: true }
+      });
+      expect(permissionDenied.json()).toMatchObject({ code: "GIT_TOKEN_REJECTED" });
+      expect(permissionDenied.json().error).toContain("无效、已过期或权限不足");
+    } finally {
+      githubFailure = null;
+      await app.inject({ method: "DELETE", url: "/api/account/github", headers: { cookie } });
+    }
+  });
+
   it("manages an owner-only encrypted GitHub backup with commit, diff, checkout and push", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Git backup paper" } });
     const projectId = created.json().project.id as string;
@@ -1100,13 +1138,16 @@ Another UniqueTerm appears here.
 
     const token = "github_pat_test_token_1234567890";
     const configured = await app.inject({
-      method: "PUT", url: `/api/projects/${projectId}/git/token`, headers: { cookie }, payload: { token }
+      method: "PUT", url: "/api/account/github", headers: { cookie }, payload: { token }
     });
     expect(configured.statusCode).toBe(200);
-    expect(configured.json().status).toMatchObject({ initialized: true, tokenConfigured: true, githubLogin: "texlite-owner" });
-    const stored = db.prepare("SELECT token_ciphertext FROM project_git_settings WHERE project_id = ?").get(projectId) as { token_ciphertext: string };
+    expect(configured.json().status).toMatchObject({ tokenConfigured: true, githubLogin: "texlite-owner" });
+    const currentUser = await app.inject({ method: "GET", url: "/api/me", headers: { cookie } });
+    const stored = db.prepare("SELECT token_ciphertext FROM user_github_settings WHERE user_id = ?").get(currentUser.json().user.id) as { token_ciphertext: string };
     expect(stored.token_ciphertext).not.toContain(token);
     expect(fs.statSync(path.join(root, "git-token.key")).mode & 0o777).toBe(0o600);
+    const projectStatusWithAccountToken = await app.inject({ method: "GET", url: `/api/projects/${projectId}/git`, headers: { cookie } });
+    expect(projectStatusWithAccountToken.json().status).toMatchObject({ initialized: false, tokenConfigured: true, githubLogin: "texlite-owner" });
 
     const repository = await app.inject({
       method: "POST", url: `/api/projects/${projectId}/git/repository`, headers: { cookie },
@@ -1120,6 +1161,7 @@ Another UniqueTerm appears here.
     });
     expect(firstCommit.statusCode, firstCommit.body).toBe(201);
     expect(firstCommit.json().commit).toMatchObject({ authorName: "admin", authorEmail: "admin@texlite.com", message: "Initial backup" });
+    expect(firstCommit.json().status.ahead).toBe(1);
     const firstSha = firstCommit.json().commit.sha as string;
 
     const changedSource = String.raw`\documentclass{article}
@@ -1137,6 +1179,7 @@ Second version.
       method: "POST", url: `/api/projects/${projectId}/git/commit`, headers: { cookie }, payload: { message: "Second backup" }
     });
     expect(secondCommit.statusCode).toBe(201);
+    expect(secondCommit.json().status.ahead).toBe(2);
 
     const bare = path.join(root, "remote.git");
     await execFileAsync("git", ["init", "--bare", bare]);
@@ -1209,6 +1252,10 @@ Second version.
     const readerCookie = sessionCookie(readerLogin.headers);
     const forbidden = await app.inject({ method: "GET", url: `/api/projects/${projectId}/git`, headers: { cookie: readerCookie } });
     expect(forbidden.statusCode).toBe(403);
+
+    const removed = await app.inject({ method: "DELETE", url: "/api/account/github", headers: { cookie } });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json().status).toEqual({ tokenConfigured: false, githubLogin: null });
   });
 
   it("does not grant project creation to new users by default", async () => {
@@ -1760,9 +1807,9 @@ Second version.
     });
     const historyCount = (db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(project.id) as { count: number }).count;
     const timestamp = new Date().toISOString();
-    db.prepare(`INSERT INTO project_git_settings
-      (project_id, token_ciphertext, github_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
-      .run(project.id, "former-owner-token", "former-owner", timestamp, timestamp);
+    db.prepare(`INSERT INTO user_github_settings
+      (user_id, token_ciphertext, github_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(formerOwnerId, "former-owner-token", "former-owner", timestamp, timestamp);
 
     // Add a comment to the project
     await app.inject({
@@ -1781,9 +1828,11 @@ Second version.
     expect(db.prepare("SELECT permission FROM project_members WHERE project_id = ? AND user_id = ?").get(project.id, formerOwnerId)).toEqual({ permission: "edit" });
     expect(db.prepare("SELECT permission FROM project_members WHERE project_id = ? AND user_id = ?").get(project.id, recipient.id)).toBeUndefined();
     expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(historyCount);
-    expect(db.prepare("SELECT token_ciphertext, github_login FROM project_git_settings WHERE project_id = ?").get(project.id)).toEqual({
-      token_ciphertext: null, github_login: null
+    expect(db.prepare("SELECT token_ciphertext, github_login FROM user_github_settings WHERE user_id = ?").get(formerOwnerId)).toEqual({
+      token_ciphertext: "former-owner-token", github_login: "former-owner"
     });
+    const transferredGitStatus = await app.inject({ method: "GET", url: `/api/projects/${project.id}/git`, headers: { cookie: recipientCookie } });
+    expect(transferredGitStatus.json().status).toMatchObject({ tokenConfigured: false, githubLogin: null });
     expect((await app.inject({
       method: "PUT", url: `/api/projects/${project.id}/owner`, headers: { cookie }, payload: { userId: formerOwnerId }
     })).statusCode).toBe(403);

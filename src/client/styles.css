@@ -43,9 +43,10 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .top-actions .ghost:hover, .top-actions .ghost:focus-visible { border-color: #ffffff20; background: #ffffff16; color: #d9f0df; box-shadow: 0 4px 12px #061c1130; outline: none; }
 .top-actions .ghost:active { transform: translateY(1px); box-shadow: 0 1px 4px #061c1126; }
 .top-actions .ghost.top-return-action, .top-actions .ghost.top-return-action:hover, .top-actions .ghost.top-return-action:focus-visible, .top-actions .ghost.top-return-action:active { transform: none; box-shadow: none; }
-.top-user-identity { min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
+.top-user-identity { min-width: 0; display: flex; flex-direction: column; line-height: 1.15; padding: 4px 7px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.top-user-identity:hover, .top-user-identity:focus-visible { border-color: #ffffff35; background: #ffffff12; color: #d9f0df; outline: none; }
 .top-user-identity strong { overflow: hidden; max-width: 180px; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.top-user-identity small { overflow: hidden; max-width: 180px; margin-top: 3px; color: #b9d0c2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.top-user-identity small { display: flex; align-items: center; gap: 3px; overflow: hidden; max-width: 180px; margin-top: 3px; color: #b9d0c2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .language-switcher { position: fixed; top: 18px; right: 20px; z-index: 5; display: flex; align-items: center; gap: 6px; color: #536059; font-size: 12px; }
 .language-switcher select { border: 1px solid #c9d0ca; border-radius: 6px; padding: 5px 7px; background: #fff; color: #26342b; }
 .language-switcher.compact { position: static; color: inherit; }
@@ -1128,6 +1129,9 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .git-token-guidance { display: flex; flex-direction: column; gap: 4px; padding: 10px 11px; border: 1px solid #c6d9cb; border-left: 3px solid #28714b; border-radius: 7px; background: #f0f7f2; }
 .git-token-guidance strong { color: #225d3c; font-size: 11px; }
 .git-token-guidance span { color: #66756b; font-size: 10px; line-height: 1.5; }
+.git-token-guidance .git-token-highlight { color: #1769aa; font-style: italic; font-weight: 750; }
+.git-account-guidance { margin: 0; color: #536059; font-size: 12px; line-height: 1.5; }
+.account-github-encryption-note { margin: 0; font-size: 11px; }
 .git-account, .git-repository-card { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 7px; background: #eaf3ed; color: #23563a; font-size: 12px; }
 .git-account > span { min-width: 0; flex: 1; }
 .git-account button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: #a3342c; font-size: 10px; }
@@ -1172,6 +1176,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .git-history article > span { display: flex; gap: 3px; }
 .git-history button { width: 27px; height: 27px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #52685a; }
 .git-history button:hover { background: #e8f0eb; color: #176b44; }
+.git-history button.is-active, .git-history button[aria-pressed="true"] { background: #dcebe1; color: #176b44; }
 .git-force-checkout { display: flex; align-items: flex-start; gap: 9px; padding: 11px; border: 1px solid #e4b9b5; border-radius: 8px; background: #fff6f5; }
 .git-force-checkout input { margin-top: 2px; accent-color: #b3261e; }
 .git-force-checkout span { display: flex; flex-direction: column; gap: 3px; }

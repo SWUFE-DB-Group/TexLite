@@ -72,8 +72,38 @@ const databaseMigrations: readonly DatabaseMigration[] = [
   { version: 2, name: "add_project_chktex_enabled", apply: (db) => {
     if (!missingColumn(db, "projects", "chktex_enabled")) return;
     db.exec("ALTER TABLE projects ADD COLUMN chktex_enabled INTEGER NOT NULL DEFAULT 0 CHECK (chktex_enabled IN (0, 1))");
-  } }
+  } },
+  { version: 3, name: "move_github_tokens_to_user_accounts", apply: migrateGitHubTokensToUsers }
 ];
+
+function migrateGitHubTokensToUsers(db: DatabaseConnection): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_github_settings (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      token_ciphertext TEXT,
+      github_login TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    WITH ranked_tokens AS (
+      SELECT project.owner_id AS user_id, settings.token_ciphertext, settings.github_login,
+        settings.created_at, settings.updated_at,
+        ROW_NUMBER() OVER (
+          PARTITION BY project.owner_id
+          ORDER BY settings.updated_at DESC, settings.project_id ASC
+        ) AS token_rank
+      FROM project_git_settings settings
+      JOIN projects project ON project.id = settings.project_id
+      WHERE settings.token_ciphertext IS NOT NULL
+    )
+    INSERT OR IGNORE INTO user_github_settings (user_id, token_ciphertext, github_login, created_at, updated_at)
+    SELECT user_id, token_ciphertext, github_login, created_at, updated_at
+    FROM ranked_tokens WHERE token_rank = 1;
+
+    UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL;
+  `);
+}
 
 export function openDatabase(config: Config): DatabaseConnection {
   fs.mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });

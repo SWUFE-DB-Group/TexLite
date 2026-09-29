@@ -430,9 +430,12 @@ data directory.
 ## GitHub backup
 
 The Git panel is project-owner-only. Git is optional at startup and is checked
-when Git integration is used. A per-project GitHub token is encrypted in
-SQLite; it is never placed in a remote URL or command-line argument. The local
-repository lives in the project source directory, with temporary identity:
+when Git integration is used. Each user's GitHub token is configured from the
+account menu and encrypted in SQLite; it is never placed in a remote URL or
+command-line argument. A project's current owner supplies the credential for
+creating its GitHub repository and pushing. The remote URL and repository
+metadata remain project-specific. The local repository lives in the project
+source directory, with temporary identity:
 
 ~~~text
 user.name  = project owner's username
@@ -443,11 +446,12 @@ For a fine-grained GitHub token in a trusted deployment, grant repository
 Administration and Contents read/write permissions. “All repositories” is the
 practical choice when a repository may be created after token configuration.
 Only the owner can commit, push, checkout, restore, or configure the project
-repository. Commit messages are entered explicitly. Normal checkout preserves
-local changes and refuses conflicts; only the explicit force option discards
-tracked, untracked, and ignored working-tree files. The Git operations use the
-same project coordination and durable-flush boundary as other source
-replacements.
+repository. Transferring ownership changes which account credential is used;
+the former owner's personal token remains with that account. Commit messages
+are entered explicitly. Normal checkout preserves local changes and refuses
+conflicts; only the explicit force option discards tracked, untracked, and
+ignored working-tree files. Git operations use the same project coordination
+and durable-flush boundary as other source replacements.
 
 ## Data, backup, tags, and deletion
 
@@ -501,10 +505,10 @@ reaper cleans abandoned trash/temp entries. Deleting a user removes sessions,
 memberships, private tags, and comments remain attributable as “Deleted User”.
 An administrator can transfer the user's owned projects to the current
 administrator or delete them with their files. Project transfer keeps the old
-owner as an editor and clears the project GitHub token so the new owner must
-configure their own credential. Administrators do not otherwise receive
-implicit access to another user's projects; they see a project only when they
-own it or it has been explicitly shared with them. The last active
+owner as an editor; GitHub credentials remain account-specific, so the new
+owner's token is used for project operations. Administrators do not otherwise
+receive implicit access to another user's projects; they see a project only
+when they own it or it has been explicitly shared with them. The last active
 administrator cannot be removed or disabled.
 
 ## Known limitations and TODO

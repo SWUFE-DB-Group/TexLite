@@ -14,14 +14,25 @@ const MAX_DIFF_OUTPUT = 1024 * 1024;
 
 interface GitSettingsRow {
   project_id: string;
-  token_ciphertext: string | null;
-  github_login: string | null;
   remote_url: string | null;
   repository_name: string | null;
   repository_html_url: string | null;
   default_branch: string;
   created_at: string;
   updated_at: string;
+}
+
+interface UserGitHubSettingsRow {
+  user_id: string;
+  token_ciphertext: string | null;
+  github_login: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GitHubAccountStatus {
+  tokenConfigured: boolean;
+  githubLogin: string | null;
 }
 
 export interface GitCommit {
@@ -70,6 +81,7 @@ export class ProjectGitService {
     await this.ensureGitAvailable();
     assertNoSourceSymlinks(this.config, project.id);
     const settings = this.settings(project.id);
+    const account = this.userSettings(project.owner_id);
     const gitDirectory = path.join(sourceRoot(this.config, project.id), ".git");
     let gitStat: fs.Stats | null = null;
     try { gitStat = fs.lstatSync(gitDirectory); }
@@ -80,8 +92,8 @@ export class ProjectGitService {
     const initialized = Boolean(gitStat);
     if (!initialized) return {
       initialized: false,
-      tokenConfigured: Boolean(settings?.token_ciphertext),
-      githubLogin: settings?.github_login ?? null,
+      tokenConfigured: Boolean(account?.token_ciphertext),
+      githubLogin: account?.github_login ?? null,
       remoteUrl: settings?.remote_url ?? null,
       repositoryName: settings?.repository_name ?? null,
       repositoryHtmlUrl: settings?.repository_html_url ?? null,
@@ -99,11 +111,17 @@ export class ProjectGitService {
     const branch = branchResult.code === 0 ? branchResult.stdout.trim() : null;
     const remoteResult = await this.git(root, ["remote", "get-url", "origin"], [2]);
     const latestResult = await this.git(root, ["log", "-1", "--format=%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s"], [128]);
-    const aheadResult = await this.git(root, ["rev-list", "--count", "@{upstream}..HEAD"], [128]);
+    const upstreamResult = branch
+      ? await this.git(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], [128])
+      : null;
+    // A newly initialized backup repository has no upstream until its first
+    // push. In that case, every local commit is pending for the remote.
+    const aheadRevision = upstreamResult?.code === 0 ? "@{upstream}..HEAD" : "HEAD";
+    const aheadResult = branch ? await this.git(root, ["rev-list", "--count", aheadRevision], [128]) : null;
     return {
       initialized: true,
-      tokenConfigured: Boolean(settings?.token_ciphertext),
-      githubLogin: settings?.github_login ?? null,
+      tokenConfigured: Boolean(account?.token_ciphertext),
+      githubLogin: account?.github_login ?? null,
       remoteUrl: settings?.remote_url ?? (remoteResult.code === 0 ? remoteResult.stdout.trim() : null),
       repositoryName: settings?.repository_name ?? null,
       repositoryHtmlUrl: settings?.repository_html_url ?? null,
@@ -112,40 +130,43 @@ export class ProjectGitService {
       dirty: Boolean(porcelain),
       restorable: porcelain.split("\n").some((line) => Boolean(line) && !line.startsWith("??")),
       changedFiles: porcelain ? porcelain.split("\n").length : 0,
-      ahead: aheadResult.code === 0 ? Number.parseInt(aheadResult.stdout.trim(), 10) || 0 : 0,
+      ahead: aheadResult?.code === 0 ? Number.parseInt(aheadResult.stdout.trim(), 10) || 0 : 0,
       latestCommit: latestResult.code === 0 ? parseCommit(latestResult.stdout.trim()) : null
     };
   }
 
-  async configureToken(project: ProjectRow, tokenInput: string): Promise<ProjectGitStatus> {
-    const token = tokenInput.trim();
-    if (token.length < 20 || token.length > 500) throw httpError(400, "GIT_TOKEN_INVALID");
-    await this.ensureGitAvailable();
-    const account = await this.githubRequest<{ login?: unknown }>(token, "/user", { method: "GET" });
-    if (typeof account.login !== "string" || !account.login) throw httpError(502, "GIT_ACCOUNT_INVALID");
-    await this.ensureRepository(project);
-    const timestamp = new Date().toISOString();
-    this.db.prepare(`INSERT INTO project_git_settings
-      (project_id, token_ciphertext, github_login, default_branch, created_at, updated_at)
-      VALUES (?, ?, ?, 'main', ?, ?)
-      ON CONFLICT(project_id) DO UPDATE SET token_ciphertext = excluded.token_ciphertext,
-        github_login = excluded.github_login, updated_at = excluded.updated_at`)
-      .run(project.id, encryptToken(this.config, token), account.login, timestamp, timestamp);
-    return this.status(project);
+  githubAccountStatus(userId: string): GitHubAccountStatus {
+    const settings = this.userSettings(userId);
+    return { tokenConfigured: Boolean(settings?.token_ciphertext), githubLogin: settings?.github_login ?? null };
   }
 
-  async removeToken(project: ProjectRow): Promise<ProjectGitStatus> {
-    this.db.prepare("UPDATE project_git_settings SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE project_id = ?")
-      .run(new Date().toISOString(), project.id);
-    return this.status(project);
+  async configureUserToken(userId: string, tokenInput: string): Promise<GitHubAccountStatus> {
+    const token = tokenInput.trim();
+    if (token.length < 20 || token.length > 500) throw httpError(400, "GIT_TOKEN_INVALID");
+    const account = await this.githubRequest<{ login?: unknown }>(token, "/user", { method: "GET" });
+    if (typeof account.login !== "string" || !account.login) throw httpError(502, "GIT_ACCOUNT_INVALID");
+    const timestamp = new Date().toISOString();
+    this.db.prepare(`INSERT INTO user_github_settings
+      (user_id, token_ciphertext, github_login, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET token_ciphertext = excluded.token_ciphertext,
+        github_login = excluded.github_login, updated_at = excluded.updated_at`)
+      .run(userId, encryptToken(this.config, token), account.login, timestamp, timestamp);
+    return this.githubAccountStatus(userId);
+  }
+
+  removeUserToken(userId: string): GitHubAccountStatus {
+    this.db.prepare("DELETE FROM user_github_settings WHERE user_id = ?").run(userId);
+    return this.githubAccountStatus(userId);
   }
 
   async createGitHubRepository(project: ProjectRow, name: string, isPrivate: boolean): Promise<ProjectGitStatus> {
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) throw httpError(400, "GIT_REPOSITORY_NAME_INVALID");
     await this.ensureGitAvailable();
-    const settings = this.requireTokenSettings(project.id);
-    if (settings.remote_url) throw httpError(409, "GIT_REMOTE_ALREADY_CONFIGURED");
-    const token = decryptToken(this.config, settings.token_ciphertext!);
+    const account = this.requireUserTokenSettings(project.owner_id);
+    const settings = this.settings(project.id);
+    if (settings?.remote_url) throw httpError(409, "GIT_REMOTE_ALREADY_CONFIGURED");
+    const token = decryptToken(this.config, account.token_ciphertext!);
     const repository = await this.githubRequest<{
       name?: unknown; clone_url?: unknown; html_url?: unknown; default_branch?: unknown;
     }>(token, "/user/repos", {
@@ -156,6 +177,7 @@ export class ProjectGitService {
       throw httpError(502, "GIT_REPOSITORY_RESPONSE_INVALID");
     }
     await this.ensureRepository(project);
+    this.ensureProjectSettings(project.id);
     const root = sourceRoot(this.config, project.id);
     const currentRemote = await this.git(root, ["remote", "get-url", "origin"], [2]);
     if (currentRemote.code === 0) await this.git(root, ["remote", "set-url", "origin", repository.clone_url]);
@@ -191,8 +213,8 @@ export class ProjectGitService {
   }
 
   async push(project: ProjectRow): Promise<ProjectGitStatus> {
-    const settings = this.requireTokenSettings(project.id);
-    if (!settings.remote_url) throw httpError(409, "GIT_REMOTE_NOT_CONFIGURED");
+    const account = this.requireUserTokenSettings(project.owner_id);
+    if (!this.settings(project.id)?.remote_url) throw httpError(409, "GIT_REMOTE_NOT_CONFIGURED");
     const root = this.requireRepository(project.id);
     assertNoSourceSymlinks(this.config, project.id);
     const head = await this.git(root, ["rev-parse", "--verify", "HEAD"], [128]);
@@ -201,7 +223,7 @@ export class ProjectGitService {
     if (branchResult.code !== 0) throw httpError(409, "GIT_DETACHED_HEAD");
     const branch = branchResult.stdout.trim();
     if (!/^[A-Za-z0-9._/-]+$/.test(branch)) throw httpError(400, "GIT_BRANCH_INVALID");
-    const token = decryptToken(this.config, settings.token_ciphertext!);
+    const token = decryptToken(this.config, account.token_ciphertext!);
     await this.git(root, ["push", "--set-upstream", "origin", `HEAD:refs/heads/${branch}`], [], this.authEnvironment(token));
     return this.status(project);
   }
@@ -301,10 +323,20 @@ export class ProjectGitService {
     return this.db.prepare("SELECT * FROM project_git_settings WHERE project_id = ?").get(projectId) as GitSettingsRow | undefined;
   }
 
-  private requireTokenSettings(projectId: string): GitSettingsRow {
-    const settings = this.settings(projectId);
+  private userSettings(userId: string): UserGitHubSettingsRow | undefined {
+    return this.db.prepare("SELECT * FROM user_github_settings WHERE user_id = ?").get(userId) as UserGitHubSettingsRow | undefined;
+  }
+
+  private requireUserTokenSettings(userId: string): UserGitHubSettingsRow {
+    const settings = this.userSettings(userId);
     if (!settings?.token_ciphertext) throw httpError(409, "GIT_TOKEN_NOT_CONFIGURED");
     return settings;
+  }
+
+  private ensureProjectSettings(projectId: string): void {
+    const timestamp = new Date().toISOString();
+    this.db.prepare(`INSERT INTO project_git_settings (project_id, default_branch, created_at, updated_at)
+      VALUES (?, 'main', ?, ?) ON CONFLICT(project_id) DO NOTHING`).run(projectId, timestamp, timestamp);
   }
 
   private async verifyCommit(root: string, revision: string): Promise<string> {
@@ -336,8 +368,9 @@ export class ProjectGitService {
         }
       });
       if (!response.ok) {
-        throw httpError(response.status === 401 || response.status === 403 ? 400 : 502,
-          response.status === 401 || response.status === 403 ? "GIT_TOKEN_REJECTED" : "GIT_OPERATION_FAILED");
+        const authError = classifyGitHubAuthFailure(response.status);
+        if (authError) throw httpError(400, authError);
+        throw httpError(502, "GIT_OPERATION_FAILED");
       }
       return await response.json() as T;
     } catch (error) {
@@ -405,13 +438,32 @@ export class ProjectGitService {
         if (timedOut) return reject(httpError(504, "GIT_TIMEOUT"));
         if (size > MAX_COMMAND_OUTPUT) return reject(httpError(413, "GIT_OUTPUT_TOO_LARGE"));
         if (result.code !== 0 && !allowedCodes.includes(result.code)) {
-          return reject(httpError(400, "GIT_COMMAND_FAILED"));
+          const pushAuthError = args[0] === "push" ? classifyGitPushFailure(result.stderr) : null;
+          return reject(httpError(400, pushAuthError ?? "GIT_COMMAND_FAILED"));
         }
         resolve(result);
       });
     });
   }
 
+}
+
+export type GitHubAuthenticationError = "GIT_TOKEN_REJECTED";
+
+function classifyGitHubAuthFailure(status: number): GitHubAuthenticationError | null {
+  // GitHub's 401/403 responses do not reliably distinguish invalid or expired
+  // credentials from insufficient repository access (including SSO/policy
+  // restrictions), so give users one actionable message for these cases.
+  return status === 401 || status === 403 ? "GIT_TOKEN_REJECTED" : null;
+}
+
+export function classifyGitPushFailure(stderr: string): GitHubAuthenticationError | null {
+  if (
+    /saml|single[- ]sign[- ]on|\bsso\b/i.test(stderr) ||
+    /invalid username or token|bad credentials|authentication failed|could not read username/i.test(stderr) ||
+    /write access.{0,80}(?:not granted|denied)|permission to .{1,200} denied|repository not found|returned error:\s*403/i.test(stderr)
+  ) return "GIT_TOKEN_REJECTED";
+  return null;
 }
 
 function parseCommit(line: string): GitCommit {

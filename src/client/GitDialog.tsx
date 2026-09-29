@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronDown, ChevronRight, CloudUpload, ExternalLink, Eye, GitBranch, GitCommitHorizontal, Github, KeyRound,
-  LoaderCircle, Maximize2, Minimize2, Minus, Plus, RefreshCcw, RotateCcw, Trash2, Undo2
+  ChevronDown, ChevronRight, CloudUpload, ExternalLink, Eye, EyeOff, FolderGit2, GitBranch, GitCommitHorizontal, Github,
+  LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Undo2
 } from "lucide-react";
 import { api } from "./api";
 import { Modal } from "./Dialog";
@@ -12,6 +12,7 @@ interface GitDiffResult {
   title: string;
   diff: string;
   truncated: boolean;
+  revision?: string;
 }
 
 export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
@@ -23,7 +24,6 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
   const { t, i18n } = useTranslation();
   const [status, setStatus] = useState<ProjectGitStatus | null>(null);
   const [commits, setCommits] = useState<GitCommit[]>([]);
-  const [token, setToken] = useState("");
   const [repositoryName, setRepositoryName] = useState(() => suggestedRepositoryName(project.name));
   const [isPrivate, setIsPrivate] = useState(true);
   const [commitMessage, setCommitMessage] = useState("");
@@ -57,7 +57,6 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
     if (!open) {
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
       setDiffFullscreen(false);
-      setToken("");
       return;
     }
     setError(""); setNotice(""); setDiff(null);
@@ -93,18 +92,6 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
     } finally { setBusy(""); }
   };
 
-  const saveToken = () => run("token", async () => {
-    const result = await api<{ status: ProjectGitStatus }>(`/api/projects/${project.id}/git/token`, {
-      method: "PUT", body: JSON.stringify({ token })
-    });
-    setStatus(result.status); setToken(""); setAuthenticationExpanded(false);
-  }, t("git.tokenSaved"));
-
-  const removeToken = () => run("remove-token", async () => {
-    const result = await api<{ status: ProjectGitStatus }>(`/api/projects/${project.id}/git/token`, { method: "DELETE" });
-    setStatus(result.status); setToken("");
-  }, t("git.tokenRemoved"));
-
   const createRepository = () => run("repository", async () => {
     const result = await api<{ status: ProjectGitStatus }>(`/api/projects/${project.id}/git/repository`, {
       method: "POST", body: JSON.stringify({ name: repositoryName, private: isPrivate })
@@ -114,23 +101,37 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
 
   const commit = () => run("commit", async () => {
     if (!(await onBeforeMutation())) throw new Error(t("errors.collaborationUnavailable"));
-    const result = await api<{ status: ProjectGitStatus }>(`/api/projects/${project.id}/git/commit`, {
+    const result = await api<{ commit: GitCommit; status: ProjectGitStatus }>(`/api/projects/${project.id}/git/commit`, {
       method: "POST", body: JSON.stringify({ message: commitMessage })
     });
-    setStatus(result.status); setCommitMessage(""); setDiff(null); await load();
-  }, t("git.committed"));
+    setStatus(result.status);
+    setCommits((current) => [result.commit, ...current.filter((item) => item.sha !== result.commit.sha)].slice(0, 100));
+    setCommitMessage("");
+    setDiff(null);
+  }, t("git.committed"), t("git.commitFailed"));
 
   const push = () => run("push", async () => {
     if (!(await onBeforeMutation())) throw new Error(t("errors.collaborationUnavailable"));
     const result = await api<{ status: ProjectGitStatus }>(`/api/projects/${project.id}/git/push`, { method: "POST" });
-    setStatus(result.status); await load();
+    setStatus(result.status);
   }, t("git.pushed"), t("git.pushFailed"));
 
   const showDiff = (revision?: string) => run("diff", async () => {
     if (!(await onBeforeMutation())) throw new Error(t("errors.collaborationUnavailable"));
     const query = revision ? `?revision=${encodeURIComponent(revision)}` : "";
-    setDiff(await api<GitDiffResult>(`/api/projects/${project.id}/git/diff${query}`));
+    const result = await api<GitDiffResult>(`/api/projects/${project.id}/git/diff${query}`);
+    setDiff({ ...result, revision });
   });
+
+  const toggleCommitDiff = (revision: string) => {
+    if (diff?.revision === revision) {
+      setDiff(null);
+      setDiffFullscreen(false);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+    void showDiff(revision);
+  };
 
   const toggleDiffFullscreen = async () => {
     if (diffFullscreen) {
@@ -172,24 +173,20 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
     footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
     <div className="git-dialog">
       {loading && <div className="git-loading"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div>}
-      {error && <p className="git-message error">{error}</p>}
-      {notice && <p className="git-message success"><GitBranch size={14} />{notice}</p>}
+      {error && <p className="git-message error" role="alert">{error}</p>}
+      {notice && <p className="git-message success" role="status"><GitBranch size={14} />{notice}</p>}
       {status && <>
         <section className="git-section">
-          <button className="git-section-toggle" type="button" aria-expanded={authenticationExpanded} onClick={() => setAuthenticationExpanded((current) => !current)}><span className="git-section-heading"><KeyRound size={16} /><span><strong>{t("git.authentication")}</strong><small>{status.tokenConfigured ? t("git.connectedAs", { login: status.githubLogin }) : t("git.authenticationHint")}</small></span></span>{authenticationExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
+          <button className="git-section-toggle" type="button" aria-expanded={authenticationExpanded} onClick={() => setAuthenticationExpanded((current) => !current)}><span className="git-section-heading"><Github size={16} /><span><strong>{t("git.authentication")}</strong><small>{status.tokenConfigured ? t("git.connectedAs", { login: status.githubLogin }) : t("git.authenticationHint")}</small></span></span>{authenticationExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
           {authenticationExpanded && <div className="git-section-content">
-            <div className="git-token-guidance"><strong>{t("git.recommendedAccessTitle")}</strong><span>{t("git.recommendedAccess")}</span></div>
-            {status.tokenConfigured && <div className="git-account"><Github size={17} /><span>{t("git.connectedAs", { login: status.githubLogin })}</span><button className="danger-text" disabled={Boolean(busy)} onClick={removeToken}><Trash2 size={14} />{t("git.removeToken")}</button></div>}
-            <label className="form-field">{status.tokenConfigured ? t("git.replaceToken") : t("git.token")}
-              <input type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" autoCorrect="off"
-                value={token} placeholder={t("git.tokenPlaceholder")} onChange={(event) => setToken(event.target.value)} />
-            </label>
-            <div className="git-inline-actions"><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">{t("git.createToken")}<ExternalLink size={12} /></a><button disabled={Boolean(busy) || token.trim().length < 20} onClick={saveToken}>{busy === "token" && <LoaderCircle className="spin" size={13} />}{t("git.saveToken")}</button></div>
+            <p className="git-account-guidance">{status.tokenConfigured
+              ? t("git.accountTokenManaged", { login: status.githubLogin })
+              : t("git.accountTokenMissing")}</p>
           </div>}
         </section>
 
         <section className="git-section">
-          <button className="git-section-toggle" type="button" aria-expanded={repositoryExpanded} onClick={() => setRepositoryExpanded((current) => !current)}><span className="git-section-heading"><Github size={16} /><span><strong>{t("git.repository")}</strong><small>{status.remoteUrl ? status.repositoryName ?? status.remoteUrl : status.initialized ? t("git.localReady") : t("git.localPending")}</small></span></span>{repositoryExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
+          <button className="git-section-toggle" type="button" aria-expanded={repositoryExpanded} onClick={() => setRepositoryExpanded((current) => !current)}><span className="git-section-heading"><FolderGit2 size={16} /><span><strong>{t("git.repository")}</strong><small>{status.remoteUrl ? status.repositoryName ?? status.remoteUrl : status.initialized ? t("git.localReady") : t("git.localPending")}</small></span></span>{repositoryExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
           {repositoryExpanded && <div className="git-section-content">{status.remoteUrl ? <div className="git-repository-card"><div><strong>{status.repositoryName ?? t("git.origin")}</strong><small>{status.branch ?? t("git.detachedAt", { revision: status.latestCommit?.shortSha ?? "HEAD" })} · {status.dirty ? t("git.changedFiles", { count: status.changedFiles }) : t("git.clean")}</small></div>{status.repositoryHtmlUrl && <a href={status.repositoryHtmlUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />{t("git.openGitHub")}</a>}</div> : <>
               <label className="form-field">{t("git.repositoryName")}<input value={repositoryName} onChange={(event) => setRepositoryName(event.target.value)} /></label>
               <label className="checkbox-field"><input type="checkbox" checked={isPrivate} onChange={(event) => setIsPrivate(event.target.checked)} />{t("git.privateRepository")}</label>
@@ -200,14 +197,17 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
         {status.initialized && <section className="git-section">
           <div className="git-section-heading"><GitCommitHorizontal size={16} /><div><strong>{t("git.commitAndPush")}</strong><small>{status.branch ? t("git.identity", { username: project.ownerUsername }) : t("git.detachedHead")}</small></div></div>
           <label className="form-field">{t("git.commitMessage")}<textarea rows={3} value={commitMessage} placeholder={t("git.commitPlaceholder")} onChange={(event) => setCommitMessage(event.target.value)} /></label>
-          <div className="git-action-row"><button title={!status.dirty ? t("git.noChangesToCommit") : undefined} disabled={Boolean(busy) || !status.branch || !status.dirty || !commitMessage.trim()} onClick={commit}>{busy === "commit" ? <LoaderCircle className="spin" size={14} /> : <GitCommitHorizontal size={14} />}{t("git.commit")}</button><button disabled={Boolean(busy) || !status.branch || !status.tokenConfigured || !status.remoteUrl || !status.latestCommit} onClick={push}>{busy === "push" ? <LoaderCircle className="spin" size={14} /> : <CloudUpload size={14} />}{t("git.push")}{status.ahead > 0 && <span className="git-count">{status.ahead}</span>}</button><button disabled={Boolean(busy) || !status.latestCommit} onClick={() => void showDiff()}>{busy === "diff" ? <LoaderCircle className="spin" size={14} /> : <Eye size={14} />}{t("git.workingDiff")}</button><button className="git-discard-button" title={!status.restorable ? t("git.noChangesToDiscard") : t("git.discardChanges")} disabled={Boolean(busy) || !status.latestCommit || !status.restorable} onClick={() => setDiscardOpen(true)}><RotateCcw size={14} />{t("git.discardChanges")}</button>{!status.branch && <button disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget("branch"); }}><GitBranch size={14} />{t("git.returnToBranch", { branch: status.defaultBranch })}</button>}<button disabled={Boolean(busy)} onClick={() => void run("refresh", load)}><RefreshCcw className={busy === "refresh" ? "spin" : ""} size={14} />{t("git.refresh")}</button></div>
+          <div className="git-action-row"><button title={!status.dirty ? t("git.noChangesToCommit") : undefined} disabled={Boolean(busy) || !status.branch || !status.dirty || !commitMessage.trim()} onClick={commit}>{busy === "commit" ? <LoaderCircle className="spin" size={14} /> : <GitCommitHorizontal size={14} />}{t("git.commit")}</button><button title={status.ahead === 0 && status.branch && status.remoteUrl && status.tokenConfigured && status.latestCommit ? t("git.noUnpushedCommits") : undefined} disabled={Boolean(busy) || !status.branch || !status.tokenConfigured || !status.remoteUrl || !status.latestCommit || status.ahead === 0} onClick={push}>{busy === "push" ? <LoaderCircle className="spin" size={14} /> : <CloudUpload size={14} />}{t("git.push")}{status.ahead > 0 && <span className="git-count">{status.ahead}</span>}</button><button disabled={Boolean(busy) || !status.latestCommit} onClick={() => void showDiff()}>{busy === "diff" ? <LoaderCircle className="spin" size={14} /> : <Eye size={14} />}{t("git.workingDiff")}</button><button className="git-discard-button" title={!status.restorable ? t("git.noChangesToDiscard") : t("git.discardChanges")} disabled={Boolean(busy) || !status.latestCommit || !status.restorable} onClick={() => setDiscardOpen(true)}><RotateCcw size={14} />{t("git.discardChanges")}</button>{!status.branch && <button disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget("branch"); }}><GitBranch size={14} />{t("git.returnToBranch", { branch: status.defaultBranch })}</button>}</div>
         </section>}
 
         {diff && <section ref={diffSectionRef} className={`git-section git-diff-section${diffFullscreen ? " is-fullscreen" : ""}`}><div className="git-diff-heading"><div className="git-section-heading"><Eye size={16} /><div><strong>{t("git.diffTitle")}</strong><small>{diff.title}{diff.truncated ? ` · ${t("git.diffTruncated")}` : ""}</small></div></div><div className="git-diff-controls"><div className="git-diff-font-controls" role="group" aria-label={t("git.diffFontSize")}><button type="button" className="git-diff-font-button" disabled={diffFontSize <= 8} title={t("git.diffFontDecrease")} aria-label={t("git.diffFontDecrease")} onClick={() => setDiffFontSize((current) => Math.max(8, current - 1))}><Minus size={14} /></button><span className="git-diff-font-value" aria-live="polite">{diffFontSize}px</span><button type="button" className="git-diff-font-button" disabled={diffFontSize >= 24} title={t("git.diffFontIncrease")} aria-label={t("git.diffFontIncrease")} onClick={() => setDiffFontSize((current) => Math.min(24, current + 1))}><Plus size={14} /></button></div><button type="button" className="git-diff-fullscreen" title={diffFullscreen ? t("git.exitFullscreenDiff") : t("git.fullscreenDiff")} aria-label={diffFullscreen ? t("git.exitFullscreenDiff") : t("git.fullscreenDiff")} onClick={() => void toggleDiffFullscreen()}>{diffFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button></div></div><GitDiffView content={diff.diff} empty={t("git.noChanges")} fontSize={diffFontSize} /></section>}
 
         {status.initialized && <section className="git-section">
           <div className="git-section-heading"><GitBranch size={16} /><div><strong>{t("git.history")}</strong><small>{t("git.historyHint")}</small></div></div>
-          <div className="git-history">{commits.map((commitItem) => <article key={commitItem.sha}><code>{commitItem.shortSha}</code><div><strong>{commitItem.message}</strong><small>{commitItem.authorName} · {new Date(commitItem.authoredAt).toLocaleString(i18n.resolvedLanguage)}</small></div><span><button title={t("git.viewCommitDiff")} disabled={Boolean(busy)} onClick={() => void showDiff(commitItem.sha)}><Eye size={14} /></button><button title={t("git.checkoutVersion")} disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget(commitItem); }}><Undo2 size={14} /></button></span></article>)}{commits.length === 0 && <p className="muted">{t("git.noCommits")}</p>}</div>
+          <div className="git-history">{commits.map((commitItem) => {
+            const diffOpen = diff?.revision === commitItem.sha;
+            return <article key={commitItem.sha}><code>{commitItem.shortSha}</code><div><strong>{commitItem.message}</strong><small>{commitItem.authorName} · {new Date(commitItem.authoredAt).toLocaleString(i18n.resolvedLanguage)}</small></div><span data-texlite-tooltip-always><button type="button" className={diffOpen ? "is-active" : undefined} title={t(diffOpen ? "git.hideCommitDiff" : "git.viewCommitDiff")} aria-label={t(diffOpen ? "git.hideCommitDiff" : "git.viewCommitDiff")} aria-pressed={diffOpen} disabled={Boolean(busy)} onClick={() => toggleCommitDiff(commitItem.sha)}>{diffOpen ? <EyeOff size={14} /> : <Eye size={14} />}</button><button type="button" title={t("git.checkoutVersion")} disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget(commitItem); }}><Undo2 size={14} /></button></span></article>;
+          })}{commits.length === 0 && <p className="muted">{t("git.noCommits")}</p>}</div>
         </section>}
       </>}
     </div>

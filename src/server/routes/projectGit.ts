@@ -45,25 +45,24 @@ export function registerProjectGitRoutes(app: FastifyInstance, context: ProjectG
     }, { preflight: () => { requireGitOwner(id, user); } });
   });
 
-  app.put("/api/projects/:id/git/token", async (request, reply) => {
+  app.get("/api/account/github", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const { id } = request.params as { id: string };
-    const body = request.body as { token?: unknown };
-    if (typeof body.token !== "string") return apiError(reply, 400, "GIT_TOKEN_INVALID");
-    const token = body.token;
-    return await projectMutations.runSerialized(id, async () => {
-      return { status: await projectGit.configureToken(requireGitOwner(id, user), token) };
-    }, { preflight: () => { requireGitOwner(id, user); } });
+    return { status: projectGit.githubAccountStatus(user.id) };
   });
 
-  app.delete("/api/projects/:id/git/token", async (request, reply) => {
+  app.put("/api/account/github", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const { id } = request.params as { id: string };
-    return await projectMutations.runSerialized(id, async () => {
-      return { status: await projectGit.removeToken(requireGitOwner(id, user)) };
-    }, { preflight: () => { requireGitOwner(id, user); } });
+    const body = request.body as { token?: unknown };
+    if (typeof body.token !== "string") return apiError(reply, 400, "GIT_TOKEN_INVALID");
+    return { status: await projectGit.configureUserToken(user.id, body.token) };
+  });
+
+  app.delete("/api/account/github", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    return { status: projectGit.removeUserToken(user.id) };
   });
 
   app.post("/api/projects/:id/git/repository", async (request, reply) => {

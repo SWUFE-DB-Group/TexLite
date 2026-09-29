@@ -5,7 +5,7 @@ import { ConfirmDialog, Modal } from "../Dialog";
 import type { Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "../types";
 import i18n from "../i18n";
 import { errorMessage } from "../errors";
-import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, Github, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
 import { LanguageSwitcher } from "../LanguageSwitcher";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
 import { ProjectListRow } from "./ProjectListRow";
@@ -19,6 +19,7 @@ const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then
 const AdminUsers = lazy(() => import("./AdminUsers").then((module) => ({ default: module.AdminUsers })));
 const TagManagementDialog = lazy(() => import("./TagManagementDialog").then((module) => ({ default: module.TagManagementDialog })));
 const ProjectIconPickerDialog = lazy(() => import("./ProjectIconPickerDialog").then((module) => ({ default: module.ProjectIconPickerDialog })));
+const GitHubAccountDialog = lazy(() => import("../GitHubAccountDialog").then((module) => ({ default: module.GitHubAccountDialog })));
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -87,6 +88,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [adminOpen, setAdminOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
+  const [githubAccountOpen, setGitHubAccountOpen] = useState(false);
   const [error, setError] = useState("");
   const [createError, setCreateError] = useState("");
   const [tagAssignmentError, setTagAssignmentError] = useState("");
@@ -411,7 +413,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       <div className="top-actions">
         {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen((current) => !current); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
         <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
-        <LanguageSwitcher compact /><span className="top-user-identity"><strong>{user.displayName}</strong><small>@{user.username}</small></span><button className="ghost" onClick={logout}>{t("auth.logout")}</button>
+        <LanguageSwitcher compact /><button type="button" className="top-user-identity" title={t("account.openGithubSettings")} aria-label={t("account.openGithubSettings")} onClick={() => setGitHubAccountOpen(true)}><strong>{user.displayName}</strong><small><Github aria-hidden size={11} />@{user.username}</small></button><button className="ghost" onClick={logout}>{t("auth.logout")}</button>
       </div>
     </header>
     {adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard citation-library-page-shell">
@@ -570,7 +572,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       <Modal open={Boolean(duplicateProject)} title={t("projects.duplicateTitle")} description={t("projects.duplicateDescription", { project: duplicateProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !duplicating) { setDuplicateProject(null); setDuplicateValue(""); setDuplicateError(""); } }} footer={<><button disabled={duplicating} onClick={() => { setDuplicateProject(null); setDuplicateValue(""); setDuplicateError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={duplicating || !duplicateValue.trim()} onClick={() => void duplicate()}>{duplicating ? t("projects.duplicating") : t("projects.duplicate")}</button></>}><>{duplicateError && <p className="error dialog-error">{duplicateError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={duplicateValue} onChange={(event) => { setDuplicateValue(event.target.value); setDuplicateError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void duplicate(); }} /></label></></Modal>
       <Modal open={Boolean(transferProject)} title={t("projects.transferOwnership")} description={t("projects.transferDescription", { project: transferProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !transferBusy) { setTransferProject(null); setTransferUserId(""); setTransferError(""); } }} footer={<><button disabled={transferBusy} onClick={() => { setTransferProject(null); setTransferUserId(""); setTransferError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={transferBusy || !transferUserId} onClick={() => void transferOwnership()}>{transferBusy ? <LoaderCircle className="spin" size={14} /> : <ArrowRightLeft size={14} />}{t("projects.transfer")}</button></>}><div className="form-stack">{transferError && <p className="error dialog-error">{transferError}</p>}<label className="form-field">{t("projects.newOwner")}<select disabled={transferBusy || transferUsers.length === 0} value={transferUserId} onChange={(event) => setTransferUserId(event.target.value)}><option value="">{transferBusy ? t("common.loading") : transferUsers.length > 0 ? t("projects.chooseNewOwner") : t("projects.noTransferUsers")}</option>{transferUsers.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.displayName ?? candidate.username} (@{candidate.username})</option>)}</select></label><p className="warning"><AlertTriangle size={15} />{t("projects.transferWarning")}</p></div></Modal>
       <ConfirmDialog open={Boolean(deleteProject)} title={t("projects.deleteTitle")} description={t("projects.deleteDescription", { project: deleteProject?.name ?? "" })} confirmLabel={deleting ? t("common.loading") : t("common.delete")} danger busy={deleting} error={deleteError} onCancel={() => { if (!deleting) { setDeleteProject(null); setDeleteError(""); } }} onConfirm={() => void removeProject()} />
-    </main>}{metricsOpen && <LazyModal title={t("metrics.title")} onClose={() => setMetricsOpen(false)}><SystemMetricsDialog open onOpenChange={setMetricsOpen} /></LazyModal>}<SiteFooter />
+    </main>}{metricsOpen && <LazyModal title={t("metrics.title")} onClose={() => setMetricsOpen(false)}><SystemMetricsDialog open onOpenChange={setMetricsOpen} /></LazyModal>}{githubAccountOpen && <LazyModal title={t("account.githubTitle")} onClose={() => setGitHubAccountOpen(false)}><GitHubAccountDialog open onOpenChange={setGitHubAccountOpen} /></LazyModal>}<SiteFooter />
   </div>;
 }
 
