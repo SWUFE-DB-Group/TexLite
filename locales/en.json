@@ -18,6 +18,9 @@
   "highlights": {
     "kicker": "Core highlights",
     "compare": "Compare writing environments",
+    "compareLead": "The toolchain, the collaboration, the choices.",
+    "compareWith": "Compare with",
+    "compareHint": "Choose an environment to compare, one detail at a time.",
     "title": "One workspace, from source to paper",
     "items": [
       { "anchor": "features", "title": "Real LaTeX", "body": "Use your actual TeX environment, packages, fonts, and toolchain." },
