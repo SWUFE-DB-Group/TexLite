@@ -5,6 +5,28 @@ const localeDirectory = new URL("./locales/", import.meta.url);
 const feedbackRibbon = document.querySelector(".feedback-ribbon");
 const feedbackPopover = document.querySelector("#feedback-popover");
 
+const comparisonTable = document.querySelector("#writing-comparison");
+const comparisonSwitcher = document.querySelector(".comparison-switcher");
+if (comparisonTable && comparisonSwitcher) {
+  const environmentKeys = ["capability", "texlite", "overleafHosted", "overleafCe", "texlyre", "texbrain", "prism"];
+  const comparisonButtons = [...comparisonSwitcher.querySelectorAll("[data-compare]")];
+  const rows = [...comparisonTable.rows];
+  const selectEnvironment = (key) => {
+    if (!environmentKeys.slice(2).includes(key)) return;
+    for (const row of rows) {
+      [...row.cells].forEach((cell, index) => {
+        cell.hidden = index > 1 && environmentKeys[index] !== key;
+      });
+    }
+    comparisonButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.compare === key)));
+  };
+  comparisonTable.classList.add("comparison-focused");
+  selectEnvironment("overleafHosted");
+  comparisonSwitcher.hidden = false;
+  document.querySelector(".comparison-footnote")?.removeAttribute("hidden");
+  comparisonButtons.forEach((button) => button.addEventListener("click", () => selectEnvironment(button.dataset.compare)));
+}
+
 if (feedbackRibbon && feedbackPopover) {
   const closePopover = () => {
     feedbackPopover.classList.remove("is-open");

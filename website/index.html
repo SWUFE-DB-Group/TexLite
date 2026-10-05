@@ -9,7 +9,7 @@
       content="TexLite — a lightweight, local-first collaborative LaTeX workspace."
     />
     <link rel="icon" type="image/svg+xml" href="./logo.svg" />
-    <link rel="stylesheet" href="./styles.css?v=6" />
+    <link rel="stylesheet" href="./styles.css?v=7" />
     <title>TexLite</title>
   </head>
   <body>
@@ -180,9 +180,34 @@
             </li>
           </ul>
           <details class="comparison-details">
-            <summary><span data-i18n="highlights.compare">查看工具对比</span><span class="details-sign" aria-hidden="true">+</span></summary>
-          <div class="comparison-table-wrap">
-            <table class="comparison-table">
+            <summary>
+              <span class="comparison-illustration" aria-hidden="true">
+                <svg viewBox="0 0 64 64" fill="none">
+                  <path d="M7 10h23v44H7zM34 10h23v44H34z" stroke="currentColor" />
+                  <path d="M12 18h13M12 24h9M39 18h13M39 24h9M12 38h13M39 38h13M12 44h8M39 44h8" stroke="currentColor" stroke-opacity=".5" />
+                  <path d="m26 29 6 3-6 3m12-6-6 3 6 3" stroke="#a65339" />
+                </svg>
+              </span>
+              <span class="comparison-summary-copy">
+                <span class="comparison-title" data-i18n="highlights.compare">查看写作环境对比</span>
+                <span class="comparison-lead" data-i18n="highlights.compareLead">从工具链到协作方式，看看不同选择。</span>
+              </span>
+              <span class="details-sign" aria-hidden="true">+</span>
+            </summary>
+            <div class="comparison-body">
+              <div class="comparison-switcher" hidden>
+                <span class="comparison-switcher-label" id="comparison-switcher-label" data-i18n="highlights.compareWith">对比对象</span>
+                <div class="comparison-options" role="group" aria-labelledby="comparison-switcher-label">
+                  <button type="button" data-compare="overleafHosted" aria-pressed="true" data-i18n="highlights.table.headers.overleafHosted">Overleaf 托管版</button>
+                  <button type="button" data-compare="overleafCe" aria-pressed="false" data-i18n="highlights.table.headers.overleafCe">Overleaf 社区版</button>
+                  <button type="button" data-compare="texlyre" aria-pressed="false" data-i18n="highlights.table.headers.texlyre">TeXlyre</button>
+                  <button type="button" data-compare="texbrain" aria-pressed="false" data-i18n="highlights.table.headers.texbrain">TeXbrain</button>
+                  <button type="button" data-compare="prism" aria-pressed="false" data-i18n="highlights.table.headers.prism">Prism</button>
+                </div>
+              </div>
+          <div class="comparison-table-wrap" tabindex="0">
+            <table class="comparison-table" id="writing-comparison">
+              <caption id="comparison-table-caption" class="visually-hidden" data-i18n="highlights.compare">查看写作环境对比</caption>
               <thead>
                 <tr>
                   <th scope="col" data-i18n="highlights.table.headers.capability">特性</th>
@@ -196,7 +221,7 @@
               </thead>
               <tbody>
                 <tr>
-                  <td><strong data-i18n="highlights.table.rows.texEnvironment.capability">TeX 环境</strong></td>
+                  <th scope="row" data-i18n="highlights.table.rows.texEnvironment.capability">TeX 环境</th>
                   <td class="col-highlight"><strong data-i18n="highlights.table.rows.texEnvironment.texlite">宿主机真实 TeX Live</strong></td>
                   <td data-i18n="highlights.table.rows.texEnvironment.overleafHosted">托管环境</td>
                   <td data-i18n="highlights.table.rows.texEnvironment.overleafCe">服务端 TeX</td>
@@ -205,7 +230,7 @@
                   <td data-i18n="highlights.table.rows.texEnvironment.prism">托管环境</td>
                 </tr>
                 <tr>
-                  <td><strong data-i18n="highlights.table.rows.compileResources.capability">编译资源</strong></td>
+                  <th scope="row" data-i18n="highlights.table.rows.compileResources.capability">编译资源</th>
                   <td class="col-highlight"><strong data-i18n="highlights.table.rows.compileResources.texlite">团队私有服务器</strong></td>
                   <td data-i18n="highlights.table.rows.compileResources.overleafHosted">公共共享托管云</td>
                   <td data-i18n="highlights.table.rows.compileResources.overleafCe">自建部署环境</td>
@@ -214,7 +239,7 @@
                   <td data-i18n="highlights.table.rows.compileResources.prism">公共共享托管云</td>
                 </tr>
                 <tr>
-                  <td><strong data-i18n="highlights.table.rows.comments.capability">源码级批注</strong></td>
+                  <th scope="row" data-i18n="highlights.table.rows.comments.capability">源码级批注</th>
                   <td class="col-highlight"><strong data-i18n="highlights.table.rows.comments.texlite">内置支持</strong></td>
                   <td data-i18n="highlights.table.rows.comments.overleafHosted">内置支持</td>
                   <td><strong data-i18n="highlights.table.rows.comments.overleafCe">不支持</strong></td>
@@ -223,7 +248,7 @@
                   <td data-i18n="highlights.table.rows.comments.prism">内置支持</td>
                 </tr>
                 <tr>
-                  <td><strong data-i18n="highlights.table.rows.history.capability">选区级编辑历史</strong></td>
+                  <th scope="row" data-i18n="highlights.table.rows.history.capability">选区级编辑历史</th>
                   <td class="col-highlight"><strong data-i18n="highlights.table.rows.history.texlite">✓ 内置支持</strong></td>
                   <td><strong data-i18n="highlights.table.rows.history.overleafHosted">✗ 无对应功能</strong></td>
                   <td><strong data-i18n="highlights.table.rows.history.overleafCe">✗</strong></td>
@@ -232,7 +257,7 @@
                   <td><strong data-i18n="highlights.table.rows.history.prism">✗ 无相关支持记录</strong></td>
                 </tr>
                 <tr>
-                  <td><strong data-i18n="highlights.table.rows.snapshots.capability">项目快照与可视化 Diff</strong></td>
+                  <th scope="row" data-i18n="highlights.table.rows.snapshots.capability">项目快照与可视化 Diff</th>
                   <td class="col-highlight"><strong data-i18n="highlights.table.rows.snapshots.texlite">✓ 内置 Diff 风格快照对比</strong></td>
                   <td data-i18n="highlights.table.rows.snapshots.overleafHosted">△ 完整历史与对比为 Premium 付费功能</td>
                   <td data-i18n="highlights.table.rows.snapshots.overleafCe">△ 功能受限</td>
@@ -241,7 +266,7 @@
                   <td data-i18n="highlights.table.rows.snapshots.prism">△ 功能受限</td>
                 </tr>
                 <tr>
-                  <td><strong data-i18n="highlights.table.rows.ai.capability">编辑界面内置 AI</strong></td>
+                  <th scope="row" data-i18n="highlights.table.rows.ai.capability">编辑界面内置 AI</th>
                   <td class="col-highlight"><strong data-i18n="highlights.table.rows.ai.texlite">无，设计上不内置</strong></td>
                   <td data-i18n="highlights.table.rows.ai.overleafHosted">提供可选 AI</td>
                   <td data-i18n="highlights.table.rows.ai.overleafCe">非 AI 导向</td>
@@ -252,6 +277,8 @@
               </tbody>
             </table>
           </div>
+              <p class="comparison-footnote" hidden><span aria-hidden="true">↔</span><span data-i18n="highlights.compareHint">选择一个环境，逐项比较。</span></p>
+            </div>
           </details>
           <p class="highlight-note" data-i18n="highlights.note">
             使用 TexLite，你的团队可以完全掌控 TeX 环境、编译资源、用户、权限以及数据。同时提供实时协作编辑、源码级批注、选区级编辑历史、SyncTeX、项目快照以及可选的 Git 备份 —— 没有外部强加的编译超时限制，设计上也坚决不内置 AI。
@@ -384,6 +411,6 @@
         JavaScript for language switching.
       </div></noscript
     >
-    <script type="module" src="./main.js?v=editorial-v1"></script>
+    <script type="module" src="./main.js?v=editorial-v2"></script>
   </body>
 </html>

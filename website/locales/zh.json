@@ -18,6 +18,9 @@
   "highlights": {
     "kicker": "核心亮点",
     "compare": "查看写作环境对比",
+    "compareLead": "从工具链到协作方式，看看不同选择。",
+    "compareWith": "对比对象",
+    "compareHint": "选择一个环境，逐项比较。",
     "title": "一个工作区，从源码到成稿",
     "items": [
       { "anchor": "features", "title": "真实 LaTeX", "body": "使用你实际的 TeX 环境、宏包、字体与工具链。" },
