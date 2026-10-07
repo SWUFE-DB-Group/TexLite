@@ -28,18 +28,15 @@ export interface WorkspaceTopbarProps {
   showCitationLibrary: boolean;
   citationLibraryOpen: boolean;
   onCitationLibrary: () => void;
-  onSelectionHistory: () => void;
   onHistory: () => void;
   onGit: () => void;
   canManageGit: boolean;
   formatting: boolean;
   readOnly: boolean;
   collaborationSynced: boolean;
-  hasSelection: boolean;
   onToggleComments: () => void;
   commentsOpen: boolean;
   unresolvedCommentCount: number;
-  hasActiveFile: boolean;
   onToggleSettings: () => void;
   settingsOpen: boolean;
   compileBusy: boolean;
@@ -55,9 +52,8 @@ export function WorkspaceTopbar({
   site, project, activeFile, saveStateLabel, editorPreferences, activeSessions, collaborationStatus,
   reconnectCollaboration, protocolUpgradeRequired, showEditor, filesCollapsed, toggleFilesPanel, workspaceLayout,
   changeWorkspaceLayout, onBack, onShare, showCitationLibrary, citationLibraryOpen,
-  onCitationLibrary, onSelectionHistory, onHistory, onGit, canManageGit, formatting, readOnly, collaborationSynced,
-  hasSelection,
-  onToggleComments, commentsOpen, unresolvedCommentCount, hasActiveFile, onToggleSettings,
+  onCitationLibrary, onHistory, onGit, canManageGit, formatting, readOnly, collaborationSynced,
+  onToggleComments, commentsOpen, unresolvedCommentCount, onToggleSettings,
   settingsOpen, compileBusy, sharedCompiling, localCompiling, cancelling, compileState, onCompile, onCancelCompile
 }: WorkspaceTopbarProps) {
   const { t } = useTranslation();
@@ -73,13 +69,7 @@ export function WorkspaceTopbar({
       <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} />
       <button onClick={onShare}><Users size={15} />{t("projectSettings.share")}</button>
       {showCitationLibrary && <button className={citationLibraryOpen ? "active" : ""} onClick={onCitationLibrary}><BookMarked size={15} />{t("citationLibrary.title")}</button>}
-      <div className="history-action" role="group" aria-label={t("history.title")}>
-        <div className="history-action-label"><FileClock size={14} /><span>{t("history.title")}</span></div>
-        <div className="history-action-options">
-          <button type="button" className="history-action-selection" title={hasSelection ? t("selectionHistory.title") : t("selectionHistory.selectSourceHint")} onMouseDown={(event) => event.preventDefault()} onClick={onSelectionHistory} disabled={!hasSelection || !hasActiveFile}>{t("selectionHistory.buttonLabel")}</button>
-          <button type="button" className="history-action-snapshots" title={t("history.projectSnapshots")} onClick={onHistory}>{t("history.projectSnapshotsButton")}</button>
-        </div>
-      </div>
+      <button type="button" className="snapshots-action" title={t("history.projectSnapshots")} onClick={onHistory}><FileClock size={15} />{t("history.projectSnapshotsButton")}</button>
       <button
         type="button"
         className={`comments-action${commentsOpen ? " active" : ""}`}

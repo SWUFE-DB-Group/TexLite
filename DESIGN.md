@@ -196,6 +196,12 @@ was intentionally held in memory. If a collaborative text edit exceeds the
 configured limit, it is restored to the last durable content and the flush
 receipt identifies the rejected path.
 
+The workspace toolbar exposes project snapshots as a single button. Selecting
+source text reveals comment and selection-history actions in the line-number
+column; their tooltips remain enabled independently of the interface-tooltip
+preference. Opening selection history captures the file, selected range, and
+source together, including before the lazily loaded dialog mounts.
+
 After a source write succeeds, connection-originated Yjs text deltas are also
 stored as ordered edit segments. Each segment belongs to exactly one user, one
 file, and one operation type (`edit` or `format`). The edit records store only

@@ -39,6 +39,7 @@ import { workspaceOutlineForMainFile, type LoadedProjectOutline, type OutlineSou
 import { LazyModal } from "../LazyLoadBoundary";
 import type { LatexReference } from "../../shared/latexReferences";
 import { scopedStorageKey } from "../basePath";
+import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
 const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
 let citationLibraryModule: Promise<typeof import("../citationLibrary")> | null = null;
@@ -136,7 +137,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const [shareOpen, setShareOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [selectionHistoryOpen, setSelectionHistoryOpen] = useState(false);
+  const [selectionHistoryTarget, setSelectionHistoryTarget] = useState<SelectionHistoryTarget | null>(null);
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
@@ -224,7 +225,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     openTabsRef.current = [];
     setOpenTabs([]);
     setFormatterRecovery(null);
-    setSelectionHistoryOpen(false);
+    setSelectionHistoryTarget(null);
     wordCountRequest.current?.abort();
     wordCountRequest.current = null;
     mentionTargetRequest.current?.abort();
@@ -1337,12 +1338,11 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       toggleFilesPanel={toggleFilesPanel} workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
       onBack={onBack} onShare={() => setShareOpen(true)} showCitationLibrary={showEditor && /\.bib$/i.test(activeFile)}
       citationLibraryOpen={citationLibraryOpen} onCitationLibrary={() => setCitationLibraryOpen(true)}
-      onSelectionHistory={() => setSelectionHistoryOpen(true)} onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
+      onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
       formatting={formatting} readOnly={readOnly} collaborationSynced={collaborationSynced}
-      hasSelection={Boolean(selection.selectedText.trim())}
       onToggleComments={() => setSidePanel(sidePanel === "comments" ? null : "comments")}
       commentsOpen={sidePanel === "comments"} unresolvedCommentCount={comments.filter((item) => !item.resolved).length}
-      hasActiveFile={Boolean(activeFile)} onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
+      onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
       settingsOpen={sidePanel === "settings"} compileBusy={compileBusy} sharedCompiling={sharedCompiling}
       localCompiling={localCompiling} cancelling={cancelling} compileState={compileState} onCompile={compile} onCancelCompile={() => void cancelCompile()}
     />
@@ -1396,6 +1396,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         handleTabKeyDown={handleTabKeyDown} updateEditorContent={updateEditorContent}
         setSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })}
         onAddComment={(selectedText, startOffset, endOffset, source) => openComment({ selectedText, startOffset, endOffset }, source)}
+        onSelectionHistory={(selectedText, startOffset, endOffset, source) => {
+          setSelectionHistoryTarget({ filePath: activeFile, selection: { selectedText, startOffset, endOffset }, source });
+        }}
         onCommentClick={(id) => { const comment = comments.find((item) => item.id === id); if (comment) focusReviewComment(comment); }}
         onSpellCheckReplace={replaceSpellCheckIssue} onReferenceNavigate={navigateToReference} onCursor={updateSourceCursor}
       />}
@@ -1458,13 +1461,13 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       moveDestination={moveDestination} setMoveDestination={setMoveDestination} movePath={movePath}
       deleteEntry={deleteEntry} setDeleteEntry={setDeleteEntry} deleteActiveSessions={deleteActiveSessions}
       removePath={removePath} commentOpen={commentOpen} closeComment={closeComment}
-      commentSelection={commentSelection} selection={selection} commentText={commentText} setCommentText={setCommentText} commentSubmitting={commentSubmitting}
+      commentSelection={commentSelection} commentText={commentText} setCommentText={setCommentText} commentSubmitting={commentSubmitting}
       commentError={commentError} addComment={addComment}
       shareOpen={shareOpen} setShareOpen={setShareOpen} citationLibraryOpen={citationLibraryOpen}
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
       quickOpen={quickOpen} setQuickOpen={setQuickOpen} projectSearchOpen={projectSearchOpen}
       setProjectSearchOpen={setProjectSearchOpen} openFile={openFile} jumpToSource={jumpToSource}
-      selectionHistoryOpen={selectionHistoryOpen} setSelectionHistoryOpen={setSelectionHistoryOpen}
+      selectionHistoryTarget={selectionHistoryTarget} closeSelectionHistory={() => setSelectionHistoryTarget(null)}
       historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} gitOpen={gitOpen} setGitOpen={setGitOpen}
       save={save} permissionDowngrade={permissionDowngrade} permissionDowngradeBusy={permissionDowngradeBusy}
       dismissPermissionDowngrade={dismissPermissionDowngrade} discardPermissionDraft={discardPermissionDraft}

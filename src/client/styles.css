@@ -410,16 +410,11 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .editor-actions .comments-action.active:hover:not(:disabled) { background: #c6e2cf; color: #164c33; }
 .editor-actions .comments-action.active:hover:not(:disabled) svg,
 .editor-actions .comments-action.active:hover:not(:disabled) span { color: inherit; }
-.history-action { min-width: 174px; display: flex; flex-direction: column; align-self: center; gap: 2px; }
-.history-action-label { height: 12px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; color: white; font-size: 9px; font-weight: 750; letter-spacing: .08em; line-height: 1; text-transform: uppercase; }
-.history-action-options { height: 27px; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid #ffffff35; border-radius: 6px; background: #ffffff0d; }
-.editor-actions .history-action button { min-width: 0; height: 25px; justify-content: center; border: 0; border-radius: 0; padding: 0 7px; font-size: 11px; }
-.editor-actions .history-action button + button { border-left: 1px solid #ffffff35; }
-.editor-actions .history-action button, .editor-actions .git-action { background: #ffffff0d; color: white; }
-.editor-actions .comments-action:hover:not(:disabled), .editor-actions .history-action button:hover:not(:disabled), .editor-actions .git-action:hover:not(:disabled) { background: #ffffff20; }
+.editor-actions .snapshots-action, .editor-actions .git-action { background: #ffffff0d; color: white; }
+.editor-actions .comments-action:hover:not(:disabled), .editor-actions .snapshots-action:hover:not(:disabled), .editor-actions .git-action:hover:not(:disabled) { background: #ffffff20; }
 .comments-action-count { align-self: flex-start; margin: -4px 0 0 -3px; font-size: 9px; font-weight: 750; line-height: 1; opacity: .82; }
 .editor-actions .comments-action.active .comments-action-count { opacity: .72; }
-.editor-actions .history-action button:disabled, .editor-actions .git-action:disabled { cursor: not-allowed; opacity: .45; }
+.editor-actions .git-action:disabled { cursor: not-allowed; opacity: .45; }
 .layout-menu { position: relative; }
 .editor-actions .layout-trigger { min-width: 138px; justify-content: flex-start; padding-block: 5px; }
 .layout-trigger > span { min-width: 0; display: flex; flex: 1; flex-direction: column; align-items: flex-start; line-height: 1.15; }
@@ -606,10 +601,14 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .cm-bibtex-tooltip-note { margin-top: 7px; color: #5e685f; font-size: 11px; }
 .cm-source-comment { background: #ffe49b99; border-bottom: 2px solid #d68b00; cursor: text; }
 .cm-comment-pin { color: #d68b00; font-size: 9px; padding: 0 2px; cursor: pointer; }
-.editor-host .cm-lineNumbers .cm-comment-add-button { width: 1.58em; height: 1.58em; display: inline-grid; place-items: center; margin: 0; padding: 0; border: 0; border-radius: 5px; background: #e1f2e7; color: #12653d; cursor: pointer; vertical-align: middle; box-shadow: 0 1px 2px #176b4420; }
-.editor-host .cm-lineNumbers .cm-comment-add-button:hover { background: #cdebd6; color: #0b532f; box-shadow: 0 1px 3px #176b4433; }
-.editor-host .cm-lineNumbers .cm-comment-add-button:focus-visible { outline: 2px solid #5aab78; outline-offset: 1px; }
-.editor-host .cm-lineNumbers .cm-comment-add-button svg { width: 1.16em; height: 1.16em; fill: currentColor; }
+.editor-host .cm-lineNumbers { min-width: calc(3.16em + 11px); }
+.cm-selection-line-actions { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; }
+.editor-host .cm-lineNumbers .cm-selection-action-button { width: 1.58em; height: 1.58em; display: inline-grid; place-items: center; margin: 0; padding: 0; border: 0; border-radius: 5px; background: #e1f2e7; color: #12653d; cursor: pointer; vertical-align: middle; box-shadow: 0 1px 2px #176b4420; }
+.editor-host .cm-lineNumbers .cm-selection-action-button:hover { background: #cdebd6; color: #0b532f; box-shadow: 0 1px 3px #176b4433; }
+.editor-host .cm-lineNumbers .cm-selection-history { background: #e7edf6; color: #385f89; }
+.editor-host .cm-lineNumbers .cm-selection-history:hover { background: #d4e2f2; color: #274d75; }
+.editor-host .cm-lineNumbers .cm-selection-action-button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+.editor-host .cm-lineNumbers .cm-selection-action-button svg { width: 1.16em; height: 1.16em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .preview-panel { display: flex; flex-direction: column; background: #6f7471; }
 .preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 5px 6px 0; background: #4d544f; }
 .preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px; }
@@ -1360,8 +1359,8 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
   .project-list-avatar { width: 36px; height: 36px; }
   .editor-actions button { padding: 8px; }
   .editor-actions button svg + * { display: none; }
-  .editor-actions .comments-action, .editor-actions .history-action button { padding: 7px 6px; }
-  .editor-actions .comments-action svg + *, .editor-actions .history-action button svg + * { display: inline; }
+  .editor-actions .comments-action, .editor-actions .snapshots-action { padding: 7px 6px; }
+  .editor-actions .comments-action svg + *, .editor-actions .snapshots-action svg + * { display: inline; }
 }
 
 @media (max-width: 960px) {

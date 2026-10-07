@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Annotation, Compartment, EditorState, Facet, Prec, RangeSet, type Range, StateEffect, StateField, Transaction } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Facet, Prec, type Range, StateEffect, StateField, Transaction } from "@codemirror/state";
 import {
-  Decoration, type DecorationSet, EditorView, GutterMarker, keymap, lineNumberMarkers, lineNumbers,
+  Decoration, type DecorationSet, EditorView, keymap,
   highlightActiveLine, drawSelection, highlightSpecialChars, ViewPlugin, type ViewUpdate, WidgetType
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -28,6 +28,7 @@ import { latexMathHover } from "./mathHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexFold } from "./latexFolding";
 import { latexCompletions } from "./latexCompletions";
+import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
 import { findLatexReferences, type LatexReference } from "../shared/latexReferences";
 import {
   LatexReferenceViewportCache,
@@ -54,6 +55,7 @@ interface Props {
   onChange: (value: string) => void;
   onSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onAddComment: (selectedText: string, startOffset: number, endOffset: number, source: string) => void;
+  onSelectionHistory: SelectionLineAction;
   onCommentClick: (commentId: string) => void;
   onSpellCheckReplace: (issue: SpellCheckIssue, replacement: string) => void;
   onReferenceNavigate: (reference: LatexReference) => void;
@@ -82,70 +84,6 @@ interface CommentMark {
 
 const setCommentMarks = StateEffect.define<CommentMark[]>();
 const externalDocumentUpdate = Annotation.define<boolean>();
-
-/**
- * The selection action intentionally replaces just the selected line's number
- * instead of adding a second gutter. This keeps the editor from shifting when
- * a selection appears, while putting the action exactly where a reader
- * expects to find source-level annotations.
- */
-class AddCommentLineMarker extends GutterMarker {
-  constructor(private readonly label: string) { super(); }
-
-  toDOM(): HTMLElement {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.tabIndex = -1;
-    button.className = "cm-comment-add-button";
-    button.dataset.commentAdd = "true";
-    button.dataset.texliteTooltipAlways = "true";
-    button.title = this.label;
-    button.setAttribute("aria-label", this.label);
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("aria-hidden", "true");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", "M20 3H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-3 7h-4v4h-2v-4H7V8h4V4h2v4h4v2Z");
-    svg.append(path);
-    button.append(svg);
-    return button;
-  }
-}
-
-function commentSelectionLineMarkers(state: EditorState, marker: GutterMarker): RangeSet<GutterMarker> {
-  const selection = state.selection.main;
-  if (selection.empty) return RangeSet.empty;
-  return RangeSet.of([marker.range(state.doc.lineAt(selection.from).from)]);
-}
-
-function commentAddLineNumberExtension(
-  label: string,
-  onAddComment: (selectedText: string, startOffset: number, endOffset: number, source: string) => void
-) {
-  const marker = new AddCommentLineMarker(label);
-  const field = StateField.define<RangeSet<GutterMarker>>({
-    create: (state) => commentSelectionLineMarkers(state, marker),
-    update: (value, transaction) => transaction.selection || transaction.docChanged
-      ? commentSelectionLineMarkers(transaction.state, marker)
-      : value,
-    provide: (field) => lineNumberMarkers.from(field)
-  });
-  return [
-    field,
-    lineNumbers({
-      domEventHandlers: {
-        mousedown(view, _line, event) {
-          const target = event.target;
-          if (!(target instanceof Element) || !target.closest("[data-comment-add]")) return false;
-          const selection = view.state.selection.main;
-          if (selection.empty) return false;
-          onAddComment(view.state.sliceDoc(selection.from, selection.to), selection.from, selection.to, view.state.doc.toString());
-          return true;
-        }
-      }
-    })
-  ];
-}
 
 interface VimHistoryCommands {
   undo: () => boolean;
@@ -339,7 +277,7 @@ function referenceFromElement(element: EventTarget | null): LatexReference | nul
 
 export function LatexEditor({
   value, filePath, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
-  nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onAddComment, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor
+  nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor
 }: Props) {
   const { t, i18n } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -347,6 +285,7 @@ export function LatexEditor({
   const onChangeRef = useRef(onChange);
   const onSelectionRef = useRef(onSelection);
   const onAddCommentRef = useRef(onAddComment);
+  const onSelectionHistoryRef = useRef(onSelectionHistory);
   const onCommentClickRef = useRef(onCommentClick);
   const onSpellCheckReplaceRef = useRef(onSpellCheckReplace);
   const onReferenceNavigateRef = useRef(onReferenceNavigate);
@@ -364,6 +303,7 @@ export function LatexEditor({
   onChangeRef.current = onChange;
   onSelectionRef.current = onSelection;
   onAddCommentRef.current = onAddComment;
+  onSelectionHistoryRef.current = onSelectionHistory;
   onCommentClickRef.current = onCommentClick;
   onSpellCheckReplaceRef.current = onSpellCheckReplace;
   onReferenceNavigateRef.current = onReferenceNavigate;
@@ -400,7 +340,11 @@ export function LatexEditor({
     const state = EditorState.create({
       doc: collaboration?.text.toString() ?? value,
       extensions: [
-        commentAddLineNumberExtension(t("editor.addComment"), (...args) => onAddCommentRef.current(...args)),
+        selectionLineActions({
+          commentLabel: t("editor.addComment"), historyLabel: t("selectionHistory.title"),
+          onComment: (...args) => onAddCommentRef.current(...args),
+          onHistory: (...args) => onSelectionHistoryRef.current(...args)
+        }),
         foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
         isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : latexLanguage, syntaxHighlighting(defaultHighlightStyle),
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),

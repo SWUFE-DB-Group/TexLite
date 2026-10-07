@@ -13,6 +13,12 @@ interface SourceSelection {
   endOffset: number;
 }
 
+export interface SelectionHistoryTarget {
+  filePath: string;
+  selection: SourceSelection;
+  source: string;
+}
+
 export function SelectionHistoryDialog({ open, project, filePath: inputFilePath, selection: inputSelection, currentSource, onOpenChange }: {
   open: boolean;
   project: Project;

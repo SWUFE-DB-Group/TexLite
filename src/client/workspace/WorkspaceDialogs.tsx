@@ -13,6 +13,7 @@ import { ShareDialog } from "./Comments";
 import { MentionTextarea } from "./MentionTextarea";
 import type { WorkspaceLayout } from "./types";
 import { LazyModal } from "../LazyLoadBoundary";
+import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
 const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then((module) => ({ default: module.CitationLibraryDialog })));
 const GitDialog = lazy(() => import("../GitDialog").then((module) => ({ default: module.GitDialog })));
@@ -72,8 +73,6 @@ export interface WorkspaceDialogsProps {
   closeComment: () => void;
   /** Frozen when the comment composer opens. */
   commentSelection: SourceSelection;
-  /** Always follows the live editor selection. */
-  selection: SourceSelection;
   commentText: string;
   setCommentText: (text: string) => void;
   commentSubmitting: boolean;
@@ -90,8 +89,8 @@ export interface WorkspaceDialogsProps {
   setProjectSearchOpen: (open: boolean) => void;
   openFile: (entry: FileEntry) => void;
   jumpToSource: (path: string, line: number, column: number) => void;
-  selectionHistoryOpen: boolean;
-  setSelectionHistoryOpen: (open: boolean) => void;
+  selectionHistoryTarget: SelectionHistoryTarget | null;
+  closeSelectionHistory: () => void;
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
   gitOpen: boolean;
@@ -110,10 +109,10 @@ export function WorkspaceDialogs({
   setNewFileOpen, newFilePath, setNewFilePath, newFolderOpen, setNewFolderOpen, newFolderName,
   setNewFolderName, selectedFolder, fileDialogError, setFileDialogError, createFile, createFolder, moveEntry,
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
-  setDeleteEntry, deleteActiveSessions, removePath, commentOpen, closeComment, commentSelection, selection, commentText,
+  setDeleteEntry, deleteActiveSessions, removePath, commentOpen, closeComment, commentSelection, commentText,
   setCommentText, commentSubmitting, commentError, addComment, shareOpen, setShareOpen, citationLibraryOpen, setCitationLibraryOpen,
   insertCitationAtCursor, quickOpen, setQuickOpen, projectSearchOpen, setProjectSearchOpen, openFile,
-  jumpToSource, selectionHistoryOpen, setSelectionHistoryOpen, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
+  jumpToSource, selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
   permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
 }: WorkspaceDialogsProps) {
   const { t } = useTranslation();
@@ -179,7 +178,7 @@ export function WorkspaceDialogs({
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
     {projectSearchOpen && <Suspense fallback={null}><ProjectSearchDialog open project={project} onOpenChange={setProjectSearchOpen} onJump={(filePath, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(filePath, line, column); }} /></Suspense>}
-    {selectionHistoryOpen && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={setSelectionHistoryOpen} project={project} filePath={activeFile} selection={selection} currentSource={content} /></Suspense>}
+    {selectionHistoryTarget && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={(open) => { if (!open) closeSelectionHistory(); }} project={project} filePath={selectionHistoryTarget.filePath} selection={selectionHistoryTarget.selection} currentSource={selectionHistoryTarget.source} /></Suspense>}
     {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}
     {project.ownerId === user.id && gitOpen && <Suspense fallback={null}><GitDialog open onOpenChange={setGitOpen} project={project} onBeforeMutation={save} /></Suspense>}
   </>;
