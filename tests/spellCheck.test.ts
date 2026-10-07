@@ -30,6 +30,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 
 /** A deterministic CLI substitute for testing scheduler behaviour. */
 class DelayedHarperService extends HarperService {
+  probeRunCount = 0;
   readonly firstLintStarted = deferred();
   private readonly releaseFirstLint = deferred();
   private lintRuns = 0;
@@ -43,7 +44,10 @@ class DelayedHarperService extends HarperService {
   }
 
   protected override async runCommand(args: string[], _timeoutMs: number, _outputLimit: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
-    if (args[0] === "--version") return { code: 0, stdout: "harper-cli test", stderr: "" };
+    if (args[0] === "--version") {
+      this.probeRunCount += 1;
+      return { code: 0, stdout: "harper-cli test", stderr: "" };
+    }
     this.lintRuns += 1;
     if (this.lintRuns === 1) {
       this.firstLintStarted.resolve();
@@ -56,6 +60,20 @@ class DelayedHarperService extends HarperService {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Harper writing checks", () => {
+  it("reports command availability using the cached probe without running a writing check", async () => {
+    const harper = new DelayedHarperService();
+    try {
+      const results = await Promise.all([harper.isAvailable(), harper.isAvailable()]);
+      expect(results).toEqual([true, true]);
+      expect(await harper.isAvailable()).toBe(true);
+      expect(harper.probeRunCount).toBe(1);
+      expect(harper.lintRunCount).toBe(0);
+    } finally {
+      await harper.dispose();
+    }
+    expect(await harper.isAvailable()).toBe(false);
+  });
+
   it("always disables writing checks for BibTeX data and style files", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
@@ -438,6 +456,8 @@ Visible wrng prose.`;
   it("treats a missing optional host command as a recoverable service error", async () => {
     const harper = new HarperService("texlite-test-missing-harper-command");
     try {
+      expect(await harper.isAvailable()).toBe(false);
+      expect(await harper.isAvailable()).toBe(false);
       await expect(harper.lint("A misspeled sentence.", "main.tex")).rejects.toBeInstanceOf(HarperUnavailableError);
     } finally {
       await harper.dispose();

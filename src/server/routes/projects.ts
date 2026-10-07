@@ -399,6 +399,15 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     return { words: rows.map((row) => row.word) };
   });
 
+  app.get("/api/projects/:id/spellcheck/status", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    reply.header("Cache-Control", "no-store");
+    return { available: await harper.isAvailable() };
+  });
+
   app.post("/api/projects/:id/spellcheck", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;

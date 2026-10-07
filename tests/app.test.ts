@@ -139,6 +139,32 @@ describe("texLite application", () => {
     expect(stale.json()).toMatchObject({ code: "AUTH_REQUIRED" });
   });
 
+  it("exposes the optional Harper CLI status only to project members, including readers", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Harper status" } });
+    const projectId = created.json().project.id as string;
+    const url = `/api/projects/${projectId}/spellcheck/status`;
+    expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+    const status = await app.inject({ method: "GET", url, headers: { cookie } });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toEqual({ available: hostHarperAvailable });
+    expect(status.headers["cache-control"]).toBe("no-store");
+
+    const reader = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "harper-status-reader", displayName: "Reader", password: "reader-password" }
+    });
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "harper-status-reader", password: "reader-password" } });
+    const readerCookie = sessionCookie(login.headers);
+    expect((await app.inject({ method: "GET", url, headers: { cookie: readerCookie } })).statusCode).toBe(404);
+    const shared = await app.inject({
+      method: "PUT", url: `/api/projects/${projectId}/members/${reader.json().user.id}`, headers: { cookie }, payload: { permission: "read" }
+    });
+    expect(shared.statusCode).toBe(200);
+    const readerStatus = await app.inject({ method: "GET", url, headers: { cookie: readerCookie } });
+    expect(readerStatus.statusCode).toBe(200);
+    expect(readerStatus.json()).toEqual(status.json());
+  });
+
   hostHarperIt("runs authenticated spellcheck through the optional host service", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Server spellcheck" } });
     const response = await app.inject({

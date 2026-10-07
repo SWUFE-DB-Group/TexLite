@@ -822,6 +822,12 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .settings-tab:focus-visible { outline: 2px solid #176b44; outline-offset: 1px; }
 .settings-actions { display: flex; width: 100%; justify-content: flex-end; padding-top: 2px; }
 .settings-section-title { display: flex; align-items: center; gap: 7px; color: #31523e; font-size: 13px; }
+.dictionary-heading { flex-wrap: wrap; }
+.harper-cli-status { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border: 1px solid #d9ded9; border-radius: 999px; background: #f7f9f7; color: #6d776f; font-size: 10px; line-height: 1.2; }
+.harper-cli-status.available { border-color: #bddbc7; background: #f0f8f2; color: #187348; }
+.harper-cli-status.error { border-color: #e7beb9; background: #fff3f1; color: #a3342c; }
+.harper-cli-status button { display: grid; place-items: center; width: 18px; height: 18px; min-height: 18px; padding: 0; border: 0; background: transparent; color: inherit; }
+.harper-cli-status button:hover { background: #0000000d; }
 .settings-description { margin: 0; color: #7b837e; font-size: 11px; line-height: 1.45; }
 .browser-tool-statuses { display: flex; flex-wrap: wrap; gap: 7px; }
 .browser-tool-status { min-width: 116px; flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 8px 9px; border: 1px solid #d9ded9; border-radius: 7px; background: #f7f9f7; color: #6d776f; font-size: 10px; }

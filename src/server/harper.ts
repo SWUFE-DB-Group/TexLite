@@ -167,6 +167,18 @@ export class HarperService {
     await this.ensureAvailable();
   }
 
+  /** Availability probe only; does not run a writing check or join its queue. */
+  async isAvailable(): Promise<boolean> {
+    if (this.disposed) return false;
+    try {
+      await this.ensureAvailable();
+      return !this.disposed;
+    } catch (error) {
+      if (error instanceof HarperUnavailableError) return false;
+      throw error;
+    }
+  }
+
   /**
    * Schedule one host-side check. A lane represents one browser page's
    * current file, so an edit can replace only its own stale waiting request

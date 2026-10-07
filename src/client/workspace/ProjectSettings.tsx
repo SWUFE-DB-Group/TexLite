@@ -56,6 +56,8 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const [error, setError] = useState("");
   const [dictionaryValue, setDictionaryValue] = useState("");
   const [dictionaryError, setDictionaryError] = useState("");
+  const [harperCliStatus, setHarperCliStatus] = useState<"checking" | "available" | "unavailable" | "error">("checking");
+  const [harperProbeToken, setHarperProbeToken] = useState(0);
   const [settingsTab, setSettingsTab] = useState<"appearance" | "compiler">("appearance");
   const [appearancePreferences, setAppearancePreferences] = useState(editorPreferences);
   const texFmtStatus = useSyncExternalStore(texFmtToolStatus.subscribe, texFmtToolStatus.getSnapshot, texFmtToolStatus.getSnapshot);
@@ -71,6 +73,19 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     // Opening settings eagerly initializes the browser formatter Worker.
     void preloadTexFmt().catch(texFmtToolStatus.failed);
   }, [projectId]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setHarperCliStatus("checking");
+    void api<{ available: boolean }>(`/api/projects/${projectId}/spellcheck/status`, { signal: controller.signal })
+      .then((result) => {
+        if (!controller.signal.aborted) setHarperCliStatus(result.available ? "available" : "unavailable");
+      })
+      .catch(() => {
+        // A network/authentication error is not evidence of a missing CLI.
+        if (!controller.signal.aborted) setHarperCliStatus("error");
+      });
+    return () => controller.abort();
+  }, [projectId, harperProbeToken]);
   const reloadTexFmtRuntime = () => {
     void reloadTexFmt().catch(texFmtToolStatus.failed);
   };
@@ -215,7 +230,11 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         <p className="field-hint">{t("projectSettings.texFmtOptionsDescription")}</p>
       </div>
       {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.writingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("chktex.noIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
-      <div className="settings-section-title"><BookOpen size={15} /><strong>{t("projectSettings.dictionary")}</strong></div>
+      <div className="settings-section-title dictionary-heading"><BookOpen size={15} /><strong>{t("projectSettings.dictionary")}</strong><span className={`harper-cli-status ${harperCliStatus}`} role="status" aria-live="polite">
+        {harperCliStatus === "checking" ? <LoaderCircle className="spin" size={12} aria-hidden="true" /> : harperCliStatus === "available" ? <CheckCircle2 size={12} aria-hidden="true" /> : <AlertCircle size={12} aria-hidden="true" />}
+        <span>Harper CLI · {t(`projectSettings.harperCliStatus.${harperCliStatus}`)}</span>
+        {(harperCliStatus === "error" || harperCliStatus === "unavailable") && <button type="button" title={t("projectSettings.harperCliRetry")} aria-label={t("projectSettings.harperCliRetry")} onClick={() => setHarperProbeToken((value) => value + 1)}><RefreshCw size={12} /></button>}
+      </span></div>
       <p className="settings-description">{t("projectSettings.dictionaryDescription")}</p>
       {dictionaryError && <p className="error dictionary-error">{dictionaryError}</p>}
       {canManageDictionary && <div className="dictionary-add"><input value={dictionaryValue} placeholder={t("projectSettings.dictionaryPlaceholder")} onChange={(event) => setDictionaryValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addDictionaryWord(); } }} /><button type="button" disabled={!dictionaryValue.trim()} onClick={() => void addDictionaryWord()}>{t("projectSettings.addWord")}</button></div>}
