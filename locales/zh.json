@@ -123,9 +123,9 @@
   },
   "closing": {
     "kicker": "为下一篇论文准备",
-    "title": "为下一篇论文，留一片空间。",
-    "lead": "属于你和团队的写作空间，运行在自己的服务器上。开源，也由你定义。",
-    "button": "在 GitHub 查看 TexLite"
+    "title": "一起写出精彩！",
+    "lead": "由研究者打造，为研究者而设。开源、自托管的团队写作空间。",
+    "button": "在 GitHub 为 TexLite 加星"
   },
   "footer": { "tagline": "轻量、自托管、可协作的 LaTeX 工作台", "license": "AGPL-3.0-only" }
 }
