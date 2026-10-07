@@ -850,6 +850,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .settings .editor-checkbox input { width: auto; margin: 0; accent-color: #176b44; }
 .spell-check-result { display: inline-flex; align-items: center; gap: 6px; color: #66716a; font-size: 11px; }
 .spell-check-result.has-issues { color: #a3342c; font-weight: 650; }
+.settings .editor-preference .spell-check-result { margin: 4px 9px 0; flex-wrap: wrap; }
 .spell-check-controls { display: inline-flex; align-items: center; gap: 2px; margin-left: 3px; color: #6f4a45; font-weight: 500; }
 .spell-check-controls button { width: 24px; height: 24px; display: inline-grid; place-items: center; border: 1px solid #d7b8b4; border-radius: 4px; padding: 0; background: #fff8f7; color: #8e4a42; }
 .spell-check-controls button:hover:not(:disabled) { border-color: #b98279; background: #fce9e6; }
