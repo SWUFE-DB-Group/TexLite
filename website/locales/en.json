@@ -123,9 +123,9 @@
   },
   "closing": {
     "kicker": "Ready for the next paper",
-    "title": "Your next paper starts here.",
-    "lead": "A writing space for your team, on your own server. Open source, and yours to make your own.",
-    "button": "View TexLite on GitHub"
+    "title": "Let’s write something great!",
+    "lead": "Built by researchers, for researchers. A self-hosted, open-source writing space for your team.",
+    "button": "Star TexLite on GitHub"
   },
   "footer": { "tagline": "A lightweight, self-hosted, collaborative LaTeX workspace", "license": "AGPL-3.0-only" }
 }

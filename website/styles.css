@@ -164,7 +164,7 @@ h2 { margin: 0; font: 400 clamp(30px, 3vw, 43px)/1.25 var(--serif); letter-spaci
 .closing-mark img { width: 58px; height: 58px; opacity: .8; }
 .closing-section h2 { max-width: 700px; font-size: clamp(36px, 4.2vw, 58px); color: var(--green); }
 :root[lang="zh-CN"] .closing-section h2 { font-size: clamp(32px, 3.4vw, 48px); }
-.closing-section > p:not(.section-kicker) { max-width: 480px; margin: 24px 0 28px; color: var(--muted); font-size: 14px; line-height: 1.85; }
+.closing-section > p:not(.section-kicker) { max-width: 650px; margin: 24px 0 28px; color: var(--muted); font-size: 14px; line-height: 1.85; }
 .site-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 20px; padding: 24px 0 30px; border-top: 1px solid var(--ink); color: var(--muted); font-size: 10px; line-height: 1.7; }
 .site-footer > div { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
 .site-footer strong { color: var(--ink); font: 600 18px/1 var(--serif); }
