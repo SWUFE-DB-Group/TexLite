@@ -203,11 +203,9 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.lineWrapping} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineWrapping: event.target.checked })} /><WrapText size={15} /><span>{t("projectSettings.lineWrapping")}</span></label>
       <div className="editor-preference">
         <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.showTooltips} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, showTooltips: event.target.checked })} /><MessageCircleQuestion size={15} /><span>{t("projectSettings.showTooltips")}</span></label>
-        <p className="field-hint">{t("projectSettings.showTooltipsDescription")}</p>
       </div>
       <div className="editor-preference">
         <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.mathPreviewOnHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, mathPreviewOnHover: event.target.checked })} /><Sigma size={15} /><span>{t("projectSettings.mathPreviewOnHover")}</span></label>
-        <p className="field-hint">{t("projectSettings.mathPreviewOnHoverDescription")}</p>
       </div>
       <div className="editor-preference">
         <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><span>{t("projectSettings.spellCheck")}</span></label>
@@ -220,11 +218,10 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       </div>
       <div className="editor-preference">
         <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.openFilesInTabs} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, openFilesInTabs: event.target.checked })} /><PanelsTopLeft size={15} /><span>{t("projectSettings.openFilesInTabs")}</span></label>
-        <p className="field-hint">{t("projectSettings.openFilesInTabsDescription")}</p>
       </div>
       <div className="editor-preference">
         <label className="editor-checkbox"><input type="checkbox" disabled={!canEdit} checked={appearancePreferences.formatOnCompile} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, formatOnCompile: event.target.checked })} /><AlignLeft size={15} /><span>{t("projectSettings.formatOnCompile")}</span></label>
-        <p className="field-hint">{t(canEdit ? "projectSettings.formatOnCompileDescription" : "projectSettings.formatRequiresWrite")} {t("projectSettings.formatterDescription")} <a href="https://www.npmjs.com/package/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a> · <a href="https://github.com/FlamingTempura/bibtex-tidy" target="_blank" rel="noreferrer">{t("projectSettings.bibtexTidyInstall")}</a></p>
+        <p className="field-hint">{t("projectSettings.formatterDescription")} <a href="https://www.npmjs.com/package/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a> · <a href="https://github.com/FlamingTempura/bibtex-tidy" target="_blank" rel="noreferrer">{t("projectSettings.bibtexTidyInstall")}</a>{!canEdit && <> {t("projectSettings.formatRequiresWrite")}</>}</p>
       </div>
       <div className="editor-preference">
         <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
