@@ -6,6 +6,8 @@ import type { DatabaseConnection, ProjectRow } from "./db.js";
 import { assertNoSourceSymlinks, listProjectFiles, outputRoot, projectRoot, resolveSourcePath, safeRelativePath, sourceRoot } from "./files.js";
 import { httpError } from "./http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
+import { isUtf8 } from "node:buffer";
+import { isHistoryTextFile } from "../shared/historyFiles.js";
 
 export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
 
@@ -127,7 +129,9 @@ export class ProjectHistoryService {
     }
 
     const changedPaths = previousManifest ? changedManifestPaths(previousManifest, manifest) : Object.keys(manifest.files).sort();
-    if (previousManifest && changedPaths.length === 0 && JSON.stringify(previousManifest.settings) === JSON.stringify(manifest.settings)) {
+    // Settings alone do not create a file-history entry. Keep the baseline
+    // current so the next real file change captures the effective settings.
+    if (changedPaths.length === 0) {
       this.saveBaseline(projectId, manifest);
       return null;
     }
@@ -162,7 +166,8 @@ export class ProjectHistoryService {
   list(projectId: string, limit = 100): HistoryVersion[] {
     const rows = this.db.prepare(`SELECT history.*, user.username AS author_username, user.display_name AS author_name
       FROM project_history_versions history LEFT JOIN users user ON user.id = history.author_id
-      WHERE history.project_id = ? ORDER BY history.created_at DESC, history.rowid DESC LIMIT ?`)
+      WHERE history.project_id = ? AND json_array_length(history.changed_paths_json) > 0
+      ORDER BY history.created_at DESC, history.rowid DESC LIMIT ?`)
       .all(projectId, Math.min(200, Math.max(1, limit))) as HistoryListRow[];
     return rows.map((row) => versionJson(row));
   }
@@ -187,7 +192,7 @@ export class ProjectHistoryService {
     const rows = this.db.prepare(`SELECT history.*, history.rowid AS history_rowid,
       user.username AS author_username, user.display_name AS author_name
       FROM project_history_versions history LEFT JOIN users user ON user.id = history.author_id
-      WHERE history.project_id = ? ${cursorFilter}
+      WHERE history.project_id = ? AND json_array_length(history.changed_paths_json) > 0 ${cursorFilter}
       ORDER BY history.created_at DESC, history.rowid DESC LIMIT ?`)
       .all(...values) as HistoryPageRow[];
     const pageRows = rows.slice(0, limitValue);
@@ -320,7 +325,8 @@ export class ProjectHistoryService {
   previousVersion(projectId: string, versionId: string): HistoryVersion | null {
     const row = this.db.prepare(`SELECT older.id FROM project_history_versions older
       JOIN project_history_versions selected ON selected.id = ? AND selected.project_id = older.project_id
-      WHERE older.project_id = ? AND (older.created_at < selected.created_at
+      WHERE older.project_id = ? AND json_array_length(older.changed_paths_json) > 0
+        AND (older.created_at < selected.created_at
         OR (older.created_at = selected.created_at AND older.rowid < selected.rowid))
       ORDER BY older.created_at DESC, older.rowid DESC LIMIT 1`).get(versionId, projectId) as { id: string } | undefined;
     return row ? this.version(row.id, projectId) : null;
@@ -334,6 +340,7 @@ export class ProjectHistoryService {
 
   readTextFile(projectId: string, versionId: string, filePathInput: string): string | null {
     const filePath = safeRelativePath(filePathInput);
+    if (!isHistoryTextFile(filePath)) return null;
     const entry = this.manifest(projectId, versionId)?.files[filePath];
     if (!entry || entry.size > MAX_TEXT_PREVIEW_BYTES) return null;
     return this.readStoredObject(projectId, entry.digest, filePath);
@@ -453,9 +460,10 @@ export class ProjectHistoryService {
    * that operational failure distinct from an absent path in the snapshot so
    * the UI can tell the user why viewing or restoring it is impossible.
    */
-  private readStoredObject(projectId: string, digest: string, filePath: string): string {
+  private readStoredObject(projectId: string, digest: string, filePath: string): string | null {
     try {
-      return fs.readFileSync(this.objectPath(projectId, digest), "utf8");
+      const bytes = fs.readFileSync(this.objectPath(projectId, digest));
+      return !bytes.includes(0) && isUtf8(bytes) ? bytes.toString("utf8") : null;
     } catch (error) {
       this.rethrowHistoryObjectError(error, filePath);
     }

@@ -130,7 +130,7 @@ export interface HistoryVersion {
 export interface HistoryVersionDetail {
   version: HistoryVersion;
   settings: { mainFile: string; engine: Project["engine"]; latexmkrc: string | null; chktexEnabled?: boolean };
-  files: Array<{ path: string; size: number }>;
+  files: Array<{ path: string; size: number; deleted?: boolean }>;
 }
 
 /** A cursor page from the immutable project-snapshot timeline. */

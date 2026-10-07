@@ -277,22 +277,58 @@ describe("project history retention", () => {
     expect(stats.versionCount).toBeLessThan(6);
   });
 
-  it("bounds metadata even when settings-only snapshots reuse all file objects", () => {
+  it("does not save settings-only snapshots and captures settings with the next file change", () => {
     const fixture = createFixture({ maxVersions: 0, maxStorageBytes: 3_000 });
     fixture.history.record(fixture.projectId, "user-1", "initial");
     for (let index = 0; index < 30; index++) {
       fixture.db.prepare("UPDATE projects SET latexmkrc = ? WHERE id = ?").run(String(index % 2), fixture.projectId);
-      fixture.history.record(fixture.projectId, "user-1", "settings", []);
+      expect(fixture.history.record(fixture.projectId, "user-1", "settings", [])).toBeNull();
     }
     const stats = fixture.history.stats(fixture.projectId);
     expect(stats.objectBytes).toBe(5);
     expect(stats.metadataBytes).toBeGreaterThan(0);
     expect(stats.totalBytes).toBe(stats.metadataBytes + stats.objectBytes);
     expect(stats.totalBytes).toBeLessThanOrEqual(3_000);
-    expect(stats.versionCount).toBeLessThan(31);
+    expect(stats.versionCount).toBe(1);
     expect(stats.protectedBytes).toBeLessThanOrEqual(stats.totalBytes);
+    writeSource(fixture, "main.tex", "changed");
+    const next = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!;
+    expect(fixture.history.manifest(fixture.projectId, next.id)?.settings.latexmkrc).toBe("1");
     fixture.history.clear(fixture.projectId);
     expect(fixture.history.stats(fixture.projectId)).toMatchObject({ totalBytes: 0, metadataBytes: 0, protectedBytes: 0 });
+  });
+
+  it("hides existing empty snapshots without losing pagination or previous-version lookup", () => {
+    const fixture = createFixture();
+    const initial = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    // Simulate a settings-only snapshot written by an older TexLite release.
+    fixture.db.prepare(`INSERT INTO project_history_versions
+      (id, project_id, author_id, reason, manifest_json, changed_paths_json, created_at)
+      SELECT 'legacy-empty', project_id, author_id, 'settings', manifest_json, '[]', created_at
+      FROM project_history_versions WHERE id = ?`).run(initial.id);
+    writeSource(fixture, "main.tex", "next");
+    const next = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!;
+    expect(fixture.history.list(fixture.projectId).map(version => version.id)).toEqual([next.id, initial.id]);
+    const newest = fixture.history.listPage(fixture.projectId, 1);
+    const oldest = fixture.history.listPage(fixture.projectId, 1, newest.nextCursor!);
+    expect(newest.versions.map(version => version.id)).toEqual([next.id]);
+    expect(oldest.versions.map(version => version.id)).toEqual([initial.id]);
+    expect(oldest.nextCursor).toBeNull();
+    expect(fixture.history.previousVersion(fixture.projectId, next.id)?.id).toBe(initial.id);
+  });
+
+  it("does not decode attachments as text, but preserves their recoverable contents", () => {
+    const fixture = createFixture();
+    const pdf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0xff, 0x00]);
+    fs.writeFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"), pdf);
+    fs.writeFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "binary.txt"), Buffer.from([0xff, 0xfe]));
+    const version = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    expect(fixture.history.readTextFile(fixture.projectId, version.id, "figure.pdf")).toBeNull();
+    expect(fixture.history.readTextFile(fixture.projectId, version.id, "binary.txt")).toBeNull();
+    expect(fixture.history.readTextFile(fixture.projectId, version.id, "main.tex")).toBe("A");
+    fs.writeFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"), "modified");
+    fixture.history.restore(fixture.projectId, version.id, "figure.pdf");
+    expect(fs.readFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"))).toEqual(pdf);
   });
 
   it("coalesces different authors within one project window without attributing the snapshot to one author", () => {

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { isUtf8 } from "node:buffer";
 import type { FastifyInstance } from "fastify";
 import { requireUser } from "../auth.js";
 import type { Config } from "../config.js";
@@ -10,6 +11,7 @@ import { HISTORY_RETENTION_DELAY_MS } from "../historyRetention.js";
 import { resolveSourcePath, safeRelativePath } from "../files.js";
 import { apiError, httpError } from "../http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "../limits.js";
+import { isHistoryTextFile } from "../../shared/historyFiles.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import {
@@ -120,7 +122,10 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     return {
       version,
       settings: manifest.settings,
-      files: Object.entries(manifest.files).map(([filePath, file]) => ({ path: filePath, size: file.size })).sort((left, right) => left.path.localeCompare(right.path))
+      files: [
+        ...Object.entries(manifest.files).map(([filePath, file]) => ({ path: filePath, size: file.size })),
+        ...version.changedPaths.filter((filePath) => !manifest.files[filePath]).map((filePath) => ({ path: filePath, size: 0, deleted: true }))
+      ].sort((left, right) => left.path.localeCompare(right.path))
     };
   });
 
@@ -132,17 +137,32 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     const query = request.query as { path?: string; against?: string };
     const filePath = safeRelativePath(query.path ?? "");
     return await projectMutations.runConsistentRead(id, () => {
-      const historical = history.readTextFile(id, versionId, filePath);
+      const manifest = history.manifest(id, versionId);
+      const version = history.version(versionId, id);
+      if (!manifest || !version) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND");
+      if (!manifest.files[filePath] && !version.changedPaths.includes(filePath)) return apiError(reply, 404, "HISTORY_FILE_NOT_FOUND");
+      // Never decode attachment bytes as UTF-8, including direct API calls.
+      if (!isHistoryTextFile(filePath)) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
+      const historical = manifest.files[filePath] ? history.readTextFile(id, versionId, filePath) : "";
       if (historical === null) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
       let comparison = "";
       const previousVersion = query.against === "__previous__" ? history.previousVersion(id, versionId) : null;
       const against = query.against === "__previous__" ? previousVersion?.id ?? "__none__" : query.against;
       if (query.against) {
-        comparison = history.readTextFile(id, against!, filePath) ?? "";
+        const comparisonManifest = history.manifest(id, against!);
+        if (against !== "__none__" && !comparisonManifest) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND");
+        if (comparisonManifest?.files[filePath]) {
+          const text = history.readTextFile(id, against!, filePath);
+          if (text === null) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
+          comparison = text;
+        }
       } else {
         const current = resolveSourcePath(config, id, filePath);
-        if (fs.existsSync(current) && fs.statSync(current).isFile() && fs.statSync(current).size <= MAX_TEXT_PREVIEW_BYTES) {
-          comparison = fs.readFileSync(current, "utf8");
+        if (fs.existsSync(current) && fs.statSync(current).isFile()) {
+          if (fs.statSync(current).size > MAX_TEXT_PREVIEW_BYTES) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
+          const bytes = fs.readFileSync(current);
+          if (bytes.includes(0) || !isUtf8(bytes)) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
+          comparison = bytes.toString("utf8");
         }
       }
       return { path: filePath, historical, comparison, against: against ?? "current", previousVersion };

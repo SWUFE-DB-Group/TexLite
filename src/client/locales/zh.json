@@ -251,7 +251,7 @@
     "title": "历史", "projectSnapshots": "项目快照", "projectSnapshotsButton": "项目快照", "description": "浏览自动项目快照、比较文件，并安全恢复较早的工作。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",
     "changedCount": "{{count}} 个文件有变化", "fileCount": "{{count}} 个文件", "changed": "有修改", "labelPlaceholder": "为此版本命名", "saveLabel": "保存标签",
     "compareCurrent": "与当前版本比较", "comparingCurrent": "历史快照与当前文件的比较", "chooseFile": "选择文件后，可与当前源码进行比较。",
-    "changedFilesHeading": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "historicalVersion": "历史快照", "currentVersion": "当前版本",
+    "changedFilesHeading": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "nonTextFileChanged": "非文本文件已变更：{{path}}，不展示文本差异。", "nonTextFileDeleted": "非文本文件已删除：{{path}}。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "historicalVersion": "历史快照", "currentVersion": "当前版本",
     "diffMode": "对比模式", "diffModeCommit": "本次修改", "diffModeCommitHint": "查看此快照相比上一快照的改动", "diffModeCurrent": "与当前对比", "diffModeCurrentHint": "查看此快照与当前工作区源码的差异", "changedAt": "修改于 {{time}}", "createdAt": "创建于 {{time}}", "previousVersion": "上一快照",
     "restore": "恢复", "restoreFile": "恢复文件", "restoreProject": "恢复项目", "restoreFileTitle": "恢复此文件", "restoreProjectTitle": "恢复此项目快照",
     "restoreFileDescription": "从此快照恢复 {{path}}？系统会先为当前项目创建安全检查点。", "restoreProjectDescription": "恢复此快照的全部源码和编译器设置？系统会先为当前项目创建安全检查点。",

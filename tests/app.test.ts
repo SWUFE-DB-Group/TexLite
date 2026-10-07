@@ -921,6 +921,35 @@ Copied source.
     expect(fs.existsSync(path.join(config.projectsDir, copy.id, "output", ".texlite", "history"))).toBe(true);
   });
 
+  it("skips settings-only snapshots, summarizes attachments and compares deleted text files", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Snapshot attachments" } });
+    const projectId = created.json().project.id as string;
+    const getVersions = async () => (await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie } })).json().versions;
+    const original = await getVersions();
+    const configured = await app.inject({ method: "PATCH", url: `/api/projects/${projectId}`, headers: { cookie }, payload: { chktexEnabled: true } });
+    expect(configured.statusCode).toBe(200);
+    expect((await getVersions()).map((version: { id: string }) => version.id)).toEqual(original.map((version: { id: string }) => version.id));
+
+    const pdf = multipartBody("figure.pdf", Buffer.from("%PDF-1.7\nnon-text document"));
+    expect((await app.inject({ method: "POST", url: `/api/projects/${projectId}/upload`, headers: { cookie, "content-type": `multipart/form-data; boundary=${pdf.boundary}` }, payload: pdf.body })).statusCode).toBe(201);
+    const withPdf = (await getVersions())[0];
+    expect(withPdf.changedPaths).toContain("figure.pdf");
+    const unsupported = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history/${withPdf.id}/file?path=figure.pdf`, headers: { cookie } });
+    expect(unsupported.statusCode).toBe(415);
+    expect(unsupported.json().code).toBe("HISTORY_FILE_PREVIEW_UNSUPPORTED");
+    expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/file?path=figure.pdf`, headers: { cookie } })).statusCode).toBe(200);
+    const deletedPdf = (await getVersions())[0];
+    const detail = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history/${deletedPdf.id}`, headers: { cookie } });
+    expect(detail.json().files).toContainEqual({ path: "figure.pdf", size: 0, deleted: true });
+
+    expect((await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie }, payload: { path: "notes.txt", content: "previous notes" } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/file?path=notes.txt`, headers: { cookie } })).statusCode).toBe(200);
+    const deletedText = (await getVersions())[0];
+    const comparison = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history/${deletedText.id}/file?path=notes.txt&against=__previous__`, headers: { cookie } });
+    expect(comparison.statusCode).toBe(200);
+    expect(comparison.json()).toMatchObject({ historical: "", comparison: "previous notes" });
+  });
+
   it("searches included files and restores automatic project history", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "History paper" } });
     const projectId = created.json().project.id as string;

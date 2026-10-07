@@ -202,6 +202,16 @@ column; their tooltips remain enabled independently of the interface-tooltip
 preference. Opening selection history captures the file, selected range, and
 source together, including before the lazily loaded dialog mounts.
 
+Recovery snapshots are created only for actual file additions, changes, or
+deletions. Settings-only changes update the persistence baseline without adding
+a timeline entry; effective compiler settings are captured with the next file
+change. Older zero-file-change entries are excluded from timeline pagination and
+previous-version comparisons, but are not automatically purged. Non-text
+attachments remain in snapshots for recovery and are shown as a compact change
+notice, without requesting or decoding their contents for a diff. Source and
+ordinary text/data formats support bounded UTF-8 comparisons, including file
+deletions; invalid or oversized text is reported as unavailable, not as unchanged.
+
 After a source write succeeds, connection-originated Yjs text deltas are also
 stored as ordered edit segments. Each segment belongs to exactly one user, one
 file, and one operation type (`edit` or `format`). The edit records store only

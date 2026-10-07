@@ -8,6 +8,7 @@ import { ApiError, api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { formatCommitTime, formatVersionTitle, generateUnifiedDiff } from "./diff";
 import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
+import { isHistoryTextFile } from "../shared/historyFiles";
 
 interface HistoryComparison {
   path: string;
@@ -147,24 +148,29 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     const controller = new AbortController();
     setBusy("detail"); setComparison(null);
     void api<HistoryVersionDetail>(`/api/projects/${project.id}/history/${selectedId}`, { signal: controller.signal }).then((result) => {
+      if (controller.signal.aborted) return;
       setDetail(result);
       setLabel(result.version.label ?? "");
       const preferred = result.version.changedPaths.find((filePath) => result.files.some((file) => file.path === filePath)) ?? "";
       setSelectedPath(preferred);
-    }).catch((reason) => { if (!isAbort(reason)) setError(message(reason)); })
-      .finally(() => { if (!controller.signal.aborted) setBusy(""); });
+    }).catch((reason) => { if (!controller.signal.aborted && !isAbort(reason)) setError(message(reason)); })
+      .finally(() => { if (!controller.signal.aborted) setBusy((current) => current === "detail" ? "" : current); });
     return () => controller.abort();
   }, [open, project.id, selectedId]);
 
   const previousVersion = comparison?.previousVersion ?? null;
+  const selectedTextFile = isHistoryTextFile(selectedPath);
+  const selectedFileDeleted = detail?.files.find((file) => file.path === selectedPath)?.deleted === true;
 
   useEffect(() => {
-    if (!open || !selectedId || !selectedPath) {
+    if (!open || !selectedId || !selectedPath || !selectedTextFile) {
       preserveErrorForComparisonRef.current = false;
       setComparison(null);
+      setBusy((current) => current === "compare" ? "" : current);
       return;
     }
     const controller = new AbortController();
+    setComparison(null);
     setBusy("compare");
     const preserveError = preserveErrorForComparisonRef.current;
     preserveErrorForComparisonRef.current = false;
@@ -177,16 +183,16 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       { signal: controller.signal }
     )
       .then((res) => {
-        setComparison(res);
+        if (!controller.signal.aborted) setComparison(res);
       })
       .catch((reason) => {
-        if (!isAbort(reason)) setError(message(reason));
+        if (!controller.signal.aborted && !isAbort(reason)) setError(message(reason));
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy((current) => (current === "compare" ? "" : current));
       });
     return () => controller.abort();
-  }, [open, project.id, selectedId, selectedPath, diffMode, comparisonRevision]);
+  }, [open, project.id, selectedId, selectedPath, selectedTextFile, diffMode, comparisonRevision]);
 
   const changedFiles = useMemo(() => {
     if (!detail) return [];
@@ -444,14 +450,14 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                     </button>
                   ))}</div>
                   {canRestore && <div className="history-file-actions">
-                    <button type="button" disabled={!selectedPath || controlsBusy} title={t("history.restoreFileTitle")} onClick={() => setRestoreTarget(selectedPath)}><RotateCcw size={13} />{t("history.restoreFile")}</button>
+                    <button type="button" disabled={!selectedPath || selectedFileDeleted || controlsBusy} title={t("history.restoreFileTitle")} onClick={() => setRestoreTarget(selectedPath)}><RotateCcw size={13} />{t("history.restoreFile")}</button>
                   </div>}
                 </div>
               ) : (
                 <p className="muted padded-small">{t("history.noChangedFiles")}</p>
               )}
             </div>
-            <div ref={diffSectionRef} className={`history-comparison${diffFullscreen ? " is-fullscreen" : ""}`}>
+            {selectedPath && !selectedTextFile ? <p className="history-attachment-change"><FileText size={14} /><span>{t(selectedFileDeleted ? "history.nonTextFileDeleted" : "history.nonTextFileChanged", { path: selectedPath })}</span></p> : <div ref={diffSectionRef} className={`history-comparison${diffFullscreen ? " is-fullscreen" : ""}`}>
               {selectedPath ? <>
                 <header>
                   <div className="history-comparison-meta">
@@ -502,6 +508,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                   </div>
                 </header>
                 {busy === "compare" && !comparison ? <div className="history-comparison-empty"><LoaderCircle className="spin" size={24} /><span>{t("common.loading")}</span></div>
+                  : !comparison ? <div className="history-comparison-empty"><FileText size={24} /><span>{t("apiErrors.historyPreviewUnsupported")}</span></div>
                   : !diffResult.hasChanges ? <div className="git-diff-empty history-diff-empty"><CheckCircle2 size={24} /><span>{diffMode === "commit" ? t("history.noDifferencesInCommit") : t("history.noDifferences")}</span></div>
                     : <pre className="git-diff history-git-diff" style={{ fontSize: `${diffFontSize}px` }}>{diffResult.diffText.split("\n").map((line, index) => {
                       const tone = line.startsWith("+") && !line.startsWith("+++") ? "addition"
@@ -511,7 +518,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                       return <span className={tone} key={index}>{line}{"\n"}</span>;
                     })}</pre>}
               </> : <div className="history-comparison-empty"><FileClock size={25} /><span>{changedFiles.length === 0 ? t("history.noChangedFiles") : t("history.chooseFile")}</span></div>}
-            </div>
+            </div>}
           </>}
         </section>
       </div>}
