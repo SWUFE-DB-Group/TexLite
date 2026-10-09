@@ -1424,12 +1424,12 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         jumpToSource={jumpToSource} onSetCleanMode={setCleanMode} cleanCompile={cleanCompile}
         viewArtifact={viewArtifact}
       />}
-      <WorkspaceContextPanel
+      <WorkspaceContextPanel key={projectId}
         sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
         site={site} files={files} currentUserId={user.id} comments={reviewComments} commentsLoading={reviewCommentsLoading}
         commentsError={reviewCommentsError} onRetryComments={retryReviewComments} activeFile={activeFile}
         hasProjectCommentsScope={hasProjectCommentsScope} commentScope={commentScope} onCommentScopeChange={setCommentScope}
-        focusedCommentId={focusComment?.id} onClearFocusComment={() => setFocusComment(null)} unreadMentions={unreadMentions}
+        focusedCommentId={focusComment?.id} onClearFocusComment={() => { setFocusComment(null); setTargetMention(null); }} unreadMentions={unreadMentions}
         onMarkMentionRead={markVisibleMentionRead} onMarkAllMentionsRead={markAllVisibleMentionsRead}
         targetCommentId={targetMention?.commentId} targetReplyId={targetMention?.replyId}
         onFocusComment={focusReviewComment} onToggleComment={toggleComment}

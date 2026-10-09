@@ -166,6 +166,32 @@ to source comments. Comments are anchored to source offsets and selected text,
 can be resolved, edited, deleted, and replied to. If an author is removed,
 the record remains visible as “Deleted User”.
 
+The comment drawer sorts top-level threads by source position by default
+(file path, then position within that file), or by creation time, newest first.
+Replies keep their original chronological order. Participant filtering is
+multi-select: a thread matches any selected author, including reply authors
+unless “Top-level comments only” is checked. It combines with the existing
+file/project scope, resolution status, and an independent unread-@-me toggle.
+The unread toggle intersects with Open or Resolved rather than forming a third
+resolution state; reading all mentions in a thread removes it from that filtered
+queue. Only matching authors' display names and usernames are highlighted;
+the thread/reply surfaces and the rest of the discussion stay unchanged. Explicit source or
+mention navigation can still reveal a thread outside the active filters;
+changing filters clears that temporary focus. Sorting and filtering run locally
+on the already-loaded comment resource, without additional server requests.
+The participant selector uses a non-modal, anchored Radix popover so it does not
+push the discussion down. Selections apply immediately without closing the
+popover; outside interaction or Escape dismisses it. Its trigger summarizes the
+selected authors and provides a separate clear action. A top-level-only filter
+remains visible in the toolbar after dismissal; clearing the participant filter
+also resets that restriction.
+Open/Resolved and previous/next navigation appear beneath the drawer title.
+A separator distinguishes the toolbar below: participants, unread @ mentions,
+then neutral-colored source-position/newest-first sorting. Source excerpts use
+monospaced, single-line truncated blocks with a green edge; replies use a thin
+gray indentation rule. Author-only edit/delete actions live in each comment or
+reply's header menu, with deletion still requiring confirmation.
+
 The collaboration service uses a versioned handshake and a versioned epoch
 marker. When a browser from an incompatible release connects, it is forced to
 reload before it can decode or send source updates. Protocol-only migrations

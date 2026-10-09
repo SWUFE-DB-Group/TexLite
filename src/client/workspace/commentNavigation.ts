@@ -1,16 +1,57 @@
-import type { Comment, CommentMention } from "../types";
+import type { Comment, CommentMention, CommentReply } from "../types";
 
 /** The source range represented by the comments review drawer. */
 export type CommentReviewScope = "file" | "project";
 
-/** A deliberately small review queue: open work, personal notifications, or completed work. */
-export type CommentReviewFilter = "unresolved" | "mentions" | "resolved";
+/** Resolution status is independent from the unread-mention filter. */
+export type CommentReviewFilter = "unresolved" | "resolved";
+export type CommentReviewSort = "source" | "time";
+export type CommentParticipant = Pick<CommentReply, "authorId" | "authorUsername" | "authorDisplayName">;
 
 export interface CommentReviewOptions {
   activeFile: string;
   scope: CommentReviewScope;
   filter: CommentReviewFilter;
   unreadMentions: readonly CommentMention[];
+  sort?: CommentReviewSort;
+  participantIds?: ReadonlySet<string | null>;
+  topLevelOnly?: boolean;
+  unreadMentionsOnly?: boolean;
+}
+
+/** Null authors are grouped as Deleted User, consistently with thread display. */
+export function collectCommentParticipants(comments: readonly Comment[]): CommentParticipant[] {
+  const participants = new Map<string | null, CommentParticipant>();
+  for (const comment of comments) {
+    for (const author of [comment, ...comment.replies]) {
+      if (!participants.has(author.authorId)) {
+        participants.set(author.authorId, {
+          authorId: author.authorId,
+          authorUsername: author.authorUsername,
+          authorDisplayName: author.authorDisplayName
+        });
+      }
+    }
+  }
+  return [...participants.values()].sort((a, b) =>
+    (a.authorDisplayName ?? a.authorUsername ?? "").localeCompare(b.authorDisplayName ?? b.authorUsername ?? ""));
+}
+
+/** Multi-select is OR within participants, AND with scope and status. */
+export function commentMatchesParticipants(comment: Comment, options: Pick<CommentReviewOptions, "participantIds" | "topLevelOnly">): boolean {
+  const selected = options.participantIds;
+  if (!selected?.size) return true;
+  return selected.has(comment.authorId)
+    || (!options.topLevelOnly && comment.replies.some((reply) => selected.has(reply.authorId)));
+}
+
+/** Sort threads only; never reorder or mutate replies (or the input resource). */
+export function sortReviewComments(comments: readonly Comment[], sort: CommentReviewSort = "source"): Comment[] {
+  return [...comments].sort((a, b) => {
+    if (sort === "time") return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+    return a.filePath.localeCompare(b.filePath, "en", { numeric: true })
+      || a.startLine - b.startLine || a.startOffset - b.startOffset;
+  });
 }
 
 /** Whether a thread belongs to the source range currently being reviewed. */
@@ -21,23 +62,26 @@ export function commentMatchesReviewScope(comment: Comment, options: Pick<Commen
 /** Whether a thread belongs in the selected status queue. */
 export function commentMatchesReviewFilter(
   comment: Comment,
-  filter: CommentReviewFilter,
-  unreadMentions: readonly CommentMention[]
+  filter: CommentReviewFilter
 ): boolean {
-  if (filter === "unresolved") return !comment.resolved;
-  if (filter === "resolved") return comment.resolved;
-  return unreadMentions.some((mention) => mention.commentId === comment.id);
+  return filter === "unresolved" ? !comment.resolved : comment.resolved;
+}
+
+/** Notifications, not textual @ tokens or all past mentions. */
+export function commentHasUnreadMention(comment: Comment, unreadMentions: readonly CommentMention[]): boolean {
+  return unreadMentions.some((mention) => mention.commentId === comment.id && mention.readAt === null);
 }
 
 /**
  * Keep the review queue deterministic and independent from the drawer UI.
- * `mentions` means an unread root- or reply-mention for the current user,
- * rather than a textual search for an at-sign.
+ * The unread-only toggle intersects with status, scope and participant filters.
  */
 export function filterCommentsForReview(comments: readonly Comment[], options: CommentReviewOptions): Comment[] {
   return comments.filter((comment) => {
     return commentMatchesReviewScope(comment, options)
-      && commentMatchesReviewFilter(comment, options.filter, options.unreadMentions);
+      && commentMatchesParticipants(comment, options)
+      && commentMatchesReviewFilter(comment, options.filter)
+      && (!options.unreadMentionsOnly || commentHasUnreadMention(comment, options.unreadMentions));
   });
 }
 
@@ -53,11 +97,13 @@ export function buildVisibleReviewQueue(
   revealedCommentIds: readonly (string | null | undefined)[] = []
 ): Comment[] {
   const revealed = new Set(revealedCommentIds.filter((id): id is string => Boolean(id)));
-  return comments.filter((comment) => {
+  return sortReviewComments(comments.filter((comment) => {
     if (!commentMatchesReviewScope(comment, options)) return false;
     return revealed.has(comment.id)
-      || commentMatchesReviewFilter(comment, options.filter, options.unreadMentions);
-  });
+      || (commentMatchesParticipants(comment, options)
+        && commentMatchesReviewFilter(comment, options.filter)
+        && (!options.unreadMentionsOnly || commentHasUnreadMention(comment, options.unreadMentions)));
+  }), options.sort);
 }
 
 /** Keep source decorations strictly tied to the editor's current file. */
@@ -95,10 +141,9 @@ export function resolvePendingCommentFocus(
 /** Whether toggling a thread would make it disappear from the active queue. */
 export function shouldRevealAfterCommentToggle(
   comment: Comment,
-  filter: CommentReviewFilter,
-  unreadMentions: readonly CommentMention[]
+  filter: CommentReviewFilter
 ): boolean {
-  return !commentMatchesReviewFilter({ ...comment, resolved: !comment.resolved }, filter, unreadMentions);
+  return !commentMatchesReviewFilter({ ...comment, resolved: !comment.resolved }, filter);
 }
 
 /** Return the one-based visual position of a focused thread, or zero if none is visible. */
