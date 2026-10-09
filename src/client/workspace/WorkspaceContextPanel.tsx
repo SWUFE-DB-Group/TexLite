@@ -38,6 +38,7 @@ export interface WorkspaceContextPanelProps {
   commentScope: CommentReviewScope;
   onCommentScopeChange: (scope: CommentReviewScope) => void;
   focusedCommentId?: string | null;
+  commentFocusNonce?: number;
   onClearFocusComment: () => void;
   unreadMentions: CommentMention[];
   onMarkMentionRead: (mentionId: string) => Promise<boolean>;
@@ -64,7 +65,7 @@ export interface WorkspaceContextPanelProps {
 
 export function WorkspaceContextPanel({
   sidePanel, onClose, project, projectId, site, files, currentUserId, comments, commentsLoading, commentsError, onRetryComments, unreadMentions,
-  activeFile, hasProjectCommentsScope, commentScope, onCommentScopeChange, focusedCommentId, onMarkMentionRead, onMarkAllMentionsRead,
+  activeFile, hasProjectCommentsScope, commentScope, onCommentScopeChange, focusedCommentId, commentFocusNonce, onMarkMentionRead, onMarkAllMentionsRead,
   onClearFocusComment,
   targetCommentId, targetReplyId, onFocusComment,
   onToggleComment, onReplyComment, onEditComment, onDeleteComment, onEditCommentReply,
@@ -113,12 +114,13 @@ export function WorkspaceContextPanel({
     }
   }, [commentScope, hasProjectCommentsScope, onClearFocusComment, onCommentScopeChange]);
   useEffect(() => {
+    if (sidePanel !== "comments") return;
     const selector = targetCommentId && targetReplyId
-      ? `[data-comment-reply-id="${targetReplyId}"]`
+      ? `.comments [data-comment-reply-id="${targetReplyId}"]`
       : targetCommentId
-        ? `[data-comment-id="${targetCommentId}"]`
+        ? `.comments .comment-thread[data-comment-id="${targetCommentId}"]`
         : currentCommentId
-          ? `[data-comment-id="${currentCommentId}"]`
+          ? `.comments .comment-thread[data-comment-id="${currentCommentId}"]`
           : "";
     if (!selector) return;
     // Comment ids are server-generated UUIDs, so an attribute selector needs
@@ -129,7 +131,7 @@ export function WorkspaceContextPanel({
       block: targetCommentId ? "center" : "nearest", behavior: "smooth"
     }));
     return () => window.cancelAnimationFrame(frame);
-  }, [currentCommentId, targetCommentId, targetReplyId, visibleComments]);
+  }, [sidePanel, currentCommentId, commentFocusNonce, targetCommentId, targetReplyId, visibleComments]);
 
   const focusReviewComment = (comment: Comment) => {
     if (revealedCommentId !== comment.id) setRevealedCommentId(null);

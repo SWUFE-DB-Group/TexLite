@@ -156,6 +156,7 @@
   },
   "chktex": { "recoveryTitle": "ChkTeX is unavailable.", "recoveryHint": " Check that the ChkTeX package is installed on the server, then retry. You can turn this setting off if it is not available.", "unavailable": "ChkTeX is not installed or cannot run on this server. Install the TeX Live chktex package and try again.", "enabled": "Run ChkTeX writing checks", "description": "After you stop editing for 2 seconds, TexLite runs the optional host ChkTeX command. Results use a blue-gray wavy underline. Up to 8 checks run at once across the server.", "noIssues": "No writing issues found." },
   "editor": {
+    "openSourceComment": "View this source comment",
     "commentSortSourceShort": "Position",
     "commentSortTimeShort": "Newest",
     "commentUnreadMentionsOnly": "Unread",

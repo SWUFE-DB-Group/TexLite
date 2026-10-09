@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { Annotation, Compartment, EditorState, Facet, Prec, type Range, StateEffect, StateField, Transaction } from "@codemirror/state";
 import {
   Decoration, type DecorationSet, EditorView, keymap,
-  highlightActiveLine, drawSelection, highlightSpecialChars, ViewPlugin, type ViewUpdate, WidgetType
+  highlightActiveLine, drawSelection, highlightSpecialChars, ViewPlugin, type ViewUpdate
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
@@ -29,6 +29,7 @@ import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexFold } from "./latexFolding";
 import { latexCompletions } from "./latexCompletions";
 import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
+import { setSourceComments, sourceCommentDecorations, sourceCommentMarksForFile } from "./sourceCommentDecorations";
 import { findLatexReferences, type LatexReference } from "../shared/latexReferences";
 import {
   LatexReferenceViewportCache,
@@ -74,15 +75,6 @@ export interface SpellCheckJump {
   nonce: number;
 }
 
-interface CommentMark {
-  id: string;
-  from: number;
-  to: number;
-  resolved: boolean;
-  orphaned: boolean;
-}
-
-const setCommentMarks = StateEffect.define<CommentMark[]>();
 const externalDocumentUpdate = Annotation.define<boolean>();
 
 interface VimHistoryCommands {
@@ -103,18 +95,6 @@ Vim.defineAction("texliteRedo", (cm) => {
 });
 Vim.mapCommand("u", "action", "texliteUndo", {}, { context: "normal" });
 Vim.mapCommand("<C-r>", "action", "texliteRedo", {}, { context: "normal" });
-
-const commentMarks = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update(value, transaction) {
-    let mapped = value.map(transaction.changes);
-    for (const effect of transaction.effects) {
-      if (effect.is(setCommentMarks)) mapped = buildCommentDecorations(effect.value, transaction.state.doc.length);
-    }
-    return mapped;
-  },
-  provide: (field) => EditorView.decorations.from(field)
-});
 
 const setSpellCheckIssues = StateEffect.define<SpellCheckIssue[]>();
 const spellCheckIssueMarks = StateField.define<DecorationSet>({
@@ -349,7 +329,9 @@ export function LatexEditor({
         isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : latexLanguage, syntaxHighlighting(defaultHighlightStyle),
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),
         ...(isBibtexFile ? [] : [bracketMatching(), ...(isBstFile ? [] : [Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexSkippedBracePair, latexFold])]),
-        closeBrackets(), indentOnInput(), commentMarks, spellCheckIssueMarks, activeSpellCheckIssueMarks,
+        closeBrackets(), indentOnInput(), sourceCommentDecorations({
+          label: t("editor.openSourceComment"), onOpen: (id) => onCommentClickRef.current(id)
+        }), spellCheckIssueMarks, activeSpellCheckIssueMarks,
         referenceNavigation.current.of(isBstFile ? [] : referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))),
         ...(isBstFile ? [] : [latexReferenceMarks]),
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
@@ -385,11 +367,6 @@ export function LatexEditor({
           },
           mouseleave(_event, editor) {
             editor.dom.classList.remove("cm-reference-navigation-active");
-            return false;
-          },
-          click(event) {
-            const element = (event.target as HTMLElement).closest<HTMLElement>("[data-comment-id]");
-            if (element?.dataset.commentId) onCommentClickRef.current(element.dataset.commentId);
             return false;
           },
           contextmenu(event) {
@@ -439,7 +416,7 @@ export function LatexEditor({
     });
     view.current = new EditorView({ state, parent: host.current });
     syncVimStatus(view.current, preferences.vimMode);
-    view.current.dispatch({ effects: setCommentMarks.of(toMarks(comments, filePath)) });
+    view.current.dispatch({ effects: setSourceComments.of(sourceCommentMarksForFile(comments, filePath)) });
     return () => {
       vimStatusCleanup.current?.();
       vimStatusCleanup.current = null;
@@ -505,7 +482,7 @@ export function LatexEditor({
   }, [value, collaboration]);
 
   useEffect(() => {
-    view.current?.dispatch({ effects: setCommentMarks.of(toMarks(comments, filePath)) });
+    view.current?.dispatch({ effects: setSourceComments.of(sourceCommentMarksForFile(comments, filePath)) });
   }, [comments, filePath]);
 
   useEffect(() => {
@@ -693,40 +670,4 @@ function buildSpellCheckIssueDecorations(issues: SpellCheckIssue[], documentLeng
       "data-spell-to": String(issue.to)
     }
   }).range(issue.from, issue.to)), true);
-}
-
-function toMarks(comments: Comment[], filePath: string): CommentMark[] {
-  return comments.filter((comment) => comment.filePath === filePath).map((comment) => ({
-    id: comment.id, from: comment.startOffset, to: comment.endOffset,
-    resolved: comment.resolved, orphaned: comment.orphaned
-  }));
-}
-
-function buildCommentDecorations(marks: CommentMark[], documentLength: number): DecorationSet {
-  // Resolved discussions remain available in the comments panel, but should
-  // leave the source completely unmarked so finished work reads normally.
-  const ranges = marks.filter((mark) => !mark.orphaned && !mark.resolved).flatMap((mark) => {
-    const from = Math.max(0, Math.min(documentLength, mark.from));
-    const to = Math.max(from, Math.min(documentLength, mark.to));
-    const className = "cm-source-comment";
-    if (from === to) {
-      return [Decoration.widget({ widget: new CommentPin(mark.id, className), side: 1 }).range(from)];
-    }
-    return [
-      Decoration.mark({ class: className }).range(from, to),
-      Decoration.widget({ widget: new CommentPin(mark.id, className), side: 1 }).range(to)
-    ];
-  });
-  return Decoration.set(ranges, true);
-}
-
-class CommentPin extends WidgetType {
-  constructor(private readonly id: string, private readonly className: string) { super(); }
-  toDOM(): HTMLElement {
-    const pin = document.createElement("span");
-    pin.className = `${this.className} cm-comment-pin`;
-    pin.dataset.commentId = this.id;
-    pin.textContent = "●";
-    return pin;
-  }
 }

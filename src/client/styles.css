@@ -599,7 +599,9 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .cm-bibtex-tooltip-example-inline { margin-top: 7px; color: #40584a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .cm-bibtex-tooltip-note { margin-top: 7px; color: #5e685f; font-size: 11px; }
 .cm-source-comment { background: #ffe49b99; border-bottom: 2px solid #d68b00; cursor: text; }
-.cm-comment-pin { color: #d68b00; font-size: 9px; padding: 0 2px; cursor: pointer; }
+.editor-host .cm-comment-pin { display: inline-block; min-width: 14px; margin: 0; padding: 0 2px; border: 0; border-radius: 3px; background: transparent; color: #d68b00; font: inherit; font-size: 11px; line-height: inherit; vertical-align: baseline; cursor: pointer; }
+.editor-host .cm-comment-pin:hover { background: #ffe49b; color: #965e00; }
+.editor-host .cm-comment-pin:focus-visible { outline: 2px solid #d68b00; outline-offset: 1px; }
 .editor-host .cm-lineNumbers { min-width: calc(3.16em + 11px); }
 .cm-selection-line-actions { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; }
 .editor-host .cm-lineNumbers .cm-selection-action-button { width: 1.58em; height: 1.58em; display: inline-grid; place-items: center; margin: 0; padding: 0; border: 0; border-radius: 5px; background: #e1f2e7; color: #12653d; cursor: pointer; vertical-align: middle; box-shadow: 0 1px 2px #176b4420; }

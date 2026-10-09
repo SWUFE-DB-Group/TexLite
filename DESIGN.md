@@ -191,6 +191,12 @@ then neutral-colored source-position/newest-first sorting. Source excerpts use
 monospaced, single-line truncated blocks with a green edge; replies use a thin
 gray indentation rule. Author-only edit/delete actions live in each comment or
 reply's header menu, with deletion still requiring confirmation.
+Clicking unresolved annotated source or its trailing marker opens and scrolls
+the corresponding thread into view, temporarily revealing it across review
+filters without marking mentions as read. This drawer-only navigation does not
+select the annotated source range or take over the editor caret; dragging to
+select text and modifier-click citation navigation keep their normal behavior.
+Resolved and orphaned threads have no source markers.
 
 The collaboration service uses a versioned handshake and a versioned epoch
 marker. When a browser from an incompatible release connects, it is forced to

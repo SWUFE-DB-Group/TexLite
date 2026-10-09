@@ -152,6 +152,7 @@
   },
   "chktex": { "recoveryTitle": "ChkTeX 不可用。", "recoveryHint": " 请确认服务器已安装 ChkTeX，然后重试；如果暂时无法安装，也可以关闭此设置。", "unavailable": "服务器未安装 ChkTeX，或 ChkTeX 当前无法运行。请在服务器安装 TeX Live 的 chktex 包后重试。", "enabled": "启用 ChkTeX 写作检查", "description": "停止编辑 2 秒后，TexLite 会调用宿主机上可选的 ChkTeX 命令。结果使用蓝灰色波浪线标记；整个服务器同时最多运行 8 个检查。", "noIssues": "未发现写作问题。" },
   "editor": {
+    "openSourceComment": "查看此处的源码批注",
     "commentSortSourceShort": "位置",
     "commentSortTimeShort": "最新",
     "commentUnreadMentionsOnly": "未读",
