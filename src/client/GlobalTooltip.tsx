@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-type TooltipPlacement = "above" | "below";
+type TooltipPlacement = "above";
 
 interface TooltipState {
   text: string;
@@ -25,8 +25,7 @@ export function globalTooltipPosition(rect: TooltipRect, viewportWidth: number):
   const preferredHalfWidth = Math.min(160, Math.max(16, (viewportWidth - 16) / 2));
   const center = rect.left + rect.width / 2;
   const left = Math.max(preferredHalfWidth, Math.min(center, viewportWidth - preferredHalfWidth));
-  const placement: TooltipPlacement = rect.top >= 64 ? "above" : "below";
-  return { left, top: placement === "above" ? rect.top - 8 : rect.bottom + 8, placement };
+  return { left, top: rect.top - 8, placement: "above" };
 }
 
 function tooltipText(element: HTMLElement): string | null {
@@ -76,7 +75,18 @@ function restoreNativeTitle(element: HTMLElement | null): void {
  */
 export function GlobalTooltip() {
   const active = useRef<HTMLElement | null>(null);
+  const tooltipElement = useRef<HTMLDivElement | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+
+  useLayoutEffect(() => {
+    if (!tooltip || !tooltipElement.current) return;
+    // Keep the above placement, but prevent controls near the viewport's top
+    // edge from putting the text off-screen. Measure wrapped text as well.
+    const minimumTop = tooltipElement.current.getBoundingClientRect().height + 8;
+    if (tooltip.top < minimumTop) {
+      setTooltip((current) => current === tooltip ? { ...tooltip, top: minimumTop } : current);
+    }
+  }, [tooltip]);
 
   useEffect(() => {
     let pointerTarget: HTMLElement | null = null;
@@ -196,5 +206,5 @@ export function GlobalTooltip() {
   }, []);
 
   if (!tooltip) return null;
-  return <div id="texlite-global-tooltip" role="tooltip" className={`global-tooltip ${tooltip.placement}`} style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.text}</div>;
+  return <div ref={tooltipElement} id="texlite-global-tooltip" role="tooltip" className={`global-tooltip ${tooltip.placement}`} style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.text}</div>;
 }

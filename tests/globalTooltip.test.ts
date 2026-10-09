@@ -7,9 +7,9 @@ describe("global tooltip placement", () => {
       .toEqual({ placement: "above", top: 232, left: 160 });
   });
 
-  it("falls back below controls too close to the viewport top", () => {
+  it("keeps the above placement for controls close to the viewport top", () => {
     expect(globalTooltipPosition({ top: 18, bottom: 42, left: 0, width: 24 }, 320))
-      .toEqual({ placement: "below", top: 50, left: 152 });
+      .toEqual({ placement: "above", top: 10, left: 152 });
   });
 
   it("keeps explicitly essential tooltips enabled when the workspace opts out", () => {
