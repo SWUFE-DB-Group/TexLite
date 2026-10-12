@@ -15,6 +15,13 @@ The grammar and tokenizer are covered by AGPL-3.0; see the repository's
   the grammar. Development web startup, web builds, and tests generate them.
 - `index.ts` supplies TexLite-specific highlighting, folding, and language
   data without importing Overleaf's application modules.
+- `highlighting.ts` defines semantic highlight tags and visible-tree
+  decorations. LaTeX uses its own palette, not CodeMirror's default colors;
+  CSS variables in `styles.css` control commands, environments, reference
+  keys, special characters, comments, brackets, and raw-text backgrounds.
+  Math command accents use existing syntax nodes without tinting whole regions, while
+  comment task markers inspect only visible comment text. This layer does
+  not force additional parsing or scan a whole-document source string.
 - `context.ts` provides cursor-local region and completion-argument context.
   It queries the current tree, allowing at most five milliseconds of catch-up
   parsing, and reports an unknown region when no reliable tree is available.

@@ -3,6 +3,7 @@ import type { EditorState } from "@codemirror/state";
 import type { SyntaxNode } from "@lezer/common";
 import { styleTags, tags } from "@lezer/highlight";
 import { parser } from "./latex.mjs";
+import { latexHighlightTags } from "./highlighting";
 
 function sectionFold(node: SyntaxNode, state: EditorState) {
   const content = node.getChild("Content");
@@ -34,8 +35,14 @@ function environmentFold(node: SyntaxNode, state: EditorState) {
 
 // Derive generic token groups from the grammar instead of copying Overleaf's
 // application-specific tree-query helpers and node properties.
-const commandTokens = parser.nodeSet.types.filter((type) => /CtrlSeq$/.test(type.name)).map((type) => type.name).join(" ");
-const symbolTokens = parser.nodeSet.types.filter((type) => /CtrlSym$/.test(type.name)).map((type) => type.name).join(" ");
+const structuralTokens = new Set([
+  "Begin", "End", "BookCtrlSeq", "PartCtrlSeq", "ChapterCtrlSeq", "SectionCtrlSeq",
+  "SubSectionCtrlSeq", "SubSubSectionCtrlSeq", "ParagraphCtrlSeq", "SubParagraphCtrlSeq",
+  "DocumentClassCtrlSeq", "UsePackageCtrlSeq", "InputCtrlSeq", "IncludeCtrlSeq"
+]);
+const mathDelimiterTokens = new Set(["Dollar", "OpenParenCtrlSym", "CloseParenCtrlSym", "OpenBracketCtrlSym", "CloseBracketCtrlSym"]);
+const commandTokens = parser.nodeSet.types.filter((type) => /CtrlSeq$/.test(type.name) && !structuralTokens.has(type.name)).map((type) => type.name).join(" ");
+const symbolTokens = parser.nodeSet.types.filter((type) => /CtrlSym$/.test(type.name) && !mathDelimiterTokens.has(type.name)).map((type) => type.name).join(" ");
 const environmentTokens = parser.nodeSet.types.filter((type) => /EnvName$/.test(type.name)).map((type) => type.name).join(" ");
 
 /** Structural editor parser; project symbol extraction stays independent. */
@@ -51,19 +58,20 @@ export const latexLanguage = LRLanguage.define({
     styleTags({
       [commandTokens]: tags.tagName,
       [symbolTokens]: tags.escape,
-      [environmentTokens]: tags.attributeValue,
-      "CtrlSeq Csname Begin End": tags.tagName,
-      "DocumentClassCtrlSeq UsePackageCtrlSeq CiteCtrlSeq CiteStarrableCtrlSeq RefCtrlSeq RefStarrableCtrlSeq LabelCtrlSeq": tags.keyword,
+      [environmentTokens]: latexHighlightTags.environment,
+      "CtrlSeq Csname": tags.tagName,
+      [[...structuralTokens].join(" ")]: tags.keyword,
+      "SectioningArgument/...": latexHighlightTags.heading,
       "OpenBrace CloseBrace": tags.brace,
       "OpenBracket CloseBracket": tags.squareBracket,
-      "Math MathChar MathSpecialChar Number": tags.string,
-      "Dollar OpenParenMath CloseParenMath OpenBracketMath CloseBracketMath": tags.string,
-      "Tilde Ampersand LineBreakCtrlSym MacroParameter": tags.keyword,
+      [[...mathDelimiterTokens].join(" ")]: latexHighlightTags.mathDelimiter,
+      "Tilde Ampersand LineBreakCtrlSym MacroParameter": tags.escape,
       Comment: tags.comment,
-      "LiteralArgContent VerbContent VerbatimContent LstInlineContent": tags.string,
+      "VerbContent VerbatimContent LstInlineContent": latexHighlightTags.literal,
+      "NewCommand/LiteralArgContent RenewCommand/LiteralArgContent": tags.tagName,
+      "NewEnvironment/LiteralArgContent RenewEnvironment/LiteralArgContent": latexHighlightTags.environment,
       "LabelArgument/ShortTextArgument/ShortArg/... RefArgument/ShortTextArgument/ShortArg/... BibKeyArgument/ShortTextArgument/ShortArg/...": tags.attributeValue,
       "UrlArgument/LiteralArgContent": tags.url,
-      "FilePathArgument/LiteralArgContent BareFilePathArgument/SpaceDelimitedLiteralArgContent": tags.attributeValue,
       "DocumentClassArgument/ShortTextArgument/ShortArg/...": tags.typeName,
       "PackageArgument/ShortTextArgument/ShortArg/...": tags.namespace,
       TrailingContent: tags.comment

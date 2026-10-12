@@ -322,6 +322,15 @@ legacy `stex` stream mode. Grammar sources, local compatibility changes, and
 build instructions live in `src/client/latex/README.md`; attribution is recorded
 in `THIRD_PARTY_NOTICES.md`. The parser recognizes command arguments, math,
 sections, and environments, with incremental tree reuse during editing.
+LaTeX has a CSS-variable-based semantic palette separate from BibTeX/BST:
+teal commands, uniformly blue environment names, muted deep-blue reference keys, rose
+special characters, gray comments and brackets, and purple math delimiters
+and commands. Ordinary math contents and numbers retain the prose color.
+Math regions have no background tint. Visible syntax-tree decorations accent
+math commands and emphasize TODO/FIXME inside comments; literal content uses
+a neutral background.
+They update after document, viewport, or syntax-tree changes without forcing
+parsing or introducing another full-source regular-expression lexer.
 Local changes preserve TexLite's literal forms, spaced environment commands,
 internal macro names, and macro parameters. Incomplete source is recovered for
 editor use; recovery nodes are not treated as compiler errors. Environment

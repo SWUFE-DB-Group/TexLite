@@ -3,6 +3,15 @@
   color: #202421;
   background: #f3f4f1;
   font-synthesis: none;
+  --tl-cmd: #0B7A5E;
+  --tl-env: #1D5FBF;
+  --tl-math: #6D28D9;
+  --tl-key: #245F87;
+  --tl-task: #9A5B00;
+  --tl-special: #B0307A;
+  --tl-comment: #6B7280;
+  --tl-bracket: #5B6470;
+  --tl-literal-bg: #F3F4F6;
 }
 
 * { box-sizing: border-box; }
@@ -571,10 +580,19 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .editor-host .cm-spell-error { text-decoration: underline wavy #c53b32 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
 .editor-host .cm-grammar-warning { text-decoration: underline wavy #d19a26 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
 .editor-host .cm-latex-writing-issue { text-decoration: underline wavy #718596 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
-.editor-host .cm-latex-citation-key { color: #176b8f; text-decoration: underline dotted #6da9c4 1px; text-decoration-skip-ink: none; text-underline-offset: 2px; }
-.editor-host .cm-latex-label-key { color: #7650a0; text-decoration: underline dotted #af90c5 1px; text-decoration-skip-ink: none; text-underline-offset: 2px; }
-.editor-host .cm-editor.cm-reference-navigation-active .cm-latex-citation-key { border-radius: 2px; background: #dceff8; box-shadow: inset 0 -1px #5d9fbe; cursor: pointer; }
-.editor-host .cm-editor.cm-reference-navigation-active .cm-latex-label-key { border-radius: 2px; background: #f0e6f7; box-shadow: inset 0 -1px #a485ba; cursor: pointer; }
+.editor-host .cm-tl-command { color: var(--tl-cmd); }
+.editor-host .cm-tl-structure { color: var(--tl-cmd); font-weight: 600; }
+.editor-host .cm-tl-environment { color: var(--tl-env); }
+.editor-host .cm-tl-heading { font-weight: 600; }
+.editor-host .cm-tl-bracket { color: var(--tl-bracket); font-weight: 400; }
+.editor-host .cm-tl-special { color: var(--tl-special); }
+.editor-host .cm-tl-key { color: var(--tl-key); }
+.editor-host .cm-tl-comment { color: var(--tl-comment); font-style: normal; font-weight: 400; }
+.editor-host .cm-tl-literal { color: inherit; background: var(--tl-literal-bg); font-weight: 400; }
+.editor-host .cm-tl-math-delimiter, .editor-host .cm-tl-math-command, .editor-host .cm-tl-math-command .cm-tl-command { color: var(--tl-math); }
+.editor-host .cm-tl-comment-task, .editor-host .cm-tl-comment-task .cm-tl-comment { color: var(--tl-task); font-weight: 600; }
+.editor-host .cm-latex-citation-key, .editor-host .cm-latex-label-key { color: var(--tl-key); text-decoration: underline dotted color-mix(in srgb, var(--tl-key) 45%, transparent) 1px; text-decoration-skip-ink: none; text-underline-offset: 2px; }
+.editor-host .cm-editor.cm-reference-navigation-active :is(.cm-latex-citation-key, .cm-latex-label-key) { border-radius: 2px; background: color-mix(in srgb, var(--tl-key) 10%, white); box-shadow: inset 0 -1px var(--tl-key); cursor: pointer; }
 .spell-suggestions-menu { position: fixed; z-index: 1200; display: flex; min-width: 190px; max-width: 250px; flex-direction: column; gap: 3px; padding: 7px; border: 1px solid #b9c8bd; border-radius: 7px; background: #fff; box-shadow: 0 10px 28px #1930222e; color: #26352c; font-size: 12px; }
 .spell-suggestions-title { padding: 3px 6px 5px; color: #607067; font-size: 10px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
 .spell-suggestions-message { padding: 3px 6px 6px; border-bottom: 1px solid #e2e8e3; color: #58685e; font-size: 11px; line-height: 1.4; }
