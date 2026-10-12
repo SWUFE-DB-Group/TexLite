@@ -74,6 +74,15 @@ suppress suggestions, while argument and closing-delimiter boundaries resume
 normal completion. Candidate indexes, snippets, and insertion/pair-reuse
 behavior are unchanged. Reference decorations and navigation still use the
 shared scanner; they have not yet been migrated to tree queries.
+The reference-mark view plugin owns a prefix cache and a cancellable 120 ms
+debounce for edits and new viewport coverage. Unaffected visible marks are
+retained during typing; potentially invalid suffix marks disappear immediately,
+while syntax colors remain tree-driven. Deferred results are document-identity
+checked. Clicks during the debounce revalidate the selected reference, and
+destroying or disabling a view cancels its pending work.
+Auto-pair input handlers first reuse their line-local environment/delimiter
+predicates. Ordinary input does not flatten the document; real candidates still
+perform the full literal-context and existing-end checks.
 When recovery moves an unfinished known-environment end name outside its
 argument node, an adjacent recovered marker permits the same bounded fallback.
 Completed environments and ordinary prose do not enable this recovery path.

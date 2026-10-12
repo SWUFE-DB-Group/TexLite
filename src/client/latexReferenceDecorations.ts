@@ -18,15 +18,32 @@ export type LatexReferenceScanner = (source: string) => LatexReference[];
 export class LatexReferenceViewportCache {
   private document: Text | null = null;
   private references: readonly LatexReference[] = [];
+  private scannedTo = -1;
 
   constructor(private readonly scan: LatexReferenceScanner = findLatexReferences) {}
 
   referencesFor(document: Text): readonly LatexReference[] {
+    return this.referencesThrough(document, document.length);
+  }
+
+  /** Scan only the prefix needed for a viewport, extending coverage as needed. */
+  referencesThrough(document: Text, to: number): readonly LatexReference[] {
+    to = Math.max(0, Math.min(to, document.length));
     if (document !== this.document) {
       this.document = document;
-      this.references = this.scan(document.toString());
+      this.references = [];
+      this.scannedTo = -1;
+    }
+    if (to > this.scannedTo) {
+      const references = this.scan(document.sliceString(0, to));
+      this.references = references;
+      this.scannedTo = to;
     }
     return this.references;
+  }
+
+  cachedThrough(document: Text, to: number): readonly LatexReference[] | null {
+    return document === this.document && to <= this.scannedTo ? this.references : null;
   }
 
   referencesIn(document: Text, windows: readonly ReferenceScanWindow[]): LatexReference[] {
@@ -36,6 +53,7 @@ export class LatexReferenceViewportCache {
   clear(): void {
     this.document = null;
     this.references = [];
+    this.scannedTo = -1;
   }
 }
 

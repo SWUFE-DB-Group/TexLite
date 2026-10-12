@@ -31,12 +31,8 @@ import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
 import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
 import { setSourceComments, sourceCommentDecorations, sourceCommentMarksForFile } from "./sourceCommentDecorations";
-import { findLatexReferences, type LatexReference } from "../shared/latexReferences";
-import {
-  LatexReferenceViewportCache,
-  referenceScanWindows,
-  visibleLatexReferences
-} from "./latexReferenceDecorations";
+import type { LatexReference } from "../shared/latexReferences";
+import { latexReferenceMarks, referenceNavigationSettings, type ReferenceNavigationSettings } from "./latexReferenceMarks";
 import type { SpellCheckIssue } from "./spellCheck";
 export type { SpellCheckIssue } from "./spellCheck";
 
@@ -129,117 +125,6 @@ const activeSpellCheckIssueMarks = StateField.define<DecorationSet>({
   },
   provide: (field) => EditorView.decorations.from(field)
 });
-
-interface ReferenceNavigationSettings {
-  enabled: boolean;
-  title: (reference: LatexReference) => string;
-}
-
-const noReferenceNavigation: ReferenceNavigationSettings = {
-  enabled: false,
-  title: () => ""
-};
-
-const referenceNavigationSettings = Facet.define<ReferenceNavigationSettings, ReferenceNavigationSettings>({
-  combine: (values) => values.at(-1) ?? noReferenceNavigation
-});
-
-/**
- * Decorate only the visible editor region. The scanner still starts at the
- * document prefix so literal environments retain their state; Ctrl/Cmd-click
- * performs the authoritative project-wide target lookup.
- */
-const latexReferenceMarks = ViewPlugin.fromClass(class {
-  decorations: DecorationSet;
-  private cache: LatexReferenceViewportCache | null = null;
-  private viewportDocument: EditorState["doc"] | null = null;
-  private viewportChanges = 0;
-  private scrollTop: number;
-  private scrollLeft: number;
-
-  constructor(private readonly view: EditorView) {
-    this.scrollTop = view.scrollDOM.scrollTop;
-    this.scrollLeft = view.scrollDOM.scrollLeft;
-    this.decorations = buildReferenceDecorations(view, null);
-  }
-
-  update(update: ViewUpdate): void {
-    const settingsChanged = update.startState.facet(referenceNavigationSettings) !== update.state.facet(referenceNavigationSettings);
-    if (!update.docChanged && !update.viewportChanged && !settingsChanged) return;
-    const scrollMoved = update.viewportChanged && (
-      this.view.scrollDOM.scrollTop !== this.scrollTop || this.view.scrollDOM.scrollLeft !== this.scrollLeft
-    );
-    this.scrollTop = this.view.scrollDOM.scrollTop;
-    this.scrollLeft = this.view.scrollDOM.scrollLeft;
-
-    if (update.docChanged) {
-      // Keep typing on the existing bounded prefix path. A new immutable
-      // document must not trigger a full scan simply because one character was
-      // inserted far from the viewport.
-      this.cache?.clear();
-      this.cache = null;
-      this.viewportDocument = null;
-      this.viewportChanges = 0;
-      this.decorations = buildReferenceDecorations(this.view, null);
-      return;
-    }
-
-    // A second scroll-offset change is a real navigation pattern. A viewport
-    // update can also come from reflow or wrapping, so it must not by itself
-    // promote this document to a full scan.
-    if (scrollMoved) {
-      if (this.viewportDocument !== update.state.doc) {
-        this.viewportDocument = update.state.doc;
-        this.viewportChanges = 0;
-      }
-      this.viewportChanges += 1;
-      if (this.viewportChanges >= 2) this.cache ??= new LatexReferenceViewportCache();
-    }
-    this.decorations = buildReferenceDecorations(this.view, this.cache);
-  }
-}, {
-  decorations: (plugin) => plugin.decorations
-});
-
-function buildReferenceDecorations(view: EditorView, cache: LatexReferenceViewportCache | null): DecorationSet {
-  const settings = view.state.facet(referenceNavigationSettings);
-  if (!settings.enabled || view.state.doc.length === 0) return Decoration.none;
-  const windows = referenceScanWindows(view.state.doc, view.visibleRanges);
-  // Scan from the start of the document through the visible region. A
-  // verbatim-like environment can start far above the viewport, so scanning
-  // each visible slice independently would incorrectly decorate its contents.
-  // During ordinary typing retain this bounded scan; after scrolling, the
-  // viewport cache scans the immutable document once and preserves the same
-  // literal state without repeated prefix work.
-  const visibleReferences = cache
-    ? cache.referencesIn(view.state.doc, windows)
-    : visibleLatexReferences(
-      findLatexReferences(view.state.sliceDoc(0, windows.reduce((maximum, window) => Math.max(maximum, window.to), 0))),
-      windows
-    );
-  const ranges: Range<Decoration>[] = [];
-  const seen = new Set<string>();
-  for (const reference of visibleReferences) {
-    const from = reference.from;
-    const to = reference.to;
-    const signature = [reference.kind, reference.key, String(from), String(to)].join(":");
-    if (seen.has(signature) || to <= from) continue;
-    seen.add(signature);
-    ranges.push(Decoration.mark({
-      class: reference.kind === "citation" ? "cm-latex-citation-key" : "cm-latex-label-key",
-      attributes: {
-        title: settings.title(reference),
-        spellcheck: "false",
-        "data-latex-reference-kind": reference.kind,
-        "data-latex-reference-key": reference.key,
-        "data-latex-reference-from": String(from),
-        "data-latex-reference-to": String(to),
-        "data-latex-reference-command": reference.command
-      }
-    }).range(from, to));
-  }
-  return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
-}
 
 function referenceFromElement(element: EventTarget | null): LatexReference | null {
   if (!(element instanceof HTMLElement)) return null;
@@ -355,11 +240,13 @@ export function LatexEditor({
         ...(collaboration ? [yCollab(collaboration.text, collaboration.awareness, { undoManager: collaborationUndoManager ?? false })] : []),
         EditorState.readOnly.of(readOnly), appearance.current.of(editorAppearance(preferences, nativeSpellCheck)),
         EditorView.domEventHandlers({
-          mousedown(event) {
+          mousedown(event, editor) {
             const reference = referenceFromElement(event.target);
             if (!reference || !(event.ctrlKey || event.metaKey)) return false;
+            const current = editor.plugin(latexReferenceMarks)?.resolve(reference);
+            if (!current) return false;
             event.preventDefault();
-            onReferenceNavigateRef.current(reference);
+            onReferenceNavigateRef.current(current);
             return true;
           },
           contextmenu(event) {

@@ -96,9 +96,18 @@ export function latexAutoPairAtCursor(source: string, cursor: number): LatexAuto
   return null;
 }
 
+function mayAutoPair(doc: Text, cursor: number, text: string): boolean {
+  const line = doc.lineAt(cursor);
+  const context = lineContext(line.text, cursor - line.from, text);
+  return Boolean(environmentMatch(context) || delimiterMatch(context));
+}
+
 /** Keep automatic pairs atomic for undo, collaboration and source observers. */
 export function latexAutoPairInput(view: EditorView, from: number, to: number, text: string, insert: () => Transaction): boolean {
   if (view.state.readOnly || view.composing || view.state.selection.ranges.length !== 1) return false;
+  // Ordinary prose never needs a whole-document string or literal-state scan.
+  // Reuse the exact insertion predicates before materializing global context.
+  if (from !== to || !text || !mayAutoPair(view.state.doc, from, text)) return false;
   const pair = latexAutoPair(view.state.doc.toString(), from, to, text);
   if (!pair) return false;
   const input = insert();
@@ -120,6 +129,7 @@ export const latexSkippedBracePair = EditorState.transactionFilter.of((transacti
     || transaction.startState.readOnly || transaction.newSelection.ranges.length !== 1
     || !transaction.newSelection.main.empty) return transaction;
   const cursor = transaction.newSelection.main.head;
+  if (!mayAutoPair(transaction.newDoc, cursor, "")) return transaction;
   const pair = latexAutoPairAtCursor(transaction.newDoc.toString(), cursor);
   if (!pair) return transaction;
   return [transaction, {

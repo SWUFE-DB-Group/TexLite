@@ -374,6 +374,19 @@ Incomplete end names in specialized environments also use this bounded reader
 when an adjacent recovered marker identifies the command. Environment
 completion recognizes multiline begin/end arguments and reuses existing closes
 without taking the close of a balanced outer environment.
+Reference navigation marks have a view-local prefix cache. Editing invalidates
+marks from the earliest changed line onward and retains unaffected visible
+marks with current position metadata; immediate syntax colors still come from
+Lezer. Reference scans are coalesced after 120 ms of input inactivity, and
+viewport reflow cannot bypass that delay. Stable documents reuse existing
+prefix coverage across scrolls. Pending scans are cancelled on disable/unmount,
+and their results apply only to the same immutable document. Ctrl/Cmd-click
+revalidates retained references against the current source when a scan is
+pending, including edits to later lines of multiline citation arguments.
+Automatic pairing applies its existing line-local insertion predicates before
+materializing a whole-document string. Only actual candidates need the full
+literal-state and matching-end checks; ordinary input and skipped non-candidate
+braces bypass that work without changing pairing or undo semantics.
 Completion candidates and insertion behavior, reference navigation, project
 include graphs, root detection, outline generation, and host-tool diagnostics
 retain their existing scanner and service boundaries; editor context queries

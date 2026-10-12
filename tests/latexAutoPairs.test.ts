@@ -1,10 +1,36 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { history, undo } from "@codemirror/commands";
 import { latexAutoPair, latexAutoPairAtCursor, latexAutoPairInput, latexSkippedBracePair } from "../src/client/latexAutoPairs";
 
 describe("LaTeX auto pairs", () => {
+  it("does not flatten the document for ordinary input or skipped non-candidate braces", () => {
+    const source = "Research prose.\n".repeat(20_000) + "Text }";
+    const state = EditorState.create({ doc: source, selection: { anchor: source.length - 1 }, extensions: [latexSkippedBracePair] });
+    const flatten = vi.spyOn(state.doc, "toString");
+    const view = { state, composing: false } as unknown as EditorView;
+    const insert = vi.fn();
+    expect(latexAutoPairInput(view, source.length, source.length, "x", insert)).toBe(false);
+    expect(latexAutoPairInput(view, 0, source.length, "\\begin{figure}", insert)).toBe(false);
+    state.update({ selection: { anchor: source.length }, userEvent: "input" });
+    expect(flatten).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+    flatten.mockRestore();
+  });
+
+  it("still checks whole-document literal context for real pairing candidates", () => {
+    const source = "\\begin{verbatim}\n" + "Raw.\n".repeat(200) + "\\begin{figure";
+    const state = EditorState.create({ doc: source });
+    const flatten = vi.spyOn(state.doc, "toString");
+    const insert = vi.fn();
+    const view = { state, composing: false } as unknown as EditorView;
+    expect(latexAutoPairInput(view, source.length, source.length, "}", insert)).toBe(false);
+    expect(flatten).toHaveBeenCalledTimes(1);
+    expect(insert).not.toHaveBeenCalled();
+    flatten.mockRestore();
+  });
+
   it("emits one transaction and undoes input plus auto pair together", () => {
     const source = String.raw`\left`;
     let state = EditorState.create({ doc: source, selection: { anchor: source.length }, extensions: [history()] });

@@ -13,6 +13,23 @@ function windowAround(source: string, needle: string): { from: number; to: numbe
 }
 
 describe("LaTeX reference viewport cache", () => {
+  it("reuses bounded prefix coverage and extends it only when needed", () => {
+    const source = "\\cite{first}\n" + "Paragraph.\n".repeat(600) + "\\cite{last}";
+    const state = EditorState.create({ doc: source });
+    const scan = vi.fn(findLatexReferences);
+    const cache = new LatexReferenceViewportCache(scan);
+    expect(cache.referencesThrough(state.doc, state.doc.line(1).to).map((reference) => reference.key)).toEqual(["first"]);
+    expect(scan).toHaveBeenLastCalledWith("\\cite{first}");
+    expect(cache.cachedThrough(state.doc, state.doc.line(1).to)).not.toBeNull();
+    expect(cache.cachedThrough(state.doc, source.length)).toBeNull();
+    cache.referencesThrough(state.doc, state.doc.line(1).to - 1);
+    expect(scan).toHaveBeenCalledTimes(1);
+    expect(cache.referencesFor(state.doc).map((reference) => reference.key)).toEqual(["first", "last"]);
+    expect(scan).toHaveBeenCalledTimes(2);
+    cache.clear();
+    expect(cache.cachedThrough(state.doc, 0)).toBeNull();
+  });
+
   it("scans an immutable document once across ordinary viewport changes", () => {
     const source = [
       "\\cite{intro}",
