@@ -37,8 +37,7 @@ function environmentFold(node: SyntaxNode, state: EditorState) {
 // application-specific tree-query helpers and node properties.
 const structuralTokens = new Set([
   "Begin", "End", "BookCtrlSeq", "PartCtrlSeq", "ChapterCtrlSeq", "SectionCtrlSeq",
-  "SubSectionCtrlSeq", "SubSubSectionCtrlSeq", "ParagraphCtrlSeq", "SubParagraphCtrlSeq",
-  "DocumentClassCtrlSeq", "UsePackageCtrlSeq", "InputCtrlSeq", "IncludeCtrlSeq"
+  "SubSectionCtrlSeq", "SubSubSectionCtrlSeq", "ParagraphCtrlSeq", "SubParagraphCtrlSeq"
 ]);
 const mathDelimiterTokens = new Set(["Dollar", "OpenParenCtrlSym", "CloseParenCtrlSym", "OpenBracketCtrlSym", "CloseBracketCtrlSym"]);
 const commandTokens = parser.nodeSet.types.filter((type) => /CtrlSeq$/.test(type.name) && !structuralTokens.has(type.name)).map((type) => type.name).join(" ");

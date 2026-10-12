@@ -38,16 +38,24 @@ describe("semantic LaTeX palette", () => {
 \section{中文 Introduction \textbf{heading}}
 \textbf{正文} \item \centering \arraystretch 1.2 5pt`;
     const { classesAt } = fixture(source);
-    for (const command of ["documentclass", "usepackage", "section"]) {
-      expect(classesAt(source.indexOf(`\\${command}`))).toContain("cm-tl-structure");
-    }
-    for (const command of ["textbf", "item", "centering", "arraystretch"]) {
-      expect(classesAt(source.lastIndexOf(`\\${command}`))).toContain("cm-tl-command");
+    expect(classesAt(source.indexOf("\\section"))).toContain("cm-tl-structure");
+    for (const command of ["documentclass", "usepackage", "textbf", "item", "centering", "arraystretch"]) {
+      expect(classesAt(source.lastIndexOf(`\\${command}`))).toEqual(["cm-tl-command"]);
     }
     expect(classesAt(source.indexOf("中文"))).toContain("cm-tl-heading");
     expect(classesAt(source.indexOf("正文"))).toEqual([]);
     expect(classesAt(source.indexOf("1.2"))).toEqual([]);
     expect(classesAt(source.indexOf("5pt"))).toEqual([]);
+  });
+
+  it.each(["documentclass", "usepackage", "input", "include"])("keeps configuration and inclusion command %s at ordinary weight", (command) => {
+    const source = `\\${command}{example}`;
+    expect(fixture(source).classesAt(0)).toEqual(["cm-tl-command"]);
+  });
+
+  it.each(["part", "chapter", "section", "subsection", "subsubsection", "paragraph", "subparagraph"])("emphasizes the sectioning command %s", (command) => {
+    const source = `\\${command}{Heading}`;
+    expect(fixture(source).classesAt(0)).toEqual(["cm-tl-structure"]);
   });
 
   it("gives citation and label keys the same style, separate from their braces", () => {

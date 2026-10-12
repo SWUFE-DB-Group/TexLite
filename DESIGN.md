@@ -326,6 +326,8 @@ LaTeX has a CSS-variable-based semantic palette separate from BibTeX/BST:
 teal commands, uniformly blue environment names, muted deep-blue reference keys, rose
 special characters, gray comments and brackets, and purple math delimiters
 and commands. Ordinary math contents and numbers retain the prose color.
+Only sectioning commands and `\begin`/`\end` use heavier command weight;
+configuration and inclusion commands retain ordinary weight.
 Math regions have no background tint. Visible syntax-tree decorations accent
 math commands and emphasize TODO/FIXME inside comments; literal content uses
 a neutral background.
