@@ -22,6 +22,8 @@ The grammar and tokenizer are covered by AGPL-3.0; see the repository's
   Math command accents use existing syntax nodes without tinting whole regions, while
   comment task markers inspect only visible comment text. This layer does
   not force additional parsing or scan a whole-document source string.
+  Cursor-local environment pairing accents only real matching begin/end
+  markers, excluding subsequent options and inferred recovery nodes.
 - `context.ts` provides cursor-local region and completion-argument context.
   It queries the current tree, allowing at most five milliseconds of catch-up
   parsing, and reports an unknown region when no reliable tree is available.

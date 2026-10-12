@@ -6,8 +6,8 @@ import { latexLanguage } from "../src/client/latex";
 import { latexHighlightStyle, latexSemanticDecorations } from "../src/client/latex/highlighting";
 import { literalEnvironmentNames } from "../src/shared/latexLiterals";
 
-function fixture(source: string) {
-  const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+function fixture(source: string, anchor = 0, head = anchor) {
+  const state = EditorState.create({ doc: source, selection: { anchor, head }, extensions: [latexLanguage] });
   const tree = ensureSyntaxTree(state, source.length, 200)!;
   expect(tree).not.toBeNull();
   const syntax: Array<{ from: number; to: number; classes: string }> = [];
@@ -39,7 +39,8 @@ describe("semantic LaTeX palette", () => {
 \textbf{正文} \item \centering \arraystretch 1.2 5pt`;
     const { classesAt } = fixture(source);
     expect(classesAt(source.indexOf("\\section"))).toContain("cm-tl-structure");
-    for (const command of ["documentclass", "usepackage", "textbf", "item", "centering", "arraystretch"]) {
+    expect(classesAt(source.indexOf("\\documentclass"))).toEqual(["cm-tl-structure"]);
+    for (const command of ["usepackage", "textbf", "item", "centering", "arraystretch"]) {
       expect(classesAt(source.lastIndexOf(`\\${command}`))).toEqual(["cm-tl-command"]);
     }
     expect(classesAt(source.indexOf("中文"))).toContain("cm-tl-heading");
@@ -48,9 +49,19 @@ describe("semantic LaTeX palette", () => {
     expect(classesAt(source.indexOf("5pt"))).toEqual([]);
   });
 
-  it.each(["documentclass", "usepackage", "input", "include"])("keeps configuration and inclusion command %s at ordinary weight", (command) => {
+  it.each(["usepackage", "input", "include"])("keeps configuration and inclusion command %s at ordinary weight", (command) => {
     const source = `\\${command}{example}`;
     expect(fixture(source).classesAt(0)).toEqual(["cm-tl-command"]);
+  });
+
+  it("treats documentclass as a document-start landmark without emphasizing adjacent preamble commands", () => {
+    const source = String.raw`\documentclass[11pt]{article}
+\usepackage{amsmath} \usepackage{natbib} \newcommand{\sys}{System}`;
+    const { classesAt } = fixture(source);
+    expect(classesAt(0)).toEqual(["cm-tl-structure"]);
+    for (const command of ["usepackage", "newcommand"]) {
+      expect(classesAt(source.indexOf(`\\${command}`))).toEqual(["cm-tl-command"]);
+    }
   });
 
   it.each(["part", "chapter", "section", "subsection", "subsubsection", "paragraph", "subparagraph"])("emphasizes the sectioning command %s", (command) => {
@@ -68,7 +79,16 @@ describe("semantic LaTeX palette", () => {
     expect(classesAt(source.indexOf("{smith"))).toEqual(["cm-tl-bracket"]);
   });
 
-  it("keeps declared command names teal and declared environment names blue", () => {
+  it.each(["cite", "citep", "citet", "ref", "pageref", "eqref", "autoref", "cref", "Cref", "label"])("styles only the key of %s distinctly, not the command", (command) => {
+    const source = `\\${command}{key} \\textbf{text}`;
+    const { classesAt } = fixture(source);
+    expect(classesAt(0)).toEqual(["cm-tl-command"]);
+    expect(classesAt(source.indexOf("key"))).toContain("cm-tl-key");
+    expect(classesAt(source.indexOf("\\textbf"))).toEqual(["cm-tl-command"]);
+    expect(classesAt(source.indexOf("{"))).toEqual(["cm-tl-bracket"]);
+  });
+
+  it("keeps declared command names in the ordinary command style and declared environment names in the environment style", () => {
     const source = String.raw`\newcommand{\sys}{A} \renewcommand{\arraystretch}{1.2}
 \newenvironment{custom}{before}{after} \renewenvironment{other}{before}{after}`;
     const { classesAt } = fixture(source);
@@ -100,7 +120,7 @@ x &= \frac{a}{\sqrt{b}} + \text{a \textbf{word}} \\
 \end{align}`;
     const { classesAt, marks } = fixture(source);
     const decorations = marks();
-    expect(decorations.every((range) => range.class === "cm-tl-math-command")).toBe(true);
+    expect(decorations.every((range) => ["cm-tl-math-command", "cm-tl-environment-match"].includes(range.class))).toBe(true);
     expect(classesAt(source.indexOf("align"))).toContain("cm-tl-environment");
     expect(classesAt(source.indexOf("&"))).toContain("cm-tl-special");
     const commands = decorations.filter((range) => range.class === "cm-tl-math-command").map((range) => source.slice(range.from, range.to));
@@ -113,7 +133,7 @@ x &= \frac{a}{\sqrt{b}} + \text{a \textbf{word}} \\
     const source = `\\begin{${name}}\n$ \\alpha % TODO { \\cite{key}\n\\end{${name}}\nNormal text.`;
     const { classesAt, marks } = fixture(source);
     expect(classesAt(source.indexOf("$"))).toContain("cm-tl-literal");
-    expect(marks()).toEqual([]);
+    expect(marks().every((range) => range.class === "cm-tl-environment-match")).toBe(true);
     expect(classesAt(source.indexOf("Normal"))).toEqual([]);
   });
 
@@ -139,5 +159,31 @@ x &= \frac{a}{\sqrt{b}} + \text{a \textbf{word}} \\
     expect(ranges).toEqual([{ from, to: from + 6, class: "cm-tl-math-command" }]);
     expect(toString).not.toHaveBeenCalled();
     toString.mockRestore();
+  });
+
+  it("accents only the innermost environment pair, excluding begin options and column specifications", () => {
+    const source = String.raw`\begin{table}
+\begin{tabular}[t]{ll}a & b\\\end{tabular}
+\end{table}`;
+    for (const anchor of [source.indexOf("tabular") + 2, source.lastIndexOf("tabular") + 2]) {
+      const ranges = fixture(source, anchor).marks().filter((range) => range.class === "cm-tl-environment-match");
+      expect(ranges.map((range) => source.slice(range.from, range.to))).toEqual([String.raw`\begin{tabular}`, String.raw`\end{tabular}`]);
+    }
+    expect(fixture(source, source.indexOf("a &")).marks().filter((range) => range.class === "cm-tl-environment-match")).toEqual([]);
+  });
+
+  it.each([String.raw`\begin{custom}x`, String.raw`\begin{custom}x\end{other}`, String.raw`\verb|\begin{custom}|`, "% \\begin{custom}"])("does not accent inferred, mismatched or literal environment markers: %s", (source) => {
+    expect(fixture(source, source.indexOf("custom") + 1).marks()).toEqual([]);
+  });
+
+  it("keeps environment pairing cursor-local, bounded and suppressed during selection", () => {
+    const source = "\\begin% comment\n{custom_env:1}\nx\n\\end { custom_env:1 }";
+    const { state, marks } = fixture(source, source.indexOf("custom") + 1);
+    const slice = vi.spyOn(state, "sliceDoc");
+    const viewport = { from: 0, to: source.indexOf("\nx") };
+    expect(marks([viewport]).map((range) => source.slice(range.from, range.to))).toEqual(["\\begin% comment\n{custom_env:1}"]);
+    expect(slice.mock.calls.every(([from, to]) => Number(to) - Number(from) <= 256)).toBe(true);
+    slice.mockRestore();
+    expect(fixture(source, 0, source.indexOf("\nx")).marks().filter((range) => range.class === "cm-tl-environment-match")).toEqual([]);
   });
 });

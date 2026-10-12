@@ -323,15 +323,23 @@ build instructions live in `src/client/latex/README.md`; attribution is recorded
 in `THIRD_PARTY_NOTICES.md`. The parser recognizes command arguments, math,
 sections, and environments, with incremental tree reuse during editing.
 LaTeX has a CSS-variable-based semantic palette separate from BibTeX/BST:
-teal commands, uniformly blue environment names, muted deep-blue reference keys, rose
+deep ink-blue ordinary commands, teal structure commands and environment names,
+blue reference keys, rose
 special characters, gray comments and brackets, and purple math delimiters
 and commands. Ordinary math contents and numbers retain the prose color.
-Only sectioning commands and `\begin`/`\end` use heavier command weight;
-configuration and inclusion commands retain ordinary weight.
+Sectioning commands, `\begin`/`\end`, and the document-start landmark
+`\documentclass` use heavier command weight; other configuration and inclusion
+commands retain ordinary weight.
 Math regions have no background tint. Visible syntax-tree decorations accent
 math commands and emphasize TODO/FIXME inside comments; literal content uses
 a neutral background.
-They update after document, viewport, or syntax-tree changes without forcing
+Cursor-local, real matching environment pairs use the same pale teal accent as
+matching brackets. The white editor uses ink-colored prose, quiet line numbers,
+a pale blue active line and selection, and pale yellow search matches.
+Text-color contrast on the white editor background is checked by regression
+tests against the WCAG relative-luminance formula (at least 4.5:1); line numbers
+are intentionally quieter, non-content decoration.
+They update after document, viewport, selection, or syntax-tree changes without forcing
 parsing or introducing another full-source regular-expression lexer.
 Local changes preserve TexLite's literal forms, spaced environment commands,
 internal macro names, and macro parameters. Incomplete source is recovered for
@@ -363,7 +371,7 @@ browser's built-in English spellchecker until it retries. A project owner may
 also enable the optional host `chktex` compiler setting. ChkTeX starts only
 after two seconds of editor idle time, coalesces identical source inputs, and
 uses a process-wide queue capped at eight checks across projects and users. Its
-LaTeX writing diagnostics use a blue-gray wavy underline and never replace
+LaTeX writing diagnostics use a blue-gray dotted underline and never replace
 the compile diagnostics; the setting is off by default.
 
 Formatting is independent from the editor's local appearance. A user can

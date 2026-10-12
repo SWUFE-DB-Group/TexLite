@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { Annotation, Compartment, EditorState, Facet, Prec, type Range, StateEffect, StateField, Transaction } from "@codemirror/state";
 import {
   Decoration, type DecorationSet, EditorView, keymap,
-  highlightActiveLine, drawSelection, highlightSpecialChars, ViewPlugin, type ViewUpdate
+  highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, ViewPlugin, type ViewUpdate
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
@@ -325,7 +325,7 @@ export function LatexEditor({
           onComment: (...args) => onAddCommentRef.current(...args),
           onHistory: (...args) => onSelectionHistoryRef.current(...args)
         }),
-        foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightSpecialChars(),
+        foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
         isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : latexLanguage,
         ...(isBibtexFile || isBstFile ? [syntaxHighlighting(defaultHighlightStyle)] : [syntaxHighlighting(latexHighlightStyle), latexSemanticHighlighting]),
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),

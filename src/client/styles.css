@@ -3,15 +3,27 @@
   color: #202421;
   background: #f3f4f1;
   font-synthesis: none;
-  --tl-cmd: #0B7A5E;
-  --tl-env: #1D5FBF;
+  --tl-ink: #1F2328;
+  --tl-editor-bg: #FFFFFF;
+  --tl-cmd: #264F78;
+  --tl-structure: #0B7A5E;
+  --tl-env: var(--tl-structure);
   --tl-math: #6D28D9;
-  --tl-key: #245F87;
+  --tl-key: #2563A6;
   --tl-task: #9A5B00;
   --tl-special: #B0307A;
   --tl-comment: #6B7280;
-  --tl-bracket: #5B6470;
-  --tl-literal-bg: #F3F4F6;
+  --tl-literal-bg: #F4F5F6;
+  --tl-gutter: #9CA3AF;
+  --tl-gutter-active: #4B5563;
+  /* Near #F0F6FB over white; transparency preserves drawn selections beneath. */
+  --tl-active-line: #69A5D71A;
+  --tl-match-bg: #BDE5D8;
+  --tl-selection-bg: #C8DCF0;
+  --tl-search-bg: #FFE9A8;
+  --tl-error: #D92D20;
+  --tl-warning: #C77700;
+  --tl-hint: #5B7C99;
 }
 
 * { box-sizing: border-box; }
@@ -556,7 +568,14 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .editor-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .editor-shell .editor-host { height: auto; min-height: 0; flex: 1 1 auto; }
 .editor-host, .cm-editor { height: 100%; min-height: 0; }
-.editor-host .cm-editor { font-family: inherit; font-size: inherit; line-height: inherit; }
+.editor-host .cm-editor { font-family: inherit; font-size: inherit; line-height: inherit; color: var(--tl-ink); background: var(--tl-editor-bg); }
+.editor-host .cm-gutters { color: var(--tl-gutter); background: var(--tl-editor-bg); }
+.editor-host .cm-lineNumbers .cm-activeLineGutter { color: var(--tl-gutter-active); background: transparent; }
+.editor-host .cm-activeLine { background: var(--tl-active-line); }
+.editor-host .cm-selectionBackground, .editor-host .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: var(--tl-selection-bg); }
+.editor-host .cm-content ::selection, .editor-host .cm-content::selection { background: var(--tl-selection-bg); }
+.editor-host .cm-matchingBracket, .editor-host .cm-tl-environment-match { background: var(--tl-match-bg); }
+.editor-host .cm-nonmatchingBracket { color: inherit; background: transparent; text-decoration: underline wavy var(--tl-error) 2px; text-underline-offset: 2px; }
 .editor-host .cm-editor { font-variant-ligatures: contextual; font-feature-settings: "liga" 1, "calt" 1; }
 .editor-host .cm-scroller { min-height: 0; height: auto; flex: 1 1 auto; overflow: auto; font-family: inherit; line-height: inherit; }
 .editor-host .cm-panels { flex: none; }
@@ -575,16 +594,16 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .editor-host .cm-panel.cm-search [name="close"] { top: 8px; right: 10px; width: 25px; height: 25px; border-radius: 5px; color: #647069; font-size: 19px; line-height: 1; }
 .editor-host .cm-panel.cm-search [name="close"]:hover { background: #e3e9e5; color: #244d36; }
 .editor-host .cm-search-count { display: inline-flex; align-items: center; min-height: 29px; margin: 2px 5px 2px 4px; color: #506057; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.editor-host .cm-searchMatch { background: #f5d76e99; outline: 1px solid #d9a91c88; }
-.editor-host .cm-searchMatch.cm-searchMatch-selected { background: #f0a94a99; outline-color: #cc7720; }
-.editor-host .cm-spell-error { text-decoration: underline wavy #c53b32 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
-.editor-host .cm-grammar-warning { text-decoration: underline wavy #d19a26 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
-.editor-host .cm-latex-writing-issue { text-decoration: underline wavy #718596 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
+.editor-host .cm-searchMatch { background: var(--tl-search-bg); outline: 1px solid #d9a91c88; }
+.editor-host .cm-searchMatch.cm-searchMatch-selected { background: var(--tl-search-bg); outline: 2px solid var(--tl-warning); }
+.editor-host .cm-spell-error { text-decoration: underline wavy var(--tl-error) 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
+.editor-host .cm-grammar-warning { text-decoration: underline wavy var(--tl-warning) 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
+.editor-host .cm-latex-writing-issue { text-decoration: underline dotted var(--tl-hint) 1.5px; text-decoration-skip-ink: none; text-decoration-thickness: 1.5px; }
 .editor-host .cm-tl-command { color: var(--tl-cmd); }
-.editor-host .cm-tl-structure { color: var(--tl-cmd); font-weight: 600; }
+.editor-host .cm-tl-structure { color: var(--tl-structure); font-weight: 600; }
 .editor-host .cm-tl-environment { color: var(--tl-env); }
 .editor-host .cm-tl-heading { font-weight: 600; }
-.editor-host .cm-tl-bracket { color: var(--tl-bracket); font-weight: 400; }
+.editor-host .cm-tl-bracket { color: var(--tl-comment); font-weight: 400; }
 .editor-host .cm-tl-special { color: var(--tl-special); }
 .editor-host .cm-tl-key { color: var(--tl-key); }
 .editor-host .cm-tl-comment { color: var(--tl-comment); font-style: normal; font-weight: 400; }
