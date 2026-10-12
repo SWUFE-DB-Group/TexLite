@@ -130,6 +130,25 @@ x &= \frac{a}{\sqrt{b}} + \text{a \textbf{word}} \\
   });
 
   it.each([
+    [String.raw`\langle`, String.raw`\rangle`], [String.raw`\lVert`, String.raw`\rVert`],
+    [String.raw`\lfloor`, String.raw`\rfloor`], ["(", ")"]
+  ])("colors paired mathematical delimiters %s and %s", (opening, closing) => {
+    const source = `$\\left${opening} x \\right${closing}$`;
+    const { classesAt } = fixture(source);
+    expect(classesAt(source.indexOf(opening))).toContain("cm-tl-math-delimiter");
+    expect(classesAt(source.indexOf(closing))).toContain("cm-tl-math-delimiter");
+    expect(classesAt(source.indexOf(" x ") + 1)).toEqual([]);
+  });
+
+  it("keeps multiline headings and spaced prose commands semantically highlighted", () => {
+    const source = "\\section\n{Heading}\n$\\textbf {word} + \\alpha$";
+    const { classesAt, marks } = fixture(source);
+    expect(classesAt(source.indexOf("Heading"))).toContain("cm-tl-heading");
+    expect(classesAt(source.indexOf("\\textbf"))).toEqual(["cm-tl-command"]);
+    expect(marks().filter((range) => range.class === "cm-tl-math-command").map((range) => source.slice(range.from, range.to))).toEqual([String.raw`\alpha`]);
+  });
+
+  it.each([
     ["label", "{eq:test}"], ["thlabel", "{eq:test}"], ["ref", "{eq:test}"],
     ["eqref", "{eq:test}"], ["citep", "{paper}"], ["smartcite", "{paper}"],
     ["myref", "{eq:test}"], ["hyperref", "[eq:test]{caption}"],

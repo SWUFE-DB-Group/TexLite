@@ -41,7 +41,12 @@ The grammar and tokenizer are covered by AGPL-3.0; see the repository's
 ## Local compatibility changes
 
 The fork accepts whitespace around environment names and between `\begin` /
-`\end` and their arguments. Its literal environment list covers TexLite's
+`\end` and their arguments. Common command arguments also accept line breaks
+and spaces, and macro/environment definitions support their starred forms.
+Definition fragments retain macro parameters without interpreting unbalanced
+environment or math markers as document structure. Unbraced input paths stop
+at whitespace and comments rather than swallowing following commands.
+Its literal environment list covers TexLite's
 existing `shared/latexLiterals.ts` list, with regression tests keeping the
 two lists consistent. Inline raw content supports `\mintinline`, `\Verb`,
 starred forms, options, nested braces, and escaped braces. Incomplete inline
@@ -53,9 +58,15 @@ in generic command definitions. The tokenizer does not keep a module-global
 reference to the last parsed document.
 
 Structural folding requires a real, matching environment end; an inferred
-end from error recovery is not sufficient. Section folding leaves the next
-heading on its own line. Existing environment scanning in `latexFolding.ts`
+end from error recovery is not sufficient. Matching uses parsed environment
+names so comments in their groups do not disable folding. Multiline section
+titles and opening environment names remain visible; body folding starts on
+their final line. Section folding leaves the next heading on its own line.
+Existing environment scanning in `latexFolding.ts`
 is retained for completion's end-pair reuse, not as the editor fold service.
+It recognizes multiline/comment-separated begin/end arguments and preserves
+balanced outer environments rather than inserting duplicate end commands or
+stealing an outer close.
 
 Completion queries share one cursor-context result per request instead of
 repeatedly materializing the document prefix. Comments and raw literal bodies
@@ -63,6 +74,9 @@ suppress suggestions, while argument and closing-delimiter boundaries resume
 normal completion. Candidate indexes, snippets, and insertion/pair-reuse
 behavior are unchanged. Reference decorations and navigation still use the
 shared scanner; they have not yet been migrated to tree queries.
+When recovery moves an unfinished known-environment end name outside its
+argument node, an adjacent recovered marker permits the same bounded fallback.
+Completed environments and ordinary prose do not enable this recovery path.
 
 ## Validation
 

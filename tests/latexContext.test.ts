@@ -27,6 +27,11 @@ describe("LaTeX cursor context", () => {
     [String.raw`\hyperref[fig:se▮]{caption}`, "label", "fig:se"],
     [String.raw`\begin { fig▮}`, "environment", " fig"],
     [String.raw`\end{fig▮}`, "environment", "fig"],
+    ["\\begin{figure}\nText\n\\end{fig▮}", "environment", "fig"],
+    ["\\begin{itemize}\n\\item Text\n\\end{item▮}", "environment", "item"],
+    ["\\begin{equation}\nx=1\n\\end{equ▮}", "environment", "equ"],
+    ["\\begin{figure}\nText\n\\end\n{fig▮}", "environment", "fig"],
+    ["\\begin{figure}\nText\n\\end{fi▮", "environment", "fi"],
     [String.raw`\begin{verbatim▮}`, "environment", "verbatim"],
     [String.raw`\includegraphics[width={0.4\textwidth}]{fi▮}`, "file", "fi"],
     [String.raw`\addbibresource[location=local]{ref▮}`, "file", "ref"],
@@ -71,7 +76,10 @@ describe("LaTeX cursor context", () => {
     String.raw`\cite{first} \textbf{ordinary▮}`, String.raw`\setcitestyle{round▮}`,
     String.raw`\usepackage{nested{value▮}}`, String.raw`\documentclass{article} {ordinary▮}`,
     String.raw`\includegraphics[width={0.4\textwidth▮}]{figure.png}`,
-    String.raw`\cite{paper}▮`, String.raw`\hyperref[label]{ordinary▮}`
+    String.raw`\cite{paper}▮`, String.raw`\hyperref[label]{ordinary▮}`,
+    "\\begin{figure}\nText\n\\end{figure}\nOrdinary▮",
+    "\\begin{figure}\nText\n\\end{figure}\n{ordinary▮}",
+    "\\begin{figure}\nText\n\\end{figure}\n\\textbf{ordinary▮}"
   ])("does not invent argument context in %s", (marked) => {
     const { state, position } = fixture(marked);
     expect(latexContextAt(state, position).argument).toBeNull();

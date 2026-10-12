@@ -63,6 +63,59 @@ function styles(source: string) {
 }
 
 describe("structural LaTeX parser", () => {
+  it.each([
+    "\\documentclass\n{article}", "\\usepackage\n{amsmath}", "\\usepackage[opt]\n{amsmath}",
+    "\\textbf {bold}", "\\textit\n{italic}", "\\texttt {code}", "\\emph\n{emphasis}",
+    "\\include \n{chapter}", "\\input\n{chapter}",
+    "\\newcommand*{\\mycmd}[1]{#1}", "\\renewcommand*{\\mycmd}[1]{#1}",
+    "\\newcommand*\n{\\mycmd}\n[2]\n[default]\n{#1 #2}",
+    "\\def\\mycmd #1 #2\n{#1 #2}",
+    "\\newenvironment*{custom}{\\begin{itemize}}{\\end{itemize}}",
+    "\\renewenvironment*{custom}{\\begin{itemize}}{\\end{itemize}}"
+  ])("accepts common whitespace and starred command forms: %s", (source) => {
+    parseWithoutErrors(source + "\nNormal prose.");
+  });
+
+  it("preserves a multiline section title when folding its contents", () => {
+    const source = "\\section\n{Heading}\nParagraph.\n\\section{Next}\nText.";
+    const tree = parseWithoutErrors(source);
+    expect(nodes(tree).some((node) => node.name === "SectioningArgument" && source.slice(node.from, node.to) === "{Heading}")).toBe(true);
+    const state = stateFor(source);
+    expect(foldable(state, 0, state.doc.line(1).to)).toBeNull();
+    const fold = foldable(state, state.doc.line(2).from, state.doc.line(2).to);
+    expect(fold).toMatchObject({ from: state.doc.line(2).to, to: state.doc.line(4).from - 1 });
+  });
+
+  it("keeps starred definitions as fragments and matches their outer braces", () => {
+    const source = "\\newcommand*{\\openmath}{$}\n\\newenvironment*{custom}{\\begin{itemize}}{\\end{itemize}}\nNormal prose.";
+    const tree = parseWithoutErrors(source);
+    expect(nodes(tree).filter((node) => node.name === "DefinitionArgument")).toHaveLength(3);
+    expect(nodes(tree).some((node) => node.name === "DollarMath" || node.name === "ListEnvironment")).toBe(false);
+    const state = stateFor(source);
+    const closing = source.indexOf("}\nNormal");
+    const opening = source.indexOf("{\\end");
+    expect(matchBrackets(state, closing + 1, -1)).toMatchObject({ matched: true, end: { from: opening, to: opening + 1 } });
+  });
+
+  it.each(["\t", "\r\n", "% file comment\n"])("ends an unbraced input path at %j without swallowing the next command", (separator) => {
+    const source = `\\input foo.tex${separator}\\section{Heading}\nText.`;
+    const tree = parseWithoutErrors(source);
+    const entries = nodes(tree);
+    const path = entries.find((node) => node.name === "SpaceDelimitedLiteralArgContent")!;
+    expect(source.slice(path.from, path.to)).toBe("foo.tex");
+    expect(entries.some((node) => node.name === "Section")).toBe(true);
+    if (separator.startsWith("%")) expect(entries.some((node) => node.name === "Comment")).toBe(true);
+  });
+
+  it("folds environment names with comments by their parsed name, not their raw group text", () => {
+    const source = "\\begin{figure% name\n}\nbody\n\\end{figure% close\n}";
+    parseWithoutErrors(source);
+    const state = stateFor(source);
+    expect(foldable(state, state.doc.line(2).from, state.doc.line(2).to)).toMatchObject({ from: state.doc.line(2).to, to: state.doc.line(4).from });
+    const mismatched = stateFor("\\begin{figure% name\n}\nbody\n\\end{table}");
+    expect(foldable(mismatched, 0, mismatched.doc.line(1).to)).toBeNull();
+  });
+
   it("parses an ordinary paper and exposes command, argument, math, environment and section nodes", () => {
     const names = new Set(nodes(parseWithoutErrors(article)).map((node) => node.name));
     for (const name of ["DocumentClassArgument", "PackageArgument", "BibKeyArgument", "RefArgument", "Math", "Section", "SubSection", "FigureEnvironment", "ListEnvironment", "DefinitionArgument"]) {
@@ -182,7 +235,7 @@ a & b \\
     let source = article + "\n" + article;
     let tree = parser.parse(source);
     let fragments = TreeFragment.addTree(tree);
-    const edits = [String.raw`\begin{verbatim}`, "\n$ % raw\n", String.raw`\end{verbatim}`, String.raw`\citep{new}`, "{", "}", "$", "%", "\n", String.raw`\end {document}`];
+    const edits = [String.raw`\begin{verbatim}`, "\n$ % raw\n", String.raw`\end{verbatim}`, String.raw`\citep{new}`, "{", "}", "$", "%", "\n", String.raw`\end {document}`, "\\newcommand*{\\foo}[1]{#1}", "\\section\n{Title}"];
     for (let index = 0; index < 70; index++) {
       const from = (index * 127 + 73) % source.length;
       const removed = index % 3 === 0 ? Math.min(3, source.length - from) : 0;

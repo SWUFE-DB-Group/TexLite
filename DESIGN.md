@@ -353,6 +353,10 @@ Local changes preserve TexLite's literal forms, spaced environment commands,
 internal macro names, and macro parameters. Incomplete source is recovered for
 editor use; recovery nodes are not treated as compiler errors. Environment
 folding requires a real, matching close rather than an inferred recovery node.
+Common argument whitespace and starred definitions are supported. Environment
+folding compares parsed names, ignoring comments in name groups; multiline
+headings and opening names remain visible when folding their bodies. Math
+delimiter commands such as `\langle` and `\rangle` use the math palette.
 Basic syntax-tree indentation adds one configured level inside ordinary
 environments and multiline groups, aligns closing markers, leaves the document
 body at its margin, and preserves raw literal content. This is an editing aid,
@@ -366,6 +370,10 @@ if context remains unavailable. Known argument nodes are queried directly;
 the compatibility reader is limited to a window of 8,192 UTF-16 code units
 of tree-identified commands and retains the shared reference
 classifier for multi-argument citations, reference ranges, and optional labels.
+Incomplete end names in specialized environments also use this bounded reader
+when an adjacent recovered marker identifies the command. Environment
+completion recognizes multiline begin/end arguments and reuses existing closes
+without taking the close of a balanced outer environment.
 Completion candidates and insertion behavior, reference navigation, project
 include graphs, root detection, outline generation, and host-tool diagnostics
 retain their existing scanner and service boundaries; editor context queries

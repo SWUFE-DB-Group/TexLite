@@ -38,6 +38,7 @@ describe("basic LaTeX editing indentation", () => {
     ["{\ntext\n}", 2],
     ["\\textbf{\ntext\n}", 2],
     ["\\newcommand{\\foo}[1]{\n#1\n}", 2],
+    ["\\newcommand*{\\foo}[1]{\n#1\n}", 2],
     ["\\section{\nheading\n}", 2],
     ["\\usepackage[\noption\n]{example}", 2],
     ["\\[\na+b\n\\]", 2],

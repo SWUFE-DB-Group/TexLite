@@ -292,7 +292,8 @@ export const spaceDelimitedLiteralArgTokenizer = new ExternalTokenizer(
   input => {
     for (let offset = 0; ; offset++) {
       const next = input.peek(offset)
-      if (next === -1 || next === CHAR_SPACE || next === CHAR_NEWLINE) {
+      if (next === -1 || next === CHAR_SPACE || next === CHAR_TAB || next === CHAR_NEWLINE
+        || next === 13 || next === 37) {
         return input.acceptToken(SpaceDelimitedLiteralArgContent, offset)
       }
     }

@@ -107,6 +107,20 @@ describe("editor LaTeX completion source", () => {
     expect(complete(String.raw`\noind`)?.options.find((entry) => entry.label === "\\noindent")?.detail).toBeUndefined();
   });
 
+  it.each(["figure", "itemize", "equation"])("completes a partially typed end inside a known %s environment", (name) => {
+    const partial = name.slice(0, 3);
+    let state = EditorState.create({ doc: `\\begin{${name}}\nText\n\\end{${partial}}`, extensions: [latexLanguage] });
+    const to = state.doc.length - 1;
+    const result = latexCompletions(new CompletionContext(state, to, false), t, {
+      ...index, environments: [{ label: name, kind: "keyword", detail: "Environment" }]
+    })!;
+    expect(result).not.toBeNull();
+    const option = result.options.find((entry) => entry.label === name)!;
+    const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as unknown as EditorView;
+    (option.apply as Exclude<Completion["apply"], string | undefined>)(view, option, result.from, to);
+    expect(state.doc.toString()).toBe(`\\begin{${name}}\nText\n\\end{${name}}`);
+  });
+
   it("does not complete inside literal source, but resumes after an inline percent delimiter", () => {
     expect(complete(String.raw`\begin{lstlisting}
 \noind`)).toBeNull();

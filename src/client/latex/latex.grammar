@@ -179,7 +179,7 @@
 // TEXT MODE
 
 optionalWhitespace {
-    !argument Whitespace
+    !argument (Whitespace | NewLine)+
 }
 
 environmentWhitespace {
@@ -231,7 +231,7 @@ BareFilePathArgument {
 }
 
 DefinitionArgument {
-    !argument NewLine? Whitespace* OpenBrace DefinitionFragment? CloseBrace
+    !argument OpenBrace DefinitionFragment? CloseBrace
 }
 
 OptionalMacroParameter {
@@ -258,7 +258,7 @@ KnownCommand<ArgumentType> {
         DateCtrlSeq optionalWhitespace? OptionalArgument? optionalWhitespace? ShortTextArgument
     } |
     DocumentClass {
-        DocumentClassCtrlSeq optionalWhitespace? OptionalArgument?
+        DocumentClassCtrlSeq optionalWhitespace? OptionalArgument? optionalWhitespace?
         DocumentClassArgument { ShortTextArgument }
     } |
     BibliographyCommand {
@@ -270,7 +270,7 @@ KnownCommand<ArgumentType> {
         BibliographyStyleArgument { ShortTextArgument }
     } |
     UsePackage {
-        UsePackageCtrlSeq optionalWhitespace? OptionalArgument?
+        UsePackageCtrlSeq optionalWhitespace? OptionalArgument? optionalWhitespace?
         PackageArgument
     } |
     TextColorCommand {
@@ -323,7 +323,7 @@ KnownCommand<ArgumentType> {
     } |
     Def {
         // allow more general Csname argument to \def commands, since other symbols such as '@' are often used in definitions
-        DefCtrlSeq optionalWhitespace? (Csname | CtrlSym) optionalWhitespace? (MacroParameter | OptionalMacroParameter)* optionalWhitespace? DefinitionArgument
+        DefCtrlSeq optionalWhitespace? (Csname | CtrlSym) (optionalWhitespace? (MacroParameter | OptionalMacroParameter))* optionalWhitespace? DefinitionArgument
     } |
     Let {
         LetCtrlSeq Csname optionalWhitespace? "="? optionalWhitespace? Csname
@@ -332,39 +332,39 @@ KnownCommand<ArgumentType> {
         HboxCtrlSeq optionalWhitespace? TextArgument
     } |
     NewCommand {
-        NewCommandCtrlSeq optionalWhitespace?
+        NewCommandCtrlSeq "*"? optionalWhitespace?
         (Csname | OpenBrace LiteralArgContent CloseBrace)
-        (OptionalArgument)*
-        DefinitionArgument
+        (optionalWhitespace? OptionalArgument)*
+        optionalWhitespace? DefinitionArgument
     } |
     RenewCommand {
-        RenewCommandCtrlSeq optionalWhitespace?
+        RenewCommandCtrlSeq "*"? optionalWhitespace?
         (Csname | OpenBrace LiteralArgContent CloseBrace)
-        (OptionalArgument)*
-        DefinitionArgument
+        (optionalWhitespace? OptionalArgument)*
+        optionalWhitespace? DefinitionArgument
     } |
     NewEnvironment {
-        NewEnvironmentCtrlSeq optionalWhitespace?
+        NewEnvironmentCtrlSeq "*"? optionalWhitespace?
         (OpenBrace LiteralArgContent CloseBrace)
-        (OptionalArgument)*
-        DefinitionArgument
-        DefinitionArgument
+        (optionalWhitespace? OptionalArgument)*
+        optionalWhitespace? DefinitionArgument
+        optionalWhitespace? DefinitionArgument
     } |
     RenewEnvironment {
-        RenewEnvironmentCtrlSeq optionalWhitespace?
+        RenewEnvironmentCtrlSeq "*"? optionalWhitespace?
         (Csname | OpenBrace LiteralArgContent CloseBrace)
-        (OptionalArgument)*
-        DefinitionArgument
-        DefinitionArgument
+        (optionalWhitespace? OptionalArgument)*
+        optionalWhitespace? DefinitionArgument
+        optionalWhitespace? DefinitionArgument
     } |
     Input {
-        InputCtrlSeq InputArgument { ( FilePathArgument | BareFilePathArgument ) }
+        InputCtrlSeq InputArgument { ( optionalWhitespace? FilePathArgument | BareFilePathArgument ) }
     } |
     Include {
-        IncludeCtrlSeq IncludeArgument { FilePathArgument }
+        IncludeCtrlSeq optionalWhitespace? IncludeArgument { FilePathArgument }
     } |
     Subfile {
-        SubfileCtrlSeq SubfileArgument { FilePathArgument }
+        SubfileCtrlSeq optionalWhitespace? SubfileArgument { FilePathArgument }
     } |
     Centering {
         CenteringCtrlSeq
@@ -394,37 +394,37 @@ KnownCommand<ArgumentType> {
             optionalWhitespace? TextArgument
     } |
     TextBoldCommand {
-        TextBoldCtrlSeq TextArgument
+        TextBoldCtrlSeq optionalWhitespace? TextArgument
     } |
     TextItalicCommand {
-        TextItalicCtrlSeq TextArgument
+        TextItalicCtrlSeq optionalWhitespace? TextArgument
     } |
     TextSmallCapsCommand {
-        TextSmallCapsCtrlSeq TextArgument
+        TextSmallCapsCtrlSeq optionalWhitespace? TextArgument
     } |
     TextTeletypeCommand {
-        TextTeletypeCtrlSeq TextArgument
+        TextTeletypeCtrlSeq optionalWhitespace? TextArgument
     } |
     TextMediumCommand {
-        TextMediumCtrlSeq TextArgument
+        TextMediumCtrlSeq optionalWhitespace? TextArgument
     } |
     TextSansSerifCommand {
-        TextSansSerifCtrlSeq TextArgument
+        TextSansSerifCtrlSeq optionalWhitespace? TextArgument
     } |
     TextSuperscriptCommand {
-        TextSuperscriptCtrlSeq TextArgument
+        TextSuperscriptCtrlSeq optionalWhitespace? TextArgument
     } |
     TextSubscriptCommand {
-        TextSubscriptCtrlSeq TextArgument
+        TextSubscriptCtrlSeq optionalWhitespace? TextArgument
     } |
     StrikeOutCommand {
-        TextStrikeOutCtrlSeq ArgumentType
+        TextStrikeOutCtrlSeq optionalWhitespace? ArgumentType
     } |
     EmphasisCommand {
-        EmphasisCtrlSeq ArgumentType
+        EmphasisCtrlSeq optionalWhitespace? ArgumentType
     } |
     UnderlineCommand {
-        UnderlineCtrlSeq ArgumentType
+        UnderlineCtrlSeq optionalWhitespace? ArgumentType
     } |
     SetLengthCommand {
         SetLengthCtrlSeq optionalWhitespace? ShortTextArgument optionalWhitespace? ShortTextArgument
@@ -582,6 +582,7 @@ DefinitionFragment {
     | Whitespace
     | OpenBracket
     | CloseBracket
+    | MacroParameter
     | "#" // macro character
     | Ampersand // for tables
     | Tilde // unbreakable space

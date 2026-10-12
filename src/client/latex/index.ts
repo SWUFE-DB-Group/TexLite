@@ -14,9 +14,10 @@ function sectionFold(node: SyntaxNode, state: EditorState) {
   const lastLine = state.doc.lineAt(content.to);
   const trailingIndent = state.sliceDoc(lastLine.from, content.to);
   const to = lastLine.from > content.from && /^[\t ]*$/.test(trailingIndent) ? lastLine.from - 1 : content.to;
-  // A skipped comment may consume the opening line's newline, putting
-  // Content on the next line. The fold must still start on the clicked line.
-  const from = Math.min(content.from, state.doc.lineAt(node.from).to);
+  // Keep the complete heading visible, including multiline arguments. If a
+  // skipped comment consumes its newline, fold from the heading's last line.
+  const heading = node.getChild("SectioningCommand");
+  const from = Math.min(content.from, state.doc.lineAt(heading?.to ?? node.from).to);
   return from < to ? { from, to } : null;
 }
 
@@ -28,9 +29,17 @@ function environmentFold(node: SyntaxNode, state: EditorState) {
   // environments. Never fold source based on such an inferred close.
   if (!begin || !end || !content || content.from >= content.to
     || end.lastChild?.name !== "CloseBrace" || end.lastChild.from === end.lastChild.to) return null;
-  const name = (group: SyntaxNode) => state.sliceDoc(group.from + 1, group.to - 1).trim();
-  return name(begin) === name(end)
-    ? { from: Math.min(content.from, state.doc.lineAt(node.from).to), to: content.to }
+  const name = (group: SyntaxNode) => {
+    const close = group.lastChild;
+    if (close?.name !== "CloseBrace" || close.from === close.to) return null;
+    for (let child = group.firstChild; child; child = child.nextSibling) {
+      if (/EnvName$/.test(child.name) && child.from < child.to) return state.sliceDoc(child.from, child.to);
+    }
+    return null;
+  };
+  const openingName = name(begin);
+  return openingName !== null && openingName === name(end)
+    ? { from: Math.min(content.from, state.doc.lineAt(begin.to).to), to: content.to }
     : null;
 }
 
@@ -66,6 +75,7 @@ export const latexLanguage = LRLanguage.define({
       "OpenBrace CloseBrace": tags.brace,
       "OpenBracket CloseBracket": tags.squareBracket,
       [[...mathDelimiterTokens].join(" ")]: latexHighlightTags.mathDelimiter,
+      MathDelimiter: latexHighlightTags.mathDelimiter,
       "Tilde Ampersand LineBreakCtrlSym MacroParameter": tags.escape,
       Comment: tags.comment,
       "VerbContent VerbatimContent LstInlineContent": latexHighlightTags.literal,

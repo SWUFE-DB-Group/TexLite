@@ -216,6 +216,38 @@ Normal prose after a literal environment.`
       .toMatchObject({ reusesExistingEnd: false, insert: "itemize}\n  \t\n  \\end{itemize}" });
   });
 
+  it.each(["\\begin\n{fig}", "\\begin% note\n{fig}"])("reuses a multiline environment end for %s", (opening) => {
+    const source = `${opening}\nText\n\\end\n{figure}`;
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const from = source.indexOf("fig");
+    const plan = latexEnvironmentCompletionPlan(state.doc, from, from + 3, "figure");
+    expect(plan).toMatchObject({ insert: "figure}", reusesExistingEnd: true });
+    expect(source.slice(0, from) + plan.insert + source.slice(plan.to)).toBe(`${opening.replace("fig", "figure")}\nText\n\\end\n{figure}`);
+  });
+
+  it("preserves a multiline outer close when completing a nested environment", () => {
+    const source = "\\begin\n{itemize}\n  \\begin\n  {ite}\n\\end\n{itemize}";
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const from = source.indexOf("{ite}") + 1;
+    expect(latexEnvironmentCompletionPlan(state.doc, from, from + 3, "itemize").reusesExistingEnd).toBe(false);
+  });
+
+  it("reuses a multiline close after skipping literal examples and comments", () => {
+    const source = "\\begin\n{fig}\n\\verb|\\end{figure}|\n% \\end{figure}\n\\begin{verbatim}\n\\end{figure}\n\\end{verbatim}\n\\end% close\n{figure}";
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const from = source.indexOf("fig");
+    expect(latexEnvironmentCompletionPlan(state.doc, from, from + 3, "figure")).toMatchObject({ insert: "figure}", reusesExistingEnd: true });
+  });
+
+  it("does not let commented or escaped begin markers claim a real closing command", () => {
+    for (const prefix of ["% \\begin{itemize}\n", "\\\\begin{itemize}\n"]) {
+      const source = prefix + "\\begin\n{ite}\n\\end{itemize}";
+      const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+      const from = source.indexOf("{ite}") + 1;
+      expect(latexEnvironmentCompletionPlan(state.doc, from, from + 3, "itemize")).toMatchObject({ insert: "itemize}", reusesExistingEnd: true });
+    }
+  });
+
   it("parses TeX accent escapes in BibTeX values without losing brace matching", () => {
     const source = String.raw`@inproceedings{rombach2022high,
   title={High-Resolution Image Synthesis with Latent Diffusion Models},

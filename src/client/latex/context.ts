@@ -184,6 +184,25 @@ function argumentAt(state: EditorState, position: number, tree: Tree): LatexCurs
   return null;
 }
 
+function followsRecoveredEnvironment(ancestors: readonly SyntaxNode[], position: number): boolean {
+  // In a specialized environment, an unfinished end name can be recovered
+  // as the next Normal node instead of remaining inside EnvNameGroup. Only
+  // that adjacent recovery permits the bounded argument fallback in prose.
+  for (const node of ancestors) {
+    let previous = node.prevSibling;
+    while (previous && ["Whitespace", "NewLine"].includes(previous.name)) previous = previous.prevSibling;
+    for (let tail = previous; tail; tail = tail.lastChild) {
+      if (tail.name !== "BeginEnv" && tail.name !== "EndEnv") continue;
+      const group = tail.getChild("EnvNameGroup");
+      const close = group?.lastChild;
+      if (group && (!close || close.name !== "CloseBrace" || close.from === close.to)
+        && position >= tail.to && position - tail.from <= MAX_LATEX_CONTEXT_LENGTH) return true;
+      break;
+    }
+  }
+  return false;
+}
+
 /** One cursor-local query for editor features; no source-wide symbol scan. */
 export function latexContextAt(state: EditorState, position: number): LatexCursorContext {
   position = Math.max(0, Math.min(position, state.doc.length));
@@ -194,6 +213,7 @@ export function latexContextAt(state: EditorState, position: number): LatexCurso
   const region = regionAt(state, position, ancestors);
   if (region === "literal" || region === "comment") return { available: true, region, argument: null };
   const argument = typedArgumentAt(state, position, ancestors)
-    ?? (ancestors.some((node) => argumentNodes.has(node.name)) ? argumentAt(state, position, tree) : null);
+    ?? (ancestors.some((node) => argumentNodes.has(node.name)) || followsRecoveredEnvironment(ancestors, position)
+      ? argumentAt(state, position, tree) : null);
   return { available: true, region, argument };
 }
