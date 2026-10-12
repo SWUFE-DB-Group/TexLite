@@ -3,6 +3,7 @@ import type { EditorState, Range } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { SyntaxNode, Tree } from "@lezer/common";
 import { Tag, tags } from "@lezer/highlight";
+import { classifyLatexReferenceCommand } from "../../shared/latexReferenceCommands";
 
 // Parent tags preserve the language's semantics for other highlighters. These
 // refinements distinguish environments from reference keys and raw text from math.
@@ -27,12 +28,37 @@ export const latexHighlightStyle = HighlightStyle.define([
 ]);
 
 const commandToken = /^(?:CtrlSeq|Csname)$|CtrlSeq$/;
+// The grammar specializes known text, reference, declaration and layout
+// commands. Math symbols/operators/font macros generally remain CtrlSeq;
+// fences and underline are the recognized commands valid in math expressions.
+const mathCapableTokens = new Set(["CtrlSeq", "LeftCtrlSeq", "RightCtrlSeq", "UnderlineCtrlSeq"]);
+const nonMathCommands = new Set([
+  "color", "pagecolor", "normalcolor", "textnormal", "normalfont", "fontsize", "selectfont",
+  "mbox", "makebox", "fbox", "framebox", "raisebox", "hspace", "vspace",
+  "tag", "notag", "nonumber", "shortintertext", "label", "hypertarget",
+  "phantomsection", "texorpdfstring"
+]);
+// Font-size declarations change layout, not the mathematical expression.
+// TeX command spelling is case-sensitive: large/Large/LARGE are distinct.
+const fontSizeCommands = new Set([
+  "tiny", "scriptsize", "footnotesize", "small", "normalsize",
+  "large", "Large", "LARGE", "huge", "Huge"
+]);
 
-function isMathCommand(node: SyntaxNode): boolean {
+function isMathCommand(node: SyntaxNode, state: EditorState): boolean {
+  if (!mathCapableTokens.has(node.name)) return false;
   for (let parent = node.parent; parent; parent = parent.parent) {
     // Commands in \text{...} retain ordinary prose-command colors.
     if (parent.name === "TextArgument") return false;
-    if (parent.name === "Math") return true;
+    if (parent.name === "Math") {
+      if (node.name !== "CtrlSeq") return true;
+      // Read only the command token, never its argument or the source prefix.
+      // Preserve custom math macros without maintaining a huge math whitelist.
+      if (node.to - node.from > 128) return false;
+      const command = state.sliceDoc(node.from + 1, node.to);
+      return !nonMathCommands.has(command) && !fontSizeCommands.has(command)
+        && !classifyLatexReferenceCommand(command);
+    }
   }
   return false;
 }
@@ -96,7 +122,7 @@ export function latexSemanticDecorations(
       const from = Math.max(ref.from, visible.from);
       const to = Math.min(ref.to, visible.to);
       if (from >= to) return;
-      if (commandToken.test(ref.name) && isMathCommand(node)) {
+      if (commandToken.test(ref.name) && isMathCommand(node, state)) {
         marks.push(Decoration.mark({ class: "cm-tl-math-command" }).range(from, to));
       }
       if (ref.name === "Comment") {

@@ -327,6 +327,10 @@ bright blue ordinary commands, teal structure commands and environment names,
 ochre reference keys, rose
 special characters, gray comments and brackets, and purple math delimiters
 and commands. Ordinary math contents and numbers retain the prose color.
+Within math, known reference, text, declaration and layout commands retain
+ordinary command styling rather than inheriting purple. Generic custom math
+macros keep the math accent; this lightweight classification does not expand
+TeX definitions or attempt to prove the semantics of arbitrary user macros.
 Sectioning commands, `\begin`/`\end`, and the document-start landmark
 `\documentclass` use heavier command weight; other configuration and inclusion
 commands retain ordinary weight.

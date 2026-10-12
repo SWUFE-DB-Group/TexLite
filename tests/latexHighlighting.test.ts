@@ -129,6 +129,64 @@ x &= \frac{a}{\sqrt{b}} + \text{a \textbf{word}} \\
     expect(commands).not.toContain(String.raw`\textbf`);
   });
 
+  it.each([
+    ["label", "{eq:test}"], ["thlabel", "{eq:test}"], ["ref", "{eq:test}"],
+    ["eqref", "{eq:test}"], ["citep", "{paper}"], ["smartcite", "{paper}"],
+    ["myref", "{eq:test}"], ["hyperref", "[eq:test]{caption}"],
+    ["text", "{ordinary text}"], ["textrm", "{ordinary text}"], ["textbf", "{ordinary text}"],
+    ["mbox", "{ordinary text}"], ["tag", "{A}"], ["notag", ""], ["nonumber", ""],
+    ["color", "{red}"], ["textcolor", "{red}{x}"], ["hspace", "{1em}"], ["setlength", "{\\mylen}{1em}"]
+  ])("retains ordinary styling for non-math command %s inside equation", (command, argument) => {
+    const source = `\\begin{equation}\nx + \\alpha \\${command}${argument}\n\\end{equation}`;
+    const { classesAt, marks } = fixture(source);
+    const start = source.indexOf(`\\${command}`);
+    expect(classesAt(start)).toEqual(["cm-tl-command"]);
+    expect(marks().some((range) => range.class === "cm-tl-math-command" && range.from <= start && range.to > start)).toBe(false);
+    expect(marks().some((range) => range.class === "cm-tl-math-command" && source.slice(range.from, range.to) === String.raw`\alpha`)).toBe(true);
+  });
+
+  it.each(["frac", "sqrt", "alpha", "sum", "mathbf", "mathrm", "mathcal", "operatorname", "quad", "underline", "custommath"])("keeps mathematical command %s purple in a math expression", (command) => {
+    const source = `$\\${command}{x}$`;
+    expect(fixture(source).marks().filter((range) => range.class === "cm-tl-math-command").map((range) => source.slice(range.from, range.to))).toContain(`\\${command}`);
+  });
+
+  it("keeps equation label keys distinct and allows nested math inside text", () => {
+    const source = String.raw`\begin{equation}
+\text{value $\alpha$} + \frac{a}{b} \label{eq:test}
+\end{equation}`;
+    const { classesAt, marks } = fixture(source);
+    const commands = marks().filter((range) => range.class === "cm-tl-math-command").map((range) => source.slice(range.from, range.to));
+    expect(commands).toEqual([String.raw`\alpha`, String.raw`\frac`]);
+    expect(classesAt(source.indexOf("eq:test"))).toContain("cm-tl-key");
+    expect(classesAt(source.indexOf("\\label"))).toEqual(["cm-tl-command"]);
+  });
+
+  it.each(["tiny", "scriptsize", "footnotesize", "small", "normalsize", "large", "Large", "LARGE", "huge", "Huge"])("does not give font-size declaration %s a math accent", (command) => {
+    const source = `$\\${command} \\alpha$`;
+    const { classesAt, marks } = fixture(source);
+    expect(classesAt(source.indexOf(`\\${command}`))).toEqual(["cm-tl-command"]);
+    expect(marks().filter((range) => range.class === "cm-tl-math-command").map((range) => source.slice(range.from, range.to))).toEqual([String.raw`\alpha`]);
+  });
+
+  it("keeps size and label declarations ordinary but math fonts and scalable fences purple in the POR equation", () => {
+    const source = String.raw`\begin{equation}
+\small
+\mathrm{POR} =
+P\left(
+\mathcal{M}(q_i,\{I_i^p\})\sim a_i^{adv}
+\mid
+\mathcal{M}(q_i)\sim a_i
+\right).
+\label{eq:por}
+\end{equation}`;
+    const { classesAt, marks } = fixture(source);
+    const commands = marks().filter((range) => range.class === "cm-tl-math-command").map((range) => source.slice(range.from, range.to));
+    expect(commands).toEqual([String.raw`\mathrm`, String.raw`\left`, String.raw`\mathcal`, String.raw`\sim`, String.raw`\mid`, String.raw`\mathcal`, String.raw`\sim`, String.raw`\right`]);
+    expect(classesAt(source.indexOf("\\small"))).toEqual(["cm-tl-command"]);
+    expect(classesAt(source.indexOf("\\label"))).toEqual(["cm-tl-command"]);
+    expect(classesAt(source.indexOf("eq:por"))).toContain("cm-tl-key");
+  });
+
   it.each(literalEnvironmentNames)("keeps %s raw, with no math or task decorations", (name) => {
     const source = `\\begin{${name}}\n$ \\alpha % TODO { \\cite{key}\n\\end{${name}}\nNormal text.`;
     const { classesAt, marks } = fixture(source);
