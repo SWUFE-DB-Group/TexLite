@@ -2,9 +2,10 @@ import type { TFunction } from "i18next";
 import { Transaction } from "@codemirror/state";
 import { pickedCompletion, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { LatexCompletionIndex, LatexCompletionItem } from "./types";
-import { latexArgumentCompletionContext, latexCitationCompletionContext, latexCompletionPrefix, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan, latexLabelCompletionContext } from "./latexCompletionContexts";
+import { latexCompletionContext, latexEnvironmentCompletionPlan } from "./latexCompletionContexts";
 import { commandSnippet, newCommandArguments, xparseCommandArguments, xparseCommandDefinitions } from "../shared/latexCommandSnippets";
-import { latexOpaqueContextAt, maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals";
+import { maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals";
+import { isLatexEscaped } from "../shared/latexScanner";
 import { findLatexReferenceDefinitions } from "../shared/latexReferences";
 
 const fallbackCommandLabels = [
@@ -157,34 +158,27 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
   // Do not build the current-file symbol index during ordinary prose input.
   // CodeMirror reuses results while validFor matches the current token.
   const local = () => localCompletionIndexForDocument(context);
-  const opaque = () => latexOpaqueContextAt(latexCompletionPrefix(context), context.pos) !== null;
-  const environment = latexEnvironmentCompletionContext(context);
-  if (environment) {
-    if (opaque()) return null;
+  const cursor = latexCompletionContext(context);
+  if (!cursor.available || cursor.region === "comment" || cursor.region === "literal") return null;
+  const argument = cursor.argument;
+  if (argument?.kind === "environment") {
     const options = mergeCompletionItems(t, withoutSnippets(local().environments), withoutSnippets(index?.environments ?? []));
     return {
-      from: environment.from,
-      options: withoutCompletionDetails(options.map((option) => environmentCompletion(option, environment.command))),
-      validFor: /^[A-Za-z0-9*:_-]*$/
+      from: argument.from,
+      options: withoutCompletionDetails(options.map((option) => environmentCompletion(option, argument.command as "begin" | "end"))),
+      validFor: /^[A-Za-z0-9@:*_.+\-]*$/
     };
   }
-  const label = latexLabelCompletionContext(context);
-  if (label && opaque()) return null;
-  if (label) return { from: label.from, options: mergeCompletionItems(t, local().labels, index?.labels ?? []), validFor: /^[^,{}\s]*$/ };
-  const citation = latexCitationCompletionContext(context);
-  if (citation && opaque()) return null;
-  if (citation) return { from: citation.from, options: mergeCompletionItems(t, local().citations, bibtexCitationItems(index)), validFor: /^[^,{}\s]*$/ };
-  const file = latexArgumentCompletionContext(context, /\\(?:input|include|subfile|includegraphics|bibliography|addbibresource)(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/);
-  if (file && opaque()) return null;
-  if (file) return { from: file.from, options: mergeCompletionItems(t, local().files, index?.files ?? []), validFor: /^[^{}]*$/ };
-  const packageName = latexArgumentCompletionContext(context, /\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/, true);
-  if (packageName && opaque()) return null;
-  if (packageName) return { from: packageName.from, options: mergeCompletionItems(t, local().packages, index?.packages ?? []), validFor: /^[^,{}\s]*$/ };
-  const documentClass = latexArgumentCompletionContext(context, /\\documentclass(?:\s*\[[^\]]*\])*\s*\{([^{}]*)$/);
-  if (documentClass && opaque()) return null;
-  if (documentClass) return { from: documentClass.from, options: mergeCompletionItems(t, index?.classes ?? []), validFor: /^[^{}]*$/ };
+  if (argument?.kind === "label") return { from: argument.from, options: mergeCompletionItems(t, local().labels, index?.labels ?? []), validFor: /^[^,{}%\s]*$/ };
+  if (argument?.kind === "citation") return { from: argument.from, options: mergeCompletionItems(t, local().citations, bibtexCitationItems(index)), validFor: /^[^,{}%\s]*$/ };
+  if (argument?.kind === "file") return { from: argument.from, options: mergeCompletionItems(t, local().files, index?.files ?? []), validFor: /^[^{}]*$/ };
+  if (argument?.kind === "package") return { from: argument.from, options: mergeCompletionItems(t, local().packages, index?.packages ?? []), validFor: /^[^,{}%\s]*$/ };
+  if (argument?.kind === "class") return { from: argument.from, options: mergeCompletionItems(t, index?.classes ?? []), validFor: /^[^{}]*$/ };
   const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);
-  if ((command || context.explicit) && opaque()) return null;
+  if (command) {
+    const from = Math.max(0, command.from - 256);
+    if (isLatexEscaped(context.state.sliceDoc(from, command.from + 1), command.from - from)) return null;
+  }
   if (command || context.explicit) {
     return { from: command?.from ?? context.pos, options: withoutCompletionDetails(mergeCompletionItems(t, local().commands, index?.commands ?? [], completionOptions())), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
   }

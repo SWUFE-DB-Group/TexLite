@@ -1,5 +1,4 @@
-import type { EditorState, Text } from "@codemirror/state";
-import { foldService } from "@codemirror/language";
+import type { Text } from "@codemirror/state";
 import { inlineLatexLiteralEnd, isLatexLiteralEnvironment, literalEnvironmentEnd } from "./latexLiterals";
 
 interface EnvironmentCommand {
@@ -11,20 +10,11 @@ interface EnvironmentCommand {
 
 const environmentCommand = /^\\(begin|end)\s*\{\s*([A-Za-z0-9@:_*.\-]+)\s*\}/;
 const incompleteBeginCommand = /\\begin\s*\{\s*[A-Za-z0-9@:_*.\-]*\s*\}?$/;
-const sectionCommand = /^\s*\\(part|chapter|section|subsection|subsubsection)(?![A-Za-z@])\*?/;
-const sectionLevels: Record<string, number> = { part: 0, chapter: 0, section: 1, subsection: 2, subsubsection: 3 };
 
 function isEscaped(source: string, index: number): boolean {
   let backslashes = 0;
   for (let cursor = index - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) backslashes += 1;
   return backslashes % 2 === 1;
-}
-
-function codeEnd(text: string): number {
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] === "%" && !isEscaped(text, index)) return index;
-  }
-  return text.length;
 }
 
 function environmentCommands(text: string, start = 0, literal: { name: string | null } = { name: null }): EnvironmentCommand[] {
@@ -130,34 +120,3 @@ export function findReusableLatexEnvironmentEnd(doc: Text, beginStart: number, a
   if (!end || existingEnvironmentOwnsEnd(doc, beginStart, end.from, name)) return null;
   return end;
 }
-
-function findSectionFold(state: EditorState, lineStart: number): { from: number; to: number } | null {
-  const line = state.doc.lineAt(lineStart);
-  const section = sectionCommand.exec(line.text.slice(0, codeEnd(line.text)));
-  if (!section) return null;
-  const level = sectionLevels[section[1]];
-  const literal: { name: string | null } = { name: null };
-  environmentCommands(line.text, 0, literal);
-
-  for (let number = line.number + 1; number <= state.doc.lines; number += 1) {
-    const candidate = state.doc.line(number);
-    const startedInLiteral = literal.name !== null;
-    environmentCommands(candidate.text, 0, literal);
-    if (startedInLiteral || literal.name) continue;
-    const next = sectionCommand.exec(candidate.text.slice(0, codeEnd(candidate.text)));
-    if (next && sectionLevels[next[1]] <= level) return { from: line.to, to: Math.max(line.to, candidate.from - 1) };
-  }
-  return line.to < state.doc.length ? { from: line.to, to: state.doc.length } : null;
-}
-
-export function findLatexFoldRange(state: EditorState, lineStart: number): { from: number; to: number } | null {
-  const line = state.doc.lineAt(lineStart);
-  const begin = environmentCommands(line.text).find((command) => command.kind === "begin");
-  if (begin) {
-    const end = findMatchingLatexEnvironmentEnd(state.doc, line.from + begin.to, begin.name);
-    if (end && end.from > line.to) return { from: line.to, to: end.from };
-  }
-  return findSectionFold(state, lineStart);
-}
-
-export const latexFold = foldService.of((state, lineStart) => findLatexFoldRange(state, lineStart));

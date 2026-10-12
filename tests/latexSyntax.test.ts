@@ -2,45 +2,29 @@ import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { CompletionContext } from "@codemirror/autocomplete";
-import { defaultHighlightStyle, foldable, matchBrackets, StringStream, syntaxTree } from "@codemirror/language";
+import { defaultHighlightStyle, foldable, matchBrackets, syntaxTree } from "@codemirror/language";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import {
   bibtexCompletionSource,
   bibtexEditorExtensions,
   bibtexLanguage,
   bibtexLinter,
-  latexLanguage,
-  latexStream
+  latexLanguage
 } from "../src/client/latexLanguage";
-import { latexFold, findMatchingLatexEnvironmentEnd } from "../src/client/latexFolding";
+import { findMatchingLatexEnvironmentEnd } from "../src/client/latexFolding";
 import { latexCitationCompletionContext, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "../src/client/latexCompletionContexts";
 import { hasDocumentClass } from "../src/client/latexRoot";
 import { hasLatexDocumentClass } from "../src/shared/latexRoot";
 import { inlineLatexLiteralEnd } from "../src/client/latexLiterals";
 
 describe("LaTeX syntax handling", () => {
-  it("keeps legacy stex command plugins independent across copied parser states", () => {
-    const tokenize = (line: string, state: ReturnType<NonNullable<typeof latexStream.startState>>) => {
-      const stream = new StringStream(line, 4, 2);
-      const tokens: Array<{ text: string; style: string | null }> = [];
-      while (!stream.eol()) {
-        stream.start = stream.pos;
-        const style = latexStream.token(stream, state);
-        tokens.push({ text: line.slice(stream.start, stream.pos), style });
-      }
-      return tokens;
-    };
-    const original = latexStream.startState!(2);
-    const fresh = latexStream.startState!(2);
-    tokenize(String.raw`\documentclass`, original);
-    tokenize(String.raw`\documentclass`, fresh);
-    const copied = latexStream.copyState!(original);
-    tokenize("[11pt]", copied);
-
-    const resumed = tokenize("[11pt]{article}", original);
-    const expected = tokenize("[11pt]{article}", fresh);
-    expect(resumed).toEqual(expected);
-    expect(resumed.find((token) => token.text === "article")?.style).toBe("atom");
+  it("exposes structured command arguments without mutating earlier editor states", () => {
+    const original = EditorState.create({ doc: String.raw`\documentclass{article}`, extensions: [latexLanguage] });
+    const before = syntaxTree(original).toString();
+    const edited = original.update({ changes: { from: 14, insert: "[11pt]" } }).state;
+    expect(syntaxTree(edited).toString()).toContain("OptionalArgument");
+    expect(syntaxTree(edited).toString()).toContain("DocumentClassArgument");
+    expect(syntaxTree(original).toString()).toBe(before);
   });
 
   it.each([
@@ -165,7 +149,7 @@ Normal prose after a literal environment.`
 \end{verbatim}
 \caption{A real figure}
 \end{figure}`;
-    const state = EditorState.create({ doc: source, extensions: [latexLanguage, latexFold] });
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
     const opening = state.doc.line(1);
     const closing = state.doc.line(7);
     expect(foldable(state, opening.from, opening.to)).toMatchObject({ from: opening.to, to: closing.from });

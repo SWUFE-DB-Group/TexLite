@@ -146,4 +146,38 @@ describe("editor LaTeX completion source", () => {
     expect(flatten).not.toHaveBeenCalled();
     flatten.mockRestore();
   });
+
+  it.each([
+    [String.raw`\includegraphics[width={0.4\textwidth}]{fig`, "figure.png"],
+    [String.raw`\usepackage[opt={x[y]}]{amsmath, ams`, "amssymb"],
+    [String.raw`\documentclass[opt={x[y]}]{arti`, "article"],
+    [String.raw`\begin{fig`, "figure"]
+  ])("preserves candidate sources with structural context in %s", (source, expected) => {
+    expect(complete(source)?.options.map((option) => option.label)).toContain(expected);
+  });
+
+  it.each([String.raw`% comment \noind`, String.raw`\lstinline{\noind`, String.raw`\\noind`])(
+    "does not offer command completions in %s", (source) => {
+      expect(complete(source)).toBeNull();
+    }
+  );
+
+  it("keeps math command completions available", () => {
+    expect(complete(String.raw`$\alph`)?.options.some((option) => option.label === "\\alpha")).toBe(true);
+  });
+
+  it("invalidates cached key suggestions when a TeX comment begins", () => {
+    for (const source of [String.raw`\cite{pap`, String.raw`\ref{fig`, String.raw`\usepackage{ams`]) {
+      const result = complete(source)!;
+      expect(result.validFor.test("word%")).toBe(false);
+    }
+    expect(complete("\\cite{pap% comment")).toBeNull();
+  });
+
+  it("updates cursor classification after editing without carrying an earlier comment context", () => {
+    let state = EditorState.create({ doc: String.raw`% \noind`, extensions: [latexLanguage] });
+    expect(latexCompletions(new CompletionContext(state, state.doc.length, true), t, index)).toBeNull();
+    state = state.update({ changes: { from: 0, to: 2 } }).state;
+    expect(latexCompletions(new CompletionContext(state, state.doc.length, true), t, index)?.options.some((entry) => entry.label === "\\noindent")).toBe(true);
+  });
 });

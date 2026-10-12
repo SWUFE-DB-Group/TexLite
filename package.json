@@ -43,9 +43,9 @@
   "scripts": {
     "dev": "npm run generate:lucide-icons && node scripts/run-dev.mjs server",
     "dev:init": "node scripts/run-dev.mjs init",
-    "dev:web": "npm run generate:bibtex-parser && node scripts/run-dev.mjs web",
+    "dev:web": "npm run generate:bibtex-parser && npm run generate:latex-parser && node scripts/run-dev.mjs web",
     "build": "npm run build:web && npm run build:server",
-    "build:web": "npm run generate:bibtex-parser && vite build",
+    "build:web": "npm run generate:bibtex-parser && npm run generate:latex-parser && vite build",
     "build:server": "tsc -p tsconfig.server.json && npm run generate:lucide-icons",
     "start": "node dist/server/index.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
@@ -57,9 +57,10 @@
     "init": "tsx src/server/cli.ts init",
     "prepack": "npm run build",
     "generate:lucide-icons": "node scripts/generate-lucide-static-icons.mjs",
-    "pretest": "npm run generate:lucide-icons && npm run generate:bibtex-parser",
+    "pretest": "npm run generate:lucide-icons && npm run generate:bibtex-parser && npm run generate:latex-parser",
     "test": "vitest run --config vitest.config.ts",
     "generate:bibtex-parser": "node scripts/generate-bibtex-parser.mjs",
+    "generate:latex-parser": "node scripts/generate-latex-parser.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
@@ -67,7 +68,6 @@
     "@codemirror/commands": "^6.8.1",
     "@codemirror/lang-markdown": "^6.3.3",
     "@codemirror/language": "^6.11.3",
-    "@codemirror/legacy-modes": "^6.5.1",
     "@codemirror/lint": "^6.9.7",
     "@codemirror/search": "^6.7.1",
     "@codemirror/state": "^6.5.2",

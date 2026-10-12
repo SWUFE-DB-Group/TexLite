@@ -316,6 +316,29 @@ highlighted and keyboard accessible. PDF/SyncTeX synchronization is available
 only for the current `.tex` root document; a non-root tab remains editable but
 does not claim a PDF location.
 
+LaTeX editor highlighting and structural folding use an internal Lezer LR
+parser derived from a pinned Overleaf lezer-latex revision, replacing the
+legacy `stex` stream mode. Grammar sources, local compatibility changes, and
+build instructions live in `src/client/latex/README.md`; attribution is recorded
+in `THIRD_PARTY_NOTICES.md`. The parser recognizes command arguments, math,
+sections, and environments, with incremental tree reuse during editing.
+Local changes preserve TexLite's literal forms, spaced environment commands,
+internal macro names, and macro parameters. Incomplete source is recovered for
+editor use; recovery nodes are not treated as compiler errors. Environment
+folding requires a real, matching close rather than an inferred recovery node.
+Completion triggering uses a shared cursor-context adapter over the syntax
+tree. It identifies comments, literal bodies, math, and environment/reference/
+file/package/class arguments without repeatedly reading the document prefix.
+It permits at most five milliseconds of parser catch-up and defers completion
+if context remains unavailable. Known argument nodes are queried directly;
+the compatibility reader is limited to a window of 8,192 UTF-16 code units
+of tree-identified commands and retains the shared reference
+classifier for multi-argument citations, reference ranges, and optional labels.
+Completion candidates and insertion behavior, reference navigation, project
+include graphs, root detection, outline generation, and host-tool diagnostics
+retain their existing scanner and service boundaries; editor context queries
+do not replace these workflows or perform TeX macro expansion.
+
 Each project collaboration object owns one Yjs undo manager per source file.
 Editor tab remounts therefore preserve Ctrl/Cmd+Z and Vim undo history without
 leaving obsolete CodeMirror/Yjs observers behind. Managers are released when

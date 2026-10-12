@@ -1,61 +1,39 @@
 import type { CompletionContext } from "@codemirror/autocomplete";
 import type { Text } from "@codemirror/state";
 import { findReusableLatexEnvironmentEnd, latexEnvironmentBeginStart } from "./latexFolding";
-import { findLatexCitationCompletion, findLatexLabelCompletion } from "../shared/latexReferences";
+import { latexContextAt, type LatexCursorContext } from "./latex/context";
 
 export interface LatexArgumentCompletionContext {
   from: number;
   query: string;
 }
 
-// A completion query tries several contexts. Materialize the prefix once,
-// rather than flattening the CodeMirror document for each regular expression.
-const prefixCache = new WeakMap<CompletionContext, string>();
-function prefixFor(context: CompletionContext): string {
-  let prefix = prefixCache.get(context);
-  if (prefix === undefined) {
-    prefix = context.state.sliceDoc(0, context.pos);
-    prefixCache.set(context, prefix);
+// Reuse one tree lookup for a completion request; never retain editor states
+// in a global strong-reference cache or materialize the full source prefix.
+const contextCache = new WeakMap<CompletionContext, LatexCursorContext>();
+export function latexCompletionContext(context: CompletionContext): LatexCursorContext {
+  let result = contextCache.get(context);
+  if (!result) {
+    result = latexContextAt(context.state, context.pos);
+    contextCache.set(context, result);
   }
-  return prefix;
-}
-
-/** Reuse the materialized prefix when another completion check needs source context. */
-export function latexCompletionPrefix(context: CompletionContext): string {
-  return prefixFor(context);
-}
-
-export function latexArgumentCompletionContext(context: CompletionContext, pattern: RegExp, commaSeparated = false): LatexArgumentCompletionContext | null {
-  const before = prefixFor(context);
-  const match = before.match(pattern);
-  if (!match || match.index === undefined) return null;
-  const argument = { from: context.pos - match[1].length, query: match[1] };
-  return commaSeparated ? currentListItem(argument) : argument;
+  return result;
 }
 
 export function latexEnvironmentCompletionContext(context: CompletionContext): (LatexArgumentCompletionContext & { command: "begin" | "end" }) | null {
-  const before = prefixFor(context);
-  const match = before.match(/\\(begin|end)\s*\{([^{}]*)$/);
-  if (!match || match.index === undefined) return null;
-  return { from: context.pos - match[2].length, query: match[2], command: match[1] as "begin" | "end" };
+  const argument = latexCompletionContext(context).argument;
+  return argument?.kind === "environment"
+    ? { from: argument.from, query: argument.query, command: argument.command as "begin" | "end" } : null;
 }
 
 export function latexCitationCompletionContext(context: CompletionContext): LatexArgumentCompletionContext | null {
-  return findLatexCitationCompletion(prefixFor(context));
+  const argument = latexCompletionContext(context).argument;
+  return argument?.kind === "citation" ? { from: argument.from, query: argument.query } : null;
 }
 
 export function latexLabelCompletionContext(context: CompletionContext): LatexArgumentCompletionContext | null {
-  return findLatexLabelCompletion(prefixFor(context));
-}
-
-function currentListItem(argument: LatexArgumentCompletionContext): LatexArgumentCompletionContext {
-  const separator = argument.query.lastIndexOf(",");
-  const prefix = argument.query.slice(separator + 1);
-  const whitespace = prefix.match(/^\s*/)?.[0].length ?? 0;
-  return {
-    from: argument.from + separator + 1 + whitespace,
-    query: prefix.slice(whitespace)
-  };
+  const argument = latexCompletionContext(context).argument;
+  return argument?.kind === "label" ? { from: argument.from, query: argument.query } : null;
 }
 
 export interface LatexEnvironmentCompletionPlan {

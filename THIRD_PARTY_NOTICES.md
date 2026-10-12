@@ -1,5 +1,22 @@
 # Third-party notices
 
+## Overleaf lezer-latex
+
+TexLite's internal LaTeX editor parser derives from the grammar and tokenizer
+in [Overleaf's lezer-latex](https://github.com/overleaf/overleaf/tree/e039ad26c5bf5422eb57b89fc7e57c75055e631d/services/web/frontend/js/features/source-editor/lezer-latex),
+by Overleaf contributors, at revision
+`e039ad26c5bf5422eb57b89fc7e57c75055e631d`.
+
+The derived sources and generated parser live in `src/client/latex/`.
+TexLite modifies literal-content handling, command and environment tokens,
+and provides its own CodeMirror language integration. The incremental tests
+also follow the workflow of Overleaf's public parser test script.
+
+These components are distributed under the GNU Affero General Public License,
+version 3. The license text is included in TexLite's `LICENSE`; the original
+upstream license is available in
+[Overleaf's repository](https://github.com/overleaf/overleaf/blob/e039ad26c5bf5422eb57b89fc7e57c75055e631d/LICENSE).
+
 ## TeXlyre/codemirror-lang-bib
 
 TexLite's internal BibTeX CodeMirror language module derives from
