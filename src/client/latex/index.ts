@@ -4,6 +4,7 @@ import type { SyntaxNode } from "@lezer/common";
 import { styleTags, tags } from "@lezer/highlight";
 import { parser } from "./latex.mjs";
 import { latexHighlightTags } from "./highlighting";
+import { latexIndentation } from "./indentation";
 
 function sectionFold(node: SyntaxNode, state: EditorState) {
   const content = node.getChild("Content");
@@ -48,6 +49,7 @@ const environmentTokens = parser.nodeSet.types.filter((type) => /EnvName$/.test(
 export const latexLanguage = LRLanguage.define({
   name: "latex",
   parser: parser.configure({ props: [
+    latexIndentation,
     foldNodeProp.add({
       Group: foldInside, NonEmptyGroup: foldInside, TextArgument: foldInside,
       DefinitionArgument: foldInside, MathArgument: foldInside,
@@ -78,6 +80,7 @@ export const latexLanguage = LRLanguage.define({
   ] }),
   languageData: {
     commentTokens: { line: "%" },
+    indentOnInput: /^\s*(?:[}\]]|\\(?:end\s*\{[^}]*\}|[\])]))$/,
     closeBrackets: { brackets: ["(", "[", "{"] }
   }
 });

@@ -5,11 +5,11 @@
   font-synthesis: none;
   --tl-ink: #1F2328;
   --tl-editor-bg: #FFFFFF;
-  --tl-cmd: #264F78;
+  --tl-cmd: #1F55C4;
   --tl-structure: #0B7A5E;
   --tl-env: var(--tl-structure);
   --tl-math: #6D28D9;
-  --tl-key: #2563A6;
+  --tl-key: #9A5B00;
   --tl-task: #9A5B00;
   --tl-special: #B0307A;
   --tl-comment: #6B7280;
@@ -19,6 +19,7 @@
   /* Near #F0F6FB over white; transparency preserves drawn selections beneath. */
   --tl-active-line: #69A5D71A;
   --tl-match-bg: #BDE5D8;
+  --tl-match-fg: #075940;
   --tl-selection-bg: #C8DCF0;
   --tl-search-bg: #FFE9A8;
   --tl-error: #D92D20;
@@ -610,8 +611,9 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .editor-host .cm-tl-literal { color: inherit; background: var(--tl-literal-bg); font-weight: 400; }
 .editor-host .cm-tl-math-delimiter, .editor-host .cm-tl-math-command, .editor-host .cm-tl-math-command .cm-tl-command { color: var(--tl-math); }
 .editor-host .cm-tl-comment-task, .editor-host .cm-tl-comment-task .cm-tl-comment { color: var(--tl-task); font-weight: 600; }
-.editor-host .cm-latex-citation-key, .editor-host .cm-latex-label-key { color: var(--tl-key); text-decoration: underline dotted color-mix(in srgb, var(--tl-key) 45%, transparent) 1px; text-decoration-skip-ink: none; text-underline-offset: 2px; }
-.editor-host .cm-editor.cm-reference-navigation-active :is(.cm-latex-citation-key, .cm-latex-label-key) { border-radius: 2px; background: color-mix(in srgb, var(--tl-key) 10%, white); box-shadow: inset 0 -1px var(--tl-key); cursor: pointer; }
+.editor-host .cm-editor :is(.cm-matchingBracket, .cm-tl-environment-match), .editor-host .cm-editor :is(.cm-matchingBracket, .cm-tl-environment-match) * { color: var(--tl-match-fg); }
+.editor-host .cm-latex-citation-key, .editor-host .cm-latex-label-key { color: var(--tl-key); }
+.editor-host :is(.cm-latex-citation-key, .cm-latex-label-key).cm-reference-navigation-active { border-radius: 2px; background: color-mix(in srgb, var(--tl-key) 10%, white); text-decoration: underline solid var(--tl-key) 1px; text-decoration-skip-ink: none; text-underline-offset: 2px; cursor: pointer; }
 .spell-suggestions-menu { position: fixed; z-index: 1200; display: flex; min-width: 190px; max-width: 250px; flex-direction: column; gap: 3px; padding: 7px; border: 1px solid #b9c8bd; border-radius: 7px; background: #fff; box-shadow: 0 10px 28px #1930222e; color: #26352c; font-size: 12px; }
 .spell-suggestions-title { padding: 3px 6px 5px; color: #607067; font-size: 10px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
 .spell-suggestions-message { padding: 3px 6px 6px; border-bottom: 1px solid #e2e8e3; color: #58685e; font-size: 11px; line-height: 1.4; }

@@ -323,8 +323,8 @@ build instructions live in `src/client/latex/README.md`; attribution is recorded
 in `THIRD_PARTY_NOTICES.md`. The parser recognizes command arguments, math,
 sections, and environments, with incremental tree reuse during editing.
 LaTeX has a CSS-variable-based semantic palette separate from BibTeX/BST:
-deep ink-blue ordinary commands, teal structure commands and environment names,
-blue reference keys, rose
+bright blue ordinary commands, teal structure commands and environment names,
+ochre reference keys, rose
 special characters, gray comments and brackets, and purple math delimiters
 and commands. Ordinary math contents and numbers retain the prose color.
 Sectioning commands, `\begin`/`\end`, and the document-start landmark
@@ -339,12 +339,21 @@ a pale blue active line and selection, and pale yellow search matches.
 Text-color contrast on the white editor background is checked by regression
 tests against the WCAG relative-luminance formula (at least 4.5:1); line numbers
 are intentionally quieter, non-content decoration.
+Pairing accents use a darker green foreground, also checked against their tint.
+Reference keys are colored without a standing diagnostic-like underline; only
+the pointed-at key gains an underline while Ctrl/Cmd is held. Modifier release,
+mouse exit, document/viewport updates and unmount clear this temporary affordance.
 They update after document, viewport, selection, or syntax-tree changes without forcing
 parsing or introducing another full-source regular-expression lexer.
 Local changes preserve TexLite's literal forms, spaced environment commands,
 internal macro names, and macro parameters. Incomplete source is recovered for
 editor use; recovery nodes are not treated as compiler errors. Environment
 folding requires a real, matching close rather than an inferred recovery node.
+Basic syntax-tree indentation adds one configured level inside ordinary
+environments and multiline groups, aligns closing markers, leaves the document
+body at its margin, and preserves raw literal content. This is an editing aid,
+not a replacement for tex-fmt. Iosevka loads real 400 and 600 weights so structural
+emphasis does not depend on synthetic bold or locally installed fonts.
 Completion triggering uses a shared cursor-context adapter over the syntax
 tree. It identifies comments, literal bodies, math, and environment/reference/
 file/package/class arguments without repeatedly reading the document prefix.

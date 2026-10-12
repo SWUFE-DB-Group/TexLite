@@ -38,4 +38,16 @@ describe("editor palette contrast", () => {
     expect(activeLine).toMatch(/^#[0-9A-F]{8}$/i);
     expect(Number.parseInt(activeLine.slice(-2), 16)).toBeLessThan(255);
   });
+
+  it("keeps paired text readable over its accent background", () => {
+    const foreground = luminance(color("--tl-match-fg"));
+    const background = luminance(color("--tl-match-bg"));
+    expect((background + 0.05) / (foreground + 0.05)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("loads real regular and semibold Iosevka weights together", () => {
+    const html = fs.readFileSync(new URL("../src/client/index.html", import.meta.url), "utf8");
+    expect(html).toContain("@fontsource/iosevka@5.2.5/400.css");
+    expect(html).toContain("@fontsource/iosevka@5.2.5/600.css");
+  });
 });

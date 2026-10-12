@@ -15,6 +15,8 @@ The grammar and tokenizer are covered by AGPL-3.0; see the repository's
   the grammar. Development web startup, web builds, and tests generate them.
 - `index.ts` supplies TexLite-specific highlighting, folding, and language
   data without importing Overleaf's application modules.
+- `indentation.ts` provides basic environment/group indentation and closing
+  marker alignment, while preserving literal contents and the document margin.
 - `highlighting.ts` defines semantic highlight tags and visible-tree
   decorations. LaTeX uses its own palette, not CodeMirror's default colors;
   CSS variables in `styles.css` control commands, environments, reference

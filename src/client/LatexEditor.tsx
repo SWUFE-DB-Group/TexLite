@@ -26,6 +26,7 @@ import { bibtexCompletionSource, bibtexHighlightStyle, bibtexLanguage, bstLangua
 import { supportsLatexMathHover } from "./latexMath";
 import { latexHighlightStyle, latexSemanticHighlighting } from "./latex/highlighting";
 import { latexMathHover } from "./mathHover";
+import { latexReferenceHover } from "./latexReferenceHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
 import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
@@ -334,7 +335,7 @@ export function LatexEditor({
           label: t("editor.openSourceComment"), onOpen: (id) => onCommentClickRef.current(id)
         }), spellCheckIssueMarks, activeSpellCheckIssueMarks,
         referenceNavigation.current.of(isBstFile ? [] : referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))),
-        ...(isBstFile ? [] : [latexReferenceMarks]),
+        ...(isBstFile ? [] : [latexReferenceMarks, latexReferenceHover]),
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
@@ -360,15 +361,6 @@ export function LatexEditor({
             event.preventDefault();
             onReferenceNavigateRef.current(reference);
             return true;
-          },
-          mousemove(event, editor) {
-            const reference = referenceFromElement(event.target);
-            editor.dom.classList.toggle("cm-reference-navigation-active", Boolean(reference && (event.ctrlKey || event.metaKey)));
-            return false;
-          },
-          mouseleave(_event, editor) {
-            editor.dom.classList.remove("cm-reference-navigation-active");
-            return false;
           },
           contextmenu(event) {
             const element = (event.target as HTMLElement).closest<HTMLElement>("[data-spell-error]");
