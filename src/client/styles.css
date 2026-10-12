@@ -368,6 +368,13 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-empty-icon { width: 58px; height: 58px; display: grid; place-items: center; margin-bottom: 18px; border-radius: 18px; background: #dfeee4; color: #176b44; }
 .project-empty h2 { margin: 0; color: #203f2e; font-size: clamp(27px, 3vw, 38px); line-height: 1.15; letter-spacing: -.035em; }
 .project-empty p { max-width: 520px; margin: 13px 0 0; color: #6e7b72; font-size: 15px; line-height: 1.6; }
+.project-empty-archived { min-height: 280px; padding: 40px 24px; border: 1px solid #e0e7e1; background: #fafcf9; }
+.project-empty-archived .project-empty-icon { width: 50px; height: 50px; margin-bottom: 16px; border: 1px solid #dce7df; border-radius: 16px; background: #edf3ee; color: #567562; }
+.project-empty-archived h2 { font-size: clamp(20px, 2vw, 24px); font-weight: 600; line-height: 1.3; letter-spacing: -.02em; }
+.project-empty-archived p { max-width: 380px; margin-top: 10px; font-size: 13px; }
+.project-empty-action { display: inline-flex; align-items: center; gap: 7px; margin-top: 22px; padding: 8px 12px; border: 1px solid #d2ded5; border-radius: 8px; background: #fff; color: #365e45; font-size: 12px; }
+.project-empty-action:hover { border-color: #9cbba7; background: #edf4ef; }
+.project-empty-action:focus-visible { outline: 2px solid #176b44; outline-offset: 3px; }
 .project-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 22px 0 4px; color: #66726a; font-size: 12px; }
 .project-pagination button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #cbd4ce; border-radius: 7px; padding: 7px 10px; background: white; color: #405248; font-size: 12px; }
 .project-pagination button:hover:not(:disabled) { border-color: #8bae9a; background: #f2f7f3; color: #176b44; }

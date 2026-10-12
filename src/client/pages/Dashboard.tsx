@@ -538,7 +538,12 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             </dl>
           </article>)}
         {filtered.length === 0 && (projects.length === 0
-          ? showArchived ? <div className="empty">{t("projects.noArchived")}</div> : <div className="project-empty"><span className="project-empty-icon"><Sparkles size={28} /></span><h2>{t("projects.emptyTitle")}</h2><p>{user.canCreateProjects ? t("projects.emptyDescription") : t("projects.emptyRestricted")}</p></div>
+          ? showArchived ? <div className="project-empty project-empty-archived">
+              <span className="project-empty-icon"><Archive aria-hidden="true" size={25} strokeWidth={1.5} /></span>
+              <h2>{t("projects.noArchived")}</h2>
+              <p>{t("projects.noArchivedDescription")}</p>
+              <button type="button" className="project-empty-action" onClick={() => changeScope(false)}><ArrowLeft aria-hidden="true" size={14} />{t("projects.backToActive")}</button>
+            </div> : <div className="project-empty"><span className="project-empty-icon"><Sparkles size={28} /></span><h2>{t("projects.emptyTitle")}</h2><p>{user.canCreateProjects ? t("projects.emptyDescription") : t("projects.emptyRestricted")}</p></div>
           : <div className="empty">{t("projects.noMatches")}</div>)}
       </div>
       {pagination.totalPages > 1 && <nav className="project-pagination" aria-label={t("projects.pagination")}><button disabled={pagination.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} title={t("projects.previousPage")}><ChevronLeft size={15} />{t("projects.previousPage")}</button><span>{t("projects.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}</span><button disabled={pagination.page >= pagination.totalPages} onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} title={t("projects.nextPage")}><ChevronRight size={15} />{t("projects.nextPage")}</button></nav>}
