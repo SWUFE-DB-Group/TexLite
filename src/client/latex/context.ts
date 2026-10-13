@@ -152,7 +152,7 @@ function typedArgumentAt(state: EditorState, position: number, ancestors: readon
       ? source.startsWith("{") && !readLatexBalancedArgument(source, 0, "{", "}") ? 1 : null
       : unfinishedMandatoryArgument(source, 0, false);
     if (start === null) continue;
-    const result = ["citation", "label", "package"].includes(kind)
+    const result = ["citation", "label", "package"].includes(kind) || command === "bibliography"
       ? listItem(source, start) : { from: start, query: source.slice(start) };
     return { ...result, from: result.from + node.from, command, commandFrom: token.from, kind };
   }
@@ -176,7 +176,7 @@ function argumentAt(state: EditorState, position: number, tree: Tree): LatexCurs
     else {
       const tokenEnd = command.to - command.from + (source[command.to - command.from] === "*" ? 1 : 0);
       const start = unfinishedMandatoryArgument(source, tokenEnd, command.kind !== "environment");
-      result = start === null ? null : command.kind === "package" ? listItem(source, start)
+      result = start === null ? null : command.kind === "package" || command.command === "bibliography" ? listItem(source, start)
         : { from: start, query: source.slice(start) };
     }
     if (result) return { ...result, from: result.from + command.from, kind: command.kind, command: command.command, commandFrom: command.from };

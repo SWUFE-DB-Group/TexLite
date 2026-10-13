@@ -168,11 +168,11 @@ export function collectDocumentValues(state: EditorState): DocumentValues {
             const valueNode = field.getChild('Value');
             if (!nameNode || !valueNode) continue;
 
-            // A concatenation may include an unresolved @string macro. It
-            // cannot be safely inserted as a reusable field value, so keep
-            // it out of document-value completion rather than suggesting a
-            // literal `macro # {text}` fragment.
-            if (valueNode.getChild('Concat')) continue;
+            // Macro references (including concatenations) are expressions,
+            // not literal field text. Offer defined macros separately in a
+            // bare value context rather than reusing `journal = venue` as
+            // the unrelated literal `journal = {venue}`.
+            if (valueNode.getChild('Concat') || valueNode.getChild('ValueAtom')?.getChild('StringRef')) continue;
 
             const name = doc.sliceString(nameNode.from, nameNode.to).toLowerCase();
             const value = unwrapValueAtom(doc.sliceString(valueNode.from, valueNode.to));

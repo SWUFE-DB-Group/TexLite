@@ -171,7 +171,11 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
   }
   if (argument?.kind === "label") return { from: argument.from, options: mergeCompletionItems(t, local().labels, index?.labels ?? []), validFor: /^[^,{}%\s]*$/ };
   if (argument?.kind === "citation") return { from: argument.from, options: mergeCompletionItems(t, local().citations, bibtexCitationItems(index)), validFor: /^[^,{}%\s]*$/ };
-  if (argument?.kind === "file") return { from: argument.from, options: mergeCompletionItems(t, local().files, index?.files ?? []), validFor: /^[^{}]*$/ };
+  if (argument?.kind === "file") return {
+    from: argument.from,
+    options: mergeCompletionItems(t, local().files, index?.files ?? []),
+    validFor: argument.command === "bibliography" ? /^[^,{}%\s]*$/ : /^[^{}]*$/
+  };
   if (argument?.kind === "package") return { from: argument.from, options: mergeCompletionItems(t, local().packages, index?.packages ?? []), validFor: /^[^,{}%\s]*$/ };
   if (argument?.kind === "class") return { from: argument.from, options: mergeCompletionItems(t, index?.classes ?? []), validFor: /^[^{}]*$/ };
   const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);

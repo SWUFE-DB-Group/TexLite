@@ -262,6 +262,7 @@ function completeFieldValue(
 
   let from: number;
   let to = context.pos;
+  let followsPersonSeparator = false;
   if (isPersonField && atom) {
     const innerStart = atom.from + 1;
     const innerEnd = atom.to - (doc.sliceString(atom.to - 1, atom.to) === (atom.name === 'BracedValue' ? '}' : '"') ? 1 : 0);
@@ -271,6 +272,7 @@ function completeFieldValue(
     const cursor = context.pos - innerStart;
     const previous = [...separators].reverse().find((separator) => separator.to <= cursor);
     const next = separators.find((separator) => separator.from >= cursor);
+    followsPersonSeparator = Boolean(previous);
     from = innerStart + (previous?.to ?? 0);
     to = innerStart + (next?.from ?? innerEnd - innerStart);
   } else if (atom && (atom.name === 'BracedValue' || atom.name === 'QuotedValue')) {
@@ -289,26 +291,25 @@ function completeFieldValue(
   const docValues = collectDocumentValues(context.state);
   const options: Completion[] = [];
   const seen = new Set<string>();
-  const stringMacros = new Set([...docValues.stringMacros].map((name) => name.toLowerCase()));
+  const preservesDelimiter = atom?.name === 'BracedValue' || atom?.name === 'QuotedValue';
   const shouldUseBareValue = (label: string) =>
     fieldName === 'month' && monthAbbreviations.includes(label.toLowerCase());
-  const add = (label: string, type: string, boost = 1) => {
+  const add = (label: string, type: string, boost = 1, isStringMacro = false) => {
     if (!label || seen.has(label)) return;
     seen.add(label);
     // Values already inside braces or quotes retain their delimiter. A bare
     // identifier is valid BibTeX syntax only for a number or a string macro;
     // document values such as journal names must become a braced literal.
-    const preservesDelimiter = atom?.name === 'BracedValue' || atom?.name === 'QuotedValue';
     const apply = atom?.name === 'QuotedValue'
       ? escapeQuotedBibtexLiteral(label)
-      : preservesDelimiter || shouldUseBareValue(label) || stringMacros.has(label.toLowerCase())
+      : preservesDelimiter || shouldUseBareValue(label) || isStringMacro
         ? label
         : `{${label}}`;
     options.push({ label, type, apply, boost });
   };
 
-  if (!isPersonField) {
-    for (const macro of docValues.stringMacros) add(macro, 'constant', 2.5);
+  if (!isPersonField && !preservesDelimiter) {
+    for (const macro of docValues.stringMacros) add(macro, 'constant', 2.5, true);
   }
 
   const bucket = VALUE_FIELDS_FROM_DOC[fieldName];
@@ -334,12 +335,37 @@ function completeFieldValue(
   }
 
   if (options.length === 0) return null;
-  return { from, to, options, validFor: /^[^"{}\n]*$/ };
+  const validValueText = preservesDelimiter ? /^[^"{}\n]*$/ : /^[^"{}%\n]*$/;
+  return {
+    from, to, options,
+    // Re-query after `and` instead of filtering the previous person's
+    // cached choices against the entire growing author/editor list.
+    validFor: isPersonField
+      ? (text) => validValueText.test(text) && findTopLevelAndSeparators(text).length === 0
+        // Whitespace belongs to the separator, not the next person's
+        // replacement range, including when typed after a trailing `and`.
+        && (!followsPersonSeparator || !/^\s/.test(text))
+      : validValueText
+  };
 }
 
 export function bibtexCompletionSource(context: CompletionContext): CompletionResult | null {
   const tree = syntaxTree(context.state);
   const node = tree.resolveInner(context.pos, -1);
+
+  // Percent signs inside literal values are not LineComment nodes. Using
+  // the tree here keeps those literals editable without offering snippets
+  // inside actual line comments or opaque @comment bodies.
+  const lineComment = findAncestor(node, 'LineComment');
+  if (lineComment && context.pos <= lineComment.to) return null;
+  const commentEntry = findAncestor(node, 'CommentEntry');
+  if (commentEntry) {
+    const block = commentEntry.getChild('CommentBracedBlock') ?? commentEntry.getChild('CommentParenBlock');
+    const close = block?.getChild(block.name === 'CommentBracedBlock' ? 'CommentBraceClose' : 'CommentParenClose');
+    // At an intact closing delimiter's end, the cursor has left the
+    // comment; an unfinished block must still suppress completion at EOF.
+    if (context.pos < commentEntry.to || !close || close.from === close.to) return null;
+  }
 
   const valueNode = findAncestorIn(node, VALUE_NODES);
   if (valueNode && findAncestor(valueNode, 'Field')) {

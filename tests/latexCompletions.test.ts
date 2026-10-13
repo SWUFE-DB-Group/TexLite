@@ -42,6 +42,28 @@ describe("editor LaTeX completion source", () => {
     expect(complete(source)?.from).toBe(source.lastIndexOf("tw"));
   });
 
+  it.each([
+    String.raw`\bibliography{anthology, cust`,
+    "\\bibliography{anthology,% another database\n  cust"
+  ])("completes only the active bibliography file in %s", (source) => {
+    const result = complete(source, true, {
+      ...index, files: [{ label: "custom", kind: "text", detail: "Project file" }]
+    })!;
+    expect(result.from).toBe(source.lastIndexOf("cust"));
+    expect(result.options.map((item) => item.label)).toContain("custom");
+    expect(source.slice(0, result.from) + "custom").toBe(source.slice(0, -4) + "custom");
+    expect(result.validFor.test("custom, next")).toBe(false);
+    expect(result.validFor.test("custom% comment")).toBe(false);
+    expect(result.validFor.test("custom")).toBe(true);
+  });
+
+  it("retains commas in ordinary file paths", () => {
+    const source = String.raw`\input{first,second`;
+    const result = complete(source)!;
+    expect(result.from).toBe(source.indexOf("first"));
+    expect(result.validFor.test("first,second")).toBe(true);
+  });
+
   it("completes subsequent multicite arguments", () => {
     const source = String.raw`\cites[see]{first}[p. 2]{seco`;
     expect(complete(source)?.from).toBe(source.lastIndexOf("seco"));

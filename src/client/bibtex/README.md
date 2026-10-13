@@ -14,3 +14,12 @@ The module owns BibTeX-specific parsing, highlighting, folding, diagnostics,
 completion data and hover information. `LatexEditor` deliberately continues to
 own shared CodeMirror behaviour such as editor keymaps, autocomplete UI,
 close-brackets and indentation so `.tex` and `.bib` files behave consistently.
+
+Completion uses parser context to suppress line/entry comments, refresh person
+choices at top-level `and` separators, and offer `@string` references only in
+bare values. Literal values retain their braces/quotes and protected inner
+groups. Indentation rules distinguish entry and value closers, including
+parenthesized entries; the shared editor applies them on newline and input.
+
+The focused regression suite is in `tests/bibtexLanguage.test.ts` and
+`tests/bibtexIndentation.test.ts`.

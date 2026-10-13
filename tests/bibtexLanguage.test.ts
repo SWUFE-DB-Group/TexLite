@@ -321,6 +321,104 @@ describe("internal BibTeX CodeMirror language", () => {
     expect(syntaxErrors(withQuotedValue)).toEqual([]);
   });
 
+  it.each(["{JA}", '"JA"'])("does not suggest macro references inside the literal %s", (literal) => {
+    const source = `@string{JACM = {Journal of the ACM}}\n@misc{source, journal = JACM}\n@misc{target, journal = ${literal}}`;
+    const state = bibtexState(source);
+    const position = source.lastIndexOf("JA") + 2;
+    const result = bibtexCompletionSource(new CompletionContext(state, position, true));
+    expect(result).not.toBeNull();
+    expect(result!.options.map((option) => option.label)).not.toContain("JACM");
+    expect(collectDocumentValues(state).journals).not.toContain("JACM");
+  });
+
+  it("retains intentional literals with the same name as a macro", () => {
+    const source = "@string{JACM = {Journal of the ACM}}\n@misc{source, journal = {JACM}}\n@misc{target, journal = {JA}}";
+    const state = bibtexState(source);
+    const result = bibtexCompletionSource(new CompletionContext(state, source.lastIndexOf("JA") + 2, true));
+    expect(result).not.toBeNull();
+    expect(result!.options).toContainEqual(expect.objectContaining({ label: "JACM", type: "text", apply: "JACM" }));
+    expect(applyCompletion(state, result!, "JACM").doc.toString()).toContain("journal = {JACM}");
+  });
+
+  it.each(["author", "editor"])("invalidates cached %s choices at a top-level and separator", (field) => {
+    const source = `@misc{prior, ${field} = {John Smith and Jane Doe}}\n@misc{target, ${field} = {John Smith}}`;
+    let state = bibtexState(source);
+    const position = source.lastIndexOf("John Smith") + "John Smith".length;
+    const result = bibtexCompletionSource(new CompletionContext(state, position, true))!;
+    expect(result).not.toBeNull();
+    const isValid = (text: string) => typeof result.validFor === "function"
+      ? result.validFor(text, result.from, result.from + text.length, state)
+      : result.validFor?.test(text);
+    expect(isValid("John Smith")).toBe(true);
+    expect(isValid("John Smith an")).toBe(true);
+    expect(isValid("John Smith and")).toBe(false);
+    expect(isValid("John Smith AND Ja")).toBe(false);
+    expect(isValid("John Smith Anderson")).toBe(true);
+
+    state = state.update({ changes: { from: position, insert: " and Ja" } }).state;
+    const next = bibtexCompletionSource(new CompletionContext(state, position + 7, false))!;
+    expect(next).toMatchObject({ from: position + 5, to: position + 7 });
+    expect(applyCompletion(state, next, "Jane Doe").doc.toString()).toContain(`${field} = {John Smith and Jane Doe}`);
+  });
+
+  it("refreshes the replacement range as whitespace is typed after a trailing and", () => {
+    const source = "@misc{prior, author = {Jane Doe}}\n@misc{target, author = {John Smith and}}";
+    const state = bibtexState(source);
+    const position = source.lastIndexOf("and") + 3;
+    const result = bibtexCompletionSource(new CompletionContext(state, position, true))!;
+    expect(result.from).toBe(position);
+    expect(typeof result.validFor).toBe("function");
+    const validFor = result.validFor as Exclude<typeof result.validFor, RegExp | undefined>;
+    expect(validFor("", position, position, state)).toBe(true);
+    expect(validFor(" ", position, position + 1, state)).toBe(false);
+
+    const spaced = state.update({ changes: { from: position, insert: " " } }).state;
+    const refreshed = bibtexCompletionSource(new CompletionContext(spaced, position + 1, false))!;
+    expect(refreshed.from).toBe(position + 1);
+    expect(applyCompletion(spaced, refreshed, "Jane Doe").doc.toString()).toContain("author = {John Smith and Jane Doe}");
+  });
+
+  it.each([
+    "@misc{key,\n  % editing jou▮\n}",
+    "% example @art▮",
+    "@comment{example @art▮}",
+    "@comment(example @art▮)",
+    "@COMMENT{nested {example @art▮}}",
+    "@comment{unfinished @art▮"
+  ])("suppresses completion in bibliography comments: %s", (marked) => {
+    const position = marked.indexOf("▮");
+    const state = bibtexState(marked.replace("▮", ""));
+    expect(bibtexCompletionSource(new CompletionContext(state, position, true))).toBeNull();
+    expect(bibtexCompletionSource(new CompletionContext(state, position, false))).toBeNull();
+  });
+
+  it.each([
+    "@misc{key,\n  % editing\n  jou▮\n}",
+    "@comment{example @article}\n@art▮",
+    "@comment(example @article)\n@art▮",
+    "@comment{example}@art▮"
+  ])("resumes bibliography completion after a comment: %s", (marked) => {
+    const position = marked.indexOf("▮");
+    const state = bibtexState(marked.replace("▮", ""));
+    expect(bibtexCompletionSource(new CompletionContext(state, position, true))?.options.length).toBeGreaterThan(0);
+  });
+
+  it.each(["{50% Na}", '"50% Na"'])("keeps percent signs literal in the field value %s", (literal) => {
+    const source = `@misc{key, journal = ${literal}}`;
+    const state = bibtexState(source);
+    expect(bibtexCompletionSource(new CompletionContext(state, source.indexOf("Na") + 2, true))?.options)
+      .toContainEqual(expect.objectContaining({ label: "Nature" }));
+  });
+
+  it("invalidates a bare-value popup when a percent comment starts", () => {
+    const source = "@misc{key, journal = Na}";
+    const state = bibtexState(source);
+    const result = bibtexCompletionSource(new CompletionContext(state, source.indexOf("Na") + 2, true))!;
+    expect(result).not.toBeNull();
+    expect(result.validFor).toBeInstanceOf(RegExp);
+    expect((result.validFor as RegExp).test("Na% comment")).toBe(false);
+  });
+
   it("uses traditional BibTeX fields in default entry templates", () => {
     const state = bibtexState("@");
     const completion = bibtexCompletionSource(new CompletionContext(state, 1, true));

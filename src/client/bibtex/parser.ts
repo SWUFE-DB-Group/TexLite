@@ -1,8 +1,18 @@
 /* Derived from TeXlyre/codemirror-lang-bib (MIT). See LICENSE. */
 
-import { foldInside, foldNodeProp, HighlightStyle, indentNodeProp, LRLanguage } from "@codemirror/language";
+import {
+  delimitedIndent, foldInside, foldNodeProp, HighlightStyle, indentNodeProp, LRLanguage,
+  type TreeIndentContext
+} from "@codemirror/language";
 import { styleTags, tags } from "@lezer/highlight";
 import { parser as generatedParser } from "./generatedParser.mjs";
+
+const bracedIndent = delimitedIndent({ closing: "}", align: false });
+const parenthesizedIndent = delimitedIndent({ closing: ")", align: false });
+
+function entryIndent(context: TreeIndentContext) {
+  return context.node.getChild("EntryParenOpen") ? parenthesizedIndent(context) : bracedIndent(context);
+}
 
 /**
  * The Lezer parser plus the CodeMirror language data TexLite needs for every
@@ -13,10 +23,11 @@ export const parser = LRLanguage.define({
   parser: generatedParser.configure({
     props: [
       indentNodeProp.add({
-        Entry: (context) => context.baseIndent + context.unit,
-        StringEntry: (context) => context.baseIndent + context.unit,
-        PreambleEntry: (context) => context.baseIndent + context.unit,
-        BracedValue: (context) => context.baseIndent + context.unit
+        Entry: entryIndent,
+        StringEntry: entryIndent,
+        PreambleEntry: entryIndent,
+        BracedValue: bracedIndent,
+        NestedBracedValue: bracedIndent
       }),
       foldNodeProp.add({
         Entry: foldInside,
@@ -51,6 +62,7 @@ export const parser = LRLanguage.define({
   }),
   languageData: {
     commentTokens: { line: "%" },
+    indentOnInput: /^\s*[})]$/,
     closeBrackets: { brackets: ["{", "\""] }
   }
 });
