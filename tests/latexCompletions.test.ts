@@ -129,6 +129,19 @@ describe("editor LaTeX completion source", () => {
     expect(complete(String.raw`\noind`)?.options.find((entry) => entry.label === "\\noindent")?.detail).toBeUndefined();
   });
 
+  it.each(["includegraphics", "input", "include", "subfile", "bibliography", "addbibresource"])(
+    "shows only paths, not redundant source descriptions, when completing %s", (command) => {
+      const source = `\\input{chapters/prior.tex}\n\\${command}{fi`;
+      const result = complete(source, true, {
+        ...index,
+        files: [{ label: "figures/result.pdf", kind: "text", detail: "Project file", source: "Project" }]
+      })!;
+      expect(result.options.map((entry) => entry.label)).toEqual(["chapters/prior.tex", "figures/result.pdf"]);
+      expect(result.options.every((entry) => entry.detail === undefined)).toBe(true);
+      expect(result.options.every((entry) => entry.type === "text")).toBe(true);
+    }
+  );
+
   it.each(["figure", "itemize", "equation"])("completes a partially typed end inside a known %s environment", (name) => {
     const partial = name.slice(0, 3);
     let state = EditorState.create({ doc: `\\begin{${name}}\nText\n\\end{${partial}}`, extensions: [latexLanguage] });
@@ -185,6 +198,8 @@ describe("editor LaTeX completion source", () => {
 
   it.each([
     [String.raw`\includegraphics[width={0.4\textwidth}]{fig`, "figure.png"],
+    ["\\includegraphics[width={0.4\\textwidth}]\n{fig", "figure.png"],
+    ["\\includegraphics[width={0.4\\textwidth}] % note\n  {fig", "figure.png"],
     [String.raw`\usepackage[opt={x[y]}]{amsmath, ams`, "amssymb"],
     [String.raw`\documentclass[opt={x[y]}]{arti`, "article"],
     [String.raw`\begin{fig`, "figure"]

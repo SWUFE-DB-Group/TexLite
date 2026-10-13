@@ -34,6 +34,8 @@ describe("LaTeX cursor context", () => {
     ["\\begin{figure}\nText\n\\end{fi▮", "environment", "fi"],
     [String.raw`\begin{verbatim▮}`, "environment", "verbatim"],
     [String.raw`\includegraphics[width={0.4\textwidth}]{fi▮}`, "file", "fi"],
+    ["\\includegraphics[width={0.4\\textwidth}]\n{fi▮}", "file", "fi"],
+    ["\\includegraphics[width={0.4\\textwidth}] % note\n  {fi▮}", "file", "fi"],
     [String.raw`\addbibresource[location=local]{ref▮}`, "file", "ref"],
     [String.raw`\bibliography{ref▮}`, "file", "ref"],
     [String.raw`\bibliography{anthology, cust▮}`, "file", "cust"],

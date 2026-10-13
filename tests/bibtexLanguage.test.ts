@@ -349,11 +349,17 @@ describe("internal BibTeX CodeMirror language", () => {
     const isValid = (text: string) => typeof result.validFor === "function"
       ? result.validFor(text, result.from, result.from + text.length, state)
       : result.validFor?.test(text);
+    const canUpdate = (text: string) => {
+      const edited = state.update({ changes: { from: result.from, to: result.to!, insert: text } }).state;
+      return result.update?.(result, result.from, result.from + text.length,
+        new CompletionContext(edited, result.from + text.length, false)) != null;
+    };
     expect(isValid("John Smith")).toBe(true);
-    expect(isValid("John Smith an")).toBe(true);
+    expect(canUpdate("John Smith an")).toBe(true);
     expect(isValid("John Smith and")).toBe(false);
+    expect(canUpdate("John Smith and")).toBe(false);
     expect(isValid("John Smith AND Ja")).toBe(false);
-    expect(isValid("John Smith Anderson")).toBe(true);
+    expect(canUpdate("John Smith Anderson")).toBe(true);
 
     state = state.update({ changes: { from: position, insert: " and Ja" } }).state;
     const next = bibtexCompletionSource(new CompletionContext(state, position + 7, false))!;
@@ -415,8 +421,9 @@ describe("internal BibTeX CodeMirror language", () => {
     const state = bibtexState(source);
     const result = bibtexCompletionSource(new CompletionContext(state, source.indexOf("Na") + 2, true))!;
     expect(result).not.toBeNull();
-    expect(result.validFor).toBeInstanceOf(RegExp);
-    expect((result.validFor as RegExp).test("Na% comment")).toBe(false);
+    expect(typeof result.validFor).toBe("function");
+    const validFor = result.validFor as Exclude<typeof result.validFor, RegExp | undefined>;
+    expect(validFor("Na% comment", result.from, result.to!, state)).toBe(false);
   });
 
   it("uses traditional BibTeX fields in default entry templates", () => {

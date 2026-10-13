@@ -148,6 +148,17 @@ x &= \frac{a}{\sqrt{b}} + \text{a \textbf{word}} \\
     expect(marks().filter((range) => range.class === "cm-tl-math-command").map((range) => source.slice(range.from, range.to))).toEqual([String.raw`\alpha`]);
   });
 
+  it("keeps starred math tags as prose, including nested text commands after spacing", () => {
+    const source = String.raw`\begin{equation}
+x + \alpha \tag* {\textbf{A}}
+\end{equation}`;
+    const { classesAt, marks } = fixture(source);
+    expect(classesAt(source.indexOf("\\tag"))).toEqual(["cm-tl-command"]);
+    expect(classesAt(source.indexOf("\\textbf"))).toEqual(["cm-tl-command"]);
+    expect(marks().filter((range) => range.class === "cm-tl-math-command").map((range) => source.slice(range.from, range.to)))
+      .toEqual([String.raw`\alpha`]);
+  });
+
   it.each([
     ["label", "{eq:test}"], ["thlabel", "{eq:test}"], ["ref", "{eq:test}"],
     ["eqref", "{eq:test}"], ["citep", "{paper}"], ["smartcite", "{paper}"],

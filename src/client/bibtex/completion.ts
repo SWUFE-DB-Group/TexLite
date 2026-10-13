@@ -3,18 +3,14 @@
 import { Completion, CompletionContext, CompletionResult, snippetCompletion } from '@codemirror/autocomplete';
 import { syntaxTree } from '@codemirror/language';
 import { SyntaxNode } from '@lezer/common';
-import { fieldRequirements, validFieldNames } from './schema';
+import { fieldRequirements, validEntryTypes, validFieldNames } from './schema';
 import {
   collectDocumentValues,
   DocumentValues,
   findTopLevelAndSeparators
 } from './documentValues';
 
-export const entryTypes: readonly string[] = [
-  'article', 'book', 'booklet', 'conference', 'inbook', 'incollection',
-  'inproceedings', 'manual', 'mastersthesis', 'misc', 'online', 'phdthesis',
-  'proceedings', 'techreport', 'unpublished', 'webpage'
-];
+export const entryTypes: readonly string[] = Array.from(validEntryTypes);
 
 export const fieldNames: readonly string[] = Array.from(validFieldNames);
 
@@ -245,6 +241,37 @@ function completeFieldName(
   };
 }
 
+type ValueCompletion = Completion & { apply: string };
+
+/** Keep a popup useful as candidates become no-ops, or useful again after deletion. */
+function valueCompletionResult(
+  context: CompletionContext,
+  from: number,
+  to: number,
+  options: readonly ValueCompletion[],
+  acceptsText: (text: string) => boolean
+): CompletionResult | null {
+  // All field-value applications are strings. Retain the original choices
+  // for backspacing without rebuilding the document-wide value index.
+  const applications = new Set(options.map((option) => option.apply));
+  const resultAt = (context: CompletionContext, from: number, to: number): CompletionResult => {
+    const text = context.state.sliceDoc(from, to);
+    const hasNoOp = applications.has(text);
+    return {
+      from, to,
+      options: options.filter((option) => option.apply !== text),
+      // Ordinary input can reuse the list. Completing an option or
+      // changing a suppressed value needs the cheap update below.
+      validFor: (next) => acceptsText(next) && (next === text ||
+        !applications.has(next) && !hasNoOp),
+      update: (_current, from, to, context) => acceptsText(context.state.sliceDoc(from, to))
+        ? resultAt(context, from, to) : null
+    };
+  };
+  const result = resultAt(context, from, to);
+  return result.options.length > 0 ? result : null;
+}
+
 function completeFieldValue(
   context: CompletionContext,
   inside: SyntaxNode
@@ -289,7 +316,7 @@ function completeFieldValue(
   }
 
   const docValues = collectDocumentValues(context.state);
-  const options: Completion[] = [];
+  const options: ValueCompletion[] = [];
   const seen = new Set<string>();
   const preservesDelimiter = atom?.name === 'BracedValue' || atom?.name === 'QuotedValue';
   const shouldUseBareValue = (label: string) =>
@@ -336,17 +363,16 @@ function completeFieldValue(
 
   if (options.length === 0) return null;
   const validValueText = preservesDelimiter ? /^[^"{}\n]*$/ : /^[^"{}%\n]*$/;
-  return {
-    from, to, options,
+  return valueCompletionResult(context, from, to, options,
     // Re-query after `and` instead of filtering the previous person's
     // cached choices against the entire growing author/editor list.
-    validFor: isPersonField
+    isPersonField
       ? (text) => validValueText.test(text) && findTopLevelAndSeparators(text).length === 0
         // Whitespace belongs to the separator, not the next person's
         // replacement range, including when typed after a trailing `and`.
         && (!followsPersonSeparator || !/^\s/.test(text))
-      : validValueText
-  };
+      : (text) => validValueText.test(text)
+  );
 }
 
 export function bibtexCompletionSource(context: CompletionContext): CompletionResult | null {

@@ -173,7 +173,7 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
   if (argument?.kind === "citation") return { from: argument.from, options: mergeCompletionItems(t, local().citations, bibtexCitationItems(index)), validFor: /^[^,{}%\s]*$/ };
   if (argument?.kind === "file") return {
     from: argument.from,
-    options: mergeCompletionItems(t, local().files, index?.files ?? []),
+    options: withoutCompletionDetails(mergeCompletionItems(t, local().files, index?.files ?? [])),
     validFor: argument.command === "bibliography" ? /^[^,{}%\s]*$/ : /^[^{}]*$/
   };
   if (argument?.kind === "package") return { from: argument.from, options: mergeCompletionItems(t, local().packages, index?.packages ?? []), validFor: /^[^,{}%\s]*$/ };

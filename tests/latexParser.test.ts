@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { ensureSyntaxTree, foldable, getIndentation, matchBrackets, syntaxTree } from "@codemirror/language";
-import { TreeFragment, type Tree } from "@lezer/common";
+import { TreeFragment, type SyntaxNode, type Tree } from "@lezer/common";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import { latexLanguage } from "../src/client/latex";
 import { parser } from "../src/client/latex/latex.mjs";
@@ -74,6 +74,40 @@ describe("structural LaTeX parser", () => {
     "\\renewenvironment*{custom}{\\begin{itemize}}{\\end{itemize}}"
   ])("accepts common whitespace and starred command forms: %s", (source) => {
     parseWithoutErrors(source + "\nNormal prose.");
+  });
+
+  it.each([
+    ["\\includegraphics[width=\\linewidth]\n{images/test.pdf}", "IncludeGraphics", "IncludeGraphicsArgument", "{images/test.pdf}"],
+    ["\\includegraphics[width=\\linewidth] % option comment\n  {images/test.pdf}", "IncludeGraphics", "IncludeGraphicsArgument", "{images/test.pdf}"],
+    ["\\includesvg[width=\\linewidth]\n{images/test.svg}", "IncludeSvg", "IncludeSvgArgument", "{images/test.svg}"],
+    ["\\caption[Short] {A long caption}", "Caption", "TextArgument", "{A long caption}"],
+    ["\\caption[Short]% caption comment\n {A long caption}", "Caption", "TextArgument", "{A long caption}"],
+    ["\\caption*\n{An unnumbered caption}", "Caption", "TextArgument", "{An unnumbered caption}"],
+    ["\\title[Short]\n{A long title}", "Title", "TextArgument", "{A long title}"],
+    ["\\title[Short] % title comment\n {A long title}", "Title", "TextArgument", "{A long title}"],
+    ["$x \\tag* {A}$", "MathTextCommand", "TextArgument", "{A}"],
+    ["\\begin{equation}\nx \\tag*% tag comment\n {A}\n\\end{equation}", "MathTextCommand", "TextArgument", "{A}"]
+  ])("keeps spaced arguments inside their owning command: %s", (source, command, argument, expected) => {
+    const tree = parseWithoutErrors(source + "\nNormal prose.");
+    const argumentsWithOwner = nodes(tree).filter((node) => node.name === argument && source.slice(node.from, node.to) === expected);
+    expect(argumentsWithOwner).toHaveLength(1);
+    const owner = tree.resolveInner(argumentsWithOwner[0]!.from + 1);
+    let found = false;
+    for (let node: SyntaxNode | null = owner; node; node = node.parent) {
+      if (node.name === command) found = true;
+    }
+    expect(found).toBe(true);
+    expect(tree.resolveInner(source.length + 2).name).toBe("Normal");
+  });
+
+  it.each([" ", "\n", " % alias comment\n  "])("accepts whitespace before the target of let: %j", (spacing) => {
+    const source = `\\let${spacing}\\original=\\replacement\nNormal prose.`;
+    const tree = parseWithoutErrors(source);
+    const aliases = nodes(tree).filter((node) => node.name === "Let");
+    expect(aliases).toHaveLength(1);
+    expect(source.slice(aliases[0]!.from, aliases[0]!.to)).toBe(source.slice(0, source.indexOf("\nNormal")));
+    expect(nodes(tree).filter((node) => node.name === "Csname").map((node) => source.slice(node.from, node.to)))
+      .toEqual([String.raw`\original`, String.raw`\replacement`]);
   });
 
   it("preserves a multiline section title when folding its contents", () => {
@@ -235,7 +269,7 @@ a & b \\
     let source = article + "\n" + article;
     let tree = parser.parse(source);
     let fragments = TreeFragment.addTree(tree);
-    const edits = [String.raw`\begin{verbatim}`, "\n$ % raw\n", String.raw`\end{verbatim}`, String.raw`\citep{new}`, "{", "}", "$", "%", "\n", String.raw`\end {document}`, "\\newcommand*{\\foo}[1]{#1}", "\\section\n{Title}"];
+    const edits = [String.raw`\begin{verbatim}`, "\n$ % raw\n", String.raw`\end{verbatim}`, String.raw`\citep{new}`, "{", "}", "$", "%", "\n", String.raw`\end {document}`, "\\newcommand*{\\foo}[1]{#1}", "\\section\n{Title}", "\\includegraphics[width=1cm]\n{image.pdf}", "\\title[Short]\n{Title}", "\\let \\old=\\new", "\\tag* {A}"];
     for (let index = 0; index < 70; index++) {
       const from = (index * 127 + 73) % source.length;
       const removed = index % 3 === 0 ? Math.min(3, source.length - from) : 0;

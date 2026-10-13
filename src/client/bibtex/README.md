@@ -21,5 +21,12 @@ bare values. Literal values retain their braces/quotes and protected inner
 groups. Indentation rules distinguish entry and value closers, including
 parenthesized entries; the shared editor applies them on newline and input.
 
+Entry-type completion derives from the validation schema; templates remain a
+curated subset. Field-value choices omit insertions that would not change the
+replacement range. CodeMirror's incremental update callback removes a newly
+completed no-op or restores a useful candidate after deletion, without another
+document-wide value scan. Structural boundaries still trigger a fresh query.
+
 The focused regression suite is in `tests/bibtexLanguage.test.ts` and
-`tests/bibtexIndentation.test.ts`.
+`tests/bibtexIndentation.test.ts`; `tests/bibtexCompletion.test.ts` covers the
+shared schema and incremental candidate filtering.

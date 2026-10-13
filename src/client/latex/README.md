@@ -43,6 +43,10 @@ The grammar and tokenizer are covered by AGPL-3.0; see the repository's
 The fork accepts whitespace around environment names and between `\begin` /
 `\end` and their arguments. Common command arguments also accept line breaks
 and spaces, and macro/environment definitions support their starred forms.
+Options and following mandatory arguments may be separated by spaces,
+line breaks, or comments in image inclusion, captions, and titles. `\let`
+accepts spacing before the aliased command, and starred math tags retain
+their text-argument boundaries across the same separators.
 Definition fragments retain macro parameters without interpreting unbalanced
 environment or math markers as document structure. Unbraced input paths stop
 at whitespace and comments rather than swallowing following commands.

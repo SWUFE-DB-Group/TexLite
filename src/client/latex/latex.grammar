@@ -243,7 +243,7 @@ OptionalMacroParameter {
 // structure
 KnownCommand<ArgumentType> {
     Title {
-        TitleCtrlSeq optionalWhitespace? OptionalArgument? TextArgument
+        TitleCtrlSeq optionalWhitespace? (OptionalArgument optionalWhitespace?)? TextArgument
     } |
     Author {
         AuthorCtrlSeq optionalWhitespace? OptionalArgument? optionalWhitespace? TextArgument
@@ -302,15 +302,15 @@ KnownCommand<ArgumentType> {
         OpenBrace LiteralArgContent CloseBrace LstInlineContent
     } |
     IncludeGraphics {
-        IncludeGraphicsCtrlSeq optionalWhitespace? OptionalArgument?
+        IncludeGraphicsCtrlSeq optionalWhitespace? (OptionalArgument optionalWhitespace?)?
         IncludeGraphicsArgument { FilePathArgument }
     } |
     IncludeSvg {
-        IncludeSvgCtrlSeq optionalWhitespace? OptionalArgument?
+        IncludeSvgCtrlSeq optionalWhitespace? (OptionalArgument optionalWhitespace?)?
         IncludeSvgArgument { FilePathArgument }
     } |
     Caption {
-        CaptionCtrlSeq "*"? optionalWhitespace? OptionalArgument? TextArgument
+        CaptionCtrlSeq "*"? optionalWhitespace? (OptionalArgument optionalWhitespace?)? TextArgument
     } |
     Label {
         LabelCtrlSeq optionalWhitespace? LabelArgument
@@ -326,7 +326,7 @@ KnownCommand<ArgumentType> {
         DefCtrlSeq optionalWhitespace? (Csname | CtrlSym) (optionalWhitespace? (MacroParameter | OptionalMacroParameter))* optionalWhitespace? DefinitionArgument
     } |
     Let {
-        LetCtrlSeq Csname optionalWhitespace? "="? optionalWhitespace? Csname
+        LetCtrlSeq optionalWhitespace? Csname optionalWhitespace? "="? optionalWhitespace? Csname
     } |
     Hbox {
         HboxCtrlSeq optionalWhitespace? TextArgument
@@ -385,7 +385,7 @@ KnownCommand<ArgumentType> {
             optionalWhitespace? TabularArgument
     } |
     MathTextCommand {
-        MathTextCtrlSeq optionalWhitespace? "*"? TextArgument
+        MathTextCtrlSeq optionalWhitespace? ("*" optionalWhitespace?)? TextArgument
     } |
     ParBoxCommand {
         ParBoxCtrlSeq
