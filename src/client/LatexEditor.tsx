@@ -30,7 +30,7 @@ import { latexReferenceHover } from "./latexReferenceHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
 import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
-import { setSourceComments, sourceCommentDecorations, sourceCommentMarksForFile } from "./sourceCommentDecorations";
+import { setSourceComments, sourceCommentAnchorForId, sourceCommentDecorations, sourceCommentMarksForFile } from "./sourceCommentDecorations";
 import type { LatexReference } from "../shared/latexReferences";
 import { latexReferenceMarks, referenceNavigationSettings, type ReferenceNavigationSettings } from "./latexReferenceMarks";
 import type { SpellCheckIssue } from "./spellCheck";
@@ -367,9 +367,11 @@ export function LatexEditor({
 
   useEffect(() => {
     const editor = view.current;
-    if (!editor || !focusComment || focusComment.filePath !== filePath || focusComment.orphaned) return;
-    const from = Math.min(focusComment.startOffset, editor.state.doc.length);
-    const to = Math.min(Math.max(from, focusComment.endOffset), editor.state.doc.length);
+    if (!editor || !focusComment || focusComment.filePath !== filePath) return;
+    const anchor = sourceCommentAnchorForId(editor.state, focusComment.id) ?? focusComment;
+    if (anchor.orphaned) return;
+    const from = Math.min(anchor.startOffset, editor.state.doc.length);
+    const to = Math.min(Math.max(from, anchor.endOffset), editor.state.doc.length);
     editor.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: "center" }) });
     editor.focus();
   }, [filePath, focusComment]);

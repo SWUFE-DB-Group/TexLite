@@ -231,6 +231,9 @@ export interface Comment {
   authorUsername: string | null;
   authorDisplayName: string | null;
   selectedText: string;
+  /** Last attached context is retained while source is deleted, for undo recovery. */
+  contextBefore?: string;
+  contextAfter?: string;
   startOffset: number;
   endOffset: number;
   startLine: number;

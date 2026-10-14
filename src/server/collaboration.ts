@@ -23,7 +23,7 @@ import {
   prepareCollaborationProjectAccessStatement,
   type CollaborationProjectAccess
 } from "./projects.js";
-import { reanchorFileComments } from "./anchors.js";
+import { reanchorFileComments, type SourceCommentEdit } from "./anchors.js";
 import { hashText, type EditHistorySegmentInput, type EditHistorySpan, type EditHistoryStep } from "./editHistory.js";
 import {
   COLLABORATION_PROTOCOL_VERSION,
@@ -121,6 +121,8 @@ interface Room {
   dirtyPaths: Set<string>;
   /** Author-isolated updates waiting for their corresponding source write. */
   pendingEditSegments: EditHistorySegmentInput[];
+  /** Incremental operations retained until source persistence, including full-range replacements. */
+  pendingCommentEdits: Map<string, SourceCommentEdit[][]>;
   textObservers: Map<string, (event: Y.YTextEvent, transaction: Y.Transaction) => void>;
   saveTimer: NodeJS.Timeout | null;
   stateSaveTimer: NodeJS.Timeout | null;
@@ -795,6 +797,7 @@ export class CollaborationService {
       observedContent: new Map(),
       dirtyPaths: new Set(),
       pendingEditSegments: [],
+      pendingCommentEdits: new Map(),
       textObservers: new Map(),
       saveTimer: null,
       stateSaveTimer: null,
@@ -958,6 +961,7 @@ export class CollaborationService {
         // edit record; keeping this mirror current prevents later edits from
         // being mapped across such a replacement.
         room.observedContent.set(filePath, after);
+        room.pendingCommentEdits.delete(filePath);
         return;
       }
       if (!room.allowedPaths.has(filePath)) {
@@ -971,6 +975,29 @@ export class CollaborationService {
       if (isConnectionOrigin(transaction.origin) && before !== after) {
         const connection = transaction.origin;
         this.recordEditStep(room, filePath, connection, event, before, after);
+      }
+      if (before !== after) {
+        const edits: SourceCommentEdit[] = [];
+        let offset = 0;
+        let pending: SourceCommentEdit | null = null;
+        for (const delta of event.delta) {
+          if (delta.retain) {
+            if (pending) edits.push(pending);
+            pending = null;
+            offset += delta.retain;
+          } else if (delta.delete || typeof delta.insert === "string") {
+            pending ??= { from: offset, to: offset, insert: "", insertLength: 0 };
+            if (delta.delete) { offset += delta.delete; pending.to = offset; }
+            if (typeof delta.insert === "string") {
+              pending.insert += delta.insert;
+              pending.insertLength += delta.insert.length;
+            }
+          }
+        }
+        if (pending) edits.push(pending);
+        const batches = room.pendingCommentEdits.get(filePath) ?? [];
+        batches.push(edits);
+        room.pendingCommentEdits.set(filePath, batches);
       }
       room.observedContent.set(filePath, after);
       room.dirtyPaths.add(filePath);
@@ -1486,7 +1513,7 @@ export class CollaborationService {
       room.persistedContent.set(filePath, next);
       room.dirtyPaths.delete(filePath);
       finalizedPaths.add(filePath);
-      try { reanchorFileComments(this.db, room.projectId, filePath, previous, next); }
+      try { reanchorFileComments(this.db, room.projectId, filePath, previous, next, room.pendingCommentEdits.get(filePath)); }
       catch { /* Source durability is primary; comments can still be re-anchored by a later edit. */ }
       changed = true;
       changedPaths.push(filePath);
@@ -1496,6 +1523,7 @@ export class CollaborationService {
     // A reverted edit or rejected oversized file did not produce a durable
     // source revision, so it must not become a misleading edit-history row.
     if (finalizedPaths.size > 0) {
+      for (const filePath of finalizedPaths) room.pendingCommentEdits.delete(filePath);
       room.pendingEditSegments = room.pendingEditSegments.filter((segment) => !finalizedPaths.has(segment.filePath));
     }
     if (changed && room.lastModifiedUserId) {

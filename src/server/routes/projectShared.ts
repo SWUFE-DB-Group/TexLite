@@ -201,6 +201,8 @@ interface CommentRow {
   author_username: string | null;
   author_display_name: string | null;
   selected_text: string;
+  context_before: string;
+  context_after: string;
   start_offset: number;
   end_offset: number;
   content: string;
@@ -302,6 +304,8 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     authorUsername: comment.author_username,
     authorDisplayName: comment.author_display_name,
     selectedText: comment.selected_text,
+    contextBefore: comment.context_before,
+    contextAfter: comment.context_after,
     startOffset: comment.start_offset,
     endOffset: comment.end_offset,
     startLine: offsetToLine(sourceByPath.get(comment.file_path) ?? "", comment.start_offset),

@@ -198,6 +198,23 @@ select the annotated source range or take over the editor caret; dragging to
 select text and modifier-click citation navigation keep their normal behavior.
 Resolved and orphaned threads have no source markers.
 
+Source comment ranges follow partial insertions, deletions and replacements,
+updating the quoted excerpt to the current text rather than requiring exact
+equality with the initial selection. Full deletion or whole-range replacement
+detaches the thread without discarding its last attached quote and surrounding
+context. A later undo or restoration can reattach the complete last attached
+quote by contextual matching; partial quote restoration and unrelated duplicate
+text alone are not sufficient. Collaborative persistence replays actual Yjs
+edit ranges, so common characters in a whole-range replacement do not falsely
+count as retained source. Non-collaborative writes use a before/after text diff
+because they do not carry editor operations. These existing
+database fields remain durable across restarts, without a schema change.
+The server and editor share the range/context rules. Live editor anchors retain
+detached state through undo and supply current offsets for thread-to-source
+navigation, even before a save. Unchanged or stale saved anchors cannot replace
+a valid live mapping. Browser recovery searches are bounded around the hint
+and newly inserted fragments; ordinary edits never flatten the entire document.
+
 The collaboration service uses a versioned handshake and a versioned epoch
 marker. When a browser from an incompatible release connects, it is forced to
 reload before it can decode or send source updates. Protocol-only migrations

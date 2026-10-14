@@ -378,6 +378,16 @@ It works.
     const withoutAnchor = shiftedSource.replace("Hello", "");
     const orphaned = await app.inject({ method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie }, payload: { path: "main.tex", content: withoutAnchor } });
     expect(orphaned.json().comments[0]).toMatchObject({ orphaned: true, selectedText: "Hello" });
+    const restoredAnchor = await app.inject({ method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie }, payload: { path: "main.tex", content: shiftedSource } });
+    expect(restoredAnchor.json().comments[0]).toMatchObject({ orphaned: false, selectedText: "Hello", startOffset: helloOffset + 10 });
+    const partialEdit = shiftedSource.replace("Hello", "Hello new");
+    const updatedAnchor = await app.inject({ method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie }, payload: { path: "main.tex", content: partialEdit } });
+    // Insertion immediately after the range does not pull adjacent source
+    // into the selected quote.
+    expect(updatedAnchor.json().comments[0]).toMatchObject({ orphaned: false, selectedText: "Hello" });
+    const insideEdit = partialEdit.replace("Hello", "HeXllo");
+    const insideAnchor = await app.inject({ method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie }, payload: { path: "main.tex", content: insideEdit } });
+    expect(insideAnchor.json().comments[0]).toMatchObject({ orphaned: false, selectedText: "HeXllo", startOffset: helloOffset + 10, endOffset: helloOffset + 16 });
 
     const deletedReply = await app.inject({
       method: "DELETE", url: `/api/projects/${project.id}/comments/${commentId}/replies/${replyId}`, headers: { cookie }

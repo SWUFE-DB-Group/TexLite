@@ -2,7 +2,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, type DecorationSet } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  openSourceCommentOnClick, setSourceComments, sourceCommentDecorations, sourceCommentMarksForFile
+  openSourceCommentOnClick, setSourceComments, sourceCommentAnchorForId, sourceCommentDecorations, sourceCommentMarksForFile
 } from "../src/client/sourceCommentDecorations";
 import type { Comment } from "../src/client/types";
 
@@ -11,7 +11,7 @@ afterEach(() => vi.unstubAllGlobals());
 function comment(id: string, from = 1, to = 5): Comment {
   return {
     id, filePath: "main.tex", authorId: "author", authorUsername: "author", authorDisplayName: "Author",
-    selectedText: "text", startOffset: from, endOffset: to, startLine: 1, endLine: 1,
+    selectedText: "some text here".slice(from, to), startOffset: from, endOffset: to, startLine: 1, endLine: 1,
     content: "Please revise", resolved: false, orphaned: false, createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z", editedAt: null, replies: []
   };
@@ -60,7 +60,7 @@ describe("source comment navigation", () => {
   it("links unresolved source and pins, leaving resolved, orphaned and other-file threads unmarked", () => {
     const { state } = fixture([
       comment("thread"), { ...comment("resolved"), resolved: true },
-      { ...comment("orphaned"), orphaned: true }, { ...comment("other"), filePath: "other.tex" }
+      { ...comment("orphaned"), selectedText: "missing", orphaned: true }, { ...comment("other"), filePath: "other.tex" }
     ]);
     const marks = ranges(state);
     expect(marks).toHaveLength(2);
@@ -85,6 +85,90 @@ describe("source comment navigation", () => {
     expect(sourceClick(state, onOpen)).toBe(false);
     expect(onOpen).toHaveBeenCalledExactlyOnceWith("thread");
     expect(state.selection.main.empty).toBe(true);
+  });
+
+  it("tracks local insertion and deletion within a quote without losing its source mark", () => {
+    let { state } = fixture([comment("thread", 5, 9)]);
+    state = state.update({ changes: { from: 7, insert: "new " } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ startOffset: 5, endOffset: 13, selectedText: "tenew xt", orphaned: false });
+    state = state.update({ changes: { from: 6, to: 7 } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ startOffset: 5, endOffset: 12, selectedText: "tnew xt", orphaned: false });
+    expect(ranges(state)).toHaveLength(2);
+  });
+
+  it("recovers a fully replaced quote on undo before any server save", () => {
+    let { state } = fixture([comment("thread", 5, 9)]);
+    state = state.update({ changes: { from: 5, to: 9, insert: "other" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ selectedText: "text", orphaned: true });
+    expect(ranges(state)).toEqual([]);
+    state = state.update({ changes: { from: 5, to: 10, insert: "text" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ startOffset: 5, endOffset: 9, selectedText: "text", orphaned: false });
+    expect(ranges(state)).toHaveLength(2);
+  });
+
+  it("does not reset local offsets when an unchanged saved anchor arrives with a reply or resolution", () => {
+    const saved = comment("thread", 5, 9);
+    let { state } = fixture([saved]);
+    state = state.update({ changes: { from: 0, insert: "prefix " } }).state;
+    state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([{ ...saved, resolved: true }], "main.tex")) }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ startOffset: 12, endOffset: 16, selectedText: "text", orphaned: false });
+    expect(ranges(state)).toEqual([]);
+    state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([saved], "main.tex")) }).state;
+    expect(ranges(state).map(({ from, to }) => [from, to])).toEqual([[12, 16], [16, 16]]);
+  });
+
+  it("keeps a whole-range replacement detached through partial recovery until the full quote returns", () => {
+    let { state } = fixture([comment("thread", 5, 9)]);
+    state = state.update({ changes: { from: 5, to: 9, insert: "teXt" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ selectedText: "text", orphaned: true });
+    state = state.update({ changes: { from: 5, to: 9, insert: "tex" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")?.orphaned).toBe(true);
+    expect(ranges(state)).toEqual([]);
+    state = state.update({ changes: { from: 8, insert: "t" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ selectedText: "text", startOffset: 5, endOffset: 9, orphaned: false });
+  });
+
+  it("retains an anchor when an exact partial deletion leaves only one original character", () => {
+    let { state } = fixture([comment("thread", 5, 9)]);
+    state = state.update({ changes: { from: 6, to: 9 } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ selectedText: "t", startOffset: 5, endOffset: 6, orphaned: false });
+  });
+
+  it("keeps the live anchor when a save response represents an earlier partial edit", () => {
+    const saved = comment("thread", 5, 9);
+    let { state } = fixture([saved]);
+    state = state.update({ changes: { from: 7, insert: "new " } }).state;
+    const firstSave = { ...saved, selectedText: "tenew xt", endOffset: 13 };
+    state = state.update({ changes: { from: 7, insert: "next " } }).state;
+    state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([firstSave], "main.tex")) }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ startOffset: 5, endOffset: 18, selectedText: "tenext new xt", orphaned: false });
+    expect(ranges(state)).toHaveLength(2);
+  });
+
+  it("does not lose a locally restored marker when a stale orphaned save response arrives", () => {
+    const saved = { ...comment("thread", 5, 9), contextBefore: "some ", contextAfter: " here" };
+    let { state } = fixture([saved]);
+    state = state.update({ changes: { from: 5, to: 9 } }).state;
+    state = state.update({ changes: { from: 5, insert: "text" } }).state;
+    state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([{ ...saved, endOffset: 5, orphaned: true }], "main.tex")) }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ startOffset: 5, endOffset: 9, orphaned: false });
+    expect(ranges(state)).toHaveLength(2);
+  });
+
+  it("recovers a distant quote on whole-document undo without flattening on ordinary edits", () => {
+    const source = "before\n".repeat(2000) + "review this paragraph\n" + "after\n".repeat(2000);
+    const start = source.indexOf("review");
+    const item = { ...comment("thread"), startOffset: start, endOffset: start + 21, selectedText: "review this paragraph" };
+    let state = EditorState.create({ doc: source, extensions: [sourceCommentDecorations({ label: "View", onOpen: vi.fn() })] })
+      .update({ effects: setSourceComments.of(sourceCommentMarksForFile([item], "main.tex")) }).state;
+    const flatten = vi.spyOn(state.doc, "toString");
+    state = state.update({ changes: { from: 0, insert: "prefix\n" } }).state;
+    expect(flatten).not.toHaveBeenCalled();
+    state = state.update({ changes: { from: 0, to: state.doc.length, insert: "overwritten" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")?.orphaned).toBe(true);
+    state = state.update({ changes: { from: 0, to: state.doc.length, insert: "prefix\n" + source } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ startOffset: start + 7, endOffset: start + 28, orphaned: false });
+    expect(ranges(state)).toHaveLength(2);
   });
 
   it("does not hijack drag selections, modifier/reference clicks or right clicks", () => {

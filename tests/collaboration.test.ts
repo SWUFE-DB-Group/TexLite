@@ -66,6 +66,63 @@ describe("project collaboration", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
+  it("keeps comment anchors through another coauthor's partial edit and persisted Yjs undo", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Anchored coauthor edits" } });
+    const projectId = created.json().project.id as string;
+    const source = "\\documentclass{article}\n\\begin{document}\nWe use large models.\n\\end{document}\n";
+    const start = source.indexOf("large models");
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie: adminCookie }, payload: { path: "main.tex", content: source } });
+    const comment = await app.inject({ method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie: adminCookie }, payload: { path: "main.tex", startOffset: start, endOffset: start + 12, content: "Clarify the model" } });
+    expect(comment.statusCode).toBe(201);
+    const editor = await createUser(app, adminCookie, "anchor-editor", "Anchor Editor");
+    const editorCookie = await login(app, "anchor-editor", "reader-password");
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${editor.id}`, headers: { cookie: adminCookie }, payload: { permission: "edit" } });
+    const owner = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    const editingPeer = await TestPeer.connect(app, projectId, editorCookie, { id: editor.id, username: "anchor-editor", name: "Anchor Editor" });
+    const ownerText = owner.doc.getText("source:main.tex");
+    const editorText = editingPeer.doc.getText("source:main.tex");
+    const undo = new Y.UndoManager(ownerText, { captureTimeout: 0 });
+    const loadComment = async () => {
+      const response = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?path=main.tex`, headers: { cookie: editorCookie } });
+      expect(response.statusCode).toBe(200);
+      return response.json().comments[0];
+    };
+    try {
+      editorText.insert(start + 5, " language");
+      await waitFor(() => ownerText.toString().includes("large language models"));
+      expect((await editingPeer.flush()).ok).toBe(true);
+      expect(await loadComment()).toMatchObject({ selectedText: "large language models", startOffset: start, endOffset: start + 21, orphaned: false });
+      ownerText.delete(start, 21);
+      await waitFor(() => !editorText.toString().includes("large language models"));
+      expect((await owner.flush()).ok).toBe(true);
+      expect(await loadComment()).toMatchObject({ selectedText: "large language models", orphaned: true });
+      undo.undo();
+      await waitFor(() => editorText.toString().includes("large language models"));
+      expect((await owner.flush()).ok).toBe(true);
+      expect(await loadComment()).toMatchObject({ selectedText: "large language models", startOffset: start, endOffset: start + 21, orphaned: false });
+      owner.doc.transact(() => {
+        ownerText.delete(start, 21);
+        ownerText.insert(start, "small language models");
+      });
+      await waitFor(() => editorText.toString().includes("small language models"));
+      expect((await owner.flush()).ok).toBe(true);
+      expect(await loadComment()).toMatchObject({ selectedText: "large language models", orphaned: true });
+      owner.doc.transact(() => {
+        ownerText.delete(start, 21);
+        ownerText.insert(start, "large language model");
+      });
+      await waitFor(() => editorText.toString().includes("large language model."));
+      expect((await owner.flush()).ok).toBe(true);
+      expect(await loadComment()).toMatchObject({ selectedText: "large language models", orphaned: true });
+      ownerText.insert(start + 20, "s");
+      await waitFor(() => editorText.toString().includes("large language models"));
+      expect((await owner.flush()).ok).toBe(true);
+      expect(await loadComment()).toMatchObject({ selectedText: "large language models", startOffset: start, endOffset: start + 21, orphaned: false });
+    } finally {
+      undo.destroy(); owner.destroy(); editingPeer.destroy();
+    }
+  });
+
   it("merges concurrent edits, persists them, exposes each active session and rejects read-only writes", async () => {
     const editor = await createUser(app, adminCookie, "collab-editor", "Collaborative Editor");
     const reader = await createUser(app, adminCookie, "collab-reader", "Collaborative Reader");
