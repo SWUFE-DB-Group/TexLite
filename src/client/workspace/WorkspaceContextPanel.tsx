@@ -1,4 +1,4 @@
-import { lazy, useEffect, useMemo, useState } from "react";
+import { lazy, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { ArrowDown, ArrowUp, AtSign, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -7,13 +7,13 @@ import type { EditorPreferences } from "../editorPreferences";
 import { CommentThread } from "./Comments";
 import { CommentParticipantFilter } from "./CommentParticipantFilter";
 import { LazyPanel } from "../LazyLoadBoundary";
+import { COMMENT_EXIT_DURATION_MS, useCommentReviewTransitions } from "./useCommentReviewTransitions";
 import {
   adjacentReviewComment,
   buildVisibleReviewQueue,
   collectCommentParticipants,
   commentReviewPosition,
   filterCommentsForReview,
-  shouldRevealAfterCommentToggle,
   type CommentReviewFilter,
   type CommentReviewSort,
   type CommentReviewScope
@@ -79,7 +79,7 @@ export function WorkspaceContextPanel({
   const [commentSort, setCommentSort] = useState<CommentReviewSort>("source");
   const [participantIds, setParticipantIds] = useState<Set<string | null>>(() => new Set());
   const [topLevelOnly, setTopLevelOnly] = useState(false);
-  const [revealedCommentId, setRevealedCommentId] = useState<string | null>(null);
+  const previousResolution = useRef(new Map(comments.map((comment) => [comment.id, comment.resolved])));
   const participants = useMemo(() => collectCommentParticipants(comments), [comments]);
   const reviewCounts = useMemo(() => {
     const options = { activeFile, scope: commentScope, unreadMentions, participantIds, topLevelOnly, unreadMentionsOnly };
@@ -91,24 +91,31 @@ export function WorkspaceContextPanel({
   }, [activeFile, commentScope, comments, unreadMentions, participantIds, topLevelOnly, commentFilter, unreadMentionsOnly]);
   const visibleComments = useMemo(() => buildVisibleReviewQueue(comments, {
     activeFile, scope: commentScope, filter: commentFilter, unreadMentions, sort: commentSort, participantIds, topLevelOnly, unreadMentionsOnly
-  }, [revealedCommentId, targetCommentId, focusedCommentId]), [
+  }, [targetCommentId, focusedCommentId]), [
     activeFile, commentFilter, commentScope, comments, focusedCommentId,
-    revealedCommentId, targetCommentId, unreadMentions, commentSort, participantIds, topLevelOnly, unreadMentionsOnly
+    targetCommentId, unreadMentions, commentSort, participantIds, topLevelOnly, unreadMentionsOnly
   ]);
   const currentCommentId = focusedCommentId && visibleComments.some((comment) => comment.id === focusedCommentId)
     ? focusedCommentId
-    : revealedCommentId && visibleComments.some((comment) => comment.id === revealedCommentId)
-      ? revealedCommentId
-      : targetCommentId && visibleComments.some((comment) => comment.id === targetCommentId)
+    : targetCommentId && visibleComments.some((comment) => comment.id === targetCommentId)
         ? targetCommentId
         : null;
   const currentPosition = commentReviewPosition(visibleComments, currentCommentId);
+  const transitionContext = JSON.stringify([
+    sidePanel, commentScope, commentScope === "file" ? activeFile : "", commentFilter,
+    commentSort, [...participantIds].sort(), topLevelOnly, unreadMentionsOnly
+  ]);
+  const { entries: displayedComments, finishExit } = useCommentReviewTransitions(visibleComments, comments, commentFilter, transitionContext);
   useEffect(() => {
-    if (revealedCommentId && !comments.some((comment) => comment.id === revealedCommentId)) setRevealedCommentId(null);
-  }, [comments, revealedCommentId]);
+    // A navigation reveal is temporary, not an exemption from future status
+    // changes (including a coauthor resolving the currently focused thread).
+    const changedFocus = comments.some((comment) => (comment.id === focusedCommentId || comment.id === targetCommentId)
+      && previousResolution.current.has(comment.id) && previousResolution.current.get(comment.id) !== comment.resolved);
+    previousResolution.current = new Map(comments.map((comment) => [comment.id, comment.resolved]));
+    if (changedFocus) onClearFocusComment();
+  }, [comments, focusedCommentId, targetCommentId, onClearFocusComment]);
   useEffect(() => {
     if (!hasProjectCommentsScope && commentScope !== "file") {
-      setRevealedCommentId(null);
       onClearFocusComment();
       onCommentScopeChange("file");
     }
@@ -134,19 +141,10 @@ export function WorkspaceContextPanel({
   }, [sidePanel, currentCommentId, commentFocusNonce, targetCommentId, targetReplyId, visibleComments]);
 
   const focusReviewComment = (comment: Comment) => {
-    if (revealedCommentId !== comment.id) setRevealedCommentId(null);
     onFocusComment(comment);
-  };
-  const toggleReviewComment = async (comment: Comment) => {
-    // Keep a just-resolved thread visible until the reviewer explicitly moves
-    // on, rather than making the current reading position disappear.
-    onFocusComment(comment);
-    setRevealedCommentId(shouldRevealAfterCommentToggle(comment, commentFilter) ? comment.id : null);
-    await onToggleComment(comment);
   };
   const navigateReview = (direction: -1 | 1) => {
     const next = adjacentReviewComment(visibleComments, currentCommentId, direction);
-    setRevealedCommentId(null);
     if (next) focusReviewComment(next);
     else onClearFocusComment();
   };
@@ -157,7 +155,6 @@ export function WorkspaceContextPanel({
     if (!commentId) return marked;
     const remaining = unreadMentions.some((mention) => mention.id !== mentionId && mention.commentId === commentId);
     if (!remaining) {
-      if (revealedCommentId === commentId) setRevealedCommentId(null);
       if (focusedCommentId === commentId || targetCommentId === commentId) onClearFocusComment();
     }
     return marked;
@@ -165,24 +162,20 @@ export function WorkspaceContextPanel({
   const markAllReviewMentionsRead = async (): Promise<void> => {
     const marked = await onMarkAllMentionsRead();
     if (marked && unreadMentionsOnly) {
-      setRevealedCommentId(null);
       onClearFocusComment();
     }
   };
   const selectCommentScope = (scope: CommentReviewScope) => {
     if (scope === commentScope) return;
-    setRevealedCommentId(null);
     onClearFocusComment();
     onCommentScopeChange(scope);
   };
   const selectCommentFilter = (filter: CommentReviewFilter) => {
     if (filter === commentFilter) return;
-    setRevealedCommentId(null);
     onClearFocusComment();
     setCommentFilter(filter);
   };
   const clearReviewFocus = () => {
-    setRevealedCommentId(null);
     onClearFocusComment();
   };
   const toggleParticipant = (id: string | null) => {
@@ -247,17 +240,21 @@ export function WorkspaceContextPanel({
           {commentsError && <div className="comment-review-error" role="alert"><span>{commentsError}</span><button type="button" onClick={() => void onRetryComments()}>{t("common.retry")}</button></div>}
           {commentsLoading && <div className="comment-review-loading" role="status">{t("common.loading")}</div>}
           <div className="comments">
-            {visibleComments.map((comment) => {
+            {displayedComments.map(({ comment, exitAt }) => {
               const unreadCommentMentionId = unreadMentions.find((mention) => mention.commentId === comment.id && !mention.replyId)?.id;
               const unreadReplyMentionIds = new Map(unreadMentions.filter((mention) => mention.commentId === comment.id && mention.replyId).map((mention) => [mention.replyId!, mention.id]));
-              return <CommentThread key={comment.id} projectId={projectId} comment={comment} currentUserId={currentUserId}
+              return <div key={comment.id} className={`comment-thread-slot${exitAt !== null ? " is-exiting" : ""}`}
+                inert={exitAt !== null ? true : undefined} aria-hidden={exitAt !== null ? true : undefined}
+                style={{ "--comment-exit-duration": `${COMMENT_EXIT_DURATION_MS}ms` } as CSSProperties}
+                onAnimationEnd={(event) => { if (event.target === event.currentTarget && exitAt !== null) finishExit(comment.id); }}>
+                <div className="comment-thread-slot-content"><CommentThread projectId={projectId} comment={comment} currentUserId={currentUserId}
                 unreadCommentMentionId={unreadCommentMentionId} unreadReplyMentionIds={unreadReplyMentionIds}
                 highlightedComment={targetCommentId === comment.id && !targetReplyId} highlightedReplyId={targetCommentId === comment.id ? targetReplyId : null}
                 currentComment={currentCommentId === comment.id} showFilePath={commentScope === "project"}
                 selectedParticipantIds={participantIds} highlightReplyParticipants={!topLevelOnly}
-                onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onToggle={() => void toggleReviewComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} />;
+                onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} /></div></div>;
             })}
-            {visibleComments.length === 0 && !commentsLoading && !commentsError && <p className="muted padded">{comments.length ? t("editor.commentNoMatches") : t("editor.noComments")}</p>}
+            {displayedComments.length === 0 && !commentsLoading && !commentsError && <p className="muted padded">{comments.length ? t("editor.commentNoMatches") : t("editor.noComments")}</p>}
           </div>
         </>}
         {sidePanel === "settings" && <LazyPanel onClose={onClose}><ProjectSettings key={projectId} onClose={onClose} project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={onDictionaryChange} editorPreferences={editorPreferences} onEditorPreferences={onEditorPreferences} spellCheckCount={spellCheckCount} spellCheckUniqueCount={spellCheckUniqueCount} spellCheckIndex={spellCheckIndex} onSpellCheckNavigate={onSpellCheckNavigate} onProject={onProject} /></LazyPanel>}

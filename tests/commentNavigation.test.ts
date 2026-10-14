@@ -9,8 +9,7 @@ import {
   filterCommentsForReview,
   focusCommentForEditorFile,
   resolvePendingCommentFocus,
-  sortReviewComments,
-  shouldRevealAfterCommentToggle
+  sortReviewComments
 } from "../src/client/workspace/commentNavigation.js";
 import type { Comment, CommentMention } from "../src/client/types.js";
 
@@ -84,7 +83,7 @@ describe("comment review navigation", () => {
     }, ["chapter-resolved"]).map((item) => item.id)).toEqual(["main-open"]);
   });
 
-  it("reveals a resolved thread with a fresh @ reply and retains a resolved current item until navigation", () => {
+  it("reveals a resolved thread from an @ reply, then removes it when its status changes and focus clears", () => {
     const options = {
       activeFile: "main.tex", scope: "project" as const, filter: "unresolved" as const,
       unreadMentions: [mention("chapter-resolved", "new-reply")]
@@ -94,9 +93,9 @@ describe("comment review navigation", () => {
 
     const resolvedCurrent = { ...comments[1], resolved: true };
     const later = comment("later-open", "chapters/intro.tex");
-    const queue = buildVisibleReviewQueue([comments[0], resolvedCurrent, later], options, [resolvedCurrent.id]);
-    expect(shouldRevealAfterCommentToggle(comments[1], "unresolved")).toBe(true);
-    expect(commentReviewPosition(queue, resolvedCurrent.id)).toBe(1);
+    const queue = buildVisibleReviewQueue([comments[0], resolvedCurrent, later], options);
+    expect(queue.map((item) => item.id)).toEqual(["later-open", "main-open"]);
+    expect(commentReviewPosition(queue, resolvedCurrent.id)).toBe(0);
     expect(adjacentReviewComment(queue, resolvedCurrent.id, 1)?.id).toBe("later-open");
   });
 

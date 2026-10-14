@@ -19,7 +19,7 @@ const thread: Comment = {
 function render(props: Partial<ComponentProps<typeof CommentThread>> = {}): string {
   return renderToStaticMarkup(createElement(CommentThread, {
     projectId: "project", comment: thread, currentUserId: "viewer",
-    onMarkMentionRead: async () => true, onFocus: () => {}, onToggle: () => {},
+    onMarkMentionRead: async () => true, onFocus: () => {}, onToggle: async () => {},
     onReply: async () => true, onEdit: async () => true, onDelete: async () => true,
     onEditReply: async () => true, onDeleteReply: async () => true,
     highlightReplyParticipants: true, ...props

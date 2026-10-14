@@ -88,7 +88,7 @@ export function filterCommentsForReview(comments: readonly Comment[], options: C
 /**
  * Preserve the selected review filter, while allowing an explicitly opened
  * thread to remain visible. This is used for source-marker clicks, @-mention
- * links, and a thread which has just been resolved. Extra ids are still
+ * links. Status changes clear that temporary reveal. Extra ids are still
  * constrained by the chosen file/project scope.
  */
 export function buildVisibleReviewQueue(
@@ -136,14 +136,6 @@ export function resolvePendingCommentFocus(
 ): Comment | null {
   if (!pending || pending.filePath !== activeFile || loadedFile !== activeFile || commentsFilePath !== activeFile || !commentsReady) return null;
   return comments.find((comment) => comment.id === pending.id && comment.filePath === activeFile) ?? null;
-}
-
-/** Whether toggling a thread would make it disappear from the active queue. */
-export function shouldRevealAfterCommentToggle(
-  comment: Comment,
-  filter: CommentReviewFilter
-): boolean {
-  return !commentMatchesReviewFilter({ ...comment, resolved: !comment.resolved }, filter);
 }
 
 /** Return the one-based visual position of a focused thread, or zero if none is visible. */

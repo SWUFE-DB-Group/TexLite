@@ -59,7 +59,7 @@ export function CommentThread({
   highlightReplyParticipants?: boolean;
   onMarkMentionRead: (mentionId: string) => Promise<boolean>;
   onFocus: () => void;
-  onToggle: () => void;
+  onToggle: () => Promise<void>;
   onReply: (content: string) => Promise<boolean>;
   onEdit: (content: string) => Promise<boolean>;
   onDelete: () => Promise<boolean>;
@@ -68,6 +68,7 @@ export function CommentThread({
 }) {
   const { t } = useTranslation();
   const [replying, setReplying] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [replyContent, setReplyContent] = useState("");
   const [editingComment, setEditingComment] = useState(false);
   const [commentContent, setCommentContent] = useState(comment.content);
@@ -130,7 +131,12 @@ export function CommentThread({
       </div>;
     })}</div>}
     <div className="comment-actions">
-      <button className="resolve" onClick={(event) => { event.stopPropagation(); onToggle(); }}>{comment.resolved ? <RotateCcw size={13} /> : <CheckCircle2 size={13} />}{comment.resolved ? t("editor.reopen") : t("editor.resolve")}</button>
+      <button className="resolve" disabled={toggling} aria-busy={toggling} onClick={(event) => {
+        event.stopPropagation();
+        if (toggling) return;
+        setToggling(true);
+        void onToggle().finally(() => setToggling(false));
+      }}>{comment.resolved ? <RotateCcw size={13} /> : <CheckCircle2 size={13} />}{comment.resolved ? t("editor.reopen") : t("editor.resolve")}</button>
       <button className="reply-action" onClick={(event) => { event.stopPropagation(); setReplying((current) => !current); }}><Reply size={13} />{t("editor.reply")}</button>
     </div>
     {replying && <form className="comment-reply-form" onSubmit={(event) => void submitReply(event)} onClick={(event) => event.stopPropagation()}><MentionTextarea projectId={projectId} autoFocus rows={3} value={replyContent} placeholder={t("editor.replyPlaceholder")} onChange={setReplyContent} onKeyDown={(event) => submitOnShortcut(event, submitReply)} /><div><button type="button" onClick={() => { setReplying(false); setReplyContent(""); }}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!replyContent.trim()}><Send size={13} />{t("editor.sendReply")}</button></div></form>}

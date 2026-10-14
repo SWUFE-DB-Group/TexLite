@@ -854,6 +854,18 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .outline-row.current .outline-title { color: inherit; }
 .padded { padding: 14px; }
 .comments { padding: 9px; }
+.comment-thread-slot { display: grid; grid-template-rows: 1fr; }
+.comment-thread-slot-content { min-height: 0; }
+.comment-thread-slot.is-exiting { pointer-events: none; animation: comment-thread-exit var(--comment-exit-duration, 280ms) cubic-bezier(.22, 1, .36, 1) both; }
+.comment-thread-slot.is-exiting > .comment-thread-slot-content { overflow: hidden; }
+@keyframes comment-thread-exit {
+  0% { grid-template-rows: 1fr; opacity: 1; transform: translateX(0); }
+  45% { grid-template-rows: 1fr; opacity: .2; transform: translateX(8px); }
+  100% { grid-template-rows: 0fr; opacity: 0; transform: translateX(8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .comment-thread-slot.is-exiting { animation-duration: 1ms; }
+}
 .comments article { margin-bottom: 9px; padding: 10px; border: 1px solid #dde2de; border-radius: 7px; font-size: 12px; cursor: pointer; user-select: text; -webkit-user-select: text; }
 .comments article.resolved { opacity: .55; background: transparent; }
 .comments article.orphaned { border-color: #d8847d; background: #fff4f2; }

@@ -179,6 +179,12 @@ the thread/reply surfaces and the rest of the discussion stay unchanged. Explici
 mention navigation can still reveal a thread outside the active filters;
 changing filters clears that temporary focus. Sorting and filtering run locally
 on the already-loaded comment resource, without additional server requests.
+Resolving or reopening a thread clears its temporary navigation reveal after
+the status changes, including changes from another coauthor. It then leaves the
+current status queue with a brief fade/slide and collapse; the outgoing card is
+inert and does not count toward review navigation. Failed requests leave the
+thread visible, changing filters cancels exits, and reduced-motion preferences
+skip the movement.
 The participant selector uses a non-modal, anchored Radix popover so it does not
 push the discussion down. Selections apply immediately without closing the
 popover; outside interaction or Escape dismisses it. Its trigger summarizes the
