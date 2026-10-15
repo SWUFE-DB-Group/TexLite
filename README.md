@@ -11,9 +11,6 @@ teams. Use your existing LaTeX distribution, with no heavyweight service stack.
 
 **Website:** [TexLite GitHub Pages](https://swufe-db-group.github.io/TexLite/)
 
-> [!TIP]
-> **Feedback:** If you use TexLite, please share your experience in our short questionnaires: [Google Form](https://docs.google.com/forms/d/e/1FAIpQLSfc40WWMJpXsYm0FsSadZ-FBu6gdcPZVnoMulcQdkJxIoJtCA/viewform?usp=dialog) or [Feishu questionnaire](https://swufe-dbg.feishu.cn/share/base/form/shrcnqKcPJwCCXXF6Vu52AfSy1d). Your feedback helps guide future improvements.
-
 ![TexLite workspace](preview-1.png)
 ![TexLite project view](preview-2.png)
 
