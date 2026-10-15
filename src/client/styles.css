@@ -146,7 +146,6 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-card-title { min-width: 0; overflow: hidden; color: #18221b; font-size: 17px; font-weight: 730; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 .project-card-tags { min-height: 21px; display: flex; flex-wrap: nowrap; align-items: center; gap: 5px; overflow: hidden; }
 .project-card-tags .tag { min-width: 0; max-width: 100%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-tags, .settings-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .project-icon-avatar { width: 36px; height: 36px; box-sizing: border-box; display: grid; place-items: center; flex: none; overflow: hidden; border: 1px solid transparent; border-radius: 50%; padding: 0; background: #d9eafe; color: #1b5aa0; font-size: 15px; font-weight: 750; line-height: 1; }
 .project-icon-avatar > svg { width: 18px; height: 18px; }
 .project-icon-external-glyph { width: 18px; height: 18px; display: block; background: currentColor; mask-position: center; mask-repeat: no-repeat; mask-size: contain; -webkit-mask-position: center; -webkit-mask-repeat: no-repeat; -webkit-mask-size: contain; }
@@ -952,7 +951,6 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .harper-cli-status button { display: grid; place-items: center; width: 18px; height: 18px; min-height: 18px; padding: 0; border: 0; background: transparent; color: inherit; }
 .harper-cli-status button:hover { background: #0000000d; }
 .settings-description { margin: 0; color: #7b837e; font-size: 11px; line-height: 1.45; }
-.browser-tool-statuses { display: flex; flex-wrap: wrap; gap: 7px; }
 .browser-tool-status { min-width: 116px; flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 8px 9px; border: 1px solid #d9ded9; border-radius: 7px; background: #f7f9f7; color: #6d776f; font-size: 10px; }
 .browser-tool-status strong { min-width: 0; overflow: hidden; color: #344d3c; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .browser-tool-status span { font-weight: 700; white-space: nowrap; }
@@ -1183,11 +1181,6 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .choice-group { display: flex; flex-direction: column; gap: 10px; border: 1px solid #dfe3df; border-radius: 8px; padding: 14px; }
 .choice-group legend { padding: 0 5px; font-size: 12px; color: #69716b; }
 .choice-group label { font-size: 13px; }
-.color-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; border: 0; padding: 0; }
-.color-picker legend { margin-bottom: 8px; font-size: 13px; font-weight: 650; }
-.color-picker label { display: flex; align-items: center; gap: 7px; border: 1px solid #dce1dd; border-radius: 7px; padding: 8px; font-size: 12px; }
-.color-picker label.active { border-color: #176b44; background: #edf5f0; }
-.color-picker input { position: absolute; opacity: 0; pointer-events: none; }
 .tag-assignment-list { display: flex; flex-direction: column; gap: 7px; }
 .tag-assignment-list label, .tag-assignment-list button { display: flex; align-items: center; gap: 9px; min-height: 38px; border: 1px solid #dce1dd; border-radius: 7px; padding: 8px 10px; background: white; color: #38423b; font-size: 13px; text-align: left; }
 .tag-assignment-list label:hover, .tag-assignment-list button:hover { border-color: #8bae9a; background: #f4f8f5; }
