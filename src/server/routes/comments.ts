@@ -212,10 +212,10 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
           projectId: id, commentId, authorId: user.id, content, previousContent: comment.content, createdAt: changedAt
         });
       }
-      if (typeof body.resolved === "boolean") {
-        db.prepare("UPDATE comments SET resolved = ?, updated_at = ? WHERE id = ?")
-          .run(body.resolved ? 1 : 0, changedAt, commentId);
-        if (body.resolved && !comment.resolved) markCommentMentionsResolved(db, commentId, changedAt);
+      if (typeof body.resolved === "boolean" && body.resolved !== Boolean(comment.resolved)) {
+        db.prepare("UPDATE comments SET resolved = ?, resolved_by = ?, resolved_at = ?, updated_at = ? WHERE id = ?")
+          .run(body.resolved ? 1 : 0, body.resolved ? user.id : null, body.resolved ? changedAt : null, changedAt, commentId);
+        if (body.resolved) markCommentMentionsResolved(db, commentId, changedAt);
       }
     })();
     collaboration.signalComments(id);

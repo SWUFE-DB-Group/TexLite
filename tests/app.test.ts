@@ -1342,6 +1342,56 @@ Second version.
     expect(allowed.statusCode).toBe(201);
   });
 
+  it("records the actual resolver, preserves repeated resolves, and clears metadata on reopen", async () => {
+    const reader = await app.inject({
+      method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "resolution-reader", displayName: "Resolution Reader", password: "reader-password" }
+    });
+    const readerId = reader.json().user.id as string;
+    const login = await app.inject({ method: "POST", url: "/api/auth/login",
+      payload: { username: "resolution-reader", password: "reader-password" } });
+    const readerCookie = sessionCookie(login.headers);
+    const project = (await app.inject({ method: "POST", url: "/api/projects", headers: { cookie },
+      payload: { name: "Resolution attribution" } })).json().project as { id: string };
+    await app.inject({ method: "PUT", url: `/api/projects/${project.id}/members/${readerId}`, headers: { cookie },
+      payload: { permission: "read" } });
+    const created = await app.inject({ method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "Please review." } });
+    const commentId = created.json().comment.id as string;
+    const empty = { resolvedById: null, resolvedByUsername: null, resolvedByDisplayName: null, resolvedAt: null };
+    expect(created.json().comment).toMatchObject({ resolved: false, ...empty });
+    const update = (resolved: boolean, actor = readerCookie) => app.inject({
+      method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie: actor }, payload: { resolved }
+    });
+    const load = async (scope = "path=main.tex") => (await app.inject({
+      method: "GET", url: `/api/projects/${project.id}/comments?${scope}`, headers: { cookie }
+    })).json().comments[0];
+    expect((await update(true)).statusCode).toBe(200);
+    const resolved = await load();
+    expect(resolved).toMatchObject({ resolved: true, resolvedById: readerId,
+      resolvedByUsername: "resolution-reader", resolvedByDisplayName: "Resolution Reader", resolvedAt: expect.any(String) });
+    expect(resolved.authorId).not.toBe(readerId);
+    expect(new Date(resolved.resolvedAt).toISOString()).toBe(resolved.resolvedAt);
+    expect((await load("scope=project")).resolvedAt).toBe(resolved.resolvedAt);
+    expect((await update(true, cookie)).statusCode).toBe(200);
+    await app.inject({ method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
+      payload: { content: "Updated review." } });
+    expect(await load()).toMatchObject({ resolvedById: readerId, resolvedAt: resolved.resolvedAt });
+    expect((await update(false)).statusCode).toBe(200);
+    expect(await load()).toMatchObject({ resolved: false, ...empty });
+    expect((await update(true, cookie)).statusCode).toBe(200);
+    expect(await load()).toMatchObject({ resolved: true, resolvedByUsername: "admin", resolvedAt: expect.any(String) });
+    await update(false);
+    await update(true);
+    const beforeDeletion = await load();
+    const deleted = await app.inject({ method: "DELETE", url: `/api/admin/users/${readerId}`, headers: { cookie },
+      payload: { deleteProjects: false } });
+    expect(deleted.statusCode).toBe(200);
+    expect(await load()).toMatchObject({ resolved: true, ...empty, resolvedAt: beforeDeletion.resolvedAt });
+    expect(db.prepare("SELECT resolved_by, resolved_at FROM comments WHERE id = ?").get(commentId))
+      .toEqual({ resolved_by: null, resolved_at: beforeDeletion.resolvedAt });
+  });
+
   it("creates personal @mention notifications only for project members and clears them explicitly or on resolve", async () => {
     const createdUser = await app.inject({
       method: "POST", url: "/api/admin/users", headers: { cookie },

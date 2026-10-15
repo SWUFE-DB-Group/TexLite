@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
-import { AtSign, CheckCircle2, Reply, RotateCcw, Trash2, UserPlus, Users } from "lucide-react";
+import { useCallback, useEffect, useId, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { AtSign, CheckCircle2, ChevronDown, ChevronUp, Reply, RotateCcw, Trash2, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
@@ -9,6 +9,7 @@ import type { Comment, Project } from "../types";
 import { CommentActionsMenu } from "./CommentActionsMenu";
 import { CommentForm } from "./CommentForm";
 import { CommentDraftStore, type CommentDraftKey } from "./commentDrafts";
+import { commentReplyVisibility } from "./commentReplyVisibility";
 
 /**
  * Comment display intentionally treats a whitespace-delimited `@username`
@@ -38,7 +39,8 @@ function renderCommentContent(content: string): ReactNode {
 export function CommentThread({
   projectId, comment, draftStore, currentUserId, unreadCommentMentionId, unreadReplyMentionIds,
   highlightedComment, highlightedReplyId, currentComment, showFilePath, onMarkMentionRead, onFocus, onToggle,
-  onReply, onEdit, onDelete, onEditReply, onDeleteReply, selectedParticipantIds, highlightReplyParticipants
+  onReply, onEdit, onDelete, onEditReply, onDeleteReply, selectedParticipantIds, highlightReplyParticipants,
+  replyExpansion, onReplyExpansionChange
 }: {
   projectId: string;
   comment: Comment;
@@ -52,6 +54,8 @@ export function CommentThread({
   showFilePath?: boolean;
   selectedParticipantIds?: ReadonlySet<string | null>;
   highlightReplyParticipants?: boolean;
+  replyExpansion?: boolean;
+  onReplyExpansionChange: (expanded: boolean) => void;
   onMarkMentionRead: (mentionId: string) => Promise<boolean>;
   onFocus: () => void;
   onToggle: () => Promise<void>;
@@ -68,11 +72,20 @@ export function CommentThread({
   const drafts = useSyncExternalStore(subscribe, getDrafts, getDrafts);
   const replyDraft = drafts.reply;
   const commentEditDraft = drafts["edit-comment"];
+  const repliesId = useId();
+  const visibleReplies = commentReplyVisibility(comment.replies, {
+    expansion: replyExpansion, current: currentComment, targetReplyId: highlightedReplyId,
+    unreadReplyMentionIds, selectedParticipantIds, highlightReplyParticipants,
+    activeDraft: Boolean(replyDraft?.open || replyDraft?.pending
+      || comment.authorId === currentUserId && commentEditDraft?.open
+      || comment.replies.some((reply) => reply.authorId === currentUserId && drafts[`edit-reply:${reply.id}`]?.open))
+  });
   const submittingForm = draftStore.isPending(comment.id);
   const [autoFocusDraft, setAutoFocusDraft] = useState<CommentDraftKey | null>(null);
   const [deleteCommentOpen, setDeleteCommentOpen] = useState(false);
   const [deleteReplyId, setDeleteReplyId] = useState<string | null>(null);
   const openDraft = (key: CommentDraftKey, content = "") => {
+    onReplyExpansionChange(true);
     setAutoFocusDraft(key);
     draftStore.open(comment.id, key, content);
   };
@@ -89,6 +102,8 @@ export function CommentThread({
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
   const markRead = async (mentionId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    // Reading an old mention must not make that reply disappear immediately.
+    onReplyExpansionChange(true);
     await onMarkMentionRead(mentionId);
   };
   return <><article data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}${currentComment ? " review-current" : ""}`} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
@@ -107,7 +122,14 @@ export function CommentThread({
     {commentEditDraft?.open && comment.authorId === currentUserId ? draftForm("edit-comment", t("editor.editComment"), onEdit)
       : <p className="comment-content">{renderCommentContent(comment.content)}</p>}
     {unreadCommentMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t("editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadCommentMentionId, event)}>{t("editor.markMentionRead")}</button></div>}
-    {comment.replies.length > 0 && <div className="comment-replies">{comment.replies.map((reply) => {
+    {comment.replies.length > 0 && <div className="comment-replies">
+      {visibleReplies.canToggle && <button type="button" className="comment-replies-toggle"
+        aria-expanded={visibleReplies.expanded} aria-controls={repliesId}
+        onClick={(event) => { event.stopPropagation(); onReplyExpansionChange(!visibleReplies.expanded); }}>
+        {visibleReplies.expanded ? <ChevronUp size={13} aria-hidden /> : <ChevronDown size={13} aria-hidden />}
+        {visibleReplies.expanded ? t("editor.hideEarlierReplies") : t("editor.showEarlierReplies", { count: visibleReplies.hiddenCount })}
+      </button>}
+      <div className="comment-replies-list" id={repliesId}>{visibleReplies.replies.map((reply) => {
       const unreadMentionId = unreadReplyMentionIds?.get(reply.id);
       const editKey: CommentDraftKey = `edit-reply:${reply.id}`;
       const editing = drafts[editKey]?.open && reply.authorId === currentUserId;
@@ -126,7 +148,16 @@ export function CommentThread({
           : <p className="comment-content">{renderCommentContent(reply.content)}</p>}
         {unreadMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t("editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadMentionId, event)}>{t("editor.markMentionRead")}</button></div>}
       </div>;
-    })}</div>}
+    })}</div></div>}
+    {comment.resolved && comment.resolvedAt && <div className="comment-resolution">
+      <CheckCircle2 size={12} aria-hidden />
+      <span><Trans i18nKey="editor.resolvedBy"
+        values={{ user: comment.resolvedByDisplayName ?? comment.resolvedByUsername ?? t("editor.deletedUser") }}
+        components={{ user: <strong className="comment-resolution-user" /> }} />
+        {comment.resolvedByUsername && <small className="comment-resolution-user"> @{comment.resolvedByUsername}</small>}
+        {" · "}<time dateTime={comment.resolvedAt}>{formatTime(comment.resolvedAt)}</time>
+      </span>
+    </div>}
     <div className="comment-actions">
       <button className="resolve" disabled={toggling || submittingForm} aria-busy={toggling} onClick={(event) => {
         event.stopPropagation();

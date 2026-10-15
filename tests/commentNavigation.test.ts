@@ -18,6 +18,7 @@ function comment(id: string, filePath: string, resolved = false): Comment {
     id, filePath, authorId: "author", authorUsername: "author", authorDisplayName: "Author",
     selectedText: id, startOffset: 0, endOffset: id.length, startLine: 1, endLine: 1,
     content: id, resolved, orphaned: false, createdAt: "2026-01-01T00:00:00.000Z",
+    resolvedById: null, resolvedByUsername: null, resolvedByDisplayName: null, resolvedAt: null,
     updatedAt: "2026-01-01T00:00:00.000Z", editedAt: null, replies: []
   };
 }

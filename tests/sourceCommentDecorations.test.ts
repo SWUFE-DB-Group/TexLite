@@ -13,6 +13,7 @@ function comment(id: string, from = 1, to = 5): Comment {
     id, filePath: "main.tex", authorId: "author", authorUsername: "author", authorDisplayName: "Author",
     selectedText: "some text here".slice(from, to), startOffset: from, endOffset: to, startLine: 1, endLine: 1,
     content: "Please revise", resolved: false, orphaned: false, createdAt: "2026-01-01T00:00:00Z",
+    resolvedById: null, resolvedByUsername: null, resolvedByDisplayName: null, resolvedAt: null,
     updatedAt: "2026-01-01T00:00:00Z", editedAt: null, replies: []
   };
 }

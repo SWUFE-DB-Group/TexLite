@@ -21,6 +21,42 @@ function migrationConfig(root: string, databasePath: string): Config {
 }
 
 describe("database migrations", () => {
+  it("upgrades version 3 comments without inventing resolution metadata and preserves new records on reopen", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-resolution-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      // Recreate the released version-3 shape with an already-resolved comment.
+      database.exec(`
+        ALTER TABLE comments DROP COLUMN resolved_by;
+        ALTER TABLE comments DROP COLUMN resolved_at;
+        DELETE FROM texlite_schema_migrations WHERE version = 4;
+        INSERT INTO users (id, username, display_name, password_hash, role, created_at)
+          VALUES ('owner', 'owner', 'Owner', 'hash', 'admin', '2026-01-01T00:00:00Z');
+        INSERT INTO projects (id, owner_id, name, created_at, updated_at)
+          VALUES ('paper', 'owner', 'Paper', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        INSERT INTO comments (id, project_id, file_path, author_id, content, resolved, created_at, updated_at)
+          VALUES ('legacy', 'paper', 'main.tex', 'owner', 'Review', 1, '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z');
+      `);
+      database.close();
+      database = openDatabase(config);
+      expect(database.prepare("SELECT resolved, resolved_by, resolved_at, updated_at FROM comments WHERE id = 'legacy'").get())
+        .toEqual({ resolved: 1, resolved_by: null, resolved_at: null, updated_at: "2026-01-02T00:00:00Z" });
+      const applied = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 4").get();
+      expect(applied).toMatchObject({ name: "add_comment_resolution_metadata" });
+      database.prepare("UPDATE comments SET resolved_by = 'owner', resolved_at = ? WHERE id = 'legacy'")
+        .run("2026-01-03T00:00:00Z");
+      database.close();
+      database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 4").get()).toEqual(applied);
+      expect(database.prepare("SELECT resolved_by, resolved_at FROM comments WHERE id = 'legacy'").get())
+        .toEqual({ resolved_by: "owner", resolved_at: "2026-01-03T00:00:00Z" });
+    } finally {
+      database.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("preserves legacy project tags and initializes modification metadata", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-migration-"));
     const databasePath = path.join(root, "texlite.db");
@@ -89,7 +125,8 @@ describe("database migrations", () => {
         .toEqual([
           { version: 1, name: "baseline_schema_and_legacy_upgrade" },
           { version: 2, name: "add_project_chktex_enabled" },
-          { version: 3, name: "move_github_tokens_to_user_accounts" }
+          { version: 3, name: "move_github_tokens_to_user_accounts" },
+          { version: 4, name: "add_comment_resolution_metadata" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -103,7 +140,8 @@ describe("database migrations", () => {
         .toEqual([
           { version: 1, name: "baseline_schema_and_legacy_upgrade" },
           { version: 2, name: "add_project_chktex_enabled" },
-          { version: 3, name: "move_github_tokens_to_user_accounts" }
+          { version: 3, name: "move_github_tokens_to_user_accounts" },
+          { version: 4, name: "add_comment_resolution_metadata" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -143,7 +181,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -231,7 +269,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-      expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
       } finally {
         migrated.close();
       }
@@ -248,13 +286,13 @@ describe("database migrations", () => {
       CREATE TABLE texlite_schema_migrations (
         version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL
       );
-      INSERT INTO texlite_schema_migrations VALUES (4, 'future_schema', '2026-01-01T00:00:00.000Z');
+      INSERT INTO texlite_schema_migrations VALUES (5, 'future_schema', '2026-01-01T00:00:00.000Z');
     `);
     database.close();
 
     try {
       expect(() => openDatabase(migrationConfig(root, databasePath)))
-        .toThrow(/version 4 is newer than this TexLite release/);
+        .toThrow(/version 5 is newer than this TexLite release/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

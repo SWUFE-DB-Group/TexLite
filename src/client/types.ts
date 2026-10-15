@@ -240,6 +240,10 @@ export interface Comment {
   endLine: number;
   content: string;
   resolved: boolean;
+  resolvedById: string | null;
+  resolvedByUsername: string | null;
+  resolvedByDisplayName: string | null;
+  resolvedAt: string | null;
   orphaned: boolean;
   createdAt: string;
   updatedAt: string;

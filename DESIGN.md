@@ -166,12 +166,30 @@ to source comments. Comments are anchored to source offsets and selected text,
 can be resolved, edited, deleted, and replied to. If an author is removed,
 the record remains visible as “Deleted User”.
 
+Resolving a comment records the acting user's id and the server timestamp in
+`resolved_by` and `resolved_at`. Repeating an already-resolved update or editing
+the comment does not replace that attribution. Reopening clears both fields;
+resolving again records the new action. The resolved discussion shows the user
+and time; deleting that user retains the timestamp and displays “Deleted User”.
+Schema migration 4 adds nullable columns without guessing metadata for existing
+resolved comments. This stores the current resolution, not an activity log.
+
 The comment drawer sorts top-level threads by source position by default
 (file path, then position within that file), or by creation time, newest first.
-Replies keep their original chronological order. Participant filtering is
-multi-select: a thread matches any selected top-level author by default.
-Unchecking “Top-level comments only” also includes reply authors; clearing the
-participant selection restores the top-level-only default. It combines with the existing
+Replies keep their original chronological order. Long inactive
+discussions initially show only the latest two replies with an earlier-replies
+toggle. Explicit expand/collapse choices are kept locally by thread id for the
+workspace lifetime and survive file/filter/sidebar changes and refreshes of
+comment data. Reading focus expands a discussion unless deliberately collapsed;
+active forms, notification targets and older unread or participant-matching
+replies always remain visible. Notification targets are expanded during render,
+before the drawer's scroll effect looks up the reply DOM. Opening a form or
+marking a mention read keeps the discussion expanded to avoid a content jump
+when the action completes. Folding never alters review counts, participant
+matching or source anchors. Participant filtering is multi-select: a thread
+matches any selected top-level author by default. Unchecking “Top-level comments
+only” also includes reply authors; clearing the participant selection restores
+the top-level-only default. It combines with the existing
 file/project scope, resolution status, and an independent unread-@-me toggle.
 The unread toggle intersects with Open or Resolved rather than forming a third
 resolution state; reading all mentions in a thread removes it from that filtered

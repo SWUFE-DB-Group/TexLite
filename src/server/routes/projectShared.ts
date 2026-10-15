@@ -207,6 +207,10 @@ interface CommentRow {
   end_offset: number;
   content: string;
   resolved: number;
+  resolved_by: string | null;
+  resolved_by_username: string | null;
+  resolved_by_display_name: string | null;
+  resolved_at: string | null;
   orphaned: number;
   created_at: string;
   updated_at: string;
@@ -251,8 +255,11 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
   const commentOrder = hasFileScope
     ? "c.created_at"
     : "c.file_path COLLATE NOCASE, c.start_line, c.created_at";
-  const rows = db.prepare(`SELECT c.*, u.username AS author_username, u.display_name AS author_display_name FROM comments c
-    LEFT JOIN users u ON u.id = c.author_id WHERE c.project_id = ?${fileClause} ORDER BY ${commentOrder}`)
+  const rows = db.prepare(`SELECT c.*, u.username AS author_username, u.display_name AS author_display_name,
+      resolver.username AS resolved_by_username, resolver.display_name AS resolved_by_display_name FROM comments c
+    LEFT JOIN users u ON u.id = c.author_id
+    LEFT JOIN users resolver ON resolver.id = c.resolved_by
+    WHERE c.project_id = ?${fileClause} ORDER BY ${commentOrder}`)
     .all(projectId, ...(hasFileScope ? [filePath] : [])) as unknown as CommentRow[];
   if (!rows.length) return [];
 
@@ -312,6 +319,10 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     endLine: offsetToLine(sourceByPath.get(comment.file_path) ?? "", comment.end_offset),
     content: comment.content,
     resolved: Boolean(comment.resolved),
+    resolvedById: comment.resolved_by,
+    resolvedByUsername: comment.resolved_by_username,
+    resolvedByDisplayName: comment.resolved_by_display_name,
+    resolvedAt: comment.resolved_at,
     orphaned: Boolean(comment.orphaned),
     createdAt: comment.created_at,
     updatedAt: comment.updated_at,

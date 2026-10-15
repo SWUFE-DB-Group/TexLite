@@ -73,7 +73,15 @@ const databaseMigrations: readonly DatabaseMigration[] = [
     if (!missingColumn(db, "projects", "chktex_enabled")) return;
     db.exec("ALTER TABLE projects ADD COLUMN chktex_enabled INTEGER NOT NULL DEFAULT 0 CHECK (chktex_enabled IN (0, 1))");
   } },
-  { version: 3, name: "move_github_tokens_to_user_accounts", apply: migrateGitHubTokensToUsers }
+  { version: 3, name: "move_github_tokens_to_user_accounts", apply: migrateGitHubTokensToUsers },
+  { version: 4, name: "add_comment_resolution_metadata", apply: (db) => {
+    if (missingColumn(db, "comments", "resolved_by")) {
+      db.exec("ALTER TABLE comments ADD COLUMN resolved_by TEXT REFERENCES users(id) ON DELETE SET NULL");
+    }
+    if (missingColumn(db, "comments", "resolved_at")) {
+      db.exec("ALTER TABLE comments ADD COLUMN resolved_at TEXT");
+    }
+  } }
 ];
 
 function migrateGitHubTokensToUsers(db: DatabaseConnection): void {

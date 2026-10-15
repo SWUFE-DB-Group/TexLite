@@ -81,6 +81,9 @@ export function WorkspaceContextPanel({
   const [commentSort, setCommentSort] = useState<CommentReviewSort>("source");
   const [participantIds, setParticipantIds] = useState<Set<string | null>>(() => new Set());
   const [topLevelOnly, setTopLevelOnly] = useState(true);
+  // View preferences survive thread unmounts and ordinary resource refreshes;
+  // they do not belong to the shared comment data or the draft/request store.
+  const [replyExpansion, setReplyExpansion] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const previousResolution = useRef(new Map(comments.map((comment) => [comment.id, comment.resolved])));
   const participants = useMemo(() => collectCommentParticipants(comments), [comments]);
   const reviewCounts = useMemo(() => {
@@ -253,6 +256,9 @@ export function WorkspaceContextPanel({
                 unreadCommentMentionId={unreadCommentMentionId} unreadReplyMentionIds={unreadReplyMentionIds}
                 highlightedComment={targetCommentId === comment.id && !targetReplyId} highlightedReplyId={targetCommentId === comment.id ? targetReplyId : null}
                 currentComment={currentCommentId === comment.id} showFilePath={commentScope === "project"}
+                replyExpansion={replyExpansion.get(comment.id)} onReplyExpansionChange={(expanded) => {
+                  setReplyExpansion((current) => current.get(comment.id) === expanded ? current : new Map(current).set(comment.id, expanded));
+                }}
                 selectedParticipantIds={participantIds} highlightReplyParticipants={!topLevelOnly}
                 onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} /></div></div>;
             })}
