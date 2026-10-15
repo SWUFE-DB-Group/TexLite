@@ -1030,7 +1030,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const {
     comments, commentsFilePath, commentsReady, reviewComments, reviewCommentsLoading, reviewCommentsError, retryReviewComments, commentScope, setCommentScope, focusComment, setFocusComment, commentOpen, openComment, closeComment, commentText, setCommentText,
     commentSelection, commentSubmitting, commentError, addComment, toggleComment, replyToComment, editComment,
-    deleteComment, editCommentReply, deleteCommentReply
+    deleteComment, editCommentReply, deleteCommentReply, commentDraftStore,
+    cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection
   } = useProjectComments({
     projectId,
     activeFile,
@@ -1442,7 +1443,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       />}
       <WorkspaceContextPanel key={projectId}
         sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
-        site={site} files={files} currentUserId={user.id} comments={reviewComments} commentsLoading={reviewCommentsLoading}
+        site={site} files={files} currentUserId={user.id} comments={reviewComments} commentDraftStore={commentDraftStore} commentsLoading={reviewCommentsLoading}
         commentsError={reviewCommentsError} onRetryComments={retryReviewComments} activeFile={activeFile}
         hasProjectCommentsScope={hasProjectCommentsScope} commentScope={commentScope} onCommentScopeChange={setCommentScope}
         focusedCommentId={sourceCommentTarget?.filePath === activeFile ? sourceCommentTarget.id : focusComment?.id}
@@ -1480,6 +1481,8 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       deleteEntry={deleteEntry} setDeleteEntry={setDeleteEntry} deleteActiveSessions={deleteActiveSessions}
       removePath={removePath} commentOpen={commentOpen} closeComment={closeComment}
       commentSelection={commentSelection} commentText={commentText} setCommentText={setCommentText} commentSubmitting={commentSubmitting}
+      cancelComment={cancelComment} commentDraftRestored={commentDraftRestored} commentDraftCanRetarget={commentDraftCanRetarget}
+      useCurrentCommentSelection={useCurrentCommentSelection}
       commentError={commentError} addComment={addComment}
       shareOpen={shareOpen} setShareOpen={setShareOpen} citationLibraryOpen={citationLibraryOpen}
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}

@@ -8,6 +8,7 @@ import { CommentThread } from "./Comments";
 import { CommentParticipantFilter } from "./CommentParticipantFilter";
 import { LazyPanel } from "../LazyLoadBoundary";
 import { COMMENT_EXIT_DURATION_MS, useCommentReviewTransitions } from "./useCommentReviewTransitions";
+import type { CommentDraftStore } from "./commentDrafts";
 import {
   adjacentReviewComment,
   buildVisibleReviewQueue,
@@ -30,6 +31,7 @@ export interface WorkspaceContextPanelProps {
   files: FileEntry[];
   currentUserId: string;
   comments: Comment[];
+  commentDraftStore: CommentDraftStore;
   commentsLoading: boolean;
   commentsError: string;
   onRetryComments: () => Promise<void>;
@@ -64,7 +66,7 @@ export interface WorkspaceContextPanelProps {
 }
 
 export function WorkspaceContextPanel({
-  sidePanel, onClose, project, projectId, site, files, currentUserId, comments, commentsLoading, commentsError, onRetryComments, unreadMentions,
+  sidePanel, onClose, project, projectId, site, files, currentUserId, comments, commentDraftStore, commentsLoading, commentsError, onRetryComments, unreadMentions,
   activeFile, hasProjectCommentsScope, commentScope, onCommentScopeChange, focusedCommentId, commentFocusNonce, onMarkMentionRead, onMarkAllMentionsRead,
   onClearFocusComment,
   targetCommentId, targetReplyId, onFocusComment,
@@ -247,7 +249,7 @@ export function WorkspaceContextPanel({
                 inert={exitAt !== null ? true : undefined} aria-hidden={exitAt !== null ? true : undefined}
                 style={{ "--comment-exit-duration": `${COMMENT_EXIT_DURATION_MS}ms` } as CSSProperties}
                 onAnimationEnd={(event) => { if (event.target === event.currentTarget && exitAt !== null) finishExit(comment.id); }}>
-                <div className="comment-thread-slot-content"><CommentThread projectId={projectId} comment={comment} currentUserId={currentUserId}
+                <div className="comment-thread-slot-content"><CommentThread projectId={projectId} comment={comment} draftStore={commentDraftStore} currentUserId={currentUserId}
                 unreadCommentMentionId={unreadCommentMentionId} unreadReplyMentionIds={unreadReplyMentionIds}
                 highlightedComment={targetCommentId === comment.id && !targetReplyId} highlightedReplyId={targetCommentId === comment.id ? targetReplyId : null}
                 currentComment={currentCommentId === comment.id} showFilePath={commentScope === "project"}

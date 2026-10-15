@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { CommentThread } from "../src/client/workspace/Comments.js";
 import type { Comment } from "../src/client/types.js";
 import i18n from "../src/client/i18n.js";
+import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
 
 const thread: Comment = {
   id: "thread", filePath: "main.tex", authorId: "author", authorUsername: "author", authorDisplayName: "Author",
@@ -18,7 +19,7 @@ const thread: Comment = {
 
 function render(props: Partial<ComponentProps<typeof CommentThread>> = {}): string {
   return renderToStaticMarkup(createElement(CommentThread, {
-    projectId: "project", comment: thread, currentUserId: "viewer",
+    projectId: "project", comment: thread, draftStore: new CommentDraftStore(), currentUserId: "viewer",
     onMarkMentionRead: async () => true, onFocus: () => {}, onToggle: async () => {},
     onReply: async () => true, onEdit: async () => true, onDelete: async () => true,
     onEditReply: async () => true, onDeleteReply: async () => true,
@@ -27,6 +28,28 @@ function render(props: Partial<ComponentProps<typeof CommentThread>> = {}): stri
 }
 
 describe("comment participant highlighting", () => {
+  it("restores a reply after the thread unmounts without stealing editor focus", () => {
+    const draftStore = new CommentDraftStore();
+    draftStore.open("thread", "reply", "Unsent reply");
+    const first = render({ draftStore });
+    expect(first).toContain("Unsent reply</textarea>");
+    expect(first).not.toContain("autofocus");
+    const restored = render({ draftStore });
+    expect(restored).toContain("Unsent reply</textarea>");
+    draftStore.hide("thread", "reply");
+    const hidden = render({ draftStore });
+    expect(hidden).toContain(i18n.t("editor.resumeReply"));
+    expect(hidden).not.toContain("Unsent reply</textarea>");
+  });
+
+  it("restores comment and reply edits without replacing them with refreshed server text", () => {
+    const draftStore = new CommentDraftStore();
+    draftStore.open("thread", "edit-comment", "Unsent comment edit");
+    draftStore.open("thread", "edit-reply:reader", "Unsent reply edit");
+    expect(render({ draftStore, currentUserId: "author" })).toContain("Unsent comment edit</textarea>");
+    expect(render({ draftStore, currentUserId: "reader" })).toContain("Unsent reply edit</textarea>");
+  });
+
   it("highlights only selected reply authors while preserving the whole discussion", () => {
     const html = render({ selectedParticipantIds: new Set(["reader"]) });
     expect(html).toContain('class="comment-thread"');

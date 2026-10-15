@@ -71,6 +71,10 @@ export interface WorkspaceDialogsProps {
   removePath: () => Promise<void>;
   commentOpen: boolean;
   closeComment: () => void;
+  cancelComment: () => void;
+  commentDraftRestored: boolean;
+  commentDraftCanRetarget: boolean;
+  useCurrentCommentSelection: () => void;
   /** Frozen when the comment composer opens. */
   commentSelection: SourceSelection;
   commentText: string;
@@ -110,7 +114,7 @@ export function WorkspaceDialogs({
   setNewFolderName, selectedFolder, fileDialogError, setFileDialogError, createFile, createFolder, moveEntry,
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
   setDeleteEntry, deleteActiveSessions, removePath, commentOpen, closeComment, commentSelection, commentText,
-  setCommentText, commentSubmitting, commentError, addComment, shareOpen, setShareOpen, citationLibraryOpen, setCitationLibraryOpen,
+  setCommentText, commentSubmitting, commentError, addComment, cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection, shareOpen, setShareOpen, citationLibraryOpen, setCitationLibraryOpen,
   insertCitationAtCursor, quickOpen, setQuickOpen, projectSearchOpen, setProjectSearchOpen, openFile,
   jumpToSource, selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
   permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
@@ -146,7 +150,7 @@ export function WorkspaceDialogs({
         : t("editor.pointComment")}
       onOpenChange={(open) => { if (!open) closeComment(); }}
       footer={<>
-        <button type="button" disabled={commentSubmitting} onClick={closeComment}>{t("common.cancel")}</button>
+        <button type="button" disabled={commentSubmitting} onClick={cancelComment}>{t("common.cancel")}</button>
         <button type="button" className="primary" aria-busy={commentSubmitting} disabled={commentSubmitting || !commentText.trim()} onClick={() => void addComment()}>
           {commentSubmitting && <LoaderCircle className="spin" size={14} />}
           {t(commentSubmitting ? "editor.commentSending" : "editor.addComment")}
@@ -154,6 +158,10 @@ export function WorkspaceDialogs({
       </>}
     >
       {commentError && <p className="error dialog-error">{commentError}</p>}
+      {commentDraftRestored && <p className="comment-draft-restored">
+        <span>{t("editor.commentDraftRestored")}</span>
+        {commentDraftCanRetarget && <button type="button" disabled={commentSubmitting} onClick={useCurrentCommentSelection}>{t("editor.commentDraftUseSelection")}</button>}
+      </p>}
       <label className="form-field">
         {t("editor.commentContent")}
         <MentionTextarea

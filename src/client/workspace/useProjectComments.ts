@@ -1,15 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { errorMessage } from "../errors";
 import { sourceHash } from "../sourceHash";
 import type { Comment, Project } from "../types";
 import type { CommentReviewScope } from "./commentNavigation";
-
-export interface SourceSelection {
-  selectedText: string;
-  startOffset: number;
-  endOffset: number;
-}
+import { CommentDraftStore, type SourceSelection } from "./commentDrafts";
+export type { SourceSelection } from "./commentDrafts";
 
 interface UseProjectCommentsOptions {
   projectId: string;
@@ -44,6 +40,7 @@ function isAbortError(error: unknown): boolean {
 export function useProjectComments({
   projectId, activeFile, content, permission, revision, selection, save, saveFailureMessage, onError, onAdded, onChanged
 }: UseProjectCommentsOptions) {
+  const commentDraftStore = useMemo(() => new CommentDraftStore(), [projectId]);
   // `comments` remains strictly scoped to the active file. LatexEditor uses
   // offsets from this list to decorate source, so project-wide results must
   // never be substituted here.
@@ -54,8 +51,10 @@ export function useProjectComments({
   const [commentScope, setCommentScope] = useState<CommentReviewScope>("file");
   const [focusComment, setFocusComment] = useState<Comment | null>(null);
   const [commentOpen, setCommentOpen] = useState(false);
-  const [commentText, setCommentText] = useState("");
+  const [commentText, setCommentTextState] = useState("");
   const [commentDraft, setCommentDraft] = useState<CommentDraft | null>(null);
+  const [commentCandidate, setCommentCandidate] = useState<CommentDraft | null>(null);
+  const [commentDraftRestored, setCommentDraftRestored] = useState(false);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState("");
   const fileRequest = useRef<AbortController | null>(null);
@@ -67,6 +66,10 @@ export function useProjectComments({
   const onErrorRef = useRef(onError);
   const onAddedRef = useRef(onAdded);
   const onChangedRef = useRef(onChanged);
+  const commentDraftRef = useRef(commentDraft);
+  const commentTextRef = useRef(commentText);
+  commentDraftRef.current = commentDraft;
+  commentTextRef.current = commentText;
   activeFileRef.current = activeFile;
   commentScopeRef.current = commentScope;
   saveRef.current = save;
@@ -149,6 +152,9 @@ export function useProjectComments({
     setCommentScope("file");
     setCommentOpen(false);
     setCommentDraft(null);
+    setCommentCandidate(null);
+    setCommentTextState("");
+    setCommentDraftRestored(false);
     setCommentError("");
   }, [projectId]);
 
@@ -158,6 +164,9 @@ export function useProjectComments({
   useEffect(() => {
     setCommentOpen(false);
     setCommentDraft(null);
+    setCommentCandidate(null);
+    setCommentTextState("");
+    setCommentDraftRestored(false);
     setCommentError("");
   }, [activeFile]);
 
@@ -198,46 +207,92 @@ export function useProjectComments({
     setCommentError("");
     // Keep the source revision and selection that the user actually reviewed.
     // Remote edits while the composer is open must never silently retarget it.
-    setCommentDraft({
+    const candidate: CommentDraft = {
       filePath: activeFile,
       selection: { ...(selectionOverride ?? selection) },
       sourceHash: sourceHash(sourceOverride ?? content)
-    });
+    };
+    const saved = commentDraftStore.getNew(activeFile);
+    // Restoring text must also restore its original source binding. Never
+    // silently reuse a note on the newly selected (possibly unrelated) text.
+    setCommentDraft(saved ?? candidate);
+    setCommentTextState(saved?.content ?? "");
+    setCommentCandidate(candidate);
+    setCommentDraftRestored(Boolean(saved));
     setCommentOpen(true);
+  };
+
+  const setCommentText = (value: string) => {
+    setCommentTextState(value);
+    if (!commentDraft) return;
+    if (value) commentDraftStore.setNew({ ...commentDraft, content: value });
+    else commentDraftStore.discardNew(commentDraft.filePath);
   };
 
   const closeComment = () => {
     if (submittingComment.current) return;
     setCommentOpen(false);
+    setCommentError("");
+  };
+
+  const cancelComment = () => {
+    if (submittingComment.current) return;
+    if (commentDraft) commentDraftStore.discardNew(commentDraft.filePath);
+    setCommentTextState("");
     setCommentDraft(null);
+    setCommentCandidate(null);
+    setCommentDraftRestored(false);
+    closeComment();
+  };
+
+  const useCurrentCommentSelection = () => {
+    if (submittingComment.current || !commentCandidate || commentCandidate.filePath !== activeFileRef.current) return;
+    setCommentDraft(commentCandidate);
+    if (commentText) commentDraftStore.setNew({ ...commentCandidate, content: commentText });
+    setCommentDraftRestored(false);
     setCommentError("");
   };
 
   const addComment = async () => {
     const draft = commentDraft;
+    const submittedText = commentText;
     if (!commentText.trim() || !draft || submittingComment.current) return;
+    const isCurrentDraft = () => {
+      const current = commentDraftRef.current;
+      return current?.filePath === draft.filePath && current.sourceHash === draft.sourceHash
+        && current.selection.startOffset === draft.selection.startOffset && current.selection.endOffset === draft.selection.endOffset
+        && commentTextRef.current === submittedText;
+    };
     submittingComment.current = true;
     setCommentSubmitting(true);
     setCommentError("");
     try {
       if (permission !== "read" && !(await saveRef.current())) {
-        setCommentError(saveFailureMessage);
+        if (isCurrentDraft()) setCommentError(saveFailureMessage);
         return;
       }
       await api(`/api/projects/${projectId}/comments`, {
         method: "POST",
-        body: JSON.stringify({ path: draft.filePath, content: commentText, ...draft.selection, sourceHash: draft.sourceHash })
+        body: JSON.stringify({ path: draft.filePath, content: submittedText, ...draft.selection, sourceHash: draft.sourceHash })
       });
       await refreshComments(draft.filePath);
-      setCommentOpen(false);
-      setCommentDraft(null);
-      setCommentText("");
+      const saved = commentDraftStore.getNew(draft.filePath);
+      if (saved?.content === submittedText && saved.sourceHash === draft.sourceHash
+        && saved.selection.startOffset === draft.selection.startOffset && saved.selection.endOffset === draft.selection.endOffset) {
+        commentDraftStore.discardNew(draft.filePath);
+      }
+      if (isCurrentDraft()) {
+        setCommentOpen(false);
+        setCommentDraft(null);
+        setCommentTextState("");
+        setCommentDraftRestored(false);
+      }
       onAddedRef.current();
       onChangedRef.current?.();
     } catch (error) {
       // Keep the composer and its draft visible so a source-revision conflict
       // can be resolved by reselecting the passage without losing the note.
-      setCommentError(errorMessage(error));
+      if (isCurrentDraft()) setCommentError(errorMessage(error));
     } finally {
       submittingComment.current = false;
       setCommentSubmitting(false);
@@ -279,6 +334,7 @@ export function useProjectComments({
       await api(`/api/projects/${projectId}/comments/${comment.id}`, { method: "DELETE" });
       await refreshComments(comment.filePath);
       setFocusComment((current) => current?.id === comment.id ? null : current);
+      commentDraftStore.discard(comment.id);
       onChangedRef.current?.();
       return true;
     } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
@@ -297,12 +353,14 @@ export function useProjectComments({
     try {
       await api(`/api/projects/${projectId}/comments/${comment.id}/replies/${replyId}`, { method: "DELETE" });
       await refreshComments(comment.filePath);
+      commentDraftStore.discard(comment.id, `edit-reply:${replyId}`);
       onChangedRef.current?.();
       return true;
     } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
   };
 
   return {
+    commentDraftStore,
     comments,
     commentsFilePath,
     commentsReady,
@@ -317,6 +375,11 @@ export function useProjectComments({
     commentOpen,
     openComment,
     closeComment,
+    cancelComment,
+    commentDraftRestored,
+    commentDraftCanRetarget: Boolean(commentDraft && commentCandidate && (commentDraft.sourceHash !== commentCandidate.sourceHash
+      || commentDraft.selection.startOffset !== commentCandidate.selection.startOffset || commentDraft.selection.endOffset !== commentCandidate.selection.endOffset)),
+    useCurrentCommentSelection,
     commentText,
     setCommentText,
     commentSelection: commentDraft?.selection ?? selection,

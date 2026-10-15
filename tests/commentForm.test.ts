@@ -8,7 +8,7 @@ import i18n from "../src/client/i18n";
 function render(props: Partial<ComponentProps<typeof CommentForm>> = {}): string {
   return renderToStaticMarkup(createElement(CommentForm, {
     projectId: "project", value: "Draft text", onChange: () => {}, onSubmit: async () => true,
-    onSubmitted: () => {}, onCancel: () => {}, onPendingChange: () => {}, label: "Reply", ...props
+    onCancel: () => {}, label: "Reply", ...props
   }));
 }
 
@@ -37,6 +37,17 @@ describe("comment submission forms", () => {
     expect(html).toContain("Draft text</textarea>");
     // A different form's request must not show this form as the submitting one.
     expect(html).toContain('aria-busy="false"');
+  });
+
+  it("restores pending feedback and inline errors supplied by the workspace", () => {
+    const pending = render({ pending: true });
+    expect(pending).toContain('aria-busy="true"');
+    expect(pending).toContain(i18n.t("editor.commentSending"));
+    expect(pending.match(/disabled=""/g)).toHaveLength(3);
+    const failed = render({ error: "Please retry" });
+    expect(failed).toContain('class="comment-form-error" role="alert">Please retry</p>');
+    expect(failed).toContain('aria-invalid="true"');
+    expect(failed).toContain("Draft text</textarea>");
   });
 
   it.each(["", " \n\t "])("rejects empty/whitespace drafts in the submit controls: %j", (value) => {

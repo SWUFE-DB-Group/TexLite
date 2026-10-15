@@ -1,54 +1,38 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useId, type FormEvent } from "react";
 import { LoaderCircle, Save, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { errorMessage } from "../errors";
 import { MentionTextarea } from "./MentionTextarea";
 
-/** Shared request feedback; the parent continues to own the draft contents. */
+/** Presentation only: workspace drafts own contents and in-flight requests. */
 export function CommentForm({
-  projectId, value, onChange, onSubmit, onSubmitted, onCancel, onPendingChange,
-  label, editing = false, disabled = false
+  projectId, value, onChange, onSubmit, onCancel, pending = false, error = "",
+  label, editing = false, disabled = false, autoFocus = true
 }: {
   projectId: string;
   value: string;
   onChange: (value: string) => void;
-  onSubmit: (content: string) => Promise<boolean>;
-  onSubmitted: () => void;
+  onSubmit: () => Promise<boolean>;
   onCancel: () => void;
-  onPendingChange: (pending: boolean) => void;
+  pending?: boolean;
+  error?: string;
   label: string;
   editing?: boolean;
   disabled?: boolean;
+  autoFocus?: boolean;
 }) {
   const { t } = useTranslation();
   const errorId = useId();
-  const submitting = useRef(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
   const busy = pending || disabled;
-  const submit = async (event?: FormEvent) => {
+  const submit = (event?: FormEvent) => {
     event?.preventDefault();
-    // The ref closes the gap before React renders disabled controls. It also
-    // guards repeated Ctrl/Cmd+Enter events and programmatic form submission.
-    if (submitting.current || disabled || !value.trim()) return;
-    submitting.current = true;
-    setPending(true);
-    setError("");
-    onPendingChange(true);
-    try {
-      if (await onSubmit(value)) onSubmitted();
-      else setError(t("editor.commentSubmitFailed"));
-    } catch (error) {
-      setError(errorMessage(error));
-    } finally {
-      submitting.current = false;
-      setPending(false);
-      onPendingChange(false);
-    }
+    if (busy || !value.trim()) return;
+    // The store guards synchronously, including a submit from an old render
+    // or a newly remounted thread while its original request is in flight.
+    void onSubmit();
   };
   return <form className={`comment-reply-form${editing ? " comment-edit-form" : ""}`} aria-busy={pending}
     onSubmit={(event) => void submit(event)} onClick={(event) => event.stopPropagation()}>
-    <MentionTextarea projectId={projectId} autoFocus rows={editing ? 4 : 3} value={value} onChange={onChange}
+    <MentionTextarea projectId={projectId} autoFocus={autoFocus} rows={editing ? 4 : 3} value={value} onChange={onChange}
       disabled={busy} aria-label={label} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined}
       placeholder={editing ? undefined : t("editor.replyPlaceholder")}
       onKeyDown={(event) => {

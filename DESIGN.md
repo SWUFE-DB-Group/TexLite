@@ -186,11 +186,22 @@ inert and does not count toward review navigation. Failed requests leave the
 thread visible, changing filters cancels exits, and reduced-motion preferences
 skip the movement.
 Reply, comment-edit and reply-edit composers share request feedback and a
-synchronous submission guard for button clicks and Ctrl/Cmd+Enter. While a
+workspace-owned synchronous submission guard for button clicks and Ctrl/Cmd+Enter. While a
 request is pending, the form shows Sending/Saving and disables inputs, cancel
 and conflicting actions in that thread. Request errors appear beside the
-composer, preserving its input for retry; only success closes the form. This
-does not yet preserve local drafts across thread unmounts or review filters.
+composer, preserving its input for retry; only success closes the form.
+Drafts, errors and in-flight state live in a project-workspace memory store,
+not in thread components, so file/filter/sidebar changes and resolution-driven
+unmounts do not discard them or allow duplicate submissions. Draft updates
+notify only the corresponding thread. Restored forms do not steal editor focus.
+Explicit Cancel or successful submission removes that form's draft; switching
+between reply editors preserves each reply's text. New-comment drafts are kept
+per file together with their original selection and source hash. Reopening one
+restores that source binding, with an explicit action to adopt the newly selected
+source instead; the server's source-revision validation still applies. Closing
+the new-comment dialog preserves its draft, while Cancel discards it. Nothing is
+written to browser storage or the server; leaving the project or refreshing the
+page clears this workspace's drafts.
 The participant selector uses a non-modal, anchored Radix popover so it does not
 push the discussion down. Selections apply immediately without closing the
 popover; outside interaction or Escape dismisses it. Its trigger summarizes the
