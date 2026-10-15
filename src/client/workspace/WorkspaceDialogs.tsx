@@ -162,6 +162,7 @@ export function WorkspaceDialogs({
           rows={5}
           disabled={commentSubmitting}
           value={commentText}
+          placeholder={t("editor.commentPlaceholder")}
           onChange={setCommentText}
           onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.nativeEvent.isComposing) {
