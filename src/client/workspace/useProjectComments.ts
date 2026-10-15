@@ -256,25 +256,22 @@ export function useProjectComments({
   };
 
   const replyToComment = async (comment: Comment, content: string): Promise<boolean> => {
-    try {
-      await api(`/api/projects/${projectId}/comments/${comment.id}/replies`, {
-        method: "POST", body: JSON.stringify({ content })
-      });
-      await refreshComments(comment.filePath);
-      onChangedRef.current?.();
-      return true;
-    } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
+    // The inline composer owns request errors and retains its input for retry.
+    await api(`/api/projects/${projectId}/comments/${comment.id}/replies`, {
+      method: "POST", body: JSON.stringify({ content })
+    });
+    await refreshComments(comment.filePath);
+    onChangedRef.current?.();
+    return true;
   };
 
   const editComment = async (comment: Comment, content: string): Promise<boolean> => {
-    try {
-      await api(`/api/projects/${projectId}/comments/${comment.id}`, {
-        method: "PATCH", body: JSON.stringify({ content })
-      });
-      await refreshComments(comment.filePath);
-      onChangedRef.current?.();
-      return true;
-    } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
+    await api(`/api/projects/${projectId}/comments/${comment.id}`, {
+      method: "PATCH", body: JSON.stringify({ content })
+    });
+    await refreshComments(comment.filePath);
+    onChangedRef.current?.();
+    return true;
   };
 
   const deleteComment = async (comment: Comment): Promise<boolean> => {
@@ -288,14 +285,12 @@ export function useProjectComments({
   };
 
   const editCommentReply = async (comment: Comment, replyId: string, content: string): Promise<boolean> => {
-    try {
-      await api(`/api/projects/${projectId}/comments/${comment.id}/replies/${replyId}`, {
-        method: "PATCH", body: JSON.stringify({ content })
-      });
-      await refreshComments(comment.filePath);
-      onChangedRef.current?.();
-      return true;
-    } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
+    await api(`/api/projects/${projectId}/comments/${comment.id}/replies/${replyId}`, {
+      method: "PATCH", body: JSON.stringify({ content })
+    });
+    await refreshComments(comment.filePath);
+    onChangedRef.current?.();
+    return true;
   };
 
   const deleteCommentReply = async (comment: Comment, replyId: string): Promise<boolean> => {

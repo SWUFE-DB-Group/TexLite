@@ -147,9 +147,9 @@ export function WorkspaceDialogs({
       onOpenChange={(open) => { if (!open) closeComment(); }}
       footer={<>
         <button type="button" disabled={commentSubmitting} onClick={closeComment}>{t("common.cancel")}</button>
-        <button type="button" className="primary" disabled={commentSubmitting || !commentText.trim()} onClick={() => void addComment()}>
+        <button type="button" className="primary" aria-busy={commentSubmitting} disabled={commentSubmitting || !commentText.trim()} onClick={() => void addComment()}>
           {commentSubmitting && <LoaderCircle className="spin" size={14} />}
-          {t("editor.addComment")}
+          {t(commentSubmitting ? "editor.commentSending" : "editor.addComment")}
         </button>
       </>}
     >

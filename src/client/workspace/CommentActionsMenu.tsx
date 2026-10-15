@@ -3,17 +3,18 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export function CommentActionsMenu({ kind, onEdit, onDelete }: {
+export function CommentActionsMenu({ kind, onEdit, onDelete, disabled = false }: {
   kind: "comment" | "reply";
   onEdit: () => void;
   onDelete: () => void;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const selecting = useRef(false);
   return <span className="comment-actions-menu" onClick={(event) => event.stopPropagation()}>
     <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger asChild>
-        <button type="button" className="comment-actions-menu-trigger" aria-label={t(kind === "comment" ? "editor.commentActions" : "editor.replyActions")}><MoreHorizontal size={16} aria-hidden /></button>
+        <button type="button" disabled={disabled} className="comment-actions-menu-trigger" aria-label={t(kind === "comment" ? "editor.commentActions" : "editor.replyActions")}><MoreHorizontal size={16} aria-hidden /></button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="comment-actions-menu-content" align="end" sideOffset={4} collisionPadding={8}

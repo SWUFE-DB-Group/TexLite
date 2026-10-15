@@ -185,6 +185,12 @@ current status queue with a brief fade/slide and collapse; the outgoing card is
 inert and does not count toward review navigation. Failed requests leave the
 thread visible, changing filters cancels exits, and reduced-motion preferences
 skip the movement.
+Reply, comment-edit and reply-edit composers share request feedback and a
+synchronous submission guard for button clicks and Ctrl/Cmd+Enter. While a
+request is pending, the form shows Sending/Saving and disables inputs, cancel
+and conflicting actions in that thread. Request errors appear beside the
+composer, preserving its input for retry; only success closes the form. This
+does not yet preserve local drafts across thread unmounts or review filters.
 The participant selector uses a non-modal, anchored Radix popover so it does not
 push the discussion down. Selections apply immediately without closing the
 popover; outside interaction or Escape dismisses it. Its trigger summarizes the

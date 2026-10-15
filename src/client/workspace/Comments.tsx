@@ -1,20 +1,13 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { AtSign, CheckCircle2, Reply, RotateCcw, Save, Send, Trash2, UserPlus, Users } from "lucide-react";
+import { AtSign, CheckCircle2, Reply, RotateCcw, Trash2, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import i18n from "../i18n";
 import type { Comment, Project } from "../types";
-import { MentionTextarea } from "./MentionTextarea";
 import { CommentActionsMenu } from "./CommentActionsMenu";
-
-function submitOnShortcut(event: ReactKeyboardEvent<HTMLTextAreaElement>, submit: () => Promise<void>): void {
-  if (!(event.ctrlKey || event.metaKey) || event.key !== "Enter" || event.nativeEvent.isComposing) return;
-  event.preventDefault();
-  event.stopPropagation();
-  void submit();
-}
+import { CommentForm } from "./CommentForm";
 
 /**
  * Comment display intentionally treats a whitespace-delimited `@username`
@@ -69,6 +62,7 @@ export function CommentThread({
   const { t } = useTranslation();
   const [replying, setReplying] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [submittingForm, setSubmittingForm] = useState(false);
   const [replyContent, setReplyContent] = useState("");
   const [editingComment, setEditingComment] = useState(false);
   const [commentContent, setCommentContent] = useState(comment.content);
@@ -76,21 +70,6 @@ export function CommentThread({
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const [replyEditContent, setReplyEditContent] = useState("");
   const [deleteReplyId, setDeleteReplyId] = useState<string | null>(null);
-  const submitReply = async (event?: FormEvent) => {
-    event?.preventDefault();
-    if (!replyContent.trim()) return;
-    if (await onReply(replyContent)) { setReplyContent(""); setReplying(false); }
-  };
-  const submitCommentEdit = async (event?: FormEvent) => {
-    event?.preventDefault();
-    if (!commentContent.trim()) return;
-    if (await onEdit(commentContent)) setEditingComment(false);
-  };
-  const submitReplyEdit = async (event?: FormEvent) => {
-    event?.preventDefault();
-    if (!editingReplyId || !replyEditContent.trim()) return;
-    if (await onEditReply(editingReplyId, replyEditContent)) setEditingReplyId(null);
-  };
   const username = comment.authorUsername;
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
   const markRead = async (mentionId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -103,13 +82,17 @@ export function CommentThread({
       <span className="comment-header-actions">
         <span className="comment-times"><time dateTime={comment.createdAt} title={new Date(comment.createdAt).toISOString()}>{formatTime(comment.createdAt)}</time>{comment.editedAt && <small>{t("editor.editedAt", { time: formatTime(comment.editedAt) })}</small>}</span>
         {comment.authorId === currentUserId && !editingComment && <CommentActionsMenu kind="comment"
+          disabled={submittingForm || toggling}
           onEdit={() => { setCommentContent(comment.content); setEditingComment(true); }}
           onDelete={() => setDeleteCommentOpen(true)} />}
       </span>
     </header>
     <div className="comment-location">{comment.orphaned ? t("editor.orphaned") : showFilePath ? t("editor.commentLocation", { path: comment.filePath, line: comment.startLine }) : t("editor.line", { line: comment.startLine })}</div>
     {comment.selectedText && <blockquote className="comment-selected-text">{comment.selectedText}</blockquote>}
-    {editingComment ? <form className="comment-reply-form comment-edit-form" onSubmit={(event) => void submitCommentEdit(event)} onClick={(event) => event.stopPropagation()}><MentionTextarea projectId={projectId} autoFocus rows={4} value={commentContent} onChange={setCommentContent} onKeyDown={(event) => submitOnShortcut(event, submitCommentEdit)} /><div><button type="button" onClick={() => setEditingComment(false)}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!commentContent.trim()}><Save size={13} />{t("editor.saveChanges")}</button></div></form> : <p className="comment-content">{renderCommentContent(comment.content)}</p>}
+    {editingComment ? <CommentForm projectId={projectId} editing label={t("editor.editComment")}
+      value={commentContent} onChange={setCommentContent} onSubmit={onEdit} onSubmitted={() => setEditingComment(false)}
+      onCancel={() => setEditingComment(false)} onPendingChange={setSubmittingForm} disabled={submittingForm || toggling} />
+      : <p className="comment-content">{renderCommentContent(comment.content)}</p>}
     {unreadCommentMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t("editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadCommentMentionId, event)}>{t("editor.markMentionRead")}</button></div>}
     {comment.replies.length > 0 && <div className="comment-replies">{comment.replies.map((reply) => {
       const unreadMentionId = unreadReplyMentionIds?.get(reply.id);
@@ -119,27 +102,31 @@ export function CommentThread({
           <span className="comment-header-actions">
             <span className="comment-times"><time dateTime={reply.createdAt} title={new Date(reply.createdAt).toISOString()}>{formatTime(reply.createdAt)}</time>{reply.editedAt && <small>{t("editor.editedAt", { time: formatTime(reply.editedAt) })}</small>}</span>
             {reply.authorId === currentUserId && editingReplyId !== reply.id && <CommentActionsMenu kind="reply"
+              disabled={submittingForm || toggling}
               onEdit={() => { setEditingReplyId(reply.id); setReplyEditContent(reply.content); }}
               onDelete={() => setDeleteReplyId(reply.id)} />}
           </span>
         </header>
-        {editingReplyId === reply.id ? <form className="comment-reply-form comment-edit-form" onSubmit={(event) => void submitReplyEdit(event)} onClick={(event) => event.stopPropagation()}>
-          <MentionTextarea projectId={projectId} autoFocus rows={3} value={replyEditContent} onChange={setReplyEditContent} onKeyDown={(event) => submitOnShortcut(event, submitReplyEdit)} />
-          <div><button type="button" onClick={() => setEditingReplyId(null)}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!replyEditContent.trim()}><Save size={13} />{t("editor.saveChanges")}</button></div>
-        </form> : <p className="comment-content">{renderCommentContent(reply.content)}</p>}
+        {editingReplyId === reply.id ? <CommentForm key={reply.id} projectId={projectId} editing label={t("editor.editReply")}
+          value={replyEditContent} onChange={setReplyEditContent} onSubmit={(content) => onEditReply(reply.id, content)}
+          onSubmitted={() => setEditingReplyId(null)} onCancel={() => setEditingReplyId(null)}
+          onPendingChange={setSubmittingForm} disabled={submittingForm || toggling} />
+          : <p className="comment-content">{renderCommentContent(reply.content)}</p>}
         {unreadMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t("editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadMentionId, event)}>{t("editor.markMentionRead")}</button></div>}
       </div>;
     })}</div>}
     <div className="comment-actions">
-      <button className="resolve" disabled={toggling} aria-busy={toggling} onClick={(event) => {
+      <button className="resolve" disabled={toggling || submittingForm} aria-busy={toggling} onClick={(event) => {
         event.stopPropagation();
         if (toggling) return;
         setToggling(true);
         void onToggle().finally(() => setToggling(false));
       }}>{comment.resolved ? <RotateCcw size={13} /> : <CheckCircle2 size={13} />}{comment.resolved ? t("editor.reopen") : t("editor.resolve")}</button>
-      <button className="reply-action" onClick={(event) => { event.stopPropagation(); setReplying((current) => !current); }}><Reply size={13} />{t("editor.reply")}</button>
+      <button className="reply-action" disabled={submittingForm || toggling} onClick={(event) => { event.stopPropagation(); setReplying((current) => !current); }}><Reply size={13} />{t("editor.reply")}</button>
     </div>
-    {replying && <form className="comment-reply-form" onSubmit={(event) => void submitReply(event)} onClick={(event) => event.stopPropagation()}><MentionTextarea projectId={projectId} autoFocus rows={3} value={replyContent} placeholder={t("editor.replyPlaceholder")} onChange={setReplyContent} onKeyDown={(event) => submitOnShortcut(event, submitReply)} /><div><button type="button" onClick={() => { setReplying(false); setReplyContent(""); }}>{t("common.cancel")}</button><button className="primary" type="submit" disabled={!replyContent.trim()}><Send size={13} />{t("editor.sendReply")}</button></div></form>}
+    {replying && <CommentForm projectId={projectId} label={t("editor.reply")} value={replyContent} onChange={setReplyContent}
+      onSubmit={onReply} onSubmitted={() => { setReplyContent(""); setReplying(false); }}
+      onCancel={() => { setReplying(false); setReplyContent(""); }} onPendingChange={setSubmittingForm} disabled={submittingForm || toggling} />}
   </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription", { count: comment.replies.length })} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void onDelete().then((deleted) => { if (deleted) setDeleteCommentOpen(false); })} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void onDeleteReply(deleteReplyId).then((deleted) => { if (deleted) setDeleteReplyId(null); }); }} /></>;
 }
 

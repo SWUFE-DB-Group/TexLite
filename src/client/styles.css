@@ -904,6 +904,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .comments .comment-mention button { flex: none; border: 0; border-radius: 4px; padding: 3px 5px; background: #dceaff; color: #24568d; font-size: 9px; font-weight: 700; }
 .comments .comment-mention button:hover { background: #cbdefb; color: #164a82; }
 .comment-reply-form { display: flex; flex-direction: column; gap: 7px; margin-top: 9px; }
+.comments .comment-form-error { margin: 0; padding: 6px 8px; border: 1px solid #ecc4c1; border-radius: 5px; background: #fff7f6; color: #9d342e; font-size: 11px; overflow-wrap: anywhere; }
 .comment-edit-form { margin: 7px 0; }
 .comment-reply-form textarea { width: 100%; resize: vertical; border: 1px solid #cbd2cc; border-radius: 6px; padding: 7px 8px; outline: none; font-size: 11px; }
 .comment-reply-form textarea:focus { border-color: #176b44; box-shadow: 0 0 0 2px #176b4420; }
