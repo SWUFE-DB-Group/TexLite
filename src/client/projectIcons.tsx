@@ -60,7 +60,6 @@ import {
   Rocket,
   ScrollText,
   Server,
-  Shield,
   ShieldCheck,
   Sigma,
   Sparkles,

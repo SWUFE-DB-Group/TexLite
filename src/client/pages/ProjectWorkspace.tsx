@@ -4,7 +4,7 @@ import { api, ApiError } from "../api";
 import type { CitationLibraryEntry, Comment, CommentMention, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
 import i18n from "../i18n";
 import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
-import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
+import { PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
 import { classifyCompileLog } from "../compileLog";
@@ -1368,7 +1368,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       commentsOpen={sidePanel === "comments"} unresolvedCommentCount={comments.filter((item) => !item.resolved).length}
       onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
       settingsOpen={sidePanel === "settings"} compileBusy={compileBusy} sharedCompiling={sharedCompiling}
-      localCompiling={localCompiling} cancelling={cancelling} compileState={compileState} onCompile={compile} onCancelCompile={() => void cancelCompile()}
+      localCompiling={localCompiling} cancelling={cancelling} onCompile={compile} onCancelCompile={() => void cancelCompile()}
     />
     {protocolUpgradeRequired && <div className="workspace-update-banner" role="alert">
       <AlertTriangle size={15} />
@@ -1387,7 +1387,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
     <PanelGroup autoSaveId={scopedStorageKey("texlite-workspace-layout")} direction="horizontal" className="work-grid">
       {showEditor && <WorkspaceFilePanel
-        project={project} filesPanel={filesPanel} files={files} visibleEntries={visibleEntries}
+        project={project} filesPanel={filesPanel} visibleEntries={visibleEntries}
         activeFile={activeFile} activeMainFile={activeMainFile} selectedFile={selectedFile}
         selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
         uploadingFiles={uploadingFiles} uploadFeedback={uploadFeedback} readOnly={readOnly} formatting={formatting}
@@ -1436,7 +1436,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         artifactPreview={artifactPreview} artifactLoading={artifactLoading} cleaning={cleaning}
         readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={showEditor && showPreview}
         diagnosticCount={diagnosticCount} selectPreviewTab={selectPreviewTab}
-        changeWorkspaceLayout={changeWorkspaceLayout} onSetNotice={setNotice} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport}
+        changeWorkspaceLayout={changeWorkspaceLayout} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport}
         syncVisiblePdfToSource={syncVisiblePdfToSource}
         syncCurrentSourceToPdf={() => {
           const path = activeFileRef.current;
@@ -1445,7 +1445,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
           return syncSourceToPdf(path, cursor.line, cursor.column);
         }}
         syncPdfToSource={syncPdfToSource} canSyncWithPdf={canSyncWithPdf} canSyncPdfToSource={canSyncPdfToSource} files={files}
-        jumpToSource={jumpToSource} onSetCleanMode={setCleanMode} cleanCompile={cleanCompile}
+        jumpToSource={jumpToSource} onSetCleanMode={setCleanMode}
         viewArtifact={viewArtifact}
       />}
       <WorkspaceContextPanel key={projectId}

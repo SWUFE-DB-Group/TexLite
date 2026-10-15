@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 import type { Config } from "./config.js";
 import { listProjectFilesAsync, resolveSourcePath } from "./files.js";
 import { httpError } from "./http.js";
@@ -118,8 +117,4 @@ function searchPattern(options: ProjectSearchOptions): RegExp {
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const source = options.wholeWord ? `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])` : escaped;
   return new RegExp(source, `${options.caseSensitive ? "" : "i"}gu`);
-}
-
-export function projectSearchTextFile(filePath: string): boolean {
-  return textExtension.test(path.basename(filePath));
 }

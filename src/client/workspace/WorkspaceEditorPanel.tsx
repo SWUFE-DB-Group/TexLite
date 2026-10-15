@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Panel } from "react-resizable-panels";
 import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
-import type { Comment, FileEntry, LatexCompletionIndex, Project } from "../types";
+import type { Comment, LatexCompletionIndex, Project } from "../types";
 import type { EditorPreferences } from "../editorPreferences";
 import type { SpellCheckIssue } from "../spellCheck";
 import type { SpellCheckJump } from "../LatexEditor";

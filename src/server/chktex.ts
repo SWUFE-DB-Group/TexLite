@@ -19,7 +19,6 @@ interface CachedResult {
 interface ScheduledCheck {
   key: string;
   source: string;
-  filePath: string;
   started: boolean;
   cancelled: boolean;
   lanes: Set<string>;
@@ -150,7 +149,7 @@ export class ChktexService {
       reject = rejectOperation;
     });
     const scheduled: ScheduledCheck = {
-      key, source, filePath, started: false, cancelled: false,
+      key, source, started: false, cancelled: false,
       lanes: laneKey ? new Set([laneKey]) : new Set(), hasUnscopedWaiter: laneKey === null,
       promise: operation, resolve, reject
     };
@@ -215,7 +214,6 @@ export class ChktexService {
   private discardQueued(scheduled: ScheduledCheck): void {
     this.queued.delete(scheduled);
     scheduled.source = "";
-    scheduled.filePath = "";
   }
 
   private acceptLaneSequence(lane: string, sequence: number, key: string): void {
@@ -259,7 +257,7 @@ export class ChktexService {
 
   private async runScheduled(scheduled: ScheduledCheck): Promise<void> {
     try {
-      scheduled.resolve(await this.lintOnce(scheduled.source, scheduled.filePath));
+      scheduled.resolve(await this.lintOnce(scheduled.source));
     } catch (error) {
       scheduled.reject(error);
     }
@@ -287,7 +285,7 @@ export class ChktexService {
     return this.probePromise;
   }
 
-  private async lintOnce(source: string, filePath: string): Promise<RawChktexLint[]> {
+  private async lintOnce(source: string): Promise<RawChktexLint[]> {
     await this.ensureAvailable();
     // With no filename ChkTeX reads stdin. Passing `-` is interpreted as a
     // literal filename by ChkTeX 1.7.x and silently produces no diagnostics.

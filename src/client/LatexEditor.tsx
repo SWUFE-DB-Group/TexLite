@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Annotation, Compartment, EditorState, Facet, Prec, type Range, StateEffect, StateField, Transaction } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Facet, Prec, StateEffect, StateField } from "@codemirror/state";
 import {
   Decoration, type DecorationSet, EditorView, keymap,
-  highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, ViewPlugin, type ViewUpdate
+  highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, ViewPlugin
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {

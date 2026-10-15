@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import type { Config } from "./config.js";
-import { listProjectFiles, listProjectFilesAsync, resolveSourcePath } from "./files.js";
+import { listProjectFilesAsync, resolveSourcePath } from "./files.js";
 import { commandSnippet, newCommandArguments, xparseCommandArguments, xparseCommandDefinitions } from "../shared/latexCommandSnippets.js";
 import { maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals.js";
 import { findLatexReferenceDefinitions } from "../shared/latexReferences.js";
@@ -246,31 +246,6 @@ function addProjectFile(index: MutableIndex, filePath: string): void {
     const name = filePath.replace(/\.cls$/i, "");
     index.classes.set(name, item(name, "Document class", "class", filePath));
   }
-}
-
-export function buildLatexCompletionIndex(config: Config, projectId: string): LatexCompletionIndex {
-  const index = standardIndex();
-  const allEntries = listProjectFiles(config, projectId).filter((entry) => entry.type === "file").slice(0, maxIndexedFiles);
-  for (const entry of allEntries) addProjectFile(index, entry.path);
-  const entries = allEntries.filter((entry) => textExtensions.test(entry.path));
-  let indexedBytes = 0;
-  for (const entry of entries) {
-    const absolute = resolveSourcePath(config, projectId, entry.path);
-    let content: string;
-    try {
-      const size = fs.statSync(absolute).size;
-      if (size > maxIndexedFileBytes || indexedBytes + size > maxIndexedBytes) continue;
-      indexedBytes += size;
-      content = fs.readFileSync(absolute, "utf8");
-    } catch {
-      continue;
-    }
-    if (definitionExtensions.test(entry.path) || /\.bib$/i.test(entry.path)) extractSymbols(index, entry.path, content);
-  }
-  return {
-    commands: sorted(index.commands), environments: sorted(index.environments), labels: sorted(index.labels),
-    citations: sorted(index.citations), packages: sorted(index.packages), classes: sorted(index.classes), files: sorted(index.files)
-  };
 }
 
 interface CachedSymbols {

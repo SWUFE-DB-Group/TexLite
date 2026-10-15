@@ -1,6 +1,6 @@
 import { ArrowLeft, BookMarked, FileClock, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, Users, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { ActiveSession, CollaborationStatus, SharedCompileState } from "../collaboration";
+import type { ActiveSession, CollaborationStatus } from "../collaboration";
 import type { EditorPreferences } from "../editorPreferences";
 import type { Project, SiteConfig } from "../types";
 import type { WorkspaceLayout } from "./types";
@@ -43,7 +43,6 @@ export interface WorkspaceTopbarProps {
   sharedCompiling: boolean;
   localCompiling: boolean;
   cancelling: boolean;
-  compileState: SharedCompileState | null;
   onCompile: () => void;
   onCancelCompile: () => void;
 }
@@ -54,7 +53,7 @@ export function WorkspaceTopbar({
   changeWorkspaceLayout, onBack, onShare, showCitationLibrary, citationLibraryOpen,
   onCitationLibrary, onHistory, onGit, canManageGit, formatting, readOnly, collaborationSynced,
   onToggleComments, commentsOpen, unresolvedCommentCount, onToggleSettings,
-  settingsOpen, compileBusy, sharedCompiling, localCompiling, cancelling, compileState, onCompile, onCancelCompile
+  settingsOpen, compileBusy, sharedCompiling, localCompiling, cancelling, onCompile, onCancelCompile
 }: WorkspaceTopbarProps) {
   const { t } = useTranslation();
   return <header className="editor-topbar">

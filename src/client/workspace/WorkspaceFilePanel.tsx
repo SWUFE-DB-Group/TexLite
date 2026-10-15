@@ -15,7 +15,6 @@ const INTERNAL_PATH_DRAG_PREFIX = "texlite-path:";
 export interface WorkspaceFilePanelProps {
   project: Project;
   filesPanel: RefObject<ImperativePanelHandle | null>;
-  files: FileEntry[];
   visibleEntries: FileEntry[];
   activeFile: string;
   activeMainFile: string;
@@ -67,7 +66,7 @@ export interface WorkspaceFilePanelProps {
 }
 
 export function WorkspaceFilePanel({
-  project, filesPanel, files, visibleEntries, activeFile, activeMainFile, selectedFile, selectedFolder,
+  project, filesPanel, visibleEntries, activeFile, activeMainFile, selectedFile, selectedFolder,
   expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
   editorFontSize, outline, sourceCursorStore, wordCountBusy, hasSelection, hasFormatSelection, uploadInput,
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,

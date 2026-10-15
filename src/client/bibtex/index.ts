@@ -41,7 +41,6 @@ export const bibtexEditorExtensions = createBibtexEditorExtensions();
 export { bibtexCompletionSource, entryTypes, fieldNames, snippets } from "./completion";
 export { bibtexLinter, type BibtexLinterOptions } from "./diagnostics";
 export {
-  bibtexHoverTooltip,
   bibtexHoverInfoAt,
   createBibtexHoverTooltip,
   type BibtexHoverInfo,

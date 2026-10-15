@@ -10,8 +10,6 @@ import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import { accessibleProject } from "../projects.js";
 import { TexcountExecutionError, TexcountService, TexcountUnavailableError } from "../texcount.js";
 
-type WordCountMode = "full" | "selection";
-
 interface WordCountRouteContext {
   config: Config;
   db: DatabaseConnection;

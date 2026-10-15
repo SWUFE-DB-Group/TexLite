@@ -173,5 +173,3 @@ export function createBibtexHoverTooltip(messages: BibtexMessages = defaultBibte
       : createFieldTooltip(info, messages);
   });
 }
-
-export const bibtexHoverTooltip = createBibtexHoverTooltip();

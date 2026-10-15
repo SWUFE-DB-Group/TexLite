@@ -31,11 +31,6 @@ export function latexCitationCompletionContext(context: CompletionContext): Late
   return argument?.kind === "citation" ? { from: argument.from, query: argument.query } : null;
 }
 
-export function latexLabelCompletionContext(context: CompletionContext): LatexArgumentCompletionContext | null {
-  const argument = latexCompletionContext(context).argument;
-  return argument?.kind === "label" ? { from: argument.from, query: argument.query } : null;
-}
-
 export interface LatexEnvironmentCompletionPlan {
   to: number;
   insert: string;

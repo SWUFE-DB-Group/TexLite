@@ -8,7 +8,7 @@ import { Transform } from "node:stream";
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { Config } from "./config.js";
 import type { DatabaseConnection } from "./db.js";
-import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, texFileStem } from "./files.js";
+import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, texFileStem } from "./files.js";
 import { parseCompileDiagnostics, type CompileDiagnostics } from "./compileDiagnostics.js";
 import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
 

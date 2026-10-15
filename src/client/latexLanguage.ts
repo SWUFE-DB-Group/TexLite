@@ -8,7 +8,6 @@ export {
   createBibtexEditorExtensions,
   bibtexEditorExtensions,
   bibtexHighlightStyle,
-  bibtexHoverTooltip,
   bibtexLanguage,
   bibtexLinter,
   localizedBibtexMessages

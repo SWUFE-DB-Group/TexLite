@@ -46,7 +46,6 @@ export interface WorkspacePreviewPanelProps {
   diagnosticCount: number;
   selectPreviewTab: (tab: PreviewTab | PreviewSurface) => void;
   changeWorkspaceLayout: (layout: WorkspaceLayout) => void;
-  onSetNotice: (message: string) => void;
   onSetPdfViewport: (viewport: { page: number; x: number; y: number }) => void;
   onResetPdfViewport: () => void;
   syncVisiblePdfToSource: () => void;
@@ -57,7 +56,6 @@ export interface WorkspacePreviewPanelProps {
   files: FileEntry[];
   jumpToSource: (path: string, line: number, column: number) => void;
   onSetCleanMode: (mode: CompileCleanMode | null) => void;
-  cleanCompile: (mode: CompileCleanMode) => Promise<void>;
   viewArtifact: (artifact: CompileArtifact) => Promise<void>;
 }
 
@@ -66,8 +64,8 @@ export function WorkspacePreviewPanel({
   pdfCompiledLabel, pdfTargetLabel, pdfDownloadUrl, pdfTarget, pdfViewport, activeFile, compileBusy, compileLog,
   compileDiagnostics, compileMessages, artifacts, artifactPreview, artifactLoading, cleaning, readOnly,
   collaborationSynced, workspaceLayout, showSyncResize, diagnosticCount, selectPreviewTab, changeWorkspaceLayout,
-  onSetNotice, onSetPdfViewport, onResetPdfViewport, syncVisiblePdfToSource, syncCurrentSourceToPdf, syncPdfToSource, canSyncWithPdf, canSyncPdfToSource,
-  files, jumpToSource, onSetCleanMode, cleanCompile, viewArtifact
+  onSetPdfViewport, onResetPdfViewport, syncVisiblePdfToSource, syncCurrentSourceToPdf, syncPdfToSource, canSyncWithPdf, canSyncPdfToSource,
+  files, jumpToSource, onSetCleanMode, viewArtifact
 }: WorkspacePreviewPanelProps) {
   const { t } = useTranslation();
   const [displayedPdfUrl, setDisplayedPdfUrl] = useState("");
