@@ -169,8 +169,9 @@ the record remains visible as “Deleted User”.
 The comment drawer sorts top-level threads by source position by default
 (file path, then position within that file), or by creation time, newest first.
 Replies keep their original chronological order. Participant filtering is
-multi-select: a thread matches any selected author, including reply authors
-unless “Top-level comments only” is checked. It combines with the existing
+multi-select: a thread matches any selected top-level author by default.
+Unchecking “Top-level comments only” also includes reply authors; clearing the
+participant selection restores the top-level-only default. It combines with the existing
 file/project scope, resolution status, and an independent unread-@-me toggle.
 The unread toggle intersects with Open or Resolved rather than forming a third
 resolution state; reading all mentions in a thread removes it from that filtered

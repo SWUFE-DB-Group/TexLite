@@ -80,7 +80,7 @@ export function WorkspaceContextPanel({
   const [unreadMentionsOnly, setUnreadMentionsOnly] = useState(false);
   const [commentSort, setCommentSort] = useState<CommentReviewSort>("source");
   const [participantIds, setParticipantIds] = useState<Set<string | null>>(() => new Set());
-  const [topLevelOnly, setTopLevelOnly] = useState(false);
+  const [topLevelOnly, setTopLevelOnly] = useState(true);
   const previousResolution = useRef(new Map(comments.map((comment) => [comment.id, comment.resolved])));
   const participants = useMemo(() => collectCommentParticipants(comments), [comments]);
   const reviewCounts = useMemo(() => {
@@ -182,7 +182,7 @@ export function WorkspaceContextPanel({
   };
   const toggleParticipant = (id: string | null) => {
     clearReviewFocus();
-    if (participantIds.size === 1 && participantIds.has(id)) setTopLevelOnly(false);
+    if (participantIds.size === 1 && participantIds.has(id)) setTopLevelOnly(true);
     setParticipantIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
@@ -222,7 +222,7 @@ export function WorkspaceContextPanel({
             <div className="comment-review-sort-row">
               <CommentParticipantFilter key={`${commentScope}:${commentScope === "file" ? activeFile : "project"}`}
                 participants={participants} selectedIds={participantIds} topLevelOnly={topLevelOnly} onToggle={toggleParticipant}
-                onClear={() => { clearReviewFocus(); setParticipantIds(new Set()); setTopLevelOnly(false); }}
+                onClear={() => { clearReviewFocus(); setParticipantIds(new Set()); setTopLevelOnly(true); }}
                 onTopLevelOnlyChange={(value) => { clearReviewFocus(); setTopLevelOnly(value); }} />
               <button type="button" className={`comment-unread-toggle${unreadMentionsOnly ? " active" : ""}`} aria-pressed={unreadMentionsOnly}
                 aria-label={t("editor.commentUnreadMentionsHint")} title={t("editor.commentUnreadMentionsHint")}

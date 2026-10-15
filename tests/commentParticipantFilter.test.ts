@@ -9,7 +9,7 @@ function render(props: Partial<ComponentProps<typeof CommentParticipantFilter>> 
     participants: [
       { authorId: "a", authorUsername: "alice", authorDisplayName: "Alice" },
       { authorId: "b", authorUsername: "bob", authorDisplayName: "Bob" }
-    ], selectedIds: new Set<string | null>(), topLevelOnly: false,
+    ], selectedIds: new Set<string | null>(), topLevelOnly: true,
     onToggle: () => {}, onClear: () => {}, onTopLevelOnlyChange: () => {}, ...props
   }));
 }
@@ -28,9 +28,16 @@ describe("comment participant selector", () => {
     const single = render({ selectedIds: new Set(["a"]) });
     expect(single).toContain('class="comment-participants-summary">Alice</span>');
     expect(single).toContain('aria-label="' + i18n.t("editor.commentParticipantsClear") + '"');
+    expect(single).toContain('class="comment-participants-scope">' + i18n.t("editor.commentTopLevelOnly"));
     const multiple = render({ selectedIds: new Set(["a", "b"]), topLevelOnly: true });
     expect(multiple).toContain(i18n.t("editor.commentParticipantsSelected", { name: "Alice", count: 1 }));
     expect(multiple).toContain('class="comment-participants-scope">' + i18n.t("editor.commentTopLevelOnly"));
+  });
+
+  it("hides the root-only restriction when reply authors are explicitly included", () => {
+    const html = render({ selectedIds: new Set(["a"]), topLevelOnly: false });
+    expect(html).toContain('class="comment-participants-summary">Alice</span>');
+    expect(html).not.toContain("comment-participants-scope");
   });
 
   it("keeps absent selected authors clearable and deleted authors identifiable", () => {
