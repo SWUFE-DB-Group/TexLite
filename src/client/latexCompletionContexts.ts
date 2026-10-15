@@ -3,11 +3,6 @@ import type { Text } from "@codemirror/state";
 import { findReusableLatexEnvironmentEnd, latexEnvironmentBeginStart } from "./latexFolding";
 import { latexContextAt, type LatexCursorContext } from "./latex/context";
 
-export interface LatexArgumentCompletionContext {
-  from: number;
-  query: string;
-}
-
 // Reuse one tree lookup for a completion request; never retain editor states
 // in a global strong-reference cache or materialize the full source prefix.
 const contextCache = new WeakMap<CompletionContext, LatexCursorContext>();
@@ -18,17 +13,6 @@ export function latexCompletionContext(context: CompletionContext): LatexCursorC
     contextCache.set(context, result);
   }
   return result;
-}
-
-export function latexEnvironmentCompletionContext(context: CompletionContext): (LatexArgumentCompletionContext & { command: "begin" | "end" }) | null {
-  const argument = latexCompletionContext(context).argument;
-  return argument?.kind === "environment"
-    ? { from: argument.from, query: argument.query, command: argument.command as "begin" | "end" } : null;
-}
-
-export function latexCitationCompletionContext(context: CompletionContext): LatexArgumentCompletionContext | null {
-  const argument = latexCompletionContext(context).argument;
-  return argument?.kind === "citation" ? { from: argument.from, query: argument.query } : null;
 }
 
 export interface LatexEnvironmentCompletionPlan {

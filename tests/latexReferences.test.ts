@@ -6,7 +6,6 @@ import {
   findLatexReferenceDefinitions,
   findLatexReferences,
   findLatexSourceIncludes,
-  latexReferenceAt,
   lineAndColumnAt
 } from "../src/shared/latexReferences.js";
 
@@ -15,16 +14,19 @@ describe("LaTeX reference lexer", () => {
     const source = String.raw`% \cite{ignored}
 See \citep[see][p. 4]{smith2025, doe2024} and \cref{fig:result, tab:summary}.`;
 
-    expect(findLatexReferences(source)).toEqual([
+    const references = findLatexReferences(source);
+    expect(references).toEqual([
       expect.objectContaining({ kind: "citation", command: "citep", key: "smith2025" }),
       expect.objectContaining({ kind: "citation", command: "citep", key: "doe2024" }),
       expect.objectContaining({ kind: "label", command: "cref", key: "fig:result" }),
       expect.objectContaining({ kind: "label", command: "cref", key: "tab:summary" })
     ]);
 
-    const keyOffset = source.indexOf("doe2024") + 2;
-    expect(latexReferenceAt(source, keyOffset)).toMatchObject({ kind: "citation", key: "doe2024" });
-    expect(latexReferenceAt(source, source.indexOf("doe2024") + "doe2024".length)).toBeNull();
+    for (const reference of references) {
+      expect(source.slice(reference.from, reference.to)).toBe(reference.key);
+    }
+    const keyFrom = source.indexOf("doe2024");
+    expect(references[1]).toMatchObject({ kind: "citation", key: "doe2024", from: keyFrom, to: keyFrom + "doe2024".length });
   });
 
   it("treats comments between citation keys as trivia rather than part of a key", () => {

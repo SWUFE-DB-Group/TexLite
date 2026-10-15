@@ -6,7 +6,6 @@ export {
   bibtexBracketMatching,
   bibtexCompletionSource,
   createBibtexEditorExtensions,
-  bibtexEditorExtensions,
   bibtexHighlightStyle,
   bibtexLanguage,
   bibtexLinter,

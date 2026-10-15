@@ -29,10 +29,6 @@ export function publicUser(user: UserRow): PublicUser {
 
 const requestUserCache = new WeakMap<FastifyRequest, UserRow | null>();
 
-export function clearCurrentUserCache(request: FastifyRequest): void {
-  requestUserCache.delete(request);
-}
-
 export function currentUser(request: FastifyRequest, db: DatabaseConnection): UserRow | null {
   if (requestUserCache.has(request)) {
     return requestUserCache.get(request) ?? null;

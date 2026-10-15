@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/server/config.js";
 import { documentSourceOrder, latexDocumentDirectives } from "../src/server/latexDocumentGraph.js";
-import { buildProjectOutline, buildProjectOutlineAsync, ProjectOutlineService } from "../src/server/projectOutline.js";
+import { ProjectOutlineService } from "../src/server/projectOutline.js";
 
 const roots: string[] = [];
 
@@ -65,8 +65,7 @@ describe("project outline service", () => {
       { path: "main.tex", line: 10, level: 2, title: "After child" }
     ];
 
-    expect(buildProjectOutline(config, projectId, "main.tex")).toEqual(expected);
-    await expect(buildProjectOutlineAsync(config, projectId, "main.tex")).resolves.toEqual(expected);
+    await expect(new ProjectOutlineService(config).build(projectId, "main.tex")).resolves.toEqual(expected);
   });
 
   it("keeps headings explicit, include paths static, and display titles compact", async () => {
@@ -93,8 +92,7 @@ describe("project outline service", () => {
       { path: "static.tex", line: 1, level: 1, title: "Static include" }
     ];
 
-    expect(buildProjectOutline(config, projectId, "main.tex")).toEqual(expected);
-    await expect(buildProjectOutlineAsync(config, projectId, "main.tex")).resolves.toEqual(expected);
+    await expect(new ProjectOutlineService(config).build(projectId, "main.tex")).resolves.toEqual(expected);
   });
 
   it("follows shared import semantics without changing depth-first source order", async () => {
@@ -165,10 +163,8 @@ describe("project outline service", () => {
       ["main.tex", "After all"]
     ];
 
-    const synchronous = buildProjectOutline(config, projectId, "main.tex");
-    const asynchronous = await buildProjectOutlineAsync(config, projectId, "main.tex");
-    expect(synchronous.map(({ path: entryPath, title }) => [entryPath, title])).toEqual(expected);
-    expect(asynchronous).toEqual(synchronous);
+    const outline = await new ProjectOutlineService(config).build(projectId, "main.tex");
+    expect(outline.map(({ path: entryPath, title }) => [entryPath, title])).toEqual(expected);
     expect(documentSourceOrder(
       new Map([...corpus].map(([entryPath, content]) => [entryPath, latexDocumentDirectives(content)])),
       "main.tex"

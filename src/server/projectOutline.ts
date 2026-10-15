@@ -4,7 +4,7 @@ import { findLatexSourceIncludes } from "../shared/latexDependencies.js";
 import { forEachLatexCommand, readLatexMandatoryArguments } from "../shared/latexScanner.js";
 import type { Config } from "./config.js";
 import { resolveLatexInclude, toLatexIncludeDirective, type LatexIncludeDirective } from "./latexDocumentGraph.js";
-import { listProjectFiles, listProjectFilesAsync, resolveSourcePath, safeRelativePath, type FileEntry } from "./files.js";
+import { listProjectFilesAsync, resolveSourcePath, safeRelativePath, type FileEntry } from "./files.js";
 
 export interface ProjectOutlineItem {
   path: string;
@@ -25,45 +25,6 @@ const levels = new Map<string, number>([
 type OutlineSourceEvent =
   | { type: "heading"; from: number; line: number; level: number; title: string }
   | { type: "include"; from: number; directive: LatexIncludeDirective };
-
-export function buildProjectOutline(config: Config, projectId: string, mainFileInput: string): ProjectOutlineItem[] {
-  const mainFile = safeRelativePath(mainFileInput);
-  return buildProjectOutlineFromFiles(config, projectId, mainFile, sourceFilePaths(listProjectFiles(config, projectId)));
-}
-
-function buildProjectOutlineFromFiles(
-  config: Config,
-  projectId: string,
-  mainFile: string,
-  availableFiles: ReadonlySet<string>
-): ProjectOutlineItem[] {
-  const result: ProjectOutlineItem[] = [];
-  const visited = new Set<string>();
-  const visit = (filePath: string, importBase: string): void => {
-    if (visited.has(filePath) || visited.size >= 200) return;
-    visited.add(filePath);
-    const absolute = resolveSourcePath(config, projectId, filePath);
-    if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile() || fs.statSync(absolute).size > 3 * 1024 * 1024) return;
-    const content = fs.readFileSync(absolute, "utf8");
-    for (const event of scanOutlineSource(content)) {
-      if (event.type === "heading") {
-        result.push({ path: filePath, line: event.line, level: event.level, title: event.title });
-        continue;
-      }
-      const included = resolveLatexInclude(event.directive, importBase, availableFiles);
-      if (included) visit(included.path, included.importBase);
-    }
-  };
-  visit(mainFile, "");
-  return result;
-}
-
-/** Async outline builder used by the HTTP path so large projects do not block the event loop. */
-export async function buildProjectOutlineAsync(config: Config, projectId: string, mainFileInput: string): Promise<ProjectOutlineItem[]> {
-  const mainFile = safeRelativePath(mainFileInput);
-  const availableFiles = sourceFilePaths(await listProjectFilesAsync(config, projectId));
-  return buildProjectOutlineAsyncFromFiles(config, projectId, mainFile, availableFiles);
-}
 
 async function buildProjectOutlineAsyncFromFiles(
   config: Config,
@@ -155,10 +116,9 @@ function sourceFilePaths(entries: readonly FileEntry[]): Set<string> {
 }
 
 /**
- * Read one source file into ordered outline events. The shared scanner keeps
- * offsets from the original source while skipping comments and literal TeX
- * forms, so the synchronous and asynchronous builders cannot drift in their
- * interpretation of headings and arguments.
+ * Read one source file into ordered heading and include events. The shared
+ * scanner preserves original source offsets while skipping comments and
+ * literal TeX forms.
  */
 function scanOutlineSource(source: string): OutlineSourceEvent[] {
   const lineStarts = sourceLineStarts(source);

@@ -160,10 +160,6 @@ export function findLatexReferences(source: string): LatexReference[] {
   return references.sort((left, right) => left.from - right.from || left.to - right.to);
 }
 
-export function latexReferenceAt(source: string, offset: number): LatexReference | null {
-  return findLatexReferences(source).find((reference) => offset >= reference.from && offset < reference.to) ?? null;
-}
-
 function definitionsFromLatex(source: string, kind: LatexReferenceKind): LatexReferenceDefinition[] {
   const definitions: LatexReferenceDefinition[] = [];
   forEachLatexCommand(source, (command) => {

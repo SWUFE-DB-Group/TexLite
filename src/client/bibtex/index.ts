@@ -35,9 +35,6 @@ export function createBibtexEditorExtensions(messages: BibtexMessages = defaultB
   ];
 }
 
-/** Default English extensions for isolated consumers and tests. */
-export const bibtexEditorExtensions = createBibtexEditorExtensions();
-
 export { bibtexCompletionSource, entryTypes, fieldNames, snippets } from "./completion";
 export { bibtexLinter, type BibtexLinterOptions } from "./diagnostics";
 export {

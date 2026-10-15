@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FastifyRequest } from "fastify";
 import { hashPassword, MIN_PASSWORD_LENGTH, verifyPassword, LoginRateLimiter } from "../src/server/security.js";
 import { safeRelativePath } from "../src/server/files.js";
-import { clearCurrentUserCache, currentUser } from "../src/server/auth.js";
+import { currentUser } from "../src/server/auth.js";
 
 describe("security helpers", () => {
   it("hashes and verifies passwords", async () => {
@@ -26,14 +26,15 @@ describe("security helpers", () => {
     expect(() => safeRelativePath("archive/.GIT/hooks/pre-commit")).toThrow("reserved");
   });
 
-  it("memoizes currentUser on repeated calls for the same request object", () => {
+  it("memoizes currentUser within a request and reloads permissions for a new request", () => {
     let prepareCalls = 0;
+    let storedRole = "admin";
     const mockDb = {
       prepare(_sql: string) {
         prepareCalls += 1;
         return {
           get() {
-            return { id: "user-1", username: "admin", role: "admin", disabled: 0 };
+            return { id: "user-1", username: "admin", role: storedRole, disabled: 0 };
           }
         };
       }
@@ -47,13 +48,14 @@ describe("security helpers", () => {
     expect(first).toEqual({ id: "user-1", username: "admin", role: "admin", disabled: 0 });
     expect(prepareCalls).toBe(1);
 
+    storedRole = "user";
     const second = currentUser(fakeRequest, mockDb);
     expect(second).toBe(first);
     expect(prepareCalls).toBe(1);
 
-    clearCurrentUserCache(fakeRequest);
-    const third = currentUser(fakeRequest, mockDb);
-    expect(third).toEqual(first);
+    const nextRequest = { ...fakeRequest };
+    const third = currentUser(nextRequest, mockDb);
+    expect(third).toEqual({ id: "user-1", username: "admin", role: "user", disabled: 0 });
     expect(prepareCalls).toBe(2);
   });
 

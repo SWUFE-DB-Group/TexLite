@@ -74,10 +74,6 @@ export function formatBibtex(source: string, maxBytes: number): string {
   return result.bibtex;
 }
 
-export function parseBibEntries(source: string, maxBytes: number): ParsedCitationEntry[] {
-  return parseBibEntriesResult(source, maxBytes).entries;
-}
-
 /**
  * Parse a BibTeX document while preserving the reason an empty result was
  * returned. Callers that make safety decisions (for example duplicate-key

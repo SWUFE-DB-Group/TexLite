@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BibtexFormatError, citationVenue, formatBibtex, parseBibEntries, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
+import { BibtexFormatError, citationVenue, formatBibtex, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 
 const citationLimit = MAX_CITATION_BIBTEX_BYTES;
@@ -21,7 +21,8 @@ describe("citation library BibTeX parser", () => {
 )
 @string{venue = "Journal"}
 `;
-    const entries = parseBibEntries(source, citationLimit);
+    const { status, entries } = parseBibEntriesResult(source, citationLimit);
+    expect(status).toBe("ok");
     expect(entries).toHaveLength(2);
     expect(entries[0]).toMatchObject({ citationKey: "smith2025", entryType: "article", title: "A {Nested} title", year: "2025" });
     expect(entries[0].bibtex).toContain("note = {A comma, inside braces}");

@@ -6,13 +6,13 @@ import { defaultHighlightStyle, foldable, matchBrackets, syntaxTree } from "@cod
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import {
   bibtexCompletionSource,
-  bibtexEditorExtensions,
+  createBibtexEditorExtensions,
   bibtexLanguage,
   bibtexLinter,
   latexLanguage
 } from "../src/client/latexLanguage";
 import { findMatchingLatexEnvironmentEnd } from "../src/client/latexFolding";
-import { latexCitationCompletionContext, latexEnvironmentCompletionContext, latexEnvironmentCompletionPlan } from "../src/client/latexCompletionContexts";
+import { latexCompletionContext, latexEnvironmentCompletionPlan } from "../src/client/latexCompletionContexts";
 import { hasDocumentClass } from "../src/client/latexRoot";
 import { hasLatexDocumentClass } from "../src/shared/latexRoot";
 import { inlineLatexLiteralEnd } from "../src/client/latexLiterals";
@@ -162,7 +162,7 @@ Normal prose after a literal environment.`
     const source = String.raw`\citep[see][p. 5]{smith2024, jo`;
     const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
     const context = new CompletionContext(state, source.length, true);
-    expect(latexCitationCompletionContext(context)).toEqual({ from: source.lastIndexOf("jo"), query: "jo" });
+    expect(latexCompletionContext(context).argument).toMatchObject({ kind: "citation", from: source.lastIndexOf("jo"), query: "jo" });
   });
 
   it.each([
@@ -174,21 +174,21 @@ Normal prose after a literal environment.`
   ])("finds an unfinished citation key through TeX trivia: %s", (source, query) => {
     const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
     const context = new CompletionContext(state, source.length, true);
-    expect(latexCitationCompletionContext(context)).toEqual({ from: source.lastIndexOf(query), query });
+    expect(latexCompletionContext(context).argument).toMatchObject({ kind: "citation", from: source.lastIndexOf(query), query });
   });
 
   it("does not mistake an escaped command for an unfinished citation", () => {
     const source = String.raw`\\cite{paper`;
     const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
     const context = new CompletionContext(state, source.length, true);
-    expect(latexCitationCompletionContext(context)).toBeNull();
+    expect(latexCompletionContext(context).argument).toBeNull();
   });
 
   it("recognizes spaced begin and end environment arguments", () => {
     const source = String.raw`\begin {fig`;
     const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
     const context = new CompletionContext(state, source.length, true);
-    expect(latexEnvironmentCompletionContext(context)).toEqual({ from: source.lastIndexOf("fig"), query: "fig", command: "begin" });
+    expect(latexCompletionContext(context).argument).toMatchObject({ kind: "environment", from: source.lastIndexOf("fig"), query: "fig", command: "begin" });
   });
 
   it("reuses an existing environment close instead of inserting a duplicate", () => {
@@ -360,7 +360,7 @@ Normal prose after a literal environment.`
     const incompleteSource = String.raw`@article{example,
   title = {An incomplete entry}
 }`;
-    const state = EditorState.create({ doc: incompleteSource, extensions: [bibtexLanguage, ...bibtexEditorExtensions] });
+    const state = EditorState.create({ doc: incompleteSource, extensions: [bibtexLanguage, ...createBibtexEditorExtensions()] });
     const openingLine = state.doc.line(1);
     const fold = foldable(state, openingLine.from, openingLine.to);
     expect(fold).toMatchObject({ to: state.doc.line(3).from });
