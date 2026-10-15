@@ -37,6 +37,17 @@ function render(props: Partial<ComponentProps<typeof CommentThread>> = {}): stri
 }
 
 describe("comment participant highlighting", () => {
+  it("keeps long source quotes intact alongside the reply composer and submit controls", () => {
+    const source = "\\cite{" + "longCitationKey".repeat(500) + "}";
+    const draftStore = new CommentDraftStore();
+    draftStore.open(thread.id, "reply", "Reply to the long source");
+    const html = render({ comment: { ...thread, selectedText: source }, draftStore });
+    expect(html).toContain('<blockquote class="comment-selected-text">' + source + '</blockquote>');
+    expect(html).toContain("Reply to the long source</textarea>");
+    expect(html).toContain(i18n.t("editor.sendReply"));
+    expect(html).toContain('type="submit"');
+  });
+
   it("shows who resolved the thread and when, separately from its author", () => {
     const resolvedAt = "2026-01-03T12:00:00Z";
     const html = render({ comment: { ...thread, resolved: true, resolvedAt,

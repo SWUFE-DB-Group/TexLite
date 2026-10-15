@@ -854,8 +854,8 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .outline-row.current .outline-title { color: inherit; }
 .padded { padding: 14px; }
 .comments { padding: 9px; }
-.comment-thread-slot { display: grid; grid-template-rows: 1fr; }
-.comment-thread-slot-content { min-height: 0; }
+.comment-thread-slot { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; }
+.comment-thread-slot-content { min-width: 0; min-height: 0; }
 .comment-thread-slot.is-exiting { pointer-events: none; animation: comment-thread-exit var(--comment-exit-duration, 280ms) cubic-bezier(.22, 1, .36, 1) both; }
 .comment-thread-slot.is-exiting > .comment-thread-slot-content { overflow: hidden; }
 @keyframes comment-thread-exit {
@@ -892,6 +892,7 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .comment-location { margin-top: 5px; color: #768079; font-size: 10px; overflow-wrap: anywhere; }
 .comments blockquote { margin: 8px 0; padding: 6px 8px; border-left: 2px solid #85ad96; background: #f4f7f5; color: #657069; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .comments p { white-space: pre-wrap; user-select: text; -webkit-user-select: text; cursor: text; }.comments blockquote, .comments .comment-content { user-select: text; -webkit-user-select: text; cursor: text; }
+.comments .comment-content { overflow-wrap: anywhere; }
 .comment-inline-mention { color: #2563a6; font-style: italic; font-synthesis: style; font-weight: 650; }
 .comments .resolve { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: #176b44; padding: 0; font-size: 11px; }
 .comment-replies { display: flex; flex-direction: column; gap: 7px; margin: 10px 0 8px; padding-left: 9px; border-left: 1px solid #dce0e4; }
