@@ -38,7 +38,7 @@ function renderCommentContent(content: string): ReactNode {
 
 export function CommentThread({
   projectId, comment, draftStore, currentUserId, unreadCommentMentionId, unreadReplyMentionIds,
-  highlightedComment, highlightedReplyId, currentComment, showFilePath, onMarkMentionRead, onFocus, onToggle,
+  highlightedComment, highlightedReplyId, currentComment, showFilePath, onMarkMentionRead, onFocus, onActivate, onToggle,
   onReply, onEdit, onDelete, onEditReply, onDeleteReply, selectedParticipantIds, highlightReplyParticipants,
   replyExpansion, onReplyExpansionChange
 }: {
@@ -58,6 +58,8 @@ export function CommentThread({
   onReplyExpansionChange: (expanded: boolean) => void;
   onMarkMentionRead: (mentionId: string) => Promise<boolean>;
   onFocus: () => void;
+  /** Activate discussion controls without navigating to or focusing the source editor. */
+  onActivate: () => void;
   onToggle: () => Promise<void>;
   onReply: (content: string) => Promise<boolean>;
   onEdit: (content: string) => Promise<boolean>;
@@ -85,6 +87,7 @@ export function CommentThread({
   const [deleteCommentOpen, setDeleteCommentOpen] = useState(false);
   const [deleteReplyId, setDeleteReplyId] = useState<string | null>(null);
   const openDraft = (key: CommentDraftKey, content = "") => {
+    onActivate();
     onReplyExpansionChange(true);
     setAutoFocusDraft(key);
     draftStore.open(comment.id, key, content);
@@ -106,7 +109,7 @@ export function CommentThread({
     onReplyExpansionChange(true);
     await onMarkMentionRead(mentionId);
   };
-  return <><article data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}${currentComment ? " review-current" : ""}`} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
+  return <><article data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}${currentComment ? " review-current" : ""}`} onFocusCapture={onActivate} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
     <header className="comment-header">
       <span className={`comment-author${selectedParticipantIds?.has(comment.authorId) ? " participant-match" : ""}`}><strong>{comment.authorDisplayName ?? username ?? t("editor.deletedUser")}</strong>{username && <small>@{username}</small>}</span>
       <span className="comment-header-actions">

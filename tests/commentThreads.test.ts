@@ -28,7 +28,7 @@ const longThread: Comment = {
 function render(props: Partial<ComponentProps<typeof CommentThread>> = {}): string {
   return renderToStaticMarkup(createElement(CommentThread, {
     projectId: "project", comment: thread, draftStore: new CommentDraftStore(), currentUserId: "viewer",
-    onMarkMentionRead: async () => true, onFocus: () => {}, onToggle: async () => {},
+    onMarkMentionRead: async () => true, onFocus: () => {}, onActivate: () => {}, onToggle: async () => {},
     onReply: async () => true, onEdit: async () => true, onDelete: async () => true,
     onEditReply: async () => true, onDeleteReply: async () => true,
     onReplyExpansionChange: () => {},

@@ -84,6 +84,7 @@ export function WorkspaceContextPanel({
   // View preferences survive thread unmounts and ordinary resource refreshes;
   // they do not belong to the shared comment data or the draft/request store.
   const [replyExpansion, setReplyExpansion] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+  const [activeComposerId, setActiveComposerId] = useState<string | null>(null);
   const previousResolution = useRef(new Map(comments.map((comment) => [comment.id, comment.resolved])));
   const participants = useMemo(() => collectCommentParticipants(comments), [comments]);
   const reviewCounts = useMemo(() => {
@@ -100,11 +101,20 @@ export function WorkspaceContextPanel({
     activeFile, commentFilter, commentScope, comments, focusedCommentId,
     targetCommentId, unreadMentions, commentSort, participantIds, topLevelOnly, unreadMentionsOnly
   ]);
-  const currentCommentId = focusedCommentId && visibleComments.some((comment) => comment.id === focusedCommentId)
+  const navigationCommentId = focusedCommentId && visibleComments.some((comment) => comment.id === focusedCommentId)
     ? focusedCommentId
     : targetCommentId && visibleComments.some((comment) => comment.id === targetCommentId)
         ? targetCommentId
         : null;
+  const currentCommentId = activeComposerId && visibleComments.some((comment) => comment.id === activeComposerId)
+    ? activeComposerId : navigationCommentId;
+  useEffect(() => {
+    // Source/mention navigation takes precedence over a previous inline form.
+    setActiveComposerId(null);
+  }, [focusedCommentId, commentFocusNonce, targetCommentId, targetReplyId, activeFile, commentScope]);
+  useEffect(() => {
+    if (activeComposerId && !visibleComments.some((comment) => comment.id === activeComposerId)) setActiveComposerId(null);
+  }, [activeComposerId, visibleComments]);
   const currentPosition = commentReviewPosition(visibleComments, currentCommentId);
   const transitionContext = JSON.stringify([
     sidePanel, commentScope, commentScope === "file" ? activeFile : "", commentFilter,
@@ -126,13 +136,15 @@ export function WorkspaceContextPanel({
     }
   }, [commentScope, hasProjectCommentsScope, onClearFocusComment, onCommentScopeChange]);
   useEffect(() => {
-    if (sidePanel !== "comments") return;
+    // An inline composer owns focus; never scroll an older navigation target
+    // while replying, including after an ordinary comment-resource refresh.
+    if (sidePanel !== "comments" || activeComposerId) return;
     const selector = targetCommentId && targetReplyId
       ? `.comments [data-comment-reply-id="${targetReplyId}"]`
       : targetCommentId
         ? `.comments .comment-thread[data-comment-id="${targetCommentId}"]`
-        : currentCommentId
-          ? `.comments .comment-thread[data-comment-id="${currentCommentId}"]`
+       : navigationCommentId
+          ? `.comments .comment-thread[data-comment-id="${navigationCommentId}"]`
           : "";
     if (!selector) return;
     // Comment ids are server-generated UUIDs, so an attribute selector needs
@@ -143,9 +155,10 @@ export function WorkspaceContextPanel({
       block: targetCommentId ? "center" : "nearest", behavior: "smooth"
     }));
     return () => window.cancelAnimationFrame(frame);
-  }, [sidePanel, currentCommentId, commentFocusNonce, targetCommentId, targetReplyId, visibleComments]);
+  }, [sidePanel, activeComposerId, navigationCommentId, commentFocusNonce, targetCommentId, targetReplyId, visibleComments]);
 
   const focusReviewComment = (comment: Comment) => {
+    setActiveComposerId(null);
     onFocusComment(comment);
   };
   const navigateReview = (direction: -1 | 1) => {
@@ -172,15 +185,18 @@ export function WorkspaceContextPanel({
   };
   const selectCommentScope = (scope: CommentReviewScope) => {
     if (scope === commentScope) return;
+    setActiveComposerId(null);
     onClearFocusComment();
     onCommentScopeChange(scope);
   };
   const selectCommentFilter = (filter: CommentReviewFilter) => {
     if (filter === commentFilter) return;
+    setActiveComposerId(null);
     onClearFocusComment();
     setCommentFilter(filter);
   };
   const clearReviewFocus = () => {
+    setActiveComposerId(null);
     onClearFocusComment();
   };
   const toggleParticipant = (id: string | null) => {
@@ -260,7 +276,7 @@ export function WorkspaceContextPanel({
                   setReplyExpansion((current) => current.get(comment.id) === expanded ? current : new Map(current).set(comment.id, expanded));
                 }}
                 selectedParticipantIds={participantIds} highlightReplyParticipants={!topLevelOnly}
-                onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} /></div></div>;
+                onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onActivate={() => setActiveComposerId(comment.id)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} /></div></div>;
             })}
             {displayedComments.length === 0 && !commentsLoading && !commentsError && <p className="muted padded">{comments.length ? t("editor.commentNoMatches") : t("editor.noComments")}</p>}
           </div>

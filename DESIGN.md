@@ -204,6 +204,9 @@ current status queue with a brief fade/slide and collapse; the outgoing card is
 inert and does not count toward review navigation. Failed requests leave the
 thread visible, changing filters cancels exits, and reduced-motion preferences
 skip the movement.
+Opening or focusing an inline composer activates its thread without navigating
+to or focusing the source editor. Ordinary data refreshes preserve that active
+discussion and do not scroll to an older source-navigation target.
 Reply, comment-edit and reply-edit composers share request feedback and a
 workspace-owned synchronous submission guard for button clicks and Ctrl/Cmd+Enter. While a
 request is pending, the form shows Sending/Saving and disables inputs, cancel
