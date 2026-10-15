@@ -174,7 +174,24 @@ and time; deleting that user retains the timestamp and displays â€œDeleted Userâ
 Schema migration 4 adds nullable columns without guessing metadata for existing
 resolved comments. This stores the current resolution, not an activity log.
 
-The comment drawer sorts top-level threads by source position by default
+The source-pin button opens an independent current-comment view: only that Open
+thread in the active source file is shown and highlighted, without status,
+scope, participant, unread or sorting controls. Saved review filters do not
+affect it. Resolving or deleting the thread leaves a short empty-state message
+and a View all comments action, rather than selecting a different discussion.
+The top Comments button switches a current view to the full review drawer;
+when already in full-review mode it retains its open/close behavior. View all
+comments preserves the source target and saved full-review preferences. File
+switches, new comments and @-notification navigation leave current-comment mode.
+Both modes share the same workspace draft store and reply expansion preferences.
+File-comment refresh failures retain the last successfully loaded same-file
+discussion, display an error with a file-specific retry action, and are not
+treated as a successful empty response. An explicit access rejection clears
+cached contents instead. Source-navigation readiness requires a successful
+load; loading and error states are separate, so a failure never leaves an
+indefinite loading indicator. Full file review uses the same error handling.
+
+The full comment drawer sorts top-level threads by source position by default
 (file path, then position within that file), or by creation time, newest first.
 Replies keep their original chronological order. Long inactive
 discussions initially show only the latest two replies with an earlier-replies

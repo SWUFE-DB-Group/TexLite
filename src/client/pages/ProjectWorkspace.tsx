@@ -131,6 +131,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     setSelectionState(next);
   };
   const [sidePanel, setSidePanel] = useState<"comments" | "settings" | null>(null);
+  const [singleCommentId, setSingleCommentId] = useState<string | null>(null);
   const [targetMention, setTargetMention] = useState<CommentMention | null>(null);
   const [pendingCommentFocus, setPendingCommentFocus] = useState<Comment | null>(null);
   // Drawer-only focus must not select the entire annotated range in the editor.
@@ -516,6 +517,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       .then(({ mention }) => {
         if (controller.signal.aborted) return;
         setTargetMention(mention);
+        setSingleCommentId(null);
         setSidePanel("comments");
         setActiveFile(mention.filePath);
         onMentionTargetedRef.current?.(mention.id);
@@ -1028,7 +1030,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     });
   }, [files, editorPreferences.openFilesInTabs]);
   const {
-    comments, commentsFilePath, commentsReady, reviewComments, reviewCommentsLoading, reviewCommentsError, retryReviewComments, commentScope, setCommentScope, focusComment, setFocusComment, commentOpen, openComment, closeComment, commentText, setCommentText,
+    comments, commentsFilePath, commentsReady, fileCommentsLoading, fileCommentsError, retryFileComments, reviewComments, reviewCommentsLoading, reviewCommentsError, retryReviewComments, commentScope, setCommentScope, focusComment, setFocusComment, commentOpen, openComment, closeComment, commentText, setCommentText,
     commentSelection, commentSubmitting, commentError, addComment, toggleComment, replyToComment, editComment,
     deleteComment, editCommentReply, deleteCommentReply, commentDraftStore,
     cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection
@@ -1042,7 +1044,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     save,
     saveFailureMessage: t("errors.collaborationUnavailable"),
     onError: setError,
-    onAdded: () => setSidePanel("comments"),
+    onAdded: () => { setSingleCommentId(null); setSidePanel("comments"); },
     onChanged: () => { void refreshMentions(); }
   });
   // Most small projects are a single document. Only offer a project review
@@ -1103,11 +1105,13 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     setPendingCommentFocus(null);
     setFocusComment(null);
     setTargetMention(null);
+    setSingleCommentId(comment.id);
     setSourceCommentTarget((previous) => ({ id: comment.id, filePath: comment.filePath, nonce: (previous?.nonce ?? 0) + 1 }));
     setSidePanel("comments");
   };
   useEffect(() => {
     setSourceCommentTarget(null);
+    setSingleCommentId(null);
   }, [activeFile]);
   useEffect(() => {
     if (!pendingCommentFocus) return;
@@ -1357,7 +1361,10 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       citationLibraryOpen={citationLibraryOpen} onCitationLibrary={() => setCitationLibraryOpen(true)}
       onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
       formatting={formatting} readOnly={readOnly} collaborationSynced={collaborationSynced}
-      onToggleComments={() => setSidePanel(sidePanel === "comments" ? null : "comments")}
+      onToggleComments={() => {
+        setSingleCommentId(null);
+        setSidePanel(sidePanel === "comments" && !singleCommentId ? null : "comments");
+      }}
       commentsOpen={sidePanel === "comments"} unresolvedCommentCount={comments.filter((item) => !item.resolved).length}
       onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
       settingsOpen={sidePanel === "settings"} compileBusy={compileBusy} sharedCompiling={sharedCompiling}
@@ -1443,8 +1450,9 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       />}
       <WorkspaceContextPanel key={projectId}
         sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
-        site={site} files={files} currentUserId={user.id} comments={reviewComments} commentDraftStore={commentDraftStore} commentsLoading={reviewCommentsLoading}
-        commentsError={reviewCommentsError} onRetryComments={retryReviewComments} activeFile={activeFile}
+        site={site} files={files} currentUserId={user.id} comments={singleCommentId ? comments : reviewComments} commentDraftStore={commentDraftStore} commentsLoading={singleCommentId ? fileCommentsLoading : reviewCommentsLoading}
+        commentsError={singleCommentId ? fileCommentsError : reviewCommentsError} onRetryComments={singleCommentId ? retryFileComments : retryReviewComments} activeFile={activeFile}
+        singleCommentId={singleCommentId} onShowAllComments={() => setSingleCommentId(null)}
         hasProjectCommentsScope={hasProjectCommentsScope} commentScope={commentScope} onCommentScopeChange={setCommentScope}
         focusedCommentId={sourceCommentTarget?.filePath === activeFile ? sourceCommentTarget.id : focusComment?.id}
         commentFocusNonce={sourceCommentTarget?.nonce}

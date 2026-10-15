@@ -3,6 +3,7 @@ import {
   adjacentReviewComment,
   buildVisibleReviewQueue,
   collectCommentParticipants,
+  currentOpenComment,
   commentMatchesParticipants,
   commentsForEditorFile,
   commentReviewPosition,
@@ -48,6 +49,18 @@ describe("comment review navigation", () => {
     expect(filterCommentsForReview(comments, {
       activeFile: "main.tex", scope: "project", filter: "resolved", unreadMentions: []
     }).map((item) => item.id)).toEqual(["chapter-resolved"]);
+  });
+
+  it("opens only the requested Open thread without applying the saved review filters", () => {
+    const selected = comments[0]!;
+    const filteredOut = { activeFile: "main.tex", scope: "file" as const, filter: "resolved" as const,
+      unreadMentions: [], unreadMentionsOnly: true, participantIds: new Set(["another-author"]), sort: "time" as const };
+    expect(buildVisibleReviewQueue(comments, filteredOut)).toEqual([]);
+    expect(currentOpenComment(comments, selected.id, selected.filePath)).toEqual([selected]);
+    expect(currentOpenComment(comments, "chapter-resolved", "chapters/intro.tex")).toEqual([]);
+    expect(currentOpenComment(comments, "chapter-open", "main.tex")).toEqual([]);
+    expect(currentOpenComment(comments, "deleted", "main.tex")).toEqual([]);
+    expect(currentOpenComment([{ ...selected, resolved: true }], selected.id, selected.filePath)).toEqual([]);
   });
 
   it("treats root and reply notifications as one unread @-me thread", () => {

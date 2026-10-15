@@ -199,6 +199,8 @@
     "resumeReply": "Resume reply",
     "showEarlierReplies_one": "View {{count}} earlier reply", "showEarlierReplies_other": "View {{count}} earlier replies",
     "hideEarlierReplies": "Hide earlier replies",
+    "currentComment": "Current comment", "viewAllComments": "View all comments",
+    "currentCommentResolved": "This comment has been resolved.", "currentCommentUnavailable": "This comment is no longer available.",
     "commentDraftRestored": "Workspace draft restored, still linked to its original source location.",
     "commentDraftUseSelection": "Use this source selection",
     "commentSending": "Sending…", "commentSaving": "Saving…", "commentSubmitFailed": "Unable to submit. Your text has been kept. Please retry.",

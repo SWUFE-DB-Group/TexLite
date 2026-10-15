@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { errorMessage } from "../errors";
 import { sourceHash } from "../sourceHash";
 import type { Comment, Project } from "../types";
@@ -31,6 +31,20 @@ interface FileCommentResource {
   filePath: string;
   comments: Comment[];
   loading: boolean;
+  error: string;
+}
+
+/** A failed refresh is not evidence that the discussion was deleted. */
+export function fileCommentsAfterFailure(current: FileCommentResource, filePath: string, error: unknown): FileCommentResource {
+  // Do not keep displaying cached project contents after an explicit access
+  // rejection. Temporary network/server failures can retain the same file.
+  const inaccessible = error instanceof ApiError && [401, 403, 404].includes(error.status);
+  return {
+    filePath,
+    comments: !inaccessible && current.filePath === filePath ? current.comments : [],
+    loading: false,
+    error: errorMessage(error)
+  };
 }
 
 function isAbortError(error: unknown): boolean {
@@ -44,7 +58,7 @@ export function useProjectComments({
   // `comments` remains strictly scoped to the active file. LatexEditor uses
   // offsets from this list to decorate source, so project-wide results must
   // never be substituted here.
-  const [fileCommentResource, setFileCommentResource] = useState<FileCommentResource>({ filePath: "", comments: [], loading: false });
+  const [fileCommentResource, setFileCommentResource] = useState<FileCommentResource>({ filePath: "", comments: [], loading: false, error: "" });
   const [projectComments, setProjectComments] = useState<Comment[]>([]);
   const [projectCommentsLoading, setProjectCommentsLoading] = useState(false);
   const [projectCommentsError, setProjectCommentsError] = useState("");
@@ -81,7 +95,9 @@ export function useProjectComments({
   // never decorate or focus the editor currently on screen.
   const comments = fileCommentResource.filePath === activeFile ? fileCommentResource.comments : [];
   const commentsFilePath = fileCommentResource.filePath;
-  const commentsReady = commentsFilePath === activeFile && !fileCommentResource.loading;
+  const fileCommentsError = commentsFilePath === activeFile ? fileCommentResource.error : "";
+  const fileCommentsLoading = Boolean(activeFile) && (commentsFilePath !== activeFile || fileCommentResource.loading);
+  const commentsReady = commentsFilePath === activeFile && !fileCommentResource.loading && !fileCommentsError;
 
   const loadFileComments = async (file: string) => {
     fileRequest.current?.abort();
@@ -89,8 +105,8 @@ export function useProjectComments({
     fileRequest.current = controller;
     if (activeFileRef.current === file) {
       setFileCommentResource((current) => current.filePath === file
-        ? { ...current, loading: true }
-        : { filePath: "", comments: [], loading: true });
+        ? { ...current, loading: true, error: "" }
+        : { filePath: "", comments: [], loading: true, error: "" });
     }
     try {
       const result = await api<{ comments: Comment[] }>(
@@ -98,16 +114,18 @@ export function useProjectComments({
         { signal: controller.signal }
       );
       if (fileRequest.current === controller && activeFileRef.current === file) {
-        setFileCommentResource({ filePath: file, comments: result.comments, loading: false });
+        setFileCommentResource({ filePath: file, comments: result.comments, loading: false, error: "" });
       }
     } catch (error) {
       if (!isAbortError(error) && fileRequest.current === controller && activeFileRef.current === file) {
-        setFileCommentResource({ filePath: file, comments: [], loading: false });
+        setFileCommentResource((current) => fileCommentsAfterFailure(current, file, error));
       }
     } finally {
       if (fileRequest.current === controller) fileRequest.current = null;
     }
   };
+
+  const retryFileComments = () => activeFileRef.current ? loadFileComments(activeFileRef.current) : Promise.resolve();
 
   const loadProjectComments = async () => {
     projectRequest.current?.abort();
@@ -145,7 +163,7 @@ export function useProjectComments({
     projectRequest.current?.abort();
     projectRequest.current = null;
     setFocusComment(null);
-    setFileCommentResource({ filePath: "", comments: [], loading: false });
+    setFileCommentResource({ filePath: "", comments: [], loading: false, error: "" });
     setProjectComments([]);
     setProjectCommentsLoading(false);
     setProjectCommentsError("");
@@ -172,7 +190,7 @@ export function useProjectComments({
 
   useEffect(() => {
     if (activeFile) void loadFileComments(activeFile);
-    else setFileCommentResource({ filePath: "", comments: [], loading: false });
+    else setFileCommentResource({ filePath: "", comments: [], loading: false, error: "" });
     return () => {
       fileRequest.current?.abort();
       fileRequest.current = null;
@@ -364,10 +382,13 @@ export function useProjectComments({
     comments,
     commentsFilePath,
     commentsReady,
+    fileCommentsLoading,
+    fileCommentsError,
+    retryFileComments,
     reviewComments: commentScope === "file" ? comments : projectComments,
-    reviewCommentsLoading: commentScope === "project" && projectCommentsLoading,
-    reviewCommentsError: commentScope === "project" ? projectCommentsError : "",
-    retryReviewComments: loadProjectComments,
+    reviewCommentsLoading: commentScope === "project" ? projectCommentsLoading : fileCommentsLoading,
+    reviewCommentsError: commentScope === "project" ? projectCommentsError : fileCommentsError,
+    retryReviewComments: commentScope === "project" ? loadProjectComments : retryFileComments,
     commentScope,
     setCommentScope,
     focusComment,

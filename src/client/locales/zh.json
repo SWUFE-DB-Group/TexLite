@@ -191,6 +191,8 @@
     "resumeReply": "继续回复",
     "showEarlierReplies_one": "查看之前的 {{count}} 条回复", "showEarlierReplies_other": "查看之前的 {{count}} 条回复",
     "hideEarlierReplies": "收起较早的回复",
+    "currentComment": "当前批注", "viewAllComments": "查看全部批注",
+    "currentCommentResolved": "这条批注已解决。", "currentCommentUnavailable": "这条批注已不可用。",
     "commentDraftRestored": "已恢复工作区草稿，仍关联原源码位置。",
     "commentDraftUseSelection": "使用本次源码位置",
     "commentSending": "正在发送…", "commentSaving": "正在保存…", "commentSubmitFailed": "提交失败，输入内容已保留，请重试。",

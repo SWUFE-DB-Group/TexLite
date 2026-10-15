@@ -778,6 +778,9 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .drawer-title .drawer-mention-read-all { width: auto; min-width: 0; display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid #cbd8f1; border-radius: 5px; background: #f4f8ff; color: #285a99; font-size: 10px; font-weight: 700; line-height: 1; white-space: nowrap; }
 .drawer-title .drawer-mention-read-all:hover { border-color: #91add5; background: #e7f0ff; color: #174d8e; }
 .comment-review-controls { position: sticky; top: 42px; z-index: 1; display: flex; flex-direction: column; border-bottom: 1px solid #e4e8e4; background: #fbfcfb; }
+.comment-current-controls { position: sticky; top: 42px; z-index: 1; padding: 7px 9px; border-bottom: 1px solid #e4e8e4; background: #fbfcfb; }
+.comment-current-controls button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d5ddd7; border-radius: 6px; padding: 5px 8px; background: white; color: #405b4b; font-size: 11px; }
+.comment-current-controls button:hover { background: #edf3ef; border-color: #b9cbbf; }
 .comment-review-queue-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 7px 9px; }
 .comment-review-group { display: inline-flex; min-width: 0; overflow: hidden; border: 1px solid #d5ddd7; border-radius: 6px; background: #fff; }
 .comment-review-group button { min-width: 0; border: 0; border-right: 1px solid #e2e7e3; padding: 4px 6px; background: transparent; color: #68736c; font-size: 10px; line-height: 1.25; white-space: nowrap; }

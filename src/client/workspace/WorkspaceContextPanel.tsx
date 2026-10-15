@@ -1,6 +1,6 @@
 import { lazy, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
-import { ArrowDown, ArrowUp, AtSign, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ArrowDown, ArrowUp, AtSign, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Comment, CommentMention, FileEntry, Project, SiteConfig } from "../types";
 import type { EditorPreferences } from "../editorPreferences";
@@ -13,6 +13,7 @@ import {
   adjacentReviewComment,
   buildVisibleReviewQueue,
   collectCommentParticipants,
+  currentOpenComment,
   commentReviewPosition,
   filterCommentsForReview,
   type CommentReviewFilter,
@@ -36,6 +37,8 @@ export interface WorkspaceContextPanelProps {
   commentsError: string;
   onRetryComments: () => Promise<void>;
   activeFile: string;
+  singleCommentId?: string | null;
+  onShowAllComments: () => void;
   hasProjectCommentsScope: boolean;
   commentScope: CommentReviewScope;
   onCommentScopeChange: (scope: CommentReviewScope) => void;
@@ -67,7 +70,7 @@ export interface WorkspaceContextPanelProps {
 
 export function WorkspaceContextPanel({
   sidePanel, onClose, project, projectId, site, files, currentUserId, comments, commentDraftStore, commentsLoading, commentsError, onRetryComments, unreadMentions,
-  activeFile, hasProjectCommentsScope, commentScope, onCommentScopeChange, focusedCommentId, commentFocusNonce, onMarkMentionRead, onMarkAllMentionsRead,
+  activeFile, singleCommentId, onShowAllComments, hasProjectCommentsScope, commentScope, onCommentScopeChange, focusedCommentId, commentFocusNonce, onMarkMentionRead, onMarkAllMentionsRead,
   onClearFocusComment,
   targetCommentId, targetReplyId, onFocusComment,
   onToggleComment, onReplyComment, onEditComment, onDeleteComment, onEditCommentReply,
@@ -76,6 +79,7 @@ export function WorkspaceContextPanel({
   onSpellCheckNavigate, onProject
 }: WorkspaceContextPanelProps) {
   const { t } = useTranslation();
+  const singleCommentMode = Boolean(singleCommentId);
   const [commentFilter, setCommentFilter] = useState<CommentReviewFilter>("unresolved");
   const [unreadMentionsOnly, setUnreadMentionsOnly] = useState(false);
   const [commentSort, setCommentSort] = useState<CommentReviewSort>("source");
@@ -95,10 +99,10 @@ export function WorkspaceContextPanel({
       mentions: filterCommentsForReview(comments, { ...options, filter: commentFilter, unreadMentionsOnly: true }).length
     };
   }, [activeFile, commentScope, comments, unreadMentions, participantIds, topLevelOnly, commentFilter, unreadMentionsOnly]);
-  const visibleComments = useMemo(() => buildVisibleReviewQueue(comments, {
+  const visibleComments = useMemo(() => singleCommentId ? currentOpenComment(comments, singleCommentId, activeFile) : buildVisibleReviewQueue(comments, {
     activeFile, scope: commentScope, filter: commentFilter, unreadMentions, sort: commentSort, participantIds, topLevelOnly, unreadMentionsOnly
   }, [targetCommentId, focusedCommentId]), [
-    activeFile, commentFilter, commentScope, comments, focusedCommentId,
+    activeFile, singleCommentId, commentFilter, commentScope, comments, focusedCommentId,
     targetCommentId, unreadMentions, commentSort, participantIds, topLevelOnly, unreadMentionsOnly
   ]);
   const navigationCommentId = focusedCommentId && visibleComments.some((comment) => comment.id === focusedCommentId)
@@ -106,8 +110,9 @@ export function WorkspaceContextPanel({
     : targetCommentId && visibleComments.some((comment) => comment.id === targetCommentId)
         ? targetCommentId
         : null;
-  const currentCommentId = activeComposerId && visibleComments.some((comment) => comment.id === activeComposerId)
-    ? activeComposerId : navigationCommentId;
+  const currentCommentId = singleCommentMode ? visibleComments[0]?.id ?? null
+    : activeComposerId && visibleComments.some((comment) => comment.id === activeComposerId)
+      ? activeComposerId : navigationCommentId;
   useEffect(() => {
     // Source/mention navigation takes precedence over a previous inline form.
     setActiveComposerId(null);
@@ -117,10 +122,10 @@ export function WorkspaceContextPanel({
   }, [activeComposerId, visibleComments]);
   const currentPosition = commentReviewPosition(visibleComments, currentCommentId);
   const transitionContext = JSON.stringify([
-    sidePanel, commentScope, commentScope === "file" ? activeFile : "", commentFilter,
+    sidePanel, singleCommentId, commentScope, commentScope === "file" ? activeFile : "", commentFilter,
     commentSort, [...participantIds].sort(), topLevelOnly, unreadMentionsOnly
   ]);
-  const { entries: displayedComments, finishExit } = useCommentReviewTransitions(visibleComments, comments, commentFilter, transitionContext);
+  const { entries: displayedComments, finishExit } = useCommentReviewTransitions(visibleComments, comments, singleCommentMode ? "unresolved" : commentFilter, transitionContext);
   useEffect(() => {
     // A navigation reveal is temporary, not an exemption from future status
     // changes (including a coauthor resolving the currently focused thread).
@@ -168,7 +173,7 @@ export function WorkspaceContextPanel({
   };
   const markReviewMentionRead = async (mentionId: string): Promise<boolean> => {
     const marked = await onMarkMentionRead(mentionId);
-    if (!marked || !unreadMentionsOnly) return marked;
+    if (!marked || singleCommentMode || !unreadMentionsOnly) return marked;
     const commentId = unreadMentions.find((mention) => mention.id === mentionId)?.commentId;
     if (!commentId) return marked;
     const remaining = unreadMentions.some((mention) => mention.id !== mentionId && mention.commentId === commentId);
@@ -216,13 +221,15 @@ export function WorkspaceContextPanel({
       <aside className="context-panel">
         {sidePanel === "comments" && <>
           <div className="drawer-title">
-            <strong>{t("editor.sourceComments")}</strong>
+            <strong>{t(singleCommentMode ? "editor.currentComment" : "editor.sourceComments")}</strong>
             <span className="drawer-title-actions">
-              {unreadMentions.length > 0 && <button className="drawer-mention-read-all" type="button" onClick={() => void markAllReviewMentionsRead()} title={t("editor.markAllMentionsRead")}><AtSign aria-hidden size={13} /><span>{t("editor.markAllMentionsRead")}</span></button>}
+              {!singleCommentMode && unreadMentions.length > 0 && <button className="drawer-mention-read-all" type="button" onClick={() => void markAllReviewMentionsRead()} title={t("editor.markAllMentionsRead")}><AtSign aria-hidden size={13} /><span>{t("editor.markAllMentionsRead")}</span></button>}
               <button aria-label={t("common.close")} onClick={onClose}><X size={17} /></button>
             </span>
           </div>
-          <div className="comment-review-controls">
+          {singleCommentMode ? <div className="comment-current-controls">
+            <button type="button" onClick={onShowAllComments}><List size={13} aria-hidden />{t("editor.viewAllComments")}</button>
+          </div> : <div className="comment-review-controls">
             <div className="comment-review-queue-row">
               {hasProjectCommentsScope && <div className="comment-review-group" role="group" aria-label={t("editor.commentScope")}>
                 <button type="button" className={commentScope === "file" ? "active" : ""} aria-pressed={commentScope === "file"} onClick={() => selectCommentScope("file")}>{t("editor.commentScopeFile")}</button>
@@ -257,7 +264,7 @@ export function WorkspaceContextPanel({
                 </select>
               </label>
             </div>
-          </div>
+          </div>}
           {commentsError && <div className="comment-review-error" role="alert"><span>{commentsError}</span><button type="button" onClick={() => void onRetryComments()}>{t("common.retry")}</button></div>}
           {commentsLoading && <div className="comment-review-loading" role="status">{t("common.loading")}</div>}
           <div className="comments">
@@ -271,14 +278,16 @@ export function WorkspaceContextPanel({
                 <div className="comment-thread-slot-content"><CommentThread projectId={projectId} comment={comment} draftStore={commentDraftStore} currentUserId={currentUserId}
                 unreadCommentMentionId={unreadCommentMentionId} unreadReplyMentionIds={unreadReplyMentionIds}
                 highlightedComment={targetCommentId === comment.id && !targetReplyId} highlightedReplyId={targetCommentId === comment.id ? targetReplyId : null}
-                currentComment={currentCommentId === comment.id} showFilePath={commentScope === "project"}
+                currentComment={currentCommentId === comment.id} showFilePath={!singleCommentMode && commentScope === "project"}
                 replyExpansion={replyExpansion.get(comment.id)} onReplyExpansionChange={(expanded) => {
                   setReplyExpansion((current) => current.get(comment.id) === expanded ? current : new Map(current).set(comment.id, expanded));
                 }}
-                selectedParticipantIds={participantIds} highlightReplyParticipants={!topLevelOnly}
+                selectedParticipantIds={singleCommentMode ? undefined : participantIds} highlightReplyParticipants={!singleCommentMode && !topLevelOnly}
                 onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onActivate={() => setActiveComposerId(comment.id)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} /></div></div>;
             })}
-            {displayedComments.length === 0 && !commentsLoading && !commentsError && <p className="muted padded">{comments.length ? t("editor.commentNoMatches") : t("editor.noComments")}</p>}
+            {displayedComments.length === 0 && !commentsLoading && !commentsError && <p className="muted padded" role="status">{singleCommentMode
+              ? t(comments.some((comment) => comment.id === singleCommentId && comment.resolved) ? "editor.currentCommentResolved" : "editor.currentCommentUnavailable")
+              : comments.length ? t("editor.commentNoMatches") : t("editor.noComments")}</p>}
           </div>
         </>}
         {sidePanel === "settings" && <LazyPanel onClose={onClose}><ProjectSettings key={projectId} onClose={onClose} project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={onDictionaryChange} editorPreferences={editorPreferences} onEditorPreferences={onEditorPreferences} spellCheckCount={spellCheckCount} spellCheckUniqueCount={spellCheckUniqueCount} spellCheckIndex={spellCheckIndex} onSpellCheckNavigate={onSpellCheckNavigate} onProject={onProject} /></LazyPanel>}

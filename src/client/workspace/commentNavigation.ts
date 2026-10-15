@@ -106,6 +106,13 @@ export function buildVisibleReviewQueue(
   }), options.sort);
 }
 
+/** A source-pin discussion is an Open-only view, not a filtered review queue. */
+export function currentOpenComment(comments: readonly Comment[], id: string, filePath: string): Comment[] {
+  // Deliberately independent from review scope, sorting and saved filters.
+  const comment = comments.find((item) => item.id === id && item.filePath === filePath && !item.resolved);
+  return comment ? [comment] : [];
+}
+
 /** Keep source decorations strictly tied to the editor's current file. */
 export function commentsForEditorFile(comments: readonly Comment[], filePath: string): Comment[] {
   return comments.filter((comment) => comment.filePath === filePath);
