@@ -40,7 +40,7 @@ export interface WorkspaceEditorPanelProps {
   setSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onAddComment: (selectedText: string, startOffset: number, endOffset: number, source: string) => void;
   onSelectionHistory: SelectionLineAction;
-  onCommentClick: (id: string) => void;
+  onCommentClick: (id: string, toggle?: boolean) => void;
   onSpellCheckReplace: (issue: SpellCheckIssue, replacement: string) => void;
   onReferenceNavigate: (reference: LatexReference) => void;
   onCursor: (line: number, column: number, offset: number) => void;

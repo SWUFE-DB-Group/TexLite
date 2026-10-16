@@ -23,7 +23,7 @@ export function sourceCommentAnchorForId(state: EditorState, id: string): Source
 
 interface SourceCommentOptions {
   label: string;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, toggle?: boolean) => void;
 }
 
 /** Leave ordinary caret placement and drag selection to CodeMirror. */
@@ -52,7 +52,7 @@ class CommentPin extends WidgetType {
     // mouse, touch, and native Enter/Space all work without selecting source.
     pin.addEventListener("mousedown", (event) => { event.preventDefault(); event.stopPropagation(); });
     pin.addEventListener("keydown", (event) => event.stopPropagation());
-    pin.addEventListener("click", (event) => { event.stopPropagation(); this.options.onOpen(this.id); });
+    pin.addEventListener("click", (event) => { event.stopPropagation(); this.options.onOpen(this.id, true); });
     return pin;
   }
 }

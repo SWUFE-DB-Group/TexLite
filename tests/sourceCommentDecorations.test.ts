@@ -184,7 +184,7 @@ describe("source comment navigation", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it("activates labelled pin buttons directly despite CodeMirror ignoring widget events", () => {
+  it("requests a toggle from labelled pin buttons despite CodeMirror ignoring widget events", () => {
     const { state, onOpen } = fixture([comment("collapsed", 3, 3)]);
     vi.stubGlobal("document", { createElement: () => new PinElement() });
     const widget = ranges(state)[0]!.value.spec.widget!;
@@ -198,6 +198,6 @@ describe("source comment navigation", () => {
     pin.handlers.keydown!(key);
     expect(key.defaultPrevented).toBe(false); // Enter/Space activate the native button.
     pin.handlers.click!(new Event("click"));
-    expect(onOpen).toHaveBeenCalledExactlyOnceWith("collapsed");
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith("collapsed", true);
   });
 });

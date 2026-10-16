@@ -54,7 +54,7 @@ interface Props {
   onSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onAddComment: (selectedText: string, startOffset: number, endOffset: number, source: string) => void;
   onSelectionHistory: SelectionLineAction;
-  onCommentClick: (commentId: string) => void;
+  onCommentClick: (commentId: string, toggle?: boolean) => void;
   onSpellCheckReplace: (issue: SpellCheckIssue, replacement: string) => void;
   onReferenceNavigate: (reference: LatexReference) => void;
   onCursor: (line: number, column: number, offset: number) => void;
@@ -217,7 +217,7 @@ export function LatexEditor({
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),
         ...(isBibtexFile ? [] : [bracketMatching(), ...(isBstFile ? [] : [Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexSkippedBracePair])]),
         closeBrackets(), indentOnInput(), sourceCommentDecorations({
-          label: t("editor.openSourceComment"), onOpen: (id) => onCommentClickRef.current(id)
+          label: t("editor.openSourceComment"), onOpen: (id, toggle) => onCommentClickRef.current(id, toggle)
         }), spellCheckIssueMarks, activeSpellCheckIssueMarks,
         referenceNavigation.current.of(isBstFile ? [] : referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))),
         ...(isBstFile ? [] : [latexReferenceMarks, latexReferenceHover]),

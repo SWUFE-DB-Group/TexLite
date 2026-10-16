@@ -1099,12 +1099,20 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       jumpToSource(comment.filePath, comment.startLine, 1);
     }
   };
-  const openCommentFromSource = (id: string): void => {
+  const openCommentFromSource = (id: string, toggle = false): void => {
     const comment = comments.find((item) => item.id === id && item.filePath === activeFile);
     if (!comment || comment.resolved || comment.orphaned) return;
     setPendingCommentFocus(null);
     setFocusComment(null);
     setTargetMention(null);
+    // Pin buttons toggle the focused drawer; ordinary source caret clicks
+    // only reveal the discussion, so editing its text does not close it.
+    if (toggle && sidePanel === "comments" && singleCommentId === comment.id) {
+      setSingleCommentId(null);
+      setSourceCommentTarget(null);
+      setSidePanel(null);
+      return;
+    }
     setSingleCommentId(comment.id);
     setSourceCommentTarget((previous) => ({ id: comment.id, filePath: comment.filePath, nonce: (previous?.nonce ?? 0) + 1 }));
     setSidePanel("comments");
