@@ -175,6 +175,25 @@ describe("texLite application", () => {
     expect(asset.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
   });
 
+  it("protects the signed-in administrator even when another administrator exists", async () => {
+    const admin = db.prepare("SELECT id, password_hash FROM users WHERE username = 'admin'").get() as { id: string; password_hash: string };
+    const otherId = randomUUID();
+    db.prepare("INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES (?, ?, ?, ?, 'admin', ?)")
+      .run(otherId, "other-protected-admin", "Other admin", admin.password_hash, new Date().toISOString());
+    try {
+      for (const payload of [{ disabled: true }, { role: "user" }]) {
+        const result = await app.inject({ method: "PATCH", url: `/api/admin/users/${admin.id}`, headers: { cookie }, payload });
+        expect(result.statusCode).toBe(400);
+        expect(result.json()).toMatchObject({ code: "SELF_RESTRICT_FORBIDDEN" });
+      }
+      expect((await app.inject({ method: "DELETE", url: `/api/admin/users/${admin.id}`, headers: { cookie } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "PATCH", url: `/api/admin/users/${otherId}`, headers: { cookie }, payload: { role: "user" } })).statusCode).toBe(200);
+      expect(db.prepare("SELECT role, disabled FROM users WHERE id = ?").get(admin.id)).toEqual({ role: "admin", disabled: 0 });
+    } finally {
+      db.prepare("DELETE FROM users WHERE id = ?").run(otherId);
+    }
+  });
+
   it("revokes cookies when an account is disabled, including after re-enabling it", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/admin/users", headers: { cookie },

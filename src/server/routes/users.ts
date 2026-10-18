@@ -90,6 +90,9 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
     const body = request.body as Record<string, unknown>;
     const role = body.role === "admin" ? "admin" : body.role === "user" ? "user" : target.role;
     const disabled = typeof body.disabled === "boolean" ? Number(body.disabled) : target.disabled;
+    if (target.id === admin.id && (disabled || role !== "admin")) {
+      return apiError(reply, 400, "SELF_RESTRICT_FORBIDDEN");
+    }
     const canCreateProjects = typeof body.canCreateProjects === "boolean"
       ? Number(body.canCreateProjects) : target.can_create_projects;
     if (target.role === "admin" && (!role || role !== "admin" || disabled) && activeAdminCount(db) <= 1) {
