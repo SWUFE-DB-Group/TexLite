@@ -35,12 +35,30 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
 
   app.get("/api/admin/users", async (request, reply) => {
     if (!requireAdmin(request, reply, db)) return;
+    const query = request.query as { q?: string; page?: string };
+    const search = typeof query.q === "string" ? query.q.trim() : "";
+    const requestedPage = Number(query.page ?? "1");
+    const pageSize = 20;
+    const where = search ? "WHERE (u.username LIKE ? ESCAPE '\\' OR u.display_name LIKE ? ESCAPE '\\')" : "";
+    const pattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+    const params = search ? [pattern, pattern] : [];
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM users u ${where}`).get(...params) as { count: number }).count;
+    const totalPages = Math.ceil(total / pageSize);
+    const page = Math.min(
+      Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+      Math.max(1, totalPages)
+    );
     const users = db.prepare(`
       SELECT u.*,
         (SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id) AS owned_projects
-      FROM users u ORDER BY u.created_at
-    `).all() as unknown as Array<UserRow & { owned_projects: number }>;
-    return { users: users.map((user) => ({ ...publicUser(user), ownedProjects: user.owned_projects })) };
+      FROM users u ${where}
+      ORDER BY u.created_at, u.username COLLATE NOCASE
+      LIMIT ? OFFSET ?
+    `).all(...params, pageSize, (page - 1) * pageSize) as unknown as Array<UserRow & { owned_projects: number }>;
+    return {
+      users: users.map((user) => ({ ...publicUser(user), ownedProjects: user.owned_projects })),
+      pagination: { page, pageSize, total, totalPages }
+    };
   });
 
   app.post("/api/admin/users", async (request, reply) => {

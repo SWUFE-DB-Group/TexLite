@@ -3,9 +3,9 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
-import type { SiteConfig, User } from "../types";
+import type { ProjectListPagination, SiteConfig, User } from "../types";
 import {
-  Dices, FolderCheck, FolderX, KeyRound, LoaderCircle, ShieldCheck, ShieldOff, Trash2,
+  ChevronLeft, ChevronRight, Dices, FolderCheck, FolderX, KeyRound, LoaderCircle, Search, ShieldCheck, ShieldOff, Trash2,
   UserCheck, UserPlus, UserX, Users, X
 } from "lucide-react";
 
@@ -25,6 +25,12 @@ interface PendingUserSetting {
 export function AdminUsers({ currentUser, minPasswordLength }: { currentUser: User; minPasswordLength: SiteConfig["minPasswordLength"] }) {
   const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
+  const [query, setQuery] = useState("");
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pagination, setPagination] = useState<ProjectListPagination>({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
+  const [loading, setLoading] = useState(true);
+  const [listFailed, setListFailed] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ username: "", displayName: "", password: "", role: "user" as "user" | "admin", canCreateProjects: false });
@@ -37,8 +43,32 @@ export function AdminUsers({ currentUser, minPasswordLength }: { currentUser: Us
   const [pendingSetting, setPendingSetting] = useState<PendingUserSetting | null>(null);
   const [pendingSettingBusy, setPendingSettingBusy] = useState(false);
   const [pendingSettingError, setPendingSettingError] = useState("");
-  const load = () => api<{ users: User[] }>("/api/admin/users").then(({ users }) => setUsers(users)).catch((e) => setError(errorMessage(e)));
-  useEffect(() => { void load(); }, []);
+  const search = query.trim();
+  const refreshUsers = () => setRefreshNonce((current) => current + 1);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setListFailed(false);
+    setError("");
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ page: String(pageNumber) });
+      if (search) params.set("q", search);
+      void api<{ users: User[]; pagination: ProjectListPagination }>(`/api/admin/users?${params}`, { signal: controller.signal })
+        .then((result) => {
+          if (controller.signal.aborted) return;
+          setUsers(result.users);
+          setPagination(result.pagination);
+          setPageNumber(result.pagination.page);
+        })
+        .catch((requestError) => {
+          if (controller.signal.aborted) return;
+          setError(errorMessage(requestError));
+          setListFailed(true);
+        })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }, search ? 200 : 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [search, pageNumber, refreshNonce]);
   const create = async () => {
     if (createForm.password.length < minPasswordLength) return setError(t("auth.passwordMinimum", { count: minPasswordLength }));
     try {
@@ -50,13 +80,13 @@ export function AdminUsers({ currentUser, minPasswordLength }: { currentUser: Us
         canCreateProjects: createForm.canCreateProjects
       }) });
       setCreateOpen(false); setCreateForm({ username: "", displayName: "", password: "", role: "user", canCreateProjects: false });
-      await load();
+      refreshUsers();
     } catch (e) { setError(errorMessage(e)); }
   };
   const updateUser = async (target: User, patch: Record<string, unknown>) => {
     try {
       await api(`/api/admin/users/${target.id}`, { method: "PATCH", body: JSON.stringify(patch) });
-      await load();
+      refreshUsers();
     } catch (e) { setError(errorMessage(e)); }
   };
   const toggle = async (target: User) => {
@@ -95,7 +125,7 @@ export function AdminUsers({ currentUser, minPasswordLength }: { currentUser: Us
     setPendingSettingError("");
     try {
       await api(`/api/admin/users/${target.id}`, { method: "PATCH", body: JSON.stringify(patch) });
-      await load();
+      refreshUsers();
       setPendingSetting(null);
     } catch (e) { setPendingSettingError(errorMessage(e)); }
     finally { setPendingSettingBusy(false); }
@@ -115,21 +145,26 @@ export function AdminUsers({ currentUser, minPasswordLength }: { currentUser: Us
     try {
       await api(`/api/admin/users/${deleteTarget.id}`, { method: "DELETE", body: JSON.stringify({ deleteProjects }) });
       setDeleteTarget(null); setDeleteProjects(false);
-      await load();
+      refreshUsers();
     } catch (e) { setDeleteError(errorMessage(e)); }
     finally { setDeleting(false); }
   };
   return <main className="dashboard">
     <div className="section-title"><div><h1><Users aria-hidden size={25} />{t("users.manage")}</h1><p className="muted">{t("users.onlyAdmin")}</p></div><button className="primary icon-button" onClick={() => setCreateOpen(true)}><UserPlus aria-hidden size={15} />{t("users.add")}</button></div>
-    {error && <p className="error">{error}</p>}
-    <div className="table-card"><table><thead><tr><th>{t("common.user")}</th><th>{t("users.role")}</th><th>{t("users.createProjects")}</th><th>{t("users.ownedProjects")}</th><th>{t("users.status")}</th><th>{t("users.actions")}</th></tr></thead>
-      <tbody>{users.map((target) => <tr key={target.id}><td><strong>{target.displayName}</strong><small>@{target.username}</small></td><td>{target.role === "admin" ? t("common.admin") : t("common.user")}</td><td>{target.canCreateProjects ? t("users.allow") : t("users.deny")}</td><td>{target.ownedProjects}</td><td>{target.disabled ? t("common.disabled") : t("common.normal")}</td><td>
+    <div className="admin-user-toolbar">
+      <div className="admin-user-search" role="search"><Search aria-hidden size={16} /><input role="searchbox" aria-label={t("users.searchPlaceholder")} placeholder={t("users.searchPlaceholder")} value={query} onChange={(event) => { setQuery(event.target.value); setPageNumber(1); }} />{query && <button type="button" aria-label={t("users.clearSearch")} title={t("users.clearSearch")} onClick={() => { setQuery(""); setPageNumber(1); }}><X aria-hidden size={14} /></button>}</div>
+      {!loading && !listFailed && <span className="admin-user-count" role="status">{t("users.total", { count: pagination.total })}</span>}
+    </div>
+    {error && <p className="error" role="alert">{error}</p>}
+    <div className="table-card admin-user-table" aria-busy={loading}><table><thead><tr><th>{t("common.user")}</th><th>{t("users.role")}</th><th>{t("users.createProjects")}</th><th>{t("users.ownedProjects")}</th><th>{t("users.status")}</th><th>{t("users.actions")}</th></tr></thead>
+      <tbody>{loading ? <tr><td colSpan={6} className="admin-user-list-state"><span role="status"><LoaderCircle className="spin" size={16} />{t("common.loading")}</span></td></tr> : listFailed ? <tr><td colSpan={6} className="admin-user-list-state"><span>{t("users.loadFailed")}</span><button type="button" onClick={refreshUsers}>{t("common.retry")}</button></td></tr> : users.length === 0 ? <tr><td colSpan={6} className="admin-user-list-state">{t(search ? "users.noMatches" : "users.empty")}</td></tr> : users.map((target) => <tr key={target.id}><td><strong>{target.displayName}</strong><small>@{target.username}</small></td><td>{target.role === "admin" ? t("common.admin") : t("common.user")}</td><td>{target.canCreateProjects ? t("users.allow") : t("users.deny")}</td><td>{target.ownedProjects}</td><td>{target.disabled ? t("common.disabled") : t("common.normal")}</td><td>
         <button className="icon-button" disabled={target.id === currentUser.id} onClick={() => toggle(target)}>{target.disabled ? <UserCheck aria-hidden size={13} /> : <UserX aria-hidden size={13} />}{target.disabled ? t("users.enable") : t("users.disable")}</button>
         <button className="icon-button" disabled={target.id === currentUser.id} onClick={() => toggleRole(target)}>{target.role === "admin" ? <ShieldOff aria-hidden size={13} /> : <ShieldCheck aria-hidden size={13} />}{target.role === "admin" ? t("users.demote") : t("users.promote")}</button>
         <button className="icon-button" disabled={target.role === "admin"} onClick={() => toggleProjectCreation(target)}>{target.canCreateProjects ? <FolderX aria-hidden size={13} /> : <FolderCheck aria-hidden size={13} />}{target.canCreateProjects ? t("users.denyCreate") : t("users.allowCreate")}</button>
         <button className="icon-button" onClick={() => { setResetTarget(target); setResetValue(""); }}><KeyRound aria-hidden size={13} />{t("users.resetPassword")}</button>
         <button className="icon-button danger-text" disabled={target.id === currentUser.id} onClick={() => { setDeleteTarget(target); setDeleteProjects(false); setDeleteError(""); }}><Trash2 aria-hidden size={13} />{t("common.delete")}</button>
       </td></tr>)}</tbody></table></div>
+    {pagination.totalPages > 1 && <nav className="project-pagination admin-user-pagination" aria-label={t("users.pagination")}><button type="button" disabled={loading || listFailed || pagination.page <= 1} onClick={() => setPageNumber(pagination.page - 1)}><ChevronLeft size={15} />{t("users.previousPage")}</button><span>{t("users.pageOf", { page: pagination.page, totalPages: pagination.totalPages })}</span><button type="button" disabled={loading || listFailed || pagination.page >= pagination.totalPages} onClick={() => setPageNumber(pagination.page + 1)}>{t("users.nextPage")}<ChevronRight size={15} /></button></nav>}
     <Modal open={createOpen} title={t("users.add")} description={t("users.addDescription")} onOpenChange={setCreateOpen} footer={<><button className="icon-button" onClick={() => setCreateOpen(false)}><X aria-hidden size={14} />{t("common.cancel")}</button><button className="primary icon-button" disabled={createForm.password.length < minPasswordLength} onClick={() => void create()}><UserPlus aria-hidden size={14} />{t("users.createUser")}</button></>}>
       <div className="form-stack"><label className="form-field">{t("auth.username")}<input value={createForm.username} onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })} /></label><label className="form-field">{t("users.displayName")}<input value={createForm.displayName} onChange={(e) => setCreateForm({ ...createForm, displayName: e.target.value })} /></label><label className="form-field">{t("users.initialPassword")}<span className="password-generator"><input minLength={minPasswordLength} autoComplete="new-password" value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} /><button type="button" title={t("users.generatePassword")} onClick={() => setCreateForm({ ...createForm, password: randomPassword() })}><Dices size={15} />{t("users.randomPassword")}</button></span><small className="field-hint">{t("auth.passwordMinimum", { count: minPasswordLength })}</small></label><label className="form-field">{t("users.role")}<select value={createForm.role} onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as "user" | "admin" })}><option value="user">{t("common.user")}</option><option value="admin">{t("common.admin")}</option></select></label><label className="checkbox-field"><input type="checkbox" checked={createForm.canCreateProjects || createForm.role === "admin"} disabled={createForm.role === "admin"} onChange={(e) => setCreateForm({ ...createForm, canCreateProjects: e.target.checked })} /> {t("users.allowCreate")}</label></div>
     </Modal>

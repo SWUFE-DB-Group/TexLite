@@ -378,6 +378,21 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-pagination button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #cbd4ce; border-radius: 7px; padding: 7px 10px; background: white; color: #405248; font-size: 12px; }
 .project-pagination button:hover:not(:disabled) { border-color: #8bae9a; background: #f2f7f3; color: #176b44; }
 .table-card { overflow: hidden; background: white; border: 1px solid #dfe2de; border-radius: 12px; }
+.admin-user-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 16px; }
+.admin-user-search { display: flex; align-items: center; flex: 1 1 280px; gap: 9px; max-width: 460px; min-width: 0; padding: 5px 10px; border: 1px solid #cbd4ce; border-radius: 8px; background: white; color: #6b7a70; }
+.admin-user-search:focus-within { border-color: #648f77; box-shadow: 0 0 0 3px #176b4410; }
+.admin-user-search > svg { flex: none; }
+.admin-user-search input { width: 100%; min-width: 0; border: 0; outline: none; padding: 6px 0; background: transparent; color: #263b2e; font-size: 13px; }
+.admin-user-search input::placeholder { color: #829087; }
+.admin-user-search button { display: grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #6b7a70; }
+.admin-user-search button:hover { background: #edf3ee; color: #176b44; }
+.admin-user-count { color: #738078; font-size: 12px; }
+.admin-user-table { overflow-x: auto; }
+.admin-user-table table { min-width: 860px; }
+.admin-user-table .admin-user-list-state { padding: 32px 16px; color: #6b7a70; text-align: center; font-size: 13px; }
+.admin-user-list-state > span { display: inline-flex; align-items: center; gap: 7px; vertical-align: middle; }
+.admin-user-list-state > button { margin-left: 10px; }
+.admin-user-pagination { flex-wrap: wrap; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 14px 18px; border-bottom: 1px solid #eceeeb; text-align: left; font-size: 14px; }
 th { background: #f8f9f7; color: #667069; font-size: 12px; text-transform: uppercase; }

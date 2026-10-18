@@ -105,6 +105,66 @@ describe("texLite application", () => {
     });
   });
 
+  it("searches all users and returns stable twenty-user pages with corrected bounds", async () => {
+    const prefix = `user-page-${randomUUID()}`;
+    const records = Array.from({ length: 21 }, (_, index) => ({
+      id: randomUUID(), username: `${prefix}-${String(index).padStart(2, "0")}`,
+      displayName: index === 20 ? `${prefix}%_\\实验室研究者` : `Researcher ${index}`
+    }));
+    const administrator = db.prepare("SELECT password_hash FROM users WHERE username = 'admin'").get() as { password_hash: string };
+    const insert = db.prepare(`INSERT INTO users
+      (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
+      VALUES (?, ?, ?, ?, 'user', ?, 0, 0, '2026-01-01T00:00:00.000Z')`);
+    db.transaction(() => {
+      for (const [index, record] of records.entries()) insert.run(record.id, record.username, record.displayName, administrator.password_hash, index === 19 ? 1 : 0);
+    })();
+    const url = (query: string, page = "1") => `/api/admin/users?${new URLSearchParams({ q: query, page })}`;
+    try {
+      const unfiltered = await app.inject({ method: "GET", url: "/api/admin/users", headers: { cookie } });
+      expect(unfiltered.statusCode).toBe(200);
+      expect(unfiltered.json().users).toHaveLength(20);
+      expect(unfiltered.json().pagination).toMatchObject({ page: 1, pageSize: 20, total: (db.prepare("SELECT COUNT(*) AS count FROM users").get() as { count: number }).count });
+
+      const first = await app.inject({ method: "GET", url: url(prefix.toUpperCase()), headers: { cookie } });
+      expect(first.statusCode).toBe(200);
+      expect(first.json().pagination).toEqual({ page: 1, pageSize: 20, total: 21, totalPages: 2 });
+      expect(first.json().users.map((user: { username: string }) => user.username)).toEqual(records.slice(0, 20).map((record) => record.username));
+      expect(first.json().users[19]).toMatchObject({ disabled: true, ownedProjects: 0 });
+      expect(first.json().users[0]).not.toHaveProperty("password_hash");
+
+      const second = await app.inject({ method: "GET", url: url(prefix, "2"), headers: { cookie } });
+      expect(second.json().pagination).toEqual({ page: 2, pageSize: 20, total: 21, totalPages: 2 });
+      expect(second.json().users.map((user: { id: string }) => user.id)).toEqual([records[20].id]);
+
+      for (const query of ["实验室研究者", `${prefix}%_\\`]) {
+        const filtered = await app.inject({ method: "GET", url: url(query, "999"), headers: { cookie } });
+        expect(filtered.json().users.map((user: { id: string }) => user.id)).toEqual([records[20].id]);
+        expect(filtered.json().pagination).toEqual({ page: 1, pageSize: 20, total: 1, totalPages: 1 });
+      }
+      for (const page of ["0", "-1", "not-a-page", "1.5", "Infinity"]) {
+        const invalidPage = await app.inject({ method: "GET", url: url(prefix, page), headers: { cookie } });
+        expect(invalidPage.json().pagination.page).toBe(1);
+        expect(invalidPage.json().users).toHaveLength(20);
+      }
+      const missing = await app.inject({ method: "GET", url: url(`${prefix}-missing`, "10"), headers: { cookie } });
+      expect(missing.json()).toEqual({ users: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } });
+
+      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: records[0].username, password: "administrator password" } });
+      expect(login.statusCode).toBe(200);
+      expect((await app.inject({ method: "GET", url: url(prefix), headers: { cookie: sessionCookie(login.headers) } })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: url(prefix) })).statusCode).toBe(401);
+
+      const removed = await app.inject({ method: "DELETE", url: `/api/admin/users/${records[20].id}`, headers: { cookie }, payload: { deleteProjects: false } });
+      expect(removed.statusCode).toBe(200);
+      const afterDelete = await app.inject({ method: "GET", url: url(prefix, "2"), headers: { cookie } });
+      expect(afterDelete.json().pagination).toEqual({ page: 1, pageSize: 20, total: 20, totalPages: 1 });
+      expect(afterDelete.json().users).toHaveLength(20);
+    } finally {
+      const remove = db.prepare("DELETE FROM users WHERE id = ?");
+      db.transaction(() => { for (const record of records) remove.run(record.id); })();
+    }
+  });
+
   it("keeps the app shell fresh and caches fingerprinted browser runtimes", async () => {
     const shell = await app.inject({ method: "GET", url: "/" });
     expect(shell.statusCode).toBe(200);

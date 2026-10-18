@@ -145,6 +145,9 @@
     }
   },
   "users": {
+    "searchPlaceholder": "Search username or display name…", "clearSearch": "Clear search", "total": "Users: {{count}}",
+    "pagination": "User pages", "pageOf": "Page {{page}} of {{totalPages}}", "previousPage": "Previous", "nextPage": "Next",
+    "noMatches": "No users match your search.", "empty": "No users yet.", "loadFailed": "Unable to load users.",
     "manage": "User management", "back": "Back to projects", "onlyAdmin": "Only administrators can create users", "add": "Add user",
     "role": "Role", "createProjects": "Create projects", "ownedProjects": "Owned projects", "status": "Status", "actions": "Actions", "adminRequired": "Administrator permission is required.",
     "allow": "Allow", "deny": "Deny", "enable": "Enable", "disable": "Disable", "promote": "Make administrator", "demote": "Make user",
