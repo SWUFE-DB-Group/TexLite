@@ -2677,6 +2677,42 @@ Second version.
     expect((await app.inject({ method: "DELETE", url: `/api/citations/tags/${tagId}`, headers: { cookie } })).statusCode).toBe(200);
   });
 
+  it("manages private citation tags without deleting their citations", async () => {
+    const createTag = (name: string) => app.inject({ method: "POST", url: "/api/citations/tags", headers: { cookie }, payload: { name, color: "green" } });
+    const first = (await createTag("Managed citation tag")).json().tag;
+    const other = (await createTag("Other managed tag")).json().tag;
+    const entry = await app.inject({
+      method: "POST", url: "/api/citations", headers: { cookie },
+      payload: citationPayload("tagmanagement2026", "Kept paper", "@article{tagmanagement2026, title={Kept paper}}", { tagIds: [first.id, other.id] })
+    });
+    const entryId = entry.json().entry.id as string;
+    const guest = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: { username: "citation-tag-guest", password: "guest-password" } });
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "citation-tag-guest", password: "guest-password" } });
+    const guestCookie = sessionCookie(login.headers);
+    const url = `/api/citations/tags/${first.id}`;
+    try {
+      expect((await app.inject({ method: "PATCH", url, payload: { name: "Unauthorized" } })).statusCode).toBe(401);
+      expect((await app.inject({ method: "PATCH", url, headers: { cookie: guestCookie }, payload: { name: "Unauthorized" } })).statusCode).toBe(404);
+      expect((await app.inject({ method: "DELETE", url, headers: { cookie: guestCookie } })).statusCode).toBe(404);
+      expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { name: "OTHER MANAGED TAG" } })).statusCode).toBe(409);
+      expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { name: "" } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { color: "invalid" } })).statusCode).toBe(400);
+      const renamed = await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { name: "Renamed citation tag", color: "purple" } });
+      expect(renamed.statusCode).toBe(200);
+      expect(renamed.json().tag).toMatchObject({ id: first.id, name: "Renamed citation tag", color: "purple" });
+      const filtered = await app.inject({ method: "GET", url: `/api/citations?tag=${first.id}`, headers: { cookie } });
+      expect(filtered.json().entries).toEqual([expect.objectContaining({ id: entryId, tags: expect.arrayContaining([renamed.json().tag]) })]);
+      expect((await app.inject({ method: "DELETE", url, headers: { cookie } })).statusCode).toBe(200);
+      const kept = (await app.inject({ method: "GET", url: "/api/citations?q=tagmanagement2026", headers: { cookie } })).json().entries[0];
+      expect(kept).toMatchObject({ id: entryId, bibtex: entry.json().entry.bibtex, revision: 1, tags: [other] });
+      expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { name: "Missing" } })).statusCode).toBe(404);
+    } finally {
+      db.prepare("DELETE FROM citation_library_entries WHERE id = ?").run(entryId);
+      db.prepare("DELETE FROM citation_library_tags WHERE id IN (?, ?)").run(first.id, other.id);
+      db.prepare("DELETE FROM users WHERE id = ?").run(guest.json().user.id);
+    }
+  });
+
   it("keeps citation libraries private per user", async () => {
     const tagResponse = await app.inject({
       method: "POST", url: "/api/citations/tags", headers: { cookie },

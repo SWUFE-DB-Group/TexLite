@@ -278,6 +278,17 @@
       "monthNote": "Use a three-letter abbreviation without quotes."
     }
   },
+  "citationTagManagement": {
+    "title": "Manage tags",
+    "description": "Create, rename, recolor, or delete your private citation tags.",
+    "expand": "Show all tags",
+    "collapse": "Show fewer",
+    "exists": "This tag already exists.",
+    "deleted": "Tag deleted.",
+    "edit": "Edit tag {{tag}}",
+    "delete": "Delete tag {{tag}}",
+    "deleteDescription": "Delete “{{tag}}”? It will be removed from all citations in your library. The citations themselves will be kept."
+  },
   "citationLibrary": {
     "title": "Citation library", "description": "Save references from {{file}} and import them into this BibTeX file. Your library and its tags are private to your account.", "myLibrary": "My library", "currentFile": "Current file", "searchPlaceholder": "Search citations…", "searchHint": "Search key, title, author, or year", "emptyTitle": "Your library is empty", "emptyDescription": "Open the current-file tab to save a BibTeX entry.", "noEntries": "No BibTeX entries found", "noEntriesDescription": "Add a valid @article, @inproceedings, or similar entry to this file.", "currentFileTitle": "Entries from the current file", "currentFileDescription": "Select an entry to save it to your citation library.", "backToLibrary": "Back to library", "save": "Save", "update": "Update", "saving": "Saving…", "saved": "Citation saved to your library.", "updated": "Citation updated.", "deleted": "Citation deleted.", "deleteTitle": "Delete citation", "deleteDescription": "Delete the citation {{key}} from your private library? This cannot be undone.", "fileTooLarge": "This BibTeX file exceeds the {{size}} limit.", "fileTooLargeHint": "The file is too large to parse in the browser. Save individual entries from a smaller file or split it first.", "fileInvalid": "The current BibTeX file contains syntax errors.", "fileInvalidHint": "Fix the current file before formatting it or importing another citation.", "savedLabel": "Saved", "import": "Import", "importToFile": "Import into the current BibTeX file", "importRequiresWrite": "Import requires write permission for this project.", "imported": "Imported {{key}} into the current file.", "untitled": "Untitled citation", "authorUnknown": "Author not specified", "allTags": "All tags", "noTags": "No tags yet", "noTagMatches": "No citations match this tag.", "newTagPlaceholder": "New tag name", "tagColor": "Tag color", "createTag": "Create tag", "tagCreated": "Tag created.", "tags": "Tags", "tagsTitle": "Tags for {{key}}", "noTagsToAssign": "Create a tag first.", "saveTags": "Save tags", "tagsUpdated": "Tags updated.", "editTitle": "Edit {{key}}"
   },

@@ -1122,17 +1122,20 @@ td button { margin-right: 8px; border: 1px solid #cdd2ce; background: white; bor
 .citation-add-entry-button:hover { background: #125937; }
 .citation-library-search input { min-width: 0; flex: 1; border: 0; padding: 9px 0; outline: 0; font-size: 12px; }
 .citation-library-search span { flex: none; color: #8a958d; font-size: 10px; }
-.citation-tag-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.citation-tag-filters { min-width: 0; display: flex; flex: 1; flex-wrap: wrap; gap: 5px; }
-.citation-tag-filters button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: 999px; padding: 5px 8px; background: #f1f4f1; color: #5f6e64; font-size: 10px; }
+.citation-tag-bar { display: flex; align-items: flex-start; gap: 12px; }
+.citation-tag-filter-catalog { flex: 1; min-width: 0; }
+.citation-tag-filter-clip { overflow: hidden; }
+.citation-tag-filters { position: relative; min-width: 0; display: flex; flex-wrap: wrap; gap: 5px; }
+.citation-tag-filters button { display: inline-flex; align-items: center; gap: 5px; max-width: 190px; height: 28px; min-width: 0; border: 1px solid transparent; border-radius: 999px; padding: 5px 8px; background: #f1f4f1; color: #5f6e64; font-size: 10px; white-space: nowrap; }
+.citation-tag-name { overflow: hidden; text-overflow: ellipsis; }
 .citation-tag-filters button:hover { background: #e6eee8; }
 .citation-tag-filters button.active { border-color: #9cbea6; background: #e8f2eb; color: #176b44; }
-.citation-tag-create { display: flex; flex: none; gap: 5px; }
-.citation-tag-create input, .citation-tag-create select { min-width: 0; border: 1px solid #cbd4cd; border-radius: 6px; padding: 6px 7px; background: white; font-size: 10px; }
-.citation-tag-create input { width: 120px; }
-.citation-tag-create select { width: 76px; }
-.citation-tag-create button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bdc9c0; border-radius: 6px; padding: 6px 8px; background: white; color: #31523e; font-size: 10px; white-space: nowrap; }
-.citation-tag-create button:hover:not(:disabled) { border-color: #8eaa98; background: #edf4ef; }
+.citation-tag-manage, .citation-tag-expand { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; border: 1px solid #bdc9c0; border-radius: 6px; padding: 5px 8px; background: white; color: #31523e; font-size: 10px; white-space: nowrap; }
+.citation-tag-manage { flex: none; }
+.citation-tag-expand { margin-top: 5px; border-color: transparent; color: #66776c; }
+.citation-tag-manage:hover, .citation-tag-expand:hover { background: #edf4ef; }
+.citation-tag-management-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.citation-tag-management-fields .tag-management-create { margin-bottom: 14px; }
 .citation-entry-list { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow: auto; padding: 1px; }
 .citation-entry-item { display: flex; flex-direction: column; gap: 6px; }
 .citation-entry-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px solid #dce3de; border-radius: 8px; background: #fbfcfb; }

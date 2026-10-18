@@ -216,6 +216,25 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
     return reply.code(201).send({ tag, created: true });
   });
 
+  app.patch("/api/citations/tags/:tagId", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { tagId } = request.params as { tagId: string };
+    const existing = db.prepare("SELECT id, name, color, user_id FROM citation_library_tags WHERE id = ? AND user_id = ?")
+      .get(tagId, user.id) as CitationLibraryTagRow | undefined;
+    if (!existing) return apiError(reply, 404, "CITATION_TAG_NOT_FOUND");
+    const body = request.body as { name?: unknown; color?: unknown } | undefined;
+    const name = body?.name === undefined ? existing.name : citationTagName(body.name);
+    const color = body?.color === undefined ? existing.color : body.color;
+    if (!tagColors.includes(color as typeof tagColors[number])) throw new ValidationError();
+    const duplicate = db.prepare("SELECT id FROM citation_library_tags WHERE user_id = ? AND name = ? COLLATE NOCASE AND id != ?")
+      .get(user.id, name, tagId);
+    if (duplicate) return apiError(reply, 409, "CITATION_TAG_NAME_EXISTS");
+    db.prepare("UPDATE citation_library_tags SET name = ?, color = ? WHERE id = ? AND user_id = ?")
+      .run(name, color, tagId, user.id);
+    return { tag: { id: tagId, name, color, ownerId: user.id } };
+  });
+
   app.delete("/api/citations/tags/:tagId", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
