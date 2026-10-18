@@ -1,19 +1,15 @@
 import { version as texliteVersion } from "../../../package.json";
 import { useTranslation } from "react-i18next";
-import { appPath } from "../basePath";
 
 export function SiteLogo({ siteName, compact = false, auth = false }: { siteName: string; compact?: boolean; auth?: boolean }) {
-  const useTexMark = !auth;
-  return <span className={`site-logo${compact ? " compact" : ""}${auth ? " auth-logo" : ""}${useTexMark ? " tex-mark" : ""}`}>
-    {useTexMark ? <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 83 43" role="img" aria-label={siteName}>
-      <g fill="none" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round">
-        <g stroke="#E9F5EE">
-          <path d="M4.5 6H25.5M15 6V31" />
-          <path d="M59 6L78 31M78 6L59 31" />
-        </g>
-        <path stroke="#7DDBA3" d="M35.5 12V37M35.5 12H49.5M35.5 24.5H46.5M35.5 37H49.5" />
+  return <span className={`site-logo${compact ? " compact" : ""}${auth ? " auth-logo" : ""}`}>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label={siteName}>
+      <rect width="64" height="64" rx="15" fill="#E9F5EE" />
+      <g fill="none" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round">
+        <path stroke="#133D2B" d="M13.5 16.5H31.5M22.5 16.5V41.5" />
+        <path stroke="#1B8A57" d="M42.5 23.5V48.5M42.5 23.5H50.5M42.5 36H48.5M42.5 48.5H50.5" />
       </g>
-    </svg> : <img src={appPath("/logo.svg")} alt={siteName} />}
+    </svg>
   </span>;
 }
 export function SiteFooter() {

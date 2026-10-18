@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/SWUFE-DB-Group/TexLite/main/src/client/public/texlite-icon.svg" width="72" height="72" alt="TexLite logo" />
+
 # TexLite
 
 A lightweight self-hosted alternative to Overleaf for _small, trusted_ research
@@ -10,6 +14,8 @@ teams. Use your existing LaTeX distribution, with no heavyweight service stack.
 **Documentation:** English (this file) · [Operations](OPERATIONS.md) · [Design](DESIGN.md) · [简体中文](README.zh-CN.md)
 
 **Website:** [TexLite GitHub Pages](https://swufe-db-group.github.io/TexLite/)
+
+</div>
 
 ![TexLite workspace](preview-1.png)
 ![TexLite project view](preview-2.png)

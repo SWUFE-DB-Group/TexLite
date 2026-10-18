@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/SWUFE-DB-Group/TexLite/main/src/client/public/texlite-icon.svg" width="72" height="72" alt="TexLite 标志" />
+
 # TexLite
 
 面向*小型、可信*研究团队的轻量自托管 Overleaf 替代方案。直接使用现有的 LaTeX
@@ -10,6 +14,8 @@
 **文档：** [English](README.md) · [运维指南（英文）](OPERATIONS.md) · [设计文档（英文）](DESIGN.md) · 简体中文（当前文件）
 
 **网站：** [TexLite GitHub Pages](https://swufe-db-group.github.io/TexLite/)
+
+</div>
 
 ![TexLite 工作区](preview-1.png)
 ![TexLite 项目视图](preview-2.png)

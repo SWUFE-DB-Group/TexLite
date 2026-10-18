@@ -25,7 +25,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .site-shell { width: min(1180px, calc(100% - 96px)); margin: auto; }
 .site-header { min-height: 94px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--ink); }
 .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: 600 27px/1 var(--serif); letter-spacing: -.8px; }
-.brand img { width: 28px; height: 28px; }
+.brand > svg { display: block; flex: none; width: 32px; height: 32px; }
 .brand small { margin: 3px 0 0 5px; font: 10px/1 var(--mono); letter-spacing: 0; color: var(--muted); }
 .header-actions { display: flex; align-items: center; gap: 30px; font-size: 12px; }
 .header-github { text-decoration: none; }
@@ -161,7 +161,7 @@ h2 { margin: 0; font: 400 clamp(30px, 3vw, 43px)/1.25 var(--serif); letter-spaci
 .docker-terminal { background: transparent; }
 .closing-section { position: relative; padding: 70px 0 78px 33.33%; }
 .closing-mark { position: absolute; top: 80px; left: 0; }
-.closing-mark img { width: 58px; height: 58px; opacity: .8; }
+.closing-mark svg { display: block; width: 58px; height: 58px; }
 .closing-section h2 { max-width: 700px; font-size: clamp(36px, 4.2vw, 58px); color: var(--green); }
 :root[lang="zh-CN"] .closing-section h2 { font-size: clamp(32px, 3.4vw, 48px); }
 .closing-section > p:not(.section-kicker) { max-width: 650px; margin: 24px 0 28px; color: var(--muted); font-size: 14px; line-height: 1.85; }
@@ -213,14 +213,14 @@ h2 { margin: 0; font: 400 clamp(30px, 3vw, 43px)/1.25 var(--serif); letter-spaci
   .section { padding: 48px 0; }
   .closing-section { padding-left: 74px; }
   .closing-mark { top: 54px; }
-  .closing-mark img { width: 38px; height: 38px; }
+  .closing-mark svg { width: 38px; height: 38px; }
 }
 @media (max-width: 440px) {
   .site-shell { width: calc(100% - 36px); }
   .site-header { min-height: 76px; gap: 12px; }
   .brand { font-size: 24px; gap: 7px; }
   .brand small { font-size: 8px; margin-left: 0; }
-  .brand img { width: 23px; height: 23px; }
+  .brand > svg { width: 28px; height: 28px; }
   .header-github { display: none; }
   .language-switcher { gap: 10px; padding-left: 12px; }
   .hero-actions { gap: 20px; }
