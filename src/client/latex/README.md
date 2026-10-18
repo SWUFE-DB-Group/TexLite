@@ -75,8 +75,10 @@ stealing an outer close.
 Completion queries share one cursor-context result per request instead of
 repeatedly materializing the document prefix. Comments and raw literal bodies
 suppress suggestions, while argument and closing-delimiter boundaries resume
-normal completion. Candidate indexes, snippets, and insertion/pair-reuse
-behavior are unchanged. Reference decorations and navigation still use the
+normal completion. Live-source and server project candidates use the pure
+`src/shared/latexSymbols.ts` extractor and shared completion data types. Built-ins,
+cache ownership, source attribution and bibliography scope stay with each caller;
+snippet insertion and end-pair reuse stay in the editor. Reference decorations and navigation still use the
 shared scanner; they have not yet been migrated to tree queries.
 The reference-mark view plugin owns a prefix cache and a cancellable 120 ms
 debounce for edits and new viewport coverage. Unaffected visible marks are

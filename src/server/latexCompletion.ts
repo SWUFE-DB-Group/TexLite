@@ -1,31 +1,12 @@
 import fs from "node:fs";
 import type { Config } from "./config.js";
 import { listProjectFilesAsync, resolveSourcePath } from "./files.js";
-import { commandSnippet, newCommandArguments, xparseCommandArguments, xparseCommandDefinitions } from "../shared/latexCommandSnippets.js";
-import { maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals.js";
+import type { LatexCompletionKind, LatexCompletionItem, LatexCompletionIndex } from "../shared/latexCompletion.js";
+import { extractLatexSymbols } from "../shared/latexSymbols.js";
 import { findLatexReferenceDefinitions } from "../shared/latexReferences.js";
 import { declaredBibliographyPaths, latexDocumentDirectives, type LatexDocumentDirectives } from "./latexDocumentGraph.js";
 
-export type LatexCompletionKind = "keyword" | "function" | "class" | "constant" | "text";
-
-export interface LatexCompletionItem {
-  label: string;
-  detail: string;
-  kind: LatexCompletionKind;
-  apply?: string;
-  info?: string;
-  source?: string;
-}
-
-export interface LatexCompletionIndex {
-  commands: LatexCompletionItem[];
-  environments: LatexCompletionItem[];
-  labels: LatexCompletionItem[];
-  citations: LatexCompletionItem[];
-  packages: LatexCompletionItem[];
-  classes: LatexCompletionItem[];
-  files: LatexCompletionItem[];
-}
+export type { LatexCompletionKind, LatexCompletionItem, LatexCompletionIndex } from "../shared/latexCompletion.js";
 
 interface MutableIndex {
   commands: Map<string, LatexCompletionItem>;
@@ -152,10 +133,6 @@ function createIndex(): MutableIndex {
   };
 }
 
-function withoutComments(content: string): string {
-  return maskLatexComments(maskLatexLiteralContent(content));
-}
-
 function commandItem(index: MutableIndex, name: string, detail: string, source: string, apply?: string): void {
   if (!name.startsWith("\\")) name = `\\${name}`;
   if (!/^\\(?:[A-Za-z@][A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/.test(name)) return;
@@ -166,53 +143,14 @@ function commandItem(index: MutableIndex, name: string, detail: string, source: 
 }
 
 function extractSymbols(index: MutableIndex, filePath: string, original: string): void {
-  const content = withoutComments(original);
-  const source = filePath;
-  for (const match of content.matchAll(/\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\s*\*?\s*(?:\{\s*)?\\([A-Za-z@][A-Za-z@0-9:_]*)\s*(?:\})?\s*(?:\[(\d+)\])?(?:\s*(\[[^\]]*\]))?/g)) {
-    const arguments_ = newCommandArguments(Number.parseInt(match[2] ?? "0", 10), Boolean(match[3]));
-    commandItem(index, `\\${match[1]}`, `Project command (${arguments_.length} argument${arguments_.length === 1 ? "" : "s"})`, source, commandSnippet(`\\${match[1]}`, arguments_));
+  const symbols = extractLatexSymbols(original);
+  for (const symbol of symbols.commands) {
+    commandItem(index, symbol.label, symbol.detail, filePath, symbol.apply);
   }
-  for (const definition of xparseCommandDefinitions(content)) {
-    const arguments_ = xparseCommandArguments(definition.specification);
-    const detail = arguments_
-      ? `Project command (${arguments_.length} argument${arguments_.length === 1 ? "" : "s"})`
-      : "Project command";
-    commandItem(index, `\\${definition.name}`, detail, source, arguments_ ? commandSnippet(`\\${definition.name}`, arguments_) : undefined);
-  }
-  for (const match of content.matchAll(/\\(?:def|gdef|edef|xdef)\s*\\([A-Za-z@][A-Za-z@0-9:_]*)((?:\s*#\d+)*)/g)) {
-    const args = [...(match[2] ?? "").matchAll(/#\d+/g)].length;
-    commandItem(index, `\\${match[1]}`, "Project macro", source, commandSnippet(`\\${match[1]}`, newCommandArguments(args, false)));
-  }
-  for (const match of content.matchAll(/\\DeclareMathOperator\s*\*?\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) commandItem(index, `\\${match[1]}`, "Project math operator", source);
-  for (const match of content.matchAll(/\\DeclarePairedDelimiter\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) commandItem(index, `\\${match[1]}`, "Project math delimiter", source);
-  for (const match of content.matchAll(/\\cs_(?:new|set|gset|provide|generate)(?:_protected)?\:[A-Za-z]+\s+\\([A-Za-z@][A-Za-z@0-9:_]*)/g)) commandItem(index, `\\${match[1]}`, "Expl3 project command", source);
-  for (const match of content.matchAll(/\\(?:newenvironment|renewenvironment|NewDocumentEnvironment|RenewDocumentEnvironment|DeclareDocumentEnvironment)\s*\*?\s*\{([^}]+)\}/g)) {
-    const name = match[1].trim();
-    const existing = index.environments.get(name);
-    if (/^[A-Za-z][A-Za-z0-9*_-]*$/.test(name) && (!existing || (existing.source === "LaTeX" && source !== "LaTeX"))) {
-      index.environments.set(name, item(name, "Project environment", "keyword", source));
-    }
-  }
-  for (const match of content.matchAll(/\\(?:newtheorem|declaretheorem)\s*\*?\s*\{([^}]+)\}/g)) {
-    const name = match[1].trim();
-    const existing = index.environments.get(name);
-    if (/^[A-Za-z][A-Za-z0-9*_-]*$/.test(name) && (!existing || (existing.source === "LaTeX" && source !== "LaTeX"))) {
-      index.environments.set(name, item(name, "Theorem environment", "keyword", source));
-    }
-  }
-  for (const definition of findLatexReferenceDefinitions(content, "label")) {
-    if (definition.source !== "label") continue;
-    const label = definition.key;
-    if (label && !index.labels.has(label)) index.labels.set(label, item(label, "Label", "constant", source));
-  }
-  for (const match of content.matchAll(/\\(?:input|include|subfile|import)\s*(?:\{([^}]+)\}|\s+([^\s%]+))/g)) {
-    const file = (match[1] ?? match[2] ?? "").trim();
-    if (file) index.files.set(file, item(file, "Project file", "text", source));
-  }
-  for (const match of content.matchAll(/\\(?:usepackage|RequirePackage|documentclass)\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)) {
-    for (const packageName of match[1].split(",").map((value) => value.trim()).filter(Boolean)) {
-      const target = /documentclass|documentstyle/.test(match[0]) ? index.classes : index.packages;
-      if (!target.has(packageName)) target.set(packageName, item(packageName, target === index.classes ? "Document class" : "Package", target === index.classes ? "class" : "text", source));
+  for (const group of ["environments", "labels", "packages", "classes", "files"] as const) {
+    for (const symbol of symbols[group]) {
+      const existing = index[group].get(symbol.label);
+      if (!existing || existing.source === "LaTeX") index[group].set(symbol.label, { ...symbol, source: filePath });
     }
   }
   // `\\bibitem` suggestions are scoped by the client to the file currently
@@ -222,7 +160,7 @@ function extractSymbols(index: MutableIndex, filePath: string, original: string)
   if (/\.bib$/i.test(filePath)) {
     for (const definition of findLatexReferenceDefinitions(original, "citation", true)) {
       const key = definition.key;
-      if (key && !index.citations.has(key)) index.citations.set(key, item(key, "BibTeX key", "constant", source));
+      if (key && !index.citations.has(key)) index.citations.set(key, item(key, "BibTeX key", "constant", filePath));
     }
   }
 }

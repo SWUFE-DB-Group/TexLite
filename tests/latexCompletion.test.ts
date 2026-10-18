@@ -76,6 +76,31 @@ describe("LaTeX completion cache", () => {
     expect(result.labels.map((item) => item.label)).not.toContain("escaped-label");
   });
 
+  it("indexes shared source symbols with file attribution while preserving bibliography scope", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-completions-"));
+    roots.push(root);
+    const source = path.join(root, "projects", "paper", "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), fs.readFileSync(new URL("./fixtures/latex/completion-symbols.tex", import.meta.url)));
+    fs.writeFileSync(path.join(source, "references.bib"), "@misc{linked, title={Linked reference}}\n");
+    fs.writeFileSync(path.join(source, "archive.bib"), "@misc{unrelated, title={Other paper}}\n");
+
+    const index = await new LatexCompletionService(completionConfig(root)).build("paper", "main.tex");
+    expect(index.commands.find((item) => item.label === "\\teamnote")).toMatchObject({ source: "main.tex", apply: "\\teamnote[${1}]{${2}}" });
+    expect(index.commands.find((item) => item.label === "\\textbf")).toMatchObject({ source: "main.tex", apply: "\\textbf{${1}}" });
+    expect(index.commands.map((item) => item.label)).toEqual(expect.arrayContaining(["\\teamargmax", "\\teamabs", "\\team_expl:n"]));
+    for (const label of ["\\commentfake", "\\literalfake", "\\inlinefake"]) {
+      expect(index.commands.map((item) => item.label)).not.toContain(label);
+    }
+    expect(index.environments.find((item) => item.label === "team:proof")).toMatchObject({ source: "main.tex" });
+    expect(index.environments.find((item) => item.label === "team.proof")).toMatchObject({ source: "main.tex" });
+    expect(index.environments.find((item) => item.label === "teamclaim")).toMatchObject({ source: "main.tex" });
+    expect(index.packages.find((item) => item.label === "teamstyle")).toMatchObject({ source: "main.tex" });
+    expect(index.classes.find((item) => item.label === "teamclass")).toMatchObject({ source: "main.tex" });
+    expect(index.labels.map((item) => item.label)).toEqual(["sec:team", "team-anchor"]);
+    expect(index.citations).toEqual([expect.objectContaining({ label: "linked", source: "references.bib" })]);
+  });
+
   it("scopes BibTeX candidates to the selected root document and its input graph", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-completions-"));
     roots.push(root);

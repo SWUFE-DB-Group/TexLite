@@ -1,0 +1,33 @@
+\documentclass{teamclass}
+\usepackage[review]{teamstyle, localtools}
+\RequirePackage{teamstyle}
+\bibliography{references}
+\input{chapters/intro}
+
+\newcommand{\teamnote}[2][blue]{#2}
+\renewcommand{\textbf}[1]{#1}
+\NewDocumentCommand{\teamformat}{O{{red}} m}{#2}
+\NewDocumentCommand{\teamstar}{s m}{#2}
+\def\teamprimitive#1#2{#1 #2}
+\DeclareMathOperator*{\teamargmax}{argmax}
+\DeclarePairedDelimiter{\teamabs}{\lvert}{\rvert}
+\cs_new:Npn \team_expl:n #1 {#1}
+\newenvironment{teamdiscussion}{}{}
+\NewDocumentEnvironment{team:proof}{}{}{}
+\newenvironment{team.proof}{}{}
+\newtheorem{teamclaim}{Claim}
+
+\label{sec:team}
+\hypertarget{team-anchor}{Text}
+\newcommand{\teamlabel}[1]{\label{sec:#1}}
+\bibitem{teammanual} Manual entry.
+\cite{old-use}
+
+% \newcommand{\commentfake}[1]{#1}
+\begin{verbatim}
+\newcommand{\literalfake}[1]{#1}
+\newenvironment{literalfakeenv}{}{}
+\label{literal-label}
+\bibitem{literal-bibitem}
+\end{verbatim}
+\verb|\newcommand{\inlinefake}[1]{#1}| \verb|%| \newcommand{\afterverb}[1]{#1}

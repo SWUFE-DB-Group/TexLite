@@ -389,6 +389,17 @@ explicitly enabled, and completion items from built-in LaTeX plus project
 outlines are metadata-keyed and coalesced; a source-tree change invalidates the
 corresponding cache.
 
+The live editor and server project index share the pure symbol extractor in
+`src/shared/latexSymbols.ts` and the completion data types in
+`src/shared/latexCompletion.ts`. It extracts command argument snippets,
+environments and theorems, packages, classes, source-file references, labels,
+and in-file `\bibitem` definitions using the same comment/literal masking and
+reference rules. The editor owns its document-identity cache and gives current
+unsaved definitions precedence over server candidates. The server owns file
+I/O, metadata caches, built-in candidates, source attribution, and root-scoped
+BibTeX selection; it does not promote in-file `\bibitem` entries to project-wide
+citations. This extractor does not expand TeX macros or load the editor parser.
+
 Opening `.tex`, `.bib`, `.sty`, or `.cls` files in editor tabs is an optional
 per-user/per-project preference and is off by default. The active tab is
 highlighted and keyboard accessible. PDF/SyncTeX synchronization is available

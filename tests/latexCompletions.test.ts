@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { CompletionContext, type Completion } from "@codemirror/autocomplete";
 import { EditorState, type TransactionSpec } from "@codemirror/state";
@@ -8,6 +9,7 @@ import { latexLanguage } from "../src/client/latexLanguage";
 import type { LatexCompletionIndex } from "../src/client/types";
 
 const t = ((key: string) => key) as TFunction;
+const sharedSource = readFileSync(new URL("./fixtures/latex/completion-symbols.tex", import.meta.url), "utf8");
 const index: LatexCompletionIndex = {
   commands: [], environments: [{ label: "figure", kind: "keyword", detail: "Environment" }],
   labels: [{ label: "fig:second", kind: "constant", detail: "Label" }], citations: [],
@@ -199,6 +201,33 @@ describe("editor LaTeX completion source", () => {
     const demo = demoResult.options.find((entry) => entry.label === "\\demo")!;
     (demo.apply as Exclude<Completion["apply"], string | undefined>)(view, demo, demoResult.from, state.doc.length);
     expect(state.doc.toString()).toBe(demoSource.slice(0, demoSource.lastIndexOf("\\dem")) + String.raw`\demo[]{}`);
+  });
+
+  it("recognizes project symbols in live source without waiting for the server index", () => {
+    const state = EditorState.create({ doc: `${sharedSource}\n\\team`, extensions: [latexLanguage] });
+    const options = latexCompletions(new CompletionContext(state, state.doc.length, false), t, null)!.options;
+    expect(options.map((item) => item.label)).toEqual(expect.arrayContaining(["\\teamargmax", "\\teamabs", "\\team_expl:n"]));
+    for (const label of ["\\commentfake", "\\literalfake", "\\inlinefake"]) {
+      expect(options.map((item) => item.label)).not.toContain(label);
+    }
+
+    const environments = complete(`${sharedSource}\n\\begin{team`, true, { ...index, environments: [] })!.options.map((item) => item.label);
+    expect(environments).toEqual(expect.arrayContaining(["teamdiscussion", "team:proof", "team.proof", "teamclaim"]));
+    expect(complete(`${sharedSource}\n\\documentclass{team`, true, { ...index, classes: [] })!.options.map((item) => item.label)).toContain("teamclass");
+    expect(complete(`${sharedSource}\n\\cite{team`)!.options.map((item) => item.label)).toEqual(["teammanual"]);
+  });
+
+  it("prefers the latest local argument shape over stale project completion data", () => {
+    const source = String.raw`\newcommand{\teamnote}[2][blue]{#2}
+\teamn`;
+    let state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const result = latexCompletions(new CompletionContext(state, state.doc.length, true), t, {
+      ...index, commands: [{ label: "\\teamnote", detail: "Project command", kind: "function", source: "main.tex", apply: "\\teamnote{${1}}" }]
+    })!;
+    const option = result.options.find((item) => item.label === "\\teamnote")!;
+    const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as unknown as EditorView;
+    (option.apply as Exclude<Completion["apply"], string | undefined>)(view, option, result.from, state.doc.length);
+    expect(state.doc.toString()).toBe(source.slice(0, source.lastIndexOf("\\teamn")) + String.raw`\teamnote[]{}`);
   });
 
   it("does not flatten the full document for symbol extraction while typing prose", () => {

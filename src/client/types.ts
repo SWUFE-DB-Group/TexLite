@@ -202,26 +202,7 @@ export interface ProjectGitStatus {
   latestCommit: GitCommit | null;
 }
 
-export type LatexCompletionKind = "keyword" | "function" | "class" | "constant" | "text";
-
-export interface LatexCompletionItem {
-  label: string;
-  detail: string;
-  kind: LatexCompletionKind;
-  apply?: string;
-  info?: string;
-  source?: string;
-}
-
-export interface LatexCompletionIndex {
-  commands: LatexCompletionItem[];
-  environments: LatexCompletionItem[];
-  labels: LatexCompletionItem[];
-  citations: LatexCompletionItem[];
-  packages: LatexCompletionItem[];
-  classes: LatexCompletionItem[];
-  files: LatexCompletionItem[];
-}
+export type { LatexCompletionKind, LatexCompletionItem, LatexCompletionIndex } from "../shared/latexCompletion";
 
 export interface Comment {
   id: string;

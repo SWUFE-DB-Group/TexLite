@@ -3,10 +3,8 @@ import { Transaction } from "@codemirror/state";
 import { pickedCompletion, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { LatexCompletionIndex, LatexCompletionItem } from "./types";
 import { latexCompletionContext, latexEnvironmentCompletionPlan } from "./latexCompletionContexts";
-import { commandSnippet, newCommandArguments, xparseCommandArguments, xparseCommandDefinitions } from "../shared/latexCommandSnippets";
-import { maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals";
 import { isLatexEscaped } from "../shared/latexScanner";
-import { findLatexReferenceDefinitions } from "../shared/latexReferences";
+import { extractLatexSymbols } from "../shared/latexSymbols";
 
 const fallbackCommandLabels = [
   "\\noindent", "\\indent", "\\par", "\\leavevmode", "\\newline", "\\linebreak", "\\nolinebreak", "\\pagebreak", "\\nopagebreak", "\\newpage", "\\clearpage", "\\cleardoublepage",
@@ -37,42 +35,11 @@ function completionOptions() { return [
 ]; }
 
 function localCompletionIndex(content: string): LatexCompletionIndex {
-  const commands: LatexCompletionItem[] = [];
-  const environments: LatexCompletionItem[] = [];
-  const labels: LatexCompletionItem[] = [];
-  const citations: LatexCompletionItem[] = [];
-  const packages: LatexCompletionItem[] = [];
-  const files: LatexCompletionItem[] = [];
-  const source = maskLatexComments(maskLatexLiteralContent(content));
-  const add = (target: LatexCompletionItem[], label: string, detail: string, kind: LatexCompletionItem["kind"], apply?: string) => {
-    if (label && !target.some((entry) => entry.label === label)) target.push({ label, detail, kind, source: "Current file", ...(apply ? { apply } : {}) });
-  };
-  for (const match of source.matchAll(/\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\s*\*?\s*(?:\{\s*)?\\([A-Za-z@][A-Za-z@0-9:_]*)\s*(?:\})?\s*(?:\[(\d+)\])?(?:\s*(\[[^\]]*\]))?/g)) {
-    const arguments_ = newCommandArguments(Number.parseInt(match[2] ?? "0", 10), Boolean(match[3]));
-    add(commands, `\\${match[1]}`, "Project command", "function", commandSnippet(`\\${match[1]}`, arguments_));
+  const index = extractLatexSymbols(content);
+  for (const items of Object.values(index)) {
+    for (const item of items) item.source = "Current file";
   }
-  for (const definition of xparseCommandDefinitions(source)) {
-    const arguments_ = xparseCommandArguments(definition.specification);
-    add(commands, `\\${definition.name}`, "Project command", "function", arguments_ ? commandSnippet(`\\${definition.name}`, arguments_) : undefined);
-  }
-  for (const match of source.matchAll(/\\(?:def|gdef|edef|xdef)\s*\\([A-Za-z@][A-Za-z@0-9:_]*)((?:\s*#\d+)*)/g)) {
-    const args = [...(match[2] ?? "").matchAll(/#\d+/g)].length;
-    add(commands, `\\${match[1]}`, "Project macro", "function", commandSnippet(`\\${match[1]}`, newCommandArguments(args, false)));
-  }
-  for (const match of source.matchAll(/\\DeclarePairedDelimiter\s*\{?\\([A-Za-z@][A-Za-z@0-9:_]*)\}?/g)) add(commands, `\\${match[1]}`, "Project math delimiter", "function");
-  for (const match of source.matchAll(/\\cs_(?:new|set|gset|provide|generate)(?:_protected)?\:[A-Za-z]+\s+\\([A-Za-z@][A-Za-z@0-9:_]*)/g)) add(commands, `\\${match[1]}`, "Expl3 project command", "function");
-  for (const match of source.matchAll(/\\(?:newenvironment|renewenvironment|NewDocumentEnvironment|RenewDocumentEnvironment|DeclareDocumentEnvironment)\s*\*?\s*\{([^}]+)\}/g)) add(environments, match[1].trim(), "Project environment", "keyword");
-  for (const definition of findLatexReferenceDefinitions(content, "label")) {
-    if (definition.source === "label") add(labels, definition.key, "Label", "constant");
-  }
-  for (const match of source.matchAll(/\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)) {
-    for (const packageName of match[1].split(",")) add(packages, packageName.trim(), "Package", "text");
-  }
-  for (const match of source.matchAll(/\\(?:input|include|subfile)\s*(?:\{([^}]+)\}|\s+([^\s%]+))/g)) add(files, (match[1] ?? match[2] ?? "").trim(), "Project file", "text");
-  for (const definition of findLatexReferenceDefinitions(content, "citation")) {
-    if (definition.source === "bibitem") add(citations, definition.key, "Bibliography key", "constant");
-  }
-  return { commands, environments, labels, citations, packages, classes: [], files };
+  return index;
 }
 
 function bibtexCitationItems(index: LatexCompletionIndex | null): LatexCompletionItem[] {
@@ -177,7 +144,7 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
     validFor: argument.command === "bibliography" ? /^[^,{}%\s]*$/ : /^[^{}]*$/
   };
   if (argument?.kind === "package") return { from: argument.from, options: mergeCompletionItems(t, local().packages, index?.packages ?? []), validFor: /^[^,{}%\s]*$/ };
-  if (argument?.kind === "class") return { from: argument.from, options: mergeCompletionItems(t, index?.classes ?? []), validFor: /^[^{}]*$/ };
+  if (argument?.kind === "class") return { from: argument.from, options: mergeCompletionItems(t, local().classes, index?.classes ?? []), validFor: /^[^{}]*$/ };
   const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);
   if (command) {
     const from = Math.max(0, command.from - 256);
