@@ -1,6 +1,6 @@
 import { lazy, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
-import { ArrowDown, ArrowUp, AtSign, ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { ArrowDown, ArrowUp, AtSign, ChevronLeft, ChevronRight, MessagesSquare, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Comment, CommentMention, FileEntry, Project, SiteConfig } from "../types";
 import type { EditorPreferences } from "../editorPreferences";
@@ -228,7 +228,7 @@ export function WorkspaceContextPanel({
             </span>
           </div>
           {singleCommentMode ? <div className="comment-current-controls">
-            <button type="button" onClick={onShowAllComments}><List size={13} aria-hidden />{t("editor.viewAllComments")}</button>
+            <button type="button" onClick={onShowAllComments}><MessagesSquare size={14} aria-hidden />{t("editor.viewAllComments")}</button>
           </div> : <div className="comment-review-controls">
             <div className="comment-review-queue-row">
               {hasProjectCommentsScope && <div className="comment-review-group" role="group" aria-label={t("editor.commentScope")}>
