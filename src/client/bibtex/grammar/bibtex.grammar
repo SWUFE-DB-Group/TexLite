@@ -7,7 +7,9 @@
   CommentEntryType[@name=EntryType]
 }
 
-@top File { entry* }
+// BibTeX ignores ordinary text between entries. Keep it outside entry rules
+// so missing delimiters or field syntax still produce parser errors.
+@top File { (entry | OutsideText)* }
 
 entry {
   StringEntry |
@@ -95,6 +97,7 @@ StringRef  { nameIdentifier }
 
 @tokens {
   EntryType { "@" $[a-zA-Z]+ }
+  OutsideText { ![@% \t\r\n] ![@%]* }
 
   nameIdentifier { $[a-zA-Z_] $[a-zA-Z0-9_-]* }
   // Keep the entry delimiters out of a cite key, while accepting common

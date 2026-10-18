@@ -10,6 +10,7 @@ import { maskLatexComments } from "./latexLiterals.js";
 import {
   forEachLatexCommand,
   isLatexCommentStart,
+  isLatexEscaped,
   readLatexBalancedArgument,
   readLatexMandatoryArguments,
   readLatexOptionalArguments,
@@ -160,6 +161,15 @@ export function findLatexReferences(source: string): LatexReference[] {
   return references.sort((left, right) => left.from - right.from || left.to - right.to);
 }
 
+function hasMacroParameter(key: string): boolean {
+  // Parameterized definitions such as \label{fig:#1} are templates, not
+  // concrete reference targets. Keep fixed keys in definitions discoverable.
+  for (let index = 0; index < key.length - 1; index += 1) {
+    if (key[index] === "#" && /[1-9]/.test(key[index + 1]) && !isLatexEscaped(key, index)) return true;
+  }
+  return false;
+}
+
 function definitionsFromLatex(source: string, kind: LatexReferenceKind): LatexReferenceDefinition[] {
   const definitions: LatexReferenceDefinition[] = [];
   forEachLatexCommand(source, (command) => {
@@ -167,6 +177,7 @@ function definitionsFromLatex(source: string, kind: LatexReferenceKind): LatexRe
       const argument = readLatexMandatoryArguments(source, command.to, 1)[0];
       if (!argument) return;
       for (const range of keyRanges(source, argument)) {
+        if (hasMacroParameter(range.key)) continue;
         definitions.push({
           key: range.key,
           command: command.name,
@@ -181,6 +192,7 @@ function definitionsFromLatex(source: string, kind: LatexReferenceKind): LatexRe
       const argument = readLatexMandatoryArguments(source, command.to, 1)[0];
       if (!argument) return;
       for (const range of keyRanges(source, argument)) {
+        if (hasMacroParameter(range.key)) continue;
         definitions.push({
           key: range.key,
           command: command.name,

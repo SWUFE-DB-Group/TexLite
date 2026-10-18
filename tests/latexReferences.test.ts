@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { findBibtexEntryKeys } from "../src/shared/bibtexReferences.js";
 import {
   findLatexBibliographyFiles,
   findLatexCitationCompletion,
@@ -75,6 +76,21 @@ See \citep[see][p. 4]{smith2025, doe2024} and \cref{fig:result, tab:summary}.`;
       ["citation", "cites", "beta"],
       ["citation", "cites", "gamma"]
     ]);
+  });
+
+  it("excludes macro parameters from definition targets while retaining fixed keys", () => {
+    const source = String.raw`\newcommand{\figlabel}[1]{\label{fig:#1}}
+\newcommand{\nested}[1]{\newcommand{\inner}[1]{\hypertarget{target:##1}{Text}}}
+\newcommand{\manual}[1]{\bibitem{manual:#1} Text}
+\newcommand{\fixed}{\label{fig:fixed}}
+\label{fig:real}
+\label{literal:\#1}
+\bibitem{manual:real} Text`;
+
+    expect(findLatexReferenceDefinitions(source, "label").map((entry) => entry.key))
+      .toEqual(["fig:fixed", "fig:real", String.raw`literal:\#1`]);
+    expect(findLatexReferenceDefinitions(source, "citation").map((entry) => entry.key))
+      .toEqual(["manual:real"]);
   });
 
   it("does not treat citation-style configuration commands as citation keys", () => {
@@ -164,6 +180,21 @@ See \citep[see][p. 4]{smith2025, doe2024} and \cref{fig:result, tab:summary}.`;
       "after-braced-value",
       "parenthesized"
     ]);
+  });
+
+  it("protects quoted-value braces when finding parenthesized BibTeX entry boundaries", () => {
+    const entries = [
+      String.raw`@misc(simple, title="A {"} B")`,
+      String.raw`@misc(nested, title="A {{"})} B", note={After the quote})`,
+      String.raw`@misc(escaped, title="Bj{\"o}rn and \"quoted\" text")`,
+      String.raw`@misc{following, title={Next entry}}`
+    ];
+    const source = entries.join("\n");
+    const indexed = findBibtexEntryKeys(source);
+    expect(indexed.map((entry) => entry.key)).toEqual(["simple", "nested", "escaped", "following"]);
+    expect(indexed.map((entry) => source.slice(entry.entryFrom, entry.entryTo))).toEqual(entries);
+    expect(findLatexReferenceDefinitions(source, "citation", true).map((entry) => entry.key))
+      .toEqual(indexed.map((entry) => entry.key));
   });
 
   it("uses TeX's raw inline verb delimiters before scanning later references", () => {

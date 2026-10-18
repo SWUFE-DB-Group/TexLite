@@ -106,6 +106,19 @@ describe("editor LaTeX completion source", () => {
     expect(options).not.toEqual(expect.arrayContaining(["historical-use", "other-manual"]));
   });
 
+  it.each([
+    [String.raw`\newcommand{\figlabel}[1]{\label{fig:#1}}
+\label{fig:real}
+\ref{`, "fig:real", "fig:#1"],
+    [String.raw`\newcommand{\manual}[1]{\bibitem{manual:#1} Text}
+\bibitem{manual:real} Text
+\cite{`, "manual:real", "manual:#1"]
+  ])("omits parameterized reference templates from editor completion", (source, realKey, templateKey) => {
+    const options = complete(source)?.options.map((option) => option.label);
+    expect(options).toContain(realKey);
+    expect(options).not.toContain(templateKey);
+  });
+
   it("does not interpret a separate group after a single citation as another citation argument", () => {
     expect(complete(String.raw`\cite{first} {ordinary`, false)).toBeNull();
   });

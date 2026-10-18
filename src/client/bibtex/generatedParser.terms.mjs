@@ -35,4 +35,5 @@ export const
   EntryType = 32,
   EntryKey = 33,
   Field = 34,
-  FieldName = 35
+  FieldName = 35,
+  OutsideText = 36

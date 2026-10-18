@@ -54,7 +54,9 @@ function readBibtexBlock(source: string, start: number): BibtexBlock | null {
     }
 
     if (quoted) {
-      if (character === "\"") quoted = false;
+      if (character === "{") braceDepth += 1;
+      else if (character === "}" && braceDepth > 0) braceDepth -= 1;
+      else if (character === "\"" && braceDepth === 0) quoted = false;
       continue;
     }
     if (braceDepth > 0) {

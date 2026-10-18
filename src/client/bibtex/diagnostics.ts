@@ -41,13 +41,13 @@ interface KeyOccurrence {
   flagged: boolean;
 }
 
-function reportSyntaxErrors(tree: Tree, diagnostics: Diagnostic[], messages: BibtexMessages): void {
+function reportSyntaxErrors(tree: Tree, docLength: number, diagnostics: Diagnostic[], messages: BibtexMessages): void {
   const reported = new Set<number>();
   tree.cursor().iterate(node => {
     if (!node.type.isError) return;
     if (reported.has(node.from)) return;
     reported.add(node.from);
-    const to = node.to > node.from ? node.to : node.from + 1;
+    const to = Math.min(docLength, node.to > node.from ? node.to : node.from + 1);
     diagnostics.push({
       from: node.from,
       to,
@@ -96,7 +96,7 @@ export function bibtexLinter(options: BibtexLinterOptions = {}) {
     });
 
     if (opts.checkFieldSyntax && treeComplete) {
-      reportSyntaxErrors(tree, diagnostics, messages);
+      reportSyntaxErrors(tree, doc.length, diagnostics, messages);
     }
 
     return diagnostics;

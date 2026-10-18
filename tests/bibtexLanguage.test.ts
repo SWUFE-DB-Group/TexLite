@@ -6,6 +6,7 @@ import { EditorState, type Extension, type Transaction } from "@codemirror/state
 import type { EditorView } from "@codemirror/view";
 import { buildParserFile } from "@lezer/generator";
 import { highlightTree } from "@lezer/highlight";
+import { findBibtexEntryKeys } from "../src/shared/bibtexReferences";
 import {
   bibtexBracketMatching,
   bibtexCompletionSource,
@@ -156,6 +157,49 @@ describe("internal BibTeX CodeMirror language", () => {
     expect(syntaxErrors(bibtexState("@misc(key, title = {Title}}"))).not.toEqual([]);
   });
 
+  it("accepts ordinary text between entries without losing bibliography values or folds", () => {
+    const source = `Exported bibliography: 文献库 {draft}.
+% An ordinary line comment
+@misc{first,
+  title = {First entry}
+}
+Notes between entries, including unmatched braces } and quotes ".
+@misc{second,
+  title = {Second entry}
+}
+End of export.`;
+    const state = bibtexState(source);
+    expect(syntaxErrors(state)).toEqual([]);
+    expect(diagnostics(source)).toEqual([]);
+    expect([...collectDocumentValues(state).keys]).toEqual(["first", "second"]);
+    expect(findBibtexEntryKeys(source).map((entry) => entry.key)).toEqual(["first", "second"]);
+    const first = state.doc.line(3);
+    expect(foldable(state, first.from, first.to)).toMatchObject({ to: state.doc.line(5).from });
+  });
+
+  it.each([
+    "@misc{broken, title = {Unclosed value",
+    "@misc{broken, title = {Closed value}",
+    "@misc{broken, title {Missing assignment}}",
+    "@misc{broken, title = }",
+    "@misc broken",
+    "@misc{broken, title = {Title})"
+  ])("still diagnoses malformed entries following ordinary text: %s", (entry) => {
+    const source = `Bibliography export.\n${entry}`;
+    expect(diagnostics(source).some((diagnostic) => diagnostic.message === "Syntax error")).toBe(true);
+  });
+
+  it("agrees with the reference index on protected quotes in parenthesized entries", () => {
+    const source = String.raw`@misc(simple, title="A {"} B")
+@misc(nested, title="A {{"})} B")
+@misc(escaped, title="Bj{\"o}rn and \"quoted\" text")
+@misc{following, title={Next entry}}`;
+    const state = bibtexState(source);
+    expect(syntaxErrors(state)).toEqual([]);
+    expect([...collectDocumentValues(state).keys]).toEqual(["simple", "nested", "escaped", "following"]);
+    expect(findBibtexEntryKeys(source).map((entry) => entry.key)).toEqual([...collectDocumentValues(state).keys]);
+  });
+
   it("supports parser-backed folds and bracket matching for nested bibliography values", () => {
     const source = String.raw`@inproceedings{rombach2022high,
   author = {Rombach, Robin and Ommer, Bj{\"o}rn},
@@ -212,6 +256,19 @@ describe("internal BibTeX CodeMirror language", () => {
     }).map((diagnostic) => diagnostic.message);
     expect(localized).toContain("已翻译字段：unknownfield");
   });
+
+  it.each(["@", "@misc{", "@misc{x, title={abc}", "@misc{x, title=\"abc"])(
+    "keeps syntax diagnostics inside the document when an entry ends early: %s",
+    (source) => {
+      const errors = diagnostics(source).filter((diagnostic) => diagnostic.message === "Syntax error");
+      expect(errors.length).toBeGreaterThan(0);
+      for (const error of errors) {
+        expect(error.from).toBeGreaterThanOrEqual(0);
+        expect(error.to).toBeGreaterThanOrEqual(error.from);
+        expect(error.to).toBeLessThanOrEqual(source.length);
+      }
+    }
+  );
 
   it("completes entry snippets only at a logical line start and prioritizes missing fields", () => {
     const atLineStart = bibtexState("@");
