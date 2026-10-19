@@ -382,9 +382,9 @@ text objects.
 
 | Operation class | Examples | Coordination behavior |
 | --- | --- | --- |
-| Serialized source operation | File writes, settings, Git metadata, project-wide replace | Waits for queued operations, waits for a ready room, flushes the room, then runs while holding the per-project queue. |
+| Serialized source operation | File writes, settings, Git metadata | Waits for queued operations, waits for a ready room, flushes the room, then runs while holding the per-project queue. |
 | Exclusive source replacement | Git checkout/restore, history restore, project deletion, path move | Waits for active compilation, flushes successfully, enters maintenance, performs the replacement, and resets the collaboration epoch. |
-| Consistent source read | Archive/download, raw source, history comparison, search, outline, completion index, Git diff/history | Uses the queue and a short snapshot barrier. The barrier blocks disk autosaves while an asynchronous scan/copy runs, then validates the deferred flush before returning. |
+| Consistent source read | Archive/download, raw source, history comparison, outline, completion index, Git diff/history | Uses the queue and a short snapshot barrier. The barrier blocks disk autosaves while an asynchronous scan/copy runs, then validates the deferred flush before returning. |
 | Background compilation | `latexmk` on an immutable snapshot | Holds a compile reservation but not the ordinary source queue, so editing, source reads, and the retained PDF can continue. |
 | Compile-state cleanup | Cache/artifact recovery | Waits for active compiles and serializes output removal without disconnecting collaborators. |
 | Published PDF read | PDF.js/range requests | Reads an immutable published bundle directly and does not wait for cold Yjs-room initialization; a concurrent cleanup may produce a normal 404. |

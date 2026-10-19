@@ -1093,7 +1093,7 @@ Copied source.
     expect(comparison.json()).toMatchObject({ historical: "", comparison: "previous notes" });
   });
 
-  it("searches included files and restores automatic project history", async () => {
+  it("builds the outline across included files and restores automatic project history", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "History paper" } });
     const projectId = created.json().project.id as string;
     const main = String.raw`\documentclass{article}
@@ -1152,19 +1152,13 @@ Another UniqueTerm appears here.
       expect.objectContaining({ path: "main.tex", line: 3, title: "Main result" }),
       expect.objectContaining({ path: "sections/intro.tex", line: 1, title: "Introduction and\nMotivation" })
     ]);
-    const search = await app.inject({ method: "GET", url: `/api/projects/${projectId}/search?q=UniqueTerm&wholeWord=1`, headers: { cookie } });
-    expect(search.json()).toMatchObject({ total: 2, truncated: false });
-    expect(search.json().matches).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: "main.tex", line: 4, column: 1 }),
-      expect.objectContaining({ path: "sections/intro.tex", line: 3, column: 9 })
-    ]));
-
-    const replaced = await app.inject({
-      method: "POST", url: `/api/projects/${projectId}/search/replace`, headers: { cookie },
-      payload: { query: "UniqueTerm", replacement: "ChangedTerm", wholeWord: true }
-    });
-    expect(replaced.statusCode, replaced.body).toBe(200);
-    expect(replaced.json()).toMatchObject({ replacements: 2, files: ["main.tex", "sections/intro.tex"] });
+    for (const [filePath, content] of [["main.tex", main], ["sections/intro.tex", intro]]) {
+      const edited = await app.inject({
+        method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie },
+        payload: { path: filePath, content: content.replace("UniqueTerm", "ChangedTerm") }
+      });
+      expect(edited.statusCode, edited.body).toBe(200);
+    }
 
     const comparison = await app.inject({
       method: "GET", url: `/api/projects/${projectId}/history/${selectedVersion.id}/file?path=main.tex`, headers: { cookie }
@@ -1237,7 +1231,6 @@ Another UniqueTerm appears here.
     const readerHistory = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie: readerCookie } });
     expect(readerHistory.statusCode).toBe(200);
     expect(readerHistory.json().stats).toBeNull();
-    expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/search?q=UniqueTerm`, headers: { cookie: readerCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: "POST", url: `/api/projects/${projectId}/history/${selectedVersion.id}/restore`, headers: { cookie: readerCookie }, payload: { path: "main.tex" } })).statusCode).toBe(403);
     expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/history/${selectedVersion.id}`, headers: { cookie: readerCookie } })).statusCode).toBe(403);
 

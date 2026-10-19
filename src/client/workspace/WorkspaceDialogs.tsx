@@ -11,7 +11,6 @@ import { MAX_DIRECT_RESOURCE_PREVIEW_BYTES, type PendingUpload, type ResourcePre
 import type { CompileCleanMode } from "./useProjectCompilation";
 import { ShareDialog } from "./Comments";
 import { MentionTextarea } from "./MentionTextarea";
-import type { WorkspaceLayout } from "./types";
 import { LazyModal } from "../LazyLoadBoundary";
 import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
@@ -19,8 +18,7 @@ const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then
 const GitDialog = lazy(() => import("../GitDialog").then((module) => ({ default: module.GitDialog })));
 const HistoryDialog = lazy(() => import("../HistoryDialog").then((module) => ({ default: module.HistoryDialog })));
 const SelectionHistoryDialog = lazy(() => import("../SelectionHistoryDialog").then((module) => ({ default: module.SelectionHistoryDialog })));
-const ProjectSearchDialog = lazy(() => import("../ProjectNavigationDialogs").then((module) => ({ default: module.ProjectSearchDialog })));
-const QuickOpenDialog = lazy(() => import("../ProjectNavigationDialogs").then((module) => ({ default: module.QuickOpenDialog })));
+const QuickOpenDialog = lazy(() => import("../QuickOpenDialog").then((module) => ({ default: module.QuickOpenDialog })));
 
 export interface WorkspaceDialogsProps {
   user: User;
@@ -32,8 +30,6 @@ export interface WorkspaceDialogsProps {
   files: FileEntry[];
   directoryEntries: FileEntry[];
   readOnly: boolean;
-  workspaceLayout: WorkspaceLayout;
-  changeWorkspaceLayout: (layout: WorkspaceLayout) => void;
   resourcePreview: ResourcePreview | null;
   resourcePreviewLoading: boolean;
   setResourcePreview: (preview: ResourcePreview | null) => void;
@@ -89,10 +85,7 @@ export interface WorkspaceDialogsProps {
   insertCitationAtCursor: (entry: CitationLibraryEntry) => boolean | Promise<boolean>;
   quickOpen: boolean;
   setQuickOpen: (open: boolean) => void;
-  projectSearchOpen: boolean;
-  setProjectSearchOpen: (open: boolean) => void;
   openFile: (entry: FileEntry) => void;
-  jumpToSource: (path: string, line: number, column: number) => void;
   selectionHistoryTarget: SelectionHistoryTarget | null;
   closeSelectionHistory: () => void;
   historyOpen: boolean;
@@ -107,16 +100,16 @@ export interface WorkspaceDialogsProps {
 }
 
 export function WorkspaceDialogs({
-  user, project, projectId, activeFile, content, maxCitationBibtexBytes, files, directoryEntries, readOnly, workspaceLayout,
-  changeWorkspaceLayout, resourcePreview, resourcePreviewLoading, setResourcePreview, setResourcePreviewLoading,
+  user, project, projectId, activeFile, content, maxCitationBibtexBytes, files, directoryEntries, readOnly,
+  resourcePreview, resourcePreviewLoading, setResourcePreview, setResourcePreviewLoading,
   uploadConflict, setUploadConflict, dismissUploadFeedback, uploadFiles, cleanMode, setCleanMode, cleanCompile, newFileOpen,
   setNewFileOpen, newFilePath, setNewFilePath, newFolderOpen, setNewFolderOpen, newFolderName,
   setNewFolderName, selectedFolder, fileDialogError, setFileDialogError, createFile, createFolder, moveEntry,
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
   setDeleteEntry, deleteActiveSessions, removePath, commentOpen, closeComment, commentSelection, commentText,
   setCommentText, commentSubmitting, commentError, addComment, cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection, shareOpen, setShareOpen, citationLibraryOpen, setCitationLibraryOpen,
-  insertCitationAtCursor, quickOpen, setQuickOpen, projectSearchOpen, setProjectSearchOpen, openFile,
-  jumpToSource, selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
+  insertCitationAtCursor, quickOpen, setQuickOpen, openFile,
+  selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
   permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
 }: WorkspaceDialogsProps) {
   const { t } = useTranslation();
@@ -186,7 +179,6 @@ export function WorkspaceDialogs({
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} />
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
-    {projectSearchOpen && <Suspense fallback={null}><ProjectSearchDialog open project={project} onOpenChange={setProjectSearchOpen} onJump={(filePath, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(filePath, line, column); }} /></Suspense>}
     {selectionHistoryTarget && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={(open) => { if (!open) closeSelectionHistory(); }} project={project} filePath={selectionHistoryTarget.filePath} selection={selectionHistoryTarget.selection} currentSource={selectionHistoryTarget.source} /></Suspense>}
     {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}
     {project.ownerId === user.id && gitOpen && <Suspense fallback={null}><GitDialog open onOpenChange={setGitOpen} project={project} onBeforeMutation={save} /></Suspense>}

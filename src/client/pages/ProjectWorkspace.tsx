@@ -144,7 +144,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
-  const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [wordCountOpen, setWordCountOpen] = useState(false);
   const [wordCountMode, setWordCountMode] = useState<WordCountMode>("full");
   const [wordCountPath, setWordCountPath] = useState("");
@@ -1204,8 +1203,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       if (!(event.ctrlKey || event.metaKey)) return;
       if (!event.shiftKey && event.key.toLocaleLowerCase() === "p") {
         event.preventDefault(); setQuickOpen(true);
-      } else if (event.shiftKey && event.key.toLocaleLowerCase() === "f") {
-        event.preventDefault(); setProjectSearchOpen(true);
       }
     };
     window.addEventListener("keydown", openNavigation, true);
@@ -1409,7 +1406,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         setDeleteEntry={setDeleteEntry} setFileDialogError={setFileDialogError}
         setNewFolderName={setNewFolderName} setNewFolderOpen={setNewFolderOpen}
         setNewFilePath={setNewFilePath} setNewFileOpen={setNewFileOpen}
-        setQuickOpen={setQuickOpen} setProjectSearchOpen={setProjectSearchOpen}
+        setQuickOpen={setQuickOpen}
         setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed} toggleFilesPanel={toggleFilesPanel}
         onError={setError}
         uploadFiles={uploadFiles} upload={upload} openFile={openFile} movePathToFolder={movePathToFolder}
@@ -1482,7 +1479,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     <WorkspaceDialogs
       user={user} project={project} projectId={projectId} activeFile={activeFile}
       content={content} maxCitationBibtexBytes={site.maxCitationBibtexBytes} files={files} directoryEntries={directoryEntries} readOnly={readOnly}
-      workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
       resourcePreview={resourcePreview} resourcePreviewLoading={resourcePreviewLoading}
       setResourcePreview={setResourcePreview} setResourcePreviewLoading={setResourcePreviewLoading}
       uploadConflict={uploadConflict} setUploadConflict={setUploadConflict} dismissUploadFeedback={dismissUploadFeedback} uploadFiles={uploadFiles}
@@ -1502,8 +1498,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
       commentError={commentError} addComment={addComment}
       shareOpen={shareOpen} setShareOpen={setShareOpen} citationLibraryOpen={citationLibraryOpen}
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
-      quickOpen={quickOpen} setQuickOpen={setQuickOpen} projectSearchOpen={projectSearchOpen}
-      setProjectSearchOpen={setProjectSearchOpen} openFile={openFile} jumpToSource={jumpToSource}
+      quickOpen={quickOpen} setQuickOpen={setQuickOpen} openFile={openFile}
       selectionHistoryTarget={selectionHistoryTarget} closeSelectionHistory={() => setSelectionHistoryTarget(null)}
       historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} gitOpen={gitOpen} setGitOpen={setGitOpen}
       save={save} permissionDowngrade={permissionDowngrade} permissionDowngradeBusy={permissionDowngradeBusy}

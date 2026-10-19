@@ -26,7 +26,6 @@ import type { MetricRegistry } from "../metrics.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
 import { accessibleProject, canEdit } from "../projects.js";
-import { replaceProject, searchProject } from "../projectSearch.js";
 import { mainDocumentCandidates } from "../latexRoot.js";
 import {
   commentsForFile,
@@ -48,7 +47,7 @@ interface ProjectFileRouteContext {
   recordHistory: (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => unknown;
 }
 
-/** Register project file-tree, editor content, search, and upload routes. */
+/** Register project file-tree, editor content, and upload routes. */
 export function registerProjectFileRoutes(app: FastifyInstance, context: ProjectFileRouteContext): void {
   const { config, db, collaboration, projectMutations, latexCompletions, projectOutlines, metrics, recordHistory } = context;
 
@@ -112,57 +111,6 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
       });
     }
     finally { metrics.record("outline.build", performance.now() - startedAt); }
-  });
-
-  app.get("/api/projects/:id/search", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const query = request.query as { q?: string; caseSensitive?: string; wholeWord?: string };
-    const startedAt = performance.now();
-    try {
-      return await projectMutations.runConsistentRead(id, () => searchProject(config, id, {
-          query: query.q ?? "",
-          caseSensitive: query.caseSensitive === "1",
-          wholeWord: query.wholeWord === "1"
-        }), {
-          preflight: () => {
-            if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
-          }
-      });
-    } finally { metrics.record("search.project", performance.now() - startedAt); }
-  });
-
-  app.post("/api/projects/:id/search/replace", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    const { id } = request.params as { id: string };
-    const project = accessibleProject(db, id, user);
-    if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN");
-    const body = request.body as { query?: unknown; replacement?: unknown; caseSensitive?: unknown; wholeWord?: unknown };
-    if (typeof body.query !== "string" || typeof body.replacement !== "string" || body.replacement.length > 100_000) {
-      return apiError(reply, 400, "SEARCH_QUERY_INVALID");
-    }
-    return await projectMutations.runExclusive(id, "project-wide replace", async () => {
-      const changed = await replaceProject(config, id, {
-        query: body.query as string,
-        caseSensitive: body.caseSensitive === true,
-        wholeWord: body.wholeWord === true,
-        maxFileBytes: maxCollaborativeFileBytes(config)
-      }, body.replacement as string);
-      let replacements = 0;
-      for (const file of changed) {
-        reanchorFileComments(db, id, file.path, file.previous, file.content);
-        collaboration.updateFile(id, file.path, file.content, user.id);
-        replacements += file.count;
-      }
-      if (changed.length) {
-        touchProject(db, id, user.id);
-        recordHistory(id, user.id, "file", changed.map((file) => file.path));
-      }
-      return { ok: true, replacements, files: changed.map((file) => file.path) };
-    }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
 
   app.get("/api/projects/:id/completions", async (request, reply) => {

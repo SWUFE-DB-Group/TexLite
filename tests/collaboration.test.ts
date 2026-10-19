@@ -824,25 +824,6 @@ describe("project collaboration", () => {
     }
   });
 
-  it("closes active sessions while a project-wide replacement replaces the source tree", async () => {
-    const created = await app.inject({
-      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Exclusive replacement" }
-    });
-    const projectId = created.json().project.id as string;
-    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
-    try {
-      const response = await app.inject({
-        method: "POST", url: `/api/projects/${projectId}/search/replace`, headers: { cookie: adminCookie },
-        payload: { query: "Start writing", replacement: "Start collaborating" }
-      });
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ replacements: 1, files: ["main.tex"] });
-      await waitFor(() => !peer.connected);
-      expect(fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8"))
-        .toContain("Start collaborating");
-    } finally { peer.destroy(); }
-  });
-
   it("keeps active sessions connected when an exclusive move fails validation", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Invalid move" }
