@@ -47,7 +47,7 @@ describe("instance lock", () => {
       maxCompileJobs: 2,
       git: "git",
       gitOperationTimeoutMs: 15000,
-      githubApiBaseUrl: "https://api.github.com"
+      githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
     };
   }
 

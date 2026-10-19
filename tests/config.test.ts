@@ -61,6 +61,17 @@ describe("configuration", () => {
     expect(config.githubApiBaseUrl).toBe("https://github.example/api/v3");
   });
 
+  it("enables update checks by default and accepts only a boolean opt-out", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-update-config-"));
+    const configPath = path.join(root, "config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ storage: { dataDir: root } }));
+    expect(loadConfig(configPath).updatesEnabled).toBe(true);
+    fs.writeFileSync(configPath, JSON.stringify({ storage: { dataDir: root }, updates: { enabled: false } }));
+    expect(loadConfig(configPath).updatesEnabled).toBe(false);
+    fs.writeFileSync(configPath, JSON.stringify({ storage: { dataDir: root }, updates: { enabled: "false" } }));
+    expect(() => loadConfig(configPath)).toThrow(/updates.enabled.*true or false/);
+  });
+
   it("uses TexLite as the default site name", () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-default-"));
     const configPath = path.join(root, "texlite.config.json");

@@ -358,7 +358,7 @@ describe("project history retention", () => {
       historyMaxVersions: options.maxVersions ?? 200,
       historyMaxStorageBytes: options.maxStorageBytes ?? 512 * 1024 * 1024,
       editHistoryMaxStorageBytes: 32 * 1024 * 1024,
-      git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
+      git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
     };
     const db = openDatabase(config);
     const projectId = "project-1";

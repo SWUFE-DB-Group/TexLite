@@ -296,7 +296,7 @@ function createFixture(options: FixtureOptions = {}): Fixture {
     allowedEngines: ["xelatex"], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024 * 1024,
     pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
     historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024, editHistoryMaxStorageBytes: 32 * 1024 * 1024,
-    git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
+    git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
   };
   const db = openDatabase(config);
   for (const [id, username, name] of [["owner", "owner", "Owner"], ["alice", "alice", "Alice"], ["bob", "bob", "Bob"]] as const) {

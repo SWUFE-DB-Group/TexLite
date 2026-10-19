@@ -81,6 +81,19 @@ const databaseMigrations: readonly DatabaseMigration[] = [
     if (missingColumn(db, "comments", "resolved_at")) {
       db.exec("ALTER TABLE comments ADD COLUMN resolved_at TEXT");
     }
+  } },
+  { version: 5, name: "add_update_notifications", apply: (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS update_check_cache (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        latest_version TEXT,
+        next_check_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS dismissed_updates (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        version TEXT NOT NULL
+      );
+    `);
   } }
 ];
 

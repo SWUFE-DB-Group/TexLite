@@ -6,6 +6,19 @@
     "disabled": "Disabled", "normal": "Active", "admin": "Administrator", "language": "Language", "save": "Save", "edit": "Edit", "retry": "Retry", "reload": "Reload page",
     "languageEnglish": "English", "languageChinese": "中文"
   },
+  "updates": {
+    "available": "TexLite {{version}} is available.",
+    "howToUpdate": "How to update",
+    "dismiss": "Dismiss until the next version",
+    "title": "Update TexLite",
+    "versions": "Installed: {{current}} · Latest npm release: {{latest}}",
+    "method": "Installation method",
+    "npmHint": "Run on the host where TexLite is installed:",
+    "restartHint": "The restart command is for PM2-managed installations. Use the same --config path if configured, or restart with your usual service manager.",
+    "dockerHint": "Run in your TexLite-Docker repository directory:",
+    "imageHint": "Docker images may be published after the npm release. The running container stays available during the pull; up -d automatically replaces it when the image changes and preserves mounted data.",
+    "releaseNotes": "Release notes"
+  },
   "auth": {
     "tagline": "A lightweight LaTeX writing environment", "username": "Username", "password": "Password", "login": "Sign in",
     "contact": "Need an account? Contact {{email}}", "firstLogin": "Change your temporary password to continue",

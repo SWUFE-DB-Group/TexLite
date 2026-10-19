@@ -84,6 +84,21 @@ application processes sharing one data directory are not supported.
 
 ## Configuration and startup
 
+Update reminders use a single server-side npm `latest` check, with a 24-hour
+success interval, one-hour failure backoff, five-second timeout and shared
+in-flight request. Listening starts the background checker; authenticated
+administrator dashboard requests can also refresh a stale result. The SQLite
+cache survives restarts. Per-administrator dismissals suppress that release and
+older releases, and cascade on account deletion. Both tables are introduced by
+schema migration 5. `updates.enabled: false` disables checks and reminders.
+The dashboard polls the local cached endpoint every 30 minutes and when made
+visible, without adding requests to the writing workspace. The browser never
+contacts the registry. Only the version response is consumed; no project data
+or credentials are sent. Installation detection selects npm or Docker help,
+and administrators can switch the displayed method. Docker help updates the
+launcher with `git pull --ff-only` before image pull/container recreation;
+it explicitly notes that images can lag behind npm. Updates remain manual.
+
 The npm package keeps configuration outside the package installation. The
 effective configuration is selected in this order:
 

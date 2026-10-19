@@ -11,6 +11,8 @@ import type { MetricRegistry } from "../metrics.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../limits.js";
 import { MIN_PASSWORD_LENGTH } from "../security.js";
+import type { UpdateChecker } from "../updates.js";
+import { apiError } from "../http.js";
 
 interface SystemRouteContext {
   config: Config;
@@ -21,11 +23,27 @@ interface SystemRouteContext {
   projectOutlines: ProjectOutlineService;
   metrics: MetricRegistry;
   eventLoopDelay: IntervalHistogram;
+  updates: UpdateChecker;
 }
 
 /** Register routes that describe the running server or its live connections. */
 export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteContext): void {
   const { config, db, queue, collaboration, latexCompletions, projectOutlines, metrics, eventLoopDelay } = context;
+
+  app.get("/api/admin/updates", async (request, reply) => {
+    const user = requireAdmin(request, reply, db);
+    if (!user) return;
+    reply.header("Cache-Control", "no-store");
+    await context.updates.check();
+    return { update: context.updates.notice(user.id) };
+  });
+
+  app.post<{ Body: { version?: unknown } }>("/api/admin/updates/dismiss", async (request, reply) => {
+    const user = requireAdmin(request, reply, db);
+    if (!user) return;
+    if (!context.updates.dismiss(user.id, request.body?.version)) return apiError(reply, 400, "REQUEST_INVALID");
+    return { ok: true };
+  });
 
   app.get("/api/config", async () => ({
     siteName: config.siteName,

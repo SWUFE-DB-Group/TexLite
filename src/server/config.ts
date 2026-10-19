@@ -11,6 +11,7 @@ export type PdfLoadingStrategy = typeof PDF_LOADING_STRATEGIES[number];
 /** Effective values used when the corresponding file/env setting is omitted. */
 export const CONFIG_DEFAULTS = {
   siteName: "TexLite",
+  updatesEnabled: true,
   adminEmail: "",
   host: "127.0.0.1",
   port: 3000,
@@ -52,6 +53,7 @@ const CONFIG_LIMITS = {
 export interface Config {
   configPath: string;
   siteName: string;
+  updatesEnabled: boolean;
   adminEmail: string;
   host: string;
   port: number;
@@ -151,6 +153,7 @@ export function loadConfig(configPathOverride?: string): Config {
   const config: Config = {
     configPath,
     siteName: stringSetting("siteName", process.env.TEXLITE_SITE_NAME, fileConfig.siteName, CONFIG_DEFAULTS.siteName, { min: 1, max: 120 }),
+    updatesEnabled: fileConfig.updates?.enabled ?? CONFIG_DEFAULTS.updatesEnabled,
     adminEmail: stringSetting("adminEmail", process.env.TEXLITE_ADMIN_EMAIL, fileConfig.adminEmail, CONFIG_DEFAULTS.adminEmail, { min: 0, max: 320 }),
     host: stringSetting("server.host", process.env.TEXLITE_HOST, fileConfig.server?.host, CONFIG_DEFAULTS.host, { min: 1, max: 255 }),
     port: integerSetting("server.port", process.env.TEXLITE_PORT, fileConfig.server?.port, CONFIG_DEFAULTS.port, CONFIG_LIMITS.port),
@@ -196,6 +199,7 @@ export function loadBasePath(configPathOverride?: string): string {
 
 /** Validate an already materialized configuration (useful for startup/tests). */
 export function validateConfig(config: Config): void {
+  if (typeof config.updatesEnabled !== "boolean") throw configurationError("updates.enabled", "must be true or false");
   if (!config.dataDir || path.parse(config.dataDir).root === config.dataDir) {
     throw configurationError("storage.dataDir", "must be a non-root directory where TexLite can store data");
   }
@@ -232,6 +236,7 @@ export function validateConfig(config: Config): void {
 }
 
 interface FileConfig {
+  updates?: { enabled?: boolean };
   siteName?: string;
   adminEmail?: string;
   sessionDays?: number;
@@ -291,6 +296,10 @@ function readConfigFile(configPath: string): FileConfig {
 }
 
 function validateFileConfig(config: FileConfig): void {
+  const updates = optionalSection(config.updates, "updates");
+  if (updates && Object.prototype.hasOwnProperty.call(updates, "enabled") && typeof updates.enabled !== "boolean") {
+    throw configurationError("updates.enabled", "must be true or false");
+  }
   optionalString(config.siteName, "siteName", { min: 1, max: 120 });
   optionalString(config.adminEmail, "adminEmail", { min: 0, max: 320 });
   optionalInteger(config.sessionDays, "sessionDays", CONFIG_LIMITS.sessionDays);

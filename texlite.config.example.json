@@ -2,6 +2,9 @@
   "siteName": "TexLite",
   "adminEmail": "admin@example.com",
   "sessionDays": 14,
+  "updates": {
+    "enabled": true
+  },
   "server": {
     "host": "127.0.0.1",
     "port": 3000,

@@ -5,6 +5,19 @@
     "outline": "大纲", "version": "版本", "loading": "正在载入…", "enabled": "允许", "disabled": "禁止", "normal": "正常", "admin": "管理员", "language": "语言", "save": "保存", "edit": "编辑", "retry": "重试", "reload": "刷新页面",
     "languageEnglish": "English", "languageChinese": "中文"
   },
+  "updates": {
+    "available": "TexLite {{version}} 已发布。",
+    "howToUpdate": "如何更新",
+    "dismiss": "关闭提醒，直到有更新版本",
+    "title": "更新 TexLite",
+    "versions": "当前版本：{{current}} · npm 最新版本：{{latest}}",
+    "method": "安装方式",
+    "npmHint": "在安装 TexLite 的宿主机上执行：",
+    "restartHint": "重启命令适用于 PM2 管理的安装。如使用了自定义配置，请传入相同的 --config 路径；其他安装方式请通过原有服务管理器重启。",
+    "dockerHint": "在 TexLite-Docker 仓库目录执行：",
+    "imageHint": "Docker 镜像可能稍晚于 npm 版本发布。拉取期间旧容器仍可使用；镜像变化后 up -d 会自动替换容器，并保留挂载的数据。",
+    "releaseNotes": "版本说明"
+  },
   "auth": {
     "tagline": "轻量 LaTeX 写作环境", "username": "用户名", "password": "密码", "login": "登录",
     "contact": "需要账号？请联系 {{email}}", "firstLogin": "首次登录，请修改初始密码", "currentPassword": "当前密码",

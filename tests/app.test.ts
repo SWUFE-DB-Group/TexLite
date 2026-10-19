@@ -50,7 +50,7 @@ describe("texLite application", () => {
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [], allowProjectLatexmkrc: true,
       maxUploadBytes: 50 * 1024 * 1024, pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
       historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024, editHistoryMaxStorageBytes: 32 * 1024 * 1024
-      , git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com"
+      , git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: true
     };
     fs.mkdirSync(path.join(config.clientDir, "assets"), { recursive: true });
     fs.writeFileSync(path.join(config.clientDir, "index.html"), "<!doctype html><div id=\"root\"></div>");
@@ -79,7 +79,7 @@ describe("texLite application", () => {
       }
       return Response.json({ message: "Not found" }, { status: 404 });
     };
-    app = await buildApp(config, db, { logger: false, githubFetch });
+    app = await buildApp(config, db, { logger: false, githubFetch, updateFetch: async () => Response.json({ version: "99.0.0" }) });
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: "administrator password" } });
     expect(login.statusCode).toBe(200);
     cookie = sessionCookie(login.headers);
@@ -103,6 +103,34 @@ describe("texLite application", () => {
       siteName: "Test texLite", adminEmail: "admin@example.test", minPasswordLength: MIN_PASSWORD_LENGTH,
       maxCitationBibtexBytes: MAX_CITATION_BIBTEX_BYTES
     });
+  });
+
+  it("restricts update notices and dismissal to administrators", async () => {
+    for (const method of ["GET", "POST"] as const) {
+      const url = `/api/admin/updates${method === "POST" ? "/dismiss" : ""}`;
+      const payload = method === "POST" ? { version: "99.0.0" } : undefined;
+      expect((await app.inject({ method, url, payload })).statusCode).toBe(401);
+    }
+    const userId = randomUUID();
+    db.prepare(`INSERT INTO users (id, username, display_name, password_hash, role, created_at)
+      VALUES (?, ?, 'Reader', 'hash', 'user', ?)`)
+      .run(userId, `reader-${userId}`, new Date().toISOString());
+    db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
+      .run(createHash("sha256").update(userId).digest("hex"), userId, "2099-01-01T00:00:00.000Z", new Date().toISOString());
+    const headers = { cookie: `texlite_session=${userId}` };
+    try {
+      expect((await app.inject({ method: "GET", url: "/api/admin/updates", headers })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url: "/api/admin/updates/dismiss", headers, payload: { version: "99.0.0" } })).statusCode).toBe(403);
+      const result = await app.inject({ method: "GET", url: "/api/admin/updates", headers: { cookie } });
+      expect(result.statusCode).toBe(200);
+      expect(result.headers["cache-control"]).toBe("no-store");
+      expect(result.json()).toMatchObject({ update: { latestVersion: "99.0.0" } });
+      expect((await app.inject({ method: "POST", url: "/api/admin/updates/dismiss", headers: { cookie }, payload: { version: "1.0.0" } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "POST", url: "/api/admin/updates/dismiss", headers: { cookie }, payload: { version: "99.0.0" } })).statusCode).toBe(200);
+      expect((await app.inject({ method: "GET", url: "/api/admin/updates", headers: { cookie } })).json()).toEqual({ update: null });
+    } finally {
+      db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    }
   });
 
   it("searches all users and returns stable twenty-user pages with corrected bounds", async () => {

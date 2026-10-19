@@ -28,6 +28,7 @@ import { HistoryRetentionScheduler } from "./historyRetention.js";
 import { EditHistoryRetry } from "./editHistoryRetry.js";
 import { ProjectOutlineService } from "./projectOutline.js";
 import { MetricRegistry } from "./metrics.js";
+import { UpdateChecker } from "./updates.js";
 import { apiError, HttpError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
 import { registerAuthRoutes } from "./routes/auth.js";
@@ -83,12 +84,15 @@ function escapeHtmlAttribute(value: string): string {
 export async function buildApp(
   config: Config,
   db: DatabaseConnection,
-  options: { logger?: boolean; githubFetch?: typeof fetch } = {}
+  options: { logger?: boolean; githubFetch?: typeof fetch; updateFetch?: typeof fetch } = {}
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: options.logger ?? true,
     bodyLimit: Math.max(12 * 1024 * 1024, config.maxUploadBytes + 1024 * 1024)
   });
+  const updates = new UpdateChecker(db, { enabled: config.updatesEnabled, fetch: options.updateFetch });
+  app.addHook("onListen", async () => { updates.start(); });
+  app.addHook("onClose", async () => { await updates.dispose(); });
   const queue = new CompileQueue(config.maxCompileJobs);
   const compileCoordinator = new ProjectCompileCoordinator(queue);
   const metrics = new MetricRegistry(200);
@@ -267,7 +271,8 @@ export async function buildApp(
       latexCompletions,
       projectOutlines,
       metrics,
-      eventLoopDelay
+      eventLoopDelay,
+      updates
     });
     registerCollaborationRoutes(routes, { db, collaboration, metrics });
     registerAuthRoutes(routes, { config, db, loginLimiter });

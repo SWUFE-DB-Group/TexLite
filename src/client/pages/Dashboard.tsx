@@ -8,6 +8,7 @@ import { errorMessage } from "../errors";
 import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, Github, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
 import { LanguageSwitcher } from "../LanguageSwitcher";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
+import { UpdateNotification } from "../UpdateNotification";
 import { ProjectListRow } from "./ProjectListRow";
 import { ProjectActionMenu } from "./ProjectActionMenu";
 import { ProjectIconAvatar } from "../projectIcons";
@@ -416,6 +417,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
         <LanguageSwitcher compact /><button type="button" className="top-user-identity" title={t("account.openGithubSettings")} aria-label={t("account.openGithubSettings")} onClick={() => setGitHubAccountOpen(true)}><strong>{user.displayName}</strong><small><Github aria-hidden size={11} />@{user.username}</small></button><button className="ghost" onClick={logout}>{t("auth.logout")}</button>
       </div>
     </header>
+    {user.role === "admin" && <div className="dashboard-update"><UpdateNotification key={user.id} userId={user.id} /></div>}
     {adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard citation-library-page-shell">
       <LazyPage onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} maxBibtexBytes={site.maxCitationBibtexBytes} /></LazyPage>
     </main> : <main className="dashboard">

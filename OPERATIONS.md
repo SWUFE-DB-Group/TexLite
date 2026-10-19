@@ -100,6 +100,32 @@ Uninstalling the package does not remove configuration or data:
 npm uninstall --global texlite
 ~~~
 
+### Update reminders
+
+TexLite checks the official npm registry's `latest` release in the background
+once every 24 hours. Only administrators see a dismissible reminder on the
+dashboard, with instructions for npm or Docker. Closing it hides that release
+for that administrator, across browsers and restarts, until a newer version is
+published. Checks time out after five seconds; offline failures keep the cached
+result and retry after one hour. No project data or credentials are sent.
+
+Set `"updates": { "enabled": false }` in `texlite.config.json` and restart to
+disable both outbound checks and reminders. Existing configurations enable the
+feature by default without requiring a new entry.
+
+For Docker, run these commands from the TexLite-Docker checkout:
+
+~~~bash
+git pull --ff-only
+./scripts/compose.sh pull
+./scripts/compose.sh up -d
+~~~
+
+The first command updates the launcher. The next two download the image and
+recreate the container as needed, preserving mounted data. There is no need to
+stop it before pulling. Docker images may be published after the npm release;
+the reminder reports the npm version, not a verified Docker image version.
+
 ### Source installation
 
 ~~~bash
@@ -202,6 +228,7 @@ preferred.
 | `editHistory.maxStorageMB` | `32` MB | Independent per-project cap for author-attributed selection-edit deltas; retains the newest records and never consumes snapshot storage. |
 | `latex.latexmk` | `latexmk` | Host command. |
 | `latex.defaultEngine` | `xelatex` | Must appear in the allowed list. |
+| `updates.enabled` | `true` | Background release checks and administrator dashboard reminders. Set to `false` for offline deployments. |
 | `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` | Engines available in the UI. |
 | `latex.extraArgs` | `[]` | Additional configured compiler arguments. |
 | `latex.compileTimeoutSeconds` | `600` | Per-job time limit. |
