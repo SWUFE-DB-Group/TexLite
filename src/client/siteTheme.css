@@ -31,6 +31,8 @@
   --ui-pink-border: #9a708b;
   --ui-focus-ring: #82c7af60;
   --ui-tag-base: #282c34;
+  --ui-switch-thumb: #e2e7ef;
+  --ui-switch-on-bg: #27754f;
   --muted: var(--ui-muted);
 }
 
