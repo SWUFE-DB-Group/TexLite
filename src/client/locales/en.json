@@ -6,6 +6,10 @@
     "disabled": "Disabled", "normal": "Active", "admin": "Administrator", "language": "Language", "save": "Save", "edit": "Edit", "retry": "Retry", "reload": "Reload page",
     "languageEnglish": "English", "languageChinese": "中文"
   },
+  "theme": {
+    "light": "Light", "dark": "Dark",
+    "switchToDark": "Switch to dark theme", "switchToLight": "Switch to light theme"
+  },
   "updates": {
     "available": "TexLite {{version}} is available.",
     "howToUpdate": "How to update",

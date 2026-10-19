@@ -1,0 +1,75 @@
+/* Light uses the existing colors in styles.css as fallbacks. Keep these semantic
+   roles separate from syntax tokens so controls never inherit syntax colors. */
+:root { color-scheme: light; --muted: #737a75; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ui-page: #1e222a;
+  --ui-surface: #282c34;
+  --ui-raised: #303640;
+  --ui-subtle: #242831;
+  --ui-hover: #343d49;
+  --ui-border: #485261;
+  --ui-text: #d7dae0;
+  --ui-muted: #adb6c4;
+  --ui-accent: #96d4b3;
+  --ui-accent-bg: #293f35;
+  --ui-accent-border: #5e8b74;
+  --ui-danger: #f2aaa0;
+  --ui-danger-bg: #482f32;
+  --ui-danger-border: #8c5d57;
+  --ui-warning: #e5c07b;
+  --ui-warning-bg: #463c2a;
+  --ui-warning-border: #927a44;
+  --ui-info: #a9c8f5;
+  --ui-info-bg: #293d57;
+  --ui-info-border: #5d7ca7;
+  --ui-purple: #ceb4eb;
+  --ui-purple-bg: #3c334b;
+  --ui-purple-border: #8f75ac;
+  --ui-pink: #edafcf;
+  --ui-pink-bg: #483344;
+  --ui-pink-border: #9a708b;
+  --ui-focus-ring: #82c7af60;
+  --ui-tag-base: #282c34;
+  --muted: var(--ui-muted);
+}
+
+/* Root tokens also reach Radix portals and full-screen dialogs. Rendered PDF
+   pages and image contents are deliberately not inverted or recolored. */
+:where(:root[data-theme="dark"]) :where(button, input, select, textarea) { color: inherit; }
+:where(:root[data-theme="dark"]) :where(input, select, textarea) { background-color: var(--ui-surface); }
+:root[data-theme="dark"] :is(input, textarea)::placeholder { color: #99a5b4; opacity: 1; }
+:root[data-theme="dark"] option { background: var(--ui-surface); color: var(--ui-text); }
+:root[data-theme="dark"] .login-page { background: radial-gradient(circle at 50% 0, #273e34, var(--ui-page) 50%); }
+:root[data-theme="dark"] .login-card { background: var(--ui-surface); }
+:root[data-theme="dark"] .dialog-overlay { background: rgb(8 12 18 / .48); }
+:root[data-theme="dark"] :is(.preview-panel, .pdf-document, .pdf-loading-state) { background: #373e48; }
+:root[data-theme="dark"] :is(.preview-tabs, .pdf-toolbar) { background: var(--ui-raised); }
+:root[data-theme="dark"] .pdf-document { scrollbar-color: #7d8799 #282c34; }
+:root[data-theme="dark"] .pdf-document::-webkit-scrollbar-track,
+:root[data-theme="dark"] .pdf-document::-webkit-scrollbar-corner { background: #282c34; }
+:root[data-theme="dark"] .pdf-document::-webkit-scrollbar-thumb { background: #7d8799; border-color: #282c34; }
+:root[data-theme="dark"] .pdf-document::-webkit-scrollbar-thumb:hover { background: #a0a8b7; }
+
+.dashboard-appearance {
+  flex: none;
+  width: 100%;
+  padding: 0 18px 18px;
+}
+.theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--ui-border, #cbd5ce);
+  border-radius: 999px;
+  background: var(--ui-surface, #fff);
+  color: var(--ui-muted, #526158);
+  box-shadow: 0 2px 8px #0000000a;
+  font-size: 12px;
+  font-weight: 500;
+}
+.theme-switcher:hover { border-color: var(--ui-accent-border, #8eaa98); color: var(--ui-accent, #176b44); }
+.theme-switcher:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 3px; }

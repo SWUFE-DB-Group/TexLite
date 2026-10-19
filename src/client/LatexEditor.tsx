@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Annotation, Compartment, EditorState, Facet, Prec, StateEffect, StateField } from "@codemirror/state";
@@ -8,7 +8,7 @@ import {
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
-  bracketMatching, defaultHighlightStyle, foldGutter, foldKeymap,
+  bracketMatching, foldGutter, foldKeymap,
   indentOnInput, syntaxHighlighting
 } from "@codemirror/language";
 import {
@@ -21,6 +21,8 @@ import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
 import type { Comment, LatexCompletionIndex } from "./types";
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
+import { editorColorScheme, editorGenericHighlightStyle } from "./editorThemeExtension";
+import { useTheme, type Theme } from "./theme";
 import { countSearchMatches, searchQuerySignature } from "./editorSearch";
 import { bibtexCompletionSource, bibtexHighlightStyle, bibtexLanguage, bstLanguage, createBibtexEditorExtensions, latexLanguage, localizedBibtexMessages } from "./latexLanguage";
 import { supportsLatexMathHover } from "./latexMath";
@@ -146,6 +148,7 @@ export function LatexEditor({
   nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor
 }: Props) {
   const { t, i18n } = useTranslation();
+  const theme = useTheme();
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -213,7 +216,7 @@ export function LatexEditor({
         }),
         foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
         isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : latexLanguage,
-        ...(isBibtexFile || isBstFile ? [syntaxHighlighting(defaultHighlightStyle)] : [syntaxHighlighting(latexHighlightStyle), latexSemanticHighlighting]),
+        ...(isBibtexFile || isBstFile ? [syntaxHighlighting(editorGenericHighlightStyle)] : [syntaxHighlighting(latexHighlightStyle), latexSemanticHighlighting]),
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),
         ...(isBibtexFile ? [] : [bracketMatching(), ...(isBstFile ? [] : [Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexSkippedBracePair])]),
         closeBrackets(), indentOnInput(), sourceCommentDecorations({
@@ -238,7 +241,7 @@ export function LatexEditor({
           ...(collaboration && !readOnly ? yUndoManagerKeymap : []), ...defaultKeymap,
           ...(collaboration ? [] : historyKeymap)]),
         ...(collaboration ? [yCollab(collaboration.text, collaboration.awareness, { undoManager: collaborationUndoManager ?? false })] : []),
-        EditorState.readOnly.of(readOnly), appearance.current.of(editorAppearance(preferences, nativeSpellCheck)),
+        EditorState.readOnly.of(readOnly), appearance.current.of(editorAppearance(preferences, nativeSpellCheck, theme)),
         EditorView.domEventHandlers({
           mousedown(event, editor) {
             const reference = referenceFromElement(event.target);
@@ -309,15 +312,22 @@ export function LatexEditor({
     const editor = view.current;
     if (!editor) return;
     editor.dispatch({ effects: [
-      appearance.current.reconfigure(editorAppearance(preferences, nativeSpellCheck)),
+      appearance.current.reconfigure(editorAppearance(preferences, nativeSpellCheck, theme)),
       referenceNavigation.current.reconfigure(/\.bst$/i.test(filePath) ? [] : referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))),
       mathHover.current.reconfigure(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
         loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
-      }) : []),
-      vimMode.current.reconfigure(preferences.vimMode ? vim() : [])
+      }) : [])
     ] });
+  }, [preferences, nativeSpellCheck, filePath, i18n.resolvedLanguage, theme]);
+
+  // Color/font changes must not reinstall Vim while the user is in Insert or
+  // Visual mode. Only a Vim preference or editor-language change needs this.
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor) return;
+    editor.dispatch({ effects: vimMode.current.reconfigure(preferences.vimMode ? vim() : []) });
     syncVimStatus(editor, preferences.vimMode);
-  }, [preferences, nativeSpellCheck, filePath, i18n.resolvedLanguage]);
+  }, [preferences.vimMode, filePath, i18n.resolvedLanguage]);
 
   useEffect(() => {
     const editor = view.current;
@@ -411,11 +421,13 @@ export function LatexEditor({
     openSearchPanel(editor);
   }, [searchRequest]);
 
-  return <div className="editor-shell" style={{
+  const appearanceStyle = useMemo(() => ({
     fontFamily: editorFontStack(preferences.font),
     fontSize: `${preferences.fontSize}px`,
     lineHeight: preferences.lineHeight
-  }}>
+  }), [preferences.font, preferences.fontSize, preferences.lineHeight]);
+
+  return <div className="editor-shell" data-editor-theme={theme} style={appearanceStyle}>
     <div className="editor-host" ref={host} />
     {spellSuggestionMenu && <div className="spell-suggestions-menu" role="menu" aria-label={t("editor.writingSuggestions")} onMouseDown={(event) => event.stopPropagation()}>
       <div className="spell-suggestions-title">{t("editor.writingSuggestions")}</div>
@@ -506,8 +518,9 @@ function searchMatchCount(t: TFunction) {
   });
 }
 
-function editorAppearance(preferences: EditorPreferences, nativeSpellCheck: boolean) {
+function editorAppearance(preferences: EditorPreferences, nativeSpellCheck: boolean, theme: Theme) {
   return [
+    editorColorScheme(theme),
     EditorView.contentAttributes.of({
       // The optional host Harper CLI normally provides server-side checks. If
       // it is unavailable, enable the browser checker as a lightweight fallback.

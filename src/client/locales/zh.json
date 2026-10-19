@@ -5,6 +5,10 @@
     "outline": "大纲", "version": "版本", "loading": "正在载入…", "enabled": "允许", "disabled": "禁止", "normal": "正常", "admin": "管理员", "language": "语言", "save": "保存", "edit": "编辑", "retry": "重试", "reload": "刷新页面",
     "languageEnglish": "English", "languageChinese": "中文"
   },
+  "theme": {
+    "light": "浅色", "dark": "深色",
+    "switchToDark": "切换为深色主题", "switchToLight": "切换为浅色主题"
+  },
   "updates": {
     "available": "TexLite {{version}} 已发布。",
     "howToUpdate": "如何更新",

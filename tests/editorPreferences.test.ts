@@ -43,6 +43,13 @@ describe("editor preference scope", () => {
     expect(loadEditorPreferences("alice", "legacy").showTooltips).toBe(false);
   });
 
+  it("does not bind an obsolete theme value to a user or project", () => {
+    storage.setItem("texlite-editor-preferences:alice:paper", JSON.stringify({ theme: "dark", fontSize: 18 }));
+    const preferences = loadEditorPreferences("alice", "paper");
+    expect(preferences.fontSize).toBe(18);
+    expect(preferences).not.toHaveProperty("theme");
+  });
+
   it("keeps tex-fmt options scoped to the user and project", () => {
     const preferences = { ...defaultEditorPreferences, texFmtConfig: "wrap = true\nwraplen = 90" };
     saveEditorPreferences("alice", "paper", preferences);

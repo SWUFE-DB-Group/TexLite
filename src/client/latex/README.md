@@ -19,7 +19,7 @@ The grammar and tokenizer are covered by AGPL-3.0; see the repository's
   marker alignment, while preserving literal contents and the document margin.
 - `highlighting.ts` defines semantic highlight tags and visible-tree
   decorations. LaTeX uses its own palette, not CodeMirror's default colors;
-  CSS variables in `styles.css` control commands, environments, reference
+  CSS variables from `editorThemes.ts` control commands, environments, reference
   keys, special characters, comments, brackets, and raw-text backgrounds.
   Math command accents use existing syntax nodes without tinting whole regions, while
   comment task markers inspect only visible comment text. This layer does

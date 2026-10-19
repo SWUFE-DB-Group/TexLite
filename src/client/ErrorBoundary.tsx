@@ -47,16 +47,16 @@ export class ErrorBoundary extends Component<Props, State> {
             padding: "2rem",
             margin: "1rem",
             borderRadius: "8px",
-            backgroundColor: "var(--bg-secondary, #f8f9fa)",
-            border: "1px solid var(--border-color, #e9ecef)",
-            color: "var(--text-primary, #212529)",
+            backgroundColor: "var(--ui-surface, #f8f9fa)",
+            border: "1px solid var(--ui-border, #e9ecef)",
+            color: "var(--ui-text, #212529)",
             fontFamily: "system-ui, -apple-system, sans-serif"
           }}
         >
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.5rem", color: "#dc3545" }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.5rem", color: "var(--ui-danger, #dc3545)" }}>
             {this.props.title ?? i18n.t("errors.boundaryTitle")}
           </h2>
-          <p style={{ fontSize: "0.9rem", color: "var(--text-secondary, #6c757d)", marginBottom: "1rem" }}>
+          <p style={{ fontSize: "0.9rem", color: "var(--ui-muted, #6c757d)", marginBottom: "1rem" }}>
             {i18n.t("errors.boundaryDescription")}
           </p>
           <div style={{ display: "flex", gap: "0.5rem" }}>

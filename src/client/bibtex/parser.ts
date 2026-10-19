@@ -74,6 +74,6 @@ export const parser = LRLanguage.define({
  * CodeMirror highlighting for every other BibTeX token.
  */
 export const bibtexHighlightStyle = HighlightStyle.define([
-  { tag: tags.macroName, color: "#176b8f" },
-  { tag: tags.special(tags.string), color: "#8a5a16" }
+  { tag: tags.macroName, color: "var(--tl-bib-command)" },
+  { tag: tags.special(tags.string), color: "var(--tl-bib-protected)" }
 ]);

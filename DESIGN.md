@@ -427,7 +427,26 @@ legacy `stex` stream mode. Grammar sources, local compatibility changes, and
 build instructions live in `src/client/latex/README.md`; attribution is recorded
 in `THIRD_PARTY_NOTICES.md`. The parser recognizes command arguments, math,
 sections, and environments, with incremental tree reuse during editing.
-LaTeX has a CSS-variable-based semantic palette separate from BibTeX/BST:
+Editor colors are centralized in `src/client/editorThemes.ts`. Light is the
+default and retains the existing LaTeX and generic BibTeX/BST syntax colors;
+the optional dark palette draws on One Dark's blue-gray surfaces with brighter
+prose and comments. One browser-local light/dark preference controls the whole
+application and editor; the switch sits near the page's left edge above the
+dashboard footer, not aligned to the centered content or in a floating overlay.
+It is stored in localStorage
+(scoped to the deployment base path), never in the database or tied to a
+user/project. Other tabs follow
+storage changes, and the HTML bootstrap applies the preference before the first
+paint. Root-level semantic variables cover the dashboard, workspace and portaled
+dialogs, while PDF paper, images and existing dark diff/log views retain their
+original content colors. CodeMirror's
+dark facet changes through the existing appearance compartment, without
+recreating the editor, document, selection, undo history or Yjs binding.
+Generic BibTeX/BST highlighting adapts CodeMirror's shipped tag rules to the
+same palette variables. Editor popups, completion, search, Vim status,
+diagnostics, source comments and gutter actions use those variables too.
+
+LaTeX has a semantic palette distinct from generic BibTeX/BST syntax:
 bright blue ordinary commands, teal structure commands and environment names,
 ochre reference keys, rose
 special characters, gray comments and brackets, and purple math delimiters
@@ -445,10 +464,12 @@ a neutral background.
 Cursor-local, real matching environment pairs use the same pale teal accent as
 matching brackets. The white editor uses ink-colored prose, quiet line numbers,
 a pale blue active line and selection, and pale yellow search matches.
-Text-color contrast on the white editor background is checked by regression
+LaTeX text-color contrast on both editor backgrounds is checked by regression
 tests against the WCAG relative-luminance formula (at least 4.5:1); line numbers
 are intentionally quieter, non-content decoration.
-Pairing accents use a darker green foreground, also checked against their tint.
+Pairing accents use a theme-specific green foreground, also checked against
+their tint. Dark syntax also retains contrast on selection and search accents;
+auxiliary controls and popup text have contrast coverage for both themes.
 Reference keys are colored without a standing diagnostic-like underline; only
 the pointed-at key gains an underline while Ctrl/Cmd is held. Modifier release,
 mouse exit, document/viewport updates and unmount clear this temporary affordance.
