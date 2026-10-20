@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, Clock3, Cpu, Layers3, MemoryStick, RefreshCw, Timer, Users, type LucideIcon } from "lucide-react";
+import { Activity, Clock3, Cpu, Info, Layers3, MemoryStick, RefreshCw, Timer, Users, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { Modal } from "./Dialog";
@@ -115,18 +115,19 @@ function MemoryOverview({ metrics }: { metrics: SystemMetrics }) {
     { key: "tex", bytes: tex, plotted: (tex ?? 0) * scale, label: t("metrics.texMemory") },
     { key: "other", bytes: other, plotted: used === null ? 0 : Math.max(0, used - tracked * scale), label: t("metrics.otherMemory") },
     ...(total === null ? [] : [{ key: "free", bytes: free, plotted: free ?? 0, label: t("metrics.freeMemory") }])
-  ];
+  ].map((segment) => ({ ...segment, tooltip: `${segment.label}: ${segment.bytes === null ? t("metrics.unavailable") : formatBytes(segment.bytes)}` }));
+  const barTooltip = segments.map((segment) => segment.tooltip).join(" · ");
 
   return <div className="metric-resource-overview">
     <div className="metric-resource-heading">
       <div><strong><MemoryValue bytes={used} unavailable={t("metrics.unavailable")} /></strong>{used !== null && <span>{t("metrics.usedMemory")}</span>}</div>
       <span>{total === null ? t("metrics.noReportedLimit") : t(scope === "container" ? "metrics.memoryLimit" : "metrics.memoryCapacity", { total: formatBytes(total) })}</span>
     </div>
-    {used !== null && denominator !== null && denominator > 0 && <div className="metric-resource-bar" aria-hidden="true">
-      {segments.map((segment) => <span key={segment.key} className={`resource-segment-${segment.key}`} style={{ width: `${Math.max(0, Math.min(100, segment.plotted / denominator * 100))}%` }} />)}
+    {used !== null && denominator !== null && denominator > 0 && <div className="metric-resource-bar" role="img" tabIndex={0} aria-label={barTooltip} data-tooltip={barTooltip} data-texlite-tooltip-always>
+      {segments.map((segment) => <span key={segment.key} className={`resource-segment-${segment.key}`} style={{ width: `${Math.max(0, Math.min(100, segment.plotted / denominator * 100))}%` }} data-tooltip={segment.tooltip} data-texlite-tooltip-always aria-hidden="true" />)}
     </div>}
     <dl className="metric-resource-legend">
-      {segments.map((segment) => <div key={segment.key}>
+      {segments.filter((segment) => segment.key === "service" || segment.key === "tex").map((segment) => <div key={segment.key}>
         <dt><span className={`metric-resource-dot resource-segment-${segment.key}`} aria-hidden="true" />{segment.label}</dt>
         <dd>{segment.bytes === null ? t("metrics.unavailable") : formatBytes(segment.bytes)}</dd>
       </div>)}
@@ -140,7 +141,9 @@ function CpuOverview({ cpu }: { cpu: CpuUsageSample }) {
     { key: "service", value: cpu.texlitePercent, label: t("metrics.texliteCpu") },
     { key: "other", value: cpu.otherPercent, label: t("metrics.otherMemory") },
     { key: "free", value: cpu.idlePercent, label: t("metrics.cpuIdle") }
-  ];
+  ].map((segment) => ({ ...segment, tooltip: `${segment.label}: ${segment.value === null ? "—" : `${segment.value}%`}` }));
+  const barTooltip = cpu.status === "ready" ? segments.map((segment) => segment.tooltip).join(" · ")
+    : t(cpu.status === "warming" ? "metrics.cpuSampling" : "metrics.unavailable");
   return <div className="metric-resource-overview">
     <div className="metric-resource-heading">
       <div>{cpu.status === "ready" && cpu.idlePercent !== null
@@ -148,11 +151,11 @@ function CpuOverview({ cpu }: { cpu: CpuUsageSample }) {
         : <span className="metric-unavailable">{t(cpu.status === "warming" ? "metrics.cpuSampling" : "metrics.unavailable")}</span>}</div>
       <span>{t("metrics.cpuCapacity")}</span>
     </div>
-    <div className="metric-resource-bar" aria-hidden="true">
-      {cpu.status === "ready" && segments.map((segment) => <span key={segment.key} className={`resource-segment-${segment.key}`} style={{ width: `${segment.value ?? 0}%` }} />)}
+    <div className="metric-resource-bar" role="img" tabIndex={0} aria-label={barTooltip} data-tooltip={barTooltip} data-texlite-tooltip-always>
+      {cpu.status === "ready" && segments.map((segment) => <span key={segment.key} className={`resource-segment-${segment.key}`} style={{ width: `${segment.value ?? 0}%` }} data-tooltip={segment.tooltip} data-texlite-tooltip-always aria-hidden="true" />)}
     </div>
     <dl className="metric-resource-legend">
-      {segments.map((segment) => <div key={segment.key}>
+      {segments.filter((segment) => segment.key !== "free").map((segment) => <div key={segment.key}>
         <dt><span className={`metric-resource-dot resource-segment-${segment.key}`} aria-hidden="true" />{segment.label}</dt>
         <dd>{segment.value === null ? "—" : `${segment.value}%`}</dd>
       </div>)}
@@ -168,9 +171,8 @@ function MemoryValue({ bytes, unavailable }: { bytes: number | null; unavailable
 
 function RuntimeMetric({ icon: Icon, label, value, detail }: { icon: LucideIcon; label: string; value: string; detail?: string }) {
   return <div className="metric-runtime-item">
-    <span className="metric-runtime-label"><Icon aria-hidden="true" size={14} />{label}</span>
+    <span className="metric-runtime-label"><Icon aria-hidden="true" size={14} />{label}{detail && <button type="button" className="metric-runtime-detail" data-tooltip={detail} aria-label={`${label}: ${detail}`} data-texlite-tooltip-always><Info aria-hidden="true" size={13} /></button>}</span>
     <strong>{value}</strong>
-    {detail && <small>{detail}</small>}
   </div>;
 }
 

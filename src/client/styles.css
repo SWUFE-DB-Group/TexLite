@@ -1141,7 +1141,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .metric-resource-heading > div { display: flex; align-items: baseline; gap: 9px; }
 .metric-resource-heading strong { display: inline-flex; align-items: baseline; gap: 5px; color: var(--ui-text, #213d2b); font-size: 30px; font-weight: 650; line-height: 1.2; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .metric-resource-heading > span, .metric-resource-heading > div > span { color: var(--ui-muted, #69776e); font-size: 12px; }
-.metric-resource-bar { display: flex; height: 18px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--ui-border, #dce5de) 65%, transparent); border-radius: 5px; background: var(--ui-subtle, #eef2ef); }
+.metric-resource-bar { display: flex; height: 18px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--ui-border, #dce5de) 65%, transparent); border-radius: 5px; background: var(--ui-subtle, #eef2ef); cursor: help; }
+.metric-resource-bar:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 3px; }
 .metric-resource-bar > span { flex: none; height: 100%; box-shadow: inset -1px 0 0 var(--ui-surface, #fff); transition: width 240ms ease-out; }
 .resource-segment-service { background: var(--ui-accent, #438e65); }
 .resource-segment-tex { background: var(--ui-info, #527eac); }
@@ -1160,10 +1161,12 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .metric-runtime-item:first-child { padding-left: 2px; }
 .metric-runtime-item:last-child { padding-right: 2px; }
 .metric-runtime-item + .metric-runtime-item { border-left: 1px solid var(--ui-border, #e0e7e1); }
-.metric-runtime-label { display: flex; align-items: center; gap: 7px; color: var(--ui-muted, #69776e); font-size: 11px; }
+.metric-runtime-label { display: flex; align-items: center; gap: 7px; min-height: 20px; color: var(--ui-muted, #69776e); font-size: 11px; }
 .metric-runtime-label svg { flex: none; stroke-width: 1.6; }
 .metric-runtime-item strong { color: var(--ui-text, #34483c); font-size: 19px; font-weight: 600; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
-.metric-runtime-item small { color: var(--ui-muted, #69776e); font-size: 10px; line-height: 1.5; }
+.system-metrics-dialog .metric-runtime-detail { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ui-muted, #69776e); cursor: help; }
+.system-metrics-dialog .metric-runtime-detail:hover { background: var(--ui-hover, #edf3ef); color: var(--ui-accent, #276a45); }
+.system-metrics-dialog .metric-runtime-detail:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 2px; }
 .metric-latency { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .metric-latency dl { display: flex; gap: 22px; margin: 0; }
 .metric-latency dl > div { display: grid; gap: 4px; }
