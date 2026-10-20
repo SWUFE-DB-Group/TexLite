@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
-import { loadBasePath } from "./src/server/config";
-import { basePathHref } from "./src/shared/basePath";
+import { loadBasePath } from "./src/server/config.js";
+import { basePathHref } from "./src/shared/basePath.js";
 
 function developmentHtmlBase(basePath: string) {
   const href = basePathHref(basePath);
@@ -26,6 +26,11 @@ export default defineConfig(({ command }) => {
   return {
     base: command === "serve" ? developmentBaseHref : "./",
     plugins: [developmentHtmlBase(developmentBasePath), react(), wasm()],
+    optimizeDeps: {
+      // This dependency is only imported by a Worker, so the initial scan
+      // misses it. Pre-bundle it to avoid reloading the page on first format.
+      include: ["tex-fmt"]
+    },
     worker: {
       // Worker bundles use their own plugin pipeline. tex-fmt is deliberately
       // loaded there so both its WASM execution and diff calculation stay off
@@ -40,12 +45,20 @@ export default defineConfig(({ command }) => {
       target: "esnext",
       outDir: "../../dist/client",
       emptyOutDir: true,
-      rollupOptions: {
+      rolldownOptions: {
         output: {
-          manualChunks(id) {
-            if (id.includes("node_modules/pdfjs-dist")) return "pdf";
-            if (id.includes("node_modules/@codemirror") || id.includes("node_modules/@lezer")) return "editor";
-            if (id.includes("node_modules/react")) return "react";
+          // Keep heavy editor/PDF modules behind their existing lazy imports.
+          // Only React's core runtime belongs in the initial shared chunk;
+          // react-* feature packages retain their own route boundaries.
+          codeSplitting: {
+            groups: [
+              // Vite's shared preload helper must not be captured recursively
+              // by the PDF group, which would eagerly load PDF.js on login.
+              { name: "vite-runtime", test: /\0vite\/.*helper/, priority: 10 },
+              { name: "pdf", test: /[\\/]node_modules[\\/]pdfjs-dist[\\/]/ },
+              { name: "editor", test: /[\\/]node_modules[\\/](?:@codemirror|@lezer)[\\/]/ },
+              { name: "react", test: /[\\/]node_modules[\\/](?:react|react-dom|scheduler)[\\/]/ }
+            ]
           }
         }
       }
