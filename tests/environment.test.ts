@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Config } from "../src/server/config.js";
-import { assertEnvironment, assertGitAvailable, hostRequirementsSatisfied, inspectHostEnvironment, inspectHostRequirements, type EnvironmentTool } from "../src/server/environment.js";
+import { assertEnvironment, assertGitAvailable, hostRequirementsSatisfied, inspectCompilerEnvironment, inspectHostEnvironment, inspectHostRequirements, type EnvironmentTool } from "../src/server/environment.js";
 
 function testConfig(): Config {
   const root = path.join(os.tmpdir(), "texlite-environment-test");
@@ -19,6 +19,13 @@ function testConfig(): Config {
 }
 
 describe("startup environment checks", () => {
+  it("checks all compiler engines and honors the configured latexmk executable", async () => {
+    const tools = await inspectCompilerEnvironment(testConfig());
+    expect(tools.find(({ id }) => id === "latexmk")).toMatchObject({ command: process.execPath, status: "installed", version: process.version });
+    expect(tools.map(({ id }) => id)).toEqual(["texlive", "pdflatex", "xelatex", "lualatex", "latexmk", "bibtex", "biber", "texcount", "chktex"]);
+    expect(tools.every(({ requirement }) => requirement === "optional")).toBe(true);
+  });
+
   it("requires LaTeX commands but treats Git as an on-demand dependency", async () => {
     const config = testConfig();
     const available = await assertEnvironment({ ...config, git: "/definitely/missing/texlite-git" });

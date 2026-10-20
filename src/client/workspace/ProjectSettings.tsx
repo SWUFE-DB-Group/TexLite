@@ -8,6 +8,7 @@ import { errorMessage } from "../errors";
 import { preloadTexFmt, reloadTexFmt } from "../latexFormatter";
 import type { FileEntry, Project, SiteConfig } from "../types";
 import { projectLatexmkrcCandidates } from "./projectLatexmkrc";
+import { CompilerVersions } from "./CompilerVersions";
 
 function BrowserToolStatus({ name, state, label, reloadLabel, onReload, compact = false }: {
   name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void; compact?: boolean;
@@ -250,6 +251,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         {site.allowProjectLatexmkrc === false ? <p className="field-hint">{t("projectSettings.latexmkrcUnavailable")}</p> : <p className="field-hint latexmkrc-warning"><AlertTriangle size={14} aria-hidden="true" /><span>{t("projectSettings.latexmkrcWarning")}</span></p>}
       </div>}
       <div className="settings-actions">{canManage && <button className="settings-save" disabled={savingCompiler} aria-busy={savingCompiler} onClick={() => void saveCompilerSettings()}>{savingCompiler ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}{t("projectSettings.saveCompiler")}</button>}</div>
+      <CompilerVersions />
     </section>}
   </div></>;
 }

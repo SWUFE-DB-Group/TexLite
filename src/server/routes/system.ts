@@ -2,7 +2,7 @@ import type { IntervalHistogram } from "node:perf_hooks";
 import type { FastifyInstance } from "fastify";
 import type { Config } from "../config.js";
 import type { DatabaseConnection } from "../db.js";
-import { requireAdmin } from "../auth.js";
+import { requireAdmin, requireUser } from "../auth.js";
 import { maxCollaborativeFileBytes } from "../collaboration.js";
 import type { CollaborationService } from "../collaboration.js";
 import type { CompileQueue } from "../compiler.js";
@@ -14,6 +14,8 @@ import { MIN_PASSWORD_LENGTH } from "../security.js";
 import type { UpdateChecker } from "../updates.js";
 import { apiError } from "../http.js";
 import { ResourceMetrics } from "../resourceMetrics.js";
+import { CompilerVersionService } from "../compilerVersions.js";
+import { inspectCompilerEnvironment } from "../environment.js";
 
 interface SystemRouteContext {
   config: Config;
@@ -31,6 +33,13 @@ interface SystemRouteContext {
 export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteContext): void {
   const { config, db, queue, collaboration, latexCompletions, projectOutlines, metrics, eventLoopDelay } = context;
   const resources = new ResourceMetrics();
+  const compilerVersions = new CompilerVersionService(() => inspectCompilerEnvironment(config));
+
+  app.get("/api/compiler/versions", async (request, reply) => {
+    if (!requireUser(request, reply, db)) return;
+    reply.header("Cache-Control", "no-store");
+    return compilerVersions.getVersions();
+  });
 
   app.get("/api/admin/updates", async (request, reply) => {
     const user = requireAdmin(request, reply, db);

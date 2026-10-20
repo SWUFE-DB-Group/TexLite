@@ -1004,6 +1004,13 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .harper-cli-status button { display: grid; place-items: center; width: 18px; height: 18px; min-height: 18px; padding: 0; border: 0; background: transparent; color: inherit; }
 .harper-cli-status button:hover { background: var(--ui-hover, #0000000d); }
 .settings-description { margin: 0; color: var(--ui-muted, #7b837e); font-size: 11px; line-height: 1.45; }
+.compiler-versions { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--ui-border, #dde4df); }
+.compiler-versions h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--ui-muted, #69766e); }
+.compiler-versions dl { margin: 0; font-size: 12px; }
+.compiler-versions dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 5px 0; }
+.compiler-versions dt { color: var(--ui-muted, #69766e); }
+.compiler-versions dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--ui-text, #26352c); }
+.compiler-versions dd.compiler-version-unknown { font-family: inherit; color: var(--ui-muted, #69766e); }
 .browser-tool-status { min-width: 116px; flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 8px 9px; border: 1px solid var(--ui-border, #d9ded9); border-radius: 7px; background: var(--ui-surface, #f7f9f7); color: var(--ui-muted, #6d776f); font-size: 10px; }
 .browser-tool-status strong { min-width: 0; overflow: hidden; color: var(--ui-text, #344d3c); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .browser-tool-status span { font-weight: 700; white-space: nowrap; }

@@ -351,6 +351,7 @@
     "editorAppearance": "Editor appearance", "editorAppearanceDescription": "These preferences are private to this user and project on this browser. The project dictionary is shared.",
     "toolStatus": { "loading": "Loading", "working": "Working", "error": "Error" }, "reloadTool": "Reload",
     "saveAppearance": "Save appearance", "saveCompiler": "Save compiler settings",
+    "softwareVersions": "Software versions", "unknownVersion": "Unknown",
     "writingCheckDescription": "TexLite uses the optional host-installed Harper CLI. If it is unavailable, the browser spellchecker takes over. Spelling issues use a red wavy underline; grammar issues use yellow. Right-click an issue for suggestions.",
     "fontFamily": "English font", "fontSize": "Font size", "lineHeight": "Line spacing",
     "dictionary": "Project dictionary", "dictionaryDescription": "Words added here are ignored after Harper returns this project's spelling diagnostics.", "dictionaryPlaceholder": "Add a custom word", "addWord": "Add word", "dictionaryEmpty": "No custom words yet.",

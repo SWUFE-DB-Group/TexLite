@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { LATEX_ENGINES, type Config } from "./config.js";
 import { httpError } from "./http.js";
 import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
+import { COMPILER_VERSION_TOOLS } from "../shared/compilerVersions.js";
 
 export const MIN_NODE_MAJOR = 24;
 
@@ -56,6 +57,17 @@ const maxCommandOutputBytes = 64 * 1024;
  */
 export async function inspectHostEnvironment(config: Config): Promise<EnvironmentTool[]> {
   return Promise.all(hostToolDefinitions(config).map((tool) => inspectTool(tool)));
+}
+
+/** Read-only, bounded version checks; missing tools never become requirements. */
+export async function inspectCompilerEnvironment(config: Config): Promise<EnvironmentTool[]> {
+  return Promise.all(COMPILER_VERSION_TOOLS.map(({ id, name }) => inspectTool({
+    id, name,
+    command: id === "texlive" ? "tlmgr" : id === "latexmk" ? config.latexmk : id,
+    requirement: "optional", purpose: "Compiler environment version",
+    versionArgs: id === "texcount" ? ["-version"] : ["--version"],
+    timeoutMs: 3_000
+  })));
 }
 
 /**

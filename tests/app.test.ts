@@ -1245,6 +1245,20 @@ Another UniqueTerm appears here.
     expect((await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie } })).json().versions).toEqual([]);
   });
 
+  it("exposes compiler versions to signed-in users without exposing host paths", async () => {
+    expect((await app.inject({ method: "GET", url: "/api/compiler/versions" })).statusCode).toBe(401);
+    const username = `versions-user-${randomUUID().slice(0, 8)}`;
+    await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: { username, displayName: "Versions User", password: "versions-password" } });
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "versions-password" } });
+    const response = await app.inject({ method: "GET", url: "/api/compiler/versions", headers: { cookie: sessionCookie(login.headers) } });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    const tools = response.json().tools as { id: string; version: string | null }[];
+    expect(tools.map(({ id }) => id)).toEqual(["texlive", "pdflatex", "xelatex", "lualatex", "latexmk", "bibtex", "biber", "texcount", "chktex"]);
+    expect(tools.every((tool) => Object.keys(tool).sort().join(",") === "id,version")).toBe(true);
+    expect(tools.every(({ version }) => version === null || /^\d[\w.-]*$/.test(version))).toBe(true);
+  });
+
   it("exposes operational metrics only to administrators", async () => {
     const adminMetrics = await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie } });
     expect(adminMetrics.statusCode).toBe(200);

@@ -340,6 +340,7 @@
     "editorAppearance": "编辑器外观", "editorAppearanceDescription": "这些偏好仅作用于当前浏览器中的当前用户和项目；项目词典是共享的。",
     "toolStatus": { "loading": "加载中", "working": "运行正常", "error": "错误" }, "reloadTool": "重新加载",
     "saveAppearance": "保存外观设置", "saveCompiler": "保存编译器设置",
+    "softwareVersions": "软件版本", "unknownVersion": "未知",
     "writingCheckDescription": "TexLite 使用宿主机上可选的 Harper CLI。若其不可用，将自动改用浏览器内置拼写检查。拼写问题使用红色波浪线，语法问题使用黄色波浪线；右键问题可以查看修改建议。",
     "fontFamily": "英文字体", "fontSize": "字体大小", "lineHeight": "行间距",
     "dictionary": "项目词典", "dictionaryDescription": "添加到这里的词会在 Harper 返回本项目拼写诊断后被忽略。", "dictionaryPlaceholder": "添加自定义词", "addWord": "添加词", "dictionaryEmpty": "暂未添加自定义词。",
