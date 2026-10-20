@@ -108,6 +108,7 @@
     "@types/yazl": "^3.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "bibtex-tidy": "1.14.0",
+    "happy-dom": "^21.0.4",
     "i18next": "^26.5.3",
     "i18next-browser-languagedetector": "^8.2.0",
     "katex": "^0.18.4",

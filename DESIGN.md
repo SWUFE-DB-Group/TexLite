@@ -222,6 +222,20 @@ rotate the collaboration epoch so an old offline draft cannot overwrite a
 checkout or history restore. Browser IndexedDB retains unsent updates across a
 transient disconnect.
 
+The browser session boundary creates `ProjectCollaboration` inside an Effect.
+Rendering never opens IndexedDB or installs collaboration listeners. Cleanup
+defers destruction by one microtask: an immediate StrictMode/Fast Refresh
+setup reclaims the same live instance, preserving editor bindings and local
+workspace state; a real unmount closes the provider, persistence and Yjs
+document after descendant cleanup. Changing the user or project destroys the
+old instance and creates a new one. The controller mounts only after its
+session exists and remounts only when that session is replaced. The
+collaboration hook owns subscriptions; the session boundary owns resources.
+Ordinary file, permission and UI updates retain the current session, and
+leaving never deletes the persisted offline draft. A client DOM regression
+test exercises StrictMode replay, identity changes and cleanup; only that
+test uses the development-only DOM emulator.
+
 Read permission is intentionally different from edit permission: read-only
 members cannot modify source files, but can view the project and add or reply
 to source comments. Comments are anchored to source offsets and selected text,

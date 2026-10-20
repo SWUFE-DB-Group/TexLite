@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ProjectCollaboration,
+  type ProjectCollaboration,
   type ActiveSession,
   type CollaborationStatus,
   type FilesEvent,
   type FormatLeaseState,
   type SharedCompileState
 } from "../collaboration";
-import type { Project, User } from "../types";
+import type { Project } from "../types";
 
 export interface PermissionDowngradeNotice {
   previous: Project["permission"];
@@ -23,14 +23,12 @@ function isFilesEvent(value: unknown): value is FilesEvent {
 }
 
 export function useProjectCollaboration(
-  projectId: string,
-  user: User,
+  collaboration: ProjectCollaboration,
   activeMainFile: string,
   projectPermission: Project["permission"],
   ready: boolean,
   onDisconnected: () => void
 ) {
-  const [collaboration] = useState(() => new ProjectCollaboration(projectId, user));
   const [status, setStatus] = useState<CollaborationStatus>("connecting");
   const [synced, setSynced] = useState(false);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
@@ -166,7 +164,6 @@ export function useProjectCollaboration(
       stopFormatLeaseListener();
       stopDraftListener();
       stopPermissionListener();
-      collaboration.destroy();
     };
   }, [collaboration]);
 

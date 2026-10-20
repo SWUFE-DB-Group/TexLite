@@ -8,7 +8,7 @@ import { PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
 import { classifyCompileLog } from "../compileLog";
-import type { CollaborationSaveReceipt, FormatLease } from "../collaboration";
+import type { CollaborationSaveReceipt, FormatLease, ProjectCollaboration } from "../collaboration";
 import { errorMessage } from "../errors";
 import type { WordCountMode, WorkspaceLayout } from "../workspace/types";
 import type { CompileCleanMode } from "../workspace/useProjectCompilation";
@@ -16,6 +16,7 @@ import { useProjectComments, type SourceSelection } from "../workspace/useProjec
 import { resolvePendingCommentFocus } from "../workspace/commentNavigation";
 import { useProjectMentions } from "../workspace/useProjectMentions";
 import { useProjectCollaboration } from "../workspace/useProjectCollaboration";
+import { ProjectCollaborationSession } from "../workspace/ProjectCollaborationSession";
 import { useProjectCompilation } from "../workspace/useProjectCompilation";
 import { isEditableTextFile, parentFolders, pathContains, useProjectFiles } from "../workspace/useProjectFiles";
 import { useSpellCheck } from "../workspace/useSpellCheck";
@@ -65,7 +66,7 @@ interface LoadOptions { signal?: AbortSignal; isCurrent?: () => boolean }
 // only after it has settled. They do not need to run on every keystroke.
 const SOURCE_ANALYSIS_DEBOUNCE_MS = 300;
 
-export function ProjectWorkspace({ site, user, projectId, preload, mentionId = null, onMentionTargeted, onMentionsRead, onBack }: {
+interface ProjectWorkspaceProps {
   site: SiteConfig;
   user: User;
   projectId: string;
@@ -74,6 +75,16 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   onMentionTargeted?: (mentionId: string) => void;
   onMentionsRead?: (count: number, all?: boolean) => void;
   onBack: () => void;
+}
+
+export function ProjectWorkspace(props: ProjectWorkspaceProps) {
+  return <ProjectCollaborationSession projectId={props.projectId} user={props.user}>
+    {(collaboration) => <ProjectWorkspaceController {...props} collaboration={collaboration} />}
+  </ProjectCollaborationSession>;
+}
+
+function ProjectWorkspaceController({ site, user, projectId, preload, mentionId = null, onMentionTargeted, onMentionsRead, onBack, collaboration }: ProjectWorkspaceProps & {
+  collaboration: ProjectCollaboration;
 }) {
   const { t } = useTranslation();
   const currentProjectId = useRef(projectId);
@@ -259,7 +270,6 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
   };
 
   const {
-    collaboration,
     status: collaborationStatus,
     synced: collaborationSynced,
     activeSessions,
@@ -278,7 +288,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
     permissionDowngrade,
     dismissPermissionDowngrade,
     discardLocalDraft
-  } = useProjectCollaboration(projectId, user, activeMainFile, project?.permission ?? "read", collaborationReady, () => setSaveState("editor.offlineDraft"));
+  } = useProjectCollaboration(collaboration, activeMainFile, project?.permission ?? "read", collaborationReady, () => setSaveState("editor.offlineDraft"));
 
   const { unreadMentions, refresh: refreshMentions, markMentionRead, markAllMentionsRead } = useProjectMentions(projectId, commentsRevision, setError);
 
