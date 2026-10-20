@@ -21,10 +21,10 @@ const tooltipSelector = `[data-tooltip], [title], [${savedTitleAttribute}]`;
 const disabledTooltipRegionSelector = '[data-texlite-tooltips="off"]';
 const alwaysEnabledTooltipSelector = "[data-texlite-tooltip-always]";
 
-export function globalTooltipPosition(rect: TooltipRect, viewportWidth: number): Omit<TooltipState, "text"> {
-  const preferredHalfWidth = Math.min(160, Math.max(16, (viewportWidth - 16) / 2));
+export function globalTooltipPosition(rect: TooltipRect, viewportWidth: number, tooltipWidth = 0): Omit<TooltipState, "text"> {
+  const halfWidth = Math.min(tooltipWidth, Math.max(0, viewportWidth - 16)) / 2;
   const center = rect.left + rect.width / 2;
-  const left = Math.max(preferredHalfWidth, Math.min(center, viewportWidth - preferredHalfWidth));
+  const left = Math.max(halfWidth + 8, Math.min(center, viewportWidth - halfWidth - 8));
   return { left, top: rect.top - 8, placement: "above" };
 }
 
@@ -79,12 +79,14 @@ export function GlobalTooltip() {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   useLayoutEffect(() => {
-    if (!tooltip || !tooltipElement.current) return;
+    if (!tooltip || !tooltipElement.current || !active.current) return;
     // Keep the above placement, but prevent controls near the viewport's top
     // edge from putting the text off-screen. Measure wrapped text as well.
-    const minimumTop = tooltipElement.current.getBoundingClientRect().height + 8;
-    if (tooltip.top < minimumTop) {
-      setTooltip((current) => current === tooltip ? { ...tooltip, top: minimumTop } : current);
+    const measured = tooltipElement.current.getBoundingClientRect();
+    const position = globalTooltipPosition(active.current.getBoundingClientRect(), window.innerWidth, measured.width);
+    const top = Math.max(position.top, measured.height + 8);
+    if (tooltip.left !== position.left || tooltip.top !== top) {
+      setTooltip((current) => current === tooltip ? { ...tooltip, ...position, top } : current);
     }
   }, [tooltip]);
 
