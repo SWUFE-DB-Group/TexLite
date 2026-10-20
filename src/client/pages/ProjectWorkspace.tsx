@@ -1407,7 +1407,7 @@ export function ProjectWorkspace({ site, user, projectId, preload, mentionId = n
         setNewFolderName={setNewFolderName} setNewFolderOpen={setNewFolderOpen}
         setNewFilePath={setNewFilePath} setNewFileOpen={setNewFileOpen}
         setQuickOpen={setQuickOpen}
-        setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed} toggleFilesPanel={toggleFilesPanel}
+        setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed}
         onError={setError}
         uploadFiles={uploadFiles} upload={upload} openFile={openFile} movePathToFolder={movePathToFolder}
         onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
