@@ -71,15 +71,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .language-switcher.compact select { border-color: #ffffff35; background: #ffffff10; color: inherit; }
 .language-switcher.compact option { color: var(--ui-text, #202421); }
 .dashboard { width: 100%; max-width: 1180px; flex: 1; margin: 0 auto; padding: 52px 34px; }
-.citation-library-page-shell { padding-top: 34px; }
-.citation-library-page { display: flex; flex-direction: column; gap: 18px; }
-.citation-library-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
-.citation-library-page-header > div { min-width: 0; }
-.citation-library-page-header h1 { display: flex; align-items: center; gap: 9px; margin: 0; color: var(--ui-text, #202421); font-size: 30px; letter-spacing: -.04em; }
-.citation-library-page-header h1 svg { flex: none; color: var(--ui-accent, #315b43); }
-.citation-library-page-header p { max-width: 720px; margin: 8px 0 0; color: var(--ui-muted, #737a75); font-size: 12px; line-height: 1.5; }
-.citation-library-page-header > button { display: inline-flex; align-items: center; gap: 5px; flex: none; border: 1px solid var(--ui-border, #bfc8c1); border-radius: 8px; padding: 9px 12px; background: var(--ui-surface, white); color: var(--ui-muted, #52685a); font-size: 11px; }
-.citation-library-page-header > button:hover { border-color: var(--ui-border, #8eaa98); background: var(--ui-hover, #edf4ef); color: var(--ui-accent, #176b44); }
+.citation-library-page { display: flex; flex-direction: column; }
+.dashboard-back-button { display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: 40px; border: 1px solid var(--ui-border, #bfc8c1); border-radius: 8px; padding: 10px 16px; background: var(--ui-surface, white); color: var(--ui-muted, #52685a); font-size: 14px; }
+.dashboard-back-button:hover { border-color: var(--ui-border, #8eaa98); background: var(--ui-hover, #edf4ef); color: var(--ui-accent, #176b44); }
 .citation-library-page .citation-library-dialog { padding: 18px; border: 1px solid var(--ui-border, #dfe4df); border-radius: 12px; background: var(--ui-surface, white); box-shadow: 0 8px 26px rgba(37,53,42,.06); }
 .citation-library-page .citation-entry-list { max-height: none; }
 .citation-library-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; color: var(--ui-muted, #66736b); font-size: 10px; }
@@ -89,11 +83,12 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .site-footer a { color: var(--ui-accent, #176b44); text-decoration: none; }
 .site-footer a:hover { text-decoration: underline; }
 .login-page > .site-footer { align-self: end; background: var(--ui-hover, #ffffff50); }
-.section-title { display: flex; justify-content: space-between; align-items: end; margin-bottom: 28px; }
-.section-title h1 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 30px; letter-spacing: -.04em; }
+.section-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 28px; }
+.section-title > div { min-width: 0; }
+.section-title h1 { display: flex; align-items: center; gap: 9px; margin: 0; color: var(--ui-text, #202421); font-size: 30px; line-height: 1.2; letter-spacing: -.04em; }
 .section-title h1 svg { flex: none; color: var(--ui-accent, #315b43); }
-.section-title p { margin: 7px 0 0; }
-.section-actions { display: flex; gap: 9px; }
+.section-title p { max-width: 720px; margin: 8px 0 0; color: var(--ui-muted, #737a75); font-size: 14px; line-height: 1.5; }
+.section-actions { display: flex; flex-wrap: wrap; gap: 9px; }
 .section-actions > button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ui-border, #bfc8c1); border-radius: 8px; background: var(--ui-surface, white); padding: 10px 16px; font-size: 14px; }
 .section-actions > .primary { border-color: var(--ui-accent-border, #176b44); background: #176b44; color: white; }
 .project-catalog-layout { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: start; gap: 12px; }
@@ -1214,6 +1209,39 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-tag-choice-list { display: flex; flex-wrap: wrap; gap: 7px; }
 .citation-tag-choice-list label { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--ui-border, #d4ded6); border-radius: 999px; padding: 5px 7px; background: var(--ui-surface, white); color: var(--ui-text, #526158); font-size: 10px; }
 .citation-tag-choice-list input { width: auto; accent-color: var(--ui-accent, #176b44); }
+/* Full-page management uses dashboard sizing; workspace dialogs stay compact. */
+.citation-library-page .citation-library-dialog { gap: 16px; font-size: 14px; }
+.citation-library-page .citation-library-tabs button { min-height: 40px; font-size: 14px; }
+.citation-library-page .citation-library-tabs button span { font-size: 12px; }
+.citation-library-page .citation-library-search { min-height: 42px; padding: 0 12px; }
+.citation-library-page .citation-library-search input { padding: 11px 0; font-size: 14px; }
+.citation-library-page .citation-library-search span { font-size: 12px; }
+.citation-library-page .citation-add-entry-button { min-height: 40px; gap: 6px; padding: 0 14px; font-size: 14px; }
+.citation-library-page .citation-tag-filters { gap: 6px; }
+.citation-library-page .citation-tag-filters button { height: 32px; padding: 6px 10px; font-size: 12px; }
+.citation-library-page :is(.citation-tag-manage, .citation-tag-expand) { min-height: 32px; padding: 6px 10px; font-size: 12px; }
+.citation-library-page .citation-entry-list { gap: 10px; }
+.citation-library-page .citation-entry-card { gap: 16px; padding: 14px 16px; }
+.citation-library-page .citation-entry-main { gap: 5px; }
+.citation-library-page .citation-entry-heading code { font-size: 13px; line-height: 1.4; }
+.citation-library-page .citation-entry-heading > span { font-size: 12px; }
+.citation-library-page .citation-entry-heading em { font-size: 11px; }
+.citation-library-page .citation-entry-main > strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; font-size: 14px; line-height: 1.45; }
+.citation-library-page .citation-entry-main > p { font-size: 12px; line-height: 1.5; }
+.citation-library-page .citation-tag-pill { font-size: 11px; }
+.citation-library-page .citation-entry-actions { gap: 7px; }
+.citation-library-page :is(.citation-entry-actions, .citation-edit-actions) button { min-height: 34px; gap: 5px; padding: 7px 10px; font-size: 13px; }
+.citation-library-page .citation-entry-actions button svg { width: 15px; height: 15px; }
+.citation-library-page .citation-library-pagination { gap: 12px; margin-top: 10px; font-size: 13px; }
+.citation-library-page .citation-library-pagination button { min-height: 34px; padding: 7px 10px; font-size: 13px; }
+.citation-library-page .citation-library-notice { font-size: 13px; }
+.citation-library-page .citation-library-notice button { width: 28px; height: 28px; }
+.citation-library-page .citation-library-empty { min-height: 190px; gap: 9px; }
+.citation-library-page .citation-library-empty strong { font-size: 16px; }
+.citation-library-page .citation-library-empty span { max-width: 440px; font-size: 13px; line-height: 1.5; }
+.citation-library-page .citation-edit-header { font-size: 14px; }
+.citation-library-page .citation-edit-header small { font-size: 12px; }
+.citation-library-page .citation-edit-panel textarea { font-size: 13px; line-height: 1.6; }
 .form-stack { display: flex; flex-direction: column; gap: 14px; }
 .import-error { margin: 0; padding: 10px 12px; border: 1px solid var(--ui-danger-border, #e3b5b1); border-radius: 8px; background: var(--ui-surface, #fff3f2); line-height: 1.45; }
 .form-field { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 650; }
@@ -1562,6 +1590,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 }
 
 @media (max-width: 720px) {
+  .dashboard { padding: 28px 18px; }
+  .section-title { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 24px; }
+  .section-title h1 { font-size: 25px; }
   .project-list-header { display: none; }
   .project-grid.list-view { gap: 7px; }
   .project-grid.list-view .project-card { height: 68px; min-height: 68px; }
@@ -1579,11 +1610,11 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .project-list-modified small { font-size: 10px; }
   .project-action-menu-trigger { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
   .project-action-menu-list .project-action-menu { right: 36px; width: min(208px, calc(100vw - 42px)); }
-  .citation-library-page-shell { padding-top: 24px; }
-  .citation-library-page-header { flex-direction: column; }
-  .citation-library-page-header h1 { font-size: 25px; }
-  .citation-library-page-header > button { align-self: flex-start; }
+  .section-title > .dashboard-back-button { align-self: flex-start; }
   .citation-library-page .citation-library-dialog { padding: 12px; }
+  .citation-library-page .citation-library-search { flex-wrap: wrap; gap: 4px 8px; padding: 8px 12px; }
+  .citation-library-page .citation-library-search input { padding: 3px 0; }
+  .citation-library-page .citation-library-search span { flex-basis: 100%; padding-left: 23px; }
   .citation-library-search-row { flex-direction: column; }
   .citation-add-entry-button { min-height: 34px; justify-content: center; }
   .citation-entry-card { flex-direction: column; }

@@ -23,7 +23,7 @@ interface PendingUserSetting {
   setting: RestrictedUserSetting;
 }
 
-export function AdminUsers({ currentUser, minPasswordLength }: { currentUser: User; minPasswordLength: SiteConfig["minPasswordLength"] }) {
+export function AdminUsers({ currentUser, minPasswordLength, onBack }: { currentUser: User; minPasswordLength: SiteConfig["minPasswordLength"]; onBack: () => void }) {
   const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [query, setQuery] = useState("");
@@ -142,8 +142,8 @@ export function AdminUsers({ currentUser, minPasswordLength }: { currentUser: Us
     } catch (e) { setDeleteError(errorMessage(e)); }
     finally { setDeleting(false); }
   };
-  return <main className="dashboard">
-    <div className="section-title"><div><h1><Users aria-hidden size={25} />{t("users.manage")}</h1><p className="muted">{t("users.onlyAdmin")}</p></div></div>
+  return <section className="admin-users-page">
+    <div className="section-title"><div><h1><Users aria-hidden size={25} />{t("users.manage")}</h1><p className="muted">{t("users.onlyAdmin")}</p></div><button type="button" className="dashboard-back-button" onClick={onBack}><ChevronLeft size={15} />{t("projects.title")}</button></div>
     <div className="admin-user-toolbar">
       <div className="admin-user-filters">
       <div className="admin-user-search" role="search"><Search aria-hidden size={16} /><input role="searchbox" aria-label={t("users.searchPlaceholder")} placeholder={t("users.searchPlaceholder")} value={query} onChange={(event) => { setQuery(event.target.value); setPageNumber(1); }} />{query && <button type="button" aria-label={t("users.clearSearch")} title={t("users.clearSearch")} onClick={() => { setQuery(""); setPageNumber(1); }}><X aria-hidden size={14} /></button>}</div>
@@ -189,5 +189,5 @@ export function AdminUsers({ currentUser, minPasswordLength }: { currentUser: Us
       onCancel={() => { if (!pendingSettingBusy) { setPendingSetting(null); setPendingSettingError(""); } }}
       onConfirm={() => void applyRestrictedSetting()}
     />
-  </main>;
+  </section>;
 }

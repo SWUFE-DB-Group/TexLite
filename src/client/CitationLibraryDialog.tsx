@@ -340,9 +340,9 @@ export function CitationLibraryDialog({ open, onOpenChange, page = false, onBack
   const tagManagement = open && tagManagerOpen && <CitationTagManagementDialog tags={tags} onClose={() => setTagManagerOpen(false)} onUpdated={updateCatalogTag} onDeleted={deleteCatalogTag} />;
   if (page) {
     return <><section className="citation-library-page">
-      <header className="citation-library-page-header">
-        <div><h1><BookMarked aria-hidden size={26} />{t("citationLibrary.title")}</h1><p>{t("citationLibraryHomeDescription")}</p></div>
-        {onBack && <button type="button" onClick={onBack}><ChevronLeft size={15} />{t("projects.title")}</button>}
+      <header className="section-title citation-library-page-header">
+        <div><h1><BookMarked aria-hidden size={25} />{t("citationLibrary.title")}</h1><p>{t("citationLibraryHomeDescription")}</p></div>
+        {onBack && <button type="button" className="dashboard-back-button" onClick={onBack}><ChevronLeft size={15} />{t("projects.title")}</button>}
       </header>
       {libraryBody}
       </section>{tagEditor && <Modal open title={t("citationLibrary.tagsTitle", { key: tagEditor.citationKey })} description={t("citationLibrary.tags")} onOpenChange={(next) => { if (!next) { setTagEditor(null); setError(""); } }}><>{error && <p className="error dialog-error">{error}</p>}<CitationTagEditor entry={tagEditor} tags={tags} selectedIds={tagEditorIds} saving={tagSaving} modal onClose={() => { setTagEditor(null); setError(""); }} onToggle={(tagId) => setTagEditorIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])} onSave={() => void saveTags()} t={t} /></></Modal>}{editing && <Modal open extraWide title={t("citationLibrary.editTitle", { key: editing.citationKey })} description={t("citationLibrary.title")} onOpenChange={(next) => { if (!next) { setEditing(null); setError(""); } }}><>{error && <p className="error dialog-error">{error}</p>}<CitationEditPanel title={t("citationLibrary.editTitle", { key: editing.citationKey })} value={editText} saving={savingKey === editing.citationKey} modal onChange={setEditText} onClose={() => { setEditing(null); setError(""); }} onSave={() => void saveEdited()} t={t} /></></Modal>}{deleteConfirmation}{tagManagement}</>;

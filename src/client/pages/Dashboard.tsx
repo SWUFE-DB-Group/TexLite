@@ -419,7 +419,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       </div>
     </header>
     {user.role === "admin" && <div className="dashboard-update"><UpdateNotification key={user.id} userId={user.id} /></div>}
-    {adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard citation-library-page-shell">
+    {adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} onBack={() => setAdminOpen(false)} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard">
       <LazyPage onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} maxBibtexBytes={site.maxCitationBibtexBytes} /></LazyPage>
     </main> : <main className="dashboard">
       <div className="section-title"><div><h1><FolderOpen aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} />{t("tags.manage")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} />{t("projects.upload")}</button><button className="primary" onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} />{t("projects.new")}</button></>}</div></div>
