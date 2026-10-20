@@ -165,6 +165,44 @@ Administrators can open the System status view (or authenticated
 event-loop, and recent latency summaries. These metrics intentionally exclude
 source text, passwords, tokens, and comment content.
 
+Memory uses a storage-style segmented bar: total used memory, service and TeX
+process shares, other usage, and available capacity. Process shares are RSS
+estimates, not exclusive allocations. If they exceed measured usage because of
+shared pages or sampling skew, their visual proportions are fitted inside the
+used region; raw values are preserved and other usage is never negative.
+Unavailable readings remain unavailable rather than being interpreted as zero;
+without a container limit, only the used-memory breakdown is drawn.
+Collection uses only Node.js and OS facilities: Linux `/proc`, macOS
+`ps`, and Windows PowerShell/CIM. Linux containers use cgroup v1/v2 usage and
+visible ancestor limits; an unset/unreadable limit is not replaced with host
+capacity. Container usage includes page cache and other cgroup-accounted memory;
+host usage uses Linux `MemAvailable` where available, otherwise OS free memory.
+The TeX sample matches a fixed set of common engine and auxiliary-tool names,
+including Perl-hosted latexmk, rather than tracking only TexLite's own jobs.
+It is limited to processes visible to the service, normally the current
+container in Docker. It does not inspect the Docker socket or other containers.
+These are current estimates, not peaks or exclusive allocations; shared pages
+may be counted in multiple RSS values; host usage and process totals are not additive.
+Resource probes run only on authenticated administrator metrics requests, share
+in-flight work and a two-second cache, and never run inside the compile path.
+External probes have time/output limits; unsupported or failed sampling is
+reported as unavailable rather than zero. No additional npm dependency is used.
+
+CPU uses the same segmented presentation, with **TexLite + TeX**, other work,
+and idle capacity adding up to 100%. It compares cumulative OS and process CPU
+timers between requests, not load averages or lifetime-average `ps %cpu`.
+The first request (or a gap longer than 15 seconds) primes a fresh window.
+Host percentages cover all logical CPUs; Linux container percentages use cgroup
+CPU usage and the smaller of visible affinity and ancestor quota capacities,
+including fractional CPU quotas. Unavailable container accounting never falls
+back to host-wide busy percentages. TeX CPU timers are gathered in the same
+process scan as memory, with start identities guarding against PID reuse. Native
+counter units are preserved: Linux process ticks are compared to aggregate
+ticks, and macOS/Windows process times are converted to microseconds.
+There is no background sampler. These interval estimates can miss short-lived
+TeX processes that exit between requests; such work can appear under other CPU
+usage. This is a lightweight status indicator, not per-process accounting.
+
 ## Collaboration and source persistence
 
 Each open project has one Yjs room. Awareness data provides active-session

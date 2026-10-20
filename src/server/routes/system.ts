@@ -13,6 +13,7 @@ import { MAX_CITATION_BIBTEX_BYTES } from "../limits.js";
 import { MIN_PASSWORD_LENGTH } from "../security.js";
 import type { UpdateChecker } from "../updates.js";
 import { apiError } from "../http.js";
+import { ResourceMetrics } from "../resourceMetrics.js";
 
 interface SystemRouteContext {
   config: Config;
@@ -29,6 +30,7 @@ interface SystemRouteContext {
 /** Register routes that describe the running server or its live connections. */
 export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteContext): void {
   const { config, db, queue, collaboration, latexCompletions, projectOutlines, metrics, eventLoopDelay } = context;
+  const resources = new ResourceMetrics();
 
   app.get("/api/admin/updates", async (request, reply) => {
     const user = requireAdmin(request, reply, db);
@@ -61,10 +63,13 @@ export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteC
 
   app.get("/api/health/metrics", async (request, reply) => {
     if (!requireAdmin(request, reply, db)) return;
+    reply.header("Cache-Control", "no-store");
+    const resourceMemory = await resources.sample();
     const memory = process.memoryUsage();
     return {
       uptimeSeconds: Math.round(process.uptime()),
       memory: { rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal },
+      ...resourceMemory,
       eventLoopDelay: {
         p50Ms: Math.round(eventLoopDelay.percentile(50) / 100_000) / 10,
         p95Ms: Math.round(eventLoopDelay.percentile(95) / 100_000) / 10,

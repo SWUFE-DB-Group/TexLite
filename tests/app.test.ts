@@ -1248,6 +1248,13 @@ Another UniqueTerm appears here.
   it("exposes operational metrics only to administrators", async () => {
     const adminMetrics = await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie } });
     expect(adminMetrics.statusCode).toBe(200);
+    expect(adminMetrics.headers["cache-control"]).toBe("no-store");
+    const resourceMemory = adminMetrics.json();
+    expect(["host", "container"]).toContain(resourceMemory.systemMemory.scope);
+    expect(resourceMemory).toHaveProperty("texMemory.rssBytes");
+    expect(resourceMemory).toHaveProperty("texMemory.processCount");
+    expect(["warming", "ready", "unavailable"]).toContain(resourceMemory.cpu.status);
+    expect(resourceMemory.cpu).toHaveProperty("texlitePercent");
     expect(adminMetrics.json()).toMatchObject({
       compileQueue: { concurrency: 1 },
       collaboration: expect.objectContaining({ rooms: expect.any(Number), sessions: expect.any(Number) }),
