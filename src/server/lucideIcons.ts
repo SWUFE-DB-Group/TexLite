@@ -9,6 +9,7 @@ import { normalizeLucideIconName } from "../shared/projectIcons.js";
 // complete Lucide component catalogue out of the long-lived server process.
 const staticIconDirectory = fileURLToPath(new URL("../../dist/shared/lucide-icons/", import.meta.url));
 const svgCache = new Map<string, string | null>();
+let selectableIconNames: Set<string> | null = null;
 
 function staticIconPath(name: string): string {
   return path.join(staticIconDirectory, `${name}.svg`);
@@ -25,14 +26,28 @@ function staticIconExists(name: string): boolean {
 /** Resolve an official Lucide slug only when a generated static SVG exists. */
 export function resolveLucideIconName(value: unknown): string | null {
   const name = normalizeLucideIconName(value);
-  return name && staticIconExists(name) ? name : null;
+  if (!name) return null;
+  if (!selectableIconNames) {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(path.join(staticIconDirectory, "manifest.json"), "utf8")) as {
+        selectableIconNames: string[];
+      };
+      if (!Array.isArray(manifest.selectableIconNames)) return null;
+      selectableIconNames = new Set(manifest.selectableIconNames);
+    } catch {
+      return null;
+    }
+  }
+  return selectableIconNames.has(name) && staticIconExists(name) ? name : null;
 }
 
-/** Read a verified static SVG once for use as a small, cacheable CSS mask. */
-export async function lucideIconSvg(name: string): Promise<string | null> {
+/** Render retained legacy SVGs too, while new selections use the official catalog. */
+export async function lucideIconSvg(value: string): Promise<string | null> {
+  const name = normalizeLucideIconName(value);
+  if (!name) return null;
   const cached = svgCache.get(name);
   if (cached !== undefined) return cached;
-  if (!resolveLucideIconName(name)) {
+  if (!staticIconExists(name)) {
     svgCache.set(name, null);
     return null;
   }

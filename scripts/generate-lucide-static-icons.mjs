@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { legacyLucideBrandIcons } from "../src/shared/legacyLucideBrandIcons.ts";
 
-const generatorVersion = 3;
+const generatorVersion = 4;
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lucidePackagePath = path.join(repositoryRoot, "node_modules", "lucide-react", "package.json");
 const outputDirectory = path.join(repositoryRoot, "dist", "shared", "lucide-icons");
@@ -82,6 +82,7 @@ try {
   await fs.writeFile(path.join(temporaryDirectory, "manifest.json"), JSON.stringify({
     generatorVersion,
     lucideVersion: lucidePackage.version,
+    selectableIconNames: Object.keys(dynamicIconImports),
     iconCount: new Set([...iconComponents.keys(), ...Object.keys(legacyLucideBrandIcons)]).size
   }), { encoding: "utf8", mode: 0o644 });
   await fs.rm(outputDirectory, { recursive: true, force: true });

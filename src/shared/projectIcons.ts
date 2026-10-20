@@ -87,13 +87,13 @@ export function isProjectIconName(value: unknown): value is ProjectIconName {
 }
 
 /**
- * Normalize an official Lucide icon slug (`file-text`). The optional
- * `lucide:` prefix makes values copied from Iconify equally convenient.
+ * Normalize a plain Lucide icon slug (`file-text`). Namespaced values and
+ * React component names are not accepted.
  * Availability is intentionally checked by the server-only Lucide module.
  */
 export function normalizeLucideIconName(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const compact = value.trim().replace(/^lucide:/i, "");
+  const compact = value.trim();
   if (!compact || compact.length > 96) return null;
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(compact) ? compact : null;
 }

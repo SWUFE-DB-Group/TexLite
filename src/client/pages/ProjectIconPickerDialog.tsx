@@ -132,7 +132,7 @@ export function ProjectIconPickerDialog({
             <ProjectIconGlyph icon={selectedIcon} fallback="?" />
           </span>}
         </div>
-        <p>{t("projectIcons.advancedNameDescription")} <a href="https://icon-sets.iconify.design/lucide/" target="_blank" rel="noreferrer">{t("projectIcons.browse")}</a></p>
+        <p>{t("projectIcons.advancedNameDescription")} <a href="https://lucide.dev/icons/" target="_blank" rel="noreferrer">{t("projectIcons.browse")}</a></p>
       </div>
     </div>
   </Modal>;

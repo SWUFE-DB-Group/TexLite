@@ -998,7 +998,7 @@ Standalone document.
       .toBe("brain-circuit");
 
     const advanced = await app.inject({
-      method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie }, payload: { icon: "lucide:alarm-clock-minus" }
+      method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie }, payload: { icon: "alarm-clock-minus" }
     });
     expect(advanced.statusCode).toBe(200);
     expect(advanced.json().project).toMatchObject({ id: projectId, icon: "alarm-clock-minus" });
@@ -1012,6 +1012,19 @@ Standalone document.
     });
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json()).toMatchObject({ code: "PROJECT_ICON_INVALID" });
+
+    for (const icon of ["lucide:alarm-clock-minus", "FileText", "file-code2", "github"]) {
+      const rejected = await app.inject({
+        method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie }, payload: { icon }
+      });
+      expect(rejected.statusCode, icon).toBe(400);
+      expect(rejected.json()).toMatchObject({ code: "PROJECT_ICON_INVALID" });
+    }
+    // Older projects can keep displaying retained SVGs even though they are
+    // not offered as new choices in the official catalog.
+    for (const name of ["github", "file-code2"]) {
+      expect((await app.inject({ method: "GET", url: `/api/project-icons/${name}`, headers: { cookie } })).statusCode).toBe(200);
+    }
 
     const username = `icon-editor-${randomUUID().slice(0, 8)}`;
     const user = await app.inject({

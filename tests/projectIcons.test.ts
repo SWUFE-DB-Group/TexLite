@@ -18,23 +18,31 @@ describe("project icon catalog", () => {
 
   it("accepts official Lucide slugs without widening the curated picker", () => {
     expect(normalizeLucideIconName("file-text")).toBe("file-text");
-    expect(normalizeLucideIconName("lucide:file-text")).toBe("file-text");
+    expect(normalizeLucideIconName(" file-text ")).toBe("file-text");
+    expect(normalizeLucideIconName("lucide:file-text")).toBeNull();
+    expect(normalizeLucideIconName("Lucide:file-text")).toBeNull();
     expect(normalizeLucideIconName("FileText")).toBeNull();
     expect(normalizeLucideIconName("file_text")).toBeNull();
     expect(normalizeLucideIconName("not/an/icon")).toBeNull();
     expect(isProjectIconName("air-vent")).toBe(false);
   });
 
-  it("ships every curated icon and preserves persisted aliases alongside official slugs", () => {
-    for (const name of [...projectIconNames, "file-code-2", "file-code2", "building-2", "building2", "history", "album", "alarm-clock-minus"]) {
+  it("accepts curated and official catalog names without accepting old generated spellings", () => {
+    for (const name of [...projectIconNames, "file-code-2", "building-2", "history", "album", "alarm-clock-minus"]) {
       expect(resolveLucideIconName(name), name).toBe(name);
     }
+    expect(resolveLucideIconName("file-code2")).toBeNull();
+    expect(resolveLucideIconName("building2")).toBeNull();
+    expect(resolveLucideIconName("lucide:alarm-clock-minus")).toBeNull();
+    expect(resolveLucideIconName("Github")).toBeNull();
   });
 
-  it("serves brand icons saved before the Lucide 1.x migration", async () => {
+  it("displays legacy icons without allowing them as new project selections", async () => {
     for (const name of Object.keys(legacyLucideBrandIcons)) {
-      expect(resolveLucideIconName(name), name).toBe(name);
+      expect(resolveLucideIconName(name), name).toBeNull();
       expect(await lucideIconSvg(name), name).toMatch(/^<svg\b/);
     }
+    expect(await lucideIconSvg("file-code2")).toMatch(/^<svg\b/);
+    expect(await lucideIconSvg("lucide:file-text")).toBeNull();
   });
 });

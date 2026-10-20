@@ -54,7 +54,7 @@
     "selectedFileSize": "已选择 · {{size}}", "clearFile": "清除已选文件"
   },
   "projectIcons": {
-    "title": "选择项目图标", "description": "为“{{project}}”选择一个视觉标识。该共享设置仅项目所有者可以修改。", "change": "修改项目图标", "search": "搜索图标…", "save": "保存图标", "useInitial": "使用项目首字", "noMatches": "没有匹配“{{query}}”的图标。", "advancedName": "高级：Lucide 图标短名称", "advancedNamePlaceholder": "例如：file-text", "advancedNameDescription": "请输入官方 Lucide 短名称，例如 file-text；从 Iconify 复制的 lucide:file-text 也可直接使用。它与上方精选图标搜索互不影响。", "advancedPreview": "高级图标预览", "browse": "浏览 Lucide 图标",
+    "title": "选择项目图标", "description": "为“{{project}}”选择一个视觉标识。该共享设置仅项目所有者可以修改。", "change": "修改项目图标", "search": "搜索图标…", "save": "保存图标", "useInitial": "使用项目首字", "noMatches": "没有匹配“{{query}}”的图标。", "advancedName": "高级：Lucide 图标短名称", "advancedNamePlaceholder": "例如：file-text", "advancedNameDescription": "请输入官方 Lucide 图标短名称，例如 file-text。", "advancedPreview": "高级图标预览", "browse": "浏览 Lucide 图标",
     "icons": {
       "file-text": { "name": "文档", "keywords": "文档 论文 稿件 文章 文本" },
       "book-open": { "name": "书籍", "keywords": "书籍 阅读 参考 文献" },

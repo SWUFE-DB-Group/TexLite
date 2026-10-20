@@ -70,9 +70,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { name } = request.params as { name: string };
-    const iconName = resolveLucideIconName(name);
-    if (!iconName) return apiError(reply, 404, "PROJECT_ICON_INVALID");
-    const svg = await lucideIconSvg(iconName);
+    const svg = await lucideIconSvg(name);
     if (!svg) return apiError(reply, 404, "PROJECT_ICON_INVALID");
     return reply
       .header("Cache-Control", "private, max-age=604800")

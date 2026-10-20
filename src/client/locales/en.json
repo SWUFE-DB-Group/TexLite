@@ -57,7 +57,7 @@
     "selectedFileSize": "Selected · {{size}}", "clearFile": "Clear selected file"
   },
   "projectIcons": {
-    "title": "Choose project icon", "description": "Choose a visual marker for {{project}}. This shared setting can be changed by the project owner.", "change": "Change project icon", "search": "Search icons…", "save": "Save icon", "useInitial": "Use project initial", "noMatches": "No icons match “{{query}}”.", "advancedName": "Advanced: Lucide icon slug", "advancedNamePlaceholder": "For example: file-text", "advancedNameDescription": "Enter an official Lucide short name such as file-text. Values copied from Iconify as lucide:file-text also work. This is separate from the curated search above.", "advancedPreview": "Advanced icon preview", "browse": "Browse Lucide icons",
+    "title": "Choose project icon", "description": "Choose a visual marker for {{project}}. This shared setting can be changed by the project owner.", "change": "Change project icon", "search": "Search icons…", "save": "Save icon", "useInitial": "Use project initial", "noMatches": "No icons match “{{query}}”.", "advancedName": "Advanced: Lucide icon slug", "advancedNamePlaceholder": "For example: file-text", "advancedNameDescription": "Enter an official Lucide short name such as file-text.", "advancedPreview": "Advanced icon preview", "browse": "Browse Lucide icons",
     "icons": {
       "file-text": { "name": "Document", "keywords": "document paper manuscript article text" },
       "book-open": { "name": "Book", "keywords": "book reading reference literature" },
