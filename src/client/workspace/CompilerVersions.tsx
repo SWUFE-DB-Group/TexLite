@@ -1,10 +1,19 @@
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle } from "lucide-react";
+import { Eye, LoaderCircle } from "lucide-react";
 import { COMPILER_VERSION_TOOLS, type CompilerVersionsResponse } from "../../shared/compilerVersions";
 import { api } from "../api";
 
 export function CompilerVersions() {
+  const { t } = useTranslation();
+  const [requested, setRequested] = useState(false);
+  // Do not mount the fetching component until the user explicitly asks for it.
+  return requested ? <CompilerVersionList /> : <div className="compiler-versions">
+    <button type="button" className="compiler-versions-toggle" onClick={() => setRequested(true)}><Eye size={14} aria-hidden="true" />{t("projectSettings.showSoftwareVersions")}</button>
+  </div>;
+}
+
+function CompilerVersionList() {
   const { t } = useTranslation();
   const headingId = useId();
   const [result, setResult] = useState<CompilerVersionsResponse | null>(null);

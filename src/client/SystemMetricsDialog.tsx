@@ -60,16 +60,18 @@ export function SystemMetricsDialog({ open, onOpenChange }: { open: boolean; onO
     {error && <p className="error">{error}</p>}
     {!metrics && !error && <p className="muted">{t("common.loading")}</p>}
     {metrics && <div className="system-metrics">
-      <section className="metric-section">
-        <h3><MemoryStick aria-hidden="true" size={16} />{t(metrics.systemMemory.scope === "container" ? "metrics.containerMemory" : "metrics.hostMemory")}</h3>
-        <MemoryOverview metrics={metrics} />
-        <p className="muted metric-memory-note">{t("metrics.memoryNote")}</p>
-      </section>
-      <section className="metric-section">
-        <h3><Cpu aria-hidden="true" size={16} />{t(metrics.cpu.scope === "container" ? "metrics.containerCpu" : "metrics.hostCpu")}</h3>
-        <CpuOverview cpu={metrics.cpu} />
-        <p className="muted metric-memory-note">{t("metrics.cpuNote")}</p>
-      </section>
+      <div className="metric-resource-panels">
+        <section className="metric-section">
+          <h3><MemoryStick aria-hidden="true" size={16} />{t(metrics.systemMemory.scope === "container" ? "metrics.containerMemory" : "metrics.hostMemory")}</h3>
+          <MemoryOverview metrics={metrics} />
+          <p className="muted metric-memory-note">{t("metrics.memoryNote")}</p>
+        </section>
+        <section className="metric-section">
+          <h3><Cpu aria-hidden="true" size={16} />{t(metrics.cpu.scope === "container" ? "metrics.containerCpu" : "metrics.hostCpu")}</h3>
+          <CpuOverview cpu={metrics.cpu} />
+          <p className="muted metric-memory-note">{t("metrics.cpuNote")}</p>
+        </section>
+      </div>
       <div className="metric-runtime">
         <RuntimeMetric icon={Clock3} label={t("metrics.uptime")} value={formatDuration(metrics.uptimeSeconds)} />
         <RuntimeMetric icon={Layers3} label={t("metrics.compileQueue")} value={`${metrics.compileQueue.running} / ${metrics.compileQueue.concurrency}`} detail={t("metrics.pending", { count: metrics.compileQueue.pending })} />
@@ -149,7 +151,7 @@ function CpuOverview({ cpu }: { cpu: CpuUsageSample }) {
     <div className="metric-resource-bar" aria-hidden="true">
       {cpu.status === "ready" && segments.map((segment) => <span key={segment.key} className={`resource-segment-${segment.key}`} style={{ width: `${segment.value ?? 0}%` }} />)}
     </div>
-    <dl className="metric-resource-legend metric-cpu-legend">
+    <dl className="metric-resource-legend">
       {segments.map((segment) => <div key={segment.key}>
         <dt><span className={`metric-resource-dot resource-segment-${segment.key}`} aria-hidden="true" />{segment.label}</dt>
         <dd>{segment.value === null ? "—" : `${segment.value}%`}</dd>

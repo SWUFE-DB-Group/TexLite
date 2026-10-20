@@ -11,6 +11,28 @@ function readFiles(files: Record<string, string>) {
 }
 
 describe("portable process CPU counters", () => {
+  it.each(["linux", "darwin", "win32"] as const)("includes Harper CLI memory and CPU in the existing %s scan", async (platform) => {
+    const fields = Array.from({ length: 20 }, () => "0");
+    fields[0] = "S"; fields[11] = "100"; fields[12] = "25"; fields[19] = "12345";
+    const io = {
+      directories: async () => ["12", "13"],
+      read: readFiles({
+        "/proc/12/status": "Name:\tharper-cli\nState:\tS (sleeping)\nVmRSS:\t200 kB\n",
+        "/proc/12/stat": `12 (harper-cli) ${fields.join(" ")}`,
+        "/proc/13/status": "Name:\tharper-ls\nVmRSS:\t900 kB\n"
+      }),
+      command: vi.fn(async () => platform === "win32" ? JSON.stringify([
+        { ProcessId: 12, Name: "harper-cli.exe", WorkingSetSize: 200 * 1024, UserModeTime: "10000000", KernelModeTime: "2500000", CreationDate: "12345" },
+        { ProcessId: 13, Name: "harper-ls.exe", WorkingSetSize: 900 * 1024 }
+      ]) : "12 200 0:01.25 Tue Oct 20 10:50:00 2026 /usr/local/bin/harper-cli\n13 900 /usr/local/bin/harper-ls\n")
+    };
+    const result = await collectTexResources(platform, io);
+    expect(result.memory).toEqual({ rssBytes: 200 * 1024, processCount: 1 });
+    expect(result.cpu).toEqual([{ pid: 12, time: platform === "linux" ? 125 : 1_250_000,
+      started: platform === "darwin" ? "Tue Oct 20 10:50:00 2026" : "12345" }]);
+    expect(io.command).toHaveBeenCalledTimes(platform === "linux" ? 0 : 1);
+  });
+
   it("parses Linux stat without confusing spaces or parentheses inside comm", () => {
     const fields = Array.from({ length: 20 }, () => "0");
     fields[0] = "S"; fields[11] = "120"; fields[12] = "30"; fields[19] = "12345";

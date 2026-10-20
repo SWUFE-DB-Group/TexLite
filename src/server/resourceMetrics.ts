@@ -11,7 +11,7 @@ const texTools = new Set([
   "tex", "latex", "pdftex", "pdflatex", "xetex", "xelatex", "luatex", "lualatex", "luahbtex", "luahblatex",
   "pdfetex", "etex", "elatex", "euptex", "uptex", "uplatex", "ptex", "platex", "tectonic",
   "latexmk", "bibtex", "bibtex8", "bibtexu", "biber", "makeindex", "xindy", "texindy", "makeglossaries",
-  "dvipdfm", "dvipdfmx", "xdvipdfmx", "dvips", "texcount", "chktex"
+  "dvipdfm", "dvipdfmx", "xdvipdfmx", "dvips", "texcount", "chktex", "harper-cli"
 ]);
 const texScripts = new Set(["latexmk", "biber", "makeglossaries", "texcount", "texindy", "xindy"]);
 const unavailable = (): TexMemorySample => ({ rssBytes: null, processCount: null });
@@ -46,7 +46,7 @@ function isPerl(name: string): boolean {
   return /^perl(?:\d+(?:\.\d+)*)?$/.test(executableName(name));
 }
 
-/** Match tool names, not arbitrary arguments containing "tex" or every Perl process. */
+/** Includes Harper CLI writing checks; match tool names, not arbitrary arguments or every Perl process. */
 export function isTexProcess(process: MemoryProcess): boolean {
   if (texTools.has(executableName(process.name))) return true;
   if (!isPerl(process.name) || !process.argv) return false;

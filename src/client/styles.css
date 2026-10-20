@@ -1005,6 +1005,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .harper-cli-status button:hover { background: var(--ui-hover, #0000000d); }
 .settings-description { margin: 0; color: var(--ui-muted, #7b837e); font-size: 11px; line-height: 1.45; }
 .compiler-versions { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--ui-border, #dde4df); }
+.compiler-versions-toggle { display: inline-flex; align-items: center; gap: 6px; }
 .compiler-versions h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--ui-muted, #69766e); }
 .compiler-versions dl { margin: 0; font-size: 12px; }
 .compiler-versions dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 5px 0; }
@@ -1128,13 +1129,15 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .system-metrics-dialog .dialog-footer button:hover:not(:disabled) { border-color: var(--ui-accent-border, #a5c3b1); background: var(--ui-accent-bg, #edf5ef); }
 .system-metrics-dialog .dialog-footer button:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 3px; }
 .system-metrics { display: grid; gap: 24px; }
+.metric-resource-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.metric-resource-panels > .metric-section { grid-template-rows: auto 1fr auto; }
 .metric-section { display: grid; gap: 12px; min-width: 0; }
 .metric-section h3 { margin: 0; display: flex; align-items: center; gap: 8px; color: var(--ui-text, #34483c); font-size: 12px; font-weight: 650; letter-spacing: .015em; }
 .metric-section h3 svg { color: var(--ui-muted, #718278); stroke-width: 1.6; }
 .metric-section p { margin: 0; font-size: 13px; }
 .metric-section .metric-memory-note { padding: 0 2px; color: var(--ui-muted, #69776e); font-size: 10px; line-height: 1.6; }
-.metric-resource-overview { display: grid; gap: 20px; padding: 20px; border: 1px solid var(--ui-border, #dce5de); border-radius: 11px; background: linear-gradient(155deg, color-mix(in srgb, var(--ui-accent, #176b44) 3%, var(--ui-surface, #fff)), var(--ui-surface, #fff) 75%); }
-.metric-resource-heading { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
+.metric-resource-overview { display: grid; align-content: start; gap: 18px; padding: 18px; border: 1px solid var(--ui-border, #dce5de); border-radius: 11px; background: linear-gradient(155deg, color-mix(in srgb, var(--ui-accent, #176b44) 3%, var(--ui-surface, #fff)), var(--ui-surface, #fff) 75%); }
+.metric-resource-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .metric-resource-heading > div { display: flex; align-items: baseline; gap: 9px; }
 .metric-resource-heading strong { display: inline-flex; align-items: baseline; gap: 5px; color: var(--ui-text, #213d2b); font-size: 30px; font-weight: 650; line-height: 1.2; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .metric-resource-heading > span, .metric-resource-heading > div > span { color: var(--ui-muted, #69776e); font-size: 12px; }
@@ -1144,8 +1147,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .resource-segment-tex { background: var(--ui-info, #527eac); }
 .resource-segment-other { background: var(--ui-muted, #9ba89f); }
 .resource-segment-free { background: var(--ui-subtle, #eef2ef); }
-.metric-resource-legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0; }
-.metric-cpu-legend { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.metric-resource-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; margin: 0; }
 .metric-resource-legend > div { min-width: 0; }
 .metric-resource-legend dt { display: flex; align-items: center; gap: 6px; color: var(--ui-muted, #69776e); font-size: 11px; line-height: 1.5; }
 .metric-resource-legend dd { margin: 5px 0 0 13px; color: var(--ui-text, #34483c); font-size: 14px; font-weight: 550; font-variant-numeric: tabular-nums; }
@@ -1180,10 +1182,10 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .metric-table tbody tr:last-child td { border-bottom: 0; }
 .metric-section .metric-empty { padding: 22px 16px; border: 1px dashed var(--ui-border, #dce5de); border-radius: 9px; background: var(--ui-surface, #fafbf9); color: var(--ui-muted, #69776e); font-size: 12px; text-align: center; }
 @media (max-width: 640px) {
+  .metric-resource-panels { grid-template-columns: minmax(0, 1fr); }
   .system-metrics-dialog .dialog-header, .system-metrics-dialog .dialog-body { padding: 18px; }
   .system-metrics-dialog .dialog-footer { padding: 12px 18px; }
   .metric-resource-overview { padding: 16px; gap: 18px; }
-  .metric-resource-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
   .metric-runtime-item { padding: 0 10px; }
   .metric-runtime-item strong { font-size: 16px; }
   .metric-latency { align-items: flex-start; flex-direction: column; gap: 12px; }

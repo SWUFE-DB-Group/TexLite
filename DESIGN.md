@@ -178,7 +178,8 @@ visible ancestor limits; an unset/unreadable limit is not replaced with host
 capacity. Container usage includes page cache and other cgroup-accounted memory;
 host usage uses Linux `MemAvailable` where available, otherwise OS free memory.
 The TeX sample matches a fixed set of common engine and auxiliary-tool names,
-including Perl-hosted latexmk, rather than tracking only TexLite's own jobs.
+including Perl-hosted latexmk and native Harper CLI writing checks, rather than
+tracking only TexLite's own jobs. The existing UI labels remain unchanged.
 It is limited to processes visible to the service, normally the current
 container in Docker. It does not inspect the Docker socket or other containers.
 These are current estimates, not peaks or exclusive allocations; shared pages

@@ -16,10 +16,10 @@ function files(values: Record<string, string>) {
 
 describe("TeX process memory", () => {
   it("matches tool names rather than substrings and recognizes Perl-hosted latexmk", () => {
-    for (const name of ["pdflatex", "/usr/bin/xelatex", "luahbtex", "biber.exe", "MiKTeX-pdftex.exe", "makeindex", "chktex"]) {
+    for (const name of ["pdflatex", "/usr/bin/xelatex", "luahbtex", "biber.exe", "MiKTeX-pdftex.exe", "makeindex", "chktex", "texcount", "harper-cli", "/usr/local/bin/harper-cli", "C:\\Tools\\harper-cli.exe"]) {
       expect(isTexProcess({ pid: 1, name, rssBytes: 1 }), name).toBe(true);
     }
-    for (const name of ["textedit", "context-menu", "texlite", "node", "perl", "pdflatex-backup"]) {
+    for (const name of ["textedit", "context-menu", "texlite", "node", "perl", "pdflatex-backup", "harper-ls", "harper-cli-backup"]) {
       expect(isTexProcess({ pid: 1, name, rssBytes: 1 }), name).toBe(false);
     }
     expect(isTexProcess({ pid: 1, name: "perl", rssBytes: 1, argv: ["perl", "-w", "/usr/bin/latexmk", "main.tex"] })).toBe(true);
