@@ -3,17 +3,32 @@ import { scopedStorageKey } from "./basePath";
 import { editorThemeVariables, type EditorTheme } from "./editorThemes";
 
 export type Theme = EditorTheme;
+export type ThemePreference = Theme | "system";
 export const themeStorageKey = scopedStorageKey("texlite-theme");
 const listeners = new Set<() => void>();
 let theme: Theme = "light";
+let preference: ThemePreference = "light";
 let initialized = false;
+let systemQuery: MediaQueryList | null = null;
 
-function savedTheme(): Theme {
+function savedTheme(): ThemePreference {
   try {
-    return window.localStorage.getItem(themeStorageKey) === "dark" ? "dark" : "light";
+    const value = window.localStorage.getItem(themeStorageKey);
+    return value === "dark" || value === "system" ? value : "light";
   } catch {
     return "light";
   }
+}
+
+function systemTheme(): Theme {
+  try {
+    return (systemQuery ?? window.matchMedia?.("(prefers-color-scheme: dark)"))?.matches ? "dark" : "light";
+  } catch { return "light"; }
+}
+
+function applyPreference(value: ThemePreference): void {
+  preference = value;
+  applyTheme(value === "system" ? systemTheme() : value);
 }
 
 function applyTheme(value: Theme): void {
@@ -29,13 +44,24 @@ function applyTheme(value: Theme): void {
 export function initializeTheme(): void {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
-  applyTheme(savedTheme());
+  try { systemQuery = window.matchMedia?.("(prefers-color-scheme: dark)") ?? null; } catch { /* Optional browser API. */ }
+  const onSystemChange = () => {
+    if (preference !== "system") return;
+    const next = systemTheme();
+    if (next === theme) return;
+    applyTheme(next);
+    for (const listener of listeners) listener();
+  };
+  // Older Safari uses addListener. The subscription lasts for the app's lifetime.
+  if (systemQuery?.addEventListener) systemQuery.addEventListener("change", onSystemChange);
+  else systemQuery?.addListener?.(onSystemChange);
+  applyPreference(savedTheme());
   window.addEventListener("storage", (event) => {
     if (event.key !== null && event.key !== themeStorageKey) return;
     try { if (event.storageArea !== window.localStorage) return; } catch { return; }
     const next = savedTheme();
-    if (next === theme) return;
-    applyTheme(next);
+    if (next === preference) return;
+    applyPreference(next);
     for (const listener of listeners) listener();
   });
 }
@@ -44,8 +70,12 @@ export function currentTheme(): Theme {
   return theme;
 }
 
-export function setTheme(value: Theme): void {
-  applyTheme(value);
+export function currentThemePreference(): ThemePreference {
+  return preference;
+}
+
+export function setTheme(value: ThemePreference): void {
+  applyPreference(value);
   try { window.localStorage.setItem(themeStorageKey, value); } catch { /* Browser storage can be disabled. */ }
   for (const listener of listeners) listener();
 }
@@ -57,4 +87,8 @@ function subscribe(listener: () => void): () => void {
 
 export function useTheme(): Theme {
   return useSyncExternalStore(subscribe, currentTheme, () => "light");
+}
+
+export function useThemePreference(): ThemePreference {
+  return useSyncExternalStore(subscribe, currentThemePreference, () => "light");
 }

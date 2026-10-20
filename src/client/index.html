@@ -12,7 +12,9 @@
       try {
         const base = document.querySelector('meta[name="texlite-base-path"]').content;
         const key = base === "/" ? "texlite-theme" : `texlite-theme:base=${encodeURIComponent(base)}`;
-        document.documentElement.dataset.theme = localStorage.getItem(key) === "dark" ? "dark" : "light";
+        const preference = localStorage.getItem(key);
+        const dark = preference === "dark" || (preference === "system" && typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
       } catch { document.documentElement.dataset.theme = "light"; }
       document.documentElement.style.colorScheme = document.documentElement.dataset.theme;
     </script>

@@ -80,6 +80,68 @@ describe("browser-wide theme", () => {
     store.setTheme("dark");
     expect([...storage]).toEqual([[store.themeStorageKey, "dark"]]);
   });
+
+  it("resolves system mode immediately, follows OS changes, and ignores them for explicit themes", async () => {
+    const query = { matches: true, addEventListener: vi.fn() };
+    vi.stubGlobal("window", { localStorage, addEventListener: vi.fn(), matchMedia: vi.fn(() => query) });
+    storage.set("texlite-theme", "system");
+    const store = await import("../src/client/theme");
+    store.initializeTheme();
+    store.initializeTheme();
+    expect(query.addEventListener).toHaveBeenCalledTimes(1);
+    expect(store.currentThemePreference()).toBe("system");
+    expect(store.currentTheme()).toBe("dark");
+    const onChange = query.addEventListener.mock.calls[0][1] as () => void;
+    query.matches = false;
+    onChange();
+    expect(store.currentTheme()).toBe("light");
+    expect(store.currentThemePreference()).toBe("system");
+    expect(storage.get("texlite-theme")).toBe("system");
+    store.setTheme("dark");
+    onChange();
+    expect(store.currentTheme()).toBe("dark");
+    store.setTheme("system");
+    expect(store.currentTheme()).toBe("light");
+    expect(root.style.setProperty).toHaveBeenCalledWith("--tl-editor-bg", "#FFFFFF");
+  });
+
+  it("synchronizes the selected mode across tabs even when the resolved color is unchanged", async () => {
+    const query = { matches: false, addEventListener: vi.fn() };
+    vi.stubGlobal("window", { localStorage, matchMedia: () => query, addEventListener: vi.fn((name, listener) => { if (name === "storage") storageListener = listener; }) });
+    const store = await import("../src/client/theme");
+    store.initializeTheme();
+    storage.set("texlite-theme", "system");
+    storageListener({ key: "texlite-theme", storageArea: localStorage });
+    expect(store.currentTheme()).toBe("light");
+    expect(store.currentThemePreference()).toBe("system");
+    query.matches = true;
+    (query.addEventListener.mock.calls[0][1] as () => void)();
+    expect(store.currentTheme()).toBe("dark");
+    storage.clear();
+    storageListener({ key: null, storageArea: localStorage });
+    expect(store.currentThemePreference()).toBe("light");
+    expect(store.currentTheme()).toBe("light");
+  });
+
+  it("supports Safari's older MediaQueryList listener API", async () => {
+    const query = { matches: false, addListener: vi.fn() };
+    vi.stubGlobal("window", { localStorage, addEventListener: vi.fn(), matchMedia: () => query });
+    const store = await import("../src/client/theme");
+    store.initializeTheme();
+    store.setTheme("system");
+    query.matches = true;
+    (query.addListener.mock.calls[0][0] as () => void)();
+    expect(store.currentTheme()).toBe("dark");
+  });
+
+  it("retains system mode when media queries or storage are unavailable", async () => {
+    vi.stubGlobal("window", { get localStorage() { throw new Error("Blocked"); }, addEventListener: vi.fn() });
+    const store = await import("../src/client/theme");
+    store.initializeTheme();
+    store.setTheme("system");
+    expect(store.currentThemePreference()).toBe("system");
+    expect(store.currentTheme()).toBe("light");
+  });
 });
 
 describe("theme before first paint", () => {
@@ -102,5 +164,19 @@ describe("theme before first paint", () => {
     vm.runInNewContext(bootstrap, { document: { documentElement: root, querySelector: () => ({ content: "/" }) }, localStorage: { getItem() { throw new Error("Blocked"); } } });
     expect(root.dataset.theme).toBe("light");
     expect(root.style.colorScheme).toBe("light");
+  });
+
+  it.each([false, true])("resolves saved system mode before first paint (dark=%s)", (matches) => {
+    const root = { dataset: { theme: "" }, style: { colorScheme: "" } };
+    vm.runInNewContext(bootstrap, { document: { documentElement: root, querySelector: () => ({ content: "/" }) },
+      localStorage: { getItem: () => "system" }, matchMedia: () => ({ matches }) });
+    expect(root.dataset.theme).toBe(matches ? "dark" : "light");
+    expect(root.style.colorScheme).toBe(root.dataset.theme);
+  });
+
+  it("uses light for saved system mode when matchMedia is unavailable", () => {
+    const root = { dataset: { theme: "" }, style: { colorScheme: "" } };
+    vm.runInNewContext(bootstrap, { document: { documentElement: root, querySelector: () => ({ content: "/" }) }, localStorage: { getItem: () => "system" } });
+    expect(root.dataset.theme).toBe("light");
   });
 });

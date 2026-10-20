@@ -1,14 +1,14 @@
-import { Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { setTheme, useTheme } from "./theme";
+import { setTheme, useThemePreference } from "./theme";
+
+const options = [{ value: "light", icon: Sun }, { value: "dark", icon: Moon }, { value: "system", icon: Monitor }] as const;
 
 export function ThemeSwitcher() {
   const { t } = useTranslation();
-  const theme = useTheme();
-  const label = t(theme === "light" ? "theme.switchToDark" : "theme.switchToLight");
-  return <button type="button" className="theme-switcher" title={label} aria-label={label}
-    onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
-    {theme === "light" ? <Sun aria-hidden size={15} /> : <Moon aria-hidden size={15} />}
-    <span>{t(theme === "light" ? "theme.light" : "theme.dark")}</span>
-  </button>;
+  const theme = useThemePreference();
+  return <div className="theme-switcher" role="group" aria-label={t("theme.title")}>
+    {options.map(({ value, icon: Icon }) => <button key={value} type="button" aria-pressed={theme === value}
+      onClick={() => setTheme(value)}><Icon aria-hidden size={14} /><span>{t(`theme.${value}`)}</span></button>)}
+  </div>;
 }

@@ -5,10 +5,9 @@ import { ConfirmDialog, Modal } from "../Dialog";
 import type { Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "../types";
 import i18n from "../i18n";
 import { errorMessage } from "../errors";
-import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, Github, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
-import { LanguageSwitcher } from "../LanguageSwitcher";
+import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
+import { UserMenu } from "../UserMenu";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
-import { ThemeSwitcher } from "../ThemeSwitcher";
 import { UpdateNotification } from "../UpdateNotification";
 import { ProjectListRow } from "./ProjectListRow";
 import { ProjectActionMenu } from "./ProjectActionMenu";
@@ -415,7 +414,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       <div className="top-actions">
         {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen((current) => !current); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
         <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
-        <LanguageSwitcher compact /><button type="button" className="top-user-identity" title={t("account.openGithubSettings")} aria-label={t("account.openGithubSettings")} onClick={() => setGitHubAccountOpen(true)}><strong>{user.displayName}</strong><small><Github aria-hidden size={11} />@{user.username}</small></button><button className="ghost" onClick={logout}>{t("auth.logout")}</button>
+        <UserMenu user={user} onGitHub={() => setGitHubAccountOpen(true)} onSignOut={logout} />
       </div>
     </header>
     {user.role === "admin" && <div className="dashboard-update"><UpdateNotification key={user.id} userId={user.id} /></div>}
@@ -581,7 +580,6 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       <Modal open={Boolean(transferProject)} title={t("projects.transferOwnership")} description={t("projects.transferDescription", { project: transferProject?.name ?? "" })} onOpenChange={(open) => { if (!open && !transferBusy) { setTransferProject(null); setTransferUserId(""); setTransferError(""); } }} footer={<><button disabled={transferBusy} onClick={() => { setTransferProject(null); setTransferUserId(""); setTransferError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={transferBusy || !transferUserId} onClick={() => void transferOwnership()}>{transferBusy ? <LoaderCircle className="spin" size={14} /> : <ArrowRightLeft size={14} />}{t("projects.transfer")}</button></>}><div className="form-stack">{transferError && <p className="error dialog-error">{transferError}</p>}<label className="form-field">{t("projects.newOwner")}<select disabled={transferBusy || transferUsers.length === 0} value={transferUserId} onChange={(event) => setTransferUserId(event.target.value)}><option value="">{transferBusy ? t("common.loading") : transferUsers.length > 0 ? t("projects.chooseNewOwner") : t("projects.noTransferUsers")}</option>{transferUsers.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.displayName ?? candidate.username} (@{candidate.username})</option>)}</select></label><p className="warning"><AlertTriangle size={15} />{t("projects.transferWarning")}</p></div></Modal>
       <ConfirmDialog open={Boolean(deleteProject)} title={t("projects.deleteTitle")} description={t("projects.deleteDescription", { project: deleteProject?.name ?? "" })} confirmLabel={deleting ? t("common.loading") : t("common.delete")} danger busy={deleting} error={deleteError} onCancel={() => { if (!deleting) { setDeleteProject(null); setDeleteError(""); } }} onConfirm={() => void removeProject()} />
     </main>}{metricsOpen && <LazyModal title={t("metrics.title")} onClose={() => setMetricsOpen(false)}><SystemMetricsDialog open onOpenChange={setMetricsOpen} /></LazyModal>}{githubAccountOpen && <LazyModal title={t("account.githubTitle")} onClose={() => setGitHubAccountOpen(false)}><GitHubAccountDialog open onOpenChange={setGitHubAccountOpen} /></LazyModal>}
-    <div className="dashboard-appearance"><ThemeSwitcher /></div>
     <SiteFooter />
   </div>;
 }

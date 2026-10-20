@@ -469,9 +469,11 @@ sections, and environments, with incremental tree reuse during editing.
 Editor colors are centralized in `src/client/editorThemes.ts`. Light is the
 default and retains the existing LaTeX and generic BibTeX/BST syntax colors;
 the optional dark palette draws on One Dark's blue-gray surfaces with clear
-prose, subdued cool-gray comments and quieter line numbers. One browser-local light/dark preference controls the whole
-application and editor; the switch sits near the page's left edge above the
-dashboard footer, not aligned to the centered content or in a floating overlay.
+prose, subdued cool-gray comments and quieter line numbers. One browser-local
+light/dark/system preference controls the whole application and editor. The
+dashboard user popover groups identity, GitHub integration, language, theme and
+sign-out controls. Explicit light/dark selections remain unchanged; system mode
+follows OS color-scheme changes while the page is open. The default remains light.
 It is stored in localStorage
 (scoped to the deployment base path), never in the database or tied to a
 user/project. Other tabs follow

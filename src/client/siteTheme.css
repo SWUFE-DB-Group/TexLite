@@ -53,25 +53,33 @@
 :root[data-theme="dark"] .pdf-document::-webkit-scrollbar-thumb { background: #7d8799; border-color: #282c34; }
 :root[data-theme="dark"] .pdf-document::-webkit-scrollbar-thumb:hover { background: #a0a8b7; }
 
-.dashboard-appearance {
-  flex: none;
-  width: 100%;
-  padding: 0 18px 18px;
-}
 .theme-switcher {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--ui-border, #dce4de);
+  border-radius: 9px;
+  background: var(--ui-subtle, #f5f7f5);
+}
+.theme-switcher button {
+  flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 34px;
-  padding: 7px 12px;
-  border: 1px solid var(--ui-border, #cbd5ce);
-  border-radius: 999px;
-  background: var(--ui-surface, #fff);
+  gap: 5px;
+  min-width: 0;
+  min-height: 33px;
+  padding: 6px 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--ui-muted, #526158);
-  box-shadow: 0 2px 8px #0000000a;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
 }
-.theme-switcher:hover { border-color: var(--ui-accent-border, #8eaa98); color: var(--ui-accent, #176b44); }
-.theme-switcher:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 3px; }
+.theme-switcher button > svg { flex: none; }
+.theme-switcher button:hover { background: var(--ui-hover, #eaf2ec); color: var(--ui-accent, #176b44); }
+.theme-switcher button[aria-pressed="true"] { background: var(--ui-accent-bg, #e0efe5); color: var(--ui-accent, #176b44); font-weight: 650; box-shadow: inset 0 0 0 1px var(--ui-accent-border, #bed7c7); }
+.theme-switcher button:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 2px; }

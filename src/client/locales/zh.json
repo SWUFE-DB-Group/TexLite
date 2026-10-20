@@ -6,8 +6,7 @@
     "languageEnglish": "English", "languageChinese": "中文"
   },
   "theme": {
-    "light": "浅色", "dark": "深色",
-    "switchToDark": "切换为深色主题", "switchToLight": "切换为浅色主题"
+    "title": "主题", "light": "浅色", "dark": "深色", "system": "跟随系统"
   },
   "updates": {
     "available": "TexLite {{version}} 已发布。",
@@ -28,6 +27,7 @@
     "newPassword": "新密码", "confirmPassword": "确认新密码", "updatePassword": "更新密码", "mismatch": "两次输入的新密码不一致", "passwordMinimum": "至少 {{count}} 位", "sessionExpired": "登录状态已过期，请重新登录。", "logout": "退出"
   },
   "account": {
+    "menu": "{{name}} 的用户菜单",
     "openGithubSettings": "打开账户设置和 GitHub 集成",
     "githubTitle": "GitHub 集成",
     "githubDescription": "连接 GitHub 账户，用于从项目创建远程仓库。凭据属于你的 TexLite 账户，不再单独保存在某个项目中。",
