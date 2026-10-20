@@ -31,7 +31,7 @@ PACKAGE_FILE="texlite-${PACKAGE_VERSION}.tgz"
 
 npm pack --pack-destination "$TEST_ROOT"
 npm_config_cache="$TEST_ROOT/npm-cache" \
-npm install --prefix "$TEST_ROOT/prefix" --global "$TEST_ROOT/$PACKAGE_FILE"
+npm install --omit=dev --prefix "$TEST_ROOT/prefix" --global "$TEST_ROOT/$PACKAGE_FILE"
 
 "$TEST_ROOT/prefix/bin/texlite" --version
 "$TEST_ROOT/prefix/bin/texlite" --help
@@ -39,6 +39,16 @@ npm install --prefix "$TEST_ROOT/prefix" --global "$TEST_ROOT/$PACKAGE_FILE"
 
 The version in `PACKAGE_FILE` is read from `package.json`, so the commands also
 work after a version bump.
+
+Frontend libraries are development dependencies. The tarball already contains
+the built application, PDF worker, formatter WASM, fonts, and generated Lucide
+SVGs; the installed server must work without the frontend packages or build
+tools in `node_modules`. Run the installed commands from outside the source
+checkout to avoid accidentally resolving dependencies from its `node_modules`.
+Check math previews, PDF preview, formatting, bibliography editing, and a custom
+project icon in the browser as well as the server workflows below. Source
+development and release builds still require `npm ci` with development
+dependencies included.
 
 ## Test configuration, data paths, and environment checks
 

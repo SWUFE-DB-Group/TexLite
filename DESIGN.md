@@ -99,6 +99,14 @@ and administrators can switch the displayed method. Docker help updates the
 launcher with `git pull --ff-only` before image pull/container recreation;
 it explicitly notes that images can lag behind npm. Updates remain manual.
 
+The npm package includes the built frontend, PDF worker, formatter WASM, fonts,
+and generated Lucide SVGs. Browser libraries and build tools are development
+dependencies; the published installation needs only the server's runtime
+dependencies. Source builds require development dependencies. A dependency
+check covers emitted imports from server and shared modules, including dynamic
+imports, while release testing installs the tarball outside the checkout with
+`--omit=dev` as described in [NPM_TESTING.md](NPM_TESTING.md).
+
 The npm package keeps configuration outside the package installation. The
 effective configuration is selected in this order:
 
