@@ -1,10 +1,11 @@
 import { useId, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ChevronDown, Github, Globe2, LoaderCircle, LogOut, Palette } from "lucide-react";
+import { ChevronDown, Globe2, LoaderCircle, LogOut, Palette } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { User } from "./types";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { errorMessage } from "./errors";
+import { GitHubIcon } from "./GitHubIcon";
 
 export function UserMenu({ user, onGitHub, onSignOut }: {
   user: User;
@@ -45,7 +46,7 @@ export function UserMenu({ user, onGitHub, onSignOut }: {
           <span className="user-menu-avatar" aria-hidden="true">{initial}</span>
           <div><strong>{name}</strong><span>@{user.username}</span></div>
           <button type="button" className="user-menu-github" aria-label={t("account.openGithubSettings")} data-tooltip={t("account.githubTitle")}
-            onClick={() => { openingGitHub.current = true; setOpen(false); onGitHub(); }}><Github size={19} aria-hidden="true" /></button>
+            onClick={() => { openingGitHub.current = true; setOpen(false); onGitHub(); }}><GitHubIcon size={19} /></button>
         </div>
         <div className="user-menu-settings">
           <div className="user-menu-language">

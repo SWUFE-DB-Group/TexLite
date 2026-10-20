@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronDown, ChevronRight, CloudUpload, ExternalLink, Eye, EyeOff, FolderGit2, GitBranch, GitCommitHorizontal, Github,
+  ChevronDown, ChevronRight, CloudUpload, ExternalLink, Eye, EyeOff, FolderGit2, GitBranch, GitCommitHorizontal,
   LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Undo2
 } from "lucide-react";
 import { api } from "./api";
 import { Modal } from "./Dialog";
 import type { GitCommit, Project, ProjectGitStatus } from "./types";
+import { GitHubIcon } from "./GitHubIcon";
 
 interface GitDiffResult {
   title: string;
@@ -177,7 +178,7 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
       {notice && <p className="git-message success" role="status"><GitBranch size={14} />{notice}</p>}
       {status && <>
         <section className="git-section">
-          <button className="git-section-toggle" type="button" aria-expanded={authenticationExpanded} onClick={() => setAuthenticationExpanded((current) => !current)}><span className="git-section-heading"><Github size={16} /><span><strong>{t("git.authentication")}</strong><small>{status.tokenConfigured ? t("git.connectedAs", { login: status.githubLogin }) : t("git.authenticationHint")}</small></span></span>{authenticationExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
+          <button className="git-section-toggle" type="button" aria-expanded={authenticationExpanded} onClick={() => setAuthenticationExpanded((current) => !current)}><span className="git-section-heading"><GitHubIcon size={16} /><span><strong>{t("git.authentication")}</strong><small>{status.tokenConfigured ? t("git.connectedAs", { login: status.githubLogin }) : t("git.authenticationHint")}</small></span></span>{authenticationExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
           {authenticationExpanded && <div className="git-section-content">
             <p className="git-account-guidance">{status.tokenConfigured
               ? t("git.accountTokenManaged", { login: status.githubLogin })
@@ -190,7 +191,7 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
           {repositoryExpanded && <div className="git-section-content">{status.remoteUrl ? <div className="git-repository-card"><div><strong>{status.repositoryName ?? t("git.origin")}</strong><small>{status.branch ?? t("git.detachedAt", { revision: status.latestCommit?.shortSha ?? "HEAD" })} · {status.dirty ? t("git.changedFiles", { count: status.changedFiles }) : t("git.clean")}</small></div>{status.repositoryHtmlUrl && <a href={status.repositoryHtmlUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />{t("git.openGitHub")}</a>}</div> : <>
               <label className="form-field">{t("git.repositoryName")}<input value={repositoryName} onChange={(event) => setRepositoryName(event.target.value)} /></label>
               <label className="checkbox-field"><input type="checkbox" checked={isPrivate} onChange={(event) => setIsPrivate(event.target.checked)} />{t("git.privateRepository")}</label>
-              <button className="git-primary-action" disabled={Boolean(busy) || !status.tokenConfigured || !repositoryName.trim()} onClick={createRepository}>{busy === "repository" ? <LoaderCircle className="spin" size={14} /> : <Github size={14} />}{t("git.createRepository")}</button>
+              <button className="git-primary-action" disabled={Boolean(busy) || !status.tokenConfigured || !repositoryName.trim()} onClick={createRepository}>{busy === "repository" ? <LoaderCircle className="spin" size={14} /> : <GitHubIcon size={14} />}{t("git.createRepository")}</button>
             </>}</div>}
         </section>
 

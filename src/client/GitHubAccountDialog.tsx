@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ExternalLink, Github, LoaderCircle, Trash2 } from "lucide-react";
+import { ExternalLink, LoaderCircle, Trash2 } from "lucide-react";
 import { api } from "./api";
 import { Modal } from "./Dialog";
 import { errorMessage } from "./errors";
 import { GitTokenGuidance } from "./GitTokenGuidance";
+import { GitHubIcon } from "./GitHubIcon";
 
 interface GitHubAccountStatus {
   tokenConfigured: boolean;
@@ -57,10 +58,10 @@ export function GitHubAccountDialog({ open, onOpenChange }: { open: boolean; onO
     <div className="git-dialog account-github-dialog">
       {busy === "load" && !status && <div className="git-loading"><LoaderCircle className="spin" size={20} />{t("common.loading")}</div>}
       {error && <p className="git-message error dialog-error">{error}</p>}
-      {notice && <p className="git-message success"><Github size={14} />{notice}</p>}
+      {notice && <p className="git-message success"><GitHubIcon size={14} />{notice}</p>}
       {status && <>
         <GitTokenGuidance />
-        {status.tokenConfigured && <div className="git-account"><Github size={17} /><span>{t("git.connectedAs", { login: status.githubLogin })}</span><button className="danger-text" disabled={Boolean(busy)} onClick={() => void remove()}>{busy === "remove" ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}{t("git.removeToken")}</button></div>}
+        {status.tokenConfigured && <div className="git-account"><GitHubIcon size={17} /><span>{t("git.connectedAs", { login: status.githubLogin })}</span><button className="danger-text" disabled={Boolean(busy)} onClick={() => void remove()}>{busy === "remove" ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}{t("git.removeToken")}</button></div>}
         <label className="form-field">{status.tokenConfigured ? t("git.replaceToken") : t("git.token")}
           <input type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" autoCorrect="off"
             value={token} placeholder={t("git.tokenPlaceholder")} onChange={(event) => setToken(event.target.value)} />

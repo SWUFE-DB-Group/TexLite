@@ -111,7 +111,7 @@
     "i18next": "^26.5.3",
     "i18next-browser-languagedetector": "^8.2.0",
     "katex": "^0.18.4",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.60.0",
     "pdfjs-dist": "^6.2.108",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

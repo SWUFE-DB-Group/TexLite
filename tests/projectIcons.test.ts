@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isProjectIconName, normalizeLucideIconName, projectIconNames } from "../src/shared/projectIcons.js";
+import { lucideIconSvg, resolveLucideIconName } from "../src/server/lucideIcons.js";
+import { legacyLucideBrandIcons } from "../src/shared/legacyLucideBrandIcons.js";
 
 describe("project icon catalog", () => {
   it("keeps persisted icon names within the curated catalog", () => {
@@ -21,5 +23,18 @@ describe("project icon catalog", () => {
     expect(normalizeLucideIconName("file_text")).toBeNull();
     expect(normalizeLucideIconName("not/an/icon")).toBeNull();
     expect(isProjectIconName("air-vent")).toBe(false);
+  });
+
+  it("ships every curated icon and preserves persisted aliases alongside official slugs", () => {
+    for (const name of [...projectIconNames, "file-code-2", "file-code2", "building-2", "building2", "history", "album", "alarm-clock-minus"]) {
+      expect(resolveLucideIconName(name), name).toBe(name);
+    }
+  });
+
+  it("serves brand icons saved before the Lucide 1.x migration", async () => {
+    for (const name of Object.keys(legacyLucideBrandIcons)) {
+      expect(resolveLucideIconName(name), name).toBe(name);
+      expect(await lucideIconSvg(name), name).toMatch(/^<svg\b/);
+    }
   });
 });
