@@ -49,4 +49,35 @@ describe("document language", () => {
     expect(documentElement.lang).toBe("zh-CN");
     expect(storage.get("i18nextLng")).toBe("zh");
   });
+
+  it("restores the chosen language after reloading with a different browser language", async () => {
+    const first = await loadLanguage("en-US");
+    await first.i18n.changeLanguage("zh");
+
+    const reloaded = await loadLanguage("en-GB", first.storage.get("i18nextLng"));
+    expect(reloaded.i18n.resolvedLanguage).toBe("zh");
+    expect(reloaded.documentElement.lang).toBe("zh-CN");
+    expect(reloaded.i18n.t("auth.logout")).toBe("退出");
+  });
+
+  it.each([
+    ["en", 0, "0 projects"],
+    ["en", 1, "1 project"],
+    ["en", 2, "2 projects"],
+    ["zh", 0, "0 个项目"],
+    ["zh", 1, "1 个项目"],
+    ["zh", 2, "2 个项目"]
+  ] as const)("resolves plural project counts in %s (%s)", async (language, count, expected) => {
+    const { i18n } = await loadLanguage(language);
+    expect(i18n.t("tags.projectCount", { count })).toBe(expected);
+  });
+
+  it("interpolates display names as text without interpreting translation markup", async () => {
+    const { i18n } = await loadLanguage("en-US");
+    const name = "Alice & Bob <研究组>";
+    expect(i18n.t("account.menu", { name })).toBe(`User menu for ${name}`);
+
+    await i18n.changeLanguage("zh");
+    expect(i18n.t("account.menu", { name })).toBe(`${name} 的用户菜单`);
+  });
 });
