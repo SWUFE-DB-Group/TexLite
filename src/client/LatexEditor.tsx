@@ -21,7 +21,7 @@ import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
 import type { Comment, LatexCompletionIndex } from "./types";
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
-import { editorColorScheme, editorGenericHighlightStyle } from "./editorThemeExtension";
+import { editorColorScheme, editorGenericHighlightStyle, selectedCommentHighlighting } from "./editorThemeExtension";
 import { useTheme, type Theme } from "./theme";
 import { countSearchMatches, searchQuerySignature } from "./editorSearch";
 import { bibtexCompletionSource, bibtexHighlightStyle, bibtexLanguage, bstLanguage, createBibtexEditorExtensions, latexLanguage, localizedBibtexMessages } from "./latexLanguage";
@@ -214,7 +214,7 @@ export function LatexEditor({
           onComment: (...args) => onAddCommentRef.current(...args),
           onHistory: (...args) => onSelectionHistoryRef.current(...args)
         }),
-        foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
+        foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), selectedCommentHighlighting, highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
         isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : latexLanguage,
         ...(isBibtexFile || isBstFile ? [syntaxHighlighting(editorGenericHighlightStyle)] : [syntaxHighlighting(latexHighlightStyle), latexSemanticHighlighting]),
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),

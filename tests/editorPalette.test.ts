@@ -25,14 +25,14 @@ function contrast(foreground: string, background: string): number {
 
 describe.each(["light", "dark"] as const)("%s editor palette", (theme) => {
   const palette = editorPalettes[theme];
-  it.each(["ink", "cmd", "structure", "env", "math", "key", "task", "special", "comment"])("keeps %s text at WCAG AA contrast on the editor background", (name) => {
+  it.each(["ink", "cmd", "structure", "env", "math", "key", "task", "special", "comment", "bracket"])("keeps %s text at WCAG AA contrast on the editor background", (name) => {
     expect(contrast(palette[name as keyof EditorPalette], palette["editor-bg"])).toBeGreaterThanOrEqual(4.5);
   });
 
   it("shares structural and environment color, and keeps reference keys distinct from warnings", () => {
     expect(palette.structure).toBe(palette.env);
     expect(palette.key).not.toBe(palette.warning);
-    expect(css).toContain(".cm-tl-bracket { color: var(--tl-comment)");
+    expect(css).toContain(".cm-tl-bracket { color: var(--tl-bracket)");
   });
 
   it("keeps the active-line tint translucent so it cannot obscure drawn selections", () => {
@@ -57,6 +57,14 @@ describe.each(["light", "dark"] as const)("%s editor palette", (theme) => {
 });
 
 describe("editor theme integration", () => {
+  it("keeps dark comments below syntax and ordinary line numbers below comments", () => {
+    const palette = editorPalettes.dark;
+    expect(luminance(palette.comment)).toBeLessThan(luminance(palette.cmd));
+    expect(luminance(palette.comment)).toBeLessThan(luminance(palette.bracket));
+    expect(luminance(palette.gutter)).toBeLessThan(luminance(palette.comment));
+    expect(palette["code-comment"]).toBe(palette.comment);
+  });
+
   it("resolves every editor CSS color token in each palette", () => {
     for (const theme of ["light", "dark"] as const) {
       const variables = editorThemeVariables(theme);
@@ -86,8 +94,8 @@ describe("editor theme integration", () => {
 
   it("keeps dark syntax readable under selection and search highlights", () => {
     const palette = editorPalettes.dark;
-    for (const background of ["selection-bg", "search-bg"] as const) {
-      for (const foreground of ["ink", "cmd", "structure", "math", "key", "special", "comment"] as const) {
+    for (const background of ["selection-bg", "selection-inactive-bg", "search-bg"] as const) {
+      for (const foreground of ["ink", "cmd", "structure", "math", "key", "special", "comment-selected", "bracket"] as const) {
         expect(contrast(palette[foreground], palette[background]), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
       }
     }

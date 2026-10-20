@@ -1,5 +1,7 @@
-import { defaultHighlightStyle, HighlightStyle } from "@codemirror/language";
-import { EditorView } from "@codemirror/view";
+import { defaultHighlightStyle, HighlightStyle, syntaxTree } from "@codemirror/language";
+import type { EditorState, Range } from "@codemirror/state";
+import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import type { EditorTheme } from "./editorThemes";
 
 // Adapt CodeMirror's shipped generic highlighter rather than duplicating its
@@ -12,8 +14,43 @@ const genericColorTokens: Readonly<Record<string, string>> = {
 
 export const editorGenericHighlightStyle = HighlightStyle.define(defaultHighlightStyle.specs.map((spec) => {
   const token = typeof spec.color === "string" ? genericColorTokens[spec.color.toLowerCase()] : undefined;
-  return token ? { ...spec, color: `var(--tl-code-${token})` } : spec;
+  return token ? { ...spec, color: `var(--tl-code-${token})`, ...(token === "comment" ? { class: "cm-code-comment" } : {}) } : spec;
 }));
+
+const commentHighlighter = tagHighlighter([{ tag: tags.comment, class: "comment" }]);
+const selectedComment = Decoration.mark({ class: "cm-selected-comment" });
+
+/** Use each language's comment tags, including BibTeX and BST, without rescanning source text. */
+export function selectedCommentDecorations(state: EditorState, visibleRanges: readonly { from: number; to: number }[]): DecorationSet {
+  if (!state.facet(EditorView.darkTheme)) return Decoration.none;
+  const tree = syntaxTree(state);
+  const marks: Range<Decoration>[] = [];
+  for (const selection of state.selection.ranges) {
+    if (selection.empty) continue;
+    for (const visible of visibleRanges) {
+      const from = Math.max(selection.from, visible.from), to = Math.min(selection.to, visible.to);
+      if (from >= to) continue;
+      highlightTree(tree, commentHighlighter, (start, end) => {
+        marks.push(selectedComment.range(start, end));
+      }, from, to);
+    }
+  }
+  return Decoration.set(marks, true);
+}
+
+export const selectedCommentHighlighting = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+  constructor(view: EditorView) {
+    this.decorations = selectedCommentDecorations(view.state, view.visibleRanges);
+  }
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.selectionSet || update.viewportChanged
+      || syntaxTree(update.startState) !== syntaxTree(update.state)
+      || update.startState.facet(EditorView.darkTheme) !== update.state.facet(EditorView.darkTheme)) {
+      this.decorations = selectedCommentDecorations(update.state, update.view.visibleRanges);
+    }
+  }
+}, { decorations: (plugin) => plugin.decorations });
 
 const schemes = {
   light: EditorView.theme({}, { dark: false }),

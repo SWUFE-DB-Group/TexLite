@@ -609,7 +609,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-host .cm-gutters { color: var(--tl-gutter); background: var(--tl-editor-bg); border-color: var(--tl-border); }
 .editor-host .cm-content { caret-color: var(--tl-cursor); }
 .editor-host .cm-cursor, .editor-host .cm-dropCursor { border-left-color: var(--tl-cursor); }
-.editor-host .cm-foldPlaceholder { background: var(--tl-literal-bg); border-color: var(--tl-border); color: var(--tl-comment); }
+.editor-host .cm-foldPlaceholder { background: var(--tl-literal-bg); border-color: var(--tl-border); color: var(--tl-bracket); }
 .editor-host .cm-selectionMatch { background: var(--tl-active-line); }
 .editor-host .cm-tooltip { color: var(--tl-ink); background: var(--tl-completion-bg); border-color: var(--tl-completion-border); }
 .editor-host .cm-tooltip-section:not(:first-child) { border-top-color: var(--tl-completion-border); }
@@ -660,13 +660,20 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-host .cm-tl-structure { color: var(--tl-structure); font-weight: 600; }
 .editor-host .cm-tl-environment { color: var(--tl-env); }
 .editor-host .cm-tl-heading { font-weight: 600; }
-.editor-host .cm-tl-bracket { color: var(--tl-comment); font-weight: 400; }
+.editor-host .cm-tl-bracket { color: var(--tl-bracket); font-weight: 400; }
 .editor-host .cm-tl-special { color: var(--tl-special); }
 .editor-host .cm-tl-key { color: var(--tl-key); }
 .editor-host .cm-tl-comment { color: var(--tl-comment); font-style: normal; font-weight: 400; }
+.editor-host .cm-code-comment { color: var(--tl-code-comment); font-style: normal; }
+.editor-host .cm-selected-comment, .editor-host .cm-selected-comment :is(.cm-tl-comment, .cm-code-comment) { color: var(--tl-comment-selected); }
+:root[data-theme="dark"] .editor-host .cm-activeLine { --tl-comment: var(--tl-comment-selected); --tl-code-comment: var(--tl-comment-selected); }
+:root[data-theme="dark"] .editor-host :is(.cm-tl-comment, .cm-code-comment)::selection { color: var(--tl-comment-selected); }
+:root[data-theme="dark"] .editor-host :is(.cm-tl-comment, .cm-code-comment) .cm-searchMatch,
+:root[data-theme="dark"] .editor-host .cm-searchMatch :is(.cm-tl-comment, .cm-code-comment),
+:root[data-theme="dark"] .editor-host :is(.cm-tl-comment, .cm-code-comment).cm-searchMatch { color: var(--tl-comment-selected); }
 .editor-host .cm-tl-literal { color: inherit; background: var(--tl-literal-bg); font-weight: 400; }
 .editor-host .cm-tl-math-delimiter, .editor-host .cm-tl-math-command, .editor-host .cm-tl-math-command .cm-tl-command { color: var(--tl-math); }
-.editor-host .cm-tl-comment-task, .editor-host .cm-tl-comment-task .cm-tl-comment { color: var(--tl-task); font-weight: 600; }
+.editor-host .cm-tl-comment-task, .editor-host .cm-tl-comment-task .cm-tl-comment, .editor-host .cm-tl-comment-task .cm-selected-comment, .editor-host .cm-selected-comment .cm-tl-comment-task { color: var(--tl-task); font-weight: 600; }
 .editor-host .cm-editor :is(.cm-matchingBracket, .cm-tl-environment-match), .editor-host .cm-editor :is(.cm-matchingBracket, .cm-tl-environment-match) * { color: var(--tl-match-fg); }
 .editor-host .cm-latex-citation-key, .editor-host .cm-latex-label-key { color: var(--tl-key); }
 .editor-host :is(.cm-latex-citation-key, .cm-latex-label-key).cm-reference-navigation-active { border-radius: 2px; background: color-mix(in srgb, var(--tl-key) 10%, var(--tl-reference-bg)); text-decoration: underline solid var(--tl-key) 1px; text-decoration-skip-ink: none; text-underline-offset: 2px; cursor: pointer; }

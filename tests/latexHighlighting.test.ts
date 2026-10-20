@@ -104,6 +104,29 @@ describe("semantic LaTeX palette", () => {
     expect(fixture(source).classesAt(source.indexOf(symbol))).toContain("cm-tl-special");
   });
 
+  it.each([
+    [String.raw`40.16\% remains text.`, false],
+    [String.raw`\\% comment with { $ \ref{ignored}`, true],
+    [String.raw`%\\ entire commented-out line`, true],
+    [String.raw`\\\% remains text.`, false]
+  ])("keeps escaped percent signs and real comments visually distinct: %s", (line, isComment) => {
+    const source = `${line}\n\\textbf{after}`;
+    const { classesAt, marks } = fixture(source);
+    const percent = source.indexOf("%");
+    expect(classesAt(percent)).toEqual([isComment ? "cm-tl-comment" : "cm-tl-special"]);
+    expect(classesAt(source.indexOf("\\textbf"))).toEqual(["cm-tl-command"]);
+    expect(classesAt(source.indexOf("after"))).toEqual([]);
+    expect(marks().some((range) => range.class === "cm-tl-math-command")).toBe(false);
+  });
+
+  it.each([String.raw`\verb|%|`, String.raw`\verb*|% { $|`, String.raw`\lstinline|%|`])("keeps percent signs literal in %s and resumes comments after it", (literal) => {
+    const source = `${literal} % actual comment\n\\textbf{after}`;
+    const { classesAt } = fixture(source);
+    expect(classesAt(source.indexOf("%"))).toEqual(["cm-tl-literal"]);
+    expect(classesAt(source.lastIndexOf("%"))).toEqual(["cm-tl-comment"]);
+    expect(classesAt(source.indexOf("after"))).toEqual([]);
+  });
+
   it.each(["$x + \\alpha + 1$", "$$x + \\alpha + 1$$", String.raw`\(x + \alpha + 1\)`, String.raw`\[x + \alpha + 1\]`])("colors math commands and delimiters without decorating the whole region: %s", (math) => {
     const source = `Before ${math} after`;
     const { classesAt, marks } = fixture(source);
@@ -221,6 +244,7 @@ P\left(
     const source = `\\begin{${name}}\n$ \\alpha % TODO { \\cite{key}\n\\end{${name}}\nNormal text.`;
     const { classesAt, marks } = fixture(source);
     expect(classesAt(source.indexOf("$"))).toContain("cm-tl-literal");
+    expect(classesAt(source.indexOf("%"))).toEqual(["cm-tl-literal"]);
     expect(marks().every((range) => range.class === "cm-tl-environment-match")).toBe(true);
     expect(classesAt(source.indexOf("Normal"))).toEqual([]);
   });

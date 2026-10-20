@@ -248,6 +248,38 @@ describe("structural LaTeX parser", () => {
     expect(source.slice(comments[0]!.from, comments[0]!.to).trim()).toBe("% is a comment");
   });
 
+  it.each([
+    [String.raw`40.16\% remains text.`, ""],
+    [String.raw`\\% comment with an unmatched } and $`, "% comment with an unmatched } and $"],
+    [String.raw`%\\ an entirely commented-out line`, String.raw`%\\ an entirely commented-out line`],
+    [String.raw`\\\% remains text.`, ""],
+    [String.raw`\\\\% another comment {`, "% another comment {"]
+  ])("respects percent escaping without corrupting the next line: %s", (line, expectedComment) => {
+    const source = `${line}\n\\textbf{after}`;
+    const tree = parseWithoutErrors(source);
+    expect(nodes(tree).filter((node) => node.name === "Comment")
+      .map((node) => source.slice(node.from, node.to).trimEnd()))
+      .toEqual(expectedComment ? [expectedComment] : []);
+    const state = stateFor(source);
+    const opening = source.lastIndexOf("{");
+    expect(matchBrackets(state, source.length, -1)).toMatchObject({ matched: true, end: { from: opening, to: opening + 1 } });
+  });
+
+  it("updates comment boundaries when a backslash is inserted and removed before a percent sign", () => {
+    const source = "40.16\\% remains text\n\\textbf{after}";
+    let state = stateFor(source);
+    const slash = source.indexOf("\\");
+    for (const changes of [{ from: slash, insert: "\\" }, { from: slash, to: slash + 1 }]) {
+      state = state.update({ changes }).state;
+      const tree = ensureSyntaxTree(state, state.doc.length, 200)!;
+      expect(tree).not.toBeNull();
+      expect(nodes(tree)).toEqual(nodes(parser.parse(state.doc.toString())));
+      const comments = nodes(tree).filter((node) => node.name === "Comment");
+      expect(comments).toHaveLength("insert" in changes ? 1 : 0);
+      expect(tree.resolveInner(state.doc.toString().indexOf("after") + 1).name).toBe("Normal");
+    }
+  });
+
   it("keeps outer braces matchable across nested environments", () => {
     const source = String.raw`\resizebox{\linewidth}{!}{
 \begin{tabular}{ll}

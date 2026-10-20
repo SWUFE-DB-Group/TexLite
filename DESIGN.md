@@ -429,8 +429,8 @@ in `THIRD_PARTY_NOTICES.md`. The parser recognizes command arguments, math,
 sections, and environments, with incremental tree reuse during editing.
 Editor colors are centralized in `src/client/editorThemes.ts`. Light is the
 default and retains the existing LaTeX and generic BibTeX/BST syntax colors;
-the optional dark palette draws on One Dark's blue-gray surfaces with brighter
-prose and comments. One browser-local light/dark preference controls the whole
+the optional dark palette draws on One Dark's blue-gray surfaces with clear
+prose, subdued cool-gray comments and quieter line numbers. One browser-local light/dark preference controls the whole
 application and editor; the switch sits near the page's left edge above the
 dashboard footer, not aligned to the centered content or in a floating overlay.
 It is stored in localStorage
@@ -445,6 +445,11 @@ recreating the editor, document, selection, undo history or Yjs binding.
 Generic BibTeX/BST highlighting adapts CodeMirror's shipped tag rules to the
 same palette variables. Editor popups, completion, search, Vim status,
 diagnostics, source comments and gutter actions use those variables too.
+Comments and brackets have independent color roles. In dark mode, comments on
+the active line, inside a selection or under a search highlight are brighter
+to remain readable. Selection marks use the existing language tree's comment
+tags, restricted to the intersection of the selection and visible ranges;
+they do not introduce another source scanner or force parsing.
 
 LaTeX has a semantic palette distinct from generic BibTeX/BST syntax:
 bright blue ordinary commands, teal structure commands and environment names,
