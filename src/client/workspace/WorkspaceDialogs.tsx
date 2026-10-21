@@ -137,6 +137,8 @@ export function WorkspaceDialogs({
     <Modal
       open={commentOpen}
       draggable
+      wide
+      className="comment-compose-modal"
       title={t("editor.addComment")}
       description={commentSelection.selectedText
         ? t("editor.commentDescription", { count: commentSelection.endOffset - commentSelection.startOffset })

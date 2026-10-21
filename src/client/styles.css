@@ -1002,6 +1002,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-reply-form textarea:focus { border-color: var(--ui-accent-border, #176b44); box-shadow: 0 0 0 2px #176b4420; }
 .mention-textarea { position: relative; display: block; min-width: 0; }
 .mention-textarea > textarea { box-sizing: border-box; }
+.comment-compose-modal .mention-textarea > textarea { display: block; min-width: 0; max-width: 100%; max-height: min(360px, 45dvh); resize: vertical; overflow: auto; }
 .mention-menu { position: absolute; z-index: 18; left: 0; right: 0; bottom: calc(100% + 4px); display: flex; flex-direction: column; max-height: 190px; overflow: auto; padding: 4px; border: 1px solid var(--ui-border, #c8d3ca); border-radius: 7px; background: var(--ui-raised, #fff); box-shadow: 0 10px 24px #20312722; }
 .mention-menu button { min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 5px; padding: 6px 7px; background: transparent; color: var(--ui-text, #405147); font-size: 11px; text-align: left; }
 .mention-menu button:hover, .mention-menu button.active { background: var(--ui-accent-bg, #eaf3ec); color: var(--ui-accent, #176b44); }
@@ -1225,6 +1226,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .dialog-footer .update-dismiss-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-color: var(--ui-border, #dcc9c4); background: var(--ui-surface, #fff9f7); color: var(--ui-danger, #7d4941); font-size: 13px; font-weight: 500; box-shadow: 0 1px 2px #63362b0a; transition: background-color 150ms, border-color 150ms; }
 .dialog-footer .update-dismiss-action:hover:not(:disabled) { border-color: var(--ui-danger-border, #c99085); background: var(--ui-hover, #ffede7); }
 .dialog-footer .primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-color: var(--ui-accent-border, #176b44); background: #176b44; color: white; }
+.comment-compose-modal .dialog-footer button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 7px 12px; font-size: 12px; font-weight: 500; line-height: 1.25; }
+.comment-compose-modal .dialog-footer .primary { font-weight: 600; }
 .dialog-footer .danger, button.danger { border-color: var(--ui-danger-border, #b3261e); background: #b3261e; color: white; }
 .citation-library-dialog { display: flex; flex-direction: column; gap: 12px; }
 .citation-library-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--ui-border, #d7ded8); border-radius: 9px; background: var(--ui-surface, #f4f7f4); }
@@ -1587,9 +1590,16 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-restore-project { margin-left: auto; border: 1px solid var(--ui-accent-border, #176b44); border-radius: 7px; padding: 7px 11px; background: #176b44; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 1px 2px #123c2a26; }
 .history-restore-project:hover:not(:disabled) { border-color: var(--ui-accent-border, #115736); background: #115f3b; box-shadow: 0 2px 5px #123c2a2b; }
 .history-snapshot-actions button:focus-visible, .history-file-actions button:focus-visible { outline: 2px solid var(--ui-accent-border, #70ad88); outline-offset: 2px; }
-.history-label { display: flex; gap: 8px; margin-bottom: 12px; }
-.history-label label { flex: 1; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid var(--ui-border, #cdd6cf); border-radius: 6px; background: var(--ui-surface, #fff); }
-.history-label input { width: 100%; border: 0; padding: 8px 0; outline: 0; }
+.history-label { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.history-label label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 9px; border: 1px solid var(--ui-border, #cdd6cf); border-radius: 6px; background: var(--ui-surface, #fff); color: var(--ui-muted, #778179); transition: border-color 150ms, box-shadow 150ms; }
+.history-label label > svg { flex: none; }
+.history-label label:focus-within { border-color: var(--ui-accent-border, #8eb29c); box-shadow: 0 0 0 2px var(--ui-focus-ring, #176b4420); }
+.history-label input { width: 100%; min-width: 0; border: 0; padding: 6px 0; background: transparent; color: var(--ui-text, #34443a); font-size: 12px; line-height: 1.4; outline: 0; }
+.history-label-save { -webkit-appearance: none; appearance: none; flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; border: 1px solid var(--ui-border, #cdd6cf); border-radius: 6px; padding: 6px 10px; background: var(--ui-subtle, #f3f7f4); color: var(--ui-accent, #315e43); font-size: 11px; font-weight: 600; line-height: 1.2; white-space: nowrap; box-shadow: 0 1px 2px #17321a08; transition: background-color 150ms, border-color 150ms, color 150ms; }
+.history-label-save > svg { flex: none; }
+.history-label-save:hover:not(:disabled) { border-color: var(--ui-accent-border, #8eb29c); background: var(--ui-accent-bg, #e9f2ec); }
+.history-label-save:focus-visible { outline: 2px solid var(--ui-accent-border, #70ad88); outline-offset: 2px; }
+.history-label-save:disabled { background: var(--ui-surface, #fff); color: var(--ui-muted, #778179); box-shadow: none; opacity: .6; }
 .history-files { display: flex; flex-direction: column; gap: 7px; }
 .history-files-toolbar { display: flex; align-items: center; gap: 8px; }
 .history-files-heading { display: inline-flex; align-items: center; gap: 6px; color: var(--ui-text, #425347); font-size: 11px; font-weight: 650; }

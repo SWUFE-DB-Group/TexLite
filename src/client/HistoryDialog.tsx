@@ -431,8 +431,8 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
               {canRestore && <button type="button" className="history-restore-project" disabled={controlsBusy} title={t("history.restoreProjectTitle")} onClick={() => setRestoreTarget("project")}><RotateCcw size={14} />{t("history.restoreProject")}</button>}
             </div>}
             {canRestore && <div className="history-label">
-              <label><Tag size={14} /><input value={label} maxLength={80} placeholder={t("history.labelPlaceholder")} onChange={(event) => setLabel(event.target.value)} /></label>
-              <button disabled={controlsBusy || label.trim() === (detail.version.label ?? "")} onClick={() => void saveLabel()}>{busy === "label" ? <LoaderCircle className="spin" size={13} /> : <Save size={13} />}{t("history.saveLabel")}</button>
+              <label><Tag size={14} /><input value={label} maxLength={80} aria-label={t("history.labelPlaceholder")} placeholder={t("history.labelPlaceholder")} onChange={(event) => setLabel(event.target.value)} /></label>
+              <button type="button" className="history-label-save" disabled={controlsBusy || label.trim() === (detail.version.label ?? "")} aria-busy={busy === "label"} onClick={() => void saveLabel()}>{busy === "label" ? <LoaderCircle className="spin" size={13} /> : <Save size={13} />}<span>{t("history.saveLabel")}</span></button>
             </div>}
             <div className="history-files">
               <div className="history-files-toolbar">
