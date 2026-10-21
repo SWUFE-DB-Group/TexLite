@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useId, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { AtSign, CheckCircle2, ChevronDown, ChevronUp, Reply, RotateCcw, Trash2, UserPlus, Users } from "lucide-react";
+import { AtSign, Check, CheckCircle2, ChevronRight, ChevronUp, LoaderCircle, RotateCcw, Trash2, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
-import i18n from "../i18n";
+import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
 import type { Comment, Project } from "../types";
 import { CommentActionsMenu } from "./CommentActionsMenu";
 import { CommentForm } from "./CommentForm";
@@ -34,6 +34,18 @@ function renderCommentContent(content: string): ReactNode {
   if (!nodes.length) return content;
   if (cursor < content.length) nodes.push(content.slice(cursor));
   return nodes;
+}
+
+function CommentIdentity({ name, username, highlighted, children }: {
+  name: string; username: string | null; highlighted?: boolean; children: ReactNode;
+}) {
+  return <span className="comment-identity">
+    <span className="comment-avatar" aria-hidden>{Array.from(name.trim())[0]?.toLocaleUpperCase() || "?"}</span>
+    <span className="comment-author-details">
+      <span className={`comment-author${highlighted ? " participant-match" : ""}`}><strong data-tooltip={username ? `@${username}` : undefined} data-texlite-tooltip-always>{name}</strong></span>
+      {children}
+    </span>
+  </span>;
 }
 
 export function CommentThread({
@@ -67,7 +79,8 @@ export function CommentThread({
   onEditReply: (replyId: string, content: string) => Promise<boolean>;
   onDeleteReply: (replyId: string) => Promise<boolean>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const now = useRelativeTimeNow();
   const [toggling, setToggling] = useState(false);
   const subscribe = useCallback((listener: () => void) => draftStore.subscribe(comment.id, listener), [draftStore, comment.id]);
   const getDrafts = useCallback(() => draftStore.getThread(comment.id), [draftStore, comment.id]);
@@ -102,7 +115,18 @@ export function CommentThread({
       onCancel={() => draftStore.discard(comment.id, key)} />;
   };
   const username = comment.authorUsername;
-  const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
+  const relativeTime = (value: string) => formatRelativeTime(value, i18n.resolvedLanguage ?? "en", now, (key, options) => t(key, options));
+  const formatTime = (value: string) => {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toLocaleString(i18n.resolvedLanguage, {
+      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+    }) : value;
+  };
+  const timestamp = (value: string) => <time dateTime={value} data-tooltip={formatTime(value)} data-texlite-tooltip-always>{relativeTime(value)}</time>;
+  const times = (createdAt: string, editedAt: string | null) => <span className="comment-times">
+    {timestamp(createdAt)}
+    {editedAt && <small data-tooltip={t("editor.editedAt", { time: formatTime(editedAt) })} data-texlite-tooltip-always>{t("editor.commentEdited")}</small>}
+  </span>;
   const markRead = async (mentionId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     // Reading an old mention must not make that reply disappear immediately.
@@ -111,9 +135,21 @@ export function CommentThread({
   };
   return <><article data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}${currentComment ? " review-current" : ""}`} onFocusCapture={onActivate} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
     <header className="comment-header">
-      <span className={`comment-author${selectedParticipantIds?.has(comment.authorId) ? " participant-match" : ""}`}><strong data-tooltip={username ? `@${username}` : undefined} data-texlite-tooltip-always>{comment.authorDisplayName ?? username ?? t("editor.deletedUser")}</strong></span>
+      <CommentIdentity name={comment.authorDisplayName ?? username ?? t("editor.deletedUser")} username={username} highlighted={selectedParticipantIds?.has(comment.authorId)}>
+        {times(comment.createdAt, comment.editedAt)}
+      </CommentIdentity>
       <span className="comment-header-actions">
-        <span className="comment-times"><time dateTime={comment.createdAt} title={new Date(comment.createdAt).toISOString()}>{formatTime(comment.createdAt)}</time>{comment.editedAt && <small>{t("editor.editedAt", { time: formatTime(comment.editedAt) })}</small>}</span>
+        <button type="button" className="resolve" disabled={toggling || submittingForm} aria-busy={toggling}
+          aria-label={t(comment.resolved ? "editor.reopen" : "editor.resolve")}
+          data-tooltip={t(comment.resolved ? "editor.reopen" : "editor.resolve")} data-texlite-tooltip-always
+          onClick={(event) => {
+            event.stopPropagation();
+            if (toggling) return;
+            setToggling(true);
+            void onToggle().finally(() => setToggling(false));
+          }}>
+          {toggling ? <LoaderCircle className="spin" size={15} aria-hidden /> : comment.resolved ? <RotateCcw size={15} aria-hidden /> : <Check size={16} aria-hidden />}
+        </button>
         {comment.authorId === currentUserId && !commentEditDraft?.open && <CommentActionsMenu kind="comment"
           disabled={submittingForm || toggling}
           onEdit={() => openDraft("edit-comment", comment.content)}
@@ -129,7 +165,7 @@ export function CommentThread({
       {visibleReplies.canToggle && <button type="button" className="comment-replies-toggle"
         aria-expanded={visibleReplies.expanded} aria-controls={repliesId}
         onClick={(event) => { event.stopPropagation(); onReplyExpansionChange(!visibleReplies.expanded); }}>
-        {visibleReplies.expanded ? <ChevronUp size={13} aria-hidden /> : <ChevronDown size={13} aria-hidden />}
+        {visibleReplies.expanded ? <ChevronUp size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
         {visibleReplies.expanded ? t("editor.hideEarlierReplies") : t("editor.showEarlierReplies", { count: visibleReplies.hiddenCount })}
       </button>}
       <div className="comment-replies-list" id={repliesId}>{visibleReplies.replies.map((reply) => {
@@ -138,9 +174,10 @@ export function CommentThread({
       const editing = drafts[editKey]?.open && reply.authorId === currentUserId;
       return <div data-comment-reply-id={reply.id} className={`comment-reply${highlightedReplyId === reply.id ? " mention-target" : ""}`} key={reply.id}>
         <header>
-          <span className={`comment-author${highlightReplyParticipants && selectedParticipantIds?.has(reply.authorId) ? " participant-match" : ""}`}><strong data-tooltip={reply.authorUsername ? `@${reply.authorUsername}` : undefined} data-texlite-tooltip-always>{reply.authorDisplayName ?? reply.authorUsername ?? t("editor.deletedUser")}</strong></span>
+          <CommentIdentity name={reply.authorDisplayName ?? reply.authorUsername ?? t("editor.deletedUser")} username={reply.authorUsername} highlighted={highlightReplyParticipants && selectedParticipantIds?.has(reply.authorId)}>
+            {times(reply.createdAt, reply.editedAt)}
+          </CommentIdentity>
           <span className="comment-header-actions">
-            <span className="comment-times"><time dateTime={reply.createdAt} title={new Date(reply.createdAt).toISOString()}>{formatTime(reply.createdAt)}</time>{reply.editedAt && <small>{t("editor.editedAt", { time: formatTime(reply.editedAt) })}</small>}</span>
             {reply.authorId === currentUserId && !editing && <CommentActionsMenu kind="reply"
               disabled={submittingForm || toggling}
               onEdit={() => openDraft(editKey, reply.content)}
@@ -157,22 +194,13 @@ export function CommentThread({
       <span><Trans i18nKey="editor.resolvedBy"
         values={{ user: comment.resolvedByDisplayName ?? comment.resolvedByUsername ?? t("editor.deletedUser") }}
         components={{ user: <strong className="comment-resolution-user" data-tooltip={comment.resolvedByUsername ? `@${comment.resolvedByUsername}` : undefined} data-texlite-tooltip-always /> }} />
-        {" · "}<time dateTime={comment.resolvedAt}>{formatTime(comment.resolvedAt)}</time>
+        {" · "}{timestamp(comment.resolvedAt)}
       </span>
     </div>}
-    <div className="comment-actions">
-      <button className="resolve" disabled={toggling || submittingForm} aria-busy={toggling} onClick={(event) => {
+    {!replyDraft?.open && <button type="button" className="reply-action" disabled={submittingForm || toggling} onClick={(event) => {
         event.stopPropagation();
-        if (toggling) return;
-        setToggling(true);
-        void onToggle().finally(() => setToggling(false));
-      }}>{comment.resolved ? <RotateCcw size={13} /> : <CheckCircle2 size={13} />}{comment.resolved ? t("editor.reopen") : t("editor.resolve")}</button>
-      <button className="reply-action" disabled={submittingForm || toggling} onClick={(event) => {
-        event.stopPropagation();
-        if (replyDraft?.open) draftStore.hide(comment.id, "reply");
-        else openDraft("reply");
-      }}><Reply size={13} />{t(replyDraft?.content && !replyDraft.open ? "editor.resumeReply" : "editor.reply")}</button>
-    </div>
+        openDraft("reply");
+      }}>{t(replyDraft?.content ? "editor.resumeReply" : "editor.replyPrompt")}</button>}
     {draftForm("reply", t("editor.reply"), onReply)}
   </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription", { count: comment.replies.length })} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void onDelete().then((deleted) => { if (deleted) setDeleteCommentOpen(false); })} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void onDeleteReply(deleteReplyId).then((deleted) => { if (deleted) setDeleteReplyId(null); }); }} /></>;
 }

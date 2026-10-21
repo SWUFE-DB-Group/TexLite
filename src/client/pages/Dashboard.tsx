@@ -14,6 +14,7 @@ import { ProjectActionMenu } from "./ProjectActionMenu";
 import { ProjectIconAvatar } from "../projectIcons";
 import { LazyModal, LazyPage } from "../LazyLoadBoundary";
 import { appPath, scopedStorageKey } from "../basePath";
+import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
 
 const SystemMetricsDialog = lazy(() => import("../SystemMetricsDialog").then((module) => ({ default: module.SystemMetricsDialog })));
 const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then((module) => ({ default: module.CitationLibraryDialog })));
@@ -24,46 +25,6 @@ const GitHubAccountDialog = lazy(() => import("../GitHubAccountDialog").then((mo
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
-}
-
-function formatRelativeTime(
-  value: string,
-  locale: string,
-  now: number,
-  translate: (key: string, options: { days: number; hours: number; minutes: number }) => string
-): string {
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return value;
-
-  const difference = timestamp - now;
-  const absoluteDifference = Math.abs(difference);
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const threeDays = 3 * day;
-  if (absoluteDifference > threeDays) {
-    const days = Math.floor(absoluteDifference / day);
-    const direction = difference < 0 ? "Past" : "Future";
-    return translate(`projects.relativeDays${direction}`, { days, hours: 0, minutes: 0 });
-  }
-  if (absoluteDifference >= day) {
-    const days = Math.floor(absoluteDifference / day);
-    const hours = Math.floor((absoluteDifference % day) / hour);
-    const direction = difference < 0 ? "Past" : "Future";
-    const unit = hours > 0 ? "DaysHours" : "Days";
-    return translate(`projects.relative${unit}${direction}`, { days, hours, minutes: 0 });
-  }
-  if (absoluteDifference >= hour) {
-    const hours = Math.floor(absoluteDifference / hour);
-    const minutes = Math.floor((absoluteDifference % hour) / minute);
-    const direction = difference < 0 ? "Past" : "Future";
-    const unit = minutes > 0 ? "HoursMinutes" : "Hours";
-    return translate(`projects.relative${unit}${direction}`, { days: 0, hours, minutes });
-  }
-  const unit: Intl.RelativeTimeFormatUnit = "minute";
-  const unitLength = minute;
-  const amount = Math.sign(difference) * Math.max(1, Math.floor(absoluteDifference / unitLength));
-  return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(amount, unit);
 }
 
 function formatFileSize(bytes: number): string {
@@ -133,7 +94,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [archiveBusy, setArchiveBusy] = useState("");
   const [projectMenuId, setProjectMenuId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [relativeTimeNow, setRelativeTimeNow] = useState(() => Date.now());
+  const relativeTimeNow = useRelativeTimeNow();
   const [loadedKey, setLoadedKey] = useState("");
   const requestSequence = useRef(0);
   const loadController = useRef<AbortController | null>(null);
@@ -167,10 +128,6 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   useEffect(() => {
     if (hasLoaded && !showArchived && loadedKey === currentRequestKey) onDataChange(projects, tags, pagination);
   }, [projects, tags, pagination, hasLoaded, loadedKey, currentRequestKey, showArchived]);
-  useEffect(() => {
-    const timer = window.setInterval(() => setRelativeTimeNow(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
   useEffect(() => {
     if (!tagFiltersOpen) return;
     const closeWhenOutside = (event: PointerEvent) => {
