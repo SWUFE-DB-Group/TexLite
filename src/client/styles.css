@@ -1567,10 +1567,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .selection-history-entry { overflow: hidden; border: 1px solid var(--ui-border, #dce4de); border-radius: 8px; background: var(--ui-surface, #fff); box-shadow: 0 1px 1px #17321a08; }
 .selection-history-entry > header { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 7px 10px; border-bottom: 1px solid var(--ui-border, #edf0ee); background: var(--ui-surface, #f7faf8); }
 .selection-history-authors { flex: 1; min-width: 0; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; color: var(--ui-accent, #2d4c3a); font-size: 12px; }
-.selection-history-authors > svg { color: var(--ui-accent, #5d806c); flex: none; }
-.selection-history-author-list { min-width: 0; display: inline-flex; flex-wrap: wrap; gap: 3px 6px; color: var(--ui-text, #4c5b51); }
-.selection-history-author-list > span { white-space: nowrap; }
-.selection-history-author-list > span + span::before { content: ","; margin-right: 6px; color: var(--ui-muted, #8a948d); }
+.selection-history-author-list { min-width: 0; display: inline-flex; flex-wrap: wrap; gap: 3px 10px; color: var(--ui-text, #4c5b51); }
+.selection-history-author-list > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.selection-history-avatar { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--ui-subtle, #eaf1ec); color: var(--ui-accent, #285d3d); font-size: 10px; font-weight: 600; }
 .selection-history-entry time { flex: none; color: var(--ui-muted, #758077); font-size: 10px; font-variant-numeric: tabular-nums; }
 .selection-history-tabs { display: flex; align-items: center; gap: 3px; padding: 7px 10px 0; background: var(--ui-surface, #fff); }
 .selection-history-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; padding: 4px 8px 5px; background: transparent; color: var(--ui-muted, #68766d); font-size: 11px; }
@@ -1634,7 +1633,14 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-detail-header > div { display: grid; gap: 4px; }
 .history-detail-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .history-detail-title-row strong { font-size: 15px; color: var(--ui-text, #1d2b22); word-break: break-word; }
-.history-detail-header small { display: flex; align-items: center; gap: 4px; color: var(--ui-muted, #68736b); }
+.history-snapshot-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 14px; margin-top: 3px; color: var(--ui-muted, #68736b); font-size: 11px; line-height: 1.65; }
+.history-snapshot-meta > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.history-snapshot-meta svg { flex: none; opacity: .75; }
+.history-snapshot-time { font-variant-numeric: tabular-nums; }
+.history-snapshot-attribution { flex-wrap: wrap; }
+.history-snapshot-attribution > span { font-size: 10px; }
+.history-snapshot-attribution strong { color: var(--ui-text, #35443b); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+.history-snapshot-file-count { padding-left: 12px; border-left: 1px solid var(--ui-border, #dce4de); font-size: 10px; }
 .history-snapshot-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 14px; padding: 8px 0 13px; border-bottom: 1px solid var(--ui-border, #e2e7e3); }
 .history-snapshot-actions button, .history-file-list button, .history-file-actions button { -webkit-appearance: none; appearance: none; }
 .history-snapshot-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; white-space: nowrap; }
@@ -1679,7 +1685,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-comparison-meta strong { font-size: 12px; color: #f0f4f1; }
 .history-comparison-meta small { display: inline-flex; align-items: center; gap: 6px; color: #97a69c; font-size: 11px; }
 .history-commit-summary { display: inline-flex; align-items: center; gap: 6px; color: #97a69c; font-size: 11px; flex-wrap: wrap; }
-.history-commit-author { color: #f0f4f1; font-weight: 600; }
 .history-mode-toggle { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--ui-border, #3d4a41); border-radius: 999px; background: var(--ui-subtle, #1a201c); }
 .history-mode-toggle button { display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 999px; padding: 4px 9px; background: transparent; color: var(--ui-muted, #9fac9f); font-size: 11px; cursor: pointer; transition: background-color .15s ease, color .15s ease; white-space: nowrap; }
 .history-mode-toggle button:hover { color: var(--ui-text, #f0f4f1); background: var(--ui-hover, #28332c); }

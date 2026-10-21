@@ -326,6 +326,7 @@
     "quickOpen": "Quick open", "quickOpenDescription": "Open a project file by name (Ctrl/Cmd+P).", "filePlaceholder": "Type a file name…", "noFiles": "No matching files."
   },
   "history": {
+    "lastChangedBy": "Last changed by",
     "saveWarning": "Source files were saved, but some history could not be saved. Recent failures are retried automatically; older history may be incomplete. Check server logs and available storage.",
     "storageBreakdown": "Files {{objects}} · Metadata {{metadata}} · Protected {{protected}}",
     "title": "History", "projectSnapshots": "Project snapshots", "projectSnapshotsButton": "Snapshots", "description": "Browse automatic project snapshots, compare files and safely restore earlier work.", "empty": "No project snapshots yet.", "loadOlder": "Load older snapshots",

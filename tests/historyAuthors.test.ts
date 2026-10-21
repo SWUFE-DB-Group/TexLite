@@ -60,7 +60,7 @@ describe("history author identities", () => {
   it("shows each edit-history author's display name with a username tooltip, including same-name coauthors", async () => {
     vi.mocked(api).mockResolvedValue({
       entries: [{ id: "edit", filePath: "main.tex", createdAt: version.createdAt, updatedAt: version.createdAt,
-        authors: [version.author, { id: "second", name: "Administrator", username: "other-admin" },
+        authors: [{ ...version.author, avatarStyle: "lorelei" }, { id: "second", name: "Administrator", username: "other-admin" },
           { id: "legacy", name: null, username: "legacy" }, { id: null, name: null, username: null }],
         content: "New", contentTruncated: false }],
       baseline: null, chainComplete: true, hasMore: false
@@ -70,14 +70,21 @@ describe("history author identities", () => {
       currentSource: "New", onOpenChange: () => {}
     })));
     const authors = host.querySelectorAll(".selection-history-author-list > span");
-    expect([...authors].map((node) => node.textContent)).toEqual(["Administrator", "Administrator", "legacy", i18n.t("editor.deletedUser")]);
+    expect([...authors].map((node) => node.querySelector(".selection-history-author-name")?.textContent)).toEqual(["Administrator", "Administrator", "legacy", i18n.t("editor.deletedUser")]);
+    expect(host.querySelector(".selection-history-authors > svg")).toBeNull();
+    expect(host.querySelector(".selection-history-authors")?.firstElementChild?.textContent).toBe(i18n.t("selectionHistory.changedBy"));
+    expect(authors[0].firstElementChild?.classList.contains("selection-history-avatar")).toBe(true);
+    expect(authors[0].querySelector("img")?.getAttribute("src")).toBe("/api/users/author/avatar.svg?style=lorelei&v=2");
+    expect(authors[1].querySelector(".selection-history-avatar")?.textContent).toBe("A");
+    expect(authors[3].querySelector("img")).toBeNull();
     expect([...authors].map((node) => node.getAttribute("data-tooltip"))).toEqual(["@admin", "@other-admin", "@legacy", null]);
     expect(authors[0].hasAttribute("data-texlite-tooltip-always")).toBe(true);
     expect(host.textContent).not.toContain("@admin");
     expect(host.querySelector(".selection-history-clear")).toBeNull();
   });
 
-  it("limits snapshot username tooltips to timeline authors without altering inline layout", async () => {
+  it.each(["en", "zh"])("limits snapshot attribution to version metadata and keeps username tooltips in the timeline (%s)", async (language) => {
+    await i18n.changeLanguage(language);
     vi.mocked(api)
       .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
       .mockResolvedValueOnce({ version, settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null }, files: [{ path: "main.tex", size: 3 }] })
@@ -92,8 +99,24 @@ describe("history author identities", () => {
       expect(author.hasAttribute("data-texlite-tooltip-always")).toBe(true);
     }
     expect(host.querySelector(".history-author-name")?.parentElement?.tagName).toBe("SMALL");
-    expect(host.querySelector(".history-commit-author")?.hasAttribute("data-tooltip")).toBe(false);
+    expect(host.querySelector(".history-commit-author")).toBeNull();
+    expect(host.querySelector(".history-snapshot-attribution > span")?.textContent).toBe(i18n.t("history.lastChangedBy"));
+    expect(host.querySelector(".history-snapshot-attribution strong")?.textContent).toBe("Administrator");
+    expect(host.querySelector(".history-snapshot-time time")?.getAttribute("datetime")).toBe(version.createdAt);
+    expect(host.querySelector(".history-snapshot-file-count")?.textContent).toBe(i18n.t("history.fileCount", { count: 1 }));
+    expect(host.querySelector(".history-comparison")?.textContent).not.toContain("Administrator");
     expect(host.querySelector(".history-detail-header [data-tooltip]")).toBeNull();
     expect(host.textContent).not.toContain("@admin");
+  });
+
+  it("shows the snapshot origin instead of implying an author when a shared autosave has no attribution", async () => {
+    const sharedVersion = { ...version, author: null };
+    vi.mocked(api)
+      .mockResolvedValueOnce({ versions: [sharedVersion], stats: null, nextCursor: null })
+      .mockResolvedValueOnce({ version: sharedVersion, settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null }, files: [{ path: "main.tex", size: 3 }] })
+      .mockResolvedValueOnce({ path: "main.tex", historical: "New", comparison: "Old", against: "__previous__", previousVersion: null });
+    await act(async () => root.render(createElement(HistoryDialog, { open: true, project, onOpenChange: () => {}, onBeforeMutation: async () => true })));
+    expect(host.querySelector(".history-snapshot-attribution")).toBeNull();
+    expect(host.querySelector(".history-snapshot-origin")?.textContent).toBe(i18n.t("history.reasons.autosave"));
   });
 });

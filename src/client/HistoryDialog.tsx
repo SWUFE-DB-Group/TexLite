@@ -357,7 +357,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       const oldLabel = previousVersion
         ? `${previousVersion.label || t(`history.reasons.${previousVersion.reason}`)} (${formatCommitTime(previousVersion.createdAt, i18n.resolvedLanguage)})`
         : "/dev/null";
-      const newLabel = `${authorName} @ ${commitTime}`;
+      const newLabel = `${detail.version.label || t(`history.reasons.${detail.version.reason}`)} (${commitTime})`;
       return generateUnifiedDiff(comparison.path, oldText, newText, oldLabel, newLabel);
     } else {
       const oldText = comparison.historical;
@@ -366,7 +366,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       const newLabel = t("history.currentVersion");
       return generateUnifiedDiff(comparison.path, oldText, newText, oldLabel, newLabel);
     }
-  }, [comparison, detail, diffMode, previousVersion, authorName, commitTime, t, i18n.resolvedLanguage]);
+  }, [comparison, detail, diffMode, previousVersion, commitTime, t, i18n.resolvedLanguage]);
 
   const detailReasonLabel = detail ? t(`history.reasons.${detail.version.reason}`) : "";
   const detailTitle = detail ? formatVersionTitle(detail.version, detailReasonLabel, i18n.resolvedLanguage) : "";
@@ -423,7 +423,15 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                   <strong title={detailTitle}>{detailTitle}</strong>
                   <span className={`history-reason-badge reason-${detail.version.reason}`}>{detailReasonLabel}</span>
                 </div>
-                <small><Clock3 size={12} />{new Date(detail.version.createdAt).toLocaleString(i18n.resolvedLanguage)} · {authorName} · {t("history.fileCount", { count: detail.version.fileCount })}</small>
+                <div className="history-snapshot-meta">
+                  <span className="history-snapshot-time"><Clock3 size={12} aria-hidden /><time dateTime={detail.version.createdAt} title={new Date(detail.version.createdAt).toLocaleString(i18n.resolvedLanguage)}>
+                    {new Date(detail.version.createdAt).toLocaleString(i18n.resolvedLanguage, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </time></span>
+                  {detail.version.author
+                    ? <span className="history-snapshot-attribution"><span>{t("history.lastChangedBy")}</span><strong>{authorName}</strong></span>
+                    : <span className="history-snapshot-origin">{detailReasonLabel}</span>}
+                  <span className="history-snapshot-file-count"><FileText size={12} aria-hidden />{t("history.fileCount", { count: detail.version.fileCount })}</span>
+                </div>
               </div>
             </header>
             {(isOwner || canRestore) && <div className="history-snapshot-actions">
@@ -463,10 +471,9 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                   <div className="history-comparison-meta">
                     <strong>{selectedPath}</strong>
                     <small className="history-commit-summary">
-                      {diffMode === "commit" ? <>
-                        <span className="history-commit-author">{authorName}</span>
-                        <span>{previousVersion ? t("history.changedAt", { time: commitTime }) : t("history.createdAt", { time: commitTime })}</span>
-                      </> : <span>{t("history.comparingCurrent")}</span>}
+                      {diffMode === "commit"
+                        ? <span>{previousVersion ? t("history.changedAt", { time: commitTime }) : t("history.createdAt", { time: commitTime })}</span>
+                        : <span>{t("history.comparingCurrent")}</span>}
                       {diffResult.hasChanges && <span className="history-diff-stats"><span className="addition">+{diffResult.additions}</span> <span className="deletion">-{diffResult.deletions}</span></span>}
                     </small>
                   </div>

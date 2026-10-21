@@ -25,6 +25,18 @@ interface FixtureOptions {
 const fixtures: Fixture[] = [];
 
 describe("selection edit history", () => {
+  it("returns each author's current avatar style and clears identity for deleted users", () => {
+    const fixture = createFixture();
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit")]);
+    fixture.db.prepare("UPDATE users SET avatar_style = 'lorelei' WHERE id = 'alice'").run();
+    const authors = () => fixture.history.selectionHistory(fixture.projectId, "main.tex", "new", 0, 3).entries[0].authors;
+    expect(authors()).toEqual([{ id: "alice", username: "alice", name: "Alice", avatarStyle: "lorelei" }]);
+    fixture.db.prepare("UPDATE users SET avatar_style = NULL WHERE id = 'alice'").run();
+    expect(authors()[0].avatarStyle).toBeNull();
+    fixture.db.prepare("DELETE FROM users WHERE id = 'alice'").run();
+    expect(authors()).toEqual([{ id: null, username: null, name: null, avatarStyle: null }]);
+  });
+
   it("reports payload usage and clears only this project's edit records and boundaries", () => {
     const fixture = createFixture();
     fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit")]);
@@ -165,8 +177,8 @@ describe("selection edit history", () => {
 
     expect(result.entries).toHaveLength(2);
     expect(result.entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ content: afterBob, authors: [{ id: "bob", name: "Bob", username: "bob" }] }),
-      expect.objectContaining({ content: afterAlice, authors: [{ id: "alice", name: "Alice", username: "alice" }] })
+      expect.objectContaining({ content: afterBob, authors: [{ id: "bob", name: "Bob", username: "bob", avatarStyle: null }] }),
+      expect.objectContaining({ content: afterAlice, authors: [{ id: "alice", name: "Alice", username: "alice", avatarStyle: null }] })
     ]));
   });
 

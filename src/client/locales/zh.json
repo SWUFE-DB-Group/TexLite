@@ -318,6 +318,7 @@
     "quickOpen": "快速打开", "quickOpenDescription": "按名称打开项目文件（Ctrl/Cmd+P）。", "filePlaceholder": "输入文件名…", "noFiles": "没有匹配的文件。"
   },
   "history": {
+    "lastChangedBy": "最后修改者",
     "saveWarning": "源码已保存，但部分历史未能保存。近期失败会自动重试，较早的历史可能不完整。请检查服务器日志及可用存储空间。",
     "storageBreakdown": "文件 {{objects}} · 元数据 {{metadata}} · 受保护 {{protected}}",
     "title": "历史", "projectSnapshots": "项目快照", "projectSnapshotsButton": "项目快照", "description": "浏览自动项目快照、比较文件，并安全恢复较早的工作。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",

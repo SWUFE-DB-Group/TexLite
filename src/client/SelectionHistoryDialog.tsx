@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, LoaderCircle, Trash2, UserRound } from "lucide-react";
+import { Clock3, LoaderCircle, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { generateSelectionHistoryDiff, type SelectionHistoryDiffPiece, type SelectionHistorySemanticDiff } from "./selectionHistoryDiff";
 import { sourceHash } from "./sourceHash";
+import { UserAvatar } from "./UserAvatar";
 import type { Project, SelectionHistoryAuthor, SelectionHistoryEntry, SelectionHistoryResult } from "./types";
 
 interface SourceSelection {
@@ -137,7 +138,13 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
             <article className="selection-history-entry">
               <header>
                 <time title={new Date(entry.updatedAt).toLocaleString(i18n.resolvedLanguage)}>{formatTime(entry.updatedAt, i18n.resolvedLanguage)}</time>
-                <span className="selection-history-authors"><UserRound size={14} /><span>{t("selectionHistory.changedBy")}</span><span className="selection-history-author-list">{entry.authors.map((author, authorIndex) => <span key={author.id || `deleted-${authorIndex}`} data-tooltip={author.username ? `@${author.username}` : undefined} data-texlite-tooltip-always>{authorLabel(author, t("editor.deletedUser"))}</span>)}</span></span>
+                <span className="selection-history-authors"><span>{t("selectionHistory.changedBy")}</span><span className="selection-history-author-list">{entry.authors.map((author, authorIndex) => {
+                  const name = authorLabel(author, t("editor.deletedUser"));
+                  return <span key={author.id || `deleted-${authorIndex}`} data-tooltip={author.username ? `@${author.username}` : undefined} data-texlite-tooltip-always>
+                    <UserAvatar userId={author.id} name={name} username={author.username} avatarStyle={author.avatarStyle} className="selection-history-avatar" />
+                    <span className="selection-history-author-name">{name}</span>
+                  </span>;
+                })}</span></span>
               </header>
               <div className="selection-history-tabs" role="tablist" aria-label={t("selectionHistory.view")}>
                 <button type="button" className={view === "content" ? "active" : ""} role="tab" aria-selected={view === "content"} aria-controls={`selection-history-content-${entry.id}`} onClick={() => setEntryViews((current) => ({ ...current, [entry.id]: "content" }))}>{t("selectionHistory.contentTab")}</button>

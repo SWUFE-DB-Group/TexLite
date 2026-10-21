@@ -146,6 +146,7 @@ export interface SelectionHistoryAuthor {
   id: string | null;
   username: string | null;
   name: string | null;
+  avatarStyle?: string | null;
 }
 
 export interface SelectionHistoryEntry {

@@ -53,12 +53,14 @@ interface EditHistoryRow {
   updated_at: string;
   author_username: string | null;
   author_name: string | null;
+  author_avatar_style: string | null;
 }
 
 export interface SelectionHistoryAuthor {
   id: string | null;
   username: string | null;
   name: string | null;
+  avatarStyle: string | null;
 }
 
 export interface SelectionHistoryEntry {
@@ -224,7 +226,7 @@ export class ProjectEditHistoryService {
     const filePath = safeRelativePath(filePathInput);
     const start = clamp(Math.min(startInput, endInput), 0, currentSource.length);
     const end = clamp(Math.max(startInput, endInput), start, currentSource.length);
-    const rows = this.db.prepare(`SELECT segment.*, user.username AS author_username, user.display_name AS author_name
+    const rows = this.db.prepare(`SELECT segment.*, user.username AS author_username, user.display_name AS author_name, user.avatar_style AS author_avatar_style
       FROM project_edit_segments segment LEFT JOIN users user ON user.id = segment.author_id
       WHERE segment.project_id = ? AND segment.file_path = ?
       ORDER BY segment.updated_at DESC, segment.rowid DESC LIMIT ?`)
@@ -371,8 +373,8 @@ function stripEntryMetadata(entry: OpenSelectionHistoryEntry): SelectionHistoryE
 
 function authorFromRow(row: EditHistoryRow): SelectionHistoryAuthor {
   return row.author_id && row.author_username && row.author_name
-    ? { id: row.author_id, username: row.author_username, name: row.author_name }
-    : { id: null, username: null, name: null };
+    ? { id: row.author_id, username: row.author_username, name: row.author_name, avatarStyle: row.author_avatar_style }
+    : { id: null, username: null, name: null, avatarStyle: null };
 }
 
 function authorKey(row: EditHistoryRow): string {
