@@ -7,7 +7,7 @@ import { maxCollaborativeFileBytes } from "../collaboration.js";
 import type { CollaborationService } from "../collaboration.js";
 import type { CompileQueue } from "../compiler.js";
 import type { LatexCompletionService } from "../latexCompletion.js";
-import type { MetricRegistry } from "../metrics.js";
+import { eventLoopDelaySummary, type MetricRegistry } from "../metrics.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../limits.js";
 import { MIN_PASSWORD_LENGTH } from "../security.js";
@@ -79,11 +79,7 @@ export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteC
       uptimeSeconds: Math.round(process.uptime()),
       memory: { rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal },
       ...resourceMemory,
-      eventLoopDelay: {
-        p50Ms: Math.round(eventLoopDelay.percentile(50) / 100_000) / 10,
-        p95Ms: Math.round(eventLoopDelay.percentile(95) / 100_000) / 10,
-        maxMs: Math.round(eventLoopDelay.max / 100_000) / 10
-      },
+      eventLoopDelay: eventLoopDelaySummary(eventLoopDelay),
       compileQueue: queue.stats(),
       collaboration: collaboration.stats(),
       caches: { completions: latexCompletions.stats(), outlines: projectOutlines.stats() },

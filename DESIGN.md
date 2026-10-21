@@ -173,6 +173,13 @@ Administrators can open the System status view (or authenticated
 event-loop, and recent latency summaries. These metrics intentionally exclude
 source text, passwords, tokens, and comment content.
 
+Event-loop latency uses Node's interval histogram with a shared 20 ms sampling
+resolution. The API subtracts that interval before rounding P50, P95 and Max to
+0.1 ms, clamping timer jitter below the baseline to zero. These are estimated
+excess scheduling delays, not exact per-callback latency measurements. Empty
+histograms report `null` (displayed as a dash). The window is cumulative since
+service startup; reading metrics does not reset it or affect another viewer.
+
 Memory uses a storage-style segmented bar: total used memory, service and TeX
 process shares, other usage, and available capacity. Process shares are RSS
 estimates, not exclusive allocations. If they exceed measured usage because of

@@ -393,7 +393,7 @@
     "memoryCapacity": "总容量 {{total}}", "memoryLimit": "限制 {{total}}", "noReportedLimit": "未获取到内存限制", "unavailable": "无法获取", "sampleFailed": "无法读取进程内存",
     "texProcesses": "{{count}} 个可见的 TeX 进程", "memoryNote": "当前采样值，非峰值。包含其他可见的 TeX 任务，共享内存可能重复计入。",
     "collaboration": "协作", "sessions": "{{count}} 个会话", "roomsAndDirty": "{{rooms}} 个房间 · {{dirty}} 个待保存文件",
-    "eventLoop": "事件循环延迟", "latencySummary": "P50 {{p50Ms}} ms · P95 {{p95Ms}} ms · 最大 {{maxMs}} ms",
+    "eventLoop": "事件循环延迟", "latencySummary": "P50 {{p50}} · P95 {{p95}} · 最大 {{max}}", "eventLoopNote": "自服务启动以来的估算延迟，已扣除采样间隔。",
     "operationDurations": "近期操作耗时", "noSamples": "尚未采集到操作样本。", "operation": "操作", "samples": "样本", "last": "最近", "max": "最大",
     "operations": { "collaboration": { "connect": "打开协作房间", "persist": "保存协作修改" }, "workspace": { "project": "加载项目元数据", "files": "加载项目文件", "compileState": "加载保留的 PDF 状态" }, "compile": { "snapshot": "准备编译快照", "request": "编译请求总耗时", "cacheSync": "更新编译缓存", "latexmk": "运行 latexmk", "artifactCopy": "发布编译产物" }, "outline": { "build": "生成项目大纲" }, "completions": { "build": "生成补全索引" } }
   },

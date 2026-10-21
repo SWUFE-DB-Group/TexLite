@@ -14,6 +14,7 @@ import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
 import { sourceRoot } from "../src/server/files.js";
+import * as metricSummaries from "../src/server/metrics.js";
 
 const hostHarperAvailable = spawnSync("harper-cli", ["--version"], { stdio: "ignore" }).status === 0;
 const hostHarperIt = hostHarperAvailable ? it : it.skip;
@@ -1334,6 +1335,17 @@ Another UniqueTerm appears here.
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "metrics-password" } });
     const userCookie = sessionCookie(login.headers);
     expect((await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie: userCookie } })).statusCode).toBe(403);
+  });
+
+  it("serves normalized event-loop lag through the metrics API", async () => {
+    const lag = { p50Ms: 0.1, p95Ms: 0.2, maxMs: 80.5 };
+    const summarize = vi.spyOn(metricSummaries, "eventLoopDelaySummary").mockReturnValue(lag);
+    try {
+      const response = await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().eventLoopDelay).toEqual(lag);
+      expect(summarize).toHaveBeenCalledOnce();
+    } finally { summarize.mockRestore(); }
   });
 
   it("uses one actionable error for rejected GitHub tokens", async () => {

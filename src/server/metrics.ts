@@ -1,3 +1,22 @@
+import type { IntervalHistogram } from "node:perf_hooks";
+
+export const EVENT_LOOP_DELAY_RESOLUTION_MS = 20;
+
+/** Interval histograms include the sampling period. Expose estimated excess
+ * scheduling delay, not the raw interval, and preserve the cumulative window.
+ */
+export function eventLoopDelaySummary(histogram: Pick<IntervalHistogram, "count" | "percentile" | "max">): {
+  p50Ms: number | null;
+  p95Ms: number | null;
+  maxMs: number | null;
+} {
+  if (histogram.count === 0) return { p50Ms: null, p95Ms: null, maxMs: null };
+  const lagMs = (nanoseconds: number): number | null => Number.isFinite(nanoseconds)
+    ? Math.round(Math.max(0, nanoseconds / 1_000_000 - EVENT_LOOP_DELAY_RESOLUTION_MS) * 10) / 10
+    : null;
+  return { p50Ms: lagMs(histogram.percentile(50)), p95Ms: lagMs(histogram.percentile(95)), maxMs: lagMs(histogram.max) };
+}
+
 export interface MetricSummary {
   count: number;
   last: number;

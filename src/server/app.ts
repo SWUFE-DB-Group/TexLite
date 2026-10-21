@@ -27,7 +27,7 @@ import { ProjectEditHistoryService } from "./editHistory.js";
 import { HistoryRetentionScheduler } from "./historyRetention.js";
 import { EditHistoryRetry } from "./editHistoryRetry.js";
 import { ProjectOutlineService } from "./projectOutline.js";
-import { MetricRegistry } from "./metrics.js";
+import { EVENT_LOOP_DELAY_RESOLUTION_MS, MetricRegistry } from "./metrics.js";
 import { UpdateChecker } from "./updates.js";
 import { apiError, HttpError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
@@ -96,7 +96,7 @@ export async function buildApp(
   const queue = new CompileQueue(config.maxCompileJobs);
   const compileCoordinator = new ProjectCompileCoordinator(queue);
   const metrics = new MetricRegistry(200);
-  const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+  const eventLoopDelay = monitorEventLoopDelay({ resolution: EVENT_LOOP_DELAY_RESOLUTION_MS });
   eventLoopDelay.enable();
   const history = new ProjectHistoryService(config, db);
   const editHistory = new ProjectEditHistoryService(db, config.editHistoryMaxStorageBytes);

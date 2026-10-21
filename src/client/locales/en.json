@@ -405,7 +405,7 @@
     "memoryCapacity": "{{total}} total", "memoryLimit": "{{total}} limit", "noReportedLimit": "No reported memory limit", "unavailable": "Unavailable", "sampleFailed": "Could not read process memory",
     "texProcesses": "{{count}} visible TeX processes", "memoryNote": "Current samples, not peaks. Includes other visible TeX tasks; shared memory may be counted more than once.",
     "collaboration": "Collaboration", "sessions": "{{count}} sessions", "roomsAndDirty": "{{rooms}} rooms · {{dirty}} dirty files",
-    "eventLoop": "Event-loop latency", "latencySummary": "P50 {{p50Ms}} ms · P95 {{p95Ms}} ms · max {{maxMs}} ms",
+    "eventLoop": "Event-loop latency", "latencySummary": "P50 {{p50}} · P95 {{p95}} · max {{max}}", "eventLoopNote": "Estimated lag since startup, excluding the sampling interval.",
     "operationDurations": "Recent operation durations", "noSamples": "No operation samples have been collected yet.", "operation": "Operation", "samples": "Samples", "last": "Last", "max": "Max",
     "operations": { "collaboration": { "connect": "Open collaboration room", "persist": "Save collaboration changes" }, "workspace": { "project": "Load project metadata", "files": "Load project files", "compileState": "Load retained PDF state" }, "compile": { "snapshot": "Prepare compile snapshot", "request": "Compile request total", "cacheSync": "Update compiler cache", "latexmk": "Run latexmk", "artifactCopy": "Publish compile artifacts" }, "outline": { "build": "Build project outline" }, "completions": { "build": "Build completion index" } }
   },

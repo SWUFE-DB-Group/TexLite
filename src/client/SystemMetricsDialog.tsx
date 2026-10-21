@@ -16,7 +16,7 @@ interface MetricSummary {
 interface SystemMetrics extends ResourceSample {
   uptimeSeconds: number;
   memory: { rssBytes: number; heapUsedBytes: number; heapTotalBytes: number };
-  eventLoopDelay: { p50Ms: number; p95Ms: number; maxMs: number };
+  eventLoopDelay: { p50Ms: number | null; p95Ms: number | null; maxMs: number | null };
   compileQueue: { concurrency: number; running: number; pending: number };
   collaboration: { rooms: number; sessions: number; dirtyFiles: number };
   durationsMs: Record<string, MetricSummary>;
@@ -79,11 +79,12 @@ export function SystemMetricsDialog({ open, onOpenChange }: { open: boolean; onO
       </div>
       <section className="metric-section metric-latency">
         <h3><Activity aria-hidden="true" size={16} />{t("metrics.eventLoop")}</h3>
-        <dl aria-label={t("metrics.latencySummary", metrics.eventLoopDelay)}>
+        <dl aria-label={t("metrics.latencySummary", { p50: formatMs(metrics.eventLoopDelay.p50Ms), p95: formatMs(metrics.eventLoopDelay.p95Ms), max: formatMs(metrics.eventLoopDelay.maxMs) })}>
           <div><dt>P50</dt><dd>{formatMs(metrics.eventLoopDelay.p50Ms)}</dd></div>
           <div><dt>P95</dt><dd>{formatMs(metrics.eventLoopDelay.p95Ms)}</dd></div>
           <div><dt>{t("metrics.max")}</dt><dd>{formatMs(metrics.eventLoopDelay.maxMs)}</dd></div>
         </dl>
+        <p className="muted metric-memory-note">{t("metrics.eventLoopNote")}</p>
       </section>
       <section className="metric-section">
         <h3><Timer aria-hidden="true" size={16} />{t("metrics.operationDurations")}</h3>
@@ -188,7 +189,8 @@ function formatDuration(seconds: number): string {
   return days ? `${days} d ${hours} h` : hours ? `${hours} h ${minutes} m` : `${minutes} m`;
 }
 
-function formatMs(value: number): string {
+function formatMs(value: number | null): string {
+  if (value === null) return "—";
   return value >= 1_000 ? `${Math.round(value / 100) / 10} s` : `${Math.round(value * 10) / 10} ms`;
 }
 
