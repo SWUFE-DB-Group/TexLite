@@ -6,6 +6,7 @@ import { isCollaborativeTextFile, maxCollaborativeFileBytes } from "../collabora
 import { listProjectFiles, resolveSourcePath } from "../files.js";
 import { httpError, ValidationError } from "../http.js";
 import { accessibleProject, canEdit } from "../projects.js";
+import { isTextContent } from "../../shared/fileTypes.js";
 
 export const now = (): string => new Date().toISOString();
 export function escapeLikePattern(value: string): string {
@@ -176,10 +177,14 @@ export function requireActualProjectOwner(db: DatabaseConnection, projectId: str
 }
 
 export function projectTextSnapshot(config: Config, projectId: string): Map<string, string> {
-  return new Map(listProjectFiles(config, projectId).filter((entry) => entry.type === "file" && isCollaborativeTextFile(entry.path)).map((entry) => {
+  const snapshot = new Map<string, string>();
+  for (const entry of listProjectFiles(config, projectId)) {
+    if (entry.type !== "file" || !isCollaborativeTextFile(entry.path) || (entry.size ?? 0) > maxCollaborativeFileBytes(config)) continue;
     const absolute = resolveSourcePath(config, projectId, entry.path);
-    return [entry.path, fs.statSync(absolute).size <= maxCollaborativeFileBytes(config) ? fs.readFileSync(absolute, "utf8") : ""] as const;
-  }));
+    const bytes = fs.readFileSync(absolute);
+    if (isTextContent(bytes)) snapshot.set(entry.path, bytes.toString("utf8"));
+  }
+  return snapshot;
 }
 
 export function reanchorProjectSnapshot(db: DatabaseConnection, projectId: string, before: Map<string, string>, after: Map<string, string>): void {

@@ -70,6 +70,7 @@ export interface FileEntry {
   path: string;
   type: "file" | "directory";
   size?: number;
+  textContent?: boolean;
 }
 
 /** Counts returned by the host TeXcount command for a document or selection. */

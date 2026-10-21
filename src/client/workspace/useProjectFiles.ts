@@ -4,6 +4,8 @@ import { api, ApiError, localizedResponseError, normalizeNetworkError, responseE
 import { errorMessage } from "../errors";
 import type { FileEntry, Project, SiteConfig } from "../types";
 import { appPath } from "../basePath";
+import { isEditableTextFile, isTextContent, resourceFileKind } from "../../shared/fileTypes";
+export { isEditableTextFile } from "../../shared/fileTypes";
 
 export type ResourcePreviewKind = "image" | "pdf" | "text" | "unsupported" | "large";
 export interface ResourcePreview {
@@ -12,6 +14,7 @@ export interface ResourcePreview {
   size: number;
   url: string;
   content?: string;
+  limitBytes?: number;
 }
 export interface PendingUpload {
   files: File[];
@@ -28,11 +31,6 @@ export interface FileLoadOptions {
 }
 
 export const MAX_DIRECT_RESOURCE_PREVIEW_BYTES = 10 * 1024 * 1024;
-const binaryFileExtensions = new Set([
-  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif", ".pdf", ".zip", ".gz", ".bz2", ".xz", ".tar", ".rar", ".7z",
-  ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp", ".mp3", ".mp4", ".wav", ".ogg", ".webm", ".mov", ".avi",
-  ".wasm", ".exe", ".bin", ".so", ".dll", ".class", ".jar"
-]);
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -48,21 +46,17 @@ export function pathContains(root: string, candidate: string): boolean {
   return Boolean(root && candidate) && (candidate === root || candidate.startsWith(`${root}/`));
 }
 
-function isTextFile(filePath: string): boolean {
-  const extension = `.${filePath.split(".").at(-1)?.toLocaleLowerCase() ?? ""}`;
-  return !binaryFileExtensions.has(extension);
+export function resourcePreviewKind(filePath: string, textContent?: boolean): ResourcePreviewKind {
+  const kind = resourceFileKind(filePath);
+  return kind === "binary" || (kind === "text" && textContent === false) ? "unsupported" : kind;
 }
 
-export function isEditableTextFile(filePath: string): boolean {
-  return /(?:\.(?:tex|bib|bst|sty|cls|txt|md)|latexmkrc)$/i.test(filePath);
-}
-
-function resourcePreviewKind(filePath: string): ResourcePreviewKind {
-  const extension = filePath.split(".").at(-1)?.toLocaleLowerCase() ?? "";
-  if (extension === "pdf") return "pdf";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"].includes(extension)) return "image";
-  if (isTextFile(filePath)) return "text";
-  return "unsupported";
+export function fileOpenKind(entry: FileEntry, maxTextBytes: number): "editor" | ResourcePreviewKind {
+  const kind = resourcePreviewKind(entry.path, entry.textContent);
+  if (kind === "unsupported") return kind;
+  if ((entry.size ?? 0) > MAX_DIRECT_RESOURCE_PREVIEW_BYTES
+    || (kind === "text" && (entry.size ?? 0) > maxTextBytes)) return "large";
+  return kind === "text" ? "editor" : kind;
 }
 
 function rawFileUrl(projectId: string, filePath: string): string {
@@ -138,8 +132,9 @@ export function useProjectFiles({
       await api(`/api/projects/${projectId}/file`, {
         method: "POST", body: JSON.stringify({ path: newFilePath, content: "" })
       });
-      await loadFiles();
-      onActiveFile(newFilePath);
+      const nextFiles = await loadFiles();
+      const created = nextFiles?.find((entry) => entry.path === newFilePath);
+      if (created) openFile(created);
       setSelectedFolder(null);
       setExpandedFolders((current) => new Set([...current, ...parentFolders(newFilePath)]));
       setNewFileOpen(false);
@@ -227,7 +222,9 @@ export function useProjectFiles({
         }
       }
       try {
-        await loadFiles();
+        const nextFiles = await loadFiles();
+        if (lastTextPath && !nextFiles?.some((entry) => entry.path === lastTextPath && isEditableTextFile(entry.path, entry.textContent)
+          && (entry.size ?? 0) <= site.maxCollaborativeFileSizeMB * 1024 * 1024)) lastTextPath = "";
       } catch (error) {
         setUploadFeedback({
           kind: "error",
@@ -275,11 +272,14 @@ export function useProjectFiles({
     resourceRequest.current = null;
     setResourcePreviewLoading(false);
     const url = rawFileUrl(projectId, entry.path);
-    if ((entry.size ?? 0) > MAX_DIRECT_RESOURCE_PREVIEW_BYTES) {
-      setResourcePreview({ path: entry.path, kind: "large", size: entry.size ?? 0, url });
+    if (fileOpenKind(entry, site.maxCollaborativeFileSizeMB * 1024 * 1024) === "large") {
+      const limitBytes = isEditableTextFile(entry.path, entry.textContent)
+        ? Math.min(MAX_DIRECT_RESOURCE_PREVIEW_BYTES, site.maxCollaborativeFileSizeMB * 1024 * 1024)
+        : MAX_DIRECT_RESOURCE_PREVIEW_BYTES;
+      setResourcePreview({ path: entry.path, kind: "large", size: entry.size ?? 0, url, limitBytes });
       return;
     }
-    const kind = resourcePreviewKind(entry.path);
+    const kind = resourcePreviewKind(entry.path, entry.textContent);
     if (kind !== "text") {
       setResourcePreview({ path: entry.path, kind, size: entry.size ?? 0, url });
       return;
@@ -305,7 +305,12 @@ export function useProjectFiles({
         }
         throw new ApiError(localizedResponseError(body, response.status), response.status, responseErrorCode(body));
       }
-      const text = await response.text();
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!isTextContent(bytes)) {
+        setResourcePreview((current) => current?.path === entry.path ? { ...current, kind: "unsupported", content: undefined } : current);
+        return;
+      }
+      const text = new TextDecoder().decode(bytes);
       setResourcePreview((current) => current?.path === entry.path ? { ...current, content: text } : current);
     } catch (error) {
       if (!isAbortError(error)) {
@@ -323,11 +328,8 @@ export function useProjectFiles({
   const openFile = (entry: FileEntry) => {
     setSelectedFolder(null);
     setSelectedFile(entry.path);
-    const kind = resourcePreviewKind(entry.path);
     const maxCollaborativeBytes = site.maxCollaborativeFileSizeMB * 1024 * 1024;
-    if ((entry.size ?? 0) > MAX_DIRECT_RESOURCE_PREVIEW_BYTES
-      || (isEditableTextFile(entry.path) && (entry.size ?? 0) > maxCollaborativeBytes)
-      || kind !== "text" || !isEditableTextFile(entry.path)) {
+    if (fileOpenKind(entry, maxCollaborativeBytes) !== "editor") {
       void previewFile(entry);
     } else {
       onActiveFile(entry.path);

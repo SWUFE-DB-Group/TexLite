@@ -470,6 +470,23 @@ the next reconnect. Binary uploads also publish a source-tree event so other
 open workspaces refresh their file lists even though binary files are not Yjs
 text objects.
 
+Project text editing is not restricted to a LaTeX extension allowlist. UTF-8
+text (including extensionless files) can use the collaborative editor up to the
+existing 5 MiB limit, or the configured upload limit if lower. File-list
+classification validates the contents of editable-sized text candidates; room
+hydration and the text API also reject binary controls and invalid UTF-8 instead
+of silently replacing bytes. Known images (including SVG) and PDFs retain their
+resource previews up to 10 MiB. Larger files and other binaries show a download
+prompt rather than opening in the editor.
+
+Generic text uses CodeMirror language support for JSON, YAML, Shell, TOML,
+JavaScript/TypeScript, Python, HTML/CSS/XML, Markdown, INI, Perl/latexmkrc,
+Dockerfile and CMake where recognized, otherwise plain text. LaTeX semantic
+highlighting, auto-pairs, completion and reference navigation stay scoped to
+LaTeX source; BibTeX and BST retain their dedicated languages.
+Writing checks remain limited to prose-oriented files rather than running
+Harper on newly editable configuration and program files.
+
 `ProjectMutationCoordinator` has two related controls:
 
 | Operation class | Examples | Coordination behavior |

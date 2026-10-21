@@ -31,6 +31,7 @@ import { latexMathHover } from "./mathHover";
 import { latexReferenceHover } from "./latexReferenceHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
+import { isLatexEditorFile, textFileLanguage } from "./textLanguages";
 import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
 import { setSourceComments, sourceCommentAnchorForId, sourceCommentDecorations, sourceCommentMarksForFile } from "./sourceCommentDecorations";
 import type { LatexReference } from "../shared/latexReferences";
@@ -205,6 +206,7 @@ export function LatexEditor({
     if (!host.current) return;
     const isBibtexFile = /\.bib$/i.test(filePath);
     const isBstFile = /\.bst$/i.test(filePath);
+    const isLatexFile = isLatexEditorFile(filePath);
     const collaborationUndoManager = collaboration && !readOnly ? collaboration.undoManager ?? null : null;
     const state = EditorState.create({
       doc: collaboration?.text.toString() ?? value,
@@ -215,21 +217,21 @@ export function LatexEditor({
           onHistory: (...args) => onSelectionHistoryRef.current(...args)
         }),
         foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), selectedCommentHighlighting, highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
-        isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : latexLanguage,
-        ...(isBibtexFile || isBstFile ? [syntaxHighlighting(editorGenericHighlightStyle)] : [syntaxHighlighting(latexHighlightStyle), latexSemanticHighlighting]),
+        isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : isLatexFile ? latexLanguage : textFileLanguage(filePath, (collaboration?.text.toString() ?? value).split("\n", 1)[0]),
+        ...(isLatexFile ? [syntaxHighlighting(latexHighlightStyle), latexSemanticHighlighting] : [syntaxHighlighting(editorGenericHighlightStyle)]),
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),
-        ...(isBibtexFile ? [] : [bracketMatching(), ...(isBstFile ? [] : [Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexSkippedBracePair])]),
+        ...(isBibtexFile ? [] : [bracketMatching(), ...(isLatexFile ? [Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexSkippedBracePair] : [])]),
         closeBrackets(), indentOnInput(), sourceCommentDecorations({
           label: t("editor.openSourceComment"), onOpen: (id, toggle) => onCommentClickRef.current(id, toggle)
         }), spellCheckIssueMarks, activeSpellCheckIssueMarks,
-        referenceNavigation.current.of(isBstFile ? [] : referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))),
-        ...(isBstFile ? [] : [latexReferenceMarks, latexReferenceHover]),
+        referenceNavigation.current.of(isLatexFile ? referenceNavigationSettings.of(referenceNavigationOptions(filePath, t)) : []),
+        ...(isLatexFile ? [latexReferenceMarks, latexReferenceHover] : []),
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
         search({ top: false }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
         autocompletion({
-          override: isBibtexFile ? [bibtexCompletionSource] : isBstFile ? [] : [(context) => latexCompletions(context, t, completionIndexRef.current)],
+          override: isBibtexFile ? [bibtexCompletionSource] : isLatexFile ? [(context) => latexCompletions(context, t, completionIndexRef.current)] : undefined,
           activateOnTyping: true
         }),
         ...(collaborationUndoManager ? [vimHistoryCommands.of({
@@ -313,7 +315,7 @@ export function LatexEditor({
     if (!editor) return;
     editor.dispatch({ effects: [
       appearance.current.reconfigure(editorAppearance(preferences, nativeSpellCheck, theme)),
-      referenceNavigation.current.reconfigure(/\.bst$/i.test(filePath) ? [] : referenceNavigationSettings.of(referenceNavigationOptions(filePath, t))),
+      referenceNavigation.current.reconfigure(isLatexEditorFile(filePath) ? referenceNavigationSettings.of(referenceNavigationOptions(filePath, t)) : []),
       mathHover.current.reconfigure(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
         loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
       }) : [])

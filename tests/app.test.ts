@@ -325,6 +325,39 @@ describe("texLite application", () => {
     expect(response.json()).toMatchObject({ code: "FILE_TOO_LARGE" });
   });
 
+  it("opens generic UTF-8 text but keeps binary and oversized files out of the editor API", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Generic text sources" } });
+    const id = created.json().project.id as string;
+    const source = sourceRoot(config, id);
+    const content = "# 配置\ntitle: 文本编辑\n";
+    for (const file of ["config.yaml", "settings.json", "script.sh", "LICENSE", "custom.unusual"]) fs.writeFileSync(path.join(source, file), content);
+    fs.writeFileSync(path.join(source, "binary.unknown"), Buffer.from([0, 1, 255, 254]));
+    fs.writeFileSync(path.join(source, "pretend.txt"), Buffer.concat([Buffer.from("x".repeat(9000)), Buffer.from([0])]));
+    fs.writeFileSync(path.join(source, "large.txt"), "x".repeat(5 * 1024 * 1024 + 1));
+    const listed = await app.inject({ method: "GET", url: `/api/projects/${id}/files`, headers: { cookie } });
+    expect(listed.json().files).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "config.yaml", textContent: true }),
+      expect.objectContaining({ path: "LICENSE", textContent: true }),
+      expect.objectContaining({ path: "binary.unknown", textContent: false }),
+      expect.objectContaining({ path: "pretend.txt", textContent: false })
+    ]));
+    const fetched = await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=config.yaml`, headers: { cookie } });
+    expect(fetched.json().content).toBe(content);
+    const changed = await app.inject({ method: "PUT", url: `/api/projects/${id}/file`, headers: { cookie }, payload: { path: "config.yaml", content: "title: changed\n" } });
+    expect(changed.statusCode).toBe(200);
+    expect(fs.readFileSync(path.join(source, "config.yaml"), "utf8")).toBe("title: changed\n");
+    for (const file of ["binary.unknown", "pretend.txt"]) {
+      expect((await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=${file}`, headers: { cookie } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "PUT", url: `/api/projects/${id}/file`, headers: { cookie }, payload: { path: file, content: "do not overwrite" } })).statusCode).toBe(400);
+    }
+    expect(fs.readFileSync(path.join(source, "binary.unknown"))).toEqual(Buffer.from([0, 1, 255, 254]));
+    const download = await app.inject({ method: "GET", url: `/api/projects/${id}/file/raw?path=binary.unknown&download=1`, headers: { cookie } });
+    expect(download.statusCode).toBe(200);
+    expect(download.headers["content-disposition"]).toContain("attachment");
+    expect(download.rawPayload).toEqual(Buffer.from([0, 1, 255, 254]));
+    expect((await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=large.txt`, headers: { cookie } })).statusCode).toBe(413);
+  });
+
   it("saves only changed project settings and rejects stale values from another session", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Settings draft" } });
     expect(created.statusCode).toBe(201);

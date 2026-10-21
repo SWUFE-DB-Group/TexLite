@@ -609,7 +609,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       if (deletedCompileTarget) setActiveMainFile(projectResult.project.mainFile);
       if (deletedActiveFile && nextFiles) {
         const fallback = nextFiles.find((entry) => entry.type === "file" && entry.path === projectResult.project.mainFile)
-          ?? nextFiles.find((entry) => entry.type === "file" && isEditableTextFile(entry.path));
+          ?? nextFiles.find((entry) => entry.type === "file" && isEditableTextFile(entry.path, entry.textContent)
+            && (entry.size ?? 0) <= site.maxCollaborativeFileSizeMB * 1024 * 1024);
         setActiveFile(fallback?.path ?? "");
       }
       void loadCompletionIndex({ signal: controller.signal });
@@ -1041,7 +1042,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
 
   useEffect(() => {
     if (!editorPreferences.openFilesInTabs || files.length === 0) return;
-    const existingFiles = new Set(files.filter((entry) => entry.type === "file" && isEditableTextFile(entry.path)).map((entry) => entry.path));
+    const existingFiles = new Set(files.filter((entry) => entry.type === "file" && isEditableTextFile(entry.path, entry.textContent)
+      && (entry.size ?? 0) <= site.maxCollaborativeFileSizeMB * 1024 * 1024).map((entry) => entry.path));
     updateOpenTabs((current) => {
       const next = current.filter((filePath) => existingFiles.has(filePath));
       return next.length === current.length ? current : next;
@@ -1342,7 +1344,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const canSyncPdfToSource = Boolean(syncMainFile && /\.tex$/i.test(syncMainFile));
   const activateTab = (tabPath: string): void => {
     const entry = files.find((file) => file.path === tabPath);
-    if (entry && isEditableTextFile(entry.path)) openFile(entry);
+    if (entry && isEditableTextFile(entry.path, entry.textContent)) openFile(entry);
     else closeTab(tabPath);
   };
   const focusTab = (tabPath: string): void => {

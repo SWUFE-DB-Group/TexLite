@@ -25,6 +25,7 @@ import {
 } from "./projects.js";
 import { reanchorFileComments, type SourceCommentEdit } from "./anchors.js";
 import { hashText, type EditHistorySegmentInput, type EditHistorySpan, type EditHistoryStep } from "./editHistory.js";
+import { isEditableTextFile, isTextContent, MAX_TEXT_EDITOR_BYTES } from "../shared/fileTypes.js";
 import {
   COLLABORATION_PROTOCOL_VERSION,
   CollaborationMessageType,
@@ -57,7 +58,7 @@ const {
 const VERSIONED_EPOCH_PREFIX = `${COLLABORATION_PROTOCOL_VERSION}:`;
 const SOURCE_PREFIX = "source:";
 const MAX_PROJECT_SESSIONS = 10;
-const MAX_COLLABORATIVE_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_COLLABORATIVE_FILE_BYTES = MAX_TEXT_EDITOR_BYTES;
 const DISK_ORIGIN = Symbol("disk");
 const HTTP_ORIGIN = Symbol("http");
 const META_ORIGIN = Symbol("meta");
@@ -762,7 +763,9 @@ export class CollaborationService {
         const batch = entries.slice(offset, offset + 8);
         const loaded = await Promise.all(batch.map(async (entry) => {
           try {
-            return { path: entry.path, content: await fs.promises.readFile(resolveSourcePath(this.config, projectId, entry.path), "utf8") };
+            const bytes = await fs.promises.readFile(resolveSourcePath(this.config, projectId, entry.path));
+            if (!isTextContent(bytes)) return null;
+            return { path: entry.path, content: bytes.toString("utf8") };
           } catch {
             failedPaths.push(entry.path);
             return null;
@@ -1692,7 +1695,7 @@ export function maxCollaborativeFileBytes(config: Config): number {
 }
 
 export function isCollaborativeTextFile(filePath: string): boolean {
-  return /(?:\.tex|\.bib|\.bst|\.sty|\.cls|\.txt|\.md|latexmkrc)$/i.test(filePath);
+  return isEditableTextFile(filePath);
 }
 
 function collaborativeEntrySignature(entry: FileEntry): string {

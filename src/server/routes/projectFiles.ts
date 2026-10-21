@@ -27,6 +27,7 @@ import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { mainDocumentCandidates } from "../latexRoot.js";
+import { isTextContent } from "../../shared/fileTypes.js";
 import {
   commentsForFile,
   escapeGlobPattern,
@@ -61,7 +62,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     // so the file tree and retained-PDF stream can be served concurrently, but
     // still serialize it with source-tree mutations and collaborative flushes.
     return await projectMutations.runFilesystemRead(id, async () => ({
-      files: await listProjectFilesAsync(config, id)
+      files: await listProjectFilesAsync(config, id, true)
     }), {
       preflight: () => {
         if (!accessibleProject(db, id, user)) {
@@ -283,7 +284,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     const extension = path.extname(filePath).toLocaleLowerCase();
     const contentTypes: Record<string, string> = {
       ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
-      ".svg": "image/svg+xml", ".bmp": "image/bmp", ".ico": "image/x-icon", ".avif": "image/avif",
+      ".svg": "image/svg+xml", ".bmp": "image/bmp", ".ico": "image/x-icon", ".avif": "image/avif", ".tif": "image/tiff", ".tiff": "image/tiff",
       ".pdf": "application/pdf"
     };
     const contentType = contentTypes[extension] ?? "application/octet-stream";
@@ -309,10 +310,13 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     return await projectMutations.runConsistentRead(id, () => {
       const absolute = resolveSourcePath(config, id, relative);
       if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) return apiError(reply, 404, "FILE_NOT_FOUND", { path: relative });
-      if (isCollaborativeTextFile(relative) && fs.statSync(absolute).size > maxCollaborativeFileBytes(config)) {
+      if (!isCollaborativeTextFile(relative)) return apiError(reply, 400, "FILE_CONTENT_INVALID");
+      if (fs.statSync(absolute).size > maxCollaborativeFileBytes(config)) {
         return apiError(reply, 413, "FILE_TOO_LARGE", { path: relative });
       }
-      return { path: relative, content: fs.readFileSync(absolute, "utf8") };
+      const bytes = fs.readFileSync(absolute);
+      if (!isTextContent(bytes)) return apiError(reply, 400, "FILE_CONTENT_INVALID");
+      return { path: relative, content: bytes.toString("utf8") };
     }, { preflight: () => {
       if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
     } });
@@ -332,6 +336,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     const filePath = safeRelativePath(typeof body.path === "string" ? body.path : "");
     if (typeof body.content !== "string") return apiError(reply, 400, "FILE_CONTENT_INVALID");
     const content = body.content;
+    if (!isTextContent(Buffer.from(content, "utf8"))) return apiError(reply, 400, "FILE_CONTENT_INVALID");
     const byteLength = Buffer.byteLength(content, "utf8");
     const limit = isCollaborativeTextFile(filePath) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
     if (byteLength > limit) {
@@ -373,6 +378,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     const filePath = safeRelativePath(typeof body.path === "string" ? body.path : "");
     if (typeof body.content !== "string") return apiError(reply, 400, "FILE_CONTENT_INVALID");
     const content = body.content;
+    if (!isTextContent(Buffer.from(content, "utf8"))) return apiError(reply, 400, "FILE_CONTENT_INVALID");
     const byteLength = Buffer.byteLength(content, "utf8");
     const limit = isCollaborativeTextFile(filePath) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
     if (byteLength > limit) {
@@ -380,8 +386,14 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     }
     return await projectMutations.runWrite(id, () => {
       const absolute = resolveSourcePath(config, id, filePath);
+      if (!isCollaborativeTextFile(filePath)) return apiError(reply, 400, "FILE_CONTENT_INVALID");
+      if (fs.existsSync(absolute) && fs.statSync(absolute).size > maxCollaborativeFileBytes(config)) {
+        return apiError(reply, 413, "FILE_TOO_LARGE", { path: filePath });
+      }
       fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
-      const previousContent = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : "";
+      const previousBytes = fs.existsSync(absolute) ? fs.readFileSync(absolute) : Buffer.alloc(0);
+      if (!isTextContent(previousBytes)) return apiError(reply, 400, "FILE_CONTENT_INVALID");
+      const previousContent = previousBytes.toString("utf8");
       reanchorFileComments(db, id, filePath, previousContent, content);
       fs.writeFileSync(absolute, content, { encoding: "utf8", mode: 0o600 });
       touchProject(db, id, user.id);
@@ -435,7 +447,9 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     if (!part) return apiError(reply, 400, "UPLOAD_EMPTY");
     const { directory, overwrite } = request.query as { directory?: string; overwrite?: string };
     const relative = safeRelativePath(directory ? `${safeRelativePath(directory)}/${part.filename}` : part.filename);
-    const uploadLimit = isCollaborativeTextFile(relative) ? maxCollaborativeFileBytes(config) : config.maxUploadBytes;
+    // Uploads may be larger than editable text (for example datasets). They
+    // remain downloadable without hydrating them into the collaboration room.
+    const uploadLimit = config.maxUploadBytes;
     const tmpDir = path.join(config.dataDir, "tmp");
     fs.mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
     const tmpPath = path.join(tmpDir, `upload-${randomUUID()}.tmp`);
@@ -479,7 +493,9 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
         if (!replacing && fs.existsSync(absolute)) {
           return apiError(reply, 409, "FILE_EXISTS", { path: relative });
         }
-        const collaborativeText = isCollaborativeTextFile(relative);
+        const uploadedBytes = isCollaborativeTextFile(relative) && byteLength <= maxCollaborativeFileBytes(config)
+          ? fs.readFileSync(tmpPath) : null;
+        const collaborativeText = uploadedBytes !== null && isTextContent(uploadedBytes);
         let previousContent: string | null = null;
         if (replacing && collaborativeText && fs.existsSync(absolute)) {
           // runWrite() has flushed any live Yjs edits before entering this
@@ -487,7 +503,10 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
           // exactly what collaborators last saved, then fall back to disk for
           // projects without an active collaboration room.
           previousContent = collaboration.fileContent(id, relative);
-          if (previousContent === null) previousContent = fs.readFileSync(absolute, "utf8");
+          if (previousContent === null && fs.statSync(absolute).size <= maxCollaborativeFileBytes(config)) {
+            const previousBytes = fs.readFileSync(absolute);
+            if (isTextContent(previousBytes)) previousContent = previousBytes.toString("utf8");
+          }
         }
         try {
           fs.renameSync(tmpPath, absolute);
@@ -497,13 +516,14 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
         }
         touchProject(db, id, user.id);
         if (collaborativeText) {
-          const content = fs.readFileSync(absolute, "utf8");
+          const content = uploadedBytes!.toString("utf8");
           if (previousContent !== null && previousContent !== content) {
             reanchorFileComments(db, id, relative, previousContent, content);
             collaboration.signalComments(id);
           }
           collaboration.updateFile(id, relative, content, user.id);
         } else {
+          if (collaboration.fileContent(id, relative) !== null) collaboration.removePath(id, relative);
           collaboration.invalidateSourceTree(id, relative);
         }
         recordHistory(id, user.id, "file", [relative]);

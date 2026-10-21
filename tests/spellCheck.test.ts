@@ -83,6 +83,11 @@ describe("Harper writing checks", () => {
     expect(supportsWritingChecks("plain.bst")).toBe(false);
     expect(supportsWritingChecks("CUSTOM.BST")).toBe(false);
     expect(supportsWritingChecks("main.tex")).toBe(true);
+    expect(supportsWritingChecks("notes.txt")).toBe(true);
+    expect(supportsWritingChecks("README.md")).toBe(true);
+    for (const path of ["settings.json", "config.yaml", "script.sh", "latexmkrc", "custom.unusual"]) {
+      expect(supportsWritingChecks(path)).toBe(false);
+    }
     expect(supportsChktexChecks("main.tex")).toBe(true);
     expect(supportsChktexChecks("style.sty")).toBe(true);
     expect(supportsChktexChecks("paper.bib")).toBe(false);

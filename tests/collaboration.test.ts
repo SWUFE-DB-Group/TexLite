@@ -66,6 +66,28 @@ describe("project collaboration", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
+  it("collaborates on generic text while excluding binary content from Yjs", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Generic text collaboration" } });
+    const id = created.json().project.id as string;
+    const source = path.join(config.projectsDir, id, "source");
+    fs.writeFileSync(path.join(source, "settings.json"), '{"name":"论文"}\n');
+    fs.writeFileSync(path.join(source, "LICENSE"), "Original license\n");
+    fs.writeFileSync(path.join(source, "binary.unknown"), Buffer.from([0, 1, 255]));
+    const owner = await TestPeer.connect(app, id, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    const other = await TestPeer.connect(app, id, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      const text = owner.doc.getText("source:settings.json");
+      expect(text.toString()).toBe('{"name":"论文"}\n');
+      text.insert(text.length, "\n");
+      owner.doc.getText("source:LICENSE").insert(0, "Updated: ");
+      await waitFor(() => other.doc.getText("source:settings.json").toString() === text.toString());
+      expect((await owner.flush()).ok).toBe(true);
+      expect(fs.readFileSync(path.join(source, "settings.json"), "utf8")).toBe(text.toString());
+      expect(fs.readFileSync(path.join(source, "LICENSE"), "utf8")).toBe("Updated: Original license\n");
+      expect(owner.doc.share.has("source:binary.unknown")).toBe(false);
+    } finally { owner.destroy(); other.destroy(); }
+  });
+
   it("keeps comment anchors through another coauthor's partial edit and persisted Yjs undo", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Anchored coauthor edits" } });
     const projectId = created.json().project.id as string;
