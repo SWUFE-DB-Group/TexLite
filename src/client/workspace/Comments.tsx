@@ -10,6 +10,7 @@ import { CommentActionsMenu } from "./CommentActionsMenu";
 import { CommentForm } from "./CommentForm";
 import { CommentDraftStore, type CommentDraftKey } from "./commentDrafts";
 import { commentReplyVisibility } from "./commentReplyVisibility";
+import { UserAvatar } from "../UserAvatar";
 
 /**
  * Comment display intentionally treats a whitespace-delimited `@username`
@@ -36,11 +37,12 @@ function renderCommentContent(content: string): ReactNode {
   return nodes;
 }
 
-function CommentIdentity({ name, username, highlighted, children }: {
+function CommentIdentity({ userId, avatarStyle, name, username, highlighted, children }: {
+  userId: string | null; avatarStyle?: string | null;
   name: string; username: string | null; highlighted?: boolean; children: ReactNode;
 }) {
   return <span className="comment-identity">
-    <span className="comment-avatar" aria-hidden>{Array.from(name.trim())[0]?.toLocaleUpperCase() || "?"}</span>
+    <UserAvatar userId={userId} name={name} username={username} avatarStyle={avatarStyle} className="comment-avatar" />
     <span className="comment-author-details">
       <span className={`comment-author${highlighted ? " participant-match" : ""}`}><strong data-tooltip={username ? `@${username}` : undefined} data-texlite-tooltip-always>{name}</strong></span>
       {children}
@@ -135,7 +137,7 @@ export function CommentThread({
   };
   return <><article data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}${currentComment ? " review-current" : ""}`} onFocusCapture={onActivate} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
     <header className="comment-header">
-      <CommentIdentity name={comment.authorDisplayName ?? username ?? t("editor.deletedUser")} username={username} highlighted={selectedParticipantIds?.has(comment.authorId)}>
+      <CommentIdentity userId={comment.authorId} avatarStyle={comment.authorAvatarStyle} name={comment.authorDisplayName ?? username ?? t("editor.deletedUser")} username={username} highlighted={selectedParticipantIds?.has(comment.authorId)}>
         {times(comment.createdAt, comment.editedAt)}
       </CommentIdentity>
       <span className="comment-header-actions">
@@ -174,7 +176,7 @@ export function CommentThread({
       const editing = drafts[editKey]?.open && reply.authorId === currentUserId;
       return <div data-comment-reply-id={reply.id} className={`comment-reply${highlightedReplyId === reply.id ? " mention-target" : ""}`} key={reply.id}>
         <header>
-          <CommentIdentity name={reply.authorDisplayName ?? reply.authorUsername ?? t("editor.deletedUser")} username={reply.authorUsername} highlighted={highlightReplyParticipants && selectedParticipantIds?.has(reply.authorId)}>
+          <CommentIdentity userId={reply.authorId} avatarStyle={reply.authorAvatarStyle} name={reply.authorDisplayName ?? reply.authorUsername ?? t("editor.deletedUser")} username={reply.authorUsername} highlighted={highlightReplyParticipants && selectedParticipantIds?.has(reply.authorId)}>
             {times(reply.createdAt, reply.editedAt)}
           </CommentIdentity>
           <span className="comment-header-actions">
@@ -205,7 +207,7 @@ export function CommentThread({
   </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription", { count: comment.replies.length })} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void onDelete().then((deleted) => { if (deleted) setDeleteCommentOpen(false); })} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void onDeleteReply(deleteReplyId).then((deleted) => { if (deleted) setDeleteReplyId(null); }); }} /></>;
 }
 
-interface ShareMember { id: string; username: string; displayName?: string; permission: "read" | "edit" }
+interface ShareMember { id: string; username: string; displayName?: string; avatarStyle?: string | null; permission: "read" | "edit" }
 
 export function ShareDialog({ open, onOpenChange, project, projectId }: {
   open: boolean; onOpenChange: (open: boolean) => void; project: Project; projectId: string;
@@ -256,7 +258,7 @@ export function ShareDialog({ open, onOpenChange, project, projectId }: {
       <div className="share-owner"><Users size={17} /><span><small>{t("projects.owner")}</small><strong>{project.ownerDisplayName ?? project.ownerUsername}</strong></span></div>
       {canManage && <div className="share-add"><label className="form-field">{t("common.user")}<select value={userId} onChange={(event) => setUserId(event.target.value)}><option value="">{t("projectSettings.chooseUser")}</option>{availableUsers.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.displayName ?? candidate.username}</option>)}</select></label><label className="form-field">{t("common.permission")}<select value={permission} onChange={(event) => setPermission(event.target.value as "read" | "edit")}><option value="read">{t("common.readOnly")}</option><option value="edit">{t("common.readWrite")}</option></select></label><button className="primary icon-button" disabled={!userId} onClick={() => void addMember()}><UserPlus size={15} />{t("projectSettings.addMember")}</button></div>}
       <div className="shared-members-heading"><strong>{t("projectSettings.members")}</strong><span>{members.length}</span></div>
-      <div className="shared-members">{members.map((member) => <div className="shared-member" key={member.id}><span className="member-identity"><span className="member-avatar">{(member.displayName ?? member.username).slice(0, 1).toLocaleUpperCase()}</span><span><strong>{member.displayName ?? member.username}</strong><small>@{member.username}</small></span></span><span className="member-controls"><select aria-label={t("common.permission")} disabled={!canManage} value={member.permission} onChange={(event) => void changePermission(member, event.target.value as "read" | "edit")}><option value="read">{t("common.readOnly")}</option><option value="edit">{t("common.readWrite")}</option></select>{canManage && <button className="icon-only danger-text" title={t("common.remove")} aria-label={t("common.remove")} onClick={() => setRemoveTarget(member)}><Trash2 size={15} /></button>}</span></div>)}{members.length === 0 && <div className="share-empty"><Users size={24} /><span>{t("projectSettings.noMembers")}</span></div>}</div>
+      <div className="shared-members">{members.map((member) => <div className="shared-member" key={member.id}><span className="member-identity"><UserAvatar userId={member.id} name={member.displayName} username={member.username} avatarStyle={member.avatarStyle} className="member-avatar" /><span><strong>{member.displayName ?? member.username}</strong><small>@{member.username}</small></span></span><span className="member-controls"><select aria-label={t("common.permission")} disabled={!canManage} value={member.permission} onChange={(event) => void changePermission(member, event.target.value as "read" | "edit")}><option value="read">{t("common.readOnly")}</option><option value="edit">{t("common.readWrite")}</option></select>{canManage && <button className="icon-only danger-text" title={t("common.remove")} aria-label={t("common.remove")} onClick={() => setRemoveTarget(member)}><Trash2 size={15} /></button>}</span></div>)}{members.length === 0 && <div className="share-empty"><Users size={24} /><span>{t("projectSettings.noMembers")}</span></div>}</div>
     </div>
   </Modal><ConfirmDialog open={Boolean(removeTarget)} title={t("projectSettings.removeTitle")} description={t("projectSettings.removeDescription", { username: removeTarget?.username ?? "" })} confirmLabel={t("common.remove")} danger onCancel={() => setRemoveTarget(null)} onConfirm={() => void removeMember()} /></>;
 }

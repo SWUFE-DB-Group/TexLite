@@ -32,6 +32,7 @@ import { UpdateChecker } from "./updates.js";
 import { apiError, HttpError } from "./http.js";
 import { registerCompileRoutes } from "./routes/compile.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerAvatarRoutes } from "./routes/avatars.js";
 import { registerCollaborationRoutes } from "./routes/collaboration.js";
 import { registerCitationRoutes } from "./routes/citations.js";
 import { registerCommentRoutes } from "./routes/comments.js";
@@ -276,6 +277,7 @@ export async function buildApp(
     });
     registerCollaborationRoutes(routes, { db, collaboration, metrics });
     registerAuthRoutes(routes, { config, db, loginLimiter });
+    registerAvatarRoutes(routes, { db, collaboration });
     registerCitationRoutes(routes, { db });
     registerUserManagementRoutes(routes, {
       config,

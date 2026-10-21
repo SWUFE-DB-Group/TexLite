@@ -177,7 +177,9 @@ export class CollaborationService {
     private readonly db: DatabaseConnection,
     private readonly onPersist?: (event: CollaborationPersistEvent) => void
   ) {
-    this.userByIdStatement = db.prepare<[string], UserRow>("SELECT * FROM users WHERE id = ?");
+    // Avatar SVGs are served separately; do not copy one on every editing message.
+    this.userByIdStatement = db.prepare<[string], UserRow>(`SELECT id, username, display_name, avatar_style, password_hash,
+      role, disabled, must_change_password, can_create_projects, created_at FROM users WHERE id = ?`);
     this.collaborationProjectAccessStatement = prepareCollaborationProjectAccessStatement(db);
   }
 
@@ -512,6 +514,36 @@ export class CollaborationService {
     const room = this.rooms.get(projectId);
     if (!room) return;
     room.doc.transact(() => room.meta.set("commentsRevision", randomUUID()), META_ORIGIN);
+  }
+
+  /** Refresh visible identities without disconnecting editors or touching source. */
+  updateUserAvatar(user: UserRow): void {
+    const affected = new Set((this.db.prepare(`SELECT project_id FROM comments WHERE author_id = ?
+      UNION SELECT c.project_id FROM comment_replies r JOIN comments c ON c.id = r.comment_id WHERE r.author_id = ?`)
+      .all(user.id, user.id) as Array<{ project_id: string }>).map((row) => row.project_id));
+    for (const room of this.rooms.values()) {
+      const updates: Array<{ id: number; clock: number; state: Record<string, unknown> }> = [];
+      for (const connection of room.connections) {
+        if (connection.user.id !== user.id) continue;
+        connection.user = user;
+        const id = connection.awarenessClientId;
+        const state = id === null ? null : room.awareness.getStates().get(id);
+        if (id === null || !state) continue;
+        updates.push({ id, clock: (room.awareness.meta.get(id)?.clock ?? 0) + 1,
+          state: { ...state, user: { ...state.user, avatarStyle: user.avatar_style ?? null } } });
+      }
+      if (updates.length) {
+        const encoder = encoding.createEncoder();
+        encoding.writeVarUint(encoder, updates.length);
+        for (const update of updates) {
+          encoding.writeVarUint(encoder, update.id);
+          encoding.writeVarUint(encoder, update.clock);
+          encoding.writeVarString(encoder, JSON.stringify(update.state));
+        }
+        applyAwarenessUpdate(room.awareness, encoding.toUint8Array(encoder), META_ORIGIN);
+      }
+      if (affected.has(room.projectId)) this.signalComments(room.projectId);
+    }
   }
 
   signalDictionary(projectId: string): void {
@@ -1179,6 +1211,7 @@ export class CollaborationService {
         id: connection.user.id,
         username: connection.user.username,
         name: connection.user.display_name,
+        avatarStyle: connection.user.avatar_style ?? null,
         color,
         colorLight,
         permission: current.permission,

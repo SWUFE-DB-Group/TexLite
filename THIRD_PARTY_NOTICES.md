@@ -1,5 +1,16 @@
 # Third-party notices
 
+## DiceBear avatars
+
+TexLite generates optional user avatars locally using
+[`@dicebear/core`](https://github.com/dicebear/dicebear) (MIT) and the Characters
+definitions from [`@dicebear/styles`](https://github.com/dicebear/styles).
+The definitions have individual licenses (including CC0 1.0, CC BY 4.0, and the
+creators' free-use licenses); their complete notices ship with that dependency
+in `LICENSE.md`. Generated SVGs retain DiceBear's creator, source and license
+metadata without modification. See the [style catalog and creator credits](https://www.dicebear.com/styles/)
+and [license overview](https://www.dicebear.com/licenses/).
+
 ## Overleaf lezer-latex
 
 TexLite's internal LaTeX editor parser derives from the grammar and tokenizer

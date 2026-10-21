@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, Columns2, PanelLeft, PanelRight } from "lucide-react";
-import { avatarInitial, type ActiveSession, type CollaborationStatus } from "../collaboration";
+import { type ActiveSession, type CollaborationStatus } from "../collaboration";
+import { UserAvatar } from "../UserAvatar";
 import type { WorkspaceLayout } from "./types";
 
 export function CollaborationPresence({ sessions, status }: { sessions: ActiveSession[]; status: CollaborationStatus }) {
@@ -29,7 +30,7 @@ export function CollaborationPresence({ sessions, status }: { sessions: ActiveSe
           aria-label={title}
           tabIndex={0}
           key={session.clientId}
-        >{avatarInitial(session.name, session.username)}<span className="collaboration-avatar-tooltip" role="tooltip"><strong>{session.name}</strong><span>@{session.username}</span><small>{session.filePath || t("editor.collaboration.joining")} · {activity} · {permission}</small></span></span>;
+        ><UserAvatar userId={session.userId} name={session.name} username={session.username} avatarStyle={session.avatarStyle} className="collaboration-avatar-face" /><span className="collaboration-avatar-tooltip" role="tooltip"><strong>{session.name}</strong><span>@{session.username}</span><small>{session.filePath || t("editor.collaboration.joining")} · {activity} · {permission}</small></span></span>;
       })}
       {overflowCount > 0 && <button
         type="button"

@@ -27,6 +27,13 @@
     "newPassword": "新密码", "confirmPassword": "确认新密码", "updatePassword": "更新密码", "mismatch": "两次输入的新密码不一致", "passwordMinimum": "至少 {{count}} 位", "sessionExpired": "登录状态已过期，请重新登录。", "logout": "退出"
   },
   "account": {
+    "avatarTitle": "头像",
+    "avatarStyle": "风格",
+    "avatarSearch": "搜索风格…",
+    "avatarNoMatches": "没有匹配的风格。",
+    "avatarDescription": "选择用于个人资料、批注和协作会话的头像风格。",
+    "avatarDefault": "姓名首字",
+    "avatarStyles": "查看 DiceBear Characters 风格",
     "menu": "{{name}} 的用户菜单",
     "openGithubSettings": "打开账户设置和 GitHub 集成",
     "githubTitle": "GitHub 集成",

@@ -29,7 +29,7 @@ export function registerProjectMemberRoutes(app: FastifyInstance, context: Proje
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const members = db.prepare(`SELECT pm.user_id AS id, u.username, u.display_name AS displayName, pm.permission
+    const members = db.prepare(`SELECT pm.user_id AS id, u.username, u.display_name AS displayName, u.avatar_style AS avatarStyle, pm.permission
       FROM project_members pm JOIN users u ON u.id = pm.user_id WHERE pm.project_id = ? ORDER BY u.username`).all(id);
     return { members };
   });

@@ -221,6 +221,30 @@ usage. This is a lightweight status indicator, not per-process accounting.
 
 ## Collaboration and source persistence
 
+User avatars default to the first visible character of the display name (or
+username). Users can select a DiceBear Characters style from their user menu.
+The server generates the SVG locally with `@dicebear/core` and
+`@dicebear/styles`, seeded by the username. The selected style and SVG
+are stored together in the user row; returning to initials clears both values.
+Existing users retain initials after migration. Style selection uses a dropdown
+and previews only the chosen style; previews do not change the saved avatar.
+Startup applies separate, append-only
+migrations for style selection (version 6) and SVG storage (version 7), including
+databases that already recorded the earlier style-only version. Previously
+saved styles without an SVG are generated and stored automatically on first use.
+Version 8 invalidates older user-ID-seeded SVGs without clearing style choices;
+the first read regenerates them with the username. Avatar URLs carry a render
+version so browsers do not keep displaying the older cached images.
+Style definitions are loaded on demand; ordinary avatar reads return the stored SVG without generating it
+again. Authenticated image responses use private browser caching and ETags.
+Previews are restricted to the current user and never save a selection.
+There are no requests to DiceBear's public API and no browser-side generator.
+Shared avatar rendering covers the account menu, comments, replies, participant
+filters, shared members and collaboration sessions, with an initial fallback
+while loading or after a failed image request. Avatar changes refresh active
+presence and affected comment lists without restarting collaborative editing.
+Authentication and per-message collaboration queries exclude the SVG column.
+
 Each open project has one Yjs room. Awareness data provides active-session
 avatars, user names, permissions, file paths, cursor colors, and the ten-session
 project limit. Ordinary Yjs edits remain concurrent; source-tree replacement

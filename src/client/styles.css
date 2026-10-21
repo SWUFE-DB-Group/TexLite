@@ -68,6 +68,35 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .user-menu-trigger[data-state="open"] > svg { transform: rotate(180deg); }
 .user-menu-name { max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; font-weight: 600; }
 .user-menu-avatar { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 29px; height: 29px; border-radius: 50%; background: #e9f4ed; color: #164a32; font-size: 13px; font-weight: 650; }
+.user-avatar { position: relative; overflow: hidden; }
+.user-avatar > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.user-menu-avatar-setting { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 0; border-radius: 6px; padding: 5px 0; background: transparent; color: inherit; font-size: inherit; }
+.user-menu-avatar-setting > svg { color: var(--ui-muted, #718077); }
+.user-menu-avatar-setting:hover { color: var(--ui-accent, #176b44); }
+.user-menu-avatar-setting:focus-visible { outline: 2px solid var(--ui-accent-border, #75a68a); outline-offset: 3px; }
+.avatar-settings { display: grid; gap: 14px; }
+.dialog-content.avatar-settings-modal { display: flex; flex-direction: column; overflow: visible; }
+.avatar-settings-modal .dialog-header, .avatar-settings-modal .dialog-footer { flex: none; }
+.avatar-settings-modal .dialog-body { min-height: 0; overflow-y: auto; }
+.avatar-settings-modal .dialog-footer button { min-height: 32px; padding: 7px 12px; font-size: 12px; }
+.avatar-settings-choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 22px; }
+.avatar-style-picker { min-width: 0; display: grid; gap: 8px; color: var(--ui-text, #35433a); font-size: 12px; }
+.avatar-style-label { font-weight: 500; }
+.avatar-style-trigger { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 7px; background: var(--ui-surface, #fff); color: inherit; font-size: 12px; text-align: left; }
+.avatar-style-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-style-trigger svg { flex: none; color: var(--ui-muted, #737e76); }
+.avatar-style-trigger:focus-visible { outline: 2px solid var(--ui-accent-border, #75a68a); outline-offset: 2px; }
+.avatar-style-popover { z-index: 120; width: var(--radix-popover-trigger-width); min-width: min(220px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: var(--radix-popover-content-available-height); display: flex; flex-direction: column; overflow: hidden; padding: 5px; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 9px; background: var(--ui-raised, #fff); color: var(--ui-text, #35433a); box-shadow: 0 8px 28px #071c2426; font-size: 12px; }
+.avatar-style-search { display: flex; align-items: center; flex: none; gap: 7px; padding: 4px 7px 8px; border-bottom: 1px solid var(--ui-border, #dce4de); color: var(--ui-muted, #737e76); }
+.avatar-style-search input { width: 100%; min-width: 0; padding: 4px 0; border: 0; border-radius: 0; background: transparent; color: var(--ui-text, #35433a); font-size: 12px; outline: none; box-shadow: none; }
+.avatar-style-options { min-height: 0; max-height: 252px; overflow-y: auto; overscroll-behavior: contain; padding-top: 4px; }
+.avatar-style-options button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 32px; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: inherit; font-size: 12px; text-align: left; }
+.avatar-style-options button[data-active] { background: var(--ui-subtle, #eaf1ec); }
+.avatar-style-options button[aria-selected="true"] { color: var(--ui-accent, #176b44); font-weight: 600; }
+.avatar-style-empty { margin: 0; padding: 14px 8px; color: var(--ui-muted, #737e76); font-size: 12px; }
+.avatar-style-preview { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: var(--ui-subtle, #eaf1ec); color: var(--ui-accent, #285d3d); font-size: 28px; }
+.avatar-settings-note { margin: 0; color: var(--ui-muted, #737e76); font-size: 11px; line-height: 1.6; }
+.avatar-settings-note a { color: var(--ui-accent, #176b44); }
 .user-menu-content { z-index: 90; width: 300px; max-width: calc(100vw - 24px); max-height: var(--radix-popover-content-available-height); overflow-y: auto; padding: 8px 12px; border: 1px solid var(--ui-border, #dce4de); border-radius: 14px; background: var(--ui-surface, #fff); color: var(--ui-text, #26372e); box-shadow: 0 14px 48px #071c2428, 0 2px 8px #071c2410; font-size: 13px; }
 .user-menu-content:focus { outline: none; }
 .user-menu-profile { display: flex; align-items: center; gap: 11px; padding: 12px 2px 18px; border-bottom: 1px solid var(--ui-border, #e3e9e5); }
@@ -447,6 +476,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .collaboration-disconnected .collaboration-status-dot { background: #e07167; box-shadow: 0 0 0 2px #e071672e; }
 .collaboration-avatars { display: flex; align-items: center; padding-left: 8px; }
 .collaboration-avatar { --session-color: #1677c8; position: relative; width: 28px; height: 28px; display: grid; place-items: center; margin-left: -8px; border: 2px solid #214d35; border-radius: 50%; background: var(--session-color); color: white; font-size: 11px; font-weight: 750; cursor: default; box-shadow: 0 1px 4px #061c1145; }
+.collaboration-avatar-face { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; }
 .collaboration-avatar.editing::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 7px; height: 7px; border: 2px solid #214d35; border-radius: 50%; background: #8ff0af; }
 .collaboration-avatar.local { outline: 1px solid #ffffff8a; outline-offset: -4px; }
 .collaboration-avatar-overflow { appearance: none; padding: 0; border-color: var(--ui-border, #72877b); background: var(--ui-surface, #f4f7f5); color: var(--ui-accent, #284536); font-family: inherit; font-size: 10px; cursor: pointer; }

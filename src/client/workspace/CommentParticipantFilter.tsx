@@ -3,6 +3,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { ChevronDown, Users, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { CommentParticipant } from "./commentNavigation";
+import { UserAvatar } from "../UserAvatar";
 
 interface CommentParticipantFilterProps {
   participants: readonly CommentParticipant[];
@@ -65,7 +66,7 @@ export function CommentParticipantFilter({
                 const selected = selectedIds.has(participant.authorId);
                 return <label className={`comment-participant-option${selected ? " selected" : ""}`} key={participant.authorId ?? "deleted"}>
                   <input type="checkbox" checked={selected} onChange={() => onToggle(participant.authorId)} />
-                  <span className="comment-participant-avatar" aria-hidden>{Array.from(name.trim())[0]?.toLocaleUpperCase() ?? "?"}</span>
+                  <UserAvatar userId={participant.authorId} name={name} username={participant.authorUsername} avatarStyle={participant.authorAvatarStyle} className="comment-participant-avatar" />
                   <span className="comment-participant-identity"><strong>{name}</strong>{participant.authorUsername && <small>@{participant.authorUsername}</small>}</span>
                 </label>;
               })}

@@ -8,6 +8,8 @@ import * as syncProtocol from "y-protocols/sync";
 import { IndexeddbPersistence } from "y-indexeddb";
 import type { Project, User } from "./types";
 import { appPath, scopedStorageKey } from "./basePath";
+import { isAvatarStyle } from "../shared/avatars";
+export { avatarInitial } from "../shared/avatars";
 import {
   COLLABORATION_PROTOCOL_VERSION,
   CollaborationMessageType,
@@ -52,6 +54,7 @@ export interface ActiveSession {
   userId: string;
   username: string;
   name: string;
+  avatarStyle?: string | null;
   color: string;
   colorLight: string;
   permission: Project["permission"];
@@ -567,6 +570,7 @@ export class ProjectCollaboration {
         userId: remoteUser.id,
         username: typeof remoteUser.username === "string" ? remoteUser.username : remoteUser.name,
         name: remoteUser.name,
+        avatarStyle: isAvatarStyle(remoteUser.avatarStyle) ? remoteUser.avatarStyle : null,
         color: typeof remoteUser.color === "string" ? remoteUser.color : "#1677c8",
         colorLight: typeof remoteUser.colorLight === "string" ? remoteUser.colorLight : "#1677c833",
         permission: remoteUser.permission === "owner" || remoteUser.permission === "edit" ? remoteUser.permission : "read",
@@ -760,10 +764,15 @@ export class ProjectCollaboration {
 
   private updateLocalAwareness(): void {
     const [color, colorLight] = COLORS[Math.abs(this.doc.clientID) % COLORS.length];
+    // Another tab may have changed this account's avatar since we connected.
+    // Retain the authoritative value delivered through awareness, including null.
+    const currentUser = this.awareness.getLocalState()?.user;
+    const avatarStyle = currentUser && Object.hasOwn(currentUser, "avatarStyle") ? currentUser.avatarStyle : this.user.avatarStyle;
     this.awareness.setLocalStateField("user", {
       id: this.user.id,
       username: this.user.username,
       name: this.user.displayName,
+      avatarStyle: isAvatarStyle(avatarStyle) ? avatarStyle : null,
       color,
       colorLight,
       permission: this.permission,
@@ -935,8 +944,4 @@ function getOrCreateDraftTabId(key: string): string {
   const created = clientUuid();
   safeSessionStorageSet(key, created);
   return created;
-}
-
-export function avatarInitial(name: string, username: string): string {
-  return Array.from(name.trim() || username.trim() || "?")[0]?.toLocaleUpperCase() ?? "?";
 }

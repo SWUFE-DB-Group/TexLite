@@ -66,6 +66,32 @@ describe("project collaboration", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
+  it("updates avatar styles across active sessions without interrupting edits or trusting client-supplied styles", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Avatar presence" } });
+    const projectId = created.json().project.id as string;
+    const identity = { id: adminId, username: "admin", name: "Administrator" };
+    const owner = await TestPeer.connect(app, projectId, adminCookie, identity);
+    const other = await TestPeer.connect(app, projectId, adminCookie, identity);
+    try {
+      await waitFor(() => owner.awareness.getStates().size === 2);
+      const save = await app.inject({ method: "PUT", url: "/api/me/avatar", headers: { cookie: adminCookie }, payload: { style: "lorelei" } });
+      expect(save.statusCode).toBe(200);
+      await waitFor(() => [...other.awareness.getStates().values()].every((state) => state.user?.avatarStyle === "lorelei"));
+      // A modified browser may not choose another style on behalf of its account.
+      const local = owner.awareness.getLocalState()!.user;
+      owner.awareness.setLocalStateField("user", { ...local, avatarStyle: "pixel-art" });
+      await waitFor(() => other.awareness.getStates().get(owner.doc.clientID)?.user.avatarStyle === "lorelei");
+      expect(owner.connected).toBe(true);
+      expect(other.connected).toBe(true);
+      const text = owner.doc.getText("source:main.tex");
+      text.insert(text.length, "\n% Editing still works\n");
+      await waitFor(() => other.doc.getText("source:main.tex").toString().includes("Editing still works"));
+    } finally {
+      await app.inject({ method: "PUT", url: "/api/me/avatar", headers: { cookie: adminCookie }, payload: { style: null } });
+      owner.destroy(); other.destroy();
+    }
+  });
+
   it("collaborates on generic text while excluding binary content from Yjs", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Generic text collaboration" } });
     const id = created.json().project.id as string;

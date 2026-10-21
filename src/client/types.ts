@@ -16,6 +16,7 @@ export interface User {
   id: string;
   username: string;
   displayName: string;
+  avatarStyle?: string | null;
   role: "admin" | "user";
   disabled: boolean;
   mustChangePassword: boolean;
@@ -212,6 +213,7 @@ export interface Comment {
   authorId: string | null;
   authorUsername: string | null;
   authorDisplayName: string | null;
+  authorAvatarStyle?: string | null;
   selectedText: string;
   /** Last attached context is retained while source is deleted, for undo recovery. */
   contextBefore?: string;
@@ -238,6 +240,7 @@ export interface CommentReply {
   authorId: string | null;
   authorUsername: string | null;
   authorDisplayName: string | null;
+  authorAvatarStyle?: string | null;
   content: string;
   createdAt: string;
   updatedAt: string;

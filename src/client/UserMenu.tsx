@@ -1,19 +1,25 @@
-import { useId, useRef, useState } from "react";
+import { lazy, useId, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ChevronDown, Globe2, LoaderCircle, LogOut, Palette } from "lucide-react";
+import { ChevronDown, ChevronRight, Globe2, LoaderCircle, LogOut, Palette, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { User } from "./types";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { errorMessage } from "./errors";
 import { GitHubIcon } from "./GitHubIcon";
+import { UserAvatar } from "./UserAvatar";
+import { LazyModal } from "./LazyLoadBoundary";
 
-export function UserMenu({ user, onGitHub, onSignOut }: {
+const AvatarSettingsDialog = lazy(() => import("./AvatarSettingsDialog").then((module) => ({ default: module.AvatarSettingsDialog })));
+
+export function UserMenu({ user, onGitHub, onSignOut, onUserChange }: {
   user: User;
   onGitHub: () => void;
   onSignOut: () => Promise<void>;
+  onUserChange?: (user: User) => void;
 }) {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
@@ -21,7 +27,6 @@ export function UserMenu({ user, onGitHub, onSignOut }: {
   const content = useRef<HTMLDivElement>(null);
   const languageId = useId();
   const name = user.displayName || user.username;
-  const initial = Array.from(name.trim())[0]?.toLocaleUpperCase() ?? "?";
   const signOut = async () => {
     if (pending.current) return;
     pending.current = true;
@@ -32,10 +37,10 @@ export function UserMenu({ user, onGitHub, onSignOut }: {
     finally { pending.current = false; setSigningOut(false); }
   };
 
-  return <Popover.Root open={open} onOpenChange={(next) => { setOpen(next); if (next) setError(""); }}>
+  return <><Popover.Root open={open} onOpenChange={(next) => { setOpen(next); if (next) setError(""); }}>
     <Popover.Trigger asChild>
       <button type="button" className="user-menu-trigger" aria-label={t("account.menu", { name })}>
-        <span className="user-menu-avatar" aria-hidden="true">{initial}</span><span className="user-menu-name">{name}</span><ChevronDown size={14} aria-hidden="true" />
+        <UserAvatar userId={user.id} name={name} username={user.username} avatarStyle={user.avatarStyle} className="user-menu-avatar" /><span className="user-menu-name">{name}</span><ChevronDown size={14} aria-hidden="true" />
       </button>
     </Popover.Trigger>
     <Popover.Portal>
@@ -43,12 +48,15 @@ export function UserMenu({ user, onGitHub, onSignOut }: {
         onOpenAutoFocus={(event) => { event.preventDefault(); content.current?.focus(); }}
         onCloseAutoFocus={(event) => { if (openingGitHub.current) event.preventDefault(); openingGitHub.current = false; }}>
         <div className="user-menu-profile">
-          <span className="user-menu-avatar" aria-hidden="true">{initial}</span>
+          <UserAvatar userId={user.id} name={name} username={user.username} avatarStyle={user.avatarStyle} className="user-menu-avatar" />
           <div><strong>{name}</strong><span>@{user.username}</span></div>
           <button type="button" className="user-menu-github" aria-label={t("account.openGithubSettings")} data-tooltip={t("account.githubTitle")}
             onClick={() => { openingGitHub.current = true; setOpen(false); onGitHub(); }}><GitHubIcon size={19} /></button>
         </div>
         <div className="user-menu-settings">
+          <button type="button" className="user-menu-avatar-setting" onClick={() => { openingGitHub.current = true; setOpen(false); setAvatarOpen(true); }}>
+            <span className="user-menu-setting-label"><UserRound size={16} aria-hidden />{t("account.avatarTitle")}</span><ChevronRight size={14} aria-hidden />
+          </button>
           <div className="user-menu-language">
             <label htmlFor={languageId}><Globe2 size={16} aria-hidden="true" />{t("common.language")}</label>
             <div className="user-menu-language-select"><select id={languageId} value={i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en"} onChange={(event) => void i18n.changeLanguage(event.target.value)}>
@@ -63,5 +71,7 @@ export function UserMenu({ user, onGitHub, onSignOut }: {
         </button>
       </Popover.Content>
     </Popover.Portal>
-  </Popover.Root>;
+  </Popover.Root>{avatarOpen && <LazyModal title={t("account.avatarTitle")} onClose={() => setAvatarOpen(false)}>
+    <AvatarSettingsDialog user={user} onClose={() => setAvatarOpen(false)} onSaved={(updated) => onUserChange?.(updated)} />
+  </LazyModal>}</>;
 }

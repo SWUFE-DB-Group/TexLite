@@ -7,6 +7,7 @@ export interface PublicUser {
   id: string;
   username: string;
   displayName: string;
+  avatarStyle: string | null;
   role: "admin" | "user";
   disabled: boolean;
   mustChangePassword: boolean;
@@ -19,6 +20,7 @@ export function publicUser(user: UserRow): PublicUser {
     id: user.id,
     username: user.username,
     displayName: user.display_name,
+    avatarStyle: user.avatar_style ?? null,
     role: user.role,
     disabled: Boolean(user.disabled),
     mustChangePassword: Boolean(user.must_change_password),
@@ -39,7 +41,8 @@ export function currentUser(request: FastifyRequest, db: DatabaseConnection): Us
     return null;
   }
   const row = db.prepare(`
-    SELECT u.* FROM sessions s
+    SELECT u.id, u.username, u.display_name, u.avatar_style, u.password_hash,
+      u.role, u.disabled, u.must_change_password, u.can_create_projects, u.created_at FROM sessions s
     JOIN users u ON u.id = s.user_id
     WHERE s.id = ? AND s.expires_at > ? AND u.disabled = 0
   `).get(digestToken(token), new Date().toISOString()) as UserRow | undefined;

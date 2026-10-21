@@ -205,6 +205,7 @@ interface CommentRow {
   author_id: string | null;
   author_username: string | null;
   author_display_name: string | null;
+  author_avatar_style: string | null;
   selected_text: string;
   context_before: string;
   context_after: string;
@@ -227,6 +228,7 @@ interface CommentReplyRow {
   author_id: string | null;
   author_username: string | null;
   author_display_name: string | null;
+  author_avatar_style: string | null;
   content: string;
   created_at: string;
   updated_at: string;
@@ -235,7 +237,7 @@ interface CommentReplyRow {
 
 export function repliesForComment(db: DatabaseConnection, commentId: string) {
   const rows = db.prepare(`SELECT reply.*, user.username AS author_username,
-      user.display_name AS author_display_name
+      user.display_name AS author_display_name, user.avatar_style AS author_avatar_style
     FROM comment_replies reply LEFT JOIN users user ON user.id = reply.author_id
     WHERE reply.comment_id = ? ORDER BY reply.created_at`)
     .all(commentId) as unknown as CommentReplyRow[];
@@ -244,6 +246,7 @@ export function repliesForComment(db: DatabaseConnection, commentId: string) {
     authorId: reply.author_id,
     authorUsername: reply.author_username,
     authorDisplayName: reply.author_display_name,
+    authorAvatarStyle: reply.author_avatar_style,
     content: reply.content,
     createdAt: reply.created_at,
     updatedAt: reply.updated_at,
@@ -260,7 +263,7 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
   const commentOrder = hasFileScope
     ? "c.created_at"
     : "c.file_path COLLATE NOCASE, c.start_line, c.created_at";
-  const rows = db.prepare(`SELECT c.*, u.username AS author_username, u.display_name AS author_display_name,
+  const rows = db.prepare(`SELECT c.*, u.username AS author_username, u.display_name AS author_display_name, u.avatar_style AS author_avatar_style,
       resolver.username AS resolved_by_username, resolver.display_name AS resolved_by_display_name FROM comments c
     LEFT JOIN users u ON u.id = c.author_id
     LEFT JOIN users resolver ON resolver.id = c.resolved_by
@@ -275,7 +278,7 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     sourceByPath.set(row.file_path, fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : "");
   }
 
-  const replies = db.prepare(`SELECT reply.*, user.username AS author_username, user.display_name AS author_display_name
+  const replies = db.prepare(`SELECT reply.*, user.username AS author_username, user.display_name AS author_display_name, user.avatar_style AS author_avatar_style
     FROM comment_replies reply
     JOIN comments c ON c.id = reply.comment_id
     LEFT JOIN users user ON user.id = reply.author_id
@@ -288,6 +291,7 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     authorId: string | null;
     authorUsername: string | null;
     authorDisplayName: string | null;
+    authorAvatarStyle: string | null;
     content: string;
     createdAt: string;
     updatedAt: string;
@@ -301,6 +305,7 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
       authorId: reply.author_id,
       authorUsername: reply.author_username,
       authorDisplayName: reply.author_display_name,
+      authorAvatarStyle: reply.author_avatar_style,
       content: reply.content,
       createdAt: reply.created_at,
       updatedAt: reply.updated_at,
@@ -315,6 +320,7 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     authorId: comment.author_id,
     authorUsername: comment.author_username,
     authorDisplayName: comment.author_display_name,
+    authorAvatarStyle: comment.author_avatar_style,
     selectedText: comment.selected_text,
     contextBefore: comment.context_before,
     contextAfter: comment.context_after,

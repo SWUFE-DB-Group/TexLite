@@ -8,6 +8,9 @@ export type ServerLocale = "en" | "zh";
 type MessageParams = Record<string, unknown>;
 
 const enMessages = {
+    AVATAR_STYLE_INVALID: "Choose a supported avatar style.",
+    AVATAR_NOT_FOUND: "No custom avatar is configured for this user.",
+    AVATAR_PREVIEW_FORBIDDEN: "You can only preview avatars for your own account.",
     API_NOT_FOUND: "The API endpoint does not exist.",
     ADMIN_REQUIRED: "Administrator permission is required.",
     ARTIFACT_PREVIEW_UNSUPPORTED: "This artifact cannot be previewed as text. Download it instead.",
@@ -149,6 +152,9 @@ const enMessages = {
 export type ServerErrorCode = keyof typeof enMessages;
 
 const zhMessages: Record<ServerErrorCode, string> = {
+    AVATAR_STYLE_INVALID: "请选择支持的头像风格。",
+    AVATAR_NOT_FOUND: "该用户尚未设置自定义头像。",
+    AVATAR_PREVIEW_FORBIDDEN: "只能预览自己账号的头像。",
     API_NOT_FOUND: "接口不存在。",
     ADMIN_REQUIRED: "需要管理员权限。",
     ARTIFACT_PREVIEW_UNSUPPORTED: "该产物不能作为文本预览，请下载后查看。",

@@ -13,7 +13,7 @@ describe("user menu", () => {
     const html = renderToStaticMarkup(createElement(UserMenu, { user, onGitHub: () => {}, onSignOut: async () => {} }));
     expect(html).toContain(i18n.t("account.menu", { name: "Alice" }));
     expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('class="user-menu-avatar" aria-hidden="true">A</span>');
+    expect(html).toContain('class="user-avatar user-menu-avatar" aria-hidden="true">A</span>');
     expect(html).not.toContain('class="user-menu-content"');
     expect(html).not.toContain("<select");
   });

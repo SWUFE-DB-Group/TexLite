@@ -371,7 +371,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       <div className="top-actions">
         {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen((current) => !current); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
         <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
-        <UserMenu user={user} onGitHub={() => setGitHubAccountOpen(true)} onSignOut={logout} />
+        <UserMenu user={user} onGitHub={() => setGitHubAccountOpen(true)} onSignOut={logout} onUserChange={onUser} />
       </div>
     </header>
     {user.role === "admin" && <div className="dashboard-update"><UpdateNotification key={user.id} userId={user.id} /></div>}

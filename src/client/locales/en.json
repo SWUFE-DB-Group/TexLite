@@ -29,6 +29,13 @@
     "updatePassword": "Update password", "mismatch": "The new passwords do not match", "passwordMinimum": "At least {{count}} characters", "sessionExpired": "Your session has expired. Please sign in again.", "logout": "Sign out"
   },
   "account": {
+    "avatarTitle": "Avatar",
+    "avatarStyle": "Style",
+    "avatarSearch": "Search styles…",
+    "avatarNoMatches": "No matching styles.",
+    "avatarDescription": "Choose an avatar style for your profile, comments and collaboration sessions.",
+    "avatarDefault": "Display initial",
+    "avatarStyles": "DiceBear Characters styles",
     "menu": "User menu for {{name}}",
     "openGithubSettings": "Open account settings and GitHub integration",
     "githubTitle": "GitHub integration",

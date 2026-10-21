@@ -10,6 +10,8 @@ export interface UserRow {
   id: string;
   username: string;
   display_name: string;
+  avatar_style?: string | null;
+  avatar_svg?: string | null;
   password_hash: string;
   role: UserRole;
   disabled: number;
@@ -94,6 +96,16 @@ const databaseMigrations: readonly DatabaseMigration[] = [
         version TEXT NOT NULL
       );
     `);
+  } },
+  { version: 6, name: "add_user_avatar_style", apply: (db) => {
+    if (missingColumn(db, "users", "avatar_style")) db.exec("ALTER TABLE users ADD COLUMN avatar_style TEXT");
+  } },
+  { version: 7, name: "add_user_avatar_svg", apply: (db) => {
+    if (missingColumn(db, "users", "avatar_svg")) db.exec("ALTER TABLE users ADD COLUMN avatar_svg TEXT");
+  } },
+  { version: 8, name: "use_username_avatar_seed", apply: (db) => {
+    // Retain style choices; the first image request stores a username-seeded SVG.
+    db.exec("UPDATE users SET avatar_svg = NULL WHERE avatar_svg IS NOT NULL");
   } }
 ];
 

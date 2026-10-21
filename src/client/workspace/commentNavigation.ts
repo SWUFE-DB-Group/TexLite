@@ -6,7 +6,7 @@ export type CommentReviewScope = "file" | "project";
 /** Resolution status is independent from the unread-mention filter. */
 export type CommentReviewFilter = "unresolved" | "resolved";
 export type CommentReviewSort = "source" | "time";
-export type CommentParticipant = Pick<CommentReply, "authorId" | "authorUsername" | "authorDisplayName">;
+export type CommentParticipant = Pick<CommentReply, "authorId" | "authorUsername" | "authorDisplayName" | "authorAvatarStyle">;
 
 export interface CommentReviewOptions {
   activeFile: string;
@@ -28,7 +28,8 @@ export function collectCommentParticipants(comments: readonly Comment[]): Commen
         participants.set(author.authorId, {
           authorId: author.authorId,
           authorUsername: author.authorUsername,
-          authorDisplayName: author.authorDisplayName
+          authorDisplayName: author.authorDisplayName,
+          authorAvatarStyle: author.authorAvatarStyle
         });
       }
     }

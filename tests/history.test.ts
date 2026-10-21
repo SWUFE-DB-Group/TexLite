@@ -334,7 +334,8 @@ describe("project history retention", () => {
   it("coalesces different authors within one project window without attributing the snapshot to one author", () => {
     vi.useFakeTimers();
     const fixture = createFixture();
-    fixture.db.prepare(`INSERT INTO users SELECT 'user-2', 'peer', 'Peer', password_hash, role, disabled, must_change_password, can_create_projects, created_at FROM users WHERE id = 'user-1'`).run();
+    fixture.db.prepare(`INSERT INTO users (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
+      SELECT 'user-2', 'peer', 'Peer', password_hash, role, disabled, must_change_password, can_create_projects, created_at FROM users WHERE id = 'user-1'`).run();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     const first = fixture.history.record(fixture.projectId, "user-1", "autosave")!;
     vi.setSystemTime(new Date("2026-01-01T00:01:00Z"));
