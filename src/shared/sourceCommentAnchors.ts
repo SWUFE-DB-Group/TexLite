@@ -22,7 +22,7 @@ export interface AnchorChange {
   inferred?: boolean;
 }
 
-export interface AnchorSearchRange { from: number; to: number }
+interface AnchorSearchRange { from: number; to: number }
 
 const CONTEXT_SIZE = 48;
 
@@ -59,16 +59,17 @@ function mappedOffset(position: number, changes: readonly AnchorChange[], side: 
  * Follow partial edits, but keep the last attached quote and context when the
  * selection is erased or no longer recognizable. They are required for undo
  * recovery; the mapped range alone is just a positional hint while detached.
+ * Recovery candidates must have been formed by the current changes, so an
+ * unchanged duplicate cannot inherit a deleted selection's discussion.
  * A browser may bound recovery searches near the hint to avoid flattening the
- * entire CodeMirror document on each keystroke. Saves search the whole file.
+ * entire CodeMirror document on each keystroke.
  */
 export function mapSourceAnchor(
   anchor: SourceAnchor,
   oldSource: AnchorSource,
   newSource: AnchorSource,
   changes: readonly AnchorChange[],
-  recoveryWindow?: number,
-  insertedRanges: readonly AnchorSearchRange[] = []
+  recoveryWindow?: number
 ): SourceAnchor {
   const oldStart = clamp(anchor.startOffset, 0, oldSource.length);
   const oldEnd = clamp(anchor.endOffset, oldStart, oldSource.length);
@@ -97,22 +98,40 @@ export function mapSourceAnchor(
   // Do not silently legitimize a previously attached but stale DB row whose
   // quote didn't match the old document in the first place.
   if (!anchor.orphaned && !oldMatches) return detached;
-  const restored = contextualMatch(newSource, anchor, start, recoveryWindow, insertedRanges);
+  const restored = contextualMatch(newSource, anchor, start, changedSourceRanges(changes), recoveryWindow);
   return restored === null ? detached : sourceAnchorAt(newSource, restored, restored + anchor.selectedText.length);
 }
 
-function contextualMatch(source: AnchorSource, anchor: SourceAnchor, start: number, window?: number, insertedRanges: readonly AnchorSearchRange[] = []): number | null {
+/** New-document coordinates, including deletion points that can rejoin a quote. */
+function changedSourceRanges(changes: readonly AnchorChange[]): AnchorSearchRange[] {
+  let delta = 0;
+  const ranges: AnchorSearchRange[] = [];
+  for (const change of changes) {
+    if (change.to > change.from || change.insertLength > 0) {
+      const from = change.from + delta;
+      ranges.push({ from, to: from + change.insertLength });
+    }
+    delta += change.insertLength - (change.to - change.from);
+  }
+  return ranges;
+}
+
+function contextualMatch(source: AnchorSource, anchor: SourceAnchor, start: number, changedRanges: readonly AnchorSearchRange[], window?: number): number | null {
   const selected = anchor.selectedText;
   if (!selected) return null;
+  const availableContext = anchor.contextBefore.length + anchor.contextAfter.length;
+  // A whole-file selection has no context. Only an exact whole-file undo is
+  // safe; it can also be completed by deleting an unwanted prefix/suffix.
+  if (!availableContext) return selected.length === source.length && source.sliceString(0, source.length) === selected ? 0 : null;
+  if (!changedRanges.length) return null;
   const from = window === undefined ? 0 : Math.max(0, start - selected.length - window);
   const to = window === undefined ? source.length : Math.min(source.length, start + selected.length + window);
   // Whole-document undo/paste may restore a quote far from the collapsed
   // hint. Inspect the inserted fragment in that case, not the whole file on
   // each subsequent small edit while the comment remains detached.
   const ranges = window === undefined ? [{ from, to }] : [{ from, to },
-    ...insertedRanges.filter((range) => range.to - range.from >= selected.length)];
+    ...changedRanges.filter((range) => range.to - range.from >= selected.length)];
   const seen = new Set<number>();
-  const availableContext = anchor.contextBefore.length + anchor.contextAfter.length;
   let best: number | null = null;
   let bestRank = Number.NEGATIVE_INFINITY;
   let tied = false;
@@ -125,12 +144,17 @@ function contextualMatch(source: AnchorSource, anchor: SourceAnchor, start: numb
       cursor = index + Math.max(1, selected.length);
       if (seen.has(found)) continue;
       seen.add(found);
+      const end = found + selected.length;
+      // An insertion/replacement must overlap the quote. A pure deletion
+      // must fall strictly inside it: deleting the first of two adjacent
+      // copies must not attach its comment to the surviving second copy.
+      if (!changedRanges.some((change) => change.from === change.to
+        ? found < change.from && change.from < end
+        : found < change.to && end > change.from)) continue;
       const before = source.sliceString(Math.max(0, found - anchor.contextBefore.length), found);
       const after = source.sliceString(found + selected.length, Math.min(source.length, found + selected.length + anchor.contextAfter.length));
       const contextScore = commonSuffixLength(before, anchor.contextBefore) + commonPrefixLength(after, anchor.contextAfter);
-      // A whole-file selection has no context. Only an exact whole-file undo
-      // is safe in that case; proximity or uniqueness alone is insufficient.
-      if (availableContext ? contextScore >= Math.min(4, availableContext) : found === 0 && selected.length === source.length) {
+      if (contextScore >= Math.min(4, availableContext)) {
         const rank = contextScore * 1000 - Math.abs(found - start);
         if (rank > bestRank) { best = found; bestRank = rank; tied = false; }
         else if (rank === bestRank) tied = true;

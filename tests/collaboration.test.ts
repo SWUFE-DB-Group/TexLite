@@ -123,6 +123,78 @@ describe("project collaboration", () => {
     }
   });
 
+  it.each(["idle", "continue", "undo"] as const)("retries failed comment-anchor persistence without discarding its baseline (%s)", async (mode) => {
+    const continuedEdits = mode !== "idle";
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Retry comment anchors" } });
+    const projectId = created.json().project.id as string;
+    const source = "\\documentclass{article}\n\\begin{document}\nWe use large models.\n\\end{document}\n";
+    const start = source.indexOf("large models");
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie: adminCookie }, payload: { path: "main.tex", content: source } });
+    const createdComment = await app.inject({ method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie: adminCookie }, payload: { path: "main.tex", startOffset: start, endOffset: start + 12, content: "Review the model" } });
+    expect(createdComment.statusCode).toBe(201);
+    const commentId = createdComment.json().comment.id as string;
+    const loadAnchor = () => db.prepare("SELECT selected_text, start_offset, end_offset, orphaned FROM comments WHERE id = ?").get(commentId);
+    const peer = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    db.exec(`CREATE TEMP TRIGGER fail_comment_anchor BEFORE UPDATE OF start_offset ON comments
+      WHEN OLD.id = '${commentId}' BEGIN SELECT RAISE(ABORT, 'simulated comment metadata failure'); END`);
+    try {
+      const text = peer.doc.getText("source:main.tex");
+      if (continuedEdits) {
+        text.insert(start + 5, " language");
+        peer.doc.transact(() => {
+          text.delete(start, 21);
+          text.insert(start, "small language models");
+        });
+      } else {
+        text.insert(0, "% note\n");
+      }
+      await expect(peer.flush()).rejects.toMatchObject({ failedPaths: ["main.tex"] });
+      // The source is already durable, but the old DB baseline and exact
+      // operations must remain available until the comment transaction succeeds.
+      expect(fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8")).toBe(text.toString());
+      expect(loadAnchor()).toMatchObject({ selected_text: "large models", start_offset: start, orphaned: 0 });
+      if (mode === "undo") {
+        peer.doc.transact(() => {
+          text.delete(0, text.length);
+          text.insert(0, source);
+        });
+        // The DB never advanced, so undo needs no metadata update, but it
+        // must still restore the already-written source file on disk.
+        expect((await peer.flush()).ok).toBe(true);
+        expect(fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8")).toBe(source);
+        expect(loadAnchor()).toMatchObject({ selected_text: "large models", start_offset: start, end_offset: start + 12, orphaned: 0 });
+        return;
+      }
+      if (continuedEdits) {
+        text.insert(0, "% note\n");
+        await expect(peer.flush()).rejects.toMatchObject({ failedPaths: ["main.tex"] });
+      }
+      db.exec("DROP TRIGGER fail_comment_anchor");
+      if (continuedEdits) {
+        expect((await peer.flush()).ok).toBe(true);
+        // A diff from the original source would miss the intermediate partial
+        // edit and would not preserve this last attached quote.
+        expect(loadAnchor()).toMatchObject({ selected_text: "large language models", orphaned: 1 });
+        peer.doc.transact(() => {
+          text.delete(start + 7, 21);
+          text.insert(start + 7, "large language models");
+        });
+        expect((await peer.flush()).ok).toBe(true);
+      } else {
+        // Do not issue another flush or HTTP comment read: the scheduled retry
+        // must finish even when the user has stopped typing.
+        await waitFor(() => (loadAnchor() as { start_offset: number }).start_offset === start + 7, 4000);
+      }
+      expect(loadAnchor()).toMatchObject({
+        selected_text: continuedEdits ? "large language models" : "large models",
+        start_offset: start + 7, end_offset: start + 7 + (continuedEdits ? 21 : 12), orphaned: 0
+      });
+    } finally {
+      db.exec("DROP TRIGGER IF EXISTS fail_comment_anchor");
+      peer.destroy();
+    }
+  });
+
   it("merges concurrent edits, persists them, exposes each active session and rejects read-only writes", async () => {
     const editor = await createUser(app, adminCookie, "collab-editor", "Collaborative Editor");
     const reader = await createUser(app, adminCookie, "collab-reader", "Collaborative Reader");

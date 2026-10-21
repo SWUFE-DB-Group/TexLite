@@ -121,8 +121,10 @@ interface Room {
   dirtyPaths: Set<string>;
   /** Author-isolated updates waiting for their corresponding source write. */
   pendingEditSegments: EditHistorySegmentInput[];
-  /** Incremental operations retained until source persistence, including full-range replacements. */
+  /** Incremental operations retained until source and anchor persistence both succeed. */
   pendingCommentEdits: Map<string, SourceCommentEdit[][]>;
+  /** DB anchor baseline retained separately when the source write succeeds first. */
+  pendingCommentSources: Map<string, string>;
   textObservers: Map<string, (event: Y.YTextEvent, transaction: Y.Transaction) => void>;
   saveTimer: NodeJS.Timeout | null;
   stateSaveTimer: NodeJS.Timeout | null;
@@ -282,7 +284,7 @@ export class CollaborationService {
     const room = this.rooms.get(projectId);
     if (!room) return null;
     room.snapshotBarrierDepth = 0;
-    const shouldFlush = room.snapshotFlushPending || room.dirtyPaths.size > 0;
+    const shouldFlush = room.snapshotFlushPending || roomHasPendingChanges(room);
     room.snapshotFlushPending = false;
     let receipt: CollaborationSaveReceipt;
     try {
@@ -293,7 +295,7 @@ export class CollaborationService {
       // receive the original server error, while editors receive a durable
       // negative receipt instead of timing out.
       receipt = this.currentReceipt(room, false, [...room.dirtyPaths]);
-      if (room.dirtyPaths.size > 0) this.scheduleSave(room);
+      if (roomHasPendingChanges(room)) this.scheduleSave(room);
       this.resolvePendingFlushes(room, receipt);
       this.scheduleRoomCleanup(room);
       throw error;
@@ -425,7 +427,8 @@ export class CollaborationService {
   }
 
   hasPendingChanges(projectId: string): boolean {
-    return Boolean(this.rooms.get(projectId)?.dirtyPaths.size);
+    const room = this.rooms.get(projectId);
+    return Boolean(room && roomHasPendingChanges(room));
   }
 
   isMaintaining(projectId: string): boolean {
@@ -435,7 +438,7 @@ export class CollaborationService {
   isStable(projectId: string, revision: number | null): boolean {
     const room = this.rooms.get(projectId);
     return room
-      ? room.maintenanceReason === null && room.persistedRevision === revision && room.dirtyPaths.size === 0
+      ? room.maintenanceReason === null && room.persistedRevision === revision && !roomHasPendingChanges(room)
       : revision === null;
   }
 
@@ -798,6 +801,7 @@ export class CollaborationService {
       dirtyPaths: new Set(),
       pendingEditSegments: [],
       pendingCommentEdits: new Map(),
+      pendingCommentSources: new Map(),
       textObservers: new Map(),
       saveTimer: null,
       stateSaveTimer: null,
@@ -962,6 +966,7 @@ export class CollaborationService {
         // being mapped across such a replacement.
         room.observedContent.set(filePath, after);
         room.pendingCommentEdits.delete(filePath);
+        if (transaction.origin === HTTP_ORIGIN) room.pendingCommentSources.delete(filePath);
         return;
       }
       if (!room.allowedPaths.has(filePath)) {
@@ -1464,8 +1469,8 @@ export class CollaborationService {
     if (room.snapshotBarrierDepth > 0 || (this.snapshotBarriers.get(room.projectId) ?? 0) > 0) {
       if (room.saveTimer) clearTimeout(room.saveTimer);
       room.saveTimer = null;
-      if (room.dirtyPaths.size > 0) room.snapshotFlushPending = true;
-      return this.currentReceipt(room, room.dirtyPaths.size === 0, []);
+      if (roomHasPendingChanges(room)) room.snapshotFlushPending = true;
+      return this.currentReceipt(room);
     }
     const startedAt = performance.now();
     if (room.saveTimer) clearTimeout(room.saveTimer);
@@ -1510,37 +1515,55 @@ export class CollaborationService {
         failedPaths.push(filePath);
         continue;
       }
+      if (!room.pendingCommentSources.has(filePath)) room.pendingCommentSources.set(filePath, previous);
       room.persistedContent.set(filePath, next);
       room.dirtyPaths.delete(filePath);
       finalizedPaths.add(filePath);
-      try { reanchorFileComments(this.db, room.projectId, filePath, previous, next, room.pendingCommentEdits.get(filePath)); }
-      catch { /* Source durability is primary; comments can still be re-anchored by a later edit. */ }
       changed = true;
       changedPaths.push(filePath);
+    }
+    let commentsUpdated = false;
+    for (const [filePath, previous] of room.pendingCommentSources) {
+      if (!room.allowedPaths.has(filePath)) {
+        room.pendingCommentSources.delete(filePath);
+        room.pendingCommentEdits.delete(filePath);
+        continue;
+      }
+      // New edits whose source write failed must not be applied to DB anchors
+      // ahead of the durable file. Retain the complete chain for a later retry.
+      if (room.dirtyPaths.has(filePath)) continue;
+      const next = room.persistedContent.get(filePath)!;
+      try { reanchorFileComments(this.db, room.projectId, filePath, previous, next, room.pendingCommentEdits.get(filePath)); }
+      catch { failedPaths.push(filePath); continue; }
+      room.pendingCommentSources.delete(filePath);
+      room.pendingCommentEdits.delete(filePath);
+      commentsUpdated = true;
     }
     const persistedPaths = new Set(changedPaths);
     const edits = room.pendingEditSegments.filter((segment) => persistedPaths.has(segment.filePath));
     // A reverted edit or rejected oversized file did not produce a durable
     // source revision, so it must not become a misleading edit-history row.
     if (finalizedPaths.size > 0) {
-      for (const filePath of finalizedPaths) room.pendingCommentEdits.delete(filePath);
+      for (const filePath of finalizedPaths) {
+        if (!room.pendingCommentSources.has(filePath)) room.pendingCommentEdits.delete(filePath);
+      }
       room.pendingEditSegments = room.pendingEditSegments.filter((segment) => !finalizedPaths.has(segment.filePath));
     }
     if (changed && room.lastModifiedUserId) {
       this.db.prepare("UPDATE projects SET updated_at = ?, last_modified_by = ? WHERE id = ?")
         .run(new Date().toISOString(), room.lastModifiedUserId, room.projectId);
     }
-    if (changed) this.signalComments(room.projectId);
+    if (commentsUpdated) this.signalComments(room.projectId);
     if (changed && this.onPersist) {
       try { this.onPersist({ projectId: room.projectId, userId: room.lastModifiedUserId, paths: changedPaths, edits, durationMs: performance.now() - startedAt }); }
       catch { /* Source durability must not depend on optional history bookkeeping. */ }
     }
-    const ok = failedPaths.length === 0 && room.dirtyPaths.size === 0;
+    const ok = failedPaths.length === 0 && !roomHasPendingChanges(room);
     if (changed) room.persistedRevision += 1;
     if (ok) {
       room.persistedAt = new Date().toISOString();
-    } else if (!room.saveTimer && room.dirtyPaths.size > 0) {
-      // Retry with backoff if dirty files remain unpersisted
+    } else if (!room.saveTimer && roomHasPendingChanges(room)) {
+      // Retry failed source or anchor writes even if the user stops typing.
       room.saveTimer = setTimeout(() => {
         try { this.flushRoom(room); }
         catch { room.saveTimer = null; }
@@ -1555,8 +1578,8 @@ export class CollaborationService {
     return {
       revision: room.persistedRevision,
       persistedAt: room.persistedAt,
-      ok: ok && room.dirtyPaths.size === 0,
-      failedPaths
+      ok: ok && !roomHasPendingChanges(room),
+      failedPaths: [...new Set([...failedPaths, ...room.pendingCommentSources.keys()])]
     };
   }
 
@@ -1569,6 +1592,14 @@ export class CollaborationService {
     if (persist) {
       try { this.flushRoom(room); }
       catch { try { this.persistRoomState(room); } catch { /* Keep shutdown best-effort. */ } }
+      if (!this.closed && room.pendingCommentSources.size > 0) {
+        // Idle eviction must not discard an anchor baseline that is still
+        // needed by the normal save retry after a transient database failure.
+        if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+        room.cleanupTimer = null;
+        this.scheduleRoomCleanup(room);
+        return;
+      }
     }
     this.disposeRoom(room);
     this.rooms.delete(room.projectId);
@@ -1642,6 +1673,10 @@ export class CollaborationService {
     this.projectGenerations.set(projectId, this.projectGeneration(projectId) + 1);
     this.roomInitializations.delete(projectId);
   }
+}
+
+function roomHasPendingChanges(room: Room): boolean {
+  return room.dirtyPaths.size > 0 || room.pendingCommentSources.size > 0;
 }
 
 export function collaborationStatePath(config: Config, projectId: string): string {

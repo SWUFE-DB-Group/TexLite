@@ -71,6 +71,41 @@ describe("source comment anchors", () => {
     expect(row).toMatchObject({ selected_text: "missing", orphaned: 1 });
   });
 
+  it.each([false, true])("does not move a deleted quote to an existing duplicate (actual edits: %s)", (actualEdits) => {
+    const fixture = createFixture();
+    const source = "Before target after.\nBefore target after.\n";
+    const id = insertComment(fixture.db, source, "target");
+    const from = source.indexOf("target");
+    const deleted = source.slice(0, from) + source.slice(from + 6);
+    reanchorFileComments(fixture.db, "project-1", "main.tex", source, deleted,
+      actualEdits ? [[{ from, to: from + 6, insert: "", insertLength: 0 }]] : undefined);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 1, selected_text: "target" });
+
+    const unrelated = "% note\n" + deleted;
+    reanchorFileComments(fixture.db, "project-1", "main.tex", deleted, unrelated,
+      actualEdits ? [[{ from: 0, to: 0, insert: "% note\n", insertLength: 7 }]] : undefined);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 1, selected_text: "target" });
+
+    const restored = "% note\n" + source;
+    reanchorFileComments(fixture.db, "project-1", "main.tex", unrelated, restored,
+      actualEdits ? [[{ from: from + 7, to: from + 7, insert: "target", insertLength: 6 }]] : undefined);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 0, start_offset: from + 7, end_offset: from + 13 });
+  });
+
+  it("recovers a quote when deleting an extra character completes a partial restoration", () => {
+    const fixture = createFixture();
+    const source = "Before target after.\nBefore target after.\n";
+    const id = insertComment(fixture.db, source, "target");
+    const from = source.indexOf("target");
+    const replaced = source.slice(0, from) + "tarXget" + source.slice(from + 6);
+    reanchorFileComments(fixture.db, "project-1", "main.tex", source, replaced,
+      [[{ from, to: from + 6, insert: "tarXget", insertLength: 7 }]]);
+    expect(anchorRow(fixture.db, id).orphaned).toBe(1);
+    reanchorFileComments(fixture.db, "project-1", "main.tex", replaced, source,
+      [[{ from: from + 3, to: from + 4, insert: "", insertLength: 0 }]]);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 0, start_offset: from, end_offset: from + 6 });
+  });
+
   it.each([
     ["before\nalpha target\nafter\n", "before\nalXpha target\nafter\n", "alpha", "alXpha"],
     ["before\nalpha target\nafter\n", "before\nblpha target\nafter\n", "alpha", "blpha"],

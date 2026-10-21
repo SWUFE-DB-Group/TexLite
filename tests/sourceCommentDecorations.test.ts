@@ -107,6 +107,24 @@ describe("source comment navigation", () => {
     expect(ranges(state)).toHaveLength(2);
   });
 
+  it("keeps a deleted quote detached from an unchanged duplicate until its own text is restored", () => {
+    const source = "Before target after.\nBefore target after.\n";
+    const from = source.indexOf("target");
+    const saved = { ...comment("thread"), startOffset: from, endOffset: from + 6, selectedText: "target" };
+    let state = EditorState.create({ doc: source, extensions: [sourceCommentDecorations({ label: "View", onOpen: vi.fn() })] })
+      .update({ effects: setSourceComments.of(sourceCommentMarksForFile([saved], "main.tex")) }).state;
+    state = state.update({ changes: { from, to: from + 6 } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")?.orphaned).toBe(true);
+    expect(ranges(state)).toEqual([]);
+    state = state.update({ changes: { from: 0, insert: "% note\n" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")?.orphaned).toBe(true);
+    state = state.update({ changes: { from: from + 7, insert: "tarXget" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")?.orphaned).toBe(true);
+    state = state.update({ changes: { from: from + 10, to: from + 11 } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ orphaned: false, startOffset: from + 7, endOffset: from + 13 });
+    expect(ranges(state)).toHaveLength(2);
+  });
+
   it("does not reset local offsets when an unchanged saved anchor arrives with a reply or resolution", () => {
     const saved = comment("thread", 5, 9);
     let { state } = fixture([saved]);

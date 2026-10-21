@@ -1,7 +1,7 @@
 import { Facet, StateEffect, StateField, type EditorState } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import type { Comment } from "./types";
-import { mapSourceAnchor, sourceAnchorAt, type AnchorChange, type AnchorSearchRange, type SourceAnchor } from "../shared/sourceCommentAnchors";
+import { mapSourceAnchor, sourceAnchorAt, type AnchorChange, type SourceAnchor } from "../shared/sourceCommentAnchors";
 
 type CommentMark = Pick<Comment, "id" | "resolved" | "orphaned" | "selectedText" | "contextBefore" | "contextAfter"> & { from: number; to: number };
 type AnchoredComment = Pick<Comment, "id" | "resolved"> & SourceAnchor & { serverMark: CommentMark };
@@ -78,13 +78,11 @@ export function sourceCommentDecorations(options: SourceCommentOptions) {
       let anchors = value.anchors;
       if (transaction.docChanged && anchors.length) {
         const changes: AnchorChange[] = [];
-        const insertedRanges: AnchorSearchRange[] = [];
         transaction.changes.iterChangedRanges((from, to, fromB, toB) => {
           changes.push({ from, to, insertLength: toB - fromB });
-          if (toB > fromB) insertedRanges.push({ from: fromB, to: toB });
         });
         anchors = anchors.map((comment) => ({ ...comment,
-          ...mapSourceAnchor(comment, transaction.startState.doc, transaction.state.doc, changes, 512, insertedRanges)
+          ...mapSourceAnchor(comment, transaction.startState.doc, transaction.state.doc, changes, 512)
         }));
       }
       for (const effect of transaction.effects) {

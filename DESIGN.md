@@ -242,6 +242,24 @@ to source comments. Comments are anchored to source offsets and selected text,
 can be resolved, edited, deleted, and replied to. If an author is removed,
 the record remains visible as “Deleted User”.
 
+Live anchor updates replay the actual Yjs text deltas against their saved
+source baseline. HTTP replacements, recovered state without a delta chain,
+and chains that do not reconstruct the final source use a before/after diff.
+Partial edits retain the discussion; fully erased selections preserve their
+last attached quote and surrounding context for recovery. Recovery requires
+the original quote to be formed by the current insertion, replacement or an
+interior deletion, together with matching context. An unchanged duplicate
+elsewhere cannot inherit the discussion. A selection covering the entire file
+can recover only when that exact file content returns.
+
+Source persistence and anchor persistence have separate baselines. If a source
+write succeeds but its anchor transaction fails, the room retains the old
+anchor baseline and all subsequent edit batches. The save receipt reports the
+failure, and the existing save timer retries without requiring further typing
+or rewriting an unchanged source file. Idle cleanup retains rooms with pending
+anchor writes; successful retries notify comment views. This bookkeeping is
+in memory and does not provide atomic database/filesystem crash recovery.
+
 Resolving a comment records the acting user's id and the server timestamp in
 `resolved_by` and `resolved_at`. Repeating an already-resolved update or editing
 the comment does not replace that attribution. Reopening clears both fields;
@@ -874,10 +892,12 @@ model expands beyond a small group of trusted users on localhost.
   reconciliation for every failure point.
 - [x] Refresh collaboration account/access data at message time and disconnect
   revoked users; membership changes are also pushed to open clients.
-- [x] Strengthen source-comment re-anchoring. A diff-mapped range is accepted
-  only when it still contains the original selected text; replacements and
-  ambiguous repeated text require matching surrounding context or are marked
-  orphaned for manual review.
+- [x] Strengthen source-comment re-anchoring. Actual Yjs operations take
+  precedence over inferred diffs; partial edits follow the selection, and
+  complete replacements remain detached until the original quote is restored
+  by a new edit with matching context. Unchanged duplicate text cannot take
+  over a deleted selection's anchor. Failed anchor writes retain their own
+  baseline and exact edit chain for automatic retry.
 - [x] Detect root documents as source files are opened and edited, ignoring
   comments and common verbatim environments. The settings API and UI expose
   only files with a real `\documentclass` declaration as candidates; a sole
