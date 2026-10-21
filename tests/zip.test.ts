@@ -58,6 +58,25 @@ describe("project ZIP import and export", () => {
     }
   );
 
+  it("preserves nested directories when files precede their explicit directory entries", async () => {
+    const result = await extractProjectZip(makeZip([
+      { name: "main.tex", content: MAIN },
+      { name: "figures/nested/one.txt", content: "one" },
+      { name: "figures/nested/two.txt", content: "two" },
+      { name: "figures/nested/", content: "" },
+      { name: "figures/", content: "" },
+      { name: "figures/three.txt", content: "three" },
+      { name: "figures/empty/", content: "" }
+    ]), destination, MB);
+    expect(result).toEqual({
+      mainFile: "main.tex", files: ["main.tex", "figures/nested/one.txt", "figures/nested/two.txt", "figures/three.txt"]
+    });
+    for (const [file, content] of [["nested/one.txt", "one"], ["nested/two.txt", "two"], ["three.txt", "three"]]) {
+      expect(fs.readFileSync(path.join(destination, "figures", file), "utf8")).toBe(content);
+    }
+    expect(fs.statSync(path.join(destination, "figures/empty")).isDirectory()).toBe(true);
+  });
+
   it.each([
     ["main.tex", "main.tex"], ["main.tex", "./main.tex"], ["data", "data/"], ["a/b", "a//b"]
   ])("rejects duplicate or colliding names %s and %s before writing files", async (first, second) => {

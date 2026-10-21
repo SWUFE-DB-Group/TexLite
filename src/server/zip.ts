@@ -43,10 +43,11 @@ export async function extractProjectZip(buffer: Buffer, destination: string, max
   try {
     const entries = await inspectZip(zip, maxFileBytes, maxTotalBytes);
     const prefix = commonRootPrefix(entries.filter((entry) => !entry.directory).map((entry) => entry.fileName));
-    assertNoSymbolicLinks(destination);
-    fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
-    const files = await extractZip(entries, destination, prefix, maxFileBytes, maxTotalBytes);
-    const mainFile = discoverMainFile(destination, files);
+    const root = path.resolve(destination);
+    assertNoSymbolicLinks(root);
+    await fs.promises.mkdir(root, { recursive: true, mode: 0o700 });
+    const files = await extractZip(entries, root, prefix, maxFileBytes, maxTotalBytes);
+    const mainFile = await discoverMainFile(root, files);
     if (!mainFile) throw new ZipValidationError("ZIP_MAIN_DOCUMENT_NOT_FOUND");
     return { files, mainFile };
   } finally {
@@ -86,6 +87,16 @@ async function extractZip(
   maxTotalBytes: number
 ): Promise<string[]> {
   const files: string[] = [];
+  // Only this extraction owns the cache. Recursive mkdir also establishes
+  // ancestors, including directories whose explicit ZIP entry arrives later.
+  const createdDirectories = new Set<string>([destination]);
+  const ensureDirectory = async (directory: string): Promise<void> => {
+    if (createdDirectories.has(directory)) return;
+    await fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
+    for (let current = directory; !createdDirectories.has(current); current = path.dirname(current)) {
+      createdDirectories.add(current);
+    }
+  };
   let actualBytes = 0;
   for (const { entry, fileName } of entries) {
     // An explicit entry for the stripped top-level directory has no target.
@@ -95,10 +106,10 @@ async function extractZip(
     const relative = safeRelativePath(stripped);
     const absolute = path.join(destination, relative);
     if (entry.directory) {
-      fs.mkdirSync(absolute, { recursive: true, mode: 0o700 });
+      await ensureDirectory(absolute);
       continue;
     }
-    fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
+    await ensureDirectory(path.dirname(absolute));
     let entryBytes = 0;
     const limiter = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
@@ -147,13 +158,14 @@ function commonRootPrefix(files: string[]): string {
   return files.every((file) => file.startsWith(`${first[0]}/`)) ? `${first[0]}/` : "";
 }
 
-function discoverMainFile(root: string, files: string[]): string {
+async function discoverMainFile(root: string, files: string[]): Promise<string> {
   const texFiles = files.filter((file) => file.toLowerCase().endsWith(".tex"));
   if (texFiles.length === 1) return texFiles[0];
-  return texFiles.find((file) => {
-    const source = fs.readFileSync(path.join(root, file), "utf8");
-    return hasDocumentClass(source);
-  }) ?? "";
+  for (const file of texFiles) {
+    const source = await fs.promises.readFile(path.join(root, file), "utf8");
+    if (hasDocumentClass(source)) return file;
+  }
+  return "";
 }
 
 export function hasDocumentClass(source: string): boolean {

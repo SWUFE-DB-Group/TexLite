@@ -494,6 +494,8 @@ Imports inspect all accepted entry metadata before writing, reject unsafe or
 duplicate paths and symbolic links, and enforce the 1,000-entry limit, configured
 single-file limit and total expanded-size limit (the larger of 200 MiB and the
 single-file limit). Streamed output is independently byte-counted and CRC-checked.
+Import directory creation and main-document reads are asynchronous; each import
+caches directories it has created to avoid repeated filesystem calls for siblings.
 The uploaded compressed ZIP remains in memory, while expanded files go directly
 to disk. Exports exclude `.git`, preserve empty folders, and finish in a private
 temporary ZIP under the consistent-read barrier before the HTTP download starts.
