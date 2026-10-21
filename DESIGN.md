@@ -487,6 +487,17 @@ duplication, Git checkout, file listing, and source resolution reject symbolic
 links (except that deletion may address a final link itself without following
 its target). This prevents a project path from escaping its source directory.
 
+Project ZIP import and export use `@zip.js/zip.js` on the server with Node's
+native compression streams. The public custom-codec entry point avoids loading
+browser workers or WASM; entries are processed sequentially with backpressure.
+Imports inspect all accepted entry metadata before writing, reject unsafe or
+duplicate paths and symbolic links, and enforce the 1,000-entry limit, configured
+single-file limit and total expanded-size limit (the larger of 200 MiB and the
+single-file limit). Streamed output is independently byte-counted and CRC-checked.
+The uploaded compressed ZIP remains in memory, while expanded files go directly
+to disk. Exports exclude `.git`, preserve empty folders, and finish in a private
+temporary ZIP under the consistent-read barrier before the HTTP download starts.
+
 ## Editor, files, and navigation
 
 Workspace resizing uses `react-resizable-panels` v4 (`Group`, `Panel`,

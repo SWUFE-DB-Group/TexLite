@@ -69,6 +69,7 @@
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.3.0",
     "@sanity/diff-match-patch": "^3.2.1",
+    "@zip.js/zip.js": "^2.24.0",
     "better-sqlite3": "^13.0.2",
     "fastify": "^5.4.0",
     "lib0": "^0.2.117",
@@ -76,8 +77,6 @@
     "semver": "^7.8.5",
     "ws": "^8.21.1",
     "y-protocols": "^1.0.7",
-    "yauzl": "^3.2.0",
-    "yazl": "^3.3.1",
     "yjs": "^13.6.31"
   },
   "devDependencies": {
@@ -103,8 +102,6 @@
     "@types/react-dom": "^19.1.7",
     "@types/semver": "^7.8.0",
     "@types/ws": "^8.18.1",
-    "@types/yauzl": "^2.10.3",
-    "@types/yazl": "^3.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "bibtex-tidy": "1.14.0",
     "happy-dom": "^21.0.4",

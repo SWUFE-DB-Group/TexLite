@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Transform } from "node:stream";
+import { Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import yauzl, { type Entry, type ZipFile } from "yauzl";
+import { ZipReader, Uint8ArrayReader, type Entry } from "@zip.js/zip.js/lib/zip-core-custom.js";
 import { hasLatexDocumentClass } from "../shared/latexRoot.js";
 import { assertNoSymbolicLinks, safeRelativePath } from "./files.js";
 
@@ -10,8 +10,8 @@ const MAX_ENTRIES = 1_000;
 const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 
 interface EntryInfo {
+  entry: Entry;
   fileName: string;
-  uncompressedSize: number;
   directory: boolean;
 }
 
@@ -33,125 +33,104 @@ export class ZipValidationError extends Error {
 
 export async function extractProjectZip(buffer: Buffer, destination: string, maxFileBytes: number): Promise<ExtractedProject> {
   const maxTotalBytes = Math.max(MAX_TOTAL_BYTES, maxFileBytes);
-  const entries = await inspectZip(buffer, maxFileBytes, maxTotalBytes);
-  const prefix = commonRootPrefix(entries.filter((entry) => !entry.directory).map((entry) => entry.fileName));
-  assertNoSymbolicLinks(destination);
-  fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
-  const files = await extractZip(buffer, destination, prefix, maxFileBytes, maxTotalBytes);
-  const mainFile = discoverMainFile(destination, files);
-  if (!mainFile) throw new ZipValidationError("ZIP_MAIN_DOCUMENT_NOT_FOUND");
-  return { files, mainFile };
+  // Node >= 24 provides native deflate-raw streams. The custom entry point
+  // avoids loading browser workers or WASM codecs in the server process.
+  const zip = new ZipReader(new Uint8ArrayReader(buffer), {
+    useWebWorkers: false, useCompressionStream: true, checkCrc32: true,
+    // Validate paths below so API errors retain their stable application codes.
+    filenameValidation: "tolerant"
+  });
+  try {
+    const entries = await inspectZip(zip, maxFileBytes, maxTotalBytes);
+    const prefix = commonRootPrefix(entries.filter((entry) => !entry.directory).map((entry) => entry.fileName));
+    assertNoSymbolicLinks(destination);
+    fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
+    const files = await extractZip(entries, destination, prefix, maxFileBytes, maxTotalBytes);
+    const mainFile = discoverMainFile(destination, files);
+    if (!mainFile) throw new ZipValidationError("ZIP_MAIN_DOCUMENT_NOT_FOUND");
+    return { files, mainFile };
+  } finally {
+    await zip.close();
+  }
 }
 
-async function inspectZip(buffer: Buffer, maxFileBytes: number, maxTotalBytes: number): Promise<EntryInfo[]> {
-  const zip = await openZip(buffer);
-  return await new Promise<EntryInfo[]>((resolve, reject) => {
-    const entries: EntryInfo[] = [];
-    const seenPaths = new Set<string>();
-    let totalBytes = 0;
-    const fail = (error: Error): void => { zip.close(); reject(error); };
-    zip.on("error", reject);
-    zip.on("entry", (entry: Entry) => {
-      try {
-        validateEntry(entry);
-        if (entries.length >= MAX_ENTRIES) throw new ZipValidationError("ZIP_TOO_MANY_ENTRIES", { limit: MAX_ENTRIES });
-        totalBytes += entry.uncompressedSize;
-        if (entry.uncompressedSize > maxFileBytes) throw new ZipValidationError("ZIP_ENTRY_TOO_LARGE", { size: formatMB(maxFileBytes) });
-        if (totalBytes > maxTotalBytes) throw new ZipValidationError("ZIP_TOTAL_TOO_LARGE", { size: formatMB(maxTotalBytes) });
-        const normalized = normalizedEntryName(entry.fileName);
-        // ZIP archives can contain duplicate entries.  Extraction of the
-        // second entry would otherwise silently replace the first one (and a
-        // `name`/`name/` pair would collide on disk as well).
-        const collisionKey = safeRelativePath(normalized.replace(/\/+$/, ""));
-        if (seenPaths.has(collisionKey)) throw new ZipValidationError("ZIP_DUPLICATE_ENTRY", { path: collisionKey });
-        seenPaths.add(collisionKey);
-        entries.push({ fileName: normalized, uncompressedSize: entry.uncompressedSize, directory: /\/$/.test(entry.fileName) });
-        zip.readEntry();
-      } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); }
-    });
-    zip.on("end", () => resolve(entries));
-    zip.readEntry();
-  });
+async function inspectZip(zip: ZipReader<Uint8Array>, maxFileBytes: number, maxTotalBytes: number): Promise<EntryInfo[]> {
+  const entries: EntryInfo[] = [];
+  const seenPaths = new Set<string>();
+  let totalBytes = 0;
+  try {
+    for await (const entry of zip.getEntriesGenerator()) {
+      validateEntry(entry);
+      if (entries.length >= MAX_ENTRIES) throw new ZipValidationError("ZIP_TOO_MANY_ENTRIES", { limit: MAX_ENTRIES });
+      totalBytes += entry.uncompressedSize;
+      if (entry.uncompressedSize > maxFileBytes) throw new ZipValidationError("ZIP_ENTRY_TOO_LARGE", { size: formatMB(maxFileBytes) });
+      if (totalBytes > maxTotalBytes) throw new ZipValidationError("ZIP_TOTAL_TOO_LARGE", { size: formatMB(maxTotalBytes) });
+      // Canonical paths also detect aliases such as `./main.tex` and `main.tex`.
+      const normalized = safeRelativePath(entry.filename.replace(/\/+$/, ""));
+      if (seenPaths.has(normalized)) throw new ZipValidationError("ZIP_DUPLICATE_ENTRY", { path: normalized });
+      seenPaths.add(normalized);
+      entries.push({ entry, fileName: normalized, directory: entry.directory });
+    }
+  } catch (error) {
+    if (error instanceof ZipValidationError) throw error;
+    throw new ZipValidationError("ZIP_READ_FAILED");
+  }
+  return entries;
 }
 
 async function extractZip(
-  buffer: Buffer,
+  entries: EntryInfo[],
   destination: string,
   prefix: string,
   maxFileBytes: number,
   maxTotalBytes: number
 ): Promise<string[]> {
-  const zip = await openZip(buffer);
-  return await new Promise<string[]>((resolve, reject) => {
-    const files: string[] = [];
-    let actualBytes = 0;
-    let settled = false;
-    const fail = (error: unknown): void => {
-      if (settled) return;
-      settled = true;
-      zip.close();
-      reject(error instanceof Error ? error : new Error(String(error)));
-    };
-    zip.on("error", fail);
-    zip.on("entry", (entry: Entry) => {
-      void (async () => {
-        validateEntry(entry);
-        const normalized = normalizedEntryName(entry.fileName);
-        const stripped = prefix && normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
-        if (!stripped || stripped.startsWith("__MACOSX/") || stripped.endsWith("/.DS_Store") || stripped === ".DS_Store") {
-          zip.readEntry(); return;
-        }
-        const relative = safeRelativePath(stripped);
-        const absolute = path.join(destination, relative);
-        if (/\/$/.test(entry.fileName)) {
-          fs.mkdirSync(absolute, { recursive: true, mode: 0o700 });
-          zip.readEntry(); return;
-        }
-        fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
-        const input = await openEntryStream(zip, entry);
-        let entryBytes = 0;
-        const limiter = new Transform({
-          transform(chunk: Buffer, _encoding, callback) {
-            actualBytes += chunk.length;
-            entryBytes += chunk.length;
-            if (entryBytes > maxFileBytes) callback(new ZipValidationError("ZIP_ENTRY_TOO_LARGE", { size: formatMB(maxFileBytes) }));
-            else if (actualBytes > maxTotalBytes) callback(new ZipValidationError("ZIP_TOTAL_TOO_LARGE", { size: formatMB(maxTotalBytes) }));
-            else callback(null, chunk);
-          }
-        });
-        await pipeline(input, limiter, fs.createWriteStream(absolute, { mode: 0o600 }));
-        files.push(relative);
-        zip.readEntry();
-      })().catch(fail);
+  const files: string[] = [];
+  let actualBytes = 0;
+  for (const { entry, fileName } of entries) {
+    // An explicit entry for the stripped top-level directory has no target.
+    if (prefix && entry.directory && fileName === prefix.slice(0, -1)) continue;
+    const stripped = prefix && fileName.startsWith(prefix) ? fileName.slice(prefix.length) : fileName;
+    if (!stripped || stripped.startsWith("__MACOSX/") || stripped.endsWith("/.DS_Store") || stripped === ".DS_Store") continue;
+    const relative = safeRelativePath(stripped);
+    const absolute = path.join(destination, relative);
+    if (entry.directory) {
+      fs.mkdirSync(absolute, { recursive: true, mode: 0o700 });
+      continue;
+    }
+    fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
+    let entryBytes = 0;
+    const limiter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        actualBytes += chunk.length;
+        entryBytes += chunk.length;
+        if (entryBytes > maxFileBytes) callback(new ZipValidationError("ZIP_ENTRY_TOO_LARGE", { size: formatMB(maxFileBytes) }));
+        else if (actualBytes > maxTotalBytes) callback(new ZipValidationError("ZIP_TOTAL_TOO_LARGE", { size: formatMB(maxTotalBytes) }));
+        else callback(null, chunk);
+      }
     });
-    zip.on("end", () => {
-      if (!settled) { settled = true; resolve(files); }
-    });
-    zip.readEntry();
-  });
-}
-
-function openZip(buffer: Buffer): Promise<ZipFile> {
-  return new Promise((resolve, reject) => {
-    yauzl.fromBuffer(buffer, { lazyEntries: true, autoClose: true, strictFileNames: true, validateEntrySizes: true }, (error, zip) => {
-      if (error || !zip) reject(new ZipValidationError("ZIP_READ_FAILED"));
-      else resolve(zip);
-    });
-  });
-}
-
-function openEntryStream(zip: ZipFile, entry: Entry): Promise<NodeJS.ReadableStream> {
-  return new Promise((resolve, reject) => {
-    zip.openReadStream(entry, (error, stream) => {
-      if (error || !stream) reject(new ZipValidationError("ZIP_ENTRY_READ_FAILED"));
-      else resolve(stream);
-    });
-  });
+    const writing = pipeline(limiter, fs.createWriteStream(absolute, { mode: 0o600 }));
+    const extracting = entry.getData(Writable.toWeb(limiter));
+    try {
+      await Promise.all([extracting, writing]);
+    } catch (error) {
+      // getData can fail before it opens the writer (for example, encryption).
+      // Destroy the bridge too, so no pending pipeline or file handle survives.
+      limiter.destroy(error instanceof Error ? error : new Error(String(error)));
+      await Promise.allSettled([extracting, writing]);
+      if (error instanceof ZipValidationError) throw error;
+      throw new ZipValidationError("ZIP_ENTRY_READ_FAILED");
+    }
+    files.push(relative);
+  }
+  return files;
 }
 
 function validateEntry(entry: Entry): void {
-  const name = entry.fileName;
-  if (!name || name.includes("\0") || name.startsWith("/") || name.startsWith("\\")) throw new ZipValidationError("ZIP_INVALID_PATH");
+  const name = entry.filename;
+  if (!name || name.includes("\0") || name.startsWith("/") || name.includes("\\") || /^[a-z]:/i.test(name) || name.split("/").includes("..")) {
+    throw new ZipValidationError("ZIP_INVALID_PATH");
+  }
   try {
     safeRelativePath(name.replace(/\/$/, "") || "invalid");
   } catch {
@@ -159,10 +138,6 @@ function validateEntry(entry: Entry): void {
   }
   const unixType = (entry.externalFileAttributes >>> 16) & 0o170000;
   if (unixType === 0o120000) throw new ZipValidationError("ZIP_SYMLINK_FORBIDDEN");
-}
-
-function normalizedEntryName(name: string): string {
-  return name.replaceAll("\\", "/");
 }
 
 function commonRootPrefix(files: string[]): string {
