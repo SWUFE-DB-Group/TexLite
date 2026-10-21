@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, LoaderCircle, UserRound } from "lucide-react";
+import { Clock3, LoaderCircle, Trash2, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
@@ -106,7 +106,7 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
       {project.permission === "owner" && stats && <div className="history-stats">
         <strong>{t("selectionHistory.storageUsage", { used: (stats.payloadBytes / 1048576).toFixed(2), limit: (stats.maxStorageBytes / 1048576).toFixed(0), count: stats.segmentCount })}</strong>
         <small>{t("selectionHistory.storageDescription")}</small>
-        <button type="button" className="danger-text" disabled={busy || clearing || stats.segmentCount === 0} onClick={() => { setClearError(""); setClearOpen(true); }}>{t("selectionHistory.clearAll")}</button>
+        <button type="button" className="selection-history-clear" disabled={busy || clearing || stats.segmentCount === 0} aria-busy={clearing} onClick={() => { setClearError(""); setClearOpen(true); }}>{clearing ? <LoaderCircle className="spin" size={13} /> : <Trash2 size={13} />}<span>{t("selectionHistory.clearAll")}</span></button>
       </div>}
       <ConfirmDialog open={clearOpen} title={t("selectionHistory.clearAll")} description={t("selectionHistory.clearDescription")} confirmLabel={t("common.delete")} danger busy={clearing} error={clearError} onConfirm={() => void clearHistory()} onCancel={() => { if (!clearing) setClearOpen(false); }} />
       {error && <p className="error selection-history-message">{error}</p>}

@@ -42,6 +42,21 @@ afterEach(async () => {
 });
 
 describe("history author identities", () => {
+  it.each([0, 2])("keeps the compact edit-history clear action owner-only and disabled for an empty history (%i)", async (count) => {
+    vi.mocked(api)
+      .mockResolvedValueOnce({ segmentCount: count, payloadBytes: 1024, maxStorageBytes: 32 * 1048576 })
+      .mockResolvedValueOnce({ entries: [], baseline: null, chainComplete: true, hasMore: false });
+    await act(async () => root.render(createElement(SelectionHistoryDialog, {
+      open: true, project: { ...project, permission: "owner" }, filePath: "main.tex",
+      selection: { selectedText: "New", startOffset: 0, endOffset: 3 }, currentSource: "New", onOpenChange: () => {}
+    })));
+    const button = host.querySelector<HTMLButtonElement>(".selection-history-clear")!;
+    expect(button.textContent).toBe(i18n.t("selectionHistory.clearAll"));
+    expect(button.querySelector("svg")).not.toBeNull();
+    expect(button.getAttribute("aria-busy")).toBe("false");
+    expect(button.disabled).toBe(count === 0);
+  });
+
   it("shows each edit-history author's display name with a username tooltip, including same-name coauthors", async () => {
     vi.mocked(api).mockResolvedValue({
       entries: [{ id: "edit", filePath: "main.tex", createdAt: version.createdAt, updatedAt: version.createdAt,
@@ -59,6 +74,7 @@ describe("history author identities", () => {
     expect([...authors].map((node) => node.getAttribute("data-tooltip"))).toEqual(["@admin", "@other-admin", "@legacy", null]);
     expect(authors[0].hasAttribute("data-texlite-tooltip-always")).toBe(true);
     expect(host.textContent).not.toContain("@admin");
+    expect(host.querySelector(".selection-history-clear")).toBeNull();
   });
 
   it("limits snapshot username tooltips to timeline authors without altering inline layout", async () => {
