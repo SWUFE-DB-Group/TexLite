@@ -4,6 +4,7 @@ import wasm from "vite-plugin-wasm";
 import { loadBasePath } from "./src/server/config.js";
 import { basePathHref } from "./src/shared/basePath.js";
 import { pdfjsCmaps } from "./scripts/pdfjs-cmaps.js";
+import { precompressAssets } from "./scripts/precompress-assets.js";
 
 function developmentHtmlBase(basePath: string) {
   const href = basePathHref(basePath);
@@ -26,7 +27,7 @@ export default defineConfig(({ command }) => {
   const apiPrefix = `${developmentBasePath === "/" ? "" : developmentBasePath}/api/`;
   return {
     base: command === "serve" ? developmentBaseHref : "./",
-    plugins: [developmentHtmlBase(developmentBasePath), pdfjsCmaps(), react(), wasm()],
+    plugins: [developmentHtmlBase(developmentBasePath), pdfjsCmaps(), react(), wasm(), precompressAssets()],
     optimizeDeps: {
       // This dependency is only imported by a Worker, so the initial scan
       // misses it. Pre-bundle it to avoid reloading the page on first format.

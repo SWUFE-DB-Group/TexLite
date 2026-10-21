@@ -107,6 +107,18 @@ check covers emitted imports from server and shared modules, including dynamic
 imports, while release testing installs the tarball outside the checkout with
 `--omit=dev` as described in [NPM_TESTING.md](NPM_TESTING.md).
 
+Production builds also emit gzip (level 6) and Brotli (quality 5) variants of
+JS, MJS, CSS and WASM assets under `assets/`, including bundled Worker scripts.
+Compression uses Node's built-in zlib with bounded concurrency, applies only
+to files of at least 2 KiB, and keeps a variant only when it saves at least 10%.
+PDFs, archives, images, fonts, packed CMaps and the runtime-injected HTML are
+excluded. Fastify negotiates the precompressed variants through
+`Accept-Encoding`, sets `Vary: Accept-Encoding`, and preserves original MIME
+types and fingerprinted cache policies. Original files remain available for
+clients without compression support and for older builds without variants.
+No request-time compression or additional runtime dependency is required;
+the trade-off is a modest increase in build time and distribution size.
+
 The npm package keeps configuration outside the package installation. The
 effective configuration is selected in this order:
 

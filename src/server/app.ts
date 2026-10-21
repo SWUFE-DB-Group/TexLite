@@ -325,6 +325,9 @@ export async function buildApp(
         wildcard: false,
         index: false,
         globIgnore: ["index.html"],
+        // Select build-time Brotli/gzip variants without compressing requests
+        // on the server. Older builds without variants fall back to originals.
+        preCompressed: true,
         // Build assets use fingerprints or a PDF.js version namespace, so
         // JS/WASM and CMaps can be cached indefinitely. The rendered SPA
         // shell below always remains fresh.
