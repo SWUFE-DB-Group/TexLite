@@ -7,6 +7,7 @@ import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
 import { Group, Separator, type PanelImperativeHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
+import { BibtexFormatterError, createBibtexTextEdits, formatBibtexInWorker } from "../bibtexFormatter";
 import { classifyCompileLog } from "../compileLog";
 import type { CollaborationSaveReceipt, FormatLease, ProjectCollaboration } from "../collaboration";
 import { errorMessage } from "../errors";
@@ -733,19 +734,27 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   };
   const formatSource = async (filePath: string, source: string, texFmtConfig = editorPreferences.texFmtConfig): Promise<FormattedSource> => {
     if (/\.bib$/i.test(filePath)) {
-      const citationLibrary = await loadCitationLibrary();
       try {
-        return { formatted: citationLibrary.formatBibtex(source, site.maxCitationBibtexBytes) };
+        return { formatted: await formatBibtexInWorker(source, site.maxCitationBibtexBytes) };
       } catch (formatError) {
-        if (!(formatError instanceof citationLibrary.BibtexFormatError)) throw formatError;
+        if (!(formatError instanceof BibtexFormatterError)) throw formatError;
         if (formatError.kind === "too-large") {
-          throw new Error(t("citationLibrary.fileTooLarge", { size: citationLibrary.citationBibtexLimitLabel(site.maxCitationBibtexBytes) }));
+          throw new Error(t("citationLibrary.fileTooLarge", { size: `${Math.round(site.maxCitationBibtexBytes / 1024)} KB` }));
         }
-        throw new Error(t("citationLibrary.fileInvalid"));
+        if (formatError.kind === "invalid") throw new Error(t("citationLibrary.fileInvalid"));
+        throw new Error(t(formatError.kind === "timeout" ? "editor.bibtexFormatterTimeout" : "editor.bibtexFormatterUnavailable"));
       }
     }
     const result = await formatWithTexFmt(source, texFmtConfig);
     return { formatted: result.output };
+  };
+  const createSourceTextEdits = async (filePath: string, source: string, formatted: string, baseOffset = 0) => {
+    if (!/\.bib$/i.test(filePath)) return createLatexTextEdits(source, formatted, baseOffset);
+    try { return await createBibtexTextEdits(source, formatted, baseOffset); }
+    catch (diffError) {
+      if (!(diffError instanceof BibtexFormatterError)) throw diffError;
+      throw new Error(t(diffError.kind === "timeout" ? "editor.bibtexFormatterTimeout" : "editor.bibtexFormatterUnavailable"));
+    }
   };
   const formatCurrentFile = async (texFmtConfig?: string): Promise<void> => {
     if (!project || project.permission === "read" || !collaborationSynced || formattingRef.current
@@ -772,7 +781,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       // each have their own timeout, so a single initial lease could expire
       // before the final apply confirmation.
       await lease.confirm();
-      const edits = await createLatexTextEdits(source, formatted);
+      const edits = await createSourceTextEdits(filePath, source, formatted);
       if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
         setError(t("editor.formatSourceChanged"));
         return;
@@ -813,7 +822,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       const source = sharedText.toString();
       const { formatted } = await formatSource(filePath, source);
       await lease.confirm();
-      const edits = await createLatexTextEdits(source, formatted);
+      const edits = await createSourceTextEdits(filePath, source, formatted);
       if (activeFileRef.current !== filePath || sharedText.toString() !== source) {
         throw new Error(t("editor.formatSourceChanged"));
       }
@@ -873,7 +882,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       const result = await formatSource(filePath, selectedText, texFmtConfig);
       const formatted = reindentLatexSelection(selectedText, result.formatted);
       await lease.confirm();
-      const edits = await createLatexTextEdits(selectedText, formatted, startOffset);
+      const edits = await createSourceTextEdits(filePath, selectedText, formatted, startOffset);
       if (activeFileRef.current !== filePath || sharedText.toString().slice(startOffset, endOffset) !== selectedText) {
         setError(t("editor.formatSelectionChanged"));
         return;

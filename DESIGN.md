@@ -651,11 +651,15 @@ Formatting is independent from the editor's local appearance. A user can
 manually format a selection or enable the per-user/per-project “format before
 compile” preference. The browser uses bundled `tex-fmt` WASM for `.tex`, `.cls`,
 and `.sty`, and `bibtex-tidy` for `.bib`; the editor settings also provide a
-per-user/per-project TOML options string passed to `tex-fmt`. The formatter and
-text-diff calculation run in a lazily loaded Web Worker, so opening a project
-does not wait for them and formatting does not block the editor UI. Formatter
-diagnostic logs are shown as expandable warnings. A formatter failure reports
-an error but does not prevent compilation. There is no silent Prettier fallback.
+per-user/per-project TOML options string passed to `tex-fmt`. Each formatter and
+its text-diff calculation run in a separate, lazily loaded Web Worker, so opening
+a project does not wait for them and formatting does not block the editor UI.
+The BibTeX worker does not load tex-fmt or its WASM runtime. Both workers use the
+same Unicode-safe edit calculation. BibTeX syntax and size errors retain their
+localized messages; a failed or timed-out worker is discarded and recreated on
+the next format attempt, with a 30-second request timeout. Citation-library form
+validation remains in the browser's main thread. A formatter failure reports an
+error but does not prevent compilation. There is no silent Prettier fallback.
 
 Before a formatter computes a replacement it acquires a short-lived, per-file
 lease from the live Yjs room. The lease is held only for the format/snapshot,

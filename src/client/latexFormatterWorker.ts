@@ -1,4 +1,5 @@
-import { calculateLatexTextEdits, formatTexSource, LatexFormatterWorkerError } from "./latexFormatterWorkerCore";
+import { formatTexSource, LatexFormatterWorkerError } from "./latexFormatterWorkerCore";
+import { calculateLatexTextEdits } from "./formatterTextEdits";
 import type { LatexFormatterWorkerRequest, LatexFormatterWorkerResponse } from "./latexFormatterProtocol";
 
 interface FormatterWorkerScope {

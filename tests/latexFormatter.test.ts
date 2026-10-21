@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isFormattableLatexFile, reindentLatexSelection } from "../src/client/latexFormatter";
-import { calculateLatexTextEdits, formatTexSource, LatexFormatterWorkerError } from "../src/client/latexFormatterWorkerCore";
+import { formatTexSource, LatexFormatterWorkerError } from "../src/client/latexFormatterWorkerCore";
+import { calculateLatexTextEdits } from "../src/client/formatterTextEdits";
 
 describe("LaTeX formatting", () => {
   it("recognizes LaTeX source files", () => {
