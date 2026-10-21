@@ -1,5 +1,6 @@
-import diff_match_patch from "diff-match-patch";
+import { makeDiff } from "@sanity/diff-match-patch";
 import type { DatabaseConnection } from "./db.js";
+import { cleanupTextDiff } from "../shared/textDiff.js";
 import { anchorSource, mapSourceAnchor, sourceAnchorAt, type AnchorChange } from "../shared/sourceCommentAnchors.js";
 export type { SourceAnchor } from "../shared/sourceCommentAnchors.js";
 import type { SourceAnchor } from "../shared/sourceCommentAnchors.js";
@@ -54,9 +55,7 @@ export function reanchorFileComments(
     replayed = after;
   }
   if (!editBatches?.length || replayed !== newSource) {
-    const dmp = new diff_match_patch();
-    const diffs = dmp.diff_main(oldSource, newSource, true);
-    dmp.diff_cleanupSemantic(diffs);
+    const diffs = cleanupTextDiff(makeDiff(oldSource, newSource, { checkLines: true, timeout: 1 }), "semantic");
     const changes: AnchorChange[] = [];
     let offset = 0;
     let pending: AnchorChange | null = null;

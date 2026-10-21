@@ -35,4 +35,26 @@ describe("selection-history semantic diff", () => {
     const diff = generateSelectionHistoryDiff("One line\r\nSecond line\r\n", "One line\nSecond line\n");
     expect(diff).toEqual({ previous: [], current: [], additions: 0, deletions: 0, hasChanges: false });
   });
+
+  it("highlights complete Unicode characters without splitting their surrogate pairs", () => {
+    const previous = "Result: 😀; 保持不变。";
+    const current = "Result: 😁; 保持不变。";
+    const diff = generateSelectionHistoryDiff(previous, current);
+    expect(diff.previous).toContainEqual({ kind: "deletion", text: "😀" });
+    expect(diff.current).toContainEqual({ kind: "addition", text: "😁" });
+    expect(diff.previous.map((piece) => piece.text).join("")).toBe(previous);
+    expect(diff.current.map((piece) => piece.text).join("")).toBe(current);
+  });
+
+  it.each([
+    ["😀😁", "😀😀😁😁"],
+    ["𠀀𠀁", "𠀀𠀀𠀁𠀁"]
+  ])("keeps each rendered piece valid when semantic cleanup shifts Unicode boundaries: %j", (previous, current) => {
+    const diff = generateSelectionHistoryDiff(previous, current);
+    for (const piece of [...diff.previous, ...diff.current]) {
+      expect(() => encodeURIComponent(piece.text)).not.toThrow();
+    }
+    expect(diff.previous.map((piece) => piece.text).join("")).toBe(previous);
+    expect(diff.current.map((piece) => piece.text).join("")).toBe(current);
+  });
 });

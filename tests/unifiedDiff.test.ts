@@ -77,6 +77,12 @@ describe("generateUnifiedDiff", () => {
     expect(result.deletions).toBe(1);
     expect(result.diffText).toContain("+middle line");
   });
+
+  it("keeps Unicode changes on whole lines and preserves an unterminated last line", () => {
+    const result = generateUnifiedDiff("main.tex", "中文 😀\nLast", "中文 😁\nLast changed", "old", "new");
+    expect(result).toMatchObject({ hasChanges: true, additions: 2, deletions: 2 });
+    expect(result.diffText).toBe("--- a/main.tex (old)\n+++ b/main.tex (new)\n@@ -1,2 +1,2 @@\n-中文 😀\n-Last\n+中文 😁\n+Last changed");
+  });
 });
 
 describe("formatCommitTime", () => {

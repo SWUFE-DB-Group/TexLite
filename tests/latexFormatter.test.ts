@@ -16,6 +16,52 @@ describe("LaTeX formatting", () => {
     ]);
   });
 
+  it("uses efficiency cleanup to combine edits separated by a trivial equality", () => {
+    expect(calculateLatexTextEdits("abXcd", "xyXzw")).toEqual([
+      { from: 0, to: 5, replacement: "xyXzw" }
+    ]);
+  });
+
+  it("replaces whole emoji at UTF-16 editor offsets", () => {
+    expect(calculateLatexTextEdits("前 😀 后", "前 😁 后", 20)).toEqual([
+      { from: 22, to: 24, replacement: "😁" }
+    ]);
+  });
+
+  it("keeps unchanged Unicode text and whole-character edit boundaries after efficiency cleanup", () => {
+    const source = "😁𠀁😁";
+    const formatted = "😀𠀁a𠀀";
+    const prefix = "outside 😀\n";
+    const suffix = "\nuntouched";
+    const edits = calculateLatexTextEdits(source, formatted, prefix.length);
+    expect(edits).toEqual([
+      { from: prefix.length, to: prefix.length + 2, replacement: "😀" },
+      { from: prefix.length + 4, to: prefix.length + 6, replacement: "a𠀀" }
+    ]);
+    let result = prefix + source + suffix;
+    for (const edit of [...edits].reverse()) {
+      result = result.slice(0, edit.from) + edit.replacement + result.slice(edit.to);
+      expect(() => encodeURIComponent(result)).not.toThrow();
+    }
+    expect(result).toBe(prefix + formatted + suffix);
+  });
+
+  it.each([
+    ["\\section{标题}  😀\nText   here\n", "\\section{标题} 😀\nText here\n"],
+    ["first\r\n  second\r\n", "first\nsecond\n"],
+    ["", "\\label{new}\n"], ["removed", ""],
+    ["中文 𠀀 unchanged", "中文 𠀁 rewritten"]
+  ])("reconstructs the formatted selection with its surrounding text intact: %j", (source, formatted) => {
+    const prefix = "outside 😀\n";
+    const suffix = "\nuntouched";
+    const edits = calculateLatexTextEdits(source, formatted, prefix.length);
+    let result = prefix + source + suffix;
+    for (const edit of [...edits].reverse()) {
+      result = result.slice(0, edit.from) + edit.replacement + result.slice(edit.to);
+    }
+    expect(result).toBe(prefix + formatted + suffix);
+  });
+
   it("formats LaTeX with the bundled tex-fmt worker engine", () => {
     expect(formatTexSource("\\documentclass{article}\n\\begin{document}\n  text\n\\end{document}\n", "")).toEqual({
       output: "\\documentclass{article}\n\\begin{document}\ntext\n\\end{document}\n",

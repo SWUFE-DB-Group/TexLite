@@ -407,6 +407,19 @@ column; their tooltips remain enabled independently of the interface-tooltip
 preference. Opening selection history captures the file, selected range, and
 source together, including before the lazily loaded dialog mounts.
 
+Diff calculation uses the public functional API from
+`@sanity/diff-match-patch`: semantic cleanup for selection history and anchor
+fallbacks, and efficiency cleanup for formatter edits. Cleanup functions return
+new arrays; callers use those results. A shared cleanup guard falls back to the
+original diff if cleanup splits a UTF-16 surrogate pair, keeping Unicode
+characters intact in rendered pieces and formatter/anchor boundaries.
+Offsets remain JavaScript UTF-16 offsets
+for CodeMirror/Yjs and do not use the library's UTF-8 patch-index conversion.
+Project snapshot comparisons encode complete lines in a small local module,
+using non-surrogate BMP tokens to preserve line-oriented hunks without importing
+package internals. Inputs that exceed token capacity retain the remaining tail
+as one token, allowing coarser but lossless comparisons of unusually large files.
+
 Recovery snapshots are created only for actual file additions, changes, or
 deletions. Settings-only changes update the persistence baseline without adding
 a timeline entry; effective compiler settings are captured with the next file

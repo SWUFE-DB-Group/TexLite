@@ -1,4 +1,4 @@
-import diff_match_patch from "diff-match-patch";
+import { makeLineDiff } from "./lineDiff";
 
 export interface UnifiedDiffResult {
   diffText: string;
@@ -29,10 +29,7 @@ export function generateUnifiedDiff(
     return { diffText: "", additions: 0, deletions: 0, hasChanges: false };
   }
 
-  const dmp = new diff_match_patch();
-  const lineData = dmp.diff_linesToChars_(normalizedOld, normalizedNew);
-  const diffs = dmp.diff_main(lineData.chars1, lineData.chars2, false);
-  dmp.diff_charsToLines_(diffs, lineData.lineArray);
+  const diffs = makeLineDiff(normalizedOld, normalizedNew);
 
   const lines: DiffLine[] = [];
   let oldNum = 1;

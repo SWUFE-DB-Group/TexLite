@@ -1,4 +1,5 @@
-import diff_match_patch from "diff-match-patch";
+import { makeDiff } from "@sanity/diff-match-patch";
+import { cleanupTextDiff } from "../shared/textDiff";
 
 export type SelectionHistoryDiffPieceKind = "equal" | "addition" | "deletion" | "omitted";
 
@@ -36,9 +37,7 @@ export function generateSelectionHistoryDiff(previousSource: string, currentSour
     return { previous: [], current: [], additions: 0, deletions: 0, hasChanges: false };
   }
 
-  const dmp = new diff_match_patch();
-  const diffs = dmp.diff_main(previousText, currentText, false);
-  dmp.diff_cleanupSemantic(diffs);
+  const diffs = cleanupTextDiff(makeDiff(previousText, currentText, { checkLines: false, timeout: 1 }), "semantic");
 
   const previous: SelectionHistoryDiffPiece[] = [];
   const current: SelectionHistoryDiffPiece[] = [];

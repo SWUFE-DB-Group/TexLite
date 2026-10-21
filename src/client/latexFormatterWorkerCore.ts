@@ -1,5 +1,6 @@
-import DiffMatchPatch from "diff-match-patch";
+import { DIFF_DELETE, DIFF_EQUAL, makeDiff } from "@sanity/diff-match-patch";
 import { main } from "tex-fmt";
+import { cleanupTextDiff } from "../shared/textDiff";
 import type { LatexTextEdit, TexFmtFailureKind, TexFmtResult } from "./latexFormatterProtocol";
 
 export class LatexFormatterWorkerError extends Error {
@@ -25,9 +26,7 @@ export function formatTexSource(source: string, config: string): TexFmtResult {
 
 export function calculateLatexTextEdits(source: string, formatted: string, baseOffset = 0): LatexTextEdit[] {
   if (source === formatted) return [];
-  const engine = new DiffMatchPatch();
-  const diffs = engine.diff_main(source, formatted, true);
-  engine.diff_cleanupEfficiency(diffs);
+  const diffs = cleanupTextDiff(makeDiff(source, formatted, { checkLines: true, timeout: 1 }), "efficiency");
   const edits: LatexTextEdit[] = [];
   let sourceOffset = baseOffset;
   let pending: LatexTextEdit | null = null;
@@ -36,10 +35,10 @@ export function calculateLatexTextEdits(source: string, formatted: string, baseO
     pending = null;
   };
   for (const [kind, text] of diffs) {
-    if (kind === DiffMatchPatch.DIFF_EQUAL) {
+    if (kind === DIFF_EQUAL) {
       flush();
       sourceOffset += text.length;
-    } else if (kind === DiffMatchPatch.DIFF_DELETE) {
+    } else if (kind === DIFF_DELETE) {
       pending ??= { from: sourceOffset, to: sourceOffset, replacement: "" };
       pending.to += text.length;
       sourceOffset += text.length;

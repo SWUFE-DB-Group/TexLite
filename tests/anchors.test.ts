@@ -71,6 +71,29 @@ describe("source comment anchors", () => {
     expect(row).toMatchObject({ selected_text: "missing", orphaned: 1 });
   });
 
+  it.each([false, true])("maps Unicode offsets through the diff fallback (incomplete edit chain: %s)", (incompleteChain) => {
+    const fixture = createFixture();
+    const source = "中文 😀\nWe use large models.\n";
+    const id = insertComment(fixture.db, source, "large models");
+    const changed = "前言 𠀀\n" + source.replace("😀", "😁").replace("large models", "large language models");
+    reanchorFileComments(fixture.db, "project-1", "main.tex", source, changed,
+      incompleteChain ? [[{ from: 0, to: 0, insert: "incomplete", insertLength: 10 }]] : undefined);
+    const from = changed.indexOf("large language models");
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 0, selected_text: "large language models", start_offset: from, end_offset: from + 21 });
+  });
+
+  it("keeps an unchanged astral character anchored when nearby Unicode edits require a diff fallback", () => {
+    const fixture = createFixture();
+    const source = "Start 😁𠀁😁 end.";
+    const id = insertComment(fixture.db, source, "𠀁");
+    const changed = "Start 😀𠀁a𠀀 end.";
+    reanchorFileComments(fixture.db, "project-1", "main.tex", source, changed);
+    const from = changed.indexOf("𠀁");
+    expect(anchorRow(fixture.db, id)).toMatchObject({
+      orphaned: 0, selected_text: "𠀁", start_offset: from, end_offset: from + 2
+    });
+  });
+
   it.each([false, true])("does not move a deleted quote to an existing duplicate (actual edits: %s)", (actualEdits) => {
     const fixture = createFixture();
     const source = "Before target after.\nBefore target after.\n";
