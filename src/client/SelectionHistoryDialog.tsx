@@ -137,7 +137,7 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
             <article className="selection-history-entry">
               <header>
                 <time title={new Date(entry.updatedAt).toLocaleString(i18n.resolvedLanguage)}>{formatTime(entry.updatedAt, i18n.resolvedLanguage)}</time>
-                <span className="selection-history-authors"><UserRound size={14} /><span>{t("selectionHistory.changedBy")}</span><span className="selection-history-author-list">{entry.authors.map((author, authorIndex) => <span key={author.id || `deleted-${authorIndex}`}>{authorLabel(author, t("editor.deletedUser"))}</span>)}</span></span>
+                <span className="selection-history-authors"><UserRound size={14} /><span>{t("selectionHistory.changedBy")}</span><span className="selection-history-author-list">{entry.authors.map((author, authorIndex) => <span key={author.id || `deleted-${authorIndex}`} data-tooltip={author.username ? `@${author.username}` : undefined} data-texlite-tooltip-always>{authorLabel(author, t("editor.deletedUser"))}</span>)}</span></span>
               </header>
               <div className="selection-history-tabs" role="tablist" aria-label={t("selectionHistory.view")}>
                 <button type="button" className={view === "content" ? "active" : ""} role="tab" aria-selected={view === "content"} aria-controls={`selection-history-content-${entry.id}`} onClick={() => setEntryViews((current) => ({ ...current, [entry.id]: "content" }))}>{t("selectionHistory.contentTab")}</button>
@@ -163,9 +163,7 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
 }
 
 function authorLabel(author: SelectionHistoryAuthor, deletedUser: string): string {
-  if (!author.name && !author.username) return deletedUser;
-  if (author.name && author.username) return `${author.name} (@${author.username})`;
-  return author.name || `@${author.username}`;
+  return author.name || author.username || deletedUser;
 }
 
 function SelectionDiff({ diff, previousLabel, currentLabel }: {

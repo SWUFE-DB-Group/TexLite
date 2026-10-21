@@ -967,8 +967,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-actions-menu-content .danger-text { color: var(--ui-danger, #a7312a); }
 .comment-actions-menu-content .danger-text[data-highlighted] { background: var(--ui-hover, #fff1ef); }
 .comment-author { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.comment-author strong, .comment-author small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.comment-author.participant-match strong, .comment-author.participant-match small { align-self: flex-start; max-width: 100%; border-radius: 3px; padding: 0 2px; background: var(--ui-surface, #edf5ff); color: var(--ui-info, #2563a6); }
+.comment-author strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comment-author.participant-match strong { align-self: flex-start; max-width: 100%; border-radius: 3px; padding: 0 2px; background: var(--ui-surface, #edf5ff); color: var(--ui-info, #2563a6); }
 .comment-location { margin-top: 5px; color: var(--ui-muted, #768079); font-size: 10px; overflow-wrap: anywhere; }
 .comments blockquote { margin: 8px 0; padding: 6px 8px; border-left: 2px solid var(--ui-accent-border, #85ad96); background: var(--ui-page, #f4f7f5); color: var(--ui-muted, #657069); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .comments p { white-space: pre-wrap; user-select: text; -webkit-user-select: text; cursor: text; }.comments blockquote, .comments .comment-content { user-select: text; -webkit-user-select: text; cursor: text; }
@@ -986,7 +986,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-resolution { display: flex; justify-content: flex-end; align-items: baseline; gap: 5px; margin: 8px 0; color: var(--ui-muted, #68736c); font-size: 10px; line-height: 1.5; text-align: right; overflow-wrap: anywhere; }
 .comment-resolution > span { min-width: 0; }
 .comment-resolution > svg { flex: none; align-self: flex-start; margin-top: 2px; }
-.comment-resolution small { font-size: inherit; }
 .comment-resolution-user { font-weight: 700; font-style: italic; font-synthesis: style; }
 .comments .reply-action { display: inline-flex; align-items: center; gap: 4px; border: 0; padding: 0; background: transparent; color: var(--ui-muted, #526c5d); font-size: 11px; }
 .comment-mention { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 7px; padding: 5px 6px; border: 1px solid var(--ui-info-border, #c9d8f0); border-radius: 5px; background: var(--ui-surface, #f1f6ff); color: var(--ui-info, #315c92); font-size: 10px; }
@@ -1561,6 +1560,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-timeline > button span { min-width: 0; display: grid; gap: 2px; }
 .history-timeline > button strong, .history-timeline > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-timeline > button small { color: var(--ui-muted, #68736b); font-size: 10px; }
+.history-timeline > button .history-author-name { display: inline; }
 .history-item-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
 .history-item-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ui-text, #253329); flex: 1; min-width: 0; }
 .history-reason-badge { display: inline-flex; align-items: center; flex: none; padding: 1px 5px; border-radius: 4px; font-size: 9px; font-weight: 500; line-height: 1.4; white-space: nowrap; background: var(--ui-subtle, #edf2ee); color: var(--ui-muted, #55685c); }

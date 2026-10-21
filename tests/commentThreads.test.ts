@@ -52,17 +52,18 @@ describe("comment participant highlighting", () => {
     const resolvedAt = "2026-01-03T12:00:00Z";
     const html = render({ comment: { ...thread, resolved: true, resolvedAt,
       resolvedById: "reader", resolvedByUsername: "reader", resolvedByDisplayName: "Reader Name" } });
-    expect(html).toContain('<strong class="comment-resolution-user">Reader Name</strong>');
+    expect(html).toMatch(/<strong class="comment-resolution-user"[^>]*>Reader Name<\/strong>/);
     expect(html).not.toContain("<user>");
     expect(html).toContain('class="comment-resolution"');
     expect(html).toContain('dateTime="' + resolvedAt + '"');
-    expect(html).toContain('<small class="comment-resolution-user"> @reader</small>');
+    expect(html).toContain('data-tooltip="@reader"');
+    expect(html).not.toContain('<small class="comment-resolution-user">');
   });
 
   it("keeps the resolution time after the resolver is deleted without guessing legacy metadata", () => {
     const resolvedAt = "2026-01-03T12:00:00Z";
     const deleted = render({ comment: { ...thread, resolved: true, resolvedAt } });
-    expect(deleted).toContain('<strong class="comment-resolution-user">' + i18n.t("editor.deletedUser") + '</strong>');
+    expect(deleted.match(/<strong class="comment-resolution-user"[^>]*>(.*?)<\/strong>/)?.[1]).toBe(i18n.t("editor.deletedUser"));
     expect(deleted).toContain('dateTime="' + resolvedAt + '"');
     expect(render({ comment: { ...thread, resolved: true } })).not.toContain('class="comment-resolution"');
     expect(render({ comment: { ...thread, resolvedAt } })).not.toContain('class="comment-resolution"');
@@ -138,7 +139,7 @@ describe("comment participant highlighting", () => {
     const html = render({ selectedParticipantIds: new Set(["reader"]) });
     expect(html).toContain('class="comment-thread"');
     expect(html).toContain('data-comment-reply-id="reader" class="comment-reply"');
-    expect(html).toContain('class="comment-author participant-match"><strong>reader</strong><small>@reader</small>');
+    expect(html).toMatch(/class="comment-author participant-match"><strong[^>]*data-tooltip="@reader"[^>]*>reader<\/strong><\/span>/);
     expect(html).toContain('data-comment-reply-id="other" class="comment-reply"');
     expect(html).toContain("Original comment");
     expect(html).toContain("other reply");
@@ -147,8 +148,8 @@ describe("comment participant highlighting", () => {
   it("supports multiple selected authors and root-only highlighting", () => {
     const html = render({ selectedParticipantIds: new Set(["author", "reader"]), highlightReplyParticipants: false });
     expect(html).toContain('class="comment-thread"');
-    expect(html).toContain('class="comment-author participant-match"><strong>Author</strong><small>@author</small>');
-    expect(html).toContain('class="comment-author"><strong>reader</strong><small>@reader</small>');
+    expect(html).toMatch(/class="comment-author participant-match"><strong[^>]*data-tooltip="@author"[^>]*>Author<\/strong><\/span>/);
+    expect(html).toMatch(/class="comment-author"><strong[^>]*data-tooltip="@reader"[^>]*>reader<\/strong><\/span>/);
     expect(html).toContain('data-comment-reply-id="reader" class="comment-reply"');
     expect(render({ selectedParticipantIds: new Set() })).not.toContain("participant-match");
   });
@@ -159,6 +160,23 @@ describe("comment participant highlighting", () => {
     expect(html).toContain('class="comment-thread mention-target review-current"');
     expect(html).toContain('data-comment-reply-id="reader" class="comment-reply mention-target"');
     expect(html.match(/class="comment-author participant-match"/g)).toHaveLength(2);
+  });
+
+  it("shows only display names for comment/reply authors and moves usernames to always-enabled tooltips", () => {
+    const html = render();
+    expect(html).toContain('data-tooltip="@author" data-texlite-tooltip-always="true">Author</strong>');
+    expect(html).toContain('data-tooltip="@reader" data-texlite-tooltip-always="true">reader</strong>');
+    expect(html).not.toContain('<small>@');
+    const visible = html.replace(/<[^>]*>/g, "");
+    expect(visible).not.toContain("@author");
+    expect(visible).not.toContain("@reader");
+  });
+
+  it("preserves deleted-user fallback and explicit mentions in comment content", () => {
+    const html = render({ comment: { ...thread, authorId: null, authorUsername: null, authorDisplayName: null,
+      content: "Please ask @reader about this." } });
+    expect(html).toContain(`>${i18n.t("editor.deletedUser")}</strong>`);
+    expect(html).toContain('<span class="comment-inline-mention">@reader</span>');
   });
 
   it("puts author actions in their own menus without hiding reply and resolution actions", () => {

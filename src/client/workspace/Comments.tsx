@@ -111,7 +111,7 @@ export function CommentThread({
   };
   return <><article data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}${currentComment ? " review-current" : ""}`} onFocusCapture={onActivate} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
     <header className="comment-header">
-      <span className={`comment-author${selectedParticipantIds?.has(comment.authorId) ? " participant-match" : ""}`}><strong>{comment.authorDisplayName ?? username ?? t("editor.deletedUser")}</strong>{username && <small>@{username}</small>}</span>
+      <span className={`comment-author${selectedParticipantIds?.has(comment.authorId) ? " participant-match" : ""}`}><strong data-tooltip={username ? `@${username}` : undefined} data-texlite-tooltip-always>{comment.authorDisplayName ?? username ?? t("editor.deletedUser")}</strong></span>
       <span className="comment-header-actions">
         <span className="comment-times"><time dateTime={comment.createdAt} title={new Date(comment.createdAt).toISOString()}>{formatTime(comment.createdAt)}</time>{comment.editedAt && <small>{t("editor.editedAt", { time: formatTime(comment.editedAt) })}</small>}</span>
         {comment.authorId === currentUserId && !commentEditDraft?.open && <CommentActionsMenu kind="comment"
@@ -138,7 +138,7 @@ export function CommentThread({
       const editing = drafts[editKey]?.open && reply.authorId === currentUserId;
       return <div data-comment-reply-id={reply.id} className={`comment-reply${highlightedReplyId === reply.id ? " mention-target" : ""}`} key={reply.id}>
         <header>
-          <span className={`comment-author${highlightReplyParticipants && selectedParticipantIds?.has(reply.authorId) ? " participant-match" : ""}`}><strong>{reply.authorDisplayName ?? reply.authorUsername ?? t("editor.deletedUser")}</strong>{reply.authorUsername && <small>@{reply.authorUsername}</small>}</span>
+          <span className={`comment-author${highlightReplyParticipants && selectedParticipantIds?.has(reply.authorId) ? " participant-match" : ""}`}><strong data-tooltip={reply.authorUsername ? `@${reply.authorUsername}` : undefined} data-texlite-tooltip-always>{reply.authorDisplayName ?? reply.authorUsername ?? t("editor.deletedUser")}</strong></span>
           <span className="comment-header-actions">
             <span className="comment-times"><time dateTime={reply.createdAt} title={new Date(reply.createdAt).toISOString()}>{formatTime(reply.createdAt)}</time>{reply.editedAt && <small>{t("editor.editedAt", { time: formatTime(reply.editedAt) })}</small>}</span>
             {reply.authorId === currentUserId && !editing && <CommentActionsMenu kind="reply"
@@ -156,8 +156,7 @@ export function CommentThread({
       <CheckCircle2 size={12} aria-hidden />
       <span><Trans i18nKey="editor.resolvedBy"
         values={{ user: comment.resolvedByDisplayName ?? comment.resolvedByUsername ?? t("editor.deletedUser") }}
-        components={{ user: <strong className="comment-resolution-user" /> }} />
-        {comment.resolvedByUsername && <small className="comment-resolution-user"> @{comment.resolvedByUsername}</small>}
+        components={{ user: <strong className="comment-resolution-user" data-tooltip={comment.resolvedByUsername ? `@${comment.resolvedByUsername}` : undefined} data-texlite-tooltip-always /> }} />
         {" · "}<time dateTime={comment.resolvedAt}>{formatTime(comment.resolvedAt)}</time>
       </span>
     </div>}

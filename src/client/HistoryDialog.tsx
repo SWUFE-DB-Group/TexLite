@@ -402,7 +402,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                     <span className={`history-reason-badge reason-${version.reason}`}>{reasonLabel}</span>
                   </div>
                   <small>{new Date(version.createdAt).toLocaleString(i18n.resolvedLanguage)}</small>
-                  <small>{author} · {t("history.changedCount", { count: version.changedPaths.length })}</small>
+                  <small><span className="history-author-name" data-tooltip={version.author?.username ? `@${version.author.username}` : undefined} data-texlite-tooltip-always>{author}</span> · {t("history.changedCount", { count: version.changedPaths.length })}</small>
                 </span>
               </button>
             );
