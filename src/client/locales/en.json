@@ -190,6 +190,7 @@
   },
   "chktex": { "recoveryTitle": "ChkTeX is unavailable.", "recoveryHint": " Check that the ChkTeX package is installed on the server, then retry. You can turn this setting off if it is not available.", "unavailable": "ChkTeX is not installed or cannot run on this server. Install the TeX Live chktex package and try again.", "enabled": "Run ChkTeX writing checks", "description": "After you stop editing for 2 seconds, TexLite runs the optional host ChkTeX command. Results use a blue-gray dotted underline. Up to 8 checks run at once across the server.", "noIssues": "No writing issues found." },
   "editor": {
+    "languageLoadFailed": "Syntax highlighting could not load. You can still edit and save this file.",
     "bibtexFormatterUnavailable": "The BibTeX formatter could not run. Try formatting again; if the page was open during an update, reload it.",
     "bibtexFormatterTimeout": "BibTeX formatting timed out and was stopped. Try a smaller selection or retry.",
     "openSourceComment": "View this source comment",

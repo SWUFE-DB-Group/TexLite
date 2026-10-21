@@ -31,7 +31,7 @@ import { latexMathHover } from "./mathHover";
 import { latexReferenceHover } from "./latexReferenceHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
-import { isLatexEditorFile, textFileLanguage } from "./textLanguages";
+import { isLatexEditorFile, loadTextFileLanguage } from "./textLanguages";
 import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
 import { setSourceComments, sourceCommentAnchorForId, sourceCommentDecorations, sourceCommentMarksForFile } from "./sourceCommentDecorations";
 import type { LatexReference } from "../shared/latexReferences";
@@ -167,6 +167,9 @@ export function LatexEditor({
   const referenceNavigation = useRef(new Compartment());
   const mathHover = useRef(new Compartment());
   const vimMode = useRef(new Compartment());
+  const auxiliaryLanguage = useRef(new Compartment());
+  const [languageLoadFailed, setLanguageLoadFailed] = useState(false);
+  const [languageRetry, setLanguageRetry] = useState(0);
   const vimStatusCleanup = useRef<(() => void) | null>(null);
   const [vimStatus, setVimStatus] = useState(preferences.vimMode ? "NORMAL" : "");
   const [spellSuggestionMenu, setSpellSuggestionMenu] = useState<SpellSuggestionMenu | null>(null);
@@ -217,7 +220,7 @@ export function LatexEditor({
           onHistory: (...args) => onSelectionHistoryRef.current(...args)
         }),
         foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), selectedCommentHighlighting, highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
-        isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : isLatexFile ? latexLanguage : textFileLanguage(filePath, (collaboration?.text.toString() ?? value).split("\n", 1)[0]),
+        isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : isLatexFile ? latexLanguage : auxiliaryLanguage.current.of([]),
         ...(isLatexFile ? [syntaxHighlighting(latexHighlightStyle), latexSemanticHighlighting] : [syntaxHighlighting(editorGenericHighlightStyle)]),
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),
         ...(isBibtexFile ? [] : [bracketMatching(), ...(isLatexFile ? [Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexSkippedBracePair] : [])]),
@@ -308,6 +311,21 @@ export function LatexEditor({
       view.current = null;
     };
   }, [filePath, readOnly, i18n.resolvedLanguage, collaboration?.text]);
+
+  useEffect(() => {
+    const editor = view.current;
+    setLanguageLoadFailed(false);
+    if (!editor || isLatexEditorFile(filePath) || /\.(?:bib|bst)$/i.test(filePath)) return;
+    let cancelled = false;
+    // Highlight the live document, not the source that was present when the
+    // request began. Reconfiguration preserves edits, selection and undo state.
+    void loadTextFileLanguage(filePath, editor.state.doc.line(1).text).then((extension) => {
+      if (!cancelled && view.current === editor) editor.dispatch({ effects: auxiliaryLanguage.current.reconfigure(extension) });
+    }).catch(() => {
+      if (!cancelled && view.current === editor) setLanguageLoadFailed(true);
+    });
+    return () => { cancelled = true; };
+  }, [filePath, readOnly, i18n.resolvedLanguage, collaboration?.text, languageRetry]);
 
   useEffect(() => {
     const editor = view.current;
@@ -436,6 +454,9 @@ export function LatexEditor({
 
   return <div className="editor-shell" data-editor-theme={theme} style={appearanceStyle}>
     <div className="editor-host" ref={host} />
+    {languageLoadFailed && <div className="editor-language-notice" role="status">
+      <span>{t("editor.languageLoadFailed")}</span><button type="button" onClick={() => setLanguageRetry((attempt) => attempt + 1)}>{t("common.retry")}</button>
+    </div>}
     {spellSuggestionMenu && <SpellSuggestionsMenu issue={spellSuggestionMenu.issue} anchor={spellSuggestionMenu.anchor} readOnly={readOnly}
       onReplace={(replacement) => { onSpellCheckReplaceRef.current(spellSuggestionMenu.issue, replacement); setSpellSuggestionMenu(null); }} />}
     {preferences.vimMode && <div className="vim-editor-status" role="status" aria-live="polite"><span>--{vimStatus || "NORMAL"}--</span></div>}

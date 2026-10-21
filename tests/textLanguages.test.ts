@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { classHighlighter, highlightTree } from "@lezer/highlight";
-import { isLatexEditorFile, textFileLanguage } from "../src/client/textLanguages";
+import { isLatexEditorFile, loadTextFileLanguage, textLanguageKind } from "../src/client/textLanguages";
 
 describe("generic text editor languages", () => {
   it.each([
@@ -11,6 +11,10 @@ describe("generic text editor languages", () => {
     ["run.sh", '#!/bin/sh\nif true; then echo "hello"; fi'],
     ["settings.toml", '[server]\nhost = "localhost"'],
     ["script.ts", 'const title: string = "Example";'],
+    ["module.mts", 'export const title: string = "Example";'],
+    ["script.js", 'const title = "Example";'],
+    ["component.jsx", 'const view = <div className="example" />;'],
+    ["component.tsx", 'const view: Element = <div className="example" />;'],
     ["index.html", '<div class="content">Example</div>'],
     ["style.css", '.content { color: blue; }'],
     ["data.xml", '<root name="value">Example</root>'],
@@ -20,9 +24,10 @@ describe("generic text editor languages", () => {
     [".env", 'KEY=value\n# comment'],
     ["Dockerfile", 'FROM node:24\nRUN echo hello'],
     ["CMakeLists.txt", 'project(Example)\n# comment'],
-    ["run", '#!/usr/bin/env bash\necho "hello"']
-  ])("parses and highlights %s using CodeMirror language support", (file, source) => {
-    const state = EditorState.create({ doc: source, extensions: textFileLanguage(file, source.split("\n")[0]) });
+    ["run", '#!/usr/bin/env bash\necho "hello"'],
+    ["program", '#!/usr/bin/env python3\nprint("hello")']
+  ])("parses and highlights %s using CodeMirror language support", async (file, source) => {
+    const state = EditorState.create({ doc: source, extensions: await loadTextFileLanguage(file, source.split("\n")[0]) });
     const tree = ensureSyntaxTree(state, source.length, 1000);
     expect(tree).not.toBeNull();
     const marks: string[] = [];
@@ -31,10 +36,11 @@ describe("generic text editor languages", () => {
     expect(isLatexEditorFile(file)).toBe(false);
   });
 
-  it("leaves ordinary and unknown text plain instead of interpreting LaTeX", () => {
+  it("leaves ordinary and unknown text plain instead of interpreting LaTeX", async () => {
     const source = String.raw`\begin{not-latex} $value # literal`;
     for (const file of ["notes.txt", "values.dat", "LICENSE", "custom.unusual"]) {
-      const state = EditorState.create({ doc: source, extensions: textFileLanguage(file) });
+      expect(textLanguageKind(file)).toBeNull();
+      const state = EditorState.create({ doc: source, extensions: await loadTextFileLanguage(file) });
       const marks: string[] = [];
       highlightTree(syntaxTree(state), classHighlighter, (from, to) => marks.push(source.slice(from, to)));
       expect(marks).toEqual([]);

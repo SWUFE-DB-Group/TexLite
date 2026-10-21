@@ -515,6 +515,14 @@ JavaScript/TypeScript, Python, HTML/CSS/XML, Markdown, INI, Perl/latexmkrc,
 Dockerfile and CMake where recognized, otherwise plain text. LaTeX semantic
 highlighting, auto-pairs, completion and reference navigation stay scoped to
 LaTeX source; BibTeX and BST retain their dedicated languages.
+Auxiliary text languages load together on the first recognized non-LaTeX file,
+not when entering a TeX/BibTeX/BST workspace or opening plain text. Detection is
+synchronous and independent of the parser bundle. The import is shared across
+files and projects in the current browser page; failures can be retried.
+The editor starts as plain text and installs the language through a CodeMirror
+compartment without replacing its document, selection, undo history or Yjs
+binding. Late results are ignored after file/instance changes or unmount, and a
+load failure leaves editing and saving available with a nonblocking retry notice.
 Writing checks remain limited to prose-oriented files rather than running
 Harper on newly editable configuration and program files.
 
