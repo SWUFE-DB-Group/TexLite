@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type WheelEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { getDocument, GlobalWorkerOptions, PDFWorker, type PDFDocumentLoadingTask, type PageViewport, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
+import { getDocument, GlobalWorkerOptions, PDFWorker, version, type PDFDocumentLoadingTask, type PageViewport, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
 import { LoaderCircle, Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { appPath } from "./basePath";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 const sharedPdfWorker = new PDFWorker();
@@ -46,7 +47,15 @@ function pdfDocument(url: string, loadingMode: PdfLoadingMode): CachedPdfDocumen
   // PDF.js request byte ranges so the first pages can render without waiting
   // for the complete document. The server chooses the mode from the effective
   // deployment configuration and immutable artifact size.
-  const task = getDocument({ url, worker: sharedPdfWorker, disableRange: loadingMode === "full" });
+  const task = getDocument({
+    url,
+    worker: sharedPdfWorker,
+    disableRange: loadingMode === "full",
+    // Some embedded CID fonts still need Adobe's predefined character maps.
+    // Resolve against the origin so workers also work on nested project URLs.
+    cMapUrl: new URL(appPath(`/assets/pdfjs-${version}/cmaps/`), window.location.origin).href,
+    cMapPacked: true
+  });
   const entry: CachedPdfDocument = {
     task,
     promise: task.promise,

@@ -99,9 +99,9 @@ and administrators can switch the displayed method. Docker help updates the
 launcher with `git pull --ff-only` before image pull/container recreation;
 it explicitly notes that images can lag behind npm. Updates remain manual.
 
-The npm package includes the built frontend, PDF worker, formatter WASM, fonts,
-and generated Lucide SVGs. Browser libraries and build tools are development
-dependencies; the published installation needs only the server's runtime
+The npm package includes the built frontend, PDF worker, Adobe CMaps, formatter
+WASM, fonts, and generated Lucide SVGs. Browser libraries and build tools are
+development dependencies; the published installation needs only the server's runtime
 dependencies. Source builds require development dependencies. A dependency
 check covers emitted imports from server and shared modules, including dynamic
 imports, while release testing installs the tarball outside the checkout with
@@ -745,6 +745,11 @@ and enables PDF.js byte-range loading above that threshold; deployments can
 force either mode without changing project compiler settings. The output panel groups the PDF,
 log, warnings, errors, generated artifacts, and recovery actions; clean-cache
 and clean-artifact actions are for recovery rather than routine compilation.
+The Vite build publishes the installed PDF.js version's predefined Adobe CMaps
+and their license under a versioned asset directory. The development server
+serves the same resources. PDF.js resolves this URL against the runtime base
+path and fetches mappings on demand, allowing embedded CID fonts without
+ToUnicode maps to render without a CDN or additional user configuration.
 Compile responses expose `Server-Timing` measurements for snapshot, cache
 synchronization, LaTeX execution, artifact publication, and total request time
 so queue and rendering regressions can be diagnosed. Artifact listing and

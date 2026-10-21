@@ -323,9 +323,9 @@ export async function buildApp(
         wildcard: false,
         index: false,
         globIgnore: ["index.html"],
-        // Vite fingerprints everything under assets/. These large JS/WASM
-        // files are safe to cache indefinitely; a new build produces a new
-        // URL. The rendered SPA shell below always remains fresh.
+        // Build assets use fingerprints or a PDF.js version namespace, so
+        // JS/WASM and CMaps can be cached indefinitely. The rendered SPA
+        // shell below always remains fresh.
         cacheControl: false,
         setHeaders(reply, filePath) {
           const relativePath = path.relative(config.clientDir, filePath).split(path.sep).join("/");

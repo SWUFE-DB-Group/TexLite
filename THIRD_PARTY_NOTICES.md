@@ -45,6 +45,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## Adobe CMaps
+
+TexLite bundles the predefined Adobe character maps from `pdfjs-dist` for PDF
+preview. Copyright 1990-2009 Adobe Systems Incorporated. Their redistribution
+notice and license are retained alongside the maps in the published client
+assets at `assets/pdfjs-<version>/cmaps/LICENSE`.
+
 ## Lucide icons
 
 TexLite uses [Lucide](https://lucide.dev/) icons and distributes generated SVGs
