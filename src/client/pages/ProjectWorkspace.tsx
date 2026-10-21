@@ -4,7 +4,7 @@ import { api, ApiError } from "../api";
 import type { CitationLibraryEntry, Comment, CommentMention, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
 import i18n from "../i18n";
 import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
-import { PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
+import { Group, Separator, type PanelImperativeHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
 import { classifyCompileLog } from "../compileLog";
@@ -23,6 +23,7 @@ import { useSpellCheck } from "../workspace/useSpellCheck";
 import { useChktex } from "../workspace/useChktex";
 import { useSyncTeX } from "../workspace/useSyncTeX";
 import { useWorkspaceLayout } from "../workspace/useWorkspaceLayout";
+import { useWorkspacePanelLayout } from "../workspace/useWorkspacePanelLayout";
 import type { SpellCheckIssue } from "../spellCheck";
 import { supportsChktexChecks, supportsWritingChecks } from "../../shared/writingChecks";
 import { loadPdfPreview, type WorkspacePreload } from "../workspacePreload";
@@ -39,7 +40,6 @@ import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } fr
 import { workspaceOutlineForMainFile, type LoadedProjectOutline, type OutlineSourceSnapshot } from "../workspace/outlineState";
 import { LazyModal } from "../LazyLoadBoundary";
 import type { LatexReference } from "../../shared/latexReferences";
-import { scopedStorageKey } from "../basePath";
 import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
 const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
@@ -178,7 +178,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const openTabsRef = useRef<string[]>([]);
   openTabsRef.current = openTabs;
   const uploadInput = useRef<HTMLInputElement>(null);
-  const filesPanel = useRef<ImperativePanelHandle>(null);
+  const filesPanel = useRef<PanelImperativeHandle>(null);
   const localEditSequence = useRef(0);
   const persistedEditSequence = useRef(0);
   const activeFileRef = useRef("");
@@ -1252,6 +1252,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const compileMessages = useMemo(() => classifyCompileLog(compileLog, compileOutcome), [compileLog, compileOutcome]);
   const showEditor = workspaceLayout !== "pdf-only";
   const showPreview = workspaceLayout !== "editor-only";
+  const panelLayout = useWorkspacePanelLayout(showEditor, showPreview, Boolean(sidePanel));
   const changeWorkspaceLayout = (next: WorkspaceLayout) => {
     setWorkspaceLayout(next);
     if (next === "pdf-only") selectPreviewTab("pdf");
@@ -1400,7 +1401,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     {historyWarning && <div className="client-tool-recovery" role="status"><AlertTriangle size={15} /><span>{t("history.saveWarning")}</span></div>}
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
-    <PanelGroup autoSaveId={scopedStorageKey("texlite-workspace-layout")} direction="horizontal" className="work-grid">
+    <Group orientation="horizontal" className="work-grid" {...panelLayout}>
       {showEditor && <WorkspaceFilePanel
         project={project} filesPanel={filesPanel} visibleEntries={visibleEntries}
         activeFile={activeFile} activeMainFile={activeMainFile} selectedFile={selectedFile}
@@ -1423,7 +1424,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
         jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
       />}
-      {showEditor && <PanelResizeHandle className="resize-handle"><GripVertical size={12} /></PanelResizeHandle>}
+      {showEditor && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel
         project={project} activeFile={activeFile} openTabs={openTabs}
         content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
@@ -1483,7 +1484,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         spellCheckIndex={spellCheck.summary ? spellCheck.index : -1} onSpellCheckNavigate={spellCheck.jumpToIssue}
         onProject={applyProjectSettings}
       />
-    </PanelGroup>
+    </Group>
     {wordCountOpen && <LazyModal title={t("editor.wordCountTitle")} onClose={() => setWordCountOpen(false)}><WordCountDialog open mode={wordCountMode} path={wordCountPath} busy={wordCountBusy}
       error={wordCountError} result={wordCountResult} onOpenChange={setWordCountOpen} /></LazyModal>}
     <WorkspaceDialogs

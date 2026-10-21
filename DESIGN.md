@@ -458,6 +458,20 @@ its target). This prevents a project path from escaping its source directory.
 
 ## Editor, files, and navigation
 
+Workspace resizing uses `react-resizable-panels` v4 (`Group`, `Panel`,
+`Separator`). Constraints use explicit percentage strings; numbers in v4
+would mean pixels. The editor and preview share the space remaining after the
+file panel and optional drawer. Each visible panel combination keeps its own
+browser layout using `useDefaultLayout` and a storage adapter scoped to the
+deployment base path. The adapter validates saved preferences and reads v2's
+legacy array in visual order, rather than the alphabetized record-key order,
+so source/PDF widths do not get swapped. Legacy records remain intact; new
+layouts use v4's per-combination keys. Blocked or corrupt browser storage
+falls back to usable defaults. File-panel collapse state follows `onResize`.
+SyncTeX arrows are portalled outside the group and anchored to the separator,
+so v4's document-level drag capture does not consume their pointer/keyboard
+actions. Observers and window listeners are removed when the separator unmounts.
+
 The editor is CodeMirror-based and provides LaTeX syntax highlighting, folding,
 auto-pairs (including `\begin{...}`/`\end{...}`), indentation, Vim mode when
 explicitly enabled, and completion items from built-in LaTeX plus project

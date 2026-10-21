@@ -1,5 +1,5 @@
 import { lazy, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Panel, PanelResizeHandle } from "react-resizable-panels";
+import { Panel, Separator } from "react-resizable-panels";
 import { ArrowDown, ArrowUp, AtSign, ChevronLeft, ChevronRight, MessagesSquare, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Comment, CommentMention, FileEntry, Project, SiteConfig } from "../types";
@@ -216,8 +216,8 @@ export function WorkspaceContextPanel({
   };
   if (!sidePanel) return null;
   return <>
-    <PanelResizeHandle className="resize-handle" />
-    <Panel id="context" order={4} defaultSize={20} minSize={15} maxSize={38}>
+    <Separator className="resize-handle" />
+    <Panel id="context" defaultSize="20%" minSize="15%" maxSize="38%">
       <aside className="context-panel">
         {sidePanel === "comments" && <>
           <div className="drawer-title">

@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Panel, PanelGroup } from "react-resizable-panels";
+import { Panel, Group } from "react-resizable-panels";
 import { describe, expect, it } from "vitest";
 import { defaultEditorPreferences } from "../src/client/editorPreferences";
 import i18n from "../src/client/i18n";
@@ -32,8 +32,8 @@ function render(overrides: Partial<WorkspaceContextPanelProps> = {}) {
     editorPreferences: defaultEditorPreferences, onEditorPreferences: () => {}, spellCheckCount: null,
     spellCheckUniqueCount: null, spellCheckIndex: -1, onSpellCheckNavigate: () => {}, onProject: () => {}, ...overrides
   };
-  return renderToStaticMarkup(createElement(PanelGroup, { direction: "horizontal" },
-    createElement(Panel, { defaultSize: 80 }, "Editor"), createElement(WorkspaceContextPanel, props)));
+  return renderToStaticMarkup(createElement(Group, { orientation: "horizontal" },
+    createElement(Panel, { defaultSize: "80%" }, "Editor"), createElement(WorkspaceContextPanel, props)));
 }
 
 describe("comment drawer modes", () => {

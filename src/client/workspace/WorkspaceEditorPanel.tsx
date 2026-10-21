@@ -58,7 +58,7 @@ export function WorkspaceEditorPanel({
   // decorating the newly mounted editor tab.
   const editorComments = commentsForEditorFile(comments, activeFile);
   const editorFocusComment = focusCommentForEditorFile(focusComment, activeFile, loadedFile);
-  return <Panel id="source" order={2} defaultSize={42} minSize={22}>
+  return <Panel id="source" minSize="22%">
     <main className="source-panel">
       {editorPreferences.openFilesInTabs && openTabs.length > 0 && (
         <div className="editor-tabs-bar" role="tablist" aria-label={t("editor.openFiles")}>

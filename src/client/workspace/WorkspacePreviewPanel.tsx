@@ -1,7 +1,8 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import { AlertTriangle, Download, Eraser, FileText, GripVertical, LoaderCircle, PackageOpen, ScrollText, XCircle } from "lucide-react";
+import { AlertTriangle, Download, Eraser, FileText, LoaderCircle, PackageOpen, ScrollText, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Panel, PanelResizeHandle } from "react-resizable-panels";
+import { Panel } from "react-resizable-panels";
+import { WorkspaceSyncSeparator } from "./WorkspaceSyncSeparator";
 import type { CompileDiagnostics } from "../compileDiagnostics";
 import type { CompileMessages } from "../compileLog";
 import type { FileEntry } from "../types";
@@ -83,8 +84,8 @@ export function WorkspacePreviewPanel({
     pdfCompiledLabel ? t("editor.pdfUpdatedAt", { time: pdfCompiledLabel }) : ""
   ].filter(Boolean).join(" · ");
   return <>
-    {showSyncResize && <PanelResizeHandle className="resize-handle sync-resize-handle"><GripVertical className="resize-grip" size={12} /><span className="sync-direction-buttons" onPointerDown={(event) => event.stopPropagation()}><button disabled={!pdfUrl || !pdfViewport || !canSyncWithDisplayedPdf} title={!canSyncPdfToSource ? t("editor.syncTexOnlyForMain") : !canSyncWithDisplayedPdf ? t("editor.syncTexWaitingForPdf") : t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={() => { if (!canSyncWithDisplayedPdf) return; syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={!canSyncWithPdf ? t("editor.syncTexOnlyForMain") : t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={() => { if (!activeFile || !pdfUrl || !canSyncWithPdf) return; void syncCurrentSourceToPdf(); }}><span aria-hidden>→</span></button></span></PanelResizeHandle>}
-    <Panel id="preview" order={3} defaultSize={42} minSize={22}>
+    {showSyncResize && <WorkspaceSyncSeparator><button disabled={!pdfUrl || !pdfViewport || !canSyncWithDisplayedPdf} title={!canSyncPdfToSource ? t("editor.syncTexOnlyForMain") : !canSyncWithDisplayedPdf ? t("editor.syncTexWaitingForPdf") : t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={(event) => { event.stopPropagation(); if (!canSyncWithDisplayedPdf) return; syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={!canSyncWithPdf ? t("editor.syncTexOnlyForMain") : t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={(event) => { event.stopPropagation(); if (!activeFile || !pdfUrl || !canSyncWithPdf) return; void syncCurrentSourceToPdf(); }}><span aria-hidden>→</span></button></WorkspaceSyncSeparator>}
+    <Panel id="preview" minSize="22%">
       <section className="preview-panel">
         <div className="preview-tabs">
           <div className="preview-tab-list" role="tablist" aria-label={t("editor.outputTabs")}>
