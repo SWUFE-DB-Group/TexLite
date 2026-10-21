@@ -536,9 +536,10 @@ citations. This extractor does not expand TeX macros or load the editor parser.
 
 Opening `.tex`, `.bib`, `.sty`, or `.cls` files in editor tabs is an optional
 per-user/per-project preference and is off by default. The active tab is
-highlighted and keyboard accessible. PDF/SyncTeX synchronization is available
-only for the current `.tex` root document; a non-root tab remains editable but
-does not claim a PDF location.
+highlighted and keyboard accessible. PDF/SyncTeX synchronization uses the
+selected root's compiled PDF and accepts both the root and included `.tex`
+sources. Opening a source tab does not change the compile root; SyncTeX decides
+whether a source location has a corresponding position in that PDF.
 
 LaTeX editor highlighting and structural folding use an internal Lezer LR
 parser derived from a pinned Overleaf lezer-latex revision, replacing the

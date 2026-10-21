@@ -22,7 +22,7 @@ import { useProjectCompilation } from "../workspace/useProjectCompilation";
 import { isEditableTextFile, parentFolders, pathContains, useProjectFiles } from "../workspace/useProjectFiles";
 import { useSpellCheck } from "../workspace/useSpellCheck";
 import { useChktex } from "../workspace/useChktex";
-import { useSyncTeX } from "../workspace/useSyncTeX";
+import { canSyncSourceToPdf, useSyncTeX } from "../workspace/useSyncTeX";
 import { useWorkspaceLayout } from "../workspace/useWorkspaceLayout";
 import { useWorkspacePanelLayout } from "../workspace/useWorkspacePanelLayout";
 import type { SpellCheckIssue } from "../spellCheck";
@@ -1338,7 +1338,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const diagnosticCount = compileMessages.warnings.length + compileMessages.errors.length + artifacts.length;
   const pdfDownloadUrl = pdfUrl ? `${pdfUrl}${pdfUrl.includes("?") ? "&" : "?"}download=1` : "";
   const syncMainFile = activeMainFile || project.mainFile;
-  const canSyncWithPdf = Boolean(activeFile && activeFile === syncMainFile && /\.tex$/i.test(activeFile));
+  const canSyncWithPdf = canSyncSourceToPdf(activeFile, syncMainFile);
   const canSyncPdfToSource = Boolean(syncMainFile && /\.tex$/i.test(syncMainFile));
   const activateTab = (tabPath: string): void => {
     const entry = files.find((file) => file.path === tabPath);

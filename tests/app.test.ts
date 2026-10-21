@@ -673,6 +673,7 @@ It works.
     const standalone = String.raw`\documentclass{article}
 \begin{document}
 Standalone document.
+\input{chapter}
 \end{document}
 `;
     await app.inject({
@@ -693,6 +694,13 @@ Standalone document.
     expect(compiled.json().pdfUrl).toContain("mainFile=standalone.tex");
     expect(db.prepare("SELECT main_file FROM compile_runs WHERE project_id = ?").all(projectId))
       .toEqual([{ main_file: "standalone.tex" }]);
+
+    const includedLocation = await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/sync/pdf?mainFile=standalone.tex&path=chapter.tex&line=1&column=1`,
+      headers: { cookie }
+    });
+    expect(includedLocation.statusCode, includedLocation.body).toBe(200);
+    expect(includedLocation.json()).toMatchObject({ page: 1 });
 
     const [defaultLatest, standaloneLatest, project] = await Promise.all([
       app.inject({ method: "GET", url: `/api/projects/${projectId}/compile/latest?mainFile=main.tex`, headers: { cookie } }),

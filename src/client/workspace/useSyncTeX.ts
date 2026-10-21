@@ -24,6 +24,11 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+/** The root selects the PDF; SyncTeX decides whether this source has a mapping. */
+export function canSyncSourceToPdf(sourcePath: string, mainFile: string): boolean {
+  return /\.tex$/i.test(sourcePath) && /\.tex$/i.test(mainFile);
+}
+
 export function useSyncTeX({ projectId, mainFile, activeFile, onOpenSourceFile, onError, onShowPdf, onShowEditor }: UseSyncTeXOptions) {
   const [pdfTarget, setPdfTarget] = useState<PdfTarget | null>(null);
   const [pdfViewport, setPdfViewport] = useState<{ page: number; x: number; y: number } | null>(null);
@@ -35,7 +40,6 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onOpenSourceFile, 
   const onErrorRef = useRef(onError);
   const onShowPdfRef = useRef(onShowPdf);
   const onShowEditorRef = useRef(onShowEditor);
-  const isMainTeX = (path: string): boolean => path === mainFile && /\.tex$/i.test(path);
   activeFileRef.current = activeFile;
   onOpenSourceFileRef.current = onOpenSourceFile;
   onErrorRef.current = onError;
@@ -57,10 +61,9 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onOpenSourceFile, 
   };
 
   const syncSourceToPdf = async (path: string, line: number, column: number, options: { silent?: boolean } = {}) => {
-    // SyncTeX coordinates are produced for the selected root document. Do not
-    // send requests for a secondary tab: it has no reliable PDF mapping in the
-    // current preview and would otherwise produce confusing 400 responses.
-    if (!isMainTeX(path)) return;
+    // Keep the selected root as the PDF target, but allow lookups from its
+    // included sources. Opening a child file must not change the compile root.
+    if (!canSyncSourceToPdf(path, mainFile)) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
