@@ -37,6 +37,7 @@ import { setSourceComments, sourceCommentAnchorForId, sourceCommentDecorations, 
 import type { LatexReference } from "../shared/latexReferences";
 import { latexReferenceMarks, referenceNavigationSettings, type ReferenceNavigationSettings } from "./latexReferenceMarks";
 import type { SpellCheckIssue } from "./spellCheck";
+import { SpellSuggestionsMenu, type WritingSuggestionAnchor } from "./SpellSuggestionsMenu";
 export type { SpellCheckIssue } from "./spellCheck";
 
 interface Props {
@@ -65,8 +66,7 @@ interface Props {
 
 interface SpellSuggestionMenu {
   issue: SpellCheckIssue;
-  left: number;
-  top: number;
+  anchor: WritingSuggestionAnchor;
 }
 
 export interface SpellCheckJump {
@@ -254,7 +254,7 @@ export function LatexEditor({
             onReferenceNavigateRef.current(current);
             return true;
           },
-          contextmenu(event) {
+          contextmenu(event, editor) {
             const element = (event.target as HTMLElement).closest<HTMLElement>("[data-spell-error]");
             if (!element) return false;
             const from = Number(element.dataset.spellFrom);
@@ -262,13 +262,12 @@ export function LatexEditor({
             const issue = spellCheckIssuesRef.current.find((candidate) => candidate.from === from && candidate.to === to);
             if (!issue) return false;
             event.preventDefault();
-            const width = 250;
-            const height = Math.min(300, 100 + issue.suggestions.length * 34);
-            setSpellSuggestionMenu({
-              issue,
-              left: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
-              top: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8))
-            });
+            // Use the clicked visual line, including wrapped diagnostic spans,
+            // rather than a guessed menu size or the mouse's vertical position.
+            const clicked = editor.posAtCoords({ x: event.clientX, y: event.clientY });
+            const position = Math.max(issue.from, Math.min(clicked ?? issue.from, issue.to));
+            const rect = editor.coordsAtPos(position) ?? element.getBoundingClientRect();
+            setSpellSuggestionMenu({ issue, anchor: { left: rect.left, top: rect.top, bottom: rect.bottom } });
             return true;
           },
           blur(_event, editor) {
@@ -341,11 +340,10 @@ export function LatexEditor({
 
   useEffect(() => {
     setSpellSuggestionMenu(null);
-  }, [spellCheckIssues]);
+  }, [spellCheckIssues, filePath, readOnly, i18n.resolvedLanguage]);
 
   useEffect(() => {
     if (!spellSuggestionMenu) return;
-    const editor = view.current;
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (event.target instanceof Element && event.target.closest(".spell-suggestions-menu")) return;
       setSpellSuggestionMenu(null);
@@ -353,14 +351,21 @@ export function LatexEditor({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSpellSuggestionMenu(null);
     };
-    const closeOnEditorScroll = () => setSpellSuggestionMenu(null);
+    const closeOnEditorScroll = (event: Event) => {
+      // A long suggestion list may itself scroll; only moving the page/editor
+      // invalidates its cached source-line coordinates.
+      if (event.target instanceof Element && event.target.closest(".spell-suggestions-menu")) return;
+      setSpellSuggestionMenu(null);
+    };
     document.addEventListener("mousedown", closeOnOutsideClick, true);
     document.addEventListener("keydown", closeOnEscape, true);
-    editor?.scrollDOM.addEventListener("scroll", closeOnEditorScroll, { passive: true });
+    window.addEventListener("scroll", closeOnEditorScroll, { capture: true, passive: true });
+    window.addEventListener("resize", closeOnEditorScroll);
     return () => {
       document.removeEventListener("mousedown", closeOnOutsideClick, true);
       document.removeEventListener("keydown", closeOnEscape, true);
-      editor?.scrollDOM.removeEventListener("scroll", closeOnEditorScroll);
+      window.removeEventListener("scroll", closeOnEditorScroll, true);
+      window.removeEventListener("resize", closeOnEditorScroll);
     };
   }, [spellSuggestionMenu, filePath]);
 
@@ -431,13 +436,8 @@ export function LatexEditor({
 
   return <div className="editor-shell" data-editor-theme={theme} style={appearanceStyle}>
     <div className="editor-host" ref={host} />
-    {spellSuggestionMenu && <div className="spell-suggestions-menu" role="menu" aria-label={t("editor.writingSuggestions")} onMouseDown={(event) => event.stopPropagation()}>
-      <div className="spell-suggestions-title">{t("editor.writingSuggestions")}</div>
-      {spellSuggestionMenu.issue.message && <div className="spell-suggestions-message">{spellSuggestionMenu.issue.message}</div>}
-      {spellSuggestionMenu.issue.suggestions.map((suggestion, index) => <button key={`${suggestion}-${index}`} type="button" role="menuitem" disabled={readOnly} title={readOnly ? t("editor.spellCheckReadOnly") : t("editor.replaceWith", { word: suggestion || t("editor.removeText") })} onClick={() => { onSpellCheckReplaceRef.current(spellSuggestionMenu.issue, suggestion); setSpellSuggestionMenu(null); }}>{suggestion || t("editor.removeText")}</button>)}
-      {spellSuggestionMenu.issue.suggestions.length === 0 && <span className="spell-suggestions-empty">{t("editor.noWritingSuggestions")}</span>}
-      {readOnly && spellSuggestionMenu.issue.suggestions.length > 0 && <span className="spell-suggestions-readonly">{t("editor.spellCheckReadOnly")}</span>}
-    </div>}
+    {spellSuggestionMenu && <SpellSuggestionsMenu issue={spellSuggestionMenu.issue} anchor={spellSuggestionMenu.anchor} readOnly={readOnly}
+      onReplace={(replacement) => { onSpellCheckReplaceRef.current(spellSuggestionMenu.issue, replacement); setSpellSuggestionMenu(null); }} />}
     {preferences.vimMode && <div className="vim-editor-status" role="status" aria-live="polite"><span>--{vimStatus || "NORMAL"}--</span></div>}
   </div>;
 }
