@@ -57,6 +57,14 @@ export default defineConfig(({ command }) => {
               // by the PDF group, which would eagerly load PDF.js on login.
               { name: "vite-runtime", test: /\0vite\/.*helper/, priority: 10 },
               { name: "pdf", test: /[\\/]node_modules[\\/]pdfjs-dist[\\/]/ },
+              // Keep generic text languages separate from CodeMirror's core.
+              // Do not pull their shared core dependencies into this group.
+              {
+                name: "editor-languages",
+                test: /[\\/]node_modules[\\/](?:@codemirror[\\/](?:lang-[^\\/]+|legacy-modes)|@lezer[\\/](?:css|html|javascript|json|markdown|python|xml|yaml))[\\/]/,
+                priority: 5,
+                includeDependenciesRecursively: false
+              },
               { name: "editor", test: /[\\/]node_modules[\\/](?:@codemirror|@lezer)[\\/]/ },
               { name: "react", test: /[\\/]node_modules[\\/](?:react|react-dom|scheduler)[\\/]/ }
             ]
