@@ -5,9 +5,15 @@ import { fileOpenKind } from "../src/client/workspace/useProjectFiles";
 const encode = (source: string) => new TextEncoder().encode(source);
 
 describe("project text file classification", () => {
-  it.each(["config.json", "config.YAML", "data.txt", "run.sh", "data.dat", ".gitignore", "LICENSE", "custom.unusual", ".latexmkrc"])("permits UTF-8 text candidates: %s", (file) => {
+  it.each(["config.json", "config.YAML", "data.txt", "run.sh", "data.dat", ".gitignore", "LICENSE", ".latexmkrc", ".env.local", "README", "Dockerfile.dev", ".zshrc"])("permits recognized text candidates: %s", (file) => {
     expect(isEditableTextFile(file)).toBe(true);
     expect(fileOpenKind({ path: file, type: "file", size: 100, textContent: true }, MAX_TEXT_EDITOR_BYTES)).toBe("editor");
+  });
+
+  it.each(["custom.unusual", "unknown", "README.unknown", "file.tex.unknown", ".unknown"])("keeps unrecognized types downloadable without guessing their contents: %s", (file) => {
+    expect(resourceFileKind(file)).toBe("other");
+    expect(isEditableTextFile(file)).toBe(false);
+    expect(fileOpenKind({ path: file, type: "file", size: 100 }, MAX_TEXT_EDITOR_BYTES)).toBe("unsupported");
   });
 
   it.each(["figure.png", "figure.JPG", "figure.svg", "paper.PDF", "archive.zip", "font.otf", "library.so", "data.sqlite"])("does not edit known resources: %s", (file) => {

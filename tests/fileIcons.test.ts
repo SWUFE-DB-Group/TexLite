@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { fileIconKind } from "../src/client/fileIcons";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { FileTypeIcon, fileIconKind } from "../src/client/fileIcons";
 
 describe("project file icons", () => {
   it("maps common resources to semantic icon categories", () => {
@@ -18,5 +20,8 @@ describe("project file icons", () => {
     expect(fileIconKind(".latexmkrc")).toBe("latexmkrc");
     expect(fileIconKind("archive.zip")).toBe("archive");
     expect(fileIconKind("unknown.custom" )).toBe("file");
+    expect(fileIconKind("README.custom")).toBe("file");
+    expect(renderToStaticMarkup(createElement(FileTypeIcon, { path: "unknown.custom" }))).toContain("file-type-icon-file");
+    expect(renderToStaticMarkup(createElement(FileTypeIcon, { path: "unknown.custom" }))).not.toContain("lucide-file-text");
   });
 });

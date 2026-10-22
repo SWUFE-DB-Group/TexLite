@@ -62,7 +62,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     // so the file tree and retained-PDF stream can be served concurrently, but
     // still serialize it with source-tree mutations and collaborative flushes.
     return await projectMutations.runFilesystemRead(id, async () => ({
-      files: await listProjectFilesAsync(config, id, true)
+      files: await listProjectFilesAsync(config, id)
     }), {
       preflight: () => {
         if (!accessibleProject(db, id, user)) {
@@ -304,7 +304,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id } = request.params as { id: string };
-    const { path: filePath } = request.query as { path?: string };
+    const { path: filePath, validate } = request.query as { path?: string; validate?: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     const relative = safeRelativePath(filePath ?? "");
     return await projectMutations.runConsistentRead(id, () => {
@@ -316,7 +316,9 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
       }
       const bytes = fs.readFileSync(absolute);
       if (!isTextContent(bytes)) return apiError(reply, 400, "FILE_CONTENT_INVALID");
-      return { path: relative, content: bytes.toString("utf8") };
+      // Opening a file can validate it without downloading a second copy of
+      // source that the editor already receives through Yjs.
+      return validate === "1" ? { path: relative } : { path: relative, content: bytes.toString("utf8") };
     }, { preflight: () => {
       if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
     } });

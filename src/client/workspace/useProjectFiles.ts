@@ -48,7 +48,7 @@ export function pathContains(root: string, candidate: string): boolean {
 
 export function resourcePreviewKind(filePath: string, textContent?: boolean): ResourcePreviewKind {
   const kind = resourceFileKind(filePath);
-  return kind === "binary" || (kind === "text" && textContent === false) ? "unsupported" : kind;
+  return kind === "binary" || kind === "other" || (kind === "text" && textContent === false) ? "unsupported" : kind;
 }
 
 export function fileOpenKind(entry: FileEntry, maxTextBytes: number): "editor" | ResourcePreviewKind {
@@ -134,7 +134,7 @@ export function useProjectFiles({
       });
       const nextFiles = await loadFiles();
       const created = nextFiles?.find((entry) => entry.path === newFilePath);
-      if (created) openFile(created);
+      if (created) await openFile(created);
       setSelectedFolder(null);
       setExpandedFolders((current) => new Set([...current, ...parentFolders(newFilePath)]));
       setNewFileOpen(false);
@@ -221,10 +221,11 @@ export function useProjectFiles({
           throw error;
         }
       }
+      let lastTextFile: FileEntry | undefined;
       try {
         const nextFiles = await loadFiles();
-        if (lastTextPath && !nextFiles?.some((entry) => entry.path === lastTextPath && isEditableTextFile(entry.path, entry.textContent)
-          && (entry.size ?? 0) <= site.maxCollaborativeFileSizeMB * 1024 * 1024)) lastTextPath = "";
+        lastTextFile = nextFiles?.find((entry) => entry.path === lastTextPath && isEditableTextFile(entry.path, entry.textContent)
+          && (entry.size ?? 0) <= site.maxCollaborativeFileSizeMB * 1024 * 1024);
       } catch (error) {
         setUploadFeedback({
           kind: "error",
@@ -232,10 +233,7 @@ export function useProjectFiles({
         });
         return;
       }
-      if (lastTextPath) {
-        onActiveFile(lastTextPath);
-        setSelectedFolder(null);
-      }
+      if (lastTextFile) await openFile(lastTextFile);
       setUploadFeedback({ kind: "success", count: uploaded });
       uploadFeedbackTimer.current = window.setTimeout(() => {
         setUploadFeedback((current) => current?.kind === "success" ? null : current);
@@ -325,14 +323,36 @@ export function useProjectFiles({
     }
   };
 
-  const openFile = (entry: FileEntry) => {
+  const openFile = async (entry: FileEntry) => {
+    resourceRequest.current?.abort();
+    resourceRequest.current = null;
+    setResourcePreviewLoading(false);
     setSelectedFolder(null);
     setSelectedFile(entry.path);
     const maxCollaborativeBytes = site.maxCollaborativeFileSizeMB * 1024 * 1024;
     if (fileOpenKind(entry, maxCollaborativeBytes) !== "editor") {
-      void previewFile(entry);
-    } else {
+      await previewFile(entry);
+      return;
+    }
+    const controller = new AbortController();
+    resourceRequest.current = controller;
+    try {
+      // Suffixes decide the file-tree presentation, not whether arbitrary bytes
+      // may enter an editor. Validate only the file the user actually opens;
+      // its source is already delivered by Yjs, so request no duplicate body.
+      await api<{ path: string }>(`/api/projects/${projectId}/file?path=${encodeURIComponent(entry.path)}&validate=1`, {
+        signal: controller.signal
+      });
+      if (controller.signal.aborted || resourceRequest.current !== controller) return;
       onActiveFile(entry.path);
+    } catch (error) {
+      if (controller.signal.aborted || resourceRequest.current !== controller || isAbortError(error)) return;
+      if (error instanceof ApiError && error.code === "FILE_CONTENT_INVALID") {
+        setFiles((current) => current.map((file) => file.path === entry.path ? { ...file, textContent: false } : file));
+        setResourcePreview({ path: entry.path, kind: "unsupported", size: entry.size ?? 0, url: rawFileUrl(projectId, entry.path) });
+      } else onError(errorMessage(error));
+    } finally {
+      if (resourceRequest.current === controller) resourceRequest.current = null;
     }
   };
 
@@ -400,6 +420,13 @@ export function useProjectFiles({
     resourceRequest.current = null;
     setResourcePreviewLoading(false);
   }, [activeFile]);
+
+  useEffect(() => {
+    if (selectedFolder === null) return;
+    resourceRequest.current?.abort();
+    resourceRequest.current = null;
+    setResourcePreviewLoading(false);
+  }, [selectedFolder]);
 
   useEffect(() => {
     if (activeFile) setSelectedFile(activeFile);

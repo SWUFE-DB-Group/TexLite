@@ -3,14 +3,12 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
 import { httpError, type HttpError } from "./http.js";
-import { isEditableTextFile, isTextContent, MAX_TEXT_EDITOR_BYTES } from "../shared/fileTypes.js";
 
 export interface FileEntry {
   path: string;
   type: "file" | "directory";
   size?: number;
   mtimeMs?: number;
-  textContent?: boolean;
 }
 
 export function projectRoot(config: Config, projectId: string): string {
@@ -201,7 +199,8 @@ export function listProjectFiles(config: Config, projectId: string): FileEntry[]
   return result;
 }
 
-export async function listProjectFilesAsync(config: Config, projectId: string, classifyText = false): Promise<FileEntry[]> {
+/** File-tree listings read metadata only; type detection belongs to path suffixes. */
+export async function listProjectFilesAsync(config: Config, projectId: string): Promise<FileEntry[]> {
   const root = sourceRoot(config, projectId);
   const result: FileEntry[] = [];
   let activeIo = 0;
@@ -240,23 +239,7 @@ export async function listProjectFilesAsync(config: Config, projectId: string, c
           const stat = await limited(() => fs.promises.lstat(absolute));
           if (stat.isSymbolicLink()) throw symbolicLinkError(relative);
           if (stat.isFile()) {
-            let textContent: boolean | undefined;
-            if (classifyText && isEditableTextFile(relative)) {
-              textContent = await limited(async () => {
-                const handle = await fs.promises.open(absolute, "r");
-                try {
-                  // Fully validate editable files; only sample larger files,
-                  // which the UI never opens in the editor anyway.
-                  if (stat.size <= Math.min(config.maxUploadBytes, MAX_TEXT_EDITOR_BYTES)) {
-                    return isTextContent(await handle.readFile());
-                  }
-                  const sample = Buffer.alloc(Math.min(stat.size, 8192));
-                  const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
-                  return isTextContent(sample.subarray(0, bytesRead), bytesRead < stat.size);
-                } finally { await handle.close(); }
-              });
-            }
-            result.push({ path: relative, type: "file", size: stat.size, mtimeMs: stat.mtimeMs, ...(textContent === undefined ? {} : { textContent }) });
+            result.push({ path: relative, type: "file", size: stat.size, mtimeMs: stat.mtimeMs });
           }
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;

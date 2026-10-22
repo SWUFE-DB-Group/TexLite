@@ -337,18 +337,23 @@ describe("texLite application", () => {
     fs.writeFileSync(path.join(source, "large.txt"), "x".repeat(5 * 1024 * 1024 + 1));
     const listed = await app.inject({ method: "GET", url: `/api/projects/${id}/files`, headers: { cookie } });
     expect(listed.json().files).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: "config.yaml", textContent: true }),
-      expect.objectContaining({ path: "LICENSE", textContent: true }),
-      expect.objectContaining({ path: "binary.unknown", textContent: false }),
-      expect.objectContaining({ path: "pretend.txt", textContent: false })
+      expect.objectContaining({ path: "config.yaml", size: Buffer.byteLength(content) }),
+      expect.objectContaining({ path: "LICENSE", size: Buffer.byteLength(content) }),
+      expect.objectContaining({ path: "binary.unknown", size: 4 }),
+      expect.objectContaining({ path: "pretend.txt", size: 9001 })
     ]));
+    expect(listed.json().files.every((file: Record<string, unknown>) => !Object.hasOwn(file, "textContent"))).toBe(true);
+    const validated = await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=config.yaml&validate=1`, headers: { cookie } });
+    expect(validated.statusCode).toBe(200);
+    expect(validated.json()).toEqual({ path: "config.yaml" });
     const fetched = await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=config.yaml`, headers: { cookie } });
     expect(fetched.json().content).toBe(content);
     const changed = await app.inject({ method: "PUT", url: `/api/projects/${id}/file`, headers: { cookie }, payload: { path: "config.yaml", content: "title: changed\n" } });
     expect(changed.statusCode).toBe(200);
     expect(fs.readFileSync(path.join(source, "config.yaml"), "utf8")).toBe("title: changed\n");
-    for (const file of ["binary.unknown", "pretend.txt"]) {
+    for (const file of ["binary.unknown", "pretend.txt", "custom.unusual"]) {
       expect((await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=${file}`, headers: { cookie } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=${file}&validate=1`, headers: { cookie } })).statusCode).toBe(400);
       expect((await app.inject({ method: "PUT", url: `/api/projects/${id}/file`, headers: { cookie }, payload: { path: file, content: "do not overwrite" } })).statusCode).toBe(400);
     }
     expect(fs.readFileSync(path.join(source, "binary.unknown"))).toEqual(Buffer.from([0, 1, 255, 254]));
@@ -357,6 +362,7 @@ describe("texLite application", () => {
     expect(download.headers["content-disposition"]).toContain("attachment");
     expect(download.rawPayload).toEqual(Buffer.from([0, 1, 255, 254]));
     expect((await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=large.txt`, headers: { cookie } })).statusCode).toBe(413);
+    expect((await app.inject({ method: "GET", url: `/api/projects/${id}/file?path=large.txt&validate=1`, headers: { cookie } })).statusCode).toBe(413);
   });
 
   it("saves only changed project settings and rejects stale values from another session", async () => {

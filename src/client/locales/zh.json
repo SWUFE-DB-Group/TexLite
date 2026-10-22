@@ -241,7 +241,7 @@
     "deleteReplyDescription": "确定删除这条回复吗？此操作不可撤销。", "editedAt": "编辑于 {{time}}", "commentEdited": "已编辑",
     "lineNumber": "第 {{line}} 行", "showInSource": "在源码中显示当前 PDF 位置",
     "showInPdf": "在 PDF 中显示当前源码光标位置", "syncTexOnlyForTex": "PDF 跳转仅支持 TeX 源文件（.tex）", "syncTexOnlyForMain": "PDF 跳转仅支持当前主 TeX 文档", "syncTexWaitingForPdf": "等待当前 PDF 加载完成后再跳转", "openFiles": "打开的文件", "pdfLoadFailed": "无法载入 PDF 预览", "pdfPageLoadFailed": "第 {{page}} 页渲染失败。",
-    "pdfZoomControls": "PDF 缩放控件", "downloadPdf": "下载 PDF", "downloadResource": "下载文件", "resourceTooLarge": "该文件大小为 {{size}}，超过此类文件 {{limit}} 的打开上限。", "resourceTooLargeTitle": "文件过大，无法直接打开", "resourceTooLargeDescription": "请下载文件后在本地打开。", "resourceUnsupportedTitle": "无法直接打开此文件", "resourceUnsupportedDescription": "编辑器不支持打开二进制文件或编码不受支持的文本，请下载后在本地打开。",
+    "pdfZoomControls": "PDF 缩放控件", "downloadPdf": "下载 PDF", "downloadResource": "下载文件", "resourceTooLarge": "该文件大小为 {{size}}，超过此类文件 {{limit}} 的打开上限。", "resourceTooLargeTitle": "文件过大，无法直接打开", "resourceTooLargeDescription": "请下载文件后在本地打开。", "resourceUnsupportedTitle": "无法直接打开此文件", "resourceUnsupportedDescription": "编辑器不支持此文件类型或文本编码，请下载后在本地打开。",
     "resourcePreview": { "image": "图片预览", "pdf": "PDF 预览", "text": "文本预览", "unsupported": "文件预览" }, "pdfZoomOut": "缩小", "pdfZoomIn": "放大", "pdfFitWidth": "适合宽度", "pdfLink": "PDF 链接", "pdfLinks": "PDF 链接",
     "layout": {
       "label": "布局", "choose": "选择布局", "current": "当前布局：{{layout}}",

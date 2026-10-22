@@ -522,14 +522,18 @@ the next reconnect. Binary uploads also publish a source-tree event so other
 open workspaces refresh their file lists even though binary files are not Yjs
 text objects.
 
-Project text editing is not restricted to a LaTeX extension allowlist. UTF-8
-text (including extensionless files) can use the collaborative editor up to the
-existing 5 MiB limit, or the configured upload limit if lower. File-list
-classification validates the contents of editable-sized text candidates; room
-hydration and the text API also reject binary controls and invalid UTF-8 instead
-of silently replacing bytes. Known images (including SVG) and PDFs retain their
-resource previews up to 10 MiB. Larger files and other binaries show a download
-prompt rather than opening in the editor.
+Project file types are recognized by common suffixes and a small set of known
+extensionless names such as `LICENSE`, `README` and `latexmkrc`. Unknown types
+use the generic file icon and remain downloadable instead of guessing their
+contents. File-tree refreshes read only directory entries and file metadata,
+never source contents. Recognized text can use the collaborative editor up to
+the existing 5 MiB limit, or the configured upload limit if lower. Opening a
+text file validates its full contents through the existing text API, without
+returning a duplicate source body already supplied by Yjs. Room hydration and
+the text API reject binary controls and invalid UTF-8 instead of silently
+replacing bytes. Known images (including SVG) and PDFs retain their resource
+previews up to 10 MiB. Larger files and unsupported types show a download prompt
+rather than opening in the editor.
 
 Generic text uses CodeMirror language support for JSON, YAML, Shell, TOML,
 JavaScript/TypeScript, Python, HTML/CSS/XML, Markdown, INI, Perl/latexmkrc,

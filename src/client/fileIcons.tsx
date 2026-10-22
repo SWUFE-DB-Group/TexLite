@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FileArchive, FileAudio, FileCode2, FileCog, FileImage, FileSpreadsheet, FileText, FileVideo, LibraryBig, NotepadText } from "lucide-react";
+import { File, FileArchive, FileAudio, FileCode2, FileCog, FileImage, FileSpreadsheet, FileVideo, LibraryBig, NotepadText } from "lucide-react";
 import { MarkdownDocumentIcon } from "./MarkdownDocumentIcon";
 import { PdfDocumentIcon } from "./PdfDocumentIcon";
 import { TexDocumentIcon } from "./TexDocumentIcon";
@@ -28,7 +28,7 @@ export function fileIconKind(filePath: string): FileIconKind {
   const basename = filePath.split("/").at(-1)?.toLocaleLowerCase() ?? "";
   if (basename === ".latexmkrc" || basename === "latexmkrc") return "latexmkrc";
   if (basename === "makefile" || basename === "dockerfile") return "code";
-  if (basename === "readme" || basename.startsWith("readme.")) return "markdown";
+  if (basename === "readme") return "markdown";
   const extension = basename.includes(".") ? basename.slice(basename.lastIndexOf(".") + 1) : "";
   if (extension === "pdf") return "pdf";
   if (imageExtensions.has(extension)) return "image";
@@ -54,7 +54,7 @@ const icons: Record<Exclude<FileIconKind, "pdf" | "tex" | "markdown">, LucideIco
   archive: FileArchive,
   audio: FileAudio,
   video: FileVideo,
-  file: FileText
+  file: File
 };
 
 export function FileTypeIcon({ path, size = 13 }: { path: string; size?: number }) {
