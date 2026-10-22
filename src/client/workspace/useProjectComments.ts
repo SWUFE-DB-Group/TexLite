@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../api";
 import { errorMessage } from "../errors";
 import { sourceHash } from "../sourceHash";
-import type { Comment, Project } from "../types";
+import type { Comment, Project, ProjectCommentSummary } from "../types";
 import type { CommentReviewScope } from "./commentNavigation";
 import { CommentDraftStore, type SourceSelection } from "./commentDrafts";
 export type { SourceSelection } from "./commentDrafts";
@@ -62,6 +62,7 @@ export function useProjectComments({
   const [projectComments, setProjectComments] = useState<Comment[]>([]);
   const [projectCommentsLoading, setProjectCommentsLoading] = useState(false);
   const [projectCommentsError, setProjectCommentsError] = useState("");
+  const [commentSummary, setCommentSummary] = useState<{ projectId: string; summary: ProjectCommentSummary } | null>(null);
   const [commentScope, setCommentScope] = useState<CommentReviewScope>("file");
   const [focusComment, setFocusComment] = useState<Comment | null>(null);
   const [commentOpen, setCommentOpen] = useState(false);
@@ -73,6 +74,8 @@ export function useProjectComments({
   const [commentError, setCommentError] = useState("");
   const fileRequest = useRef<AbortController | null>(null);
   const projectRequest = useRef<AbortController | null>(null);
+  const requestSequence = useRef(0);
+  const appliedSummarySequence = useRef(0);
   const submittingComment = useRef(false);
   const activeFileRef = useRef(activeFile);
   const commentScopeRef = useRef(commentScope);
@@ -99,9 +102,16 @@ export function useProjectComments({
   const fileCommentsLoading = Boolean(activeFile) && (commentsFilePath !== activeFile || fileCommentResource.loading);
   const commentsReady = commentsFilePath === activeFile && !fileCommentResource.loading && !fileCommentsError;
 
+  const updateCommentSummary = (summary: ProjectCommentSummary | undefined, sequence: number) => {
+    if (!summary || sequence < appliedSummarySequence.current) return;
+    appliedSummarySequence.current = sequence;
+    setCommentSummary({ projectId, summary });
+  };
+
   const loadFileComments = async (file: string) => {
     fileRequest.current?.abort();
     const controller = new AbortController();
+    const sequence = ++requestSequence.current;
     fileRequest.current = controller;
     if (activeFileRef.current === file) {
       setFileCommentResource((current) => current.filePath === file
@@ -109,12 +119,13 @@ export function useProjectComments({
         : { filePath: "", comments: [], loading: true, error: "" });
     }
     try {
-      const result = await api<{ comments: Comment[] }>(
+      const result = await api<{ comments: Comment[]; summary?: ProjectCommentSummary }>(
         `/api/projects/${projectId}/comments?path=${encodeURIComponent(file)}`,
         { signal: controller.signal }
       );
       if (fileRequest.current === controller && activeFileRef.current === file) {
         setFileCommentResource({ filePath: file, comments: result.comments, loading: false, error: "" });
+        updateCommentSummary(result.summary, sequence);
       }
     } catch (error) {
       if (!isAbortError(error) && fileRequest.current === controller && activeFileRef.current === file) {
@@ -130,18 +141,20 @@ export function useProjectComments({
   const loadProjectComments = async () => {
     projectRequest.current?.abort();
     const controller = new AbortController();
+    const sequence = ++requestSequence.current;
     projectRequest.current = controller;
     if (commentScopeRef.current === "project") {
       setProjectCommentsLoading(true);
       setProjectCommentsError("");
     }
     try {
-      const result = await api<{ comments: Comment[] }>(
+      const result = await api<{ comments: Comment[]; summary?: ProjectCommentSummary }>(
         `/api/projects/${projectId}/comments?scope=project`,
         { signal: controller.signal }
       );
       if (projectRequest.current === controller && commentScopeRef.current === "project") {
         setProjectComments(result.comments);
+        updateCommentSummary(result.summary, sequence);
       }
     } catch (error) {
       if (!isAbortError(error) && projectRequest.current === controller && commentScopeRef.current === "project") {
@@ -167,6 +180,7 @@ export function useProjectComments({
     setProjectComments([]);
     setProjectCommentsLoading(false);
     setProjectCommentsError("");
+    setCommentSummary(null);
     setCommentScope("file");
     setCommentOpen(false);
     setCommentDraft(null);
@@ -379,6 +393,7 @@ export function useProjectComments({
 
   return {
     commentDraftStore,
+    projectCommentSummary: commentSummary?.projectId === projectId ? commentSummary.summary : null,
     comments,
     commentsFilePath,
     commentsReady,

@@ -19,7 +19,7 @@ import {
   markCommentMentionsResolved,
   mentionableUsersForProject
 } from "../commentMentions.js";
-import { commentsForFile, commentsForProject, now, repliesForComment, text } from "./projectShared.js";
+import { commentsForFile, commentsForProject, commentsSummaryForProject, now, repliesForComment, text } from "./projectShared.js";
 
 interface CommentRouteContext {
   config: Config;
@@ -96,13 +96,14 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     const load = scope === "project"
       ? () => commentsForProject(db, config, id)
       : () => commentsForFile(db, config, id, safeRelativePath(filePath ?? ""));
-    return {
-      comments: await projectMutations.runConsistentRead(id, load, {
-        preflight: () => {
-          if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
-        }
-      })
-    };
+    return await projectMutations.runConsistentRead(id, () => ({
+      comments: load(),
+      summary: commentsSummaryForProject(db, id)
+    }), {
+      preflight: () => {
+        if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
+      }
+    });
   });
 
   app.post("/api/projects/:id/comments", async (request, reply) => {

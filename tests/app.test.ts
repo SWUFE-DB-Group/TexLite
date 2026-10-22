@@ -796,7 +796,7 @@ Standalone document.
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: "COMMENT_SOURCE_CHANGED" });
     const comments = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?path=main.tex`, headers: { cookie } });
-    expect(comments.json()).toEqual({ comments: [] });
+    expect(comments.json()).toEqual({ comments: [], summary: { totalCount: 0, unresolvedCount: 0, filePaths: [] } });
   });
 
   it("allows an editor to cancel an active compilation without publishing output", async () => {
@@ -1696,6 +1696,7 @@ Second version.
       method: "GET", url: `/api/projects/${project.id}/comments?scope=project`, headers: { cookie: readerCookie }
     });
     expect(projectComments.statusCode).toBe(200);
+    expect(projectComments.json().summary).toEqual({ totalCount: 2, unresolvedCount: 1, filePaths: ["chapters/intro.tex", "main.tex"] });
     expect(projectComments.json().comments).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: rootComment.json().comment.id, filePath: "main.tex", replies: [] }),
       expect.objectContaining({ id: chapterComment.json().comment.id, filePath: "chapters/intro.tex", resolved: true, replies: [expect.objectContaining({ content: "A reply in the chapter thread." })] })
@@ -1704,12 +1705,56 @@ Second version.
       method: "GET", url: `/api/projects/${project.id}/comments?path=main.tex`, headers: { cookie: readerCookie }
     });
     expect(fileComments.statusCode).toBe(200);
+    expect(fileComments.json().summary).toEqual(projectComments.json().summary);
     expect(fileComments.json().comments).toEqual([expect.objectContaining({ id: rootComment.json().comment.id, filePath: "main.tex" })]);
     const conflictingScope = await app.inject({
       method: "GET", url: `/api/projects/${project.id}/comments?scope=project&path=main.tex`, headers: { cookie: readerCookie }
     });
     expect(conflictingScope.statusCode).toBe(400);
     expect(conflictingScope.json()).toMatchObject({ code: "REQUEST_INVALID" });
+  });
+
+  it("keeps project comment counts consistent across the dashboard and files without source includes", async () => {
+    const project = (await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Bibliography comments" }
+    })).json().project as { id: string };
+    await app.inject({
+      method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "custom.bib", content: "@book{example, title={Example}}" }
+    });
+    const commentIds: string[] = [];
+    for (const filePath of ["main.tex", "main.tex", "custom.bib"]) {
+      const added = await app.inject({
+        method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+        payload: { path: filePath, startOffset: 0, endOffset: 0, content: "Review this file." }
+      });
+      expect(added.statusCode).toBe(201);
+      commentIds.push(added.json().comment.id);
+    }
+    // Replies must not inflate the number of unresolved discussions.
+    await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments/${commentIds[2]}/replies`, headers: { cookie },
+      payload: { content: "A reply." }
+    });
+    for (const [unresolved, resolve] of [[3, false], [2, true]] as const) {
+      if (resolve) await app.inject({
+        method: "PATCH", url: `/api/projects/${project.id}/comments/${commentIds[2]}`, headers: { cookie },
+        payload: { resolved: true }
+      });
+      const fileComments = await app.inject({
+        method: "GET", url: `/api/projects/${project.id}/comments?path=main.tex`, headers: { cookie }
+      });
+      expect(fileComments.json().comments).toHaveLength(2);
+      expect(fileComments.json().summary).toEqual({ totalCount: 3, unresolvedCount: unresolved, filePaths: ["custom.bib", "main.tex"] });
+      const projectComments = await app.inject({
+        method: "GET", url: `/api/projects/${project.id}/comments?scope=project`, headers: { cookie }
+      });
+      expect(projectComments.json().comments).toHaveLength(3);
+      expect(projectComments.json().summary).toEqual(fileComments.json().summary);
+      const listed = await app.inject({ method: "GET", url: "/api/projects", headers: { cookie } });
+      expect(listed.json().projects.find((item: { id: string }) => item.id === project.id))
+        .toMatchObject({ commentCount: 3, unresolvedCommentCount: unresolved });
+    }
   });
 
   it("allows only authors to edit or delete their comments and replies", async () => {

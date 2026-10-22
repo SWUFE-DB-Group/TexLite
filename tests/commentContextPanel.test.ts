@@ -62,6 +62,14 @@ describe("comment drawer modes", () => {
     expect(html).not.toContain('class="drawer-mention-read-all"');
   });
 
+  it("keeps project review complete when the scope selector is hidden", () => {
+    const html = render({ commentScope: "project", hasProjectCommentsScope: false });
+    expect(html).toContain('data-comment-id="first"');
+    expect(html).toContain('data-comment-id="second"');
+    expect(html).toContain('data-comment-id="chapter"');
+    expect(html).not.toContain(i18n.t("editor.commentScopeFile"));
+  });
+
   it("restores a reply draft in either view without duplicating it", () => {
     const commentDraftStore = new CommentDraftStore();
     commentDraftStore.open("second", "reply", "Unsent reply");

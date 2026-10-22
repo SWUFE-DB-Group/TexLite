@@ -82,17 +82,20 @@ export function commentsSummaryForProjects(db: DatabaseConnection, projectIds: s
   return result;
 }
 
-export function commentsSummaryForProject(db: DatabaseConnection, projectId: string): { totalCount: number; unresolvedCount: number } {
-  const row = db.prepare(`
+export function commentsSummaryForProject(db: DatabaseConnection, projectId: string): { totalCount: number; unresolvedCount: number; filePaths: string[] } {
+  const rows = db.prepare(`
     SELECT
+      file_path,
       COUNT(*) AS total_count,
       SUM(CASE WHEN resolved = 0 THEN 1 ELSE 0 END) AS unresolved_count
     FROM comments
     WHERE project_id = ?
-  `).get(projectId) as { total_count: number; unresolved_count: number } | undefined;
+    GROUP BY file_path ORDER BY file_path COLLATE NOCASE, file_path
+  `).all(projectId) as Array<{ file_path: string; total_count: number; unresolved_count: number }>;
   return {
-    totalCount: Number(row?.total_count) || 0,
-    unresolvedCount: Number(row?.unresolved_count) || 0
+    totalCount: rows.reduce((sum, row) => sum + Number(row.total_count), 0),
+    unresolvedCount: rows.reduce((sum, row) => sum + Number(row.unresolved_count), 0),
+    filePaths: rows.map((row) => row.file_path)
   };
 }
 

@@ -67,6 +67,13 @@ export interface ProjectListPagination {
   totalPages: number;
 }
 
+/** Top-level discussions across the project, independent of the active file. */
+export interface ProjectCommentSummary {
+  totalCount: number;
+  unresolvedCount: number;
+  filePaths: string[];
+}
+
 export interface FileEntry {
   path: string;
   type: "file" | "directory";

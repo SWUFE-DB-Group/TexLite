@@ -316,11 +316,20 @@ thread in the active source file is shown and highlighted, without status,
 scope, participant, unread or sorting controls. Saved review filters do not
 affect it. Resolving or deleting the thread leaves a short empty-state message
 and a View all comments action, rather than selecting a different discussion.
-The top Comments button switches a current view to the full review drawer;
+The top Comments button opens project-wide review or switches a current view to it;
 when already in full-review mode it retains its open/close behavior. View all
-comments preserves the source target and saved full-review preferences. File
+comments preserves the source target and saved sorting/participant preferences. File
 switches, new comments and @-notification navigation leave current-comment mode.
 Both modes share the same workspace draft store and reply expansion preferences.
+The dashboard badge and workspace toolbar both count unresolved top-level
+discussions across the project, including `.bib` files and non-root sources.
+File and project comment responses include the same small project summary;
+editor decorations still receive only active-file comments. This avoids fetching
+all discussion bodies merely to show a count. A current-file/project selector
+appears for roots with includes or discussions outside the active file. Hiding
+that selector never forces project review back to the active file while its
+summary is loading. Newer summary responses take precedence over late responses
+from another scope.
 File-comment refresh failures retain the last successfully loaded same-file
 discussion, display an error with a file-specific retry action, and are not
 treated as a successful empty response. An explicit access rejection clears

@@ -1050,7 +1050,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     });
   }, [files, editorPreferences.openFilesInTabs]);
   const {
-    comments, commentsFilePath, commentsReady, fileCommentsLoading, fileCommentsError, retryFileComments, reviewComments, reviewCommentsLoading, reviewCommentsError, retryReviewComments, commentScope, setCommentScope, focusComment, setFocusComment, commentOpen, openComment, closeComment, commentText, setCommentText,
+    comments, projectCommentSummary, commentsFilePath, commentsReady, fileCommentsLoading, fileCommentsError, retryFileComments, reviewComments, reviewCommentsLoading, reviewCommentsError, retryReviewComments, commentScope, setCommentScope, focusComment, setFocusComment, commentOpen, openComment, closeComment, commentText, setCommentText,
     commentSelection, commentSubmitting, commentError, addComment, toggleComment, replyToComment, editComment,
     deleteComment, editCommentReply, deleteCommentReply, commentDraftStore,
     cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection
@@ -1067,9 +1067,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     onAdded: () => { setSingleCommentId(null); setSidePanel("comments"); },
     onChanged: () => { void refreshMentions(); }
   });
-  // Most small projects are a single document. Only offer a project review
-  // scope when the selected root actually pulls other source files in, so the
-  // common case is not burdened with a meaningless scope selector.
+  // Includes are one reason to offer project-wide review. The summary below
+  // also reveals discussions in bibliographies and standalone source files.
   useEffect(() => {
     if (!activeMainFile || analysisSource.filePath !== activeMainFile) return;
     const hasIncludes = findLatexSourceIncludes(analysisSource.content).length > 0;
@@ -1106,8 +1105,11 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     };
   }, [activeFile, activeMainFile, collaboration, collaborationSynced]);
   const hasProjectCommentsScope = useMemo(() => {
-    return rootIncludeState.path === activeMainFile && rootIncludeState.hasIncludes;
-  }, [activeMainFile, rootIncludeState]);
+    // A bibliography or another standalone source can have discussions even
+    // when the root has no input/include commands.
+    return (rootIncludeState.path === activeMainFile && rootIncludeState.hasIncludes)
+      || Boolean(projectCommentSummary?.filePaths.some((filePath) => filePath !== activeFile));
+  }, [activeMainFile, rootIncludeState, projectCommentSummary, activeFile]);
   const focusReviewComment = (comment: Comment): void => {
     setSourceCommentTarget(null);
     setSidePanel("comments");
@@ -1389,10 +1391,12 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
       formatting={formatting} readOnly={readOnly} collaborationSynced={collaborationSynced}
       onToggleComments={() => {
+        const opening = sidePanel !== "comments" || Boolean(singleCommentId);
         setSingleCommentId(null);
-        setSidePanel(sidePanel === "comments" && !singleCommentId ? null : "comments");
+        if (opening) setCommentScope("project");
+        setSidePanel(opening ? "comments" : null);
       }}
-      commentsOpen={sidePanel === "comments"} unresolvedCommentCount={comments.filter((item) => !item.resolved).length}
+      commentsOpen={sidePanel === "comments"} unresolvedCommentCount={projectCommentSummary?.unresolvedCount ?? project.unresolvedCommentCount ?? 0}
       onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
       settingsOpen={sidePanel === "settings"} compileBusy={compileBusy} sharedCompiling={sharedCompiling}
       localCompiling={localCompiling} cancelling={cancelling} onCompile={compile} onCancelCompile={() => void cancelCompile()}
@@ -1479,7 +1483,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
         site={site} files={files} currentUserId={user.id} comments={singleCommentId ? comments : reviewComments} commentDraftStore={commentDraftStore} commentsLoading={singleCommentId ? fileCommentsLoading : reviewCommentsLoading}
         commentsError={singleCommentId ? fileCommentsError : reviewCommentsError} onRetryComments={singleCommentId ? retryFileComments : retryReviewComments} activeFile={activeFile}
-        singleCommentId={singleCommentId} onShowAllComments={() => setSingleCommentId(null)}
+        singleCommentId={singleCommentId} onShowAllComments={() => { setSingleCommentId(null); setCommentScope("project"); }}
         hasProjectCommentsScope={hasProjectCommentsScope} commentScope={commentScope} onCommentScopeChange={setCommentScope}
         focusedCommentId={sourceCommentTarget?.filePath === activeFile ? sourceCommentTarget.id : focusComment?.id}
         commentFocusNonce={sourceCommentTarget?.nonce}

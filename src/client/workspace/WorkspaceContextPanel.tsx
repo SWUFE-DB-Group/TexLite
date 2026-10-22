@@ -135,12 +135,6 @@ export function WorkspaceContextPanel({
     if (changedFocus) onClearFocusComment();
   }, [comments, focusedCommentId, targetCommentId, onClearFocusComment]);
   useEffect(() => {
-    if (!hasProjectCommentsScope && commentScope !== "file") {
-      onClearFocusComment();
-      onCommentScopeChange("file");
-    }
-  }, [commentScope, hasProjectCommentsScope, onClearFocusComment, onCommentScopeChange]);
-  useEffect(() => {
     // An inline composer owns focus; never scroll an older navigation target
     // while replying, including after an ordinary comment-resource refresh.
     if (sidePanel !== "comments" || activeComposerId) return;
@@ -278,7 +272,7 @@ export function WorkspaceContextPanel({
                 <div className="comment-thread-slot-content"><CommentThread projectId={projectId} comment={comment} draftStore={commentDraftStore} currentUserId={currentUserId}
                 unreadCommentMentionId={unreadCommentMentionId} unreadReplyMentionIds={unreadReplyMentionIds}
                 highlightedComment={targetCommentId === comment.id && !targetReplyId} highlightedReplyId={targetCommentId === comment.id ? targetReplyId : null}
-                currentComment={currentCommentId === comment.id} showFilePath={!singleCommentMode && commentScope === "project"}
+                currentComment={currentCommentId === comment.id} showFilePath={!singleCommentMode && commentScope === "project" && hasProjectCommentsScope}
                 replyExpansion={replyExpansion.get(comment.id)} onReplyExpansionChange={(expanded) => {
                   setReplyExpansion((current) => current.get(comment.id) === expanded ? current : new Map(current).set(comment.id, expanded));
                 }}
