@@ -718,6 +718,16 @@ Editor tab remounts therefore preserve Ctrl/Cmd+Z and Vim undo history without
 leaving obsolete CodeMirror/Yjs observers behind. Managers are released when
 the collaboration object is destroyed or loses edit permission.
 
+Vim support is imported only when enabled, with one shared module initialization
+per browser page. Its custom undo/redo mappings are registered once and use
+per-editor history callbacks rather than global project state. Enabling or
+disabling Vim reconfigures a compartment without recreating the editor;
+appearance changes do not reinstall it or reset Insert/Visual mode. Pending
+loads cannot enable Vim after it was disabled, the file/instance changed, or
+the editor unmounted. Mode listeners are removed on disable and cleanup. The
+status bar distinguishes loading, active mode and failure; unsuccessful loads
+leave standard editing available with a retry action.
+
 TexLite probes the optional host `harper-cli` command at startup. Harper uses
 its native LaTeX-aware parser and returns safe replacement suggestions. The
 project dictionary is kept in SQLite and filters project-specific spelling

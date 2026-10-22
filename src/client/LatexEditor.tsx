@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Annotation, Compartment, EditorState, Facet, Prec, StateEffect, StateField } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
 import {
   Decoration, type DecorationSet, EditorView, keymap,
   highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, ViewPlugin
@@ -15,7 +15,6 @@ import {
   autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap
 } from "@codemirror/autocomplete";
 import { getSearchQuery, openSearchPanel, search, searchKeymap, searchPanelOpen } from "@codemirror/search";
-import { getCM, Vim, vim } from "@replit/codemirror-vim";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
@@ -32,6 +31,7 @@ import { latexReferenceHover } from "./latexReferenceHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
 import { isLatexEditorFile, loadTextFileLanguage } from "./textLanguages";
+import { loadVimSupport } from "./vimLoader";
 import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
 import { setSourceComments, sourceCommentAnchorForId, sourceCommentDecorations, sourceCommentMarksForFile } from "./sourceCommentDecorations";
 import type { LatexReference } from "../shared/latexReferences";
@@ -76,25 +76,6 @@ export interface SpellCheckJump {
 }
 
 const externalDocumentUpdate = Annotation.define<boolean>();
-
-interface VimHistoryCommands {
-  undo: () => boolean;
-  redo: () => boolean;
-}
-
-const noVimHistoryCommands: VimHistoryCommands = { undo: () => false, redo: () => false };
-const vimHistoryCommands = Facet.define<VimHistoryCommands, VimHistoryCommands>({
-  combine: (values) => values.at(-1) ?? noVimHistoryCommands
-});
-
-Vim.defineAction("texliteUndo", (cm) => {
-  if (!cm.cm6.state.facet(vimHistoryCommands).undo()) cm.execCommand("undo");
-});
-Vim.defineAction("texliteRedo", (cm) => {
-  if (!cm.cm6.state.facet(vimHistoryCommands).redo()) cm.execCommand("redo");
-});
-Vim.mapCommand("u", "action", "texliteUndo", {}, { context: "normal" });
-Vim.mapCommand("<C-r>", "action", "texliteRedo", {}, { context: "normal" });
 
 const setSpellCheckIssues = StateEffect.define<SpellCheckIssue[]>();
 const spellCheckIssueMarks = StateField.define<DecorationSet>({
@@ -171,7 +152,9 @@ export function LatexEditor({
   const [languageLoadFailed, setLanguageLoadFailed] = useState(false);
   const [languageRetry, setLanguageRetry] = useState(0);
   const vimStatusCleanup = useRef<(() => void) | null>(null);
-  const [vimStatus, setVimStatus] = useState(preferences.vimMode ? "NORMAL" : "");
+  const [vimStatus, setVimStatus] = useState("");
+  const [vimLoadState, setVimLoadState] = useState<"off" | "loading" | "working" | "error">("off");
+  const [vimRetry, setVimRetry] = useState(0);
   const [spellSuggestionMenu, setSpellSuggestionMenu] = useState<SpellSuggestionMenu | null>(null);
   onChangeRef.current = onChange;
   onSelectionRef.current = onSelection;
@@ -183,27 +166,6 @@ export function LatexEditor({
   onCursorRef.current = onCursor;
   spellCheckIssuesRef.current = spellCheckIssues;
   completionIndexRef.current = completionIndex;
-
-  const syncVimStatus = (editor: EditorView, enabled: boolean) => {
-    vimStatusCleanup.current?.();
-    vimStatusCleanup.current = null;
-    if (!enabled) {
-      setVimStatus("");
-      return;
-    }
-    const cm = getCM(editor);
-    if (!cm) {
-      setVimStatus("NORMAL");
-      return;
-    }
-    const update = () => {
-      const mode = cm.state.vim?.mode ?? (cm.state.vim?.insertMode ? "insert" : "normal");
-      setVimStatus(mode.toUpperCase());
-    };
-    update();
-    cm.on("vim-mode-change", update);
-    vimStatusCleanup.current = () => cm.off("vim-mode-change", update);
-  };
 
   useEffect(() => {
     if (!host.current) return;
@@ -237,11 +199,7 @@ export function LatexEditor({
           override: isBibtexFile ? [bibtexCompletionSource] : isLatexFile ? [(context) => latexCompletions(context, t, completionIndexRef.current)] : undefined,
           activateOnTyping: true
         }),
-        ...(collaborationUndoManager ? [vimHistoryCommands.of({
-          undo: () => collaborationUndoManager.undo() !== null,
-          redo: () => collaborationUndoManager.redo() !== null
-        })] : []),
-        vimMode.current.of(preferences.vimMode ? vim() : []),
+        vimMode.current.of([]),
         keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...foldKeymap,
           ...(collaboration && !readOnly ? yUndoManagerKeymap : []), ...defaultKeymap,
           ...(collaboration ? [] : historyKeymap)]),
@@ -302,7 +260,6 @@ export function LatexEditor({
       ]
     });
     view.current = new EditorView({ state, parent: host.current });
-    syncVimStatus(view.current, preferences.vimMode);
     view.current.dispatch({ effects: setSourceComments.of(sourceCommentMarksForFile(comments, filePath)) });
     return () => {
       vimStatusCleanup.current?.();
@@ -339,14 +296,42 @@ export function LatexEditor({
     ] });
   }, [preferences, nativeSpellCheck, filePath, i18n.resolvedLanguage, theme]);
 
-  // Color/font changes must not reinstall Vim while the user is in Insert or
-  // Visual mode. Only a Vim preference or editor-language change needs this.
+  // Appearance changes must not reinstall Vim or reset Insert/Visual mode.
+  // Async results belong to one editor instance and one enable attempt.
   useEffect(() => {
     const editor = view.current;
     if (!editor) return;
-    editor.dispatch({ effects: vimMode.current.reconfigure(preferences.vimMode ? vim() : []) });
-    syncVimStatus(editor, preferences.vimMode);
-  }, [preferences.vimMode, filePath, i18n.resolvedLanguage]);
+    vimStatusCleanup.current?.();
+    vimStatusCleanup.current = null;
+    if (!preferences.vimMode) {
+      editor.dispatch({ effects: vimMode.current.reconfigure([]) });
+      setVimStatus(""); setVimLoadState("off");
+      return;
+    }
+    let cancelled = false;
+    setVimStatus(""); setVimLoadState("loading");
+    void loadVimSupport().then((support) => {
+      if (cancelled || view.current !== editor) return;
+      const undoManager = collaboration && !readOnly ? collaboration.undoManager : undefined;
+      editor.dispatch({ effects: vimMode.current.reconfigure(support.createVimExtension(undoManager ? {
+        undo: () => undoManager.undo() !== null,
+        redo: () => undoManager.redo() !== null
+      } : undefined)) });
+      vimStatusCleanup.current = support.watchVimStatus(editor, setVimStatus);
+      setVimLoadState("working");
+    }).catch(() => {
+      if (cancelled || view.current !== editor) return;
+      vimStatusCleanup.current?.();
+      vimStatusCleanup.current = null;
+      editor.dispatch({ effects: vimMode.current.reconfigure([]) });
+      setVimStatus(""); setVimLoadState("error");
+    });
+    return () => {
+      cancelled = true;
+      vimStatusCleanup.current?.();
+      vimStatusCleanup.current = null;
+    };
+  }, [preferences.vimMode, filePath, readOnly, i18n.resolvedLanguage, collaboration?.text, collaboration?.undoManager, vimRetry]);
 
   useEffect(() => {
     const editor = view.current;
@@ -459,7 +444,10 @@ export function LatexEditor({
     </div>}
     {spellSuggestionMenu && <SpellSuggestionsMenu issue={spellSuggestionMenu.issue} anchor={spellSuggestionMenu.anchor} readOnly={readOnly}
       onReplace={(replacement) => { onSpellCheckReplaceRef.current(spellSuggestionMenu.issue, replacement); setSpellSuggestionMenu(null); }} />}
-    {preferences.vimMode && <div className="vim-editor-status" role="status" aria-live="polite"><span>--{vimStatus || "NORMAL"}--</span></div>}
+    {preferences.vimMode && <div className="vim-editor-status" role="status" aria-live="polite">
+      <span>{vimLoadState === "working" ? `--${vimStatus || "NORMAL"}--` : t(vimLoadState === "error" ? "editor.vimLoadFailed" : "editor.vimLoading")}</span>
+      {vimLoadState === "error" && <button type="button" onClick={() => setVimRetry((attempt) => attempt + 1)}>{t("common.retry")}</button>}
+    </div>}
   </div>;
 }
 
