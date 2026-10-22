@@ -938,7 +938,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-participants-extra-count { flex: none; font-size: 9px; font-variant-numeric: tabular-nums; }
 .comment-participants-clear { flex: none; display: grid; place-items: center; width: 24px; border: 0; border-left: 1px solid var(--ui-info-border, #c9d9ec); padding: 0; background: transparent; color: inherit; }
 .comment-participants-clear:hover { background: var(--ui-hover, #dceaff); }
-.comment-participants-scope { color: var(--ui-info, #627991); font-size: 9px; }
 .comment-participants-popover { z-index: 110; width: 255px; max-width: calc(100vw - 20px); max-height: var(--radix-popover-content-available-height); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--ui-border, #d5ddd7); border-radius: 10px; padding: 6px; background: var(--ui-raised, white); color: var(--ui-text, #405147); font-size: 12px; box-shadow: 0 8px 28px #20312726; }
 .comment-participants-popover:focus { outline: none; }
 .comment-participants-heading { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 6px 6px; }

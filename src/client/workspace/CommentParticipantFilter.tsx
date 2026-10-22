@@ -81,6 +81,5 @@ export function CommentParticipantFilter({
       </Popover.Root>
       {hasSelection && <button type="button" className="comment-participants-clear" aria-label={t("editor.commentParticipantsClear")} onClick={onClear}><X size={12} aria-hidden /></button>}
     </div>
-    {hasSelection && topLevelOnly && <span className="comment-participants-scope">{t("editor.commentTopLevelOnly")}</span>}
   </div>;
 }
