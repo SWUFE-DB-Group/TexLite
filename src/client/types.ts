@@ -133,6 +133,7 @@ export interface HistoryVersion {
 
 export interface HistoryVersionDetail {
   version: HistoryVersion;
+  scoped?: boolean;
   settings: { mainFile: string; engine: Project["engine"]; latexmkrc: string | null; chktexEnabled?: boolean };
   files: Array<{ path: string; size: number; deleted?: boolean }>;
 }

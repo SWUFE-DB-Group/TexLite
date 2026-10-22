@@ -1645,6 +1645,22 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-dialog-modal { width: min(1120px, calc(100vw - 32px)); height: min(840px, calc(100vh - 40px)); max-height: min(840px, calc(100vh - 40px)); display: flex; flex-direction: column; overflow: hidden; }
 .history-dialog-modal .dialog-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px; overflow: hidden; }
 .history-dialog { flex: 1; height: 100%; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--ui-border, #d9e0db); border-radius: 8px; overflow: hidden; background: var(--ui-surface, #fff); }
+.history-tracking-toolbar { display: flex; justify-content: flex-end; padding: 7px 10px; border-bottom: 1px solid var(--ui-border, #d9e0db); }
+.history-tracking-toolbar button { gap: 6px; padding: 5px 9px; font-size: 12px; }
+.history-tracking { display: grid; gap: 12px; }
+.history-tracking > p { margin: 0; font-size: 12px; line-height: 1.6; }
+.history-tracking-search { display: flex; align-items: center; gap: 8px; color: var(--ui-muted, #6b7280); }
+.history-tracking-search input { flex: 1; min-width: 0; font-size: 13px; }
+.history-tracking-list { max-height: min(440px, 50vh); overflow-y: auto; border: 1px solid var(--ui-border, #d9e0db); border-radius: 8px; }
+.history-tracking-list > p { padding: 12px; font-size: 13px; }
+.history-tracking-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; min-height: 52px; }
+.history-tracking-row + .history-tracking-row { border-top: 1px solid var(--ui-border, #d9e0db); }
+.history-tracking-row label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.history-tracking-row input { width: auto; flex-shrink: 0; margin: 0; accent-color: var(--ui-accent, #176b44); }
+.history-tracking-path { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.history-tracking-path small { display: block; margin-top: 3px; color: var(--ui-muted, #6b7280); font-size: 11px; font-weight: 400; }
+.history-tracking-row > button { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; padding: 0; border: 0; background: transparent; color: var(--ui-muted, #6b7280); }
+.history-tracking-row.included { background: var(--ui-accent-bg, #f1f7f3); }
 .history-loading { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 420px; color: var(--ui-muted, #68736b); }
 .history-message { margin: 10px; }
 .history-dialog-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; height: 100%; overflow: hidden; }

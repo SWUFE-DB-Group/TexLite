@@ -14,6 +14,7 @@ import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
 import { sourceRoot } from "../src/server/files.js";
+import { ProjectHistoryService } from "../src/server/history.js";
 import * as metricSummaries from "../src/server/metrics.js";
 
 const hostHarperAvailable = spawnSync("harper-cli", ["--version"], { stdio: "ignore" }).status === 0;
@@ -1136,6 +1137,11 @@ Copied source.
 
     const pdf = multipartBody("figure.pdf", Buffer.from("%PDF-1.7\nnon-text document"));
     expect((await app.inject({ method: "POST", url: `/api/projects/${projectId}/upload`, headers: { cookie, "content-type": `multipart/form-data; boundary=${pdf.boundary}` }, payload: pdf.body })).statusCode).toBe(201);
+    expect((await getVersions()).map((version: { id: string }) => version.id)).toEqual(original.map((version: { id: string }) => version.id));
+    const tracking = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history/files`, headers: { cookie } });
+    expect(tracking.statusCode).toBe(200);
+    expect(tracking.json().files).toContainEqual(expect.objectContaining({ path: "figure.pdf", included: false, defaultIncluded: false }));
+    expect((await app.inject({ method: "PATCH", url: `/api/projects/${projectId}/history/files`, headers: { cookie }, payload: { path: "figure.pdf", included: true } })).statusCode).toBe(200);
     const withPdf = (await getVersions())[0];
     expect(withPdf.changedPaths).toContain("figure.pdf");
     const unsupported = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history/${withPdf.id}/file?path=figure.pdf`, headers: { cookie } });
@@ -1152,6 +1158,50 @@ Copied source.
     const comparison = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history/${deletedText.id}/file?path=notes.txt&against=__previous__`, headers: { cookie } });
     expect(comparison.statusCode).toBe(200);
     expect(comparison.json()).toMatchObject({ historical: "", comparison: "previous notes" });
+  });
+
+  it("allows writers to share snapshot file choices and rejects reader mutations and malformed paths", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Snapshot choices" } });
+    const projectId = created.json().project.id as string;
+    const user = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "history-file-member", displayName: "Member", password: "member-password" } });
+    const userId = user.json().user.id;
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "history-file-member", password: "member-password" } });
+    const memberCookie = sessionCookie(login.headers);
+    const url = `/api/projects/${projectId}/history/files`;
+    expect((await app.inject({ method: "GET", url, headers: { cookie: memberCookie } })).statusCode).toBe(404);
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${userId}`, headers: { cookie }, payload: { permission: "read" } });
+    expect((await app.inject({ method: "GET", url, headers: { cookie: memberCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url, headers: { cookie: memberCookie }, payload: { path: "main.tex", included: false } })).statusCode).toBe(403);
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${userId}`, headers: { cookie }, payload: { permission: "edit" } });
+    expect((await app.inject({ method: "PATCH", url, headers: { cookie: memberCookie }, payload: { path: "main.tex", included: false } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url, headers: { cookie } })).json().files)
+      .toContainEqual(expect.objectContaining({ path: "main.tex", included: false, override: false }));
+    expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { path: "../outside", included: true } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { path: "main.tex" } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { path: "missing.tex", included: true } })).statusCode).toBe(404);
+    expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { path: "main.tex", included: null } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url, headers: { cookie: memberCookie } })).json().files)
+      .toContainEqual(expect.objectContaining({ path: "main.tex", included: true, override: null }));
+    const failedRecord = vi.spyOn(ProjectHistoryService.prototype, "record").mockImplementationOnce(() => { throw new Error("disk full"); });
+    try {
+      expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { path: "main.tex", included: false } })).statusCode).toBe(500);
+      expect(db.prepare("SELECT * FROM project_history_files WHERE project_id = ? AND path = 'main.tex'").get(projectId)).toBeUndefined();
+    } finally { failedRecord.mockRestore(); }
+  });
+
+  it("does not restore a snapshot if its safety checkpoint fails", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Snapshot checkpoint failure" } });
+    const projectId = created.json().project.id as string;
+    const versions = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie } });
+    const versionId = versions.json().versions[0].id;
+    fs.writeFileSync(path.join(sourceRoot(config, projectId), "main.tex"), "current unsnapshotted content");
+    const checkpoint = vi.spyOn(ProjectHistoryService.prototype, "checkpointForRestore").mockImplementationOnce(() => { throw new Error("disk full"); });
+    try {
+      const result = await app.inject({ method: "POST", url: `/api/projects/${projectId}/history/${versionId}/restore`, headers: { cookie }, payload: {} });
+      expect(result.statusCode).toBe(500);
+      expect(fs.readFileSync(path.join(sourceRoot(config, projectId), "main.tex"), "utf8")).toBe("current unsnapshotted content");
+    } finally { checkpoint.mockRestore(); }
   });
 
   it("builds the outline across included files and restores automatic project history", async () => {

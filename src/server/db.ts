@@ -106,6 +106,14 @@ const databaseMigrations: readonly DatabaseMigration[] = [
   { version: 8, name: "use_username_avatar_seed", apply: (db) => {
     // Retain style choices; the first image request stores a username-seeded SVG.
     db.exec("UPDATE users SET avatar_svg = NULL WHERE avatar_svg IS NOT NULL");
+  } },
+  { version: 9, name: "add_snapshot_file_tracking", apply: (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS project_history_files (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      included INTEGER NOT NULL CHECK (included IN (0, 1)),
+      PRIMARY KEY (project_id, path)
+    )`);
   } }
 ];
 

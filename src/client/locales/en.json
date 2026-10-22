@@ -333,6 +333,17 @@
     "quickOpen": "Quick open", "quickOpenDescription": "Open a project file by name (Ctrl/Cmd+P).", "filePlaceholder": "Type a file name…", "noFiles": "No matching files."
   },
   "history": {
+    "manageFiles": "Manage recorded files",
+    "trackingDescription": "Choose which files this project records in future snapshots.",
+    "trackingHint": "Text files are recorded by default. Changes are shared with collaborators and saved immediately. Existing snapshots are kept. Choices apply to file paths.",
+    "searchFiles": "Search files…",
+    "defaultTracked": "Automatic · text file",
+    "defaultUntracked": "Not recorded by default",
+    "customTracking": "Custom choice",
+    "resetTracking": "Use default",
+    "fileMissing": "File no longer exists",
+    "noMatchingFiles": "No matching files.",
+    "restoreTrackedDescription": "Restore the files managed by this snapshot and its compiler settings? Unmanaged files are kept. The current project is checkpointed first.",
     "lastChangedBy": "Last changed by",
     "saveWarning": "Source files were saved, but some history could not be saved. Recent failures are retried automatically; older history may be incomplete. Check server logs and available storage.",
     "storageBreakdown": "Files {{objects}} · Metadata {{metadata}} · Protected {{protected}}",

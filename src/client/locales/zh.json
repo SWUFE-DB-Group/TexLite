@@ -325,6 +325,17 @@
     "quickOpen": "快速打开", "quickOpenDescription": "按名称打开项目文件（Ctrl/Cmd+P）。", "filePlaceholder": "输入文件名…", "noFiles": "没有匹配的文件。"
   },
   "history": {
+    "manageFiles": "管理记录文件",
+    "trackingDescription": "选择本项目之后的快照要记录哪些文件。",
+    "trackingHint": "默认记录文本文件。修改由协作者共享并立即保存，已有快照保留。选择按文件路径生效。",
+    "searchFiles": "搜索文件…",
+    "defaultTracked": "自动记录 · 文本文件",
+    "defaultUntracked": "默认不记录",
+    "customTracking": "自定义选择",
+    "resetTracking": "恢复默认",
+    "fileMissing": "文件已不存在",
+    "noMatchingFiles": "没有匹配的文件。",
+    "restoreTrackedDescription": "恢复此快照管理的文件及编译器设置？未管理的文件会保留。系统会先为当前项目创建安全检查点。",
     "lastChangedBy": "最后修改者",
     "saveWarning": "源码已保存，但部分历史未能保存。近期失败会自动重试，较早的历史可能不完整。请检查服务器日志及可用存储空间。",
     "storageBreakdown": "文件 {{objects}} · 元数据 {{metadata}} · 受保护 {{protected}}",

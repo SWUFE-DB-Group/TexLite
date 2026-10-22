@@ -541,9 +541,27 @@ Recovery snapshots are created only for actual file additions, changes, or
 deletions. Settings-only changes update the persistence baseline without adding
 a timeline entry; effective compiler settings are captured with the next file
 change. Older zero-file-change entries are excluded from timeline pagination and
-previous-version comparisons, but are not automatically purged. Non-text
-attachments remain in snapshots for recovery and are shown as a compact change
-notice, without requesting or decoding their contents for a diff. Source and
+previous-version comparisons, but are not automatically purged. New snapshots
+record UTF-8 text by default; PDFs, images, archives, fonts and other binary
+attachments are excluded. Known resource types are skipped without reading their
+contents; other files must pass the existing UTF-8/text-content check. Writers
+can manage per-file inclusions/exclusions from Project snapshots. These shared,
+path-based choices are stored in SQLite, survive clearing history, and affect
+future recording only. Including a file captures its current contents; excluding
+a file does not create a deletion entry or remove existing recovery data.
+Missing paths with overrides remain visible so their choices can be reset.
+
+Each new manifest captures its tracking policy. Whole-project restoration keeps
+current files outside that snapshot's scope, restores its managed files and
+removes managed files created later. The replacement tree is fully staged before
+the live source tree is swapped. Legacy manifests without a tracking policy
+retain their full-tree restoration behavior and historical binary contents;
+upgrading does not rewrite or discard old snapshots. Before a restore, its safety
+checkpoint also captures currently excluded files that will be overwritten or
+deleted (including attachments affected by legacy restores), without changing
+project tracking settings. Failure to save that checkpoint aborts restoration.
+Explicitly included non-text attachments are shown as a compact change notice
+without decoding a text diff. Source and
 ordinary text/data formats support bounded UTF-8 comparisons, including file
 deletions; invalid or oversized text is reported as unavailable, not as unchanged.
 

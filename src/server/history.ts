@@ -8,6 +8,7 @@ import { httpError } from "./http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
 import { isUtf8 } from "node:buffer";
 import { isHistoryTextFile } from "../shared/historyFiles.js";
+import { defaultHistoryTracking, historyTextCandidate, historyTrackingOverride, type HistoryTrackedFile, type HistoryTrackingPolicy } from "../shared/historyTracking.js";
 
 export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
 
@@ -18,6 +19,8 @@ interface HistoryFile {
 
 export interface HistoryManifest {
   version: 1;
+  /** Absent on legacy snapshots, which retain their full-tree restore semantics. */
+  tracking?: HistoryTrackingPolicy;
   files: Record<string, HistoryFile>;
   settings: {
     mainFile: string;
@@ -73,6 +76,8 @@ export interface HistoryStats {
 }
 
 export interface HistoryRecordOptions {
+  /** Recovery checkpoints also protect files a restore will overwrite/delete. */
+  tracking?: HistoryTrackingPolicy;
   /**
    * Keep the durable version write in the caller's path, but defer expensive
    * retention work (manifest scans and object garbage collection).
@@ -113,22 +118,30 @@ export class ProjectHistoryService {
     const project = this.project(projectId);
     const previous = this.latestRow(projectId);
     const previousManifest = this.baseline(projectId) ?? (previous ? parseManifest(previous.manifest_json) : null);
-    const manifest = previousManifest ? cloneManifest(previousManifest) : this.emptyManifest(project);
+    const tracking = options.tracking ?? this.trackingPolicy(projectId);
+    const policyChanged = !previousManifest?.tracking || JSON.stringify(previousManifest.tracking) !== JSON.stringify(tracking);
+    // Dropping a file from management is not a file deletion. Old snapshots
+    // remain immutable and keep their original recovery scope.
+    const comparable = previousManifest && policyChanged
+      ? { ...previousManifest, files: this.filterTrackedObjects(projectId, previousManifest.files, tracking) }
+      : previousManifest;
+    const manifest = comparable ? cloneManifest(comparable) : this.emptyManifest(project);
+    manifest.tracking = tracking;
     manifest.settings = settings(project);
 
-    if (!previousManifest || changedRoots === undefined) {
-      manifest.files = this.snapshotAllFiles(projectId);
+    if (!previousManifest || policyChanged || changedRoots === undefined) {
+      manifest.files = this.snapshotAllFiles(projectId, tracking);
     } else {
       for (const rootInput of changedRoots) {
         const root = safeRelativePath(rootInput);
         for (const filePath of Object.keys(manifest.files)) {
           if (filePath === root || filePath.startsWith(`${root}/`)) delete manifest.files[filePath];
         }
-        for (const [filePath, file] of Object.entries(this.snapshotPath(projectId, root))) manifest.files[filePath] = file;
+        for (const [filePath, file] of Object.entries(this.snapshotPath(projectId, root, tracking))) manifest.files[filePath] = file;
       }
     }
 
-    const changedPaths = previousManifest ? changedManifestPaths(previousManifest, manifest) : Object.keys(manifest.files).sort();
+    const changedPaths = comparable ? changedManifestPaths(comparable, manifest) : Object.keys(manifest.files).sort();
     // Settings alone do not create a file-history entry. Keep the baseline
     // current so the next real file change captures the effective settings.
     if (changedPaths.length === 0) {
@@ -137,7 +150,8 @@ export class ProjectHistoryService {
     }
 
     const createdAt = new Date().toISOString();
-    if (reason === "autosave" && previous?.reason === "autosave" && !previous.label
+    if (!policyChanged && reason === "autosave" && previous?.reason === "autosave" && !previous.label
+      && JSON.stringify(parseManifest(previous.manifest_json).tracking) === JSON.stringify(tracking)
       && Date.parse(createdAt) - Date.parse(previous.created_at) < AUTOSAVE_COALESCE_MS) {
       const merged = [...new Set([...parseStringArray(previous.changed_paths_json), ...changedPaths])].sort();
       this.db.prepare(`UPDATE project_history_versions
@@ -170,6 +184,36 @@ export class ProjectHistoryService {
       ORDER BY history.created_at DESC, history.rowid DESC LIMIT ?`)
       .all(projectId, Math.min(200, Math.max(1, limit))) as HistoryListRow[];
     return rows.map((row) => versionJson(row));
+  }
+
+  trackingPolicy(projectId: string): HistoryTrackingPolicy {
+    const rows = this.db.prepare("SELECT path, included FROM project_history_files WHERE project_id = ? ORDER BY path")
+      .all(projectId) as Array<{ path: string; included: number }>;
+    return { overrides: Object.fromEntries(rows.map((row) => [row.path, row.included === 1])) };
+  }
+
+  trackedFiles(projectId: string): HistoryTrackedFile[] {
+    const policy = this.trackingPolicy(projectId);
+    const files = new Map(listProjectFiles(this.config, projectId).filter((entry) => entry.type === "file").map((entry) => [entry.path, entry]));
+    return [...new Set([...files.keys(), ...Object.keys(policy.overrides)])].sort().map((filePath) => {
+      const file = files.get(filePath);
+      const defaultIncluded = Boolean(file && historyTextCandidate(filePath)
+        && defaultHistoryTracking(filePath, fs.readFileSync(resolveSourcePath(this.config, projectId, filePath))));
+      const override = historyTrackingOverride(policy, filePath);
+      return { path: filePath, size: file?.size ?? 0, missing: !file, defaultIncluded, override, included: override ?? defaultIncluded };
+    });
+  }
+
+  setFileTracking(projectId: string, filePathInput: string, included: boolean | null): void {
+    const filePath = safeRelativePath(filePathInput);
+    if (included === null) {
+      this.db.prepare("DELETE FROM project_history_files WHERE project_id = ? AND path = ?").run(projectId, filePath);
+    } else {
+      const target = resolveSourcePath(this.config, projectId, filePath);
+      if (!fs.existsSync(target) || !fs.statSync(target).isFile()) throw httpError(404, "FILE_NOT_FOUND", { path: filePath });
+      this.db.prepare(`INSERT INTO project_history_files (project_id, path, included) VALUES (?, ?, ?)
+        ON CONFLICT(project_id, path) DO UPDATE SET included = excluded.included`).run(projectId, filePath, included ? 1 : 0);
+    }
   }
 
   /**
@@ -372,6 +416,23 @@ export class ProjectHistoryService {
     return { restoredPaths: Object.keys(manifest.files).sort(), manifest };
   }
 
+  checkpointForRestore(projectId: string, authorId: string, versionId: string, filePathInput?: string): HistoryVersion | null {
+    const target = this.manifest(projectId, versionId);
+    if (!target) throw httpError(404, "HISTORY_VERSION_NOT_FOUND");
+    const current = this.trackingPolicy(projectId);
+    const tracking = { overrides: { ...current.overrides } };
+    const selected = filePathInput ? safeRelativePath(filePathInput) : null;
+    for (const file of listProjectFiles(this.config, projectId)) {
+      if (file.type !== "file" || (selected && file.path !== selected)) continue;
+      const affected = selected !== null || Boolean(target.files[file.path]) || !target.tracking
+        || this.tracksFile(projectId, file.path, target.tracking);
+      if (affected && !this.tracksFile(projectId, file.path, current)) tracking.overrides[file.path] = true;
+    }
+    // This policy belongs only to the safety checkpoint, not project settings.
+    // Even a legacy restore or a single excluded file must remain reversible.
+    return this.record(projectId, authorId, "checkpoint", undefined, { tracking });
+  }
+
   private assertRestoreTargetIsFile(projectId: string, filePath: string): void {
     const target = resolveSourcePath(this.config, projectId, filePath);
     const targetStat = fs.existsSync(target) ? fs.lstatSync(target) : null;
@@ -397,7 +458,8 @@ export class ProjectHistoryService {
 
   private snapshotCurrent(projectId: string): HistoryManifest {
     const project = this.project(projectId);
-    return { version: 1, files: this.snapshotAllFiles(projectId), settings: settings(project) };
+    const tracking = this.trackingPolicy(projectId);
+    return { version: 1, tracking, files: this.snapshotAllFiles(projectId, tracking), settings: settings(project) };
   }
 
   private baseline(projectId: string): HistoryManifest | null {
@@ -412,30 +474,52 @@ export class ProjectHistoryService {
       .run(projectId, JSON.stringify(manifest), new Date().toISOString());
   }
 
-  private snapshotAllFiles(projectId: string): Record<string, HistoryFile> {
+  private snapshotAllFiles(projectId: string, tracking: HistoryTrackingPolicy): Record<string, HistoryFile> {
     const files: Record<string, HistoryFile> = {};
     for (const entry of listProjectFiles(this.config, projectId)) {
-      if (entry.type === "file") files[entry.path] = this.storeFile(projectId, entry.path);
+      if (entry.type !== "file") continue;
+      const file = this.storeFile(projectId, entry.path, tracking);
+      if (file) files[entry.path] = file;
     }
     return files;
   }
 
-  private snapshotPath(projectId: string, root: string): Record<string, HistoryFile> {
+  private snapshotPath(projectId: string, root: string, tracking: HistoryTrackingPolicy): Record<string, HistoryFile> {
     const files: Record<string, HistoryFile> = {};
     const absolute = resolveSourcePath(this.config, projectId, root);
     if (!fs.existsSync(absolute)) return files;
     if (fs.statSync(absolute).isFile()) {
-      files[root] = this.storeFile(projectId, root);
+      const file = this.storeFile(projectId, root, tracking);
+      if (file) files[root] = file;
       return files;
     }
     for (const entry of listProjectFiles(this.config, projectId)) {
-      if (entry.type === "file" && entry.path.startsWith(`${root}/`)) files[entry.path] = this.storeFile(projectId, entry.path);
+      if (entry.type === "file" && entry.path.startsWith(`${root}/`)) {
+        const file = this.storeFile(projectId, entry.path, tracking);
+        if (file) files[entry.path] = file;
+      }
     }
     return files;
   }
 
-  private storeFile(projectId: string, filePath: string): HistoryFile {
+  private filterTrackedObjects(projectId: string, files: Record<string, HistoryFile>, tracking: HistoryTrackingPolicy): Record<string, HistoryFile> {
+    return Object.fromEntries(Object.entries(files).filter(([filePath, file]) => {
+      const override = historyTrackingOverride(tracking, filePath);
+      if (override !== null) return override;
+      return historyTextCandidate(filePath) && defaultHistoryTracking(filePath, fs.readFileSync(this.objectPath(projectId, file.digest)));
+    }));
+  }
+
+  private tracksFile(projectId: string, filePath: string, tracking: HistoryTrackingPolicy): boolean {
+    return historyTrackingOverride(tracking, filePath)
+      ?? (historyTextCandidate(filePath) && defaultHistoryTracking(filePath, fs.readFileSync(resolveSourcePath(this.config, projectId, filePath))));
+  }
+
+  private storeFile(projectId: string, filePath: string, tracking: HistoryTrackingPolicy): HistoryFile | null {
+    const override = historyTrackingOverride(tracking, filePath);
+    if (override === false || (override === null && !historyTextCandidate(filePath))) return null;
     const content = fs.readFileSync(resolveSourcePath(this.config, projectId, filePath));
+    if (override === null && !defaultHistoryTracking(filePath, content)) return null;
     const digest = createHash("sha256").update(content).digest("hex");
     const target = this.objectPath(projectId, digest);
     if (!fs.existsSync(target)) {
@@ -630,6 +714,18 @@ export class ProjectHistoryService {
     let replacementInstalled = false;
     let gitMoved = false;
     try {
+      if (manifest.tracking) {
+        // Files outside this snapshot's scope survive a project restore. Stage
+        // them before swapping trees so a copy/conflict failure is harmless.
+        for (const file of listProjectFiles(this.config, projectId)) {
+          if (file.type !== "file" || manifest.files[file.path]) continue;
+          const source = resolveSourcePath(this.config, projectId, file.path);
+          if (this.tracksFile(projectId, file.path, manifest.tracking)) continue;
+          const target = path.join(temporary, safeRelativePath(file.path));
+          fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+          fs.copyFileSync(source, target);
+        }
+      }
       for (const [filePath, entry] of Object.entries(manifest.files)) {
         const target = path.join(temporary, safeRelativePath(filePath));
         fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
@@ -667,7 +763,7 @@ function settings(project: ProjectRow): HistoryManifest["settings"] {
 }
 
 function cloneManifest(manifest: HistoryManifest): HistoryManifest {
-  return { version: 1, files: { ...manifest.files }, settings: { ...manifest.settings } };
+  return { ...manifest, files: { ...manifest.files }, settings: { ...manifest.settings } };
 }
 
 function parseManifest(value: string): HistoryManifest {

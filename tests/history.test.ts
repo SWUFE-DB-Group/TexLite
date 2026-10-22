@@ -317,18 +317,139 @@ describe("project history retention", () => {
     expect(fixture.history.previousVersion(fixture.projectId, next.id)?.id).toBe(initial.id);
   });
 
-  it("does not decode attachments as text, but preserves their recoverable contents", () => {
+  it("records only text by default, including unknown UTF-8 files, and skips binary-only changes", () => {
     const fixture = createFixture();
     const pdf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0xff, 0x00]);
     fs.writeFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"), pdf);
     fs.writeFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "binary.txt"), Buffer.from([0xff, 0xfe]));
+    writeSource(fixture, "notes.custom", "plain UTF-8 notes");
     const version = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    expect(Object.keys(fixture.history.manifest(fixture.projectId, version.id)!.files).sort()).toEqual(["chapters/intro.tex", "main.tex", "notes.custom"]);
     expect(fixture.history.readTextFile(fixture.projectId, version.id, "figure.pdf")).toBeNull();
     expect(fixture.history.readTextFile(fixture.projectId, version.id, "binary.txt")).toBeNull();
     expect(fixture.history.readTextFile(fixture.projectId, version.id, "main.tex")).toBe("A");
     fs.writeFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"), "modified");
-    fixture.history.restore(fixture.projectId, version.id, "figure.pdf");
-    expect(fs.readFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"))).toEqual(pdf);
+    expect(fixture.history.record(fixture.projectId, "user-1", "file", ["figure.pdf"])).toBeNull();
+    expect(fixture.history.stats(fixture.projectId).objectBytes).toBe(Buffer.byteLength("Akeepplain UTF-8 notes"));
+  });
+
+  it("preserves unmanaged files on project restore while removing later managed text", () => {
+    const fixture = createFixture();
+    writeSource(fixture, "private.txt", "original excluded text");
+    fixture.history.setFileTracking(fixture.projectId, "private.txt", false);
+    const version = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    writeSource(fixture, "main.tex", "changed main");
+    writeSource(fixture, "later.tex", "later managed text");
+    writeSource(fixture, "private.txt", "new excluded text");
+    writeSource(fixture, "figure.pdf", "current image");
+    const binary = Buffer.from([0, 1, 255]);
+    fs.writeFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "binary.txt"), binary);
+    fixture.history.restore(fixture.projectId, version.id);
+    const source = sourceRoot(fixture.config, fixture.projectId);
+    expect(fs.readFileSync(path.join(source, "main.tex"), "utf8")).toBe("A");
+    expect(fs.existsSync(path.join(source, "later.tex"))).toBe(false);
+    expect(fs.readFileSync(path.join(source, "private.txt"), "utf8")).toBe("new excluded text");
+    expect(fs.readFileSync(path.join(source, "figure.pdf"), "utf8")).toBe("current image");
+    expect(fs.readFileSync(path.join(source, "binary.txt"))).toEqual(binary);
+  });
+
+  it("can include binary files, stop future recording, and reset defaults without deleting old recovery data", () => {
+    const fixture = createFixture();
+    writeSource(fixture, "figure.pdf", "first PDF");
+    const initial = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    fixture.history.setFileTracking(fixture.projectId, "figure.pdf", true);
+    const included = fixture.history.record(fixture.projectId, "user-1", "file", ["figure.pdf"])!;
+    expect(included.changedPaths).toEqual(["figure.pdf"]);
+    expect(fixture.history.readTextFile(fixture.projectId, included.id, "figure.pdf")).toBeNull();
+    expect(fixture.history.manifest(fixture.projectId, initial.id)!.files["figure.pdf"]).toBeUndefined();
+    fixture.history.setFileTracking(fixture.projectId, "figure.pdf", null);
+    expect(fixture.history.record(fixture.projectId, "user-1", "file", ["figure.pdf"])).toBeNull();
+    writeSource(fixture, "figure.pdf", "latest PDF");
+    fixture.history.restore(fixture.projectId, initial.id);
+    expect(fs.readFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"), "utf8")).toBe("latest PDF");
+    fixture.history.restore(fixture.projectId, included.id, "figure.pdf");
+    expect(fs.readFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"), "utf8")).toBe("first PDF");
+    expect(fixture.history.trackingPolicy(fixture.projectId).overrides).toEqual({});
+  });
+
+  it.each([undefined, "figure.pdf"])("checkpoints excluded files affected by a restore without changing project choices (%s)", (filePath) => {
+    const fixture = createFixture();
+    writeSource(fixture, "figure.pdf", "old PDF");
+    writeSource(fixture, "excluded.txt", "old text");
+    fixture.history.setFileTracking(fixture.projectId, "figure.pdf", true);
+    const version = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    fixture.history.setFileTracking(fixture.projectId, "figure.pdf", false);
+    fixture.history.setFileTracking(fixture.projectId, "excluded.txt", false);
+    fixture.history.record(fixture.projectId, "user-1", "settings", []);
+    writeSource(fixture, "figure.pdf", "new PDF");
+    writeSource(fixture, "excluded.txt", "new text");
+    writeSource(fixture, "unrelated.png", "not affected");
+    const policy = fixture.history.trackingPolicy(fixture.projectId);
+    const checkpoint = fixture.history.checkpointForRestore(fixture.projectId, "user-1", version.id, filePath)!;
+    const manifest = fixture.history.manifest(fixture.projectId, checkpoint.id)!;
+    expect(manifest.files["figure.pdf"]).toBeDefined();
+    expect(Boolean(manifest.files["excluded.txt"])).toBe(filePath === undefined);
+    expect(manifest.files["unrelated.png"]).toBeUndefined();
+    expect(fixture.history.trackingPolicy(fixture.projectId)).toEqual(policy);
+    fixture.history.restore(fixture.projectId, version.id, filePath);
+    expect(fs.readFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"), "utf8")).toBe("old PDF");
+    fixture.history.restore(fixture.projectId, checkpoint.id, "figure.pdf");
+    expect(fs.readFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "figure.pdf"), "utf8")).toBe("new PDF");
+  });
+
+  it("starts a new autosave window after changing scope without rewriting an older snapshot", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const first = fixture.history.record(fixture.projectId, "user-1", "autosave")!;
+    fixture.history.setFileTracking(fixture.projectId, "chapters/intro.tex", false);
+    expect(fixture.history.record(fixture.projectId, "user-1", "file", ["chapters/intro.tex"])).toBeNull();
+    vi.setSystemTime(new Date("2026-01-01T00:00:10Z"));
+    writeSource(fixture, "main.tex", "new main");
+    const next = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])!;
+    expect(next.id).not.toBe(first.id);
+    expect(fixture.history.manifest(fixture.projectId, first.id)!.files["chapters/intro.tex"]).toBeDefined();
+    expect(fixture.history.manifest(fixture.projectId, next.id)!.files["chapters/intro.tex"]).toBeUndefined();
+  });
+
+  it("adopts text-only tracking without a false binary deletion and retains legacy full-tree restores", () => {
+    const fixture = createFixture();
+    writeSource(fixture, "figure.pdf", "old PDF");
+    fixture.history.setFileTracking(fixture.projectId, "figure.pdf", true);
+    const legacy = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    const manifest = fixture.history.manifest(fixture.projectId, legacy.id)!;
+    delete manifest.tracking;
+    fixture.db.prepare("UPDATE project_history_versions SET manifest_json = ? WHERE id = ?").run(JSON.stringify(manifest), legacy.id);
+    fixture.db.prepare("UPDATE project_history_state SET manifest_json = ? WHERE project_id = ?").run(JSON.stringify(manifest), fixture.projectId);
+    fixture.history.setFileTracking(fixture.projectId, "figure.pdf", null);
+    expect(fixture.history.record(fixture.projectId, "user-1", "file", ["figure.pdf"])).toBeNull();
+    writeSource(fixture, "main.tex", "new main");
+    const next = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"])!;
+    expect(next.changedPaths).toEqual(["main.tex"]);
+    expect(fixture.history.manifest(fixture.projectId, next.id)!.files["figure.pdf"]).toBeUndefined();
+    writeSource(fixture, "figure.pdf", "changed PDF");
+    writeSource(fixture, "extra.pdf", "new PDF");
+    const checkpoint = fixture.history.checkpointForRestore(fixture.projectId, "user-1", legacy.id)!;
+    expect(fixture.history.manifest(fixture.projectId, checkpoint.id)!.files["extra.pdf"]).toBeDefined();
+    fixture.history.restore(fixture.projectId, legacy.id);
+    const source = sourceRoot(fixture.config, fixture.projectId);
+    expect(fs.readFileSync(path.join(source, "figure.pdf"), "utf8")).toBe("old PDF");
+    expect(fs.existsSync(path.join(source, "extra.pdf"))).toBe(false);
+    fixture.history.restore(fixture.projectId, checkpoint.id);
+    expect(fs.readFileSync(path.join(source, "figure.pdf"), "utf8")).toBe("changed PDF");
+    expect(fs.readFileSync(path.join(source, "extra.pdf"), "utf8")).toBe("new PDF");
+  });
+
+  it("keeps exclusions across history clearing and exposes missing overrides for reset", () => {
+    const fixture = createFixture();
+    fixture.history.setFileTracking(fixture.projectId, "main.tex", false);
+    fixture.history.record(fixture.projectId, "user-1", "initial");
+    fixture.history.clear(fixture.projectId);
+    expect(fixture.history.trackedFiles(fixture.projectId)).toContainEqual(expect.objectContaining({ path: "main.tex", included: false, override: false }));
+    fs.rmSync(path.join(sourceRoot(fixture.config, fixture.projectId), "main.tex"));
+    expect(fixture.history.trackedFiles(fixture.projectId)).toContainEqual(expect.objectContaining({ path: "main.tex", missing: true, override: false }));
+    fixture.history.setFileTracking(fixture.projectId, "main.tex", null);
+    expect(fixture.history.trackedFiles(fixture.projectId).some((file) => file.path === "main.tex")).toBe(false);
   });
 
   it("coalesces different authors within one project window without attributing the snapshot to one author", () => {

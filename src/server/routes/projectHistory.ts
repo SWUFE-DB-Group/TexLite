@@ -111,6 +111,40 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     };
   });
 
+  app.get("/api/projects/:id/history/files", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    return await projectMutations.runFilesystemRead(id, () => ({ files: history.trackedFiles(id) }), {
+      preflight: () => { if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND"); }
+    });
+  });
+
+  app.patch("/api/projects/:id/history/files", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN");
+    const body = request.body as { path?: unknown; included?: unknown } | undefined;
+    if (typeof body?.path !== "string" || (body.included !== null && typeof body.included !== "boolean")) {
+      return apiError(reply, 400, "REQUEST_INVALID");
+    }
+    const filePath = safeRelativePath(body.path);
+    const included = body.included;
+    return await projectMutations.runWrite(id, () => {
+      // Commit the policy and its new baseline together. A failed snapshot
+      // must not leave a setting that the client was told could not be saved.
+      db.transaction(() => {
+        history.setFileTracking(id, filePath, included);
+        history.record(id, user.id, "file", [filePath], { deferRetention: true });
+      })();
+      context.scheduleHistoryRetention(id);
+      return { files: history.trackedFiles(id) };
+    }, { preflight: () => { requireEditableProject(db, id, user); } });
+  });
+
   app.get("/api/projects/:id/history/:versionId", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
@@ -121,6 +155,7 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     if (!version || !manifest) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND");
     return {
       version,
+      scoped: Boolean(manifest.tracking),
       settings: manifest.settings,
       files: [
         ...Object.entries(manifest.files).map(([filePath, file]) => ({ path: filePath, size: file.size })),
@@ -237,7 +272,7 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     return await projectMutations.runExclusive(id, "history restore", () => {
       const currentProject = requireEditableProject(db, id, user);
       history.assertSnapshotHash(id, versionId, snapshotHash);
-      recordHistory(id, user.id, "checkpoint");
+      history.checkpointForRestore(id, user.id, versionId, filePath);
       const before = projectTextSnapshot(config, id);
       const restored = history.restore(id, versionId, filePath);
       reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));

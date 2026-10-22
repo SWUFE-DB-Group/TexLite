@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  CheckCircle2, Clock3, FileClock, FileCode2, FileText, HardDrive,
+  CheckCircle2, Clock3, FileClock, FileCode2, FileText, HardDrive, ListChecks,
   LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Save, Tag, Trash2
 } from "lucide-react";
 import { ApiError, api } from "./api";
@@ -9,6 +9,7 @@ import { ConfirmDialog, Modal } from "./Dialog";
 import { formatCommitTime, formatVersionTitle, generateUnifiedDiff } from "./diff";
 import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
 import { isHistoryTextFile } from "../shared/historyFiles";
+import { HistoryFilesManager } from "./HistoryFilesManager";
 
 interface HistoryComparison {
   path: string;
@@ -44,6 +45,8 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState("");
+  const [manageFiles, setManageFiles] = useState(false);
+  const [trackingRevision, setTrackingRevision] = useState(0);
   const diffSectionRef = useRef<HTMLDivElement>(null);
   const olderPageAbortRef = useRef<AbortController | null>(null);
   const snapshotRefreshAbortRef = useRef<AbortController | null>(null);
@@ -61,6 +64,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
 
   useEffect(() => {
     if (!open) {
+      setManageFiles(false);
       snapshotRefreshAbortRef.current?.abort();
       snapshotRefreshAbortRef.current = null;
       if (retentionRefreshRef.current !== null) window.clearTimeout(retentionRefreshRef.current);
@@ -78,6 +82,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     setBusy("load"); setError(""); setComparison(null); setNextCursor(null); setLoadingOlder(false);
     void api<HistoryPage>(`/api/projects/${project.id}/history?limit=${HISTORY_PAGE_SIZE}`, { signal: controller.signal })
       .then((result) => {
+        if (controller.signal.aborted) return;
         setVersions(result.versions);
         setStats(result.stats);
         setNextCursor(result.nextCursor);
@@ -86,7 +91,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       .catch((reason) => { if (!isAbort(reason)) setError(message(reason)); })
       .finally(() => { if (!controller.signal.aborted) setBusy(""); });
     return () => controller.abort();
-  }, [open, project.id]);
+  }, [open, project.id, trackingRevision]);
 
   useEffect(() => () => {
     olderPageAbortRef.current?.abort();
@@ -378,6 +383,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   return <><Modal open={open} extraWide draggable className="history-dialog-modal" title={t("history.projectSnapshots")} description={t("history.description")} onOpenChange={onOpenChange}
     footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
     <div className="history-dialog">
+      {canRestore && <div className="history-tracking-toolbar"><button type="button" disabled={controlsBusy} onClick={() => setManageFiles(true)}><ListChecks size={14} />{t("history.manageFiles")}</button></div>}
       {error && <p className="error history-message">{error}</p>}
       {busy === "load" && versions.length === 0 ? <div className="history-loading"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div> : <div className="history-dialog-layout">
         <aside className="history-timeline">
@@ -530,8 +536,12 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         </section>
       </div>}
     </div>
-  </Modal><ConfirmDialog open={Boolean(restoreTarget)} title={restoreTarget === "project" ? t("history.restoreProjectTitle") : t("history.restoreFileTitle")}
-    description={restoreTarget === "project" ? t("history.restoreProjectDescription") : t("history.restoreFileDescription", { path: restoreTarget ?? "" })}
+  </Modal><HistoryFilesManager open={open && manageFiles} projectId={project.id} onOpenChange={setManageFiles} onSaved={() => {
+    setTrackingRevision((revision) => revision + 1);
+    setComparisonRevision((revision) => revision + 1);
+  }} />
+    <ConfirmDialog open={Boolean(restoreTarget)} title={restoreTarget === "project" ? t("history.restoreProjectTitle") : t("history.restoreFileTitle")}
+    description={restoreTarget === "project" ? t(detail?.scoped ? "history.restoreTrackedDescription" : "history.restoreProjectDescription") : t("history.restoreFileDescription", { path: restoreTarget ?? "" })}
     confirmLabel={t("history.restore")} danger onCancel={() => setRestoreTarget(null)} onConfirm={() => void restore()} />
     <ConfirmDialog open={Boolean(deleteTarget)} title={deleteTarget === "all" ? t("history.clearAllTitle") : t("history.deleteVersionTitle")}
       description={deleteTarget === "all" ? t("history.clearAllDescription") : t("history.deleteVersionDescription", { name: deleteTargetName })}
