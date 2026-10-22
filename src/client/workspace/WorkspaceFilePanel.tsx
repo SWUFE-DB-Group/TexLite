@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FileSearch, FolderOpen, FolderPlus, Hash, ListTree, LoaderCircle, Move, Trash2, Upload, WandSparkles, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type DragEvent, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type AnimationEvent, type ChangeEvent, type DragEvent, type RefObject } from "react";
 import { Panel, type PanelImperativeHandle } from "react-resizable-panels";
 import type { FileEntry, Project } from "../types";
 import type { WordCountMode, ProjectOutlineItem } from "./types";
@@ -9,6 +9,10 @@ import { buildOutlineTree, visibleOutlineTreeItems } from "./outlineTree";
 import { FileTypeIcon } from "../fileIcons";
 import type { UploadFeedback } from "./useProjectFiles";
 import { appPath } from "../basePath";
+import { captureDeletionHeight, FILE_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
+
+const fileKey = (entry: FileEntry) => entry.path;
+const containsDeletedPath = (root: string, path: string) => path === root || path.startsWith(`${root}/`);
 
 const INTERNAL_PATH_DRAG_MIME = "application/x-texlite-project-path";
 const INTERNAL_PATH_DRAG_PREFIX = "texlite-path:";
@@ -17,6 +21,7 @@ export interface WorkspaceFilePanelProps {
   project: Project;
   filesPanel: RefObject<PanelImperativeHandle | null>;
   visibleEntries: FileEntry[];
+  deletedPath?: string | null;
   activeFile: string;
   activeMainFile: string;
   selectedFile: string;
@@ -65,7 +70,7 @@ export interface WorkspaceFilePanelProps {
 }
 
 export function WorkspaceFilePanel({
-  project, filesPanel, visibleEntries, activeFile, activeMainFile, selectedFile, selectedFolder,
+  project, filesPanel, visibleEntries, deletedPath = null, activeFile, activeMainFile, selectedFile, selectedFolder,
   expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
   editorFontSize, outline, sourceCursorStore, wordCountBusy, hasSelection, hasFormatSelection, uploadInput,
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
@@ -77,6 +82,10 @@ export function WorkspaceFilePanel({
   const [showFileSizes, setShowFileSizes] = useState(false);
   const [draggedEntry, setDraggedEntry] = useState<FileEntry | null>(null);
   const [dropTargetFolder, setDropTargetFolder] = useState<string | null>(null);
+  const { entries: displayedEntries, finishExit } = useDeletionTransitions(visibleEntries, {
+    scopeKey: JSON.stringify([project.id, [...expandedFolders].sort()]),
+    deletedKey: deletedPath, keyOf: fileKey, contains: containsDeletedPath, duration: FILE_DELETION_DURATION_MS
+  });
   const suppressClickUntil = useRef(0);
   const canMoveToFolder = (source: FileEntry, destination: string) => parentFolder(source.path) !== destination
     && (source.type !== "directory" || (destination !== source.path && !destination.startsWith(`${source.path}/`)));
@@ -127,14 +136,21 @@ export function WorkspaceFilePanel({
             clearMoveDrag();
             if (canMoveToFolder(source, "")) void movePathToFolder(source, "");
           }}>
-          {visibleEntries.map((entry) => {
+          {displayedEntries.map(({ item: entry, removeAt }) => {
             const depth = entry.path.split("/").length - 1;
             const name = entry.path.split("/").at(-1);
             const expanded = expandedFolders.has(entry.path);
             const configuredMainDocument = project.mainFile === entry.path;
             const canDelete = entry.path !== project.mainFile && !project.mainFile.startsWith(`${entry.path}/`);
-            if (entry.type === "directory") return <div className={`file-entry folder-entry${selectedFolder === entry.path ? " selected" : ""}${dropTargetFolder === entry.path ? " move-drop-target" : ""}`} style={{ paddingLeft: `${depth * 13 + 5}px` }} key={entry.path} onDragOver={(event) => { if (!draggedEntry && !isInternalPathDrag(event.dataTransfer)) return; event.preventDefault(); event.stopPropagation(); if (!draggedEntry) return; if (!canMoveToFolder(draggedEntry, entry.path)) { event.dataTransfer.dropEffect = "none"; return; } event.dataTransfer.dropEffect = "move"; setDropTargetFolder(entry.path); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTargetFolder((current) => current === entry.path ? null : current); }} onDrop={(event) => { if (!draggedEntry && !isInternalPathDrag(event.dataTransfer)) return; event.preventDefault(); event.stopPropagation(); if (!draggedEntry) return; const source = draggedEntry; clearMoveDrag(); if (canMoveToFolder(source, entry.path)) void movePathToFolder(source, entry.path); }}><button type="button" className="file-entry-main" onClick={() => { setSelectedFolder(entry.path); setExpandedFolders((current) => { const next = new Set(current); if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path); return next; }); }}>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<FolderOpen size={14} /><span>{name}</span></button>{!readOnly && <><button type="button" className="file-entry-action" data-texlite-tooltip-always title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>{canDelete && <button type="button" className="file-entry-action danger-text" title={t("editor.deletePath")} aria-label={t("editor.deletePath")} onClick={() => { setDeleteEntry(entry); setFileDialogError(""); }}><Trash2 size={13} /></button>}</>}</div>;
-            return <div className={`file-entry${selectedFolder === null && selectedFile === entry.path ? " active" : ""}${draggedEntry?.path === entry.path ? " move-drag-source" : ""}`} style={{ paddingLeft: `${depth * 13 + 18}px` }} key={entry.path}>
+            const transition = {
+              ref: removeAt !== null ? captureDeletionHeight : undefined,
+              inert: removeAt !== null ? true : undefined,
+              "aria-hidden": removeAt !== null ? true : undefined,
+              "data-deletion-exit": removeAt !== null ? true : undefined,
+              onAnimationEnd: (event: AnimationEvent<HTMLDivElement>) => { if (event.target === event.currentTarget && removeAt !== null) finishExit(entry.path); }
+            };
+            if (entry.type === "directory") return <div {...transition} className={`file-entry folder-entry${selectedFolder === entry.path ? " selected" : ""}${dropTargetFolder === entry.path ? " move-drop-target" : ""}`} style={{ paddingLeft: `${depth * 13 + 5}px` }} key={entry.path} onDragOver={(event) => { if (!draggedEntry && !isInternalPathDrag(event.dataTransfer)) return; event.preventDefault(); event.stopPropagation(); if (!draggedEntry) return; if (!canMoveToFolder(draggedEntry, entry.path)) { event.dataTransfer.dropEffect = "none"; return; } event.dataTransfer.dropEffect = "move"; setDropTargetFolder(entry.path); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTargetFolder((current) => current === entry.path ? null : current); }} onDrop={(event) => { if (!draggedEntry && !isInternalPathDrag(event.dataTransfer)) return; event.preventDefault(); event.stopPropagation(); if (!draggedEntry) return; const source = draggedEntry; clearMoveDrag(); if (canMoveToFolder(source, entry.path)) void movePathToFolder(source, entry.path); }}><button type="button" className="file-entry-main" onClick={() => { setSelectedFolder(entry.path); setExpandedFolders((current) => { const next = new Set(current); if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path); return next; }); }}>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<FolderOpen size={14} /><span>{name}</span></button>{!readOnly && <><button type="button" className="file-entry-action" data-texlite-tooltip-always title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>{canDelete && <button type="button" className="file-entry-action danger-text" title={t("editor.deletePath")} aria-label={t("editor.deletePath")} onClick={() => { setDeleteEntry(entry); setFileDialogError(""); }}><Trash2 size={13} /></button>}</>}</div>;
+            return <div {...transition} className={`file-entry${selectedFolder === null && selectedFile === entry.path ? " active" : ""}${draggedEntry?.path === entry.path ? " move-drag-source" : ""}`} style={{ paddingLeft: `${depth * 13 + 18}px` }} key={entry.path}>
               <button type="button" className="file-entry-main" draggable={!readOnly} onDragStart={(event) => { suppressClickUntil.current = Date.now() + 500; startPathDrag(event, entry, setDraggedEntry); }} onDragEnd={clearMoveDrag} onClick={() => { if (suppressClickUntil.current > Date.now()) { suppressClickUntil.current = 0; return; } openFile(entry); }}><FileTypeIcon path={entry.path} /><span>{name}</span>{configuredMainDocument && <small>{t("editor.currentMainShort")}</small>}</button>
               {showFileSizes && typeof entry.size === "number" && <span className="file-entry-size">{formatFileSize(entry.size)}</span>}
               {!readOnly && <button type="button" className="file-entry-action" data-texlite-tooltip-always title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>}

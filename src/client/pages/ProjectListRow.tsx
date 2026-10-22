@@ -3,11 +3,14 @@ import { AtSign, MessageSquare } from "lucide-react";
 import { ProjectIconAvatar } from "../projectIcons";
 import type { Project, User } from "../types";
 import { ProjectActionMenu } from "./ProjectActionMenu";
+import { captureDeletionHeight } from "../useDeletionTransitions";
 
 export { projectInitial } from "../projectIcons";
 
 export function ProjectListRow({
   project,
+  removing = false,
+  onRemovalEnd,
   currentUser,
   showArchived,
   archiveBusy,
@@ -29,6 +32,8 @@ export function ProjectListRow({
   onChooseIcon
 }: {
   project: Project;
+  removing?: boolean;
+  onRemovalEnd?: () => void;
   currentUser: User;
   showArchived: boolean;
   archiveBusy: boolean;
@@ -53,7 +58,11 @@ export function ProjectListRow({
   const modifiedBy = project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser");
 
   return <article
-    className={`project-card project-list-row${project.ownerId === currentUser.id ? " owned-project" : ""}${menuOpen ? " project-list-menu-open" : ""}`}
+    ref={removing ? captureDeletionHeight : undefined}
+    inert={removing ? true : undefined}
+    aria-hidden={removing ? true : undefined}
+    className={`project-card project-list-row${project.ownerId === currentUser.id ? " owned-project" : ""}${menuOpen ? " project-list-menu-open" : ""}${removing ? " deletion-exit" : ""}`}
+    onAnimationEnd={(event) => { if (event.target === event.currentTarget && removing) onRemovalEnd?.(); }}
     onClick={(event) => { if (event.target === event.currentTarget) onOpenProject(); }}
   >
     <ProjectIconAvatar

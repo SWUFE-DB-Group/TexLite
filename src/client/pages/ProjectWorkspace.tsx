@@ -1419,6 +1419,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     <Group orientation="horizontal" className="work-grid" {...panelLayout}>
       {showEditor && <WorkspaceFilePanel
         project={project} filesPanel={filesPanel} visibleEntries={visibleEntries}
+        deletedPath={filesEvent?.kind === "delete" ? filesEvent.path : null}
         activeFile={activeFile} activeMainFile={activeMainFile} selectedFile={selectedFile}
         selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
         uploadingFiles={uploadingFiles} uploadFeedback={uploadFeedback} readOnly={readOnly} formatting={formatting}

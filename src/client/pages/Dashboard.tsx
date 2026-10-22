@@ -15,6 +15,9 @@ import { ProjectIconAvatar } from "../projectIcons";
 import { LazyModal, LazyPage } from "../LazyLoadBoundary";
 import { appPath, scopedStorageKey } from "../basePath";
 import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
+import { captureDeletionHeight, PROJECT_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
+
+const projectKey = (project: Project) => project.id;
 
 const SystemMetricsDialog = lazy(() => import("../SystemMetricsDialog").then((module) => ({ default: module.SystemMetricsDialog })));
 const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then((module) => ({ default: module.CitationLibraryDialog })));
@@ -83,6 +86,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [duplicating, setDuplicating] = useState(false);
   const [deleteProject, setDeleteProject] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deletedProjectId, setDeletedProjectId] = useState<string | null>(null);
   const [transferProject, setTransferProject] = useState<Project | null>(null);
   const [transferUsers, setTransferUsers] = useState<Array<{ id: string; username: string; displayName?: string }>>([]);
   const [transferUserId, setTransferUserId] = useState("");
@@ -101,6 +105,10 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const requestKey = (archived: boolean, pageNumber: number, search: string, tag: string, order: "updated" | "created") =>
     `${archived ? "archived" : "active"}|${pageNumber}|${search}|${tag}|${order}`;
   const currentRequestKey = requestKey(showArchived, page, query, tagFilter, sort);
+  const { entries: displayedProjects, finishExit } = useDeletionTransitions(projects, {
+    scopeKey: `${currentRequestKey}|${view}|${adminOpen}|${citationLibraryOpen}`,
+    deletedKey: deletedProjectId, keyOf: projectKey, duration: PROJECT_DELETION_DURATION_MS
+  });
   const load = (archived: boolean, pageNumber: number, search: string, tag: string, order: "updated" | "created") => {
     const params = new URLSearchParams({ page: String(pageNumber), pageSize: "20", sort: order });
     if (archived) params.set("archived", "1");
@@ -281,6 +289,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     setDeleteError("");
     try {
       await api(`/api/projects/${deleteProject.id}`, { method: "DELETE" });
+      setDeletedProjectId(deleteProject.id);
       setProjects((current) => current.filter((project) => project.id !== deleteProject.id));
       const nextTotal = Math.max(0, pagination.total - 1);
       const nextTotalPages = Math.ceil(nextTotal / pagination.pageSize);
@@ -351,7 +360,6 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     }
   };
 
-  const filtered = projects;
   const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
   const formatProjectCreatedDate = (value: string) => {
     const date = new Date(value);
@@ -404,7 +412,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
         <div className="project-catalog-content">
           <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="tablist" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} role="tab" aria-selected={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} role="tab" aria-selected={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
       <div className={`project-grid ${view === "list" ? "list-view" : ""}${projectMenuId ? " project-list-menu-active" : ""}`}>
-        {view === "list" && filtered.length > 0 && <div className="project-list-header" aria-hidden="true">
+        {view === "list" && displayedProjects.length > 0 && <div className="project-list-header" aria-hidden="true">
           <span className="project-list-header-avatar" />
           <span>{t("projects.title")}</span>
           <span>{t("projects.owner")}</span>
@@ -414,9 +422,11 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
           <span className="project-list-header-actions">{t("projects.actions")}</span>
         </div>}
         {view === "list"
-          ? filtered.map((project) => <ProjectListRow
+          ? displayedProjects.map(({ item: project, removeAt }) => <ProjectListRow
             key={project.id}
             project={project}
+            removing={removeAt !== null}
+            onRemovalEnd={() => finishExit(project.id)}
             currentUser={user}
             showArchived={showArchived}
             archiveBusy={archiveBusy === project.id}
@@ -437,9 +447,13 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             onDelete={() => { setDeleteProject(project); setDeleteError(""); }}
             onChooseIcon={() => setProjectIconTarget(project)}
           />)
-          : filtered.map((project) => <article
+          : displayedProjects.map(({ item: project, removeAt }) => <article
             key={project.id}
-            className={`project-card project-grid-card${project.ownerId === user.id ? " owned-project" : ""}${projectMenuId === project.id ? " project-card-menu-open" : ""}`}
+            ref={removeAt !== null ? captureDeletionHeight : undefined}
+            inert={removeAt !== null ? true : undefined}
+            aria-hidden={removeAt !== null ? true : undefined}
+            className={`project-card project-grid-card${project.ownerId === user.id ? " owned-project" : ""}${projectMenuId === project.id ? " project-card-menu-open" : ""}${removeAt !== null ? " deletion-exit" : ""}`}
+            onAnimationEnd={(event) => { if (event.target === event.currentTarget && removeAt !== null) finishExit(project.id); }}
             role="button"
             tabIndex={0}
             aria-label={t("projects.openProject", { project: project.name })}
@@ -496,7 +510,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
               <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={formatTime(project.updatedAt)}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
             </dl>
           </article>)}
-        {filtered.length === 0 && (projects.length === 0
+        {displayedProjects.length === 0 && (projects.length === 0
           ? showArchived ? <div className="project-empty project-empty-archived">
               <span className="project-empty-icon"><Archive aria-hidden="true" size={25} strokeWidth={1.5} /></span>
               <h2>{t("projects.noArchived")}</h2>

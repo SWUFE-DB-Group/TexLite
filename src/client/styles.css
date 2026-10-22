@@ -178,6 +178,16 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .view-toggle { display: flex; gap: 2px; margin-left: auto; }
 .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .project-card { position: relative; text-align: left; background: var(--ui-surface, white); border: 1px solid var(--ui-border, #dfe2de); border-radius: 11px; transition: .15s ease; }
+.project-card.deletion-exit, .file-entry[data-deletion-exit] { overflow: hidden !important; pointer-events: none; animation: deletion-collapse var(--deletion-duration, 250ms) cubic-bezier(.4, 0, .2, 1) both; }
+.file-entry[data-deletion-exit] { --deletion-duration: 180ms; }
+@keyframes deletion-collapse {
+  0% { max-height: var(--deletion-height, 10000px); opacity: 1; transform: translateY(0); }
+  40% { opacity: .25; }
+  100% { min-height: 0; max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; margin-bottom: 0; border-top-width: 0; border-bottom-width: 0; transform: translateY(3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-card.deletion-exit, .file-entry[data-deletion-exit] { animation-duration: 1ms; }
+}
 .project-grid:not(.list-view) .project-grid-card { min-height: 220px; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; padding: 15px 16px 16px; overflow: visible; cursor: pointer; }
 .project-grid:not(.list-view) .project-grid-card:hover { border-color: var(--ui-accent-border, #8bae9a); background: var(--ui-hover, #fcfefc); transform: translateY(-2px); box-shadow: 0 10px 30px #25352a10; }
 .project-grid:not(.list-view) .project-grid-card:focus-visible { outline: 3px solid var(--ui-focus-ring, #176b4455); outline-offset: 2px; }
