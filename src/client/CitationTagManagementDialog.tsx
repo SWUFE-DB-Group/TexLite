@@ -4,9 +4,8 @@ import { Check, LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
 import { api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { errorMessage } from "./errors";
+import { TagColorSelect } from "./TagColorSelect";
 import type { CitationLibraryTag, TagColor } from "./types";
-
-const colors: TagColor[] = ["red", "orange", "yellow", "green", "blue", "purple", "gray"];
 
 export function CitationTagManagementDialog({ tags, onClose, onUpdated, onDeleted }: {
   tags: CitationLibraryTag[];
@@ -61,7 +60,6 @@ export function CitationTagManagementDialog({ tags, onClose, onUpdated, onDelete
     finally { setBusy(false); }
   };
 
-  const colorOptions = colors.map((value) => <option key={value} value={value}>{t(`tags.${value}`)}</option>);
   return <><Modal open wide className="tag-management-modal" title={t("citationTagManagement.title")} description={t("citationTagManagement.description")} onOpenChange={(open) => { if (!open && !busy) onClose(); }} footer={<button disabled={busy} onClick={onClose}>{t("common.close")}</button>}>
     <div className="tag-management">
       {error && <p className="error dialog-error" role="alert">{error}</p>}
@@ -69,7 +67,7 @@ export function CitationTagManagementDialog({ tags, onClose, onUpdated, onDelete
       <fieldset disabled={busy} className="citation-tag-management-fields">
         <form className="tag-management-create" onSubmit={(event) => { event.preventDefault(); void save(); }}>
           <label className="tag-management-field"><span>{t("tags.name")}</span><input autoFocus maxLength={32} value={name} placeholder={t("citationLibrary.newTagPlaceholder")} onChange={(event) => setName(event.target.value)} /></label>
-          <label className="tag-management-field tag-management-color"><span>{t("tags.color")}</span><select value={color} onChange={(event) => setColor(event.target.value as TagColor)}>{colorOptions}</select></label>
+          <label className="tag-management-field tag-management-color"><span>{t("tags.color")}</span><TagColorSelect value={color} onChange={setColor} disabled={busy} /></label>
           <button type="submit" className="primary" disabled={!name.trim()}>{busy ? <LoaderCircle className="spin" size={14} /> : <Plus size={14} />}{t("citationLibrary.createTag")}</button>
         </form>
         {tags.length === 0 ? <p className="tag-management-empty">{t("citationLibrary.noTags")}</p> : <div className="tag-management-list">{tags.map((tag) => <article key={tag.id} className={`tag-management-item${editing?.id === tag.id ? " editing" : ""}`}>
@@ -80,7 +78,7 @@ export function CitationTagManagementDialog({ tags, onClose, onUpdated, onDelete
           </div>
           {editing?.id === tag.id && <form className="tag-management-edit" onSubmit={(event) => { event.preventDefault(); void save(tag); }}>
             <label className="tag-management-field"><span>{t("tags.rename")}</span><input maxLength={32} value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
-            <label className="tag-management-field tag-management-color"><span>{t("tags.color")}</span><select value={editColor} onChange={(event) => setEditColor(event.target.value as TagColor)}>{colorOptions}</select></label>
+            <label className="tag-management-field tag-management-color"><span>{t("tags.color")}</span><TagColorSelect value={editColor} onChange={setEditColor} disabled={busy} /></label>
             <div className="tag-management-edit-actions"><button type="button" onClick={() => { setEditing(null); setError(""); }}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={!editName.trim()}><Check size={14} />{t("common.save")}</button></div>
           </form>}
         </article>)}</div>}

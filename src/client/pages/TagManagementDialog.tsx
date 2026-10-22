@@ -4,13 +4,12 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
+import { TagColorSelect } from "../TagColorSelect";
 import type { ProjectTag, TagColor } from "../types";
 
 export interface ManagedProjectTag extends ProjectTag {
   projectCount: number;
 }
-
-const tagColors: TagColor[] = ["red", "orange", "yellow", "green", "blue", "purple", "gray"];
 
 function sortTags<T extends ProjectTag>(tags: T[]): T[] {
   return [...tags].sort((left, right) => left.name.localeCompare(right.name));
@@ -152,9 +151,7 @@ export function TagManagementDialog({
         </label>
         <label className="tag-management-field tag-management-color">
           <span>{t("tags.color")}</span>
-          <select value={newColor} onChange={(event) => setNewColor(event.target.value as TagColor)}>
-            {tagColors.map((color) => <option key={color} value={color}>{t(`tags.${color}`)}</option>)}
-          </select>
+          <TagColorSelect value={newColor} onChange={setNewColor} disabled={creating} />
         </label>
         <button type="button" className="primary" disabled={!newName.trim() || creating} aria-busy={creating} onClick={() => void createTag()}>
           {creating ? <LoaderCircle className="spin" size={14} /> : <Plus aria-hidden size={14} />}
@@ -192,9 +189,7 @@ export function TagManagementDialog({
                   </label>
                   <label className="tag-management-field tag-management-color">
                     <span>{t("tags.color")}</span>
-                    <select value={editingColor} onChange={(event) => { setEditingColor(event.target.value as TagColor); setError(""); }}>
-                      {tagColors.map((color) => <option key={color} value={color}>{t(`tags.${color}`)}</option>)}
-                    </select>
+                    <TagColorSelect value={editingColor} onChange={(color) => { setEditingColor(color); setError(""); }} disabled={saving} />
                   </label>
                   <div className="tag-management-edit-actions">
                     <button type="button" disabled={saving} onClick={() => { setEditingId(null); setError(""); }}><X aria-hidden size={14} />{t("common.cancel")}</button>
