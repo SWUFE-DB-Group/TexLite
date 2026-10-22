@@ -135,29 +135,38 @@ describe("comment reading and actions", () => {
     expect(host.querySelector(".reply-action")?.textContent).toBe("Reply…");
   });
 
-  it.each([false, true])("plays the deletion effect only after a successful request (success=%s)", async (success) => {
-    props.currentUserId = "author";
+  it.each([[false, "comment"], [true, "comment"], [false, "reply"], [true, "reply"]] as const)("plays the deletion effect only after success (success=%s, target=%s)", async (success, kind) => {
+    props.currentUserId = kind === "reply" ? "reader" : "author";
     let finish!: (deleted: boolean) => void;
-    props.onDelete = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    const remove = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    if (kind === "reply") props.onDeleteReply = remove;
+    else props.onDelete = remove;
     await render();
-    const article = host.querySelector<HTMLElement>(".comment-thread")!;
-    vi.spyOn(article, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 50, 240, 150));
-    const menu = host.querySelector<HTMLButtonElement>(".comment-header .comment-actions-menu-trigger")!;
+    const article = host.querySelector<HTMLElement>(kind === "reply" ? ".comment-reply" : ".comment-thread")!;
+    const rect = kind === "reply" ? new DOMRect(80, 120, 190, 70) : new DOMRect(50, 50, 240, 150);
+    vi.spyOn(article, "getBoundingClientRect").mockReturnValue(rect);
+    const menu = article.querySelector<HTMLButtonElement>(".comment-actions-menu-trigger")!;
     await act(async () => menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    const deleteAction = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "Delete comment")!;
+    const deleteAction = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === (kind === "reply" ? "Delete reply" : "Delete comment"))!;
     await act(async () => deleteAction.click());
     const confirm = document.querySelector<HTMLButtonElement>(".dialog-footer .danger")!;
-    expect(document.querySelector(".dialog-header p")?.textContent).toBe("Delete this comment and its replies? This cannot be undone.");
+    expect(document.querySelector(".dialog-header p")?.textContent).toBe(kind === "reply" ? "Delete this reply? This cannot be undone." : "Delete this comment and its replies? This cannot be undone.");
     await act(async () => confirm.click());
     expect(confirm.disabled).toBe(true);
     await act(async () => confirm.click());
-    expect(props.onDelete).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    if (kind === "reply") expect(remove).toHaveBeenCalledWith("reply");
     expect(document.querySelector(".comment-paper-shred")).toBeNull();
     await act(async () => finish(success));
     expect(Boolean(document.querySelector(".comment-paper-shred"))).toBe(success);
     expect(Boolean(document.querySelector(".dialog-content"))).toBe(!success);
     if (!success) expect(document.querySelector('.dialog-content [class~="dialog-error"]')?.textContent).toBe(i18n.t("editor.commentDeleteFailed"));
-    if (success) document.querySelector(".comment-paper-shred")!.dispatchEvent(new Event("animationend"));
+    if (success) {
+      const layer = document.querySelector<HTMLElement>(".comment-paper-shred")!;
+      expect(layer.style.left).toBe(`${rect.left}px`);
+      expect(layer.style.width).toBe(`${rect.width}px`);
+      layer.dispatchEvent(new Event("animationend"));
+    }
   });
 
   it("keeps a thrown deletion error inside the confirmation dialog", async () => {
