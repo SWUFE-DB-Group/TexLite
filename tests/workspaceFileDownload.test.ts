@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { WorkspaceFilePanel, type WorkspaceFilePanelProps } from "../src/client/workspace/WorkspaceFilePanel";
 import { createSourceCursorStore } from "../src/client/workspace/sourceCursorStore";
-import "../src/client/i18n";
+import i18n from "../src/client/i18n";
 
 vi.mock("react-resizable-panels", () => ({
   Panel: ({ children }: { children: ReactNode }) => createElement("section", null, children)
@@ -34,6 +34,17 @@ function render(readOnly = false): string {
 }
 
 describe("file tree downloads", () => {
+  it("lets file and folder move tooltips follow the workspace preference", () => {
+    const moveButtons = [...render().matchAll(/<button\b[^>]*>.*?<\/button>/g)]
+      .map(([button]) => button).filter((button) => button.includes("lucide-move"));
+    expect(moveButtons).toHaveLength(3);
+    for (const button of moveButtons) {
+      expect(button).not.toContain("data-texlite-tooltip-always");
+      expect(button).toContain(`title="${i18n.t("editor.move")}"`);
+      expect(button).toContain(`aria-label="${i18n.t("editor.move")}"`);
+    }
+  });
+
   it("places file downloads between move and delete without adding a folder download", () => {
     const html = render();
     const rows = [...html.matchAll(/<div class="file-entry(?: [^"]*)?"[^>]*>(.*?)<\/div>/g)].map((match) => match[1]);

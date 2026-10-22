@@ -27,7 +27,6 @@ class SelectionActionsMarker extends GutterMarker {
       const button = document.createElement("button");
       button.type = "button";
       button.className = `cm-selection-action-button cm-selection-${action.name}`;
-      button.dataset.texliteTooltipAlways = "true";
       button.title = action.label;
       button.setAttribute("aria-label", action.label);
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");

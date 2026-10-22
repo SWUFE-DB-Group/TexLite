@@ -53,13 +53,13 @@ describe("selection line actions", () => {
     expect(marker(state).size).toBe(0);
   });
 
-  it("creates distinct, labelled controls with always-enabled tooltips", () => {
+  it("creates distinct, labelled controls that respect the workspace tooltip preference", () => {
     const view = { state: fixture().state.update({ selection: { anchor: 0, head: 5 } }).state };
     const buttons = actionButtons(view);
     expect(buttons).toHaveLength(2);
     expect(buttons.map(button => button.title)).toEqual(["Add comment", "Selection history"]);
     expect(buttons.map(button => button.attributes["aria-label"])).toEqual(["Add comment", "Selection history"]);
-    expect(buttons.every(button => button.dataset.texliteTooltipAlways === "true")).toBe(true);
+    expect(buttons.every(button => button.dataset.texliteTooltipAlways === undefined)).toBe(true);
     const down = new Event("mousedown", { cancelable: true });
     buttons[1]!.handlers.mousedown!(down);
     expect(down.defaultPrevented).toBe(true);
