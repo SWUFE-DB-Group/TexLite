@@ -46,6 +46,12 @@ export function toLatexIncludeDirective(reference: LatexPathReference): LatexInc
   };
 }
 
+/** Reading-order consumers cannot expand macros or parameterized TeX paths. */
+export function isStaticLatexInclude(directive: LatexIncludeDirective): boolean {
+  return !/[\\#]/.test(directive.path)
+    && (directive.directory === undefined || !/[\\#]/.test(directive.directory));
+}
+
 /** Return the selected root followed by its reachable \input-style sources. */
 export function documentSourceOrder(
   sources: ReadonlyMap<string, LatexDocumentDirectives>,

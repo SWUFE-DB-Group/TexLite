@@ -218,6 +218,8 @@ export interface Comment {
   id: string;
   /** Project-relative source path. Present for both file and project comment queries. */
   filePath: string;
+  /** Response-only manuscript position, provided by project-wide comment reads. */
+  sourceOrder?: number;
   authorId: string | null;
   authorUsername: string | null;
   authorDisplayName: string | null;

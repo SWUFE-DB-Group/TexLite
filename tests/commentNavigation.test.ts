@@ -148,6 +148,28 @@ describe("comment review navigation", () => {
     expect(sortReviewComments([older, { ...older, id: "same-time" }], "time").map((item) => item.id)).toEqual(["older", "same-time"]);
   });
 
+  it("preserves expanded manuscript order through filtering and cross-file previous/next navigation", () => {
+    const source = [
+      { ...comment("after", "main.tex"), startLine: 8, startOffset: 80, sourceOrder: 3 },
+      { ...comment("chapter", "z-intro.tex"), sourceOrder: 1 },
+      { ...comment("before", "main.tex"), sourceOrder: 0, createdAt: "2026-03-01T00:00:00Z" },
+      { ...comment("resolved", "a-method.tex", true), sourceOrder: 2 },
+      { ...comment("fallback", "aaa-unreferenced.tex"), sourceOrder: 4 }
+    ];
+    const options = { activeFile: "main.tex", scope: "project" as const, filter: "unresolved" as const, unreadMentions: [] };
+    for (const activeFile of ["main.tex", "z-intro.tex", "aaa-unreferenced.tex"]) {
+      const queue = buildVisibleReviewQueue(source, { ...options, activeFile });
+      expect(queue.map(({ id }) => id)).toEqual(["before", "chapter", "after", "fallback"]);
+      expect(adjacentReviewComment(queue, "before", 1)?.id).toBe("chapter");
+      expect(adjacentReviewComment(queue, "after", -1)?.id).toBe("chapter");
+      expect(commentReviewPosition(queue, "after")).toBe(3);
+    }
+    expect(buildVisibleReviewQueue(source, { ...options, unreadMentionsOnly: true,
+      unreadMentions: [mention("before"), mention("after")] }).map(({ id }) => id)).toEqual(["before", "after"]);
+    expect(sortReviewComments(source, "time")[0].id).toBe("before");
+    expect(source.map(({ id }) => id)).toEqual(["after", "chapter", "before", "resolved", "fallback"]);
+  });
+
   it("matches multiple participants in roots or replies, with root-only opt-in", () => {
     const thread = { ...comment("thread", "main.tex"), replies: [
       { id: "reply", authorId: "reader", authorUsername: "reader", authorDisplayName: "Reader",

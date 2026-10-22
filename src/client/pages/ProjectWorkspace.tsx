@@ -1060,6 +1060,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     content,
     permission: project?.permission,
     revision: commentsRevision,
+    sourceOrderRevision: `${project?.mainFile ?? ""}\0${filesEvent?.revision ?? ""}`,
     selection,
     save,
     saveFailureMessage: t("errors.collaborationUnavailable"),

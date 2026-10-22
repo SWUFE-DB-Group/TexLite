@@ -7,6 +7,7 @@ import { listProjectFiles, resolveSourcePath } from "../files.js";
 import { httpError, ValidationError } from "../http.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { isTextContent } from "../../shared/fileTypes.js";
+import { sortProjectCommentsBySource } from "../commentSourceOrder.js";
 
 export const now = (): string => new Date().toISOString();
 export function escapeLikePattern(value: string): string {
@@ -261,8 +262,8 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
   const hasFileScope = typeof filePath === "string";
   const fileClause = hasFileScope ? " AND c.file_path = ?" : "";
   // File-scoped reads retain chronological order for backwards compatibility.
-  // A project review is grouped by file and source position so next/previous
-  // follows the manuscript rather than arbitrary database insertion order.
+  // Project review receives its expanded manuscript order after mapping rows.
+  // This is a deterministic fallback, not the document's include order.
   const commentOrder = hasFileScope
     ? "c.created_at"
     : "c.file_path COLLATE NOCASE, c.start_line, c.created_at";
@@ -272,9 +273,8 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     LEFT JOIN users resolver ON resolver.id = c.resolved_by
     WHERE c.project_id = ?${fileClause} ORDER BY ${commentOrder}`)
     .all(projectId, ...(hasFileScope ? [filePath] : [])) as unknown as CommentRow[];
-  if (!rows.length) return [];
-
   const sourceByPath = new Map<string, string>();
+  if (!rows.length) return { comments: [], sourceByPath };
   for (const row of rows) {
     if (sourceByPath.has(row.file_path)) continue;
     const absolute = resolveSourcePath(config, projectId, row.file_path);
@@ -317,7 +317,7 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     replyMap.set(reply.comment_id, list);
   }
 
-  return rows.map((comment) => ({
+  const comments = rows.map((comment) => ({
     id: comment.id,
     filePath: comment.file_path,
     authorId: comment.author_id,
@@ -343,14 +343,17 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     editedAt: comment.edited_at,
     replies: replyMap.get(comment.id) ?? []
   }));
+  return { comments, sourceByPath };
 }
 
 /** Comments anchored in one source file, used for editor decorations. */
 export function commentsForFile(db: DatabaseConnection, config: Config, projectId: string, filePath: string) {
-  return commentsForScope(db, config, projectId, filePath);
+  return commentsForScope(db, config, projectId, filePath).comments;
 }
 
-/** All project comments, grouped in manuscript order for the review drawer. */
-export function commentsForProject(db: DatabaseConnection, config: Config, projectId: string) {
-  return commentsForScope(db, config, projectId);
+/** All project comments in the configured root's expanded reading order. */
+export async function commentsForProject(db: DatabaseConnection, config: Config, projectId: string) {
+  const { comments, sourceByPath } = commentsForScope(db, config, projectId);
+  const project = db.prepare("SELECT main_file FROM projects WHERE id = ?").get(projectId) as { main_file: string } | undefined;
+  return sortProjectCommentsBySource(config, projectId, project?.main_file ?? "", comments, sourceByPath);
 }

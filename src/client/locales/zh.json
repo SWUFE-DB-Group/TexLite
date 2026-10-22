@@ -200,6 +200,7 @@
     "replyActions": "回复操作",
     "commentSort": "排序",
     "commentSortSource": "按源码位置排序，从上到下。",
+    "commentSortSourceProject": "按设置中的主文档及其引用文件的阅读顺序排列，其他文件放在最后。",
     "commentSortTime": "按批注创建时间倒序排序，最新的在前。",
     "commentParticipants": "参与人",
     "commentParticipantsAll": "所有人",

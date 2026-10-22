@@ -204,6 +204,7 @@
     "replyActions": "Reply actions",
     "commentSort": "Sort",
     "commentSortSource": "Source order, from top to bottom.",
+    "commentSortSourceProject": "Reading order of the configured main document and its included files. Other files appear last.",
     "commentSortTime": "Newest comments first, by creation time.",
     "commentParticipants": "Participants",
     "commentParticipantsAll": "Everyone",

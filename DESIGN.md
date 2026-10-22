@@ -337,8 +337,23 @@ cached contents instead. Source-navigation readiness requires a successful
 load; loading and error states are separate, so a failure never leaves an
 indefinite loading indicator. Full file review uses the same error handling.
 
-The full comment drawer sorts top-level threads by source position by default
-(file path, then position within that file), or by creation time, newest first.
+The full comment drawer sorts top-level threads by source position by default,
+or by creation time, newest first. Project review follows the configured main
+document's expanded reading order: notes before an `\input`/`\include`, notes
+inside that source (recursively), then notes after the include. Static subfile
+and import-package paths share the outline's path resolution. Each file uses
+its first occurrence; cycles are ignored. Files outside the graph, missing
+sources and work beyond the bounded scan fall back to file path and source
+position after the reachable discussions. The additional include-order scan
+visits at most 200 files, parses files up to 3 MiB and processes at most 32 MiB
+of source; it reuses contents already read to calculate comment line numbers.
+It does not expand macros or evaluate TeX conditionals. Response-only ranks
+preserve this order through local filters and previous/next navigation; no
+database or anchor changes are needed. Switching editor files does not change
+the root, while changing the configured main document notifies open reviewers.
+Tree/settings changes also reload an open project review, with obsolete
+requests cancelled; merely switching editor tabs does not reload that resource.
+File review still sorts within the current file; time sorting remains global.
 Replies keep their original chronological order. Long inactive
 discussions initially show only the latest two replies with an earlier-replies
 toggle. Explicit expand/collapse choices are kept locally by thread id for the

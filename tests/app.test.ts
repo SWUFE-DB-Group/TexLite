@@ -1720,6 +1720,72 @@ Second version.
     expect(conflictingScope.json()).toMatchObject({ code: "REQUEST_INVALID" });
   });
 
+  it("orders project comments by the configured root's expanded source and updates that order after root changes", async () => {
+    const project = (await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Manuscript comment order" }
+    })).json().project as { id: string };
+    const sources = new Map([
+      ["main.tex", "\\documentclass{article}\nRoot before\n\\input{z-intro}\nRoot middle\n\\include{a-method}\nRoot after\n"],
+      ["alternate.tex", "\\documentclass{article}\n\\input{a-method}\n\\input{z-intro}\n"],
+      ["z-intro.tex", "Intro before\n\\input{nested}\nIntro after\n"],
+      ["nested.tex", "Nested note\n"], ["a-method.tex", "Method note\n"], ["aaa-orphan.tex", "Unreferenced note\n"]
+    ]);
+    for (const [filePath, content] of sources) {
+      expect((await app.inject({
+        method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie }, payload: { path: filePath, content }
+      })).statusCode).toBe(200);
+    }
+    const notes = [
+      ["main.tex", "Root before"], ["z-intro.tex", "Intro before"], ["nested.tex", "Nested note"],
+      ["z-intro.tex", "Intro after"], ["main.tex", "Root middle"], ["a-method.tex", "Method note"],
+      ["main.tex", "Root after"], ["aaa-orphan.tex", "Unreferenced note"]
+    ];
+    const noteIds = new Map<string, string>();
+    for (const [filePath, marker] of [...notes].reverse()) {
+      const startOffset = sources.get(filePath)!.indexOf(marker);
+      const added = await app.inject({
+        method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+        payload: { path: filePath, startOffset, endOffset: startOffset + marker.length, content: marker }
+      });
+      expect(added.statusCode).toBe(201);
+      expect(added.json().comment).not.toHaveProperty("sourceOrder");
+      noteIds.set(marker, added.json().comment.id);
+    }
+    const firstReply = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments/${noteIds.get("Intro before")}/replies`, headers: { cookie },
+      payload: { content: "Earlier reply" }
+    });
+    const secondReply = await app.inject({
+      method: "POST", url: `/api/projects/${project.id}/comments/${noteIds.get("Intro before")}/replies`, headers: { cookie },
+      payload: { content: "Later reply" }
+    });
+    expect(firstReply.statusCode).toBe(201); expect(secondReply.statusCode).toBe(201);
+    const review = await app.inject({ method: "GET", url: `/api/projects/${project.id}/comments?scope=project`, headers: { cookie } });
+    expect(review.statusCode).toBe(200);
+    expect(review.json().comments.map((item: { content: string }) => item.content)).toEqual(notes.map(([, marker]) => marker));
+    expect(review.json().comments.map((item: { sourceOrder: number }) => item.sourceOrder)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(review.json().comments[1].replies.map((item: { content: string }) => item.content)).toEqual(["Earlier reply", "Later reply"]);
+
+    // Merely opening another file never changes the configured ordering root.
+    const file = await app.inject({ method: "GET", url: `/api/projects/${project.id}/comments?path=z-intro.tex`, headers: { cookie } });
+    expect(file.statusCode).toBe(200);
+    expect(file.json().comments.every((item: object) => !("sourceOrder" in item))).toBe(true);
+    const sameRoot = await app.inject({ method: "GET", url: `/api/projects/${project.id}/comments?scope=project`, headers: { cookie } });
+    expect(sameRoot.json().comments.map((item: { content: string }) => item.content)).toEqual(notes.map(([, marker]) => marker));
+
+    const signal = vi.spyOn(CollaborationService.prototype, "signalComments");
+    try {
+      const settings = await app.inject({ method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie }, payload: { mainFile: "alternate.tex" } });
+      expect(settings.statusCode).toBe(200);
+      expect(signal).toHaveBeenCalledWith(project.id);
+    } finally { signal.mockRestore(); }
+    const changedRoot = await app.inject({ method: "GET", url: `/api/projects/${project.id}/comments?scope=project`, headers: { cookie } });
+    expect(changedRoot.statusCode).toBe(200);
+    expect(changedRoot.json().comments.map((item: { content: string }) => item.content)).toEqual([
+      "Method note", "Intro before", "Nested note", "Intro after", "Unreferenced note", "Root before", "Root middle", "Root after"
+    ]);
+  });
+
   it("keeps project comment counts consistent across the dashboard and files without source includes", async () => {
     const project = (await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Bibliography comments" }

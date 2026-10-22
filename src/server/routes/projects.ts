@@ -617,6 +617,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, chktex_enabled = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
         .run(name, mainFile, latexmkrc, engine, chktexEnabled ? 1 : 0, now(), user.id, id);
       if (chktexSettingChanged) collaboration.signalChktexSetting(id);
+      // Project-wide discussion order follows the configured document, even
+      // for coauthors editing another file with the review drawer already open.
+      if (mainFile !== currentProject.main_file) collaboration.signalComments(id);
       recordHistory(id, user.id, "settings", []);
       return {
         project: projectJson(

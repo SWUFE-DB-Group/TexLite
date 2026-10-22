@@ -96,8 +96,8 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     const load = scope === "project"
       ? () => commentsForProject(db, config, id)
       : () => commentsForFile(db, config, id, safeRelativePath(filePath ?? ""));
-    return await projectMutations.runConsistentRead(id, () => ({
-      comments: load(),
+    return await projectMutations.runConsistentRead(id, async () => ({
+      comments: await load(),
       summary: commentsSummaryForProject(db, id)
     }), {
       preflight: () => {

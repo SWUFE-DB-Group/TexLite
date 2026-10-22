@@ -50,6 +50,10 @@ export function commentMatchesParticipants(comment: Comment, options: Pick<Comme
 export function sortReviewComments(comments: readonly Comment[], sort: CommentReviewSort = "source"): Comment[] {
   return [...comments].sort((a, b) => {
     if (sort === "time") return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+    // Only project resources carry a rank. Keep the path/position fallback for
+    // file reads and clients talking to a server without manuscript ordering.
+    const aOrder = a.sourceOrder ?? Infinity, bOrder = b.sourceOrder ?? Infinity;
+    if (aOrder !== bOrder) return aOrder - bOrder;
     return a.filePath.localeCompare(b.filePath, "en", { numeric: true })
       || a.startLine - b.startLine || a.startOffset - b.startOffset;
   });

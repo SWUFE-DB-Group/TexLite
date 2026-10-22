@@ -3,7 +3,7 @@ import { maskLatexComments } from "../shared/latexLiterals.js";
 import { findLatexSourceIncludes } from "../shared/latexDependencies.js";
 import { forEachLatexCommand, readLatexMandatoryArguments } from "../shared/latexScanner.js";
 import type { Config } from "./config.js";
-import { resolveLatexInclude, toLatexIncludeDirective, type LatexIncludeDirective } from "./latexDocumentGraph.js";
+import { isStaticLatexInclude, resolveLatexInclude, toLatexIncludeDirective, type LatexIncludeDirective } from "./latexDocumentGraph.js";
 import { listProjectFilesAsync, resolveSourcePath, safeRelativePath, type FileEntry } from "./files.js";
 
 export interface ProjectOutlineItem {
@@ -139,7 +139,7 @@ function scanOutlineSource(source: string): OutlineSourceEvent[] {
   });
   for (const reference of findLatexSourceIncludes(source)) {
     const directive = toLatexIncludeDirective(reference);
-    if (!isStaticOutlineInclude(directive)) continue;
+    if (!isStaticLatexInclude(directive)) continue;
     events.push({
       type: "include",
       from: reference.from,
@@ -185,15 +185,4 @@ function cleanTitle(value: string): string {
  */
 function compactOutlineWhitespace(value: string): string {
   return value.replace(/[^\S\r\n]{2,}/g, " ").trim();
-}
-
-/**
- * TeX paths containing a command or parameter marker need macro expansion.
- * Do not guess their target while building an outline. The generic document
- * graph deliberately supports backslash-separated paths for other consumers,
- * while the legacy outline already skipped these dynamic forms.
- */
-function isStaticOutlineInclude(directive: LatexIncludeDirective): boolean {
-  return !/[\\#]/.test(directive.path)
-    && (directive.directory === undefined || !/[\\#]/.test(directive.directory));
 }

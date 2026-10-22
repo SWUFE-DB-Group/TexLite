@@ -13,6 +13,8 @@ interface UseProjectCommentsOptions {
   content: string;
   permission: Project["permission"] | undefined;
   revision: string;
+  /** Settings/tree changes can alter project reading order without changing a comment. */
+  sourceOrderRevision?: string;
   selection: SourceSelection;
   save: () => Promise<boolean>;
   saveFailureMessage: string;
@@ -52,7 +54,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function useProjectComments({
-  projectId, activeFile, content, permission, revision, selection, save, saveFailureMessage, onError, onAdded, onChanged
+  projectId, activeFile, content, permission, revision, sourceOrderRevision, selection, save, saveFailureMessage, onError, onAdded, onChanged
 }: UseProjectCommentsOptions) {
   const commentDraftStore = useMemo(() => new CommentDraftStore(), [projectId]);
   // `comments` remains strictly scoped to the active file. LatexEditor uses
@@ -225,7 +227,7 @@ export function useProjectComments({
       projectRequest.current?.abort();
       projectRequest.current = null;
     };
-  }, [projectId, commentScope, revision]);
+  }, [projectId, commentScope, revision, sourceOrderRevision]);
 
   const refreshComments = async (filePath: string) => {
     const requests: Array<Promise<void>> = [];

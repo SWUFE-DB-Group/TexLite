@@ -83,6 +83,8 @@ export function WorkspaceContextPanel({
   const [commentFilter, setCommentFilter] = useState<CommentReviewFilter>("unresolved");
   const [unreadMentionsOnly, setUnreadMentionsOnly] = useState(false);
   const [commentSort, setCommentSort] = useState<CommentReviewSort>("source");
+  const commentSortHint = t(commentSort === "time" ? "editor.commentSortTime"
+    : commentScope === "project" ? "editor.commentSortSourceProject" : "editor.commentSortSource");
   const [participantIds, setParticipantIds] = useState<Set<string | null>>(() => new Set());
   const [topLevelOnly, setTopLevelOnly] = useState(true);
   // View preferences survive thread unmounts and ordinary resource refreshes;
@@ -249,9 +251,9 @@ export function WorkspaceContextPanel({
                 onClick={() => { clearReviewFocus(); setUnreadMentionsOnly((current) => !current); }}>
                 <AtSign size={12} aria-hidden />{t("editor.commentUnreadMentionsOnly")}<span>{reviewCounts.mentions}</span>
               </button>
-              <label className="comment-review-sort" data-texlite-tooltip-always data-tooltip={t(commentSort === "source" ? "editor.commentSortSource" : "editor.commentSortTime")}>
+              <label className="comment-review-sort" data-texlite-tooltip-always data-tooltip={commentSortHint}>
                 <span className="sr-only">{t("editor.commentSort")}</span>{commentSort === "source" ? <ArrowDown size={12} aria-hidden /> : <ArrowUp size={12} aria-hidden />}
-                <select value={commentSort} aria-label={`${t("editor.commentSort")}: ${t(commentSort === "source" ? "editor.commentSortSource" : "editor.commentSortTime")}`}
+                <select value={commentSort} aria-label={`${t("editor.commentSort")}: ${commentSortHint}`}
                   onChange={(event) => setCommentSort(event.target.value as CommentReviewSort)}>
                   <option value="source">{t("editor.commentSortSourceShort")}</option>
                   <option value="time">{t("editor.commentSortTimeShort")}</option>
