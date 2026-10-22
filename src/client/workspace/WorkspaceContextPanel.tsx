@@ -8,12 +8,14 @@ import { CommentThread } from "./Comments";
 import { CommentParticipantFilter } from "./CommentParticipantFilter";
 import { LazyPanel } from "../LazyLoadBoundary";
 import { COMMENT_EXIT_DURATION_MS, useCommentReviewTransitions } from "./useCommentReviewTransitions";
+import { useCommentReviewWindow } from "./useCommentReviewWindow";
 import type { CommentDraftStore } from "./commentDrafts";
 import {
   adjacentReviewComment,
   buildVisibleReviewQueue,
   collectCommentParticipants,
   currentOpenComment,
+  commentMatchesReviewScope,
   commentReviewPosition,
   filterCommentsForReview,
   type CommentReviewFilter,
@@ -94,13 +96,16 @@ export function WorkspaceContextPanel({
   const previousResolution = useRef(new Map(comments.map((comment) => [comment.id, comment.resolved])));
   const participants = useMemo(() => collectCommentParticipants(comments), [comments]);
   const reviewCounts = useMemo(() => {
-    const options = { activeFile, scope: commentScope, unreadMentions, participantIds, topLevelOnly, unreadMentionsOnly };
-    return {
-      unresolved: filterCommentsForReview(comments, { ...options, filter: "unresolved" }).length,
-      resolved: filterCommentsForReview(comments, { ...options, filter: "resolved" }).length,
-      mentions: filterCommentsForReview(comments, { ...options, filter: commentFilter, unreadMentionsOnly: true }).length
-    };
-  }, [activeFile, commentScope, comments, unreadMentions, participantIds, topLevelOnly, commentFilter, unreadMentionsOnly]);
+    // Status tabs describe the whole selected scope, not the narrower queue
+    // produced by participant/unread filters or the resolved display window.
+    const scoped = comments.filter((comment) => commentMatchesReviewScope(comment, { activeFile, scope: commentScope }));
+    const resolved = scoped.filter((comment) => comment.resolved).length;
+    return { unresolved: scoped.length - resolved, resolved };
+  }, [activeFile, commentScope, comments]);
+  const unreadMentionCount = useMemo(() => filterCommentsForReview(comments, {
+    activeFile, scope: commentScope, unreadMentions, participantIds, topLevelOnly,
+    filter: commentFilter, unreadMentionsOnly: true
+  }).length, [activeFile, commentScope, comments, unreadMentions, participantIds, topLevelOnly, commentFilter]);
   const visibleComments = useMemo(() => singleCommentId ? currentOpenComment(comments, singleCommentId, activeFile) : buildVisibleReviewQueue(comments, {
     activeFile, scope: commentScope, filter: commentFilter, unreadMentions, sort: commentSort, participantIds, topLevelOnly, unreadMentionsOnly
   }, [targetCommentId, focusedCommentId]), [
@@ -127,7 +132,15 @@ export function WorkspaceContextPanel({
     sidePanel, singleCommentId, commentScope, commentScope === "file" ? activeFile : "", commentFilter,
     commentSort, [...participantIds].sort(), topLevelOnly, unreadMentionsOnly
   ]);
-  const { entries: displayedComments, finishExit } = useCommentReviewTransitions(visibleComments, comments, singleCommentMode ? "unresolved" : commentFilter, transitionContext);
+  const reviewWindowContext = JSON.stringify([
+    projectId, commentScope, commentScope === "file" ? activeFile : "", commentFilter,
+    commentSort, [...participantIds].sort(), topLevelOnly, unreadMentionsOnly
+  ]);
+  const { shown: renderedComments, hasMore, loadMore } = useCommentReviewWindow(
+    visibleComments, !singleCommentMode && commentFilter === "resolved", reviewWindowContext,
+    [targetCommentId, focusedCommentId, activeComposerId]
+  );
+  const { entries: displayedComments, finishExit } = useCommentReviewTransitions(renderedComments, comments, singleCommentMode ? "unresolved" : commentFilter, transitionContext);
   useEffect(() => {
     // A navigation reveal is temporary, not an exemption from future status
     // changes (including a coauthor resolving the currently focused thread).
@@ -137,6 +150,8 @@ export function WorkspaceContextPanel({
     if (changedFocus) onClearFocusComment();
   }, [comments, focusedCommentId, targetCommentId, onClearFocusComment]);
   useEffect(() => {
+    // Presentation-window changes alone must not re-scroll an older target;
+    // navigation and full-resource changes remain the scroll dependencies.
     // An inline composer owns focus; never scroll an older navigation target
     // while replying, including after an ordinary comment-resource refresh.
     if (sidePanel !== "comments" || activeComposerId) return;
@@ -249,12 +264,12 @@ export function WorkspaceContextPanel({
               <button type="button" className={`comment-unread-toggle${unreadMentionsOnly ? " active" : ""}`} aria-pressed={unreadMentionsOnly}
                 aria-label={t("editor.commentUnreadMentionsHint")} title={t("editor.commentUnreadMentionsHint")}
                 onClick={() => { clearReviewFocus(); setUnreadMentionsOnly((current) => !current); }}>
-                <AtSign size={12} aria-hidden />{t("editor.commentUnreadMentionsOnly")}<span>{reviewCounts.mentions}</span>
+                <AtSign size={12} aria-hidden />{t("editor.commentUnreadMentionsOnly")}<span>{unreadMentionCount}</span>
               </button>
               <label className="comment-review-sort" data-texlite-tooltip-always data-tooltip={commentSortHint}>
                 <span className="sr-only">{t("editor.commentSort")}</span>{commentSort === "source" ? <ArrowDown size={12} aria-hidden /> : <ArrowUp size={12} aria-hidden />}
                 <select value={commentSort} aria-label={`${t("editor.commentSort")}: ${commentSortHint}`}
-                  onChange={(event) => setCommentSort(event.target.value as CommentReviewSort)}>
+                  onChange={(event) => { clearReviewFocus(); setCommentSort(event.target.value as CommentReviewSort); }}>
                   <option value="source">{t("editor.commentSortSourceShort")}</option>
                   <option value="time">{t("editor.commentSortTimeShort")}</option>
                 </select>
@@ -284,6 +299,11 @@ export function WorkspaceContextPanel({
             {displayedComments.length === 0 && !commentsLoading && !commentsError && <p className="muted padded" role="status">{singleCommentMode
               ? t(comments.some((comment) => comment.id === singleCommentId && comment.resolved) ? "editor.currentCommentResolved" : "editor.currentCommentUnavailable")
               : comments.length ? t("editor.commentNoMatches") : t("editor.noComments")}</p>}
+            {!singleCommentMode && commentFilter === "resolved" && visibleComments.length > 0 && <div className="comment-review-pagination">
+              <span role="status" aria-live="polite">{t("editor.commentResolvedShowing", { shown: renderedComments.length, total: visibleComments.length })}</span>
+              {hasMore ? <button type="button" onClick={loadMore}>{t("editor.commentLoadMore")}</button>
+                : !commentsLoading && !commentsError && <span className="comment-review-end">{t("editor.commentResolvedEnd")}</span>}
+            </div>}
           </div>
         </>}
         {sidePanel === "settings" && <LazyPanel onClose={onClose}><ProjectSettings key={projectId} onClose={onClose} project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={onDictionaryChange} editorPreferences={editorPreferences} onEditorPreferences={onEditorPreferences} spellCheckCount={spellCheckCount} spellCheckUniqueCount={spellCheckUniqueCount} spellCheckIndex={spellCheckIndex} onSpellCheckNavigate={onSpellCheckNavigate} onProject={onProject} /></LazyPanel>}

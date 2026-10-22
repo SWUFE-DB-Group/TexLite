@@ -62,9 +62,15 @@ describe("project-wide comment totals", () => {
 
   it("refreshes totals after resolving a discussion in another file", async () => {
     await render(); await act(async () => resource.setCommentScope("project"));
-    apiMock.mockImplementation(async (url: string) => url.includes("scope=project")
-      ? { comments: [...mainComments, { ...bibComment, resolved: true }], summary: { ...summary, unresolvedCount: 2 } }
-      : { ok: true });
+    apiMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      const updatedSummary = { ...summary, unresolvedCount: 2 };
+      if (options?.method === "PATCH") return { ok: true,
+        resolution: { id: bibComment.id, filePath: bibComment.filePath, resolved: true, resolvedById: "reader",
+          resolvedByUsername: "reader", resolvedByDisplayName: "Reader", resolvedAt: "2026-10-22T00:00:00Z", updatedAt: "2026-10-22T00:00:00Z" },
+        summary: updatedSummary };
+      return { comments: url.includes("scope=project") ? [...mainComments, { ...bibComment, resolved: true }] : mainComments,
+        summary: updatedSummary };
+    });
     await act(async () => resource.toggleComment(bibComment));
     expect(resource.projectCommentSummary?.unresolvedCount).toBe(2);
     expect(resource.comments).toEqual(mainComments);

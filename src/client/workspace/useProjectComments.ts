@@ -7,6 +7,8 @@ import type { CommentReviewScope } from "./commentNavigation";
 import { CommentDraftStore, type SourceSelection } from "./commentDrafts";
 export type { SourceSelection } from "./commentDrafts";
 
+type CommentResolution = Pick<Comment, "id" | "filePath" | "resolved" | "resolvedById" | "resolvedByUsername" | "resolvedByDisplayName" | "resolvedAt" | "updatedAt">;
+
 interface UseProjectCommentsOptions {
   projectId: string;
   activeFile: string;
@@ -20,7 +22,7 @@ interface UseProjectCommentsOptions {
   saveFailureMessage: string;
   onError: (message: string) => void;
   onAdded: () => void;
-  onChanged?: () => void;
+  onChanged?: (resolution?: CommentResolution) => void;
 }
 
 interface CommentDraft {
@@ -57,6 +59,11 @@ export function useProjectComments({
   projectId, activeFile, content, permission, revision, sourceOrderRevision, selection, save, saveFailureMessage, onError, onAdded, onChanged
 }: UseProjectCommentsOptions) {
   const commentDraftStore = useMemo(() => new CommentDraftStore(), [projectId]);
+  const lifecycle = useMemo(() => ({ active: false }), [projectId]);
+  useEffect(() => {
+    lifecycle.active = true;
+    return () => { lifecycle.active = false; };
+  }, [lifecycle]);
   // `comments` remains strictly scoped to the active file. LatexEditor uses
   // offsets from this list to decorate source, so project-wide results must
   // never be substituted here.
@@ -137,8 +144,6 @@ export function useProjectComments({
       if (fileRequest.current === controller) fileRequest.current = null;
     }
   };
-
-  const retryFileComments = () => activeFileRef.current ? loadFileComments(activeFileRef.current) : Promise.resolve();
 
   const loadProjectComments = async () => {
     projectRequest.current?.abort();
@@ -229,9 +234,10 @@ export function useProjectComments({
     };
   }, [projectId, commentScope, revision, sourceOrderRevision]);
 
-  const refreshComments = async (filePath: string) => {
+  const refreshComments = async () => {
+    if (!lifecycle.active) return;
     const requests: Array<Promise<void>> = [];
-    if (activeFileRef.current === filePath) requests.push(loadFileComments(filePath));
+    if (activeFileRef.current) requests.push(loadFileComments(activeFileRef.current));
     if (commentScopeRef.current === "project") requests.push(loadProjectComments());
     await Promise.all(requests);
   };
@@ -309,7 +315,7 @@ export function useProjectComments({
         method: "POST",
         body: JSON.stringify({ path: draft.filePath, content: submittedText, ...draft.selection, sourceHash: draft.sourceHash })
       });
-      await refreshComments(draft.filePath);
+      await refreshComments();
       const saved = commentDraftStore.getNew(draft.filePath);
       if (saved?.content === submittedText && saved.sourceHash === draft.sourceHash
         && saved.selection.startOffset === draft.selection.startOffset && saved.selection.endOffset === draft.selection.endOffset) {
@@ -335,13 +341,25 @@ export function useProjectComments({
 
   const toggleComment = async (comment: Comment) => {
     try {
-      await api(`/api/projects/${projectId}/comments/${comment.id}`, {
+      const result = await api<{ resolution: CommentResolution; summary: ProjectCommentSummary }>(`/api/projects/${projectId}/comments/${comment.id}`, {
         method: "PATCH",
         body: JSON.stringify({ resolved: !Boolean(comment.resolved) })
       });
-      await refreshComments(comment.filePath);
-      onChangedRef.current?.();
-    } catch (error) { onErrorRef.current(errorMessage(error)); }
+      if (!lifecycle.active) return;
+      // Cancel reads started before the acknowledgement, so they cannot undo
+      // a confirmed mutation. Preserve live anchors, source order and replies.
+      fileRequest.current?.abort();
+      fileRequest.current = null;
+      projectRequest.current?.abort();
+      projectRequest.current = null;
+      const merge = (items: Comment[]) => items.map((item) => item.id === result.resolution.id
+        && item.filePath === result.resolution.filePath ? { ...item, ...result.resolution } : item);
+      setFileCommentResource((current) => ({ ...current, comments: merge(current.comments) }));
+      setProjectComments(merge);
+      updateCommentSummary(result.summary, ++requestSequence.current);
+      onChangedRef.current?.(result.resolution);
+      await refreshComments();
+    } catch (error) { if (lifecycle.active) onErrorRef.current(errorMessage(error)); }
   };
 
   const replyToComment = async (comment: Comment, content: string): Promise<boolean> => {
@@ -349,7 +367,7 @@ export function useProjectComments({
     await api(`/api/projects/${projectId}/comments/${comment.id}/replies`, {
       method: "POST", body: JSON.stringify({ content })
     });
-    await refreshComments(comment.filePath);
+    await refreshComments();
     onChangedRef.current?.();
     return true;
   };
@@ -358,7 +376,7 @@ export function useProjectComments({
     await api(`/api/projects/${projectId}/comments/${comment.id}`, {
       method: "PATCH", body: JSON.stringify({ content })
     });
-    await refreshComments(comment.filePath);
+    await refreshComments();
     onChangedRef.current?.();
     return true;
   };
@@ -366,7 +384,7 @@ export function useProjectComments({
   const deleteComment = async (comment: Comment): Promise<boolean> => {
     try {
       await api(`/api/projects/${projectId}/comments/${comment.id}`, { method: "DELETE" });
-      await refreshComments(comment.filePath);
+      await refreshComments();
       setFocusComment((current) => current?.id === comment.id ? null : current);
       commentDraftStore.discard(comment.id);
       onChangedRef.current?.();
@@ -378,7 +396,7 @@ export function useProjectComments({
     await api(`/api/projects/${projectId}/comments/${comment.id}/replies/${replyId}`, {
       method: "PATCH", body: JSON.stringify({ content })
     });
-    await refreshComments(comment.filePath);
+    await refreshComments();
     onChangedRef.current?.();
     return true;
   };
@@ -386,7 +404,7 @@ export function useProjectComments({
   const deleteCommentReply = async (comment: Comment, replyId: string): Promise<boolean> => {
     try {
       await api(`/api/projects/${projectId}/comments/${comment.id}/replies/${replyId}`, { method: "DELETE" });
-      await refreshComments(comment.filePath);
+      await refreshComments();
       commentDraftStore.discard(comment.id, `edit-reply:${replyId}`);
       onChangedRef.current?.();
       return true;
@@ -401,11 +419,11 @@ export function useProjectComments({
     commentsReady,
     fileCommentsLoading,
     fileCommentsError,
-    retryFileComments,
+    retryFileComments: refreshComments,
     reviewComments: commentScope === "file" ? comments : projectComments,
     reviewCommentsLoading: commentScope === "project" ? projectCommentsLoading : fileCommentsLoading,
     reviewCommentsError: commentScope === "project" ? projectCommentsError : fileCommentsError,
-    retryReviewComments: commentScope === "project" ? loadProjectComments : retryFileComments,
+    retryReviewComments: refreshComments,
     commentScope,
     setCommentScope,
     focusComment,

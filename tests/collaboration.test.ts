@@ -92,6 +92,49 @@ describe("project collaboration", () => {
     }
   });
 
+  it("notifies connected read-only reviewers about new comments, replies and resolution changes", async () => {
+    const projectId = (await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie },
+      payload: { name: "Live comment review" } })).json().project.id as string;
+    const reader = await createUser(app, adminCookie, "live-reviewer", "Live Reviewer");
+    const cookie = await login(app, "live-reviewer", "reader-password");
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${reader.id}`, headers: { cookie: adminCookie },
+      payload: { permission: "read" } });
+    const peer = await TestPeer.connect(app, projectId, cookie, { id: reader.id, username: "live-reviewer", name: "Live Reviewer" });
+    const meta = peer.doc.getMap("texlite:meta");
+    const revision = () => meta.get("commentsRevision");
+    const unread = async () => (await app.inject({ method: "GET", url: `/api/projects/${projectId}/mentions?unread=1&limit=100`,
+      headers: { cookie } })).json().mentions as Array<{ commentId: string; replyId: string | null }>;
+    try {
+      let before = revision();
+      const created = await app.inject({ method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie: adminCookie },
+        payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "Please review @live-reviewer" } });
+      expect(created.statusCode).toBe(201);
+      const commentId = created.json().comment.id as string;
+      await waitFor(() => revision() !== before);
+      expect(await unread()).toMatchObject([{ commentId, replyId: null }]);
+
+      before = revision();
+      const reply = await app.inject({ method: "POST", url: `/api/projects/${projectId}/comments/${commentId}/replies`,
+        headers: { cookie: adminCookie }, payload: { content: "Another question @live-reviewer" } });
+      expect(reply.statusCode).toBe(201);
+      await waitFor(() => revision() !== before);
+      expect(await unread()).toHaveLength(2);
+      const comments = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?scope=project`, headers: { cookie } });
+      expect(comments.json().comments[0].replies).toMatchObject([{ id: reply.json().reply.id, content: "Another question @live-reviewer" }]);
+
+      for (const resolved of [true, false]) {
+        before = revision();
+        const changed = await app.inject({ method: "PATCH", url: `/api/projects/${projectId}/comments/${commentId}`,
+          headers: { cookie: adminCookie }, payload: { resolved } });
+        expect(changed.statusCode).toBe(200);
+        await waitFor(() => revision() !== before);
+        expect(await unread()).toEqual([]);
+        const current = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?path=main.tex`, headers: { cookie } });
+        expect(current.json().comments[0].resolved).toBe(resolved);
+      }
+    } finally { peer.destroy(); }
+  });
+
   it("collaborates on generic text while excluding binary content from Yjs", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Generic text collaboration" } });
     const id = created.json().project.id as string;

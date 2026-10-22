@@ -1559,7 +1559,13 @@ Second version.
     const load = async (scope = "path=main.tex") => (await app.inject({
       method: "GET", url: `/api/projects/${project.id}/comments?${scope}`, headers: { cookie }
     })).json().comments[0];
-    expect((await update(true)).statusCode).toBe(200);
+    const confirmed = await update(true);
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json()).toMatchObject({
+      resolution: { id: commentId, filePath: "main.tex", resolved: true, resolvedById: readerId,
+        resolvedByUsername: "resolution-reader", resolvedByDisplayName: "Resolution Reader", resolvedAt: expect.any(String) },
+      summary: { totalCount: 1, unresolvedCount: 0, filePaths: ["main.tex"] }
+    });
     const resolved = await load();
     expect(resolved).toMatchObject({ resolved: true, resolvedById: readerId,
       resolvedByUsername: "resolution-reader", resolvedByDisplayName: "Resolution Reader", resolvedAt: expect.any(String) });
@@ -1570,7 +1576,9 @@ Second version.
     await app.inject({ method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
       payload: { content: "Updated review." } });
     expect(await load()).toMatchObject({ resolvedById: readerId, resolvedAt: resolved.resolvedAt });
-    expect((await update(false)).statusCode).toBe(200);
+    const reopened = await update(false);
+    expect(reopened.statusCode).toBe(200);
+    expect(reopened.json()).toMatchObject({ resolution: { id: commentId, resolved: false, ...empty }, summary: { unresolvedCount: 1 } });
     expect(await load()).toMatchObject({ resolved: false, ...empty });
     expect((await update(true, cookie)).statusCode).toBe(200);
     expect(await load()).toMatchObject({ resolved: true, resolvedByUsername: "admin", resolvedAt: expect.any(String) });

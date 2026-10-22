@@ -354,6 +354,30 @@ the root, while changing the configured main document notifies open reviewers.
 Tree/settings changes also reload an open project review, with obsolete
 requests cancelled; merely switching editor tabs does not reload that resource.
 File review still sorts within the current file; time sorting remains global.
+Open/Resolved tab counts describe all top-level discussions in the selected
+file/project scope, independent of participant and unread filters. The Unread
+badge and displayed list still intersect those filters with the selected status.
+Resolved review initially renders 50 top-level discussions and exposes a Load
+more action for another 50, with shown/total counts and an end-of-list message.
+Replies do not consume this limit. Filtering and sorting apply before slicing;
+counts and previous/next navigation still use the complete matching queue.
+Navigation and an active inline composer expand the window as needed. Ordinary
+data refreshes retain the window; scope, file (in file review), sorting and
+filter changes reset it. This is browser-side presentation only: the API still
+returns the full resource, including replies, and Open discussions remain
+unlimited. No additional request is made by Load more.
+Confirmed resolution changes update both file and project caches, including
+resolver metadata and project counts, before reconciling with fresh reads.
+Pre-mutation reads cannot overwrite the acknowledgement; retrying review also
+refreshes the active file's source decorations. Temporary refresh errors retain
+these confirmed states and cached unread notifications, rather than implying
+that discussions or notifications disappeared. Resolving removes the existing
+thread mentions locally; reopening does not restore notifications already read.
+Connected collaborators, including read-only reviewers, receive comment
+revisions over Yjs and automatically reload comments and personal unread mentions
+(up to 100). Current scope/status/participant filters and the resolved display
+window still apply. Disconnected clients need to reconnect; failed comment reads
+expose the existing retry action instead of requiring a page reload.
 Replies keep their original chronological order. Long inactive
 discussions initially show only the latest two replies with an earlier-replies
 toggle. Explicit expand/collapse choices are kept locally by thread id for the

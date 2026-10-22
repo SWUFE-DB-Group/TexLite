@@ -220,7 +220,22 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       }
     })();
     collaboration.signalComments(id);
-    return { ok: true };
+    // Acknowledge the persisted state independently of a subsequent list GET.
+    // Do not return source anchors here: their live positions belong to the
+    // collaboration-aware comment readers, not this mutation response.
+    const resolution = db.prepare(`
+      SELECT c.id, c.file_path AS filePath, c.resolved,
+             c.resolved_by AS resolvedById, u.username AS resolvedByUsername,
+             u.display_name AS resolvedByDisplayName, c.resolved_at AS resolvedAt,
+             c.updated_at AS updatedAt
+      FROM comments c LEFT JOIN users u ON u.id = c.resolved_by
+      WHERE c.id = ? AND c.project_id = ?
+    `).get(commentId, id) as {
+      id: string; filePath: string; resolved: number; resolvedById: string | null;
+      resolvedByUsername: string | null; resolvedByDisplayName: string | null;
+      resolvedAt: string | null; updatedAt: string;
+    };
+    return { ok: true, resolution: { ...resolution, resolved: Boolean(resolution.resolved) }, summary: commentsSummaryForProject(db, id) };
   });
 
   app.delete("/api/projects/:id/comments/:commentId", async (request, reply) => {

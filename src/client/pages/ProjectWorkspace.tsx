@@ -291,7 +291,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     discardLocalDraft
   } = useProjectCollaboration(collaboration, activeMainFile, project?.permission ?? "read", collaborationReady, () => setSaveState("editor.offlineDraft"));
 
-  const { unreadMentions, refresh: refreshMentions, markMentionRead, markAllMentionsRead } = useProjectMentions(projectId, commentsRevision, setError);
+  const { unreadMentions, refresh: refreshMentions, markMentionRead, markAllMentionsRead, clearResolvedMentions } = useProjectMentions(projectId, commentsRevision, setError);
 
   const {
     pdfTarget, pdfViewport, sourceJump, setPdfViewport, resetPdfViewport, clearPdfViewport,
@@ -1066,7 +1066,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     saveFailureMessage: t("errors.collaborationUnavailable"),
     onError: setError,
     onAdded: () => { setSingleCommentId(null); setSidePanel("comments"); },
-    onChanged: () => { void refreshMentions(); }
+    onChanged: (resolution) => {
+      if (resolution?.resolved) clearResolvedMentions(resolution.id);
+      void refreshMentions();
+    }
   });
   // Includes are one reason to offer project-wide review. The summary below
   // also reveals discussions in bibliographies and standalone source files.

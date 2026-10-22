@@ -968,6 +968,11 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-review-error button { flex: none; border: 0; border-radius: 4px; padding: 3px 5px; background: var(--ui-subtle, #f6e3e1); color: var(--ui-danger, #8a2b26); font-size: 10px; font-weight: 700; }
 .comment-review-error button:hover { background: var(--ui-hover, #efd1ce); }
 .comment-review-loading { padding: 7px 10px 0; color: var(--ui-muted, #758078); font-size: 10px; }
+.comment-review-pagination { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 4px; padding: 12px 0 5px; border-top: 1px solid var(--ui-border, #e4e8e4); color: var(--ui-muted, #758078); font-size: 10px; font-variant-numeric: tabular-nums; }
+.comment-review-pagination button { border: 1px solid var(--ui-border, #d5ddd7); border-radius: 6px; padding: 6px 12px; background: var(--ui-surface, white); color: var(--ui-text, #405147); font-size: 11px; }
+.comment-review-pagination button:hover { border-color: var(--ui-accent-border, #85ad96); background: var(--ui-hover, #edf3ef); }
+.comment-review-pagination button:focus-visible { outline: 2px solid var(--ui-accent-border, #75a68a); outline-offset: 2px; }
+.comment-review-end { font-size: 10px; }
 .tabs { height: 42px; display: flex; border-bottom: 1px solid var(--ui-border, #e3e6e3); }
 .tabs button { flex: 1; border: 0; background: var(--ui-surface, white); color: var(--ui-muted, #707872); font-size: 12px; }
 .tabs button.active { color: var(--ui-accent, #176b44); border-bottom: 2px solid var(--ui-accent-border, #176b44); font-weight: 700; }
