@@ -767,21 +767,24 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-host .cm-lineNumbers .cm-selection-action-button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
 .editor-host .cm-lineNumbers .cm-selection-action-button svg { width: 1.16em; height: 1.16em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .preview-panel { display: flex; flex-direction: column; background: #6f7471; }
-.preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 5px 6px 0; background: #4d544f; }
-.preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px; }
-.preview-tabs button { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 6px 6px 0 0; background: transparent; color: #d7dcd8; font-size: 11px; }
-.preview-tabs button.active { background: var(--ui-accent-bg, #f3f4f1); color: var(--ui-accent, #184f36); font-weight: 700; }
-.preview-tabs button span { min-width: 17px; padding: 1px 4px; border-radius: 999px; background: var(--ui-hover, #ffffff20); font-size: 9px; }
-.preview-tabs button.active span { background: var(--ui-hover, #dfe8e2); }
-.preview-tabs .pdf-tab { justify-content: flex-start; padding: 0 12px; font-size: 12px; }
+.preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 4px 8px 0; border-bottom: 1px solid var(--ui-border, #dde3de); background: var(--ui-surface, #f3f5f2); }
+.preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.preview-tabs button { position: relative; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 6px 6px 0 0; background: transparent; color: var(--ui-muted, #57655d); font-size: 11px; }
+.preview-tabs button:hover { background: var(--ui-hover, #e9eeea); color: var(--ui-text, #344b3e); }
+.preview-tabs button.active { background: var(--ui-accent-bg, #e4eee5); color: var(--ui-accent, #18553c); font-weight: 600; box-shadow: inset 0 0 0 1px var(--ui-accent-border, #c5d9cb); }
+.preview-tabs button.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--ui-accent, #18553c); }
+.preview-tabs .diagnostic-count { min-width: 17px; padding: 1px 5px; border-radius: 999px; background: var(--ui-hover, #e3e9e4); color: var(--ui-muted, #647168); font-size: 9px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.preview-tabs .diagnostics-tab.active .diagnostic-count { background: var(--ui-accent-bg, #deebe1); color: var(--ui-accent, #18553c); }
+.preview-tabs .pdf-tab { justify-content: flex-start; gap: 8px; padding: 7px 12px; font-size: 12px; }
 .preview-tabs .pdf-tab-icon { width: 16px; height: 16px; flex: none; object-fit: contain; }
-.preview-tabs button .pdf-tab-label { min-width: 0; overflow: hidden; padding: 0; border-radius: 0; background: transparent; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 12px; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
-.preview-tabs button.active .pdf-tab-label { background: transparent; }
-.preview-tabs .pdf-tab small { max-width: 100%; overflow: hidden; color: var(--ui-muted, #bcc4bf); font-size: 8px; font-weight: 400; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
-.preview-tabs .pdf-tab.active small { color: var(--ui-muted, #65756c); }
-.preview-tabs .diagnostics-tab { min-width: 112px; }
-.pdf-download-top { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; padding: 0 11px; border: 0; border-radius: 6px 6px 0 0; color: var(--ui-info, #a9cce8); font-size: 10px; text-decoration: none; white-space: nowrap; }
-.pdf-download-top:hover { background: var(--ui-hover, #d7ecff24); color: #eaf5ff; }
+.preview-tabs .pdf-tab-label { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 12px; line-height: 1.15; }
+.preview-tabs .pdf-tab-title { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-tabs .pdf-tab small { max-width: 100%; overflow: hidden; color: var(--ui-muted, #6a786e); font-size: 9px; font-weight: 400; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.preview-tabs .diagnostics-tab { flex: none; white-space: nowrap; }
+.pdf-download-top { position: relative; flex: none; align-self: center; height: 30px; display: inline-flex; align-items: center; gap: 5px; margin-left: 12px; padding: 0 9px; border: 0; border-radius: 5px; color: var(--ui-accent, #18553c); font-size: 11px; text-decoration: none; white-space: nowrap; }
+.pdf-download-top::before { content: ""; position: absolute; left: -7px; top: 7px; bottom: 7px; width: 1px; background: var(--ui-border, #d8e0da); }
+.pdf-download-top:hover { background: var(--ui-accent-bg, #e2ede4); color: var(--ui-accent, #18553c); }
+.preview-tabs button:focus-visible, .pdf-download-top:focus-visible { outline: 2px solid var(--ui-accent, #18553c); outline-offset: -3px; }
 .preview-subtabs { height: 36px; flex: none; display: flex; align-items: center; gap: 3px; padding: 4px 7px; border-bottom: 1px solid var(--ui-border, #cfd6d1); background: var(--ui-subtle, #e4e9e5); }
 .preview-subtabs button { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #58665d); font-size: 10px; }
 .preview-subtabs button:hover { background: var(--ui-hover, #d8e3db); color: var(--ui-accent, #205c40); }
@@ -791,12 +794,13 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .preview-content { min-height: 0; flex: 1; }
 .preview-pdf { overflow: hidden; }
 .pdf-viewer { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.pdf-toolbar { height: 36px; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 3px; padding: 4px 8px; border-bottom: 1px solid #343a36; background: #414843; color: #e4e8e5; font: 11px/1 Inter, ui-sans-serif, system-ui, sans-serif; }
-.pdf-toolbar button { height: 27px; min-width: 27px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #ffffff24; border-radius: 5px; padding: 0 6px; background: #ffffff0b; color: inherit; }
-.pdf-toolbar button:hover:not(:disabled) { border-color: #ffffff48; background: #ffffff1b; }
-.pdf-toolbar button:disabled { opacity: .3; }
+.pdf-toolbar { height: 36px; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 3px; padding: 4px 8px; border-bottom: 1px solid var(--ui-border, #d4dcd6); background: var(--ui-surface, #f3f5f2); color: var(--ui-muted, #536259); font: 11px/1 Inter, ui-sans-serif, system-ui, sans-serif; }
+.pdf-toolbar button { height: 27px; min-width: 27px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--ui-border, #d6dfd8); border-radius: 5px; padding: 0 6px; background: var(--ui-surface, #fff); color: inherit; }
+.pdf-toolbar button:hover:not(:disabled) { border-color: var(--ui-accent-border, #b4cdbb); background: var(--ui-accent-bg, #e4eee6); color: var(--ui-accent, #18553c); }
+.pdf-toolbar button:focus-visible { outline: 2px solid var(--ui-accent, #18553c); outline-offset: 1px; }
+.pdf-toolbar button:disabled { opacity: .35; }
 .pdf-zoom-value { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
-.pdf-toolbar .pdf-fit-width { margin-left: 3px; padding: 0 8px; }
+.pdf-toolbar .pdf-fit-width { margin-left: 6px; padding: 0 8px; border-color: transparent; background: transparent; }
 .pdf-compiling-overlay, .pdf-loading-overlay, .pdf-load-error-overlay { position: absolute; z-index: 4; top: 47px; left: 50%; display: inline-flex; align-items: center; gap: 7px; transform: translateX(-50%); border: 1px solid #ffffff32; border-radius: 999px; padding: 6px 10px; background: #17231ce6; color: white; box-shadow: 0 3px 12px #0005; font-size: 12px; pointer-events: none; }
 .pdf-load-error-overlay { border-color: #e8a59c; background: #6d2d29ed; pointer-events: auto; }
 .pdf-load-error-overlay button, .preview-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; background: transparent; color: inherit; font-size: 12px; cursor: pointer; }
