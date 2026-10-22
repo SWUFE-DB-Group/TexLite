@@ -1,5 +1,5 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import { AlertTriangle, Download, Eraser, FileText, LoaderCircle, PackageOpen, ScrollText, XCircle } from "lucide-react";
+import { AlertTriangle, Download, Eraser, FileText, LoaderCircle, Logs, PackageOpen, ScrollText, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Panel } from "react-resizable-panels";
 import { WorkspaceSyncSeparator } from "./WorkspaceSyncSeparator";
@@ -7,7 +7,7 @@ import type { CompileDiagnostics } from "../compileDiagnostics";
 import type { CompileMessages } from "../compileLog";
 import type { FileEntry } from "../types";
 import type { PdfTarget } from "../PdfPreview";
-import { appPath } from "../basePath";
+import { PdfDocumentIcon } from "../PdfDocumentIcon";
 import i18n from "../i18n";
 import { loadPdfPreview } from "../workspacePreload";
 import type { CompileCleanMode } from "./useProjectCompilation";
@@ -89,13 +89,13 @@ export function WorkspacePreviewPanel({
       <section className="preview-panel">
         <div className="preview-tabs">
           <div className="preview-tab-list" role="tablist" aria-label={t("editor.outputTabs")}>
-            <button role="tab" aria-selected={previewTab === "pdf"} className={`pdf-tab${previewTab === "pdf" ? " active" : ""}`} onClick={() => selectPreviewTab("pdf")} title={pdfCompiledAt ? t("editor.pdfCompiledAtFor", { file: activeMainFile, time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) }) : t("editor.currentMainDocument", { path: activeMainFile })}><img className="pdf-tab-icon" src={appPath("/pdf-download.svg")} alt="" aria-hidden="true" /><span className="pdf-tab-label"><span className="pdf-tab-title">PDF · {pdfTargetLabel}</span>{pdfMetaLabel && <small>{pdfMetaLabel}</small>}</span></button>
+            <button role="tab" aria-selected={previewTab === "pdf"} className={`pdf-tab${previewTab === "pdf" ? " active" : ""}`} onClick={() => selectPreviewTab("pdf")} title={pdfCompiledAt ? t("editor.pdfCompiledAtFor", { file: activeMainFile, time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) }) : t("editor.currentMainDocument", { path: activeMainFile })}><PdfDocumentIcon className="pdf-tab-icon" /><span className="pdf-tab-label"><span className="pdf-tab-title">PDF · {pdfTargetLabel}</span>{pdfMetaLabel && <small>{pdfMetaLabel}</small>}</span></button>
             <button role="tab" aria-selected={previewTab === "diagnostics"} className={`diagnostics-tab${previewTab === "diagnostics" ? " active" : ""}`} onClick={() => selectPreviewTab("diagnostics")}><ScrollText size={14} />{t("editor.outputTabs")}<span className="diagnostic-count">{diagnosticCount}</span></button>
           </div>
           {pdfDownloadUrl && <a className="pdf-download-top" href={pdfDownloadUrl} download title={t("editor.downloadPdf")} aria-label={t("editor.downloadPdf")}><Download size={15} /><span>{t("editor.downloadPdf")}</span></a>}
         </div>
         {previewTab === "diagnostics" && <div className="preview-subtabs" role="tablist" aria-label={t("editor.outputTabs")}>
-          <button role="tab" aria-selected={diagnosticTab === "log"} className={diagnosticTab === "log" ? "active" : ""} onClick={() => selectPreviewTab("log")}><ScrollText size={13} />{t("editor.log")}</button>
+          <button role="tab" aria-selected={diagnosticTab === "log"} className={diagnosticTab === "log" ? "active" : ""} onClick={() => selectPreviewTab("log")}><Logs size={13} />{t("editor.log")}</button>
           <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{compileMessages.warnings.length}</span></button>
           <button role="tab" aria-selected={diagnosticTab === "errors"} className={diagnosticTab === "errors" ? "active" : ""} onClick={() => selectPreviewTab("errors")}><XCircle size={13} />{t("editor.errors")}<span>{compileMessages.errors.length}</span></button>
           <button role="tab" aria-selected={diagnosticTab === "artifacts"} className={diagnosticTab === "artifacts" ? "active" : ""} onClick={() => selectPreviewTab("artifacts")}><PackageOpen size={13} />{t("editor.artifacts")}<span>{artifacts.length}</span></button>

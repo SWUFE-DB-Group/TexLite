@@ -776,7 +776,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .preview-tabs .diagnostic-count { min-width: 17px; padding: 1px 5px; border-radius: 999px; background: var(--ui-hover, #e3e9e4); color: var(--ui-muted, #647168); font-size: 9px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .preview-tabs .diagnostics-tab.active .diagnostic-count { background: var(--ui-accent-bg, #deebe1); color: var(--ui-accent, #18553c); }
 .preview-tabs .pdf-tab { justify-content: flex-start; gap: 8px; padding: 7px 12px; font-size: 12px; }
-.preview-tabs .pdf-tab-icon { width: 16px; height: 16px; flex: none; object-fit: contain; }
+.preview-tabs .pdf-tab-icon { width: 16px; height: 16px; flex: none; }
 .preview-tabs .pdf-tab-label { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 12px; line-height: 1.15; }
 .preview-tabs .pdf-tab-title { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview-tabs .pdf-tab small { max-width: 100%; overflow: hidden; color: var(--ui-muted, #6a786e); font-size: 9px; font-weight: 400; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
