@@ -1,6 +1,8 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, File, FileArchive, FileAudio, FileCode2, FileCog, FileImage, FileSpreadsheet, FileText, FileType2, FileVideo, LibraryBig, NotepadText } from "lucide-react";
-import { appPath } from "./basePath";
+import { FileArchive, FileAudio, FileCode2, FileCog, FileImage, FileSpreadsheet, FileText, FileVideo, LibraryBig, NotepadText } from "lucide-react";
+import { MarkdownDocumentIcon } from "./MarkdownDocumentIcon";
+import { PdfDocumentIcon } from "./PdfDocumentIcon";
+import { TexDocumentIcon } from "./TexDocumentIcon";
 
 /** Semantic groups used by the project file tree. */
 export type FileIconKind = "pdf" | "tex" | "bib" | "latexmkrc" | "image" | "markdown" | "text" | "code" | "spreadsheet" | "archive" | "audio" | "video" | "file";
@@ -42,13 +44,10 @@ export function fileIconKind(filePath: string): FileIconKind {
   return "file";
 }
 
-const icons: Record<FileIconKind, LucideIcon> = {
-  pdf: FileType2,
-  tex: FileCode2,
+const icons: Record<Exclude<FileIconKind, "pdf" | "tex" | "markdown">, LucideIcon> = {
   bib: LibraryBig,
   latexmkrc: FileCog,
   image: FileImage,
-  markdown: BookOpen,
   text: NotepadText,
   code: FileCode2,
   spreadsheet: FileSpreadsheet,
@@ -60,9 +59,10 @@ const icons: Record<FileIconKind, LucideIcon> = {
 
 export function FileTypeIcon({ path, size = 13 }: { path: string; size?: number }) {
   const kind = fileIconKind(path);
-  if (kind === "pdf" || kind === "tex") {
-    return <img className={`file-type-icon file-type-icon-${kind}`} src={appPath(`/${kind === "pdf" ? "pdf-file" : "tex-file"}.svg`)} width={size} height={size} alt="" aria-hidden="true" />;
-  }
-  const Icon = icons[kind] ?? File;
-  return <Icon className={`file-type-icon file-type-icon-${kind}`} size={size} aria-hidden="true" />;
+  const className = `file-type-icon file-type-icon-${kind}`;
+  if (kind === "pdf") return <PdfDocumentIcon className={className} size={size} variant="wordmark" />;
+  if (kind === "tex") return <TexDocumentIcon className={className} size={size} />;
+  if (kind === "markdown") return <MarkdownDocumentIcon className={className} size={size} />;
+  const Icon = icons[kind];
+  return <Icon className={className} size={size} aria-hidden="true" />;
 }

@@ -1,6 +1,6 @@
 import { lazy, useId, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ChevronDown, ChevronRight, Globe2, LoaderCircle, LogOut, Palette, UserRound } from "lucide-react";
+import { ChevronDown, ChevronRight, Languages, LoaderCircle, LogOut, Palette, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { User } from "./types";
 import { ThemeSwitcher } from "./ThemeSwitcher";
@@ -58,7 +58,7 @@ export function UserMenu({ user, onGitHub, onSignOut, onUserChange }: {
             <span className="user-menu-setting-label"><UserRound size={16} aria-hidden />{t("account.avatarTitle")}</span><ChevronRight size={14} aria-hidden />
           </button>
           <div className="user-menu-language">
-            <label htmlFor={languageId}><Globe2 size={16} aria-hidden="true" />{t("common.language")}</label>
+            <label htmlFor={languageId}><Languages size={16} aria-hidden="true" />{t("common.language")}</label>
             <div className="user-menu-language-select"><select id={languageId} value={i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en"} onChange={(event) => void i18n.changeLanguage(event.target.value)}>
               <option value="en">{t("common.languageEnglish")}</option><option value="zh">{t("common.languageChinese")}</option>
             </select><ChevronDown size={13} aria-hidden="true" /></div>

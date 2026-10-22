@@ -602,10 +602,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .file-entry-main[draggable="true"]:active { cursor: grabbing; }
 .file-entry-main { min-width: 0; height: 100%; flex: 1; overflow: hidden; display: flex; align-items: center; gap: 5px; border: 0; padding: 0 4px; background: transparent; color: inherit; text-align: left; font-size: inherit; }
 .file-entry-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-entry-main .file-type-icon { flex: none; }
+.file-entry-main .file-type-icon { flex: none; box-sizing: border-box; width: 15px; height: 15px; padding: 1px; }
+.file-entry-main .file-type-icon-tex { padding: 0; }
 .file-entry-main svg.file-type-icon { color: var(--ui-accent, #28724e); }
-.file-entry-main img.file-type-icon { object-fit: contain; }
-.file-entry-main .file-type-icon-pdf { color: var(--ui-danger, #b0444b); }
 .file-entry-main .file-type-icon-image { color: var(--ui-purple, #7b55a5); }
 .file-entry-main .file-type-icon-bib { color: var(--ui-info, #176b8f); }
 .file-entry-main .file-type-icon-latexmkrc { color: var(--ui-info, #656c8d); }
