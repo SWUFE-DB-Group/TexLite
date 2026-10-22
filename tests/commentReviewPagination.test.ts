@@ -7,6 +7,8 @@ import i18n from "../src/client/i18n";
 import type { Comment, Project, SiteConfig } from "../src/client/types";
 import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
 import { WorkspaceContextPanel, type WorkspaceContextPanelProps } from "../src/client/workspace/WorkspaceContextPanel";
+import { discussionTestClient, withDiscussionQueries } from "./discussionTestUtils";
+let client = discussionTestClient();
 
 // Panel sizing is unrelated to the real drawer/thread interactions tested here.
 vi.mock("react-resizable-panels", () => ({
@@ -29,7 +31,7 @@ function Harness() {
     onFocusComment: (comment) => { props.onFocusComment(comment); setFocus(comment.id); },
     onClearFocusComment: () => { props.onClearFocusComment(); setFocus(null); } });
 }
-async function render() { await act(async () => root.render(createElement(Harness))); }
+async function render() { await act(async () => root.render(withDiscussionQueries(createElement(Harness), client))); }
 const threads = () => [...host.querySelectorAll<HTMLElement>('.comment-thread-slot:not(.is-exiting) .comment-thread')];
 const loadMore = () => host.querySelector<HTMLButtonElement>(".comment-review-pagination button");
 async function showResolved() {
@@ -38,6 +40,7 @@ async function showResolved() {
 }
 
 beforeEach(async () => {
+  client = discussionTestClient();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("fetch", network); network.mockClear();
   // Keep scheduled scrolling deterministic and independent from DOM geometry.
@@ -58,7 +61,7 @@ beforeEach(async () => {
     spellCheckIndex: -1, onSpellCheckNavigate: vi.fn(), onProject: vi.fn()
   };
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); client.clear(); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("resolved comment Load more", () => {
   it("keeps status totals scoped to file/project while unread only narrows the active status queue", async () => {
@@ -114,21 +117,21 @@ describe("resolved comment Load more", () => {
     expect(statusLabels()).toEqual(["Open 2", "Resolved 2"]);
   });
 
-  it("shows 50, then 100, then the remaining threads, with correct totals and no requests", async () => {
+  it("shows 50, then 100, then the remaining threads, with only a Load more button and no requests", async () => {
     const first = props.comments[0];
     first.replies = Array.from({ length: 8 }, (_, index) => ({ id: `reply-${index}`, authorId: "author",
       authorUsername: "author", authorDisplayName: "Author", content: "Reply", createdAt: first.createdAt,
       updatedAt: first.createdAt, editedAt: null }));
     await render(); await showResolved();
     expect(threads()).toHaveLength(50);
-    expect(host.querySelector(".comment-review-pagination")?.textContent).toContain("Showing 50 of 126 comments");
+    expect(host.querySelector(".comment-review-pagination")?.textContent).toBe("Load more");
     expect(host.textContent).toContain("Resolved 126");
     await act(async () => loadMore()!.click());
     expect(threads()).toHaveLength(100);
     await act(async () => loadMore()!.click());
     expect(threads()).toHaveLength(126);
     expect(loadMore()).toBeNull();
-    expect(host.textContent).toContain("No more resolved comments.");
+    expect(host.querySelector(".comment-review-pagination")).toBeNull();
     expect(network).not.toHaveBeenCalled();
   });
 
@@ -159,9 +162,10 @@ describe("resolved comment Load more", () => {
     await act(async () => host.querySelector<HTMLButtonElement>(".comment-unread-toggle")!.click());
     expect(threads()).toHaveLength(50);
     expect(threads()[0].dataset.commentId).toBe("comment-67");
-    expect(host.querySelector(".comment-review-pagination")?.textContent).toContain("Showing 50 of 60 comments");
+    expect(host.querySelector(".comment-review-pagination")?.textContent).toBe("Load more");
     await act(async () => loadMore()!.click());
     expect(threads()).toHaveLength(60);
+    expect(host.querySelector(".comment-review-pagination")).toBeNull();
   });
 
   it("automatically reveals a notification's older reply beyond the initial 50 threads", async () => {
@@ -212,26 +216,26 @@ describe("resolved comment Load more", () => {
     expect(props.commentDraftStore.getThread("comment-10").reply?.content).toBe("Unsent reply");
   });
 
-  it("fills a reopened thread's place while retaining its exit animation and accurate shown count", async () => {
+  it("fills a reopened thread's place while retaining its exit animation and Load more button", async () => {
     await render(); await showResolved();
     props.comments = props.comments.map((item) => item.id === "comment-1" ? { ...item, resolved: false } : item);
     await render();
     expect(threads()).toHaveLength(50);
     expect(host.querySelector('[data-comment-id="comment-51"]')).not.toBeNull();
     expect(host.querySelector(".comment-thread-slot.is-exiting")).not.toBeNull();
-    expect(host.querySelector(".comment-review-pagination")?.textContent).toContain("Showing 50 of 125 comments");
+    expect(host.querySelector(".comment-review-pagination")?.textContent).toBe("Load more");
     await act(async () => host.querySelector(".comment-thread-slot.is-exiting")!.dispatchEvent(new Event("animationend", { bubbles: true })));
     expect(host.querySelector('[data-comment-id="comment-1"]')).toBeNull();
   });
 
-  it("does not claim the end of the list during loading or after a refresh error", async () => {
-    props.comments = props.comments.slice(0, 20);
+  it("renders no pagination footer for a short list, including during refresh or after an error", async () => {
+    props.comments = props.comments.slice(0, 2);
     await render(); await showResolved();
-    expect(host.textContent).toContain("No more resolved comments.");
+    expect(host.querySelector(".comment-review-pagination")).toBeNull();
     props.commentsLoading = true; await render();
-    expect(host.textContent).not.toContain("No more resolved comments.");
+    expect(host.querySelector(".comment-review-pagination")).toBeNull();
     props.commentsLoading = false; props.commentsError = "Could not refresh"; await render();
-    expect(host.textContent).not.toContain("No more resolved comments.");
-    expect(threads()).toHaveLength(20);
+    expect(host.querySelector(".comment-review-pagination")).toBeNull();
+    expect(threads()).toHaveLength(2);
   });
 });

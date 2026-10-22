@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Comment, ProjectCommentSummary } from "../src/client/types";
 import { useProjectComments } from "../src/client/workspace/useProjectComments";
+import { discussionTestClient, withDiscussionQueries } from "./discussionTestUtils";
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/client/api", async (original) => ({ ...await original<object>(), api: apiMock }));
@@ -15,6 +16,7 @@ function comment(id: string, filePath = "main.tex"): Comment {
 const mainComments = [comment("main-1"), comment("main-2")];
 const bibComment = comment("bib-1", "custom.bib");
 let root: Root, host: HTMLDivElement;
+let client = discussionTestClient();
 let activeFile: string, projectId: string, revision: string;
 let resource: ReturnType<typeof useProjectComments>;
 function Probe() {
@@ -23,18 +25,19 @@ function Probe() {
     save: async () => true, saveFailureMessage: "Save failed", onError: vi.fn(), onAdded: vi.fn() });
   return null;
 }
-const render = () => act(async () => root.render(createElement(Probe)));
+const render = () => act(async () => root.render(withDiscussionQueries(createElement(Probe), client)));
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   apiMock.mockReset();
+  client = discussionTestClient();
   apiMock.mockImplementation(async (url: string) => ({ summary,
     comments: url.includes("scope=project") ? [...mainComments, bibComment]
       : url.includes("path=custom.bib") ? [bibComment] : mainComments }));
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   activeFile = "main.tex"; projectId = "project"; revision = "1";
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); client.clear(); host.remove(); vi.unstubAllGlobals(); });
 
 describe("project-wide comment totals", () => {
   it("loads project counts with file comments without eagerly downloading other discussions", async () => {
@@ -65,8 +68,8 @@ describe("project-wide comment totals", () => {
     apiMock.mockImplementation(async (url: string, options?: RequestInit) => {
       const updatedSummary = { ...summary, unresolvedCount: 2 };
       if (options?.method === "PATCH") return { ok: true,
-        resolution: { id: bibComment.id, filePath: bibComment.filePath, resolved: true, resolvedById: "reader",
-          resolvedByUsername: "reader", resolvedByDisplayName: "Reader", resolvedAt: "2026-10-22T00:00:00Z", updatedAt: "2026-10-22T00:00:00Z" },
+        change: { kind: "resolved", resolution: { id: bibComment.id, filePath: bibComment.filePath, resolved: true, resolvedById: "reader",
+          resolvedByUsername: "reader", resolvedByDisplayName: "Reader", resolvedAt: "2026-10-22T00:00:00Z", updatedAt: "2026-10-22T00:00:00Z" } },
         summary: updatedSummary };
       return { comments: url.includes("scope=project") ? [...mainComments, { ...bibComment, resolved: true }] : mainComments,
         summary: updatedSummary };

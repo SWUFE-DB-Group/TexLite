@@ -299,10 +299,8 @@ export function WorkspaceContextPanel({
             {displayedComments.length === 0 && !commentsLoading && !commentsError && <p className="muted padded" role="status">{singleCommentMode
               ? t(comments.some((comment) => comment.id === singleCommentId && comment.resolved) ? "editor.currentCommentResolved" : "editor.currentCommentUnavailable")
               : comments.length ? t("editor.commentNoMatches") : t("editor.noComments")}</p>}
-            {!singleCommentMode && commentFilter === "resolved" && visibleComments.length > 0 && <div className="comment-review-pagination">
-              <span role="status" aria-live="polite">{t("editor.commentResolvedShowing", { shown: renderedComments.length, total: visibleComments.length })}</span>
-              {hasMore ? <button type="button" onClick={loadMore}>{t("editor.commentLoadMore")}</button>
-                : !commentsLoading && !commentsError && <span className="comment-review-end">{t("editor.commentResolvedEnd")}</span>}
+            {!singleCommentMode && commentFilter === "resolved" && hasMore && <div className="comment-review-pagination">
+              <button type="button" onClick={loadMore}>{t("editor.commentLoadMore")}</button>
             </div>}
           </div>
         </>}

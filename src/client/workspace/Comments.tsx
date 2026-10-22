@@ -102,6 +102,7 @@ export function CommentThread({
   const [autoFocusDraft, setAutoFocusDraft] = useState<CommentDraftKey | null>(null);
   const [deleteCommentOpen, setDeleteCommentOpen] = useState(false);
   const [deleteReplyId, setDeleteReplyId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const threadElement = useRef<HTMLElement>(null);
   const deletingRef = useRef(false);
   const [deleting, setDeleting] = useState(false);
@@ -109,15 +110,17 @@ export function CommentThread({
     if (deletingRef.current) return;
     deletingRef.current = true;
     setDeleting(true);
+    setDeleteError("");
     const element = replyId ? threadElement.current?.querySelector<HTMLElement>(`[data-comment-reply-id="${replyId}"]`) ?? null : threadElement.current;
     const playEffect = prepareCommentDeletionEffect(element);
     try {
       const deleted = replyId ? await onDeleteReply(replyId) : await onDelete();
-      if (!deleted) return;
+      if (!deleted) { setDeleteError(t("editor.commentDeleteFailed")); return; }
       if (replyId) setDeleteReplyId(null);
       else setDeleteCommentOpen(false);
       playEffect();
-    } finally {
+    } catch (error) { setDeleteError(errorMessage(error)); }
+    finally {
       deletingRef.current = false;
       setDeleting(false);
     }
@@ -176,7 +179,7 @@ export function CommentThread({
         {comment.authorId === currentUserId && !commentEditDraft?.open && <CommentActionsMenu kind="comment"
           disabled={submittingForm || toggling}
           onEdit={() => openDraft("edit-comment", comment.content)}
-          onDelete={() => setDeleteCommentOpen(true)} />}
+          onDelete={() => { setDeleteError(""); setDeleteCommentOpen(true); }} />}
       </span>
     </header>
     <div className="comment-location">{comment.orphaned ? t("editor.orphaned") : showFilePath ? t("editor.commentLocation", { path: comment.filePath, line: comment.startLine }) : t("editor.line", { line: comment.startLine })}</div>
@@ -204,7 +207,7 @@ export function CommentThread({
             {reply.authorId === currentUserId && !editing && <CommentActionsMenu kind="reply"
               disabled={submittingForm || toggling}
               onEdit={() => openDraft(editKey, reply.content)}
-              onDelete={() => setDeleteReplyId(reply.id)} />}
+              onDelete={() => { setDeleteError(""); setDeleteReplyId(reply.id); }} />}
           </span>
         </header>
         {editing ? draftForm(editKey, t("editor.editReply"), (content) => onEditReply(reply.id, content))
@@ -225,7 +228,7 @@ export function CommentThread({
         openDraft("reply");
       }}>{t(replyDraft?.content ? "editor.resumeReply" : "editor.replyPrompt")}</button>}
     {draftForm("reply", t("editor.reply"), onReply)}
-  </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription")} confirmLabel={t("common.delete")} danger busy={deleting} onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void confirmDelete(null)} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger busy={deleting} onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void confirmDelete(deleteReplyId); }} /></>;
+  </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription")} confirmLabel={t("common.delete")} danger busy={deleting} error={deleteError} onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void confirmDelete(null)} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger busy={deleting} error={deleteError} onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void confirmDelete(deleteReplyId); }} /></>;
 }
 
 interface ShareMember { id: string; username: string; displayName?: string; avatarStyle?: string | null; permission: "read" | "edit" }

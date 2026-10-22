@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError } from "../api";
 import { errorMessage } from "../errors";
 import { sourceHash } from "../sourceHash";
-import type { Comment, Project, ProjectCommentSummary } from "../types";
+import type { Comment, Project } from "../types";
 import type { CommentReviewScope } from "./commentNavigation";
 import { CommentDraftStore, type SourceSelection } from "./commentDrafts";
+import { useDiscussionQueries } from "./useDiscussionQueries";
+import { useCommentMutations } from "./useCommentMutations";
 export type { SourceSelection } from "./commentDrafts";
-
-type CommentResolution = Pick<Comment, "id" | "filePath" | "resolved" | "resolvedById" | "resolvedByUsername" | "resolvedByDisplayName" | "resolvedAt" | "updatedAt">;
 
 interface UseProjectCommentsOptions {
   projectId: string;
@@ -22,7 +21,6 @@ interface UseProjectCommentsOptions {
   saveFailureMessage: string;
   onError: (message: string) => void;
   onAdded: () => void;
-  onChanged?: (resolution?: CommentResolution) => void;
 }
 
 interface CommentDraft {
@@ -31,32 +29,8 @@ interface CommentDraft {
   sourceHash: string;
 }
 
-interface FileCommentResource {
-  filePath: string;
-  comments: Comment[];
-  loading: boolean;
-  error: string;
-}
-
-/** A failed refresh is not evidence that the discussion was deleted. */
-export function fileCommentsAfterFailure(current: FileCommentResource, filePath: string, error: unknown): FileCommentResource {
-  // Do not keep displaying cached project contents after an explicit access
-  // rejection. Temporary network/server failures can retain the same file.
-  const inaccessible = error instanceof ApiError && [401, 403, 404].includes(error.status);
-  return {
-    filePath,
-    comments: !inaccessible && current.filePath === filePath ? current.comments : [],
-    loading: false,
-    error: errorMessage(error)
-  };
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
-
 export function useProjectComments({
-  projectId, activeFile, content, permission, revision, sourceOrderRevision, selection, save, saveFailureMessage, onError, onAdded, onChanged
+  projectId, activeFile, content, permission, revision, sourceOrderRevision, selection, save, saveFailureMessage, onError, onAdded
 }: UseProjectCommentsOptions) {
   const commentDraftStore = useMemo(() => new CommentDraftStore(), [projectId]);
   const lifecycle = useMemo(() => ({ active: false }), [projectId]);
@@ -64,15 +38,9 @@ export function useProjectComments({
     lifecycle.active = true;
     return () => { lifecycle.active = false; };
   }, [lifecycle]);
-  // `comments` remains strictly scoped to the active file. LatexEditor uses
-  // offsets from this list to decorate source, so project-wide results must
-  // never be substituted here.
-  const [fileCommentResource, setFileCommentResource] = useState<FileCommentResource>({ filePath: "", comments: [], loading: false, error: "" });
-  const [projectComments, setProjectComments] = useState<Comment[]>([]);
-  const [projectCommentsLoading, setProjectCommentsLoading] = useState(false);
-  const [projectCommentsError, setProjectCommentsError] = useState("");
-  const [commentSummary, setCommentSummary] = useState<{ projectId: string; summary: ProjectCommentSummary } | null>(null);
   const [commentScope, setCommentScope] = useState<CommentReviewScope>("file");
+  const queries = useDiscussionQueries(projectId, activeFile, commentScope, revision, sourceOrderRevision);
+  const write = useCommentMutations(projectId);
   const [focusComment, setFocusComment] = useState<Comment | null>(null);
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentText, setCommentTextState] = useState("");
@@ -81,113 +49,22 @@ export function useProjectComments({
   const [commentDraftRestored, setCommentDraftRestored] = useState(false);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState("");
-  const fileRequest = useRef<AbortController | null>(null);
-  const projectRequest = useRef<AbortController | null>(null);
-  const requestSequence = useRef(0);
-  const appliedSummarySequence = useRef(0);
   const submittingComment = useRef(false);
   const activeFileRef = useRef(activeFile);
-  const commentScopeRef = useRef(commentScope);
   const saveRef = useRef(save);
   const onErrorRef = useRef(onError);
   const onAddedRef = useRef(onAdded);
-  const onChangedRef = useRef(onChanged);
   const commentDraftRef = useRef(commentDraft);
   const commentTextRef = useRef(commentText);
   commentDraftRef.current = commentDraft;
   commentTextRef.current = commentText;
   activeFileRef.current = activeFile;
-  commentScopeRef.current = commentScope;
   saveRef.current = save;
   onErrorRef.current = onError;
   onAddedRef.current = onAdded;
-  onChangedRef.current = onChanged;
-
-  // The resource is explicitly tagged so a response for a previous tab can
-  // never decorate or focus the editor currently on screen.
-  const comments = fileCommentResource.filePath === activeFile ? fileCommentResource.comments : [];
-  const commentsFilePath = fileCommentResource.filePath;
-  const fileCommentsError = commentsFilePath === activeFile ? fileCommentResource.error : "";
-  const fileCommentsLoading = Boolean(activeFile) && (commentsFilePath !== activeFile || fileCommentResource.loading);
-  const commentsReady = commentsFilePath === activeFile && !fileCommentResource.loading && !fileCommentsError;
-
-  const updateCommentSummary = (summary: ProjectCommentSummary | undefined, sequence: number) => {
-    if (!summary || sequence < appliedSummarySequence.current) return;
-    appliedSummarySequence.current = sequence;
-    setCommentSummary({ projectId, summary });
-  };
-
-  const loadFileComments = async (file: string) => {
-    fileRequest.current?.abort();
-    const controller = new AbortController();
-    const sequence = ++requestSequence.current;
-    fileRequest.current = controller;
-    if (activeFileRef.current === file) {
-      setFileCommentResource((current) => current.filePath === file
-        ? { ...current, loading: true, error: "" }
-        : { filePath: "", comments: [], loading: true, error: "" });
-    }
-    try {
-      const result = await api<{ comments: Comment[]; summary?: ProjectCommentSummary }>(
-        `/api/projects/${projectId}/comments?path=${encodeURIComponent(file)}`,
-        { signal: controller.signal }
-      );
-      if (fileRequest.current === controller && activeFileRef.current === file) {
-        setFileCommentResource({ filePath: file, comments: result.comments, loading: false, error: "" });
-        updateCommentSummary(result.summary, sequence);
-      }
-    } catch (error) {
-      if (!isAbortError(error) && fileRequest.current === controller && activeFileRef.current === file) {
-        setFileCommentResource((current) => fileCommentsAfterFailure(current, file, error));
-      }
-    } finally {
-      if (fileRequest.current === controller) fileRequest.current = null;
-    }
-  };
-
-  const loadProjectComments = async () => {
-    projectRequest.current?.abort();
-    const controller = new AbortController();
-    const sequence = ++requestSequence.current;
-    projectRequest.current = controller;
-    if (commentScopeRef.current === "project") {
-      setProjectCommentsLoading(true);
-      setProjectCommentsError("");
-    }
-    try {
-      const result = await api<{ comments: Comment[]; summary?: ProjectCommentSummary }>(
-        `/api/projects/${projectId}/comments?scope=project`,
-        { signal: controller.signal }
-      );
-      if (projectRequest.current === controller && commentScopeRef.current === "project") {
-        setProjectComments(result.comments);
-        updateCommentSummary(result.summary, sequence);
-      }
-    } catch (error) {
-      if (!isAbortError(error) && projectRequest.current === controller && commentScopeRef.current === "project") {
-        // Preserve a useful, previously loaded review queue. A transient
-        // network error must not masquerade as an empty project.
-        setProjectCommentsError(errorMessage(error));
-      }
-    } finally {
-      if (projectRequest.current === controller) {
-        projectRequest.current = null;
-        if (commentScopeRef.current === "project") setProjectCommentsLoading(false);
-      }
-    }
-  };
 
   useEffect(() => {
-    fileRequest.current?.abort();
-    fileRequest.current = null;
-    projectRequest.current?.abort();
-    projectRequest.current = null;
     setFocusComment(null);
-    setFileCommentResource({ filePath: "", comments: [], loading: false, error: "" });
-    setProjectComments([]);
-    setProjectCommentsLoading(false);
-    setProjectCommentsError("");
-    setCommentSummary(null);
     setCommentScope("file");
     setCommentOpen(false);
     setCommentDraft(null);
@@ -208,39 +85,6 @@ export function useProjectComments({
     setCommentDraftRestored(false);
     setCommentError("");
   }, [activeFile]);
-
-  useEffect(() => {
-    if (activeFile) void loadFileComments(activeFile);
-    else setFileCommentResource({ filePath: "", comments: [], loading: false, error: "" });
-    return () => {
-      fileRequest.current?.abort();
-      fileRequest.current = null;
-    };
-  }, [projectId, activeFile, revision]);
-
-  useEffect(() => {
-    if (commentScope !== "project") {
-      projectRequest.current?.abort();
-      projectRequest.current = null;
-      setProjectComments([]);
-      setProjectCommentsLoading(false);
-      setProjectCommentsError("");
-      return;
-    }
-    void loadProjectComments();
-    return () => {
-      projectRequest.current?.abort();
-      projectRequest.current = null;
-    };
-  }, [projectId, commentScope, revision, sourceOrderRevision]);
-
-  const refreshComments = async () => {
-    if (!lifecycle.active) return;
-    const requests: Array<Promise<void>> = [];
-    if (activeFileRef.current) requests.push(loadFileComments(activeFileRef.current));
-    if (commentScopeRef.current === "project") requests.push(loadProjectComments());
-    await Promise.all(requests);
-  };
 
   const openComment = (selectionOverride?: SourceSelection, sourceOverride?: string) => {
     if (!activeFile) return;
@@ -311,16 +155,16 @@ export function useProjectComments({
         if (isCurrentDraft()) setCommentError(saveFailureMessage);
         return;
       }
-      await api(`/api/projects/${projectId}/comments`, {
+      await write("", {
         method: "POST",
         body: JSON.stringify({ path: draft.filePath, content: submittedText, ...draft.selection, sourceHash: draft.sourceHash })
       });
-      await refreshComments();
       const saved = commentDraftStore.getNew(draft.filePath);
       if (saved?.content === submittedText && saved.sourceHash === draft.sourceHash
         && saved.selection.startOffset === draft.selection.startOffset && saved.selection.endOffset === draft.selection.endOffset) {
         commentDraftStore.discardNew(draft.filePath);
       }
+      if (!lifecycle.active) return;
       if (isCurrentDraft()) {
         setCommentOpen(false);
         setCommentDraft(null);
@@ -328,7 +172,6 @@ export function useProjectComments({
         setCommentDraftRestored(false);
       }
       onAddedRef.current();
-      onChangedRef.current?.();
     } catch (error) {
       // Keep the composer and its draft visible so a source-revision conflict
       // can be resolved by reselecting the passage without losing the note.
@@ -341,89 +184,54 @@ export function useProjectComments({
 
   const toggleComment = async (comment: Comment) => {
     try {
-      const result = await api<{ resolution: CommentResolution; summary: ProjectCommentSummary }>(`/api/projects/${projectId}/comments/${comment.id}`, {
+      await write(`/${comment.id}`, {
         method: "PATCH",
         body: JSON.stringify({ resolved: !Boolean(comment.resolved) })
       });
-      if (!lifecycle.active) return;
-      // Cancel reads started before the acknowledgement, so they cannot undo
-      // a confirmed mutation. Preserve live anchors, source order and replies.
-      fileRequest.current?.abort();
-      fileRequest.current = null;
-      projectRequest.current?.abort();
-      projectRequest.current = null;
-      const merge = (items: Comment[]) => items.map((item) => item.id === result.resolution.id
-        && item.filePath === result.resolution.filePath ? { ...item, ...result.resolution } : item);
-      setFileCommentResource((current) => ({ ...current, comments: merge(current.comments) }));
-      setProjectComments(merge);
-      updateCommentSummary(result.summary, ++requestSequence.current);
-      onChangedRef.current?.(result.resolution);
-      await refreshComments();
     } catch (error) { if (lifecycle.active) onErrorRef.current(errorMessage(error)); }
   };
 
   const replyToComment = async (comment: Comment, content: string): Promise<boolean> => {
     // The inline composer owns request errors and retains its input for retry.
-    await api(`/api/projects/${projectId}/comments/${comment.id}/replies`, {
+    await write(`/${comment.id}/replies`, {
       method: "POST", body: JSON.stringify({ content })
     });
-    await refreshComments();
-    onChangedRef.current?.();
     return true;
   };
 
   const editComment = async (comment: Comment, content: string): Promise<boolean> => {
-    await api(`/api/projects/${projectId}/comments/${comment.id}`, {
+    await write(`/${comment.id}`, {
       method: "PATCH", body: JSON.stringify({ content })
     });
-    await refreshComments();
-    onChangedRef.current?.();
     return true;
   };
 
   const deleteComment = async (comment: Comment): Promise<boolean> => {
-    try {
-      await api(`/api/projects/${projectId}/comments/${comment.id}`, { method: "DELETE" });
-      await refreshComments();
-      setFocusComment((current) => current?.id === comment.id ? null : current);
-      commentDraftStore.discard(comment.id);
-      onChangedRef.current?.();
-      return true;
-    } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
+    await write(`/${comment.id}`, { method: "DELETE" });
+    if (!lifecycle.active) return true;
+    setFocusComment((current) => current?.id === comment.id ? null : current);
+    commentDraftStore.discard(comment.id);
+    return true;
   };
 
   const editCommentReply = async (comment: Comment, replyId: string, content: string): Promise<boolean> => {
-    await api(`/api/projects/${projectId}/comments/${comment.id}/replies/${replyId}`, {
+    await write(`/${comment.id}/replies/${replyId}`, {
       method: "PATCH", body: JSON.stringify({ content })
     });
-    await refreshComments();
-    onChangedRef.current?.();
     return true;
   };
 
   const deleteCommentReply = async (comment: Comment, replyId: string): Promise<boolean> => {
-    try {
-      await api(`/api/projects/${projectId}/comments/${comment.id}/replies/${replyId}`, { method: "DELETE" });
-      await refreshComments();
-      commentDraftStore.discard(comment.id, `edit-reply:${replyId}`);
-      onChangedRef.current?.();
-      return true;
-    } catch (error) { onErrorRef.current(errorMessage(error)); return false; }
+    await write(`/${comment.id}/replies/${replyId}`, { method: "DELETE" });
+    commentDraftStore.discard(comment.id, `edit-reply:${replyId}`);
+    return true;
   };
 
   return {
     commentDraftStore,
-    projectCommentSummary: commentSummary?.projectId === projectId ? commentSummary.summary : null,
-    comments,
-    commentsFilePath,
-    commentsReady,
-    fileCommentsLoading,
-    fileCommentsError,
-    retryFileComments: refreshComments,
-    reviewComments: commentScope === "file" ? comments : projectComments,
-    reviewCommentsLoading: commentScope === "project" ? projectCommentsLoading : fileCommentsLoading,
-    reviewCommentsError: commentScope === "project" ? projectCommentsError : fileCommentsError,
-    retryReviewComments: refreshComments,
+    ...queries,
+    retryFileComments: queries.refreshComments,
+    retryReviewComments: queries.refreshComments,
     commentScope,
     setCommentScope,
     focusComment,

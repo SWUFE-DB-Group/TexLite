@@ -4,12 +4,13 @@ import { describe, expect, it } from "vitest";
 import { CommentForm } from "../src/client/workspace/CommentForm";
 import { CommentActionsMenu } from "../src/client/workspace/CommentActionsMenu";
 import i18n from "../src/client/i18n";
+import { withDiscussionQueries } from "./discussionTestUtils";
 
 function render(props: Partial<ComponentProps<typeof CommentForm>> = {}): string {
-  return renderToStaticMarkup(createElement(CommentForm, {
+  return renderToStaticMarkup(withDiscussionQueries(createElement(CommentForm, {
     projectId: "project", value: "Draft text", onChange: () => {}, onSubmit: async () => true,
     onCancel: () => {}, label: "Reply", ...props
-  }));
+  })));
 }
 
 describe("comment submission forms", () => {

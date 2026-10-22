@@ -16,6 +16,7 @@ import type { CompileCleanMode } from "../workspace/useProjectCompilation";
 import { useProjectComments, type SourceSelection } from "../workspace/useProjectComments";
 import { resolvePendingCommentFocus } from "../workspace/commentNavigation";
 import { useProjectMentions } from "../workspace/useProjectMentions";
+import { DiscussionQueryProvider } from "../workspace/DiscussionQueryProvider";
 import { useProjectCollaboration } from "../workspace/useProjectCollaboration";
 import { ProjectCollaborationSession } from "../workspace/ProjectCollaborationSession";
 import { useProjectCompilation } from "../workspace/useProjectCompilation";
@@ -79,9 +80,9 @@ interface ProjectWorkspaceProps {
 }
 
 export function ProjectWorkspace(props: ProjectWorkspaceProps) {
-  return <ProjectCollaborationSession projectId={props.projectId} user={props.user}>
+  return <DiscussionQueryProvider key={`${props.user.id}:${props.projectId}`}><ProjectCollaborationSession projectId={props.projectId} user={props.user}>
     {(collaboration) => <ProjectWorkspaceController {...props} collaboration={collaboration} />}
-  </ProjectCollaborationSession>;
+  </ProjectCollaborationSession></DiscussionQueryProvider>;
 }
 
 function ProjectWorkspaceController({ site, user, projectId, preload, mentionId = null, onMentionTargeted, onMentionsRead, onBack, collaboration }: ProjectWorkspaceProps & {
@@ -291,7 +292,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     discardLocalDraft
   } = useProjectCollaboration(collaboration, activeMainFile, project?.permission ?? "read", collaborationReady, () => setSaveState("editor.offlineDraft"));
 
-  const { unreadMentions, refresh: refreshMentions, markMentionRead, markAllMentionsRead, clearResolvedMentions } = useProjectMentions(projectId, commentsRevision, setError);
+  const { unreadMentions, mentionsError, markMentionRead, markAllMentionsRead } = useProjectMentions(projectId, commentsRevision, setError,
+    (count, all) => onMentionsReadRef.current?.(count, all));
 
   const {
     pdfTarget, pdfViewport, sourceJump, setPdfViewport, resetPdfViewport, clearPdfViewport,
@@ -1065,11 +1067,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     save,
     saveFailureMessage: t("errors.collaborationUnavailable"),
     onError: setError,
-    onAdded: () => { setSingleCommentId(null); setSidePanel("comments"); },
-    onChanged: (resolution) => {
-      if (resolution?.resolved) clearResolvedMentions(resolution.id);
-      void refreshMentions();
-    }
+    onAdded: () => { setSingleCommentId(null); setSidePanel("comments"); }
   });
   // Includes are one reason to offer project-wide review. The summary below
   // also reveals discussions in bibliographies and standalone source files.
@@ -1164,17 +1162,6 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       setPendingCommentFocus(null);
     }
   }, [activeFile, comments, commentsFilePath, commentsReady, loadedFile, pendingCommentFocus, setFocusComment]);
-  const markVisibleMentionRead = async (nextMentionId: string): Promise<boolean> => {
-    const marked = await markMentionRead(nextMentionId);
-    if (marked) onMentionsReadRef.current?.(1);
-    return marked;
-  };
-  const markAllVisibleMentionsRead = async (): Promise<boolean> => {
-    const count = unreadMentions.length;
-    const marked = await markAllMentionsRead();
-    if (marked && count) onMentionsReadRef.current?.(count, true);
-    return marked;
-  };
   useEffect(() => {
     if (!targetMention || activeFile !== targetMention.filePath || sidePanel !== "comments") return;
     const comment = comments.find((item) => item.id === targetMention.commentId);
@@ -1487,13 +1474,13 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       <WorkspaceContextPanel key={projectId}
         sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
         site={site} files={files} currentUserId={user.id} comments={singleCommentId ? comments : reviewComments} commentDraftStore={commentDraftStore} commentsLoading={singleCommentId ? fileCommentsLoading : reviewCommentsLoading}
-        commentsError={singleCommentId ? fileCommentsError : reviewCommentsError} onRetryComments={singleCommentId ? retryFileComments : retryReviewComments} activeFile={activeFile}
+        commentsError={(singleCommentId ? fileCommentsError : reviewCommentsError) || mentionsError} onRetryComments={singleCommentId ? retryFileComments : retryReviewComments} activeFile={activeFile}
         singleCommentId={singleCommentId} onShowAllComments={() => { setSingleCommentId(null); setCommentScope("project"); }}
         hasProjectCommentsScope={hasProjectCommentsScope} commentScope={commentScope} onCommentScopeChange={setCommentScope}
         focusedCommentId={sourceCommentTarget?.filePath === activeFile ? sourceCommentTarget.id : focusComment?.id}
         commentFocusNonce={sourceCommentTarget?.nonce}
         onClearFocusComment={() => { setSourceCommentTarget(null); setFocusComment(null); setTargetMention(null); }} unreadMentions={unreadMentions}
-        onMarkMentionRead={markVisibleMentionRead} onMarkAllMentionsRead={markAllVisibleMentionsRead}
+        onMarkMentionRead={markMentionRead} onMarkAllMentionsRead={markAllMentionsRead}
         targetCommentId={targetMention?.commentId} targetReplyId={targetMention?.replyId}
         onFocusComment={focusReviewComment} onToggleComment={toggleComment}
         onReplyComment={replyToComment} onEditComment={editComment} onDeleteComment={deleteComment}

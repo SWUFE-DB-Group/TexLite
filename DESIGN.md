@@ -358,7 +358,8 @@ Open/Resolved tab counts describe all top-level discussions in the selected
 file/project scope, independent of participant and unread filters. The Unread
 badge and displayed list still intersect those filters with the selected status.
 Resolved review initially renders 50 top-level discussions and exposes a Load
-more action for another 50, with shown/total counts and an end-of-list message.
+more action for another 50 only while more remain. There are no displayed
+batch counts or end-of-list message.
 Replies do not consume this limit. Filtering and sorting apply before slicing;
 counts and previous/next navigation still use the complete matching queue.
 Navigation and an active inline composer expand the window as needed. Ordinary
@@ -366,16 +367,41 @@ data refreshes retain the window; scope, file (in file review), sorting and
 filter changes reset it. This is browser-side presentation only: the API still
 returns the full resource, including replies, and Open discussions remain
 unlimited. No additional request is made by Load more.
-Confirmed resolution changes update both file and project caches, including
-resolver metadata and project counts, before reconciling with fresh reads.
+Comment server state is owned by a workspace/user-scoped TanStack Query client,
+loaded with the workspace rather than the login/dashboard bundle. File lists,
+project review, project totals, personal unread mentions and mention candidates
+have separate project-qualified keys. No cache is persisted to disk or shared
+between accounts. Drafts and review presentation (filters, navigation, expanded
+replies and the resolved window) remain independent of this query cache.
+All comment/reply writes return a shared typed acknowledgement with the actual
+persisted object or deleted id and project totals. One cache updater applies
+these changes to all relevant loaded lists, without creating partial lists or
+overwriting live source anchors, reading-order ranks or unrelated replies.
+Reply upserts are idempotent by reply id. Acknowledged writes complete locally
+before background reconciliation: a failed GET must not make a successful reply
+invisible or invite a duplicate submission. Mutation requests are not retried
+automatically. Delete failures remain in their confirmation dialogs.
 Pre-mutation reads cannot overwrite the acknowledgement; retrying review also
-refreshes the active file's source decorations. Temporary refresh errors retain
+refreshes source decorations and unread notifications. Cross-list project
+summary responses are ordered by request start rather than completion.
+Temporary refresh errors retain
 these confirmed states and cached unread notifications, rather than implying
 that discussions or notifications disappeared. Resolving removes the existing
 thread mentions locally; reopening does not restore notifications already read.
+Transient reads retry at most twice with bounded backoff; access rejections are
+not retried and rejected resources are not displayed. Final read errors expose
+the existing retry action, including errors that affect only unread mentions.
+Mention candidates use the same cache; failure is never cached as a successful
+empty result, and focusing/retyping a mention can retry. Stale candidates can
+refresh on focus. Query defaults also reconcile stale data on browser focus and
+refetch on network reconnection, without continuous polling.
 Connected collaborators, including read-only reviewers, receive comment
 revisions over Yjs and automatically reload comments and personal unread mentions
-(up to 100). Current scope/status/participant filters and the resolved display
+(up to 100). Mark-read/read-all changes reuse that revision signal so another
+session for the same account updates too; the signal contains no personal
+notification data. Repeated mark-read clicks share the pending request and
+dashboard counts use the server's actual changed count, not the number of clicks.
+Current scope/status/participant filters and the resolved display
 window still apply. Disconnected clients need to reconnect; failed comment reads
 expose the existing retry action instead of requiring a page reload.
 Replies keep their original chronological order. Long inactive

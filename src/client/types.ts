@@ -67,12 +67,7 @@ export interface ProjectListPagination {
   totalPages: number;
 }
 
-/** Top-level discussions across the project, independent of the active file. */
-export interface ProjectCommentSummary {
-  totalCount: number;
-  unresolvedCount: number;
-  filePaths: string[];
-}
+export type { Comment, CommentReply, CommentMention, MentionableUser, ProjectCommentSummary } from "../shared/comments";
 
 export interface FileEntry {
   path: string;
@@ -213,65 +208,3 @@ export interface ProjectGitStatus {
 }
 
 export type { LatexCompletionKind, LatexCompletionItem, LatexCompletionIndex } from "../shared/latexCompletion";
-
-export interface Comment {
-  id: string;
-  /** Project-relative source path. Present for both file and project comment queries. */
-  filePath: string;
-  /** Response-only manuscript position, provided by project-wide comment reads. */
-  sourceOrder?: number;
-  authorId: string | null;
-  authorUsername: string | null;
-  authorDisplayName: string | null;
-  authorAvatarStyle?: string | null;
-  selectedText: string;
-  /** Last attached context is retained while source is deleted, for undo recovery. */
-  contextBefore?: string;
-  contextAfter?: string;
-  startOffset: number;
-  endOffset: number;
-  startLine: number;
-  endLine: number;
-  content: string;
-  resolved: boolean;
-  resolvedById: string | null;
-  resolvedByUsername: string | null;
-  resolvedByDisplayName: string | null;
-  resolvedAt: string | null;
-  orphaned: boolean;
-  createdAt: string;
-  updatedAt: string;
-  editedAt: string | null;
-  replies: CommentReply[];
-}
-
-export interface CommentReply {
-  id: string;
-  authorId: string | null;
-  authorUsername: string | null;
-  authorDisplayName: string | null;
-  authorAvatarStyle?: string | null;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-  editedAt: string | null;
-}
-
-export interface MentionableUser {
-  id: string;
-  username: string;
-  displayName: string;
-}
-
-export interface CommentMention {
-  id: string;
-  projectId: string;
-  commentId: string;
-  replyId: string | null;
-  filePath: string;
-  content: string;
-  resolved: boolean;
-  createdAt: string;
-  readAt: string | null;
-  readReason: "opened" | "resolved" | "manual" | null;
-}

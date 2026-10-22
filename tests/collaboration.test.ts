@@ -103,7 +103,7 @@ describe("project collaboration", () => {
     const meta = peer.doc.getMap("texlite:meta");
     const revision = () => meta.get("commentsRevision");
     const unread = async () => (await app.inject({ method: "GET", url: `/api/projects/${projectId}/mentions?unread=1&limit=100`,
-      headers: { cookie } })).json().mentions as Array<{ commentId: string; replyId: string | null }>;
+      headers: { cookie } })).json().mentions as Array<{ id: string; commentId: string; replyId: string | null }>;
     try {
       let before = revision();
       const created = await app.inject({ method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie: adminCookie },
@@ -122,6 +122,14 @@ describe("project collaboration", () => {
       const comments = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?scope=project`, headers: { cookie } });
       expect(comments.json().comments[0].replies).toMatchObject([{ id: reply.json().reply.id, content: "Another question @live-reviewer" }]);
 
+      // Reading in another browser/tab broadcasts an invalidation to this one.
+      const notice = (await unread())[0];
+      before = revision();
+      const read = await app.inject({ method: "POST", url: `/api/projects/${projectId}/mentions/${notice.id}/read`, headers: { cookie } });
+      expect(read.json()).toMatchObject({ changed: true });
+      await waitFor(() => revision() !== before);
+      expect(await unread()).toHaveLength(1);
+
       for (const resolved of [true, false]) {
         before = revision();
         const changed = await app.inject({ method: "PATCH", url: `/api/projects/${projectId}/comments/${commentId}`,
@@ -132,6 +140,15 @@ describe("project collaboration", () => {
         const current = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?path=main.tex`, headers: { cookie } });
         expect(current.json().comments[0].resolved).toBe(resolved);
       }
+      before = revision();
+      await app.inject({ method: "POST", url: `/api/projects/${projectId}/comments/${commentId}/replies`,
+        headers: { cookie: adminCookie }, payload: { content: "Follow-up @live-reviewer" } });
+      await waitFor(() => revision() !== before);
+      before = revision();
+      const allRead = await app.inject({ method: "POST", url: `/api/projects/${projectId}/mentions/read-all`, headers: { cookie } });
+      expect(allRead.json()).toMatchObject({ changed: 1 });
+      await waitFor(() => revision() !== before);
+      expect(await unread()).toEqual([]);
     } finally { peer.destroy(); }
   });
 

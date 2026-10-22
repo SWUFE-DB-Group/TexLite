@@ -1,25 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseConnection } from "./db.js";
-
-/** A project participant available to complete an `@username` mention. */
-export interface MentionableUser {
-  id: string;
-  username: string;
-  displayName: string;
-}
-
-export interface CommentMention {
-  id: string;
-  projectId: string;
-  commentId: string;
-  replyId: string | null;
-  filePath: string;
-  content: string;
-  resolved: boolean;
-  createdAt: string;
-  readAt: string | null;
-  readReason: "opened" | "resolved" | "manual" | null;
-}
+import type { CommentMention, MentionableUser } from "../shared/comments.js";
+export type { CommentMention, MentionableUser } from "../shared/comments.js";
 
 interface MentionRow {
   id: string;

@@ -7,6 +7,7 @@ import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
 import { GlobalTooltip } from "../src/client/GlobalTooltip";
 import i18n from "../src/client/i18n";
 import type { Comment } from "../src/client/types";
+import { withDiscussionQueries } from "./discussionTestUtils";
 
 const now = Date.parse("2026-10-21T12:00:00Z");
 const comment: Comment = {
@@ -22,7 +23,7 @@ let root: Root;
 let host: HTMLDivElement;
 let props: ComponentProps<typeof CommentThread>;
 const render = () => act(async () => {
-  root.render(createElement(Fragment, null, createElement(CommentThread, props), createElement(GlobalTooltip)));
+  root.render(withDiscussionQueries(createElement(Fragment, null, createElement(CommentThread, props), createElement(GlobalTooltip))));
 });
 
 beforeEach(async () => {
@@ -155,6 +156,20 @@ describe("comment reading and actions", () => {
     await act(async () => finish(success));
     expect(Boolean(document.querySelector(".comment-paper-shred"))).toBe(success);
     expect(Boolean(document.querySelector(".dialog-content"))).toBe(!success);
+    if (!success) expect(document.querySelector('.dialog-content [class~="dialog-error"]')?.textContent).toBe(i18n.t("editor.commentDeleteFailed"));
     if (success) document.querySelector(".comment-paper-shred")!.dispatchEvent(new Event("animationend"));
+  });
+
+  it("keeps a thrown deletion error inside the confirmation dialog", async () => {
+    props.currentUserId = "author";
+    props.onDelete = vi.fn(async () => { throw new Error("The server is unavailable. Please retry."); });
+    await render();
+    const menu = host.querySelector<HTMLButtonElement>(".comment-header .comment-actions-menu-trigger")!;
+    await act(async () => menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    const action = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "Delete comment")!;
+    await act(async () => action.click());
+    await act(async () => document.querySelector<HTMLButtonElement>(".dialog-footer .danger")!.click());
+    expect(document.querySelector('.dialog-content .dialog-error')?.textContent).toBe("The server is unavailable. Please retry.");
+    expect(document.querySelector<HTMLButtonElement>(".dialog-footer .danger")?.disabled).toBe(false);
   });
 });

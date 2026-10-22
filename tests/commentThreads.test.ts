@@ -5,6 +5,7 @@ import { CommentThread } from "../src/client/workspace/Comments.js";
 import type { Comment } from "../src/client/types.js";
 import i18n from "../src/client/i18n.js";
 import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
+import { withDiscussionQueries } from "./discussionTestUtils";
 
 const thread: Comment = {
   id: "thread", filePath: "main.tex", authorId: "author", authorUsername: "author", authorDisplayName: "Author",
@@ -26,14 +27,14 @@ const longThread: Comment = {
 };
 
 function render(props: Partial<ComponentProps<typeof CommentThread>> = {}): string {
-  return renderToStaticMarkup(createElement(CommentThread, {
+  return renderToStaticMarkup(withDiscussionQueries(createElement(CommentThread, {
     projectId: "project", comment: thread, draftStore: new CommentDraftStore(), currentUserId: "viewer",
     onMarkMentionRead: async () => true, onFocus: () => {}, onActivate: () => {}, onToggle: async () => {},
     onReply: async () => true, onEdit: async () => true, onDelete: async () => true,
     onEditReply: async () => true, onDeleteReply: async () => true,
     onReplyExpansionChange: () => {},
     highlightReplyParticipants: true, ...props
-  }));
+  })));
 }
 
 describe("comment participant highlighting", () => {

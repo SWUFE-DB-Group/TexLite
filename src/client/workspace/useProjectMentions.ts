@@ -1,90 +1,59 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError } from "../api";
+import { useEffect, useMemo, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "../api";
 import { errorMessage } from "../errors";
 import type { CommentMention } from "../types";
+import { accessRejected, discussionKeys, EMPTY_MENTIONS } from "./discussionCache";
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
-
-/** Personal, unread comment notifications for the current project. */
-export function useProjectMentions(projectId: string, revision: string, onError: (message: string) => void) {
-  const [resource, setResource] = useState<{ projectId: string; mentions: CommentMention[] }>({ projectId, mentions: [] });
-  const unreadMentions = resource.projectId === projectId ? resource.mentions : [];
-  const lifecycle = useMemo(() => ({ active: false }), [projectId]);
-  useEffect(() => {
-    lifecycle.active = true;
-    return () => { lifecycle.active = false; };
-  }, [lifecycle]);
-  const request = useRef<AbortController | null>(null);
-  const onErrorRef = useRef(onError);
-  onErrorRef.current = onError;
-
-  const refresh = useCallback(async (reportError = false) => {
+/** Personal notifications share request/cache ownership with the discussion queries. */
+export function useProjectMentions(projectId: string, revision: string, onError: (message: string) => void,
+  onRead?: (count: number, all: boolean) => void) {
+  const client = useQueryClient();
+  const key = discussionKeys.mentions(projectId);
+  const query = useQuery({ queryKey: key, queryFn: ({ signal }) =>
+    api<{ mentions: CommentMention[] }>(`/api/projects/${projectId}/mentions?unread=1&limit=100`, { signal }) });
+  const unreadMentions = accessRejected(query.error) ? EMPTY_MENTIONS : query.data?.mentions ?? EMPTY_MENTIONS;
+  const callbacks = useRef({ onError, onRead });
+  callbacks.current = { onError, onRead };
+  const lifecycle = useMemo(() => ({ active: false, pending: new Map<string, Promise<boolean>>() }), [projectId]);
+  useEffect(() => { lifecycle.active = true; return () => { lifecycle.active = false; }; }, [lifecycle]);
+  const previous = useRef({ projectId, revision });
+  const refresh = async (reportError = false) => {
     if (!lifecycle.active) return;
-    request.current?.abort();
-    const controller = new AbortController();
-    request.current = controller;
-    try {
-      const result = await api<{ mentions: CommentMention[] }>(`/api/projects/${projectId}/mentions?unread=1&limit=100`, { signal: controller.signal });
-      if (request.current === controller) setResource({ projectId, mentions: result.mentions });
-    } catch (error) {
-      if (request.current === controller && !isAbortError(error)) {
-        // A temporary failure is not evidence that all notifications were read.
-        if (error instanceof ApiError && [401, 403, 404].includes(error.status)) setResource({ projectId, mentions: [] });
-        if (reportError) onErrorRef.current(errorMessage(error));
-      }
-    } finally {
-      if (request.current === controller) request.current = null;
-    }
-  }, [projectId, lifecycle]);
-
-  const removeConfirmed = (matches: (mention: CommentMention) => boolean) => {
-    if (!lifecycle.active) return;
-    // An older GET must not resurrect notifications just acknowledged as read.
-    request.current?.abort();
-    request.current = null;
-    setResource((current) => current.projectId === projectId
-      ? { projectId, mentions: current.mentions.filter((mention) => !matches(mention)) }
-      : current);
+    await client.cancelQueries({ queryKey: key });
+    const result = await query.refetch();
+    if (reportError && result.error && lifecycle.active) callbacks.current.onError(errorMessage(result.error));
   };
-
-  const clearResolvedMentions = (commentId: string) => removeConfirmed((mention) => mention.commentId === commentId);
-
   useEffect(() => {
-    void refresh();
-    return () => {
-      request.current?.abort();
-      request.current = null;
-    };
-  }, [refresh, revision]);
+    const old = previous.current;
+    previous.current = { projectId, revision };
+    if (old.projectId === projectId && old.revision !== revision) void refresh();
+  }, [projectId, revision]);
 
-  const markMentionRead = async (mentionId: string): Promise<boolean> => {
-    try {
-      await api(`/api/projects/${projectId}/mentions/${encodeURIComponent(mentionId)}/read`, { method: "POST" });
-      if (!lifecycle.active) return false;
-      removeConfirmed((mention) => mention.id === mentionId);
-      void refresh();
-      return true;
-    } catch (error) {
-      if (lifecycle.active) onErrorRef.current(errorMessage(error));
-      return false;
-    }
+  const markRead = (mentionId?: string): Promise<boolean> => {
+    const operationKey = mentionId ?? "all";
+    const pending = lifecycle.pending.get(operationKey);
+    if (pending) return pending;
+    const operation = (async () => {
+      try {
+        const result = await api<{ changed: boolean | number }>(`/api/projects/${projectId}/mentions/${mentionId ? `${encodeURIComponent(mentionId)}/read` : "read-all"}`, { method: "POST" });
+        if (!lifecycle.active) return false;
+        await client.cancelQueries({ queryKey: key });
+        if (!lifecycle.active) return false;
+        client.setQueryData<{ mentions: CommentMention[] }>(key, (current) => current
+          ? { mentions: mentionId ? current.mentions.filter((item) => item.id !== mentionId) : [] } : current);
+        const count = Number(result.changed) || 0;
+        if (count || !mentionId) callbacks.current.onRead?.(count, !mentionId);
+        void client.invalidateQueries({ queryKey: key });
+        return true;
+      } catch (error) {
+        if (lifecycle.active) callbacks.current.onError(errorMessage(error));
+        return false;
+      } finally { lifecycle.pending.delete(operationKey); }
+    })();
+    lifecycle.pending.set(operationKey, operation);
+    return operation;
   };
-
-  const markAllMentionsRead = async (): Promise<boolean> => {
-    if (!unreadMentions.length) return true;
-    try {
-      await api(`/api/projects/${projectId}/mentions/read-all`, { method: "POST" });
-      if (!lifecycle.active) return false;
-      removeConfirmed(() => true);
-      void refresh();
-      return true;
-    } catch (error) {
-      if (lifecycle.active) onErrorRef.current(errorMessage(error));
-      return false;
-    }
-  };
-
-  return { unreadMentions, refresh, markMentionRead, markAllMentionsRead, clearResolvedMentions };
+  return { unreadMentions, mentionsError: query.error ? errorMessage(query.error) : "", refresh,
+    markMentionRead: (id: string) => markRead(id), markAllMentionsRead: () => markRead() };
 }

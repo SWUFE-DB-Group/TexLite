@@ -2,6 +2,8 @@ import { useMemo, useRef, useState, type KeyboardEvent, type TextareaHTMLAttribu
 import { AtSign } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
+import { useQuery } from "@tanstack/react-query";
+import { accessRejected, discussionKeys } from "./discussionCache";
 import type { MentionableUser } from "../types";
 
 interface MentionContext {
@@ -33,9 +35,10 @@ export interface MentionTextareaProps extends Omit<TextareaHTMLAttributes<HTMLTe
 export function MentionTextarea({ projectId, value, onChange, onKeyDown, onFocus, ...props }: MentionTextareaProps) {
   const { t } = useTranslation();
   const textarea = useRef<HTMLTextAreaElement>(null);
-  const [candidates, setCandidates] = useState<MentionableUser[] | null>(null);
-  const [loading, setLoading] = useState(false);
   const [context, setContext] = useState<MentionContext | null>(null);
+  const candidatesQuery = useQuery({ queryKey: discussionKeys.candidates(projectId), enabled: Boolean(context),
+    queryFn: ({ signal }) => api<{ users: MentionableUser[] }>(`/api/projects/${projectId}/mention-candidates`, { signal }) });
+  const candidates = accessRejected(candidatesQuery.error) ? undefined : candidatesQuery.data?.users;
   const [activeIndex, setActiveIndex] = useState(0);
 
   const visibleCandidates = useMemo(() => {
@@ -49,26 +52,11 @@ export function MentionTextarea({ projectId, value, onChange, onKeyDown, onFocus
   }, [candidates, context]);
   const menuOpen = Boolean(context && visibleCandidates.length);
 
-  const loadCandidates = async () => {
-    if (candidates || loading) return;
-    setLoading(true);
-    try {
-      const result = await api<{ users: MentionableUser[] }>(`/api/projects/${projectId}/mention-candidates`);
-      setCandidates(result.users);
-    } catch {
-      // Mentioning is an enhancement. A temporary request failure must never
-      // prevent the user from entering ordinary comment text.
-      setCandidates([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const updateContext = (next: string, caret: number) => {
     const nextContext = mentionContext(next, caret);
     setContext(nextContext);
     setActiveIndex(0);
-    if (nextContext) void loadCandidates();
+    if (nextContext && !candidatesQuery.isFetching && (candidatesQuery.isError || candidatesQuery.isStale)) void candidatesQuery.refetch();
   };
 
   const choose = (candidate: MentionableUser) => {

@@ -20,6 +20,7 @@ import {
   mentionableUsersForProject
 } from "../commentMentions.js";
 import { commentsForFile, commentsForProject, commentsSummaryForProject, now, repliesForComment, text } from "./projectShared.js";
+import type { CommentMutationResult } from "../../shared/comments.js";
 
 interface CommentRouteContext {
   config: Config;
@@ -74,7 +75,9 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     const { id, mentionId } = request.params as { id: string; mentionId: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     if (!commentMentionForUser(db, mentionId, id, user.id)) return apiError(reply, 404, "MENTION_NOT_FOUND");
-    return { ok: true, changed: markCommentMentionRead(db, mentionId, user.id, now(), "manual") };
+    const changed = markCommentMentionRead(db, mentionId, user.id, now(), "manual");
+    if (changed) collaboration.signalComments(id);
+    return { ok: true, changed };
   });
 
   app.post("/api/projects/:id/mentions/read-all", async (request, reply) => {
@@ -82,7 +85,9 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    return { ok: true, changed: markAllCommentMentionsRead(db, id, user.id, now()) };
+    const changed = markAllCommentMentionsRead(db, id, user.id, now());
+    if (changed) collaboration.signalComments(id);
+    return { ok: true, changed };
   });
 
   app.get("/api/projects/:id/comments", async (request, reply) => {
@@ -154,7 +159,8 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       })();
       const created = commentsForFile(db, config, id, filePath).find((item) => item.id === comment.id);
       collaboration.signalComments(id);
-      return reply.code(201).send({ comment: created });
+      const result: CommentMutationResult = { change: { kind: "created", comment: created! }, summary: commentsSummaryForProject(db, id) };
+      return reply.code(201).send({ comment: created, ...result });
     }, { preflight: () => {
       if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
     } });
@@ -165,7 +171,8 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     if (!user) return;
     const { id, commentId } = request.params as { id: string; commentId: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    if (!db.prepare("SELECT 1 FROM comments WHERE id = ? AND project_id = ?").get(commentId, id)) {
+    const parent = db.prepare("SELECT file_path FROM comments WHERE id = ? AND project_id = ?").get(commentId, id) as { file_path: string } | undefined;
+    if (!parent) {
       return apiError(reply, 404, "COMMENT_NOT_FOUND");
     }
     const body = request.body as { content?: unknown };
@@ -182,7 +189,8 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     })();
     const created = repliesForComment(db, commentId).find((item) => item.id === replyId);
     collaboration.signalComments(id);
-    return reply.code(201).send({ reply: created });
+    const result: CommentMutationResult = { change: { kind: "reply-saved", commentId, filePath: parent.file_path, reply: created! }, summary: commentsSummaryForProject(db, id) };
+    return reply.code(201).send({ reply: created, ...result });
   });
 
   app.patch("/api/projects/:id/comments/:commentId", async (request, reply) => {
@@ -235,7 +243,12 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       resolvedByUsername: string | null; resolvedByDisplayName: string | null;
       resolvedAt: string | null; updatedAt: string;
     };
-    return { ok: true, resolution: { ...resolution, resolved: Boolean(resolution.resolved) }, summary: commentsSummaryForProject(db, id) };
+    const persisted = { ...resolution, resolved: Boolean(resolution.resolved) };
+    const result: CommentMutationResult = { change: typeof body.resolved === "boolean"
+      ? { kind: "resolved", resolution: persisted }
+      : { kind: "edited", comment: { id: commentId, filePath: resolution.filePath, content: content!, updatedAt: changedAt, editedAt: changedAt } },
+      summary: commentsSummaryForProject(db, id) };
+    return { ok: true, resolution: persisted, ...result };
   });
 
   app.delete("/api/projects/:id/comments/:commentId", async (request, reply) => {
@@ -243,13 +256,14 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     if (!user) return;
     const { id, commentId } = request.params as { id: string; commentId: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const comment = db.prepare("SELECT author_id FROM comments WHERE id = ? AND project_id = ?")
-      .get(commentId, id) as { author_id: string | null } | undefined;
+    const comment = db.prepare("SELECT author_id, file_path FROM comments WHERE id = ? AND project_id = ?")
+      .get(commentId, id) as { author_id: string | null; file_path: string } | undefined;
     if (!comment) return apiError(reply, 404, "COMMENT_NOT_FOUND");
     if (comment.author_id !== user.id) return apiError(reply, 403, "COMMENT_DELETE_FORBIDDEN");
     db.prepare("DELETE FROM comments WHERE id = ?").run(commentId);
     collaboration.signalComments(id);
-    return { ok: true };
+    const result: CommentMutationResult = { change: { kind: "deleted", commentId, filePath: comment.file_path }, summary: commentsSummaryForProject(db, id) };
+    return { ok: true, ...result };
   });
 
   app.patch("/api/projects/:id/comments/:commentId/replies/:replyId", async (request, reply) => {
@@ -257,10 +271,10 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     if (!user) return;
     const { id, commentId, replyId } = request.params as { id: string; commentId: string; replyId: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const commentReply = db.prepare(`SELECT reply.author_id, reply.content FROM comment_replies reply
+    const commentReply = db.prepare(`SELECT reply.author_id, reply.content, comment.file_path FROM comment_replies reply
       JOIN comments comment ON comment.id = reply.comment_id
       WHERE reply.id = ? AND reply.comment_id = ? AND comment.project_id = ?`)
-      .get(replyId, commentId, id) as { author_id: string | null; content: string } | undefined;
+      .get(replyId, commentId, id) as { author_id: string | null; content: string; file_path: string } | undefined;
     if (!commentReply) return apiError(reply, 404, "REPLY_NOT_FOUND");
     if (commentReply.author_id !== user.id) return apiError(reply, 403, "REPLY_EDIT_FORBIDDEN");
     const body = request.body as { content?: unknown };
@@ -275,7 +289,8 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     })();
     const updated = repliesForComment(db, commentId).find((item) => item.id === replyId);
     collaboration.signalComments(id);
-    return { reply: updated };
+    const result: CommentMutationResult = { change: { kind: "reply-saved", commentId, filePath: commentReply.file_path, reply: updated! }, summary: commentsSummaryForProject(db, id) };
+    return { reply: updated, ...result };
   });
 
   app.delete("/api/projects/:id/comments/:commentId/replies/:replyId", async (request, reply) => {
@@ -283,14 +298,15 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     if (!user) return;
     const { id, commentId, replyId } = request.params as { id: string; commentId: string; replyId: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const commentReply = db.prepare(`SELECT reply.author_id FROM comment_replies reply
+    const commentReply = db.prepare(`SELECT reply.author_id, comment.file_path FROM comment_replies reply
       JOIN comments comment ON comment.id = reply.comment_id
       WHERE reply.id = ? AND reply.comment_id = ? AND comment.project_id = ?`)
-      .get(replyId, commentId, id) as { author_id: string | null } | undefined;
+      .get(replyId, commentId, id) as { author_id: string | null; file_path: string } | undefined;
     if (!commentReply) return apiError(reply, 404, "REPLY_NOT_FOUND");
     if (commentReply.author_id !== user.id) return apiError(reply, 403, "REPLY_DELETE_FORBIDDEN");
     db.prepare("DELETE FROM comment_replies WHERE id = ?").run(replyId);
     collaboration.signalComments(id);
-    return { ok: true };
+    const result: CommentMutationResult = { change: { kind: "reply-deleted", commentId, filePath: commentReply.file_path, replyId }, summary: commentsSummaryForProject(db, id) };
+    return { ok: true, ...result };
   });
 }

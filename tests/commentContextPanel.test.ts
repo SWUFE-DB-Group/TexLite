@@ -7,6 +7,7 @@ import i18n from "../src/client/i18n";
 import type { Comment, Project, SiteConfig } from "../src/client/types";
 import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
 import { WorkspaceContextPanel, type WorkspaceContextPanelProps } from "../src/client/workspace/WorkspaceContextPanel";
+import { withDiscussionQueries } from "./discussionTestUtils";
 
 function comment(id: string, filePath = "main.tex", resolved = false): Comment {
   return {
@@ -32,8 +33,8 @@ function render(overrides: Partial<WorkspaceContextPanelProps> = {}) {
     editorPreferences: defaultEditorPreferences, onEditorPreferences: () => {}, spellCheckCount: null,
     spellCheckUniqueCount: null, spellCheckIndex: -1, onSpellCheckNavigate: () => {}, onProject: () => {}, ...overrides
   };
-  return renderToStaticMarkup(createElement(Group, { orientation: "horizontal" },
-    createElement(Panel, { defaultSize: "80%" }, "Editor"), createElement(WorkspaceContextPanel, props)));
+  return renderToStaticMarkup(withDiscussionQueries(createElement(Group, { orientation: "horizontal" },
+    createElement(Panel, { defaultSize: "80%" }, "Editor"), createElement(WorkspaceContextPanel, props))));
 }
 
 describe("comment drawer modes", () => {
