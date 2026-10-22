@@ -91,6 +91,32 @@ describe("PDFViewer document replacement", () => {
     expect(container.querySelector(".pdf-load-error-overlay")).toBeNull();
   });
 
+  it("replaces the initial loading state with a retry action when viewer initialization fails", async () => {
+    await render(); await loaded(0);
+    await act(async () => state.sessions[0].callbacks.onError());
+    expect(container.querySelector(".pdf-loading")).toBeNull();
+    expect(container.textContent).toContain("editor.pdfLoadFailed");
+    expect(state.sessions[0].destroy).toHaveBeenCalledOnce();
+    expect(state.leases[0].release).toHaveBeenCalledOnce();
+    expect(current.onDisplayedUrlChange).not.toHaveBeenCalled();
+    await act(async () => container.querySelector<HTMLButtonElement>(".pdf-initial-state button")!.click());
+    expect(state.evict).toHaveBeenCalledWith("/one.pdf", "full");
+    expect(container.querySelector(".pdf-loading")).not.toBeNull();
+    await loaded(1); await painted(1);
+    expect(container.querySelector(".pdf-initial-state")).toBeNull();
+    expect(current.onDisplayedUrlChange).toHaveBeenLastCalledWith("/one.pdf");
+  });
+
+  it("ignores a stale initialization error after switching to a replacement document", async () => {
+    await render(); await loaded(0);
+    await render({ url: "/two.pdf" }); await loaded(1); await painted(1);
+    await act(async () => state.sessions[0].callbacks.onError());
+    expect(container.textContent).not.toContain("editor.pdfLoadFailed");
+    expect(container.querySelector(".pdf-loading-overlay")).toBeNull();
+    expect(state.sessions[1].destroy).not.toHaveBeenCalled();
+    expect(current.onDisplayedUrlChange).toHaveBeenLastCalledWith("/two.pdf");
+  });
+
   it("ignores stale downloads and render completions after a fast document switch", async () => {
     await render(); await loaded(0);
     await render({ url: "/two.pdf" });

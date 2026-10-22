@@ -148,8 +148,10 @@ export class PdfViewerSession {
     this.resize.observe(this.container);
     this.linkService.setDocument(this.document);
     this.viewer.setDocument(this.document);
-    // PDFViewer reports a rejected first-page promise only to console.
-    void this.document.getPage(1).catch(() => { if (!this.destroyed) this.callbacks.onError(); });
+    // The native viewer catches initialization errors (including first-page
+    // setup) internally and rejects pagesPromise instead of emitting an event.
+    // Observe failures only: readiness still requires a visible painted page.
+    void this.viewer.pagesPromise.catch(() => { if (!this.destroyed) this.callbacks.onError(); });
   }
 
   show(): void {

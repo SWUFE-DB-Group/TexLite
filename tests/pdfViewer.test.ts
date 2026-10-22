@@ -31,7 +31,14 @@ vi.mock("pdfjs-dist/web/pdf_viewer.mjs", () => ({
       if (value === "page-width") this.currentScale = (this.options.container.clientWidth - 40) / 560;
     }
     update = vi.fn(); pages: any[] = [];
-    setDocument = vi.fn((document: unknown) => { if (!document) this.options.viewer.replaceChildren(); });
+    pagesCapability = pendingPages();
+    get pagesPromise() { return this.pagesCapability.promise; }
+    setDocument = vi.fn((document: unknown) => {
+      if (!document) {
+        this.options.viewer.replaceChildren();
+        this.pagesCapability = pendingPages();
+      }
+    });
     scrollPageIntoView = vi.fn((options: { pageNumber: number }) => { this.currentPageNumber = options.pageNumber; });
     getPageView(index: number) { return this.pages[index]; }
     getCachedPageViews() { return new Set(this.pages); }
@@ -49,6 +56,12 @@ vi.mock("pdfjs-dist/web/pdf_viewer.mjs", () => ({
     }
   }
 }));
+
+function pendingPages() {
+  let resolve!: () => void, reject!: (reason: unknown) => void;
+  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
 
 // A real affine viewport model: native PDF origin is bottom-left; source origin top-left.
 function viewport(scale = 1, rotation = 0): PageViewport {
@@ -216,6 +229,36 @@ describe("PDFViewer adapter", () => {
     state.failConstructor = true;
     expect(() => create()).toThrow("Cannot initialize viewer");
     expect(host.children).toHaveLength(0);
+  });
+
+  it("reports native initialization rejection even when fetching the first page succeeds", async () => {
+    create();
+    await expect(pdf.getPage(1)).resolves.toBeDefined();
+    viewer().pagesCapability.reject(new Error("Cannot initialize page views"));
+    await Promise.resolve();
+    expect(callbacks.onError).toHaveBeenCalledExactlyOnceWith();
+    expect(callbacks.onReady).not.toHaveBeenCalled();
+  });
+
+  it("does not publish an initialized document before a visible page is painted", async () => {
+    create(); emit("pagesinit");
+    viewer().pagesCapability.resolve();
+    await Promise.resolve();
+    expect(callbacks.onReady).not.toHaveBeenCalled();
+    expect(callbacks.onError).not.toHaveBeenCalled();
+    viewer().pages[0].renderingState = 3;
+    emit("pagerendered", { pageNumber: 1 });
+    expect(callbacks.onReady).toHaveBeenCalledOnce();
+  });
+
+  it("consumes late initialization rejection after the session is destroyed without reporting it", async () => {
+    create();
+    const initialization = viewer().pagesCapability;
+    session!.destroy();
+    initialization.reject(new Error("Old document failed to initialize"));
+    await Promise.resolve();
+    expect(callbacks.onError).not.toHaveBeenCalled();
+    expect(callbacks.onReady).not.toHaveBeenCalled();
   });
 
   it("reports page fetch and render failures without exposing raw PDF errors", async () => {
