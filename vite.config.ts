@@ -4,6 +4,7 @@ import wasm from "vite-plugin-wasm";
 import { loadBasePath } from "./src/server/config.js";
 import { basePathHref } from "./src/shared/basePath.js";
 import { pdfjsCmaps } from "./scripts/pdfjs-cmaps.js";
+import { pdfjsViewerCompatibility } from "./scripts/pdfjs-viewer.js";
 import { precompressAssets } from "./scripts/precompress-assets.js";
 
 function developmentHtmlBase(basePath: string) {
@@ -27,8 +28,10 @@ export default defineConfig(({ command }) => {
   const apiPrefix = `${developmentBasePath === "/" ? "" : developmentBasePath}/api/`;
   return {
     base: command === "serve" ? developmentBaseHref : "./",
-    plugins: [developmentHtmlBase(developmentBasePath), pdfjsCmaps(), react(), wasm(), precompressAssets()],
+    plugins: [developmentHtmlBase(developmentBasePath), pdfjsCmaps(), pdfjsViewerCompatibility(), react(), wasm(), precompressAssets()],
     optimizeDeps: {
+      // Keep the viewer in the plugin pipeline in development as well as builds.
+      exclude: ["pdfjs-dist/web/pdf_viewer.mjs"],
       // This dependency is only imported by a Worker, so the initial scan
       // misses it. Pre-bundle it to avoid reloading the page on first format.
       include: ["tex-fmt"]
@@ -57,6 +60,7 @@ export default defineConfig(({ command }) => {
               // Vite's shared preload helper must not be captured recursively
               // by the PDF group, which would eagerly load PDF.js on login.
               { name: "vite-runtime", test: /\0vite\/.*helper/, priority: 10 },
+              { name: "pdf-viewer", test: /[\\/]node_modules[\\/]pdfjs-dist[\\/]web[\\/]/, priority: 5, includeDependenciesRecursively: false },
               { name: "pdf", test: /[\\/]node_modules[\\/]pdfjs-dist[\\/]/ },
               // Keep generic text languages separate from CodeMirror's core.
               // Do not pull their shared core dependencies into this group.

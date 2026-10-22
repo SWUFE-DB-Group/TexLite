@@ -46,7 +46,7 @@
 :root[data-theme="dark"] .login-card { background: var(--ui-surface); }
 :root[data-theme="dark"] .dialog-overlay { background: rgb(8 12 18 / .48); }
 :root[data-theme="dark"] .system-metrics-dialog { --metric-service: #5c9d89; --metric-tex: #7b9fc3; --metric-other: #536172; --metric-free: #272f3a; }
-:root[data-theme="dark"] :is(.preview-panel, .pdf-document, .pdf-loading-state) { background: #373e48; }
+:root[data-theme="dark"] :is(.preview-panel, .pdf-document, .pdf-stage, .pdf-initial-state, .pdf-loading-state) { background: #373e48; }
 :root[data-theme="dark"] :is(.preview-tabs, .pdf-toolbar) { background: var(--ui-raised); }
 :root[data-theme="dark"] .pdf-document { scrollbar-color: #7d8799 #282c34; }
 :root[data-theme="dark"] .pdf-document::-webkit-scrollbar-track,

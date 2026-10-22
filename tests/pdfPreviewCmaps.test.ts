@@ -19,18 +19,20 @@ describe("PDF preview CMap configuration", () => {
   });
   afterEach(() => { document.querySelector('meta[name="texlite-base-path"]')?.remove(); });
 
-  it.each(["/", "/tools/texlite"])("uses same-origin versioned CMaps below base %s", async (base) => {
+  it.each([
+    ["/", "full"], ["/tools/texlite", "full"], ["/", "range"], ["/tools/texlite", "range"]
+  ] as const)("uses same-origin versioned CMaps below base %s with %s loading", async (base, mode) => {
     const meta = document.createElement("meta");
     meta.name = "texlite-base-path";
     meta.content = base;
     document.head.append(meta);
-    const { preloadPdf } = await import("../src/client/PdfPreview");
-    preloadPdf("/example.pdf", "full");
+    const { preloadPdf } = await import("../src/client/pdfDocuments");
+    preloadPdf("/example.pdf", mode);
     const prefix = base === "/" ? "" : base;
     expect(getDocument).toHaveBeenCalledWith(expect.objectContaining({
       cMapUrl: `${window.location.origin}${prefix}/assets/pdfjs-test-version/cmaps/`,
       cMapPacked: true,
-      disableRange: true
+      disableRange: mode === "full"
     }));
   });
 });

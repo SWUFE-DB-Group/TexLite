@@ -1,147 +1,23 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type WheelEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getDocument, GlobalWorkerOptions, PDFWorker, version, type PDFDocumentLoadingTask, type PageViewport, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
 import { LoaderCircle, Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { appPath } from "./basePath";
+import { acquirePdfDocument, evictPdfDocument, type PdfDocumentLease, type PdfLoadingMode } from "./pdfDocuments";
+import { PdfViewerSession, type PdfTarget } from "./pdfViewer";
 
-GlobalWorkerOptions.workerSrc = workerUrl;
-const sharedPdfWorker = new PDFWorker();
-const MAX_RETAINED_PDF_DOCUMENTS = 2;
-export type PdfLoadingMode = "full" | "range";
+export { preloadPdf, preloadPdfRuntime, type PdfLoadingMode } from "./pdfDocuments";
+export type { PdfTarget } from "./pdfViewer";
 
-interface CachedPdfDocument {
-  task: PDFDocumentLoadingTask;
-  promise: Promise<PDFDocumentProxy>;
-  consumers: number;
-  settled: boolean;
-  retired: boolean;
-  lastUsed: number;
-}
-
-interface PdfDocumentLease {
-  promise: Promise<PDFDocumentProxy>;
-  release: () => void;
-}
-
-interface ActivePdfDocument extends PdfDocumentLease {
+interface PreviewDocument {
   url: string;
-  loadingMode: PdfLoadingMode;
+  lease: PdfDocumentLease;
+  session: PdfViewerSession | null;
 }
 
-const cachedPdfDocuments = new Map<string, CachedPdfDocument>();
-
-/** Initialize the worker without fetching a project PDF. */
-export async function preloadPdfRuntime(): Promise<void> {
-  await sharedPdfWorker.promise;
+function dispose(document: PreviewDocument | null): void {
+  if (!document) return;
+  document.session?.destroy();
+  document.lease.release();
 }
-
-function pdfDocument(url: string, loadingMode: PdfLoadingMode): CachedPdfDocument {
-  const cacheKey = `${loadingMode}:${url}`;
-  const cached = cachedPdfDocuments.get(cacheKey);
-  if (cached) {
-    cached.lastUsed = Date.now();
-    return cached;
-  }
-  // Small academic PDFs use one cache-friendly 200 response. Large PDFs let
-  // PDF.js request byte ranges so the first pages can render without waiting
-  // for the complete document. The server chooses the mode from the effective
-  // deployment configuration and immutable artifact size.
-  const task = getDocument({
-    url,
-    worker: sharedPdfWorker,
-    disableRange: loadingMode === "full",
-    // Some embedded CID fonts still need Adobe's predefined character maps.
-    // Resolve against the origin so workers also work on nested project URLs.
-    cMapUrl: new URL(appPath(`/assets/pdfjs-${version}/cmaps/`), window.location.origin).href,
-    cMapPacked: true
-  });
-  const entry: CachedPdfDocument = {
-    task,
-    promise: task.promise,
-    consumers: 0,
-    settled: false,
-    retired: false,
-    lastUsed: Date.now()
-  };
-  cachedPdfDocuments.set(cacheKey, entry);
-  void entry.promise.then(() => {
-    entry.settled = true;
-    prunePdfDocuments();
-  }, () => {
-    entry.settled = true;
-    if (cachedPdfDocuments.get(cacheKey) === entry) cachedPdfDocuments.delete(cacheKey);
-    if (!entry.retired) {
-      entry.retired = true;
-      if (entry.consumers === 0) void entry.task.destroy();
-    }
-  });
-  return entry;
-}
-
-function evictPdfDocument(url: string, loadingMode: PdfLoadingMode): void {
-  const cacheKey = `${loadingMode}:${url}`;
-  const entry = cachedPdfDocuments.get(cacheKey);
-  if (!entry) return;
-  cachedPdfDocuments.delete(cacheKey);
-  entry.retired = true;
-  if (entry.consumers === 0) void entry.task.destroy();
-}
-
-function prunePdfDocuments(): void {
-  if (cachedPdfDocuments.size <= MAX_RETAINED_PDF_DOCUMENTS) return;
-  const candidates = [...cachedPdfDocuments.entries()]
-    .filter(([, entry]) => entry.consumers === 0 && entry.settled)
-    .sort((left, right) => left[1].lastUsed - right[1].lastUsed);
-  while (cachedPdfDocuments.size > MAX_RETAINED_PDF_DOCUMENTS && candidates.length) {
-    const [url, entry] = candidates.shift()!;
-    if (cachedPdfDocuments.get(url) !== entry) continue;
-    cachedPdfDocuments.delete(url);
-    entry.retired = true;
-    void entry.task.destroy();
-  }
-}
-
-/** Begin fetching and parsing an immutable retained PDF before the viewer mounts. */
-export function preloadPdf(url: string, loadingMode: PdfLoadingMode): void {
-  if (!url) return;
-  const entry = pdfDocument(url, loadingMode);
-  void entry.promise.catch(() => undefined);
-}
-
-function acquirePdfDocument(url: string, loadingMode: PdfLoadingMode): PdfDocumentLease {
-  const entry = pdfDocument(url, loadingMode);
-  entry.consumers += 1;
-  entry.lastUsed = Date.now();
-  let released = false;
-  return {
-    promise: entry.promise,
-    release: () => {
-      if (released) return;
-      released = true;
-      entry.consumers = Math.max(0, entry.consumers - 1);
-      entry.lastUsed = Date.now();
-      if (entry.retired && entry.consumers === 0) void entry.task.destroy();
-      prunePdfDocuments();
-    }
-  };
-}
-
-export interface PdfTarget {
-  page: number;
-  x: number;
-  y: number;
-  nonce: number;
-}
-
-type PdfAnnotation = {
-  subtype?: string;
-  rect?: number[];
-  url?: string | null;
-  unsafeUrl?: string | null;
-  dest?: unknown;
-  title?: string | null;
-};
 
 export function PdfPreview({ url, loadingMode, target, compiling = false, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange }: {
   url: string;
@@ -153,351 +29,101 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   onDisplayedUrlChange?: (url: string) => void;
 }) {
   const { t } = useTranslation();
-  const root = useRef<HTMLDivElement>(null);
-  const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
-  const [documentUrl, setDocumentUrl] = useState("");
-  const [width, setWidth] = useState(0);
+  const host = useRef<HTMLDivElement>(null);
+  const displayed = useRef<PreviewDocument | null>(null);
+  const pending = useRef<PreviewDocument | null>(null);
+  const [displayedUrl, setDisplayedUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [zoom, setZoom] = useState(100);
-  const [error, setError] = useState("");
-  const [retryVersion, setRetryVersion] = useState(0);
-  const pageElements = useRef(new Map<number, HTMLElement>());
-  const viewportFrame = useRef<number | null>(null);
-  // Retain the current document's cache lease until the replacement has
-  // actually loaded. Otherwise cache pruning can destroy the old document
-  // while the new, potentially large PDF is still downloading.
-  const displayedDocument = useRef<ActivePdfDocument | null>(null);
-  const pendingDocument = useRef<PdfDocumentLease | null>(null);
-  const onViewportLocationRef = useRef(onViewportLocation);
-  onViewportLocationRef.current = onViewportLocation;
-  const onDisplayedUrlChangeRef = useRef(onDisplayedUrlChange);
-  onDisplayedUrlChangeRef.current = onDisplayedUrlChange;
-  const displayedRetryVersion = useRef(0);
+  const latest = useRef({ url, target, zoom, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange });
+  latest.current = { url, target, zoom, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange };
+
+  useEffect(() => {
+    let cancelled = false;
+    const entry: PreviewDocument = { url, lease: acquirePdfDocument(url, loadingMode), session: null };
+    pending.current = entry;
+    setError(false);
+    setLoading(true);
+    const fail = () => {
+      if (cancelled || (pending.current !== entry && displayed.current !== entry)) return;
+      if (pending.current === entry) { pending.current = null; dispose(entry); }
+      setError(true);
+      setLoading(false);
+    };
+    void entry.lease.promise.then((document) => {
+      if (cancelled || pending.current !== entry || !host.current) return;
+      entry.session = new PdfViewerSession(host.current, document, {
+        onReady: () => {
+          if (cancelled || pending.current !== entry) return;
+          const previous = displayed.current;
+          pending.current = null;
+          displayed.current = entry;
+          entry.session?.show();
+          setDisplayedUrl(url);
+          setLoading(false);
+          setError(false);
+          latest.current.onDisplayedUrlChange?.(url);
+          dispose(previous);
+        },
+        onError: fail,
+        onLocation: ({ page, x, y }) => {
+          if (displayed.current === entry && latest.current.url === entry.url) {
+            latest.current.onViewportLocation(page, x, y);
+          }
+        },
+        onDoubleClick: ({ page, x, y }) => {
+          if (displayed.current === entry && latest.current.url === entry.url) {
+            latest.current.onDoubleClickLocation?.(page, x, y);
+          }
+        }
+      }, { zoom: latest.current.zoom, location: displayed.current?.session?.location(), target: latest.current.target });
+    }).catch(fail);
+    return () => {
+      cancelled = true;
+      if (pending.current === entry) { pending.current = null; dispose(entry); }
+      // Keep the displayed document alive while the next request/render starts.
+    };
+  }, [url, loadingMode, retry]);
+
+  useEffect(() => {
+    displayed.current?.session?.setZoom(zoom);
+    pending.current?.session?.setZoom(zoom);
+  }, [zoom]);
+
+  useEffect(() => {
+    if (displayed.current?.url === url) displayed.current.session?.showTarget(target);
+    if (pending.current?.url === url) pending.current.session?.showTarget(target);
+  }, [url, target?.nonce]);
+
+  useEffect(() => () => {
+    dispose(pending.current);
+    dispose(displayed.current);
+    pending.current = displayed.current = null;
+    latest.current.onDisplayedUrlChange?.("");
+  }, []);
 
   const retryDocument = () => {
     evictPdfDocument(url, loadingMode);
-    onDisplayedUrlChangeRef.current?.("");
-    setError("");
-    setRetryVersion((value) => value + 1);
+    setRetry((value) => value + 1);
   };
+  const changeZoom = (difference: number) => setZoom((value) => Math.max(50, Math.min(200, value + difference)));
 
-  const registerPageElement = useCallback((pageNumber: number, element: HTMLElement | null) => {
-    if (element) pageElements.current.set(pageNumber, element);
-    else pageElements.current.delete(pageNumber);
-  }, []);
-
-  const navigateToDestination = async (destinationValue: unknown) => {
-    if (!document || destinationValue == null) return;
-    let destination: unknown = destinationValue;
-    if (typeof destinationValue === "string") {
-      destination = await document.getDestination(destinationValue).catch(() => null);
-    }
-    if (!Array.isArray(destination) || destination.length === 0) return;
-    const pageReference = destination[0];
-    let pageIndex: number | null = null;
-    if (typeof pageReference === "number" && Number.isInteger(pageReference)) {
-      pageIndex = pageReference;
-    } else if (pageReference != null) {
-      try {
-        pageIndex = await document.getPageIndex(pageReference as Parameters<PDFDocumentProxy["getPageIndex"]>[0]);
-      } catch {
-        return;
-      }
-    }
-    if (pageIndex == null || pageIndex < 0 || pageIndex >= document.numPages) return;
-    pageElements.current.get(pageIndex + 1)?.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
-  };
-
-  const measureViewport = useCallback(() => {
-    viewportFrame.current = null;
-    const viewer = root.current;
-    if (!viewer) return;
-    const viewerBounds = viewer.getBoundingClientRect();
-    const centerX = viewerBounds.left + viewerBounds.width / 2;
-    const centerY = viewerBounds.top + viewerBounds.height / 2;
-    const pages = [...viewer.querySelectorAll<HTMLElement>(".pdf-page")];
-    const page = pages.find((candidate) => {
-      const bounds = candidate.getBoundingClientRect();
-      return centerY >= bounds.top && centerY <= bounds.bottom;
-    }) ?? pages.reduce<HTMLElement | null>((closest, candidate) => {
-      if (!closest) return candidate;
-      const distance = Math.abs(candidate.getBoundingClientRect().top - centerY);
-      const closestDistance = Math.abs(closest.getBoundingClientRect().top - centerY);
-      return distance < closestDistance ? candidate : closest;
-    }, null);
-    if (!page) return;
-    const bounds = page.getBoundingClientRect();
-    const scale = Number(page.dataset.scale) || 1;
-    const pageNumber = Number(page.dataset.page);
-    const x = Math.max(0, Math.min(bounds.width, centerX - bounds.left)) / scale;
-    const y = Math.max(0, Math.min(bounds.height, centerY - bounds.top)) / scale;
-    if (pageNumber) onViewportLocationRef.current(pageNumber, x, y);
-  }, []);
-
-  const reportViewport = useCallback(() => {
-    if (viewportFrame.current !== null) return;
-    viewportFrame.current = window.requestAnimationFrame(measureViewport);
-  }, [measureViewport]);
-
-  useEffect(() => () => {
-    if (viewportFrame.current !== null) window.cancelAnimationFrame(viewportFrame.current);
-    viewportFrame.current = null;
-  }, []);
-
-  useEffect(() => {
-    const element = root.current;
-    if (!element) return;
-    const update = () => setWidth(element.clientWidth);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const current = displayedDocument.current;
-    if (current?.url === url && current.loadingMode === loadingMode && displayedRetryVersion.current === retryVersion) {
-      setError("");
-      return;
-    }
-    let cancelled = false;
-    setError("");
-    const lease = acquirePdfDocument(url, loadingMode);
-    pendingDocument.current = lease;
-    void lease.promise.then((loaded) => {
-      if (cancelled) return;
-      const previous = displayedDocument.current;
-      displayedDocument.current = { ...lease, url, loadingMode };
-      displayedRetryVersion.current = retryVersion;
-      if (pendingDocument.current === lease) pendingDocument.current = null;
-      setDocument(loaded);
-      setDocumentUrl(url);
-      previous?.release();
-    }).catch(() => {
-      if (cancelled) return;
-      if (pendingDocument.current === lease) pendingDocument.current = null;
-      lease.release();
-      setError(t("editor.pdfLoadFailed"));
-    });
-    return () => {
-      cancelled = true;
-      if (pendingDocument.current === lease) {
-        pendingDocument.current = null;
-        lease.release();
-      }
-    };
-  }, [url, loadingMode, retryVersion, t]);
-
-  useEffect(() => () => {
-    onDisplayedUrlChangeRef.current?.("");
-    pendingDocument.current?.release();
-    pendingDocument.current = null;
-    displayedDocument.current?.release();
-    displayedDocument.current = null;
-  }, []);
-
-  useEffect(() => {
-    if (zoom > 100 || !root.current) return;
-    // Returning from a magnified view leaves the old, wide canvas mounted
-    // while PDF.js renders the fitted page. Reset the horizontal origin now so
-    // that the fitted result can never reopen with its left side off-screen.
-    root.current.scrollLeft = 0;
-  }, [zoom, width, document]);
-
-  const changeZoom = (difference: number) => setZoom((current) => Math.min(200, Math.max(50, current + difference)));
-  const fitWidth = () => {
-    if (root.current) root.current.scrollLeft = 0;
-    setZoom(100);
-  };
-  const scrollHorizontally = (event: WheelEvent<HTMLDivElement>) => {
-    if (!event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-    event.preventDefault();
-    event.currentTarget.scrollLeft += event.deltaY;
-    reportViewport();
-  };
-  const replacingDocument = Boolean(document && documentUrl !== url && !error);
-  const displayedTarget = documentUrl === url ? target : null;
-  const pageReady = () => {
-    if (documentUrl === url) onDisplayedUrlChangeRef.current?.(url);
-    reportViewport();
-  };
   return <div className="pdf-viewer">
     <div className="pdf-toolbar" role="toolbar" aria-label={t("editor.pdfZoomControls")}>
       <button disabled={zoom <= 50} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
       <span className="pdf-zoom-value" aria-live="polite">{zoom}%</span>
       <button disabled={zoom >= 200} title={t("editor.pdfZoomIn")} aria-label={t("editor.pdfZoomIn")} onClick={() => changeZoom(10)}><Plus size={14} /></button>
-      <button className="pdf-fit-width" title={t("editor.pdfFitWidth")} onClick={fitWidth}><Maximize2 size={13} />{t("editor.pdfFitWidth")}</button>
+      <button className="pdf-fit-width" title={t("editor.pdfFitWidth")} onClick={() => { setZoom(100); displayed.current?.session?.fitWidth(); pending.current?.session?.fitWidth(); }}><Maximize2 size={13} />{t("editor.pdfFitWidth")}</button>
     </div>
     {compiling && <div className="pdf-compiling-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.compiling")}</span></div>}
-    {replacingDocument && !compiling && <div className="pdf-loading-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.loadingPdf")}</span></div>}
-    {document && error && <div className="pdf-load-error-overlay" role="status" aria-live="polite"><span>{error}</span><button type="button" onClick={retryDocument}><RefreshCw size={13} />{t("common.retry")}</button></div>}
-    <div className="pdf-document" ref={root} onScroll={reportViewport} onWheel={scrollHorizontally}>
-      <div className="pdf-pages" style={{ width: `${Math.max(1, width - 28) * Math.max(1, zoom / 100)}px` }}>
-        {!document && !error && <div className="pdf-loading" role="status" aria-live="polite">
-          <LoaderCircle className="spin" size={24} />
-          <span>{t("editor.loadingPdf")}</span>
-        </div>}
-        {error && !document && <div className="preview-empty"><strong>{error}</strong><button type="button" onClick={retryDocument}><RefreshCw size={14} />{t("common.retry")}</button></div>}
-        {document && width > 0 && Array.from({ length: document.numPages }, (_item, index) =>
-          <PdfPage key={`${documentUrl}:${index + 1}`} document={document} pageNumber={index + 1} availableWidth={width - 28} zoom={zoom / 100}
-            target={displayedTarget?.page === index + 1 ? displayedTarget : null} onReady={pageReady} onPageElement={registerPageElement}
-            onInternalLink={navigateToDestination} onDoubleClickLocation={documentUrl === url ? onDoubleClickLocation : undefined} onRetryDocument={retryDocument} />)}
-      </div>
-    </div>
+    {loading && displayedUrl && !compiling && <div className="pdf-loading-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.loadingPdf")}</span></div>}
+    {error && displayedUrl && <div className="pdf-load-error-overlay" role="status" aria-live="polite"><span>{t("editor.pdfLoadFailed")}</span><button type="button" onClick={retryDocument}><RefreshCw size={13} />{t("common.retry")}</button></div>}
+    <div className="pdf-stage" ref={host} />
+    {!displayedUrl && <div className="pdf-initial-state">
+      {error ? <div className="preview-empty"><strong>{t("editor.pdfLoadFailed")}</strong><button type="button" onClick={retryDocument}><RefreshCw size={14} />{t("common.retry")}</button></div> :
+        <div className="pdf-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /><span>{t("editor.loadingPdf")}</span></div>}
+    </div>}
   </div>;
-}
-
-function PdfPage({ document, pageNumber, availableWidth, zoom, target, onReady, onPageElement, onInternalLink, onDoubleClickLocation, onRetryDocument }: {
-  document: PDFDocumentProxy;
-  pageNumber: number;
-  availableWidth: number;
-  zoom: number;
-  target: PdfTarget | null;
-  onReady: () => void;
-  onPageElement: (pageNumber: number, element: HTMLElement | null) => void;
-  onInternalLink: (destination: unknown) => void;
-  onDoubleClickLocation?: (page: number, x: number, y: number) => void;
-  onRetryDocument: () => void;
-}) {
-  const { t } = useTranslation();
-  const figure = useRef<HTMLElement>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const marker = useRef<HTMLSpanElement>(null);
-  const [scale, setScale] = useState(1);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const [shouldRender, setShouldRender] = useState(pageNumber === 1);
-  const [rendered, setRendered] = useState(false);
-  const [viewport, setViewport] = useState<PageViewport | null>(null);
-  const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
-  const [pageError, setPageError] = useState(false);
-
-  useEffect(() => {
-    const element = figure.current;
-    if (!element || shouldRender) return;
-    if (!("IntersectionObserver" in window)) {
-      setShouldRender(true);
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      setShouldRender(true);
-      observer.disconnect();
-    }, { rootMargin: "900px 0px" });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [shouldRender]);
-
-  useEffect(() => {
-    if (target) setShouldRender(true);
-  }, [target?.nonce]);
-
-  useEffect(() => {
-    if (!shouldRender) return;
-    let cancelled = false;
-    let renderTask: RenderTask | null = null;
-    let readyFrame: number | null = null;
-    setRendered(false);
-    setViewport(null);
-    setAnnotations([]);
-    setPageError(false);
-    void document.getPage(pageNumber).then((page) => {
-      if (cancelled) return;
-      const base = page.getViewport({ scale: 1 });
-      const fitScale = availableWidth / base.width;
-      const nextScale = Math.min(3.3, Math.max(0.175, fitScale * zoom));
-      const viewport = page.getViewport({ scale: nextScale });
-      setScale(nextScale);
-      setSize({ width: viewport.width, height: viewport.height });
-      setViewport(viewport);
-      void page.getAnnotations({ intent: "display" }).then((items) => {
-        if (!cancelled) setAnnotations(items as PdfAnnotation[]);
-      }).catch(() => {
-        if (!cancelled) setAnnotations([]);
-      });
-      if (!canvas.current) return;
-      const outputScale = Math.max(1, window.devicePixelRatio || 1);
-      const renderViewport = page.getViewport({ scale: nextScale * outputScale });
-      canvas.current.width = Math.floor(renderViewport.width);
-      canvas.current.height = Math.floor(renderViewport.height);
-      renderTask = page.render({ canvas: canvas.current, viewport: renderViewport });
-      return renderTask.promise.then(() => {
-        if (cancelled) return;
-        setRendered(true);
-        readyFrame = window.requestAnimationFrame(() => { if (!cancelled) onReady(); });
-      });
-    }).catch((error: unknown) => {
-      if (!cancelled && !(error instanceof Error && error.name === "RenderingCancelledException")) setPageError(true);
-    });
-    return () => {
-      cancelled = true;
-      if (readyFrame !== null) window.cancelAnimationFrame(readyFrame);
-      renderTask?.cancel();
-    };
-  }, [document, pageNumber, availableWidth, zoom, shouldRender]);
-
-  useEffect(() => {
-    if (!target || !marker.current) return;
-    marker.current.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-  }, [target?.nonce, scale]);
-
-  const handleDoubleClick = (event: MouseEvent<HTMLElement>) => {
-    if (!onDoubleClickLocation || !rendered || (event.target instanceof HTMLElement && event.target.closest("a"))) return;
-    const element = canvas.current;
-    if (!element) return;
-    const bounds = element.getBoundingClientRect();
-    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return;
-    const pageScale = scale || 1;
-    const x = Math.max(0, Math.min(bounds.width, event.clientX - bounds.left)) / pageScale;
-    const y = Math.max(0, Math.min(bounds.height, event.clientY - bounds.top)) / pageScale;
-    onDoubleClickLocation(pageNumber, x, y);
-  };
-
-  const estimatedWidth = Math.max(1, availableWidth * zoom);
-  const estimatedHeight = estimatedWidth * (792 / 612);
-  return <figure ref={(element) => { figure.current = element; onPageElement(pageNumber, element); }} onDoubleClick={handleDoubleClick} className={`pdf-page${rendered ? " rendered" : " loading"}`} data-page={pageNumber} data-scale={scale} style={{ width: `${size.width || estimatedWidth}px`, minHeight: `${size.height || estimatedHeight}px` }}>
-    <canvas ref={canvas} style={{ width: `${size.width || estimatedWidth}px`, height: `${size.height || estimatedHeight}px` }} />
-    {pageError && <div className="pdf-page-error" role="alert"><span>{t("editor.pdfPageLoadFailed", { page: pageNumber })}</span><button type="button" onClick={onRetryDocument}><RefreshCw size={14} />{t("common.retry")}</button></div>}
-    {rendered && viewport && <PdfAnnotationLayer annotations={annotations} viewport={viewport} onInternalLink={onInternalLink} />}
-    {target && <span ref={marker} className="pdf-sync-marker" style={{ left: target.x * scale, top: target.y * scale }} />}
-    <figcaption>{pageNumber}</figcaption>
-  </figure>;
-}
-
-function PdfAnnotationLayer({ annotations, viewport, onInternalLink }: {
-  annotations: PdfAnnotation[];
-  viewport: PageViewport;
-  onInternalLink: (destination: unknown) => void;
-}) {
-  const { t } = useTranslation();
-  const linkLabel = t("editor.pdfLink");
-  return <div className="pdf-annotation-layer" aria-label={t("editor.pdfLinks")}>
-    {annotations.filter((annotation) => annotation.subtype === "Link" && Array.isArray(annotation.rect) && annotation.rect.length >= 4).map((annotation, index) => {
-      const [x1, y1] = viewport.convertToViewportPoint(annotation.rect![0], annotation.rect![1]);
-      const [x2, y2] = viewport.convertToViewportPoint(annotation.rect![2], annotation.rect![3]);
-      const rect = [x1, y1, x2, y2];
-      const left = Math.min(rect[0], rect[2]);
-      const top = Math.min(rect[1], rect[3]);
-      const width = Math.abs(rect[2] - rect[0]);
-      const height = Math.abs(rect[3] - rect[1]);
-      const title = typeof annotation.title === "string" ? annotation.title.trim() : "";
-      const unsafeUrl = typeof annotation.unsafeUrl === "string" ? annotation.unsafeUrl.trim() : "";
-      const safeUrl = typeof annotation.url === "string" ? annotation.url.trim() : "";
-      // pdf.js exposes both a sanitized URL and the original annotation URL.
-      // Validate both before putting either value in an href; trusting the
-      // sanitized field alone would make a future pdf.js regression turn into
-      // a javascript/data URL injection in the preview.
-      const href = isAllowedExternalUrl(safeUrl)
-        ? safeUrl
-        : (isAllowedExternalUrl(unsafeUrl) ? unsafeUrl : "");
-      const destination = annotation.dest;
-      if (!href && destination == null) return null;
-      const external = Boolean(href);
-      return <a key={`${index}-${left}-${top}`} className="pdf-annotation-link" href={href || "#"} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}
-        title={title || (external ? href : linkLabel)} aria-label={title || (external ? href : linkLabel)}
-        style={{ left, top, width, height }} onClick={external ? undefined : (event) => { event.preventDefault(); onInternalLink(destination); }} />;
-    })}
-  </div>;
-}
-
-function isAllowedExternalUrl(value: string): boolean {
-  return /^(?:https?|mailto|ftp):/i.test(value);
 }

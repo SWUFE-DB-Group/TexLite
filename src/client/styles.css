@@ -36,7 +36,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .icon-button { display: inline-flex; align-items: center; gap: 6px; }
 .ghost { border: 0; background: transparent; color: inherit; }
 
-.page { min-height: 100vh; display: flex; flex-direction: column; }
+#root > .page { min-height: 100vh; display: flex; flex-direction: column; }
 .login-page { min-height: 100vh; display: grid; grid-template-rows: 1fr auto; place-items: center; padding-top: 44px; background: radial-gradient(circle at 50% 0, var(--ui-subtle, #d8e8dd), var(--ui-surface, #f5f5f1) 45%); }
 .login-card { width: min(390px, calc(100vw - 32px)); padding: 38px; display: flex; flex-direction: column; gap: 16px; background: rgba(255,255,255,.92); border: 1px solid var(--ui-border, #dfe4df); border-radius: 16px; box-shadow: 0 24px 70px rgba(29,49,36,.12); }
 .login-card h1 { text-align: center; margin: 0; letter-spacing: -.04em; }
@@ -799,25 +799,23 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .pdf-toolbar .pdf-fit-width { margin-left: 3px; padding: 0 8px; }
 .pdf-compiling-overlay, .pdf-loading-overlay, .pdf-load-error-overlay { position: absolute; z-index: 4; top: 47px; left: 50%; display: inline-flex; align-items: center; gap: 7px; transform: translateX(-50%); border: 1px solid #ffffff32; border-radius: 999px; padding: 6px 10px; background: #17231ce6; color: white; box-shadow: 0 3px 12px #0005; font-size: 12px; pointer-events: none; }
 .pdf-load-error-overlay { border-color: #e8a59c; background: #6d2d29ed; pointer-events: auto; }
-.pdf-load-error-overlay button, .pdf-page-error button, .preview-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; background: transparent; color: inherit; font-size: 12px; cursor: pointer; }
-.pdf-load-error-overlay button:hover, .pdf-page-error button:hover, .preview-empty button:hover { background: #ffffff24; }
+.pdf-load-error-overlay button, .preview-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; background: transparent; color: inherit; font-size: 12px; cursor: pointer; }
+.pdf-load-error-overlay button:hover, .preview-empty button:hover { background: #ffffff24; }
 .pdf-loading-state { width: 100%; height: 100%; min-height: 220px; display: grid; place-items: center; align-content: center; gap: 10px; background: #6f7471; color: #eef2ef; font-size: 12px; }
-.pdf-document { position: relative; width: 100%; min-width: 0; min-height: 0; flex: 1; overflow-x: scroll; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: var(--ui-muted, #aeb8b1) var(--ui-text, #4f5652); scrollbar-width: auto; scrollbar-gutter: stable; padding: 14px 14px 20px; background: #6f7471; }
+.pdf-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #6f7471; }
+.pdf-document { position: absolute; inset: 0; width: 100%; min-width: 0; min-height: 0; overflow-x: auto; overflow-y: scroll; overscroll-behavior: contain; scrollbar-color: var(--ui-muted, #aeb8b1) var(--ui-text, #4f5652); scrollbar-width: auto; scrollbar-gutter: stable; padding: 14px 0 20px; background: #6f7471; }
+.pdf-viewer-pending { visibility: hidden; pointer-events: none; }
+.pdf-initial-state { position: absolute; inset: 36px 0 0; display: grid; align-content: center; background: #6f7471; }
 .pdf-document::-webkit-scrollbar { width: 12px; height: 12px; }
 .pdf-document::-webkit-scrollbar-track { background: #4f5652; }
 .pdf-document::-webkit-scrollbar-thumb { min-width: 38px; border: 2px solid var(--ui-border, #4f5652); border-radius: 999px; background: var(--ui-hover, #aeb8b1); }
 .pdf-document::-webkit-scrollbar-thumb:hover { background: var(--ui-hover, #d5dcd7); }
 .pdf-document::-webkit-scrollbar-corner { background: #4f5652; }
-.pdf-pages { min-width: 100%; }
+.pdf-document .pdfViewer { --page-bg-color: white; --page-margin: 0 auto 16px; --page-border: 0px solid transparent; --pdfViewer-padding-bottom: 0; min-width: 100%; }
+.pdf-document .pdfViewer .page { box-sizing: content-box; min-height: 0; display: block; flex: none; box-shadow: 0 3px 14px #0004; }
+.pdf-document .pdfViewer .pdf-page-number { position: absolute; right: 7px; bottom: 5px; z-index: 4; padding: 2px 5px; border-radius: 4px; background: #26312bb5; color: white; font-size: 9px; pointer-events: none; }
 .pdf-loading { min-height: 220px; display: grid; place-items: center; align-content: center; gap: 10px; color: #eef2ef; font-size: 12px; }
-.pdf-page { position: relative; flex: none; max-width: none; overflow: hidden; margin: 0 auto 16px; background: white; box-shadow: 0 3px 14px #0004; }
-.pdf-page.loading { background: #f7f8f7; }
-.pdf-page-error { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; background: var(--ui-surface, #f7f8f7); color: var(--ui-danger, #6d2d29); font-size: 12px; text-align: center; }
-.pdf-page canvas { display: block; width: 100% !important; max-width: 100%; height: auto !important; }
-.pdf-annotation-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
-.pdf-annotation-link { position: absolute; display: block; pointer-events: auto; border-radius: 2px; background: transparent; cursor: pointer; }
-.pdf-annotation-link:hover { background: #3f9b6426; box-shadow: inset 0 0 0 1px #3f9b6440; }
-.pdf-page figcaption { position: absolute; right: 7px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: #26312bb5; color: white; font-size: 9px; pointer-events: none; }
+.pdf-document .annotationLayer .linkAnnotation > a:hover { background: #3f9b6426; box-shadow: inset 0 0 0 1px #3f9b6440; }
 .pdf-sync-marker { position: absolute; z-index: 2; width: 14px; height: 14px; border: 3px solid #ef9c24; border-radius: 50%; transform: translate(-50%, -50%); background: #ffe0a580; box-shadow: 0 0 0 4px #ef9c2435; pointer-events: none; animation: sync-pulse 1.2s ease-out; }
 @keyframes sync-pulse { from { box-shadow: 0 0 0 14px #ef9c2460; } to { box-shadow: 0 0 0 4px #ef9c2435; } }
 .preview-empty { height: 100%; display: grid; place-content: center; gap: 8px; color: #e7e9e7; text-align: center; }

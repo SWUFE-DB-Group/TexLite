@@ -34,8 +34,15 @@ describe("application dark palette", () => {
   it("keeps PDF paper white and does not invert document or image contents", () => {
     const sheet = postcss.parse(styles);
     const pdfBackgrounds: string[] = [];
-    sheet.walkRules(".pdf-page", (rule) => { rule.walkDecls("background", (declaration) => { pdfBackgrounds.push(declaration.value); }); });
+    sheet.walkRules(".pdf-document .pdfViewer", (rule) => { rule.walkDecls("--page-bg-color", (declaration) => { pdfBackgrounds.push(declaration.value); }); });
     expect(pdfBackgrounds).toEqual(["white"]);
     expect(css).not.toMatch(/filter\s*:\s*invert/);
+  });
+
+  it("does not apply the application root-page layout to PDFViewer pages", () => {
+    const selectors: string[] = [];
+    postcss.parse(styles).walkRules((rule) => { if (rule.selector === ".page") selectors.push(rule.selector); });
+    expect(selectors).toEqual([]);
+    expect(styles).toContain("#root > .page {");
   });
 });

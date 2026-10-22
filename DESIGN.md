@@ -829,6 +829,36 @@ and their license under a versioned asset directory. The development server
 serves the same resources. PDF.js resolves this URL against the runtime base
 path and fetches mappings on demand, allowing embedded CID fonts without
 ToUnicode maps to render without a CDN or additional user configuration.
+
+PDF page presentation uses the bundled PDF.js `PDFViewer`, `PDFLinkService`
+and event bus, rather than one independently rendered React canvas per page.
+The viewer owns visible-page priority, directional adjacent-page rendering,
+pause/resume and a bounded page-view cache. A 16-megapixel canvas limit and
+detail canvases bound high-DPI/zoom allocations. These page resources are
+separate from the two-document, lease-based PDF download/parse cache; disposing
+a viewer must not destroy a document still held by another lease or the shared
+worker. Rendering and viewer assets remain lazy, in separate core/viewer chunks.
+
+TexLite retains its own toolbar and fit-width-relative zoom percentages. Resize
+and viewport reporting are coalesced with animation frames. Only effective width
+changes recalculate the fit scale, and each zoom applies the final scale once.
+Page numbers use separate elements, leaving PDF.js's loading pseudo-element intact.
+A replacement viewer is laid out and rendered without displaying it; the old PDF stays visible until
+a visible page in the replacement has painted successfully. Failed replacements
+leave the previous PDF in place with a retry action. Document changes and
+unmounts cancel obsolete work and detach viewer observers/listeners. A guarded
+Vite compatibility transform keeps PDF.js 6.2's global text-selection listeners
+owned by its text-layer registry, rather than the first viewer's abort signal.
+This permits overlapping old/new viewers without retiring the new viewer's
+selection handlers. The transform applies in development and production and
+fails explicitly if an upstream upgrade changes the affected code. SyncTeX
+continues using top-left, scale-1 page coordinates, converted through PDF.js
+viewports for click locations, target scrolling and markers. Old-document
+coordinates cannot be sent against a newly selected PDF. External links retain
+an explicit HTTP/HTTPS/mailto/FTP allowlist; embedded form editing and PDF
+scripting are not enabled. The viewer's `.page` class is isolated from the
+application's root-page layout rules.
+
 Compile responses expose `Server-Timing` measurements for snapshot, cache
 synchronization, LaTeX execution, artifact publication, and total request time
 so queue and rendering regressions can be diagnosed. Artifact listing and
