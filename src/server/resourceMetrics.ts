@@ -186,10 +186,6 @@ export async function collectTexResources(platform = process.platform, io: Proce
   return { memory: unavailable(), cpu: null };
 }
 
-export async function collectTexMemory(platform = process.platform, io: ProcessAccess = processAccess): Promise<TexMemorySample> {
-  return (await collectTexResources(platform, io)).memory;
-}
-
 async function collectResources(cpu: CpuMetrics): Promise<ResourceSample> {
   const [systemMemory, tex] = await Promise.all([collectSystemMemory(), collectTexResources()]);
   const cpuSnapshot = await collectCpuSnapshot(systemMemory.scope, tex.cpu);

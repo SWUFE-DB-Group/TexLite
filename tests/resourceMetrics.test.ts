@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { collectTexMemory, isTexProcess, parsePosixProcesses, parseWindowsProcesses, ResourceMetrics, sumTexMemory } from "../src/server/resourceMetrics.js";
+import { collectTexResources, isTexProcess, parsePosixProcesses, parseWindowsProcesses, ResourceMetrics, sumTexMemory } from "../src/server/resourceMetrics.js";
 import { collectSystemMemory } from "../src/server/systemMemory.js";
 import type { ResourceSample } from "../src/shared/resourceMetrics.js";
 
@@ -44,7 +44,7 @@ describe("TeX process memory", () => {
       "/proc/13/status": "Name:\tpdflatex\nState:\tZ (zombie)\n"
     });
     const command = vi.fn(async () => "");
-    expect(await collectTexMemory("linux", { read, command, directories: async () => ["self", "10", "11", "12", "13", "99"] }))
+    expect((await collectTexResources("linux", { read, command, directories: async () => ["self", "10", "11", "12", "13", "99"] })).memory)
       .toEqual({ rssBytes: 140 * KiB, processCount: 2 });
     expect(command).not.toHaveBeenCalled();
     expect(read).not.toHaveBeenCalledWith("/proc/12/cmdline");
@@ -55,7 +55,7 @@ describe("TeX process memory", () => {
       ? '11 /usr/bin/perl "/Applications/TeX Live/latexmk.pl" main.tex\n'
       : "10 120 /Library/TeX/texbin/pdflatex\n11 20 /usr/bin/perl\n12 999 /usr/bin/node\n");
     const io = { read: files({}), directories: async () => [], command };
-    expect(await collectTexMemory("darwin", io)).toEqual({ rssBytes: 140 * KiB, processCount: 2 });
+    expect((await collectTexResources("darwin", io)).memory).toEqual({ rssBytes: 140 * KiB, processCount: 2 });
     expect(command.mock.calls[0]).toEqual(["ps", ["-ww", "-axo", "pid=,rss=,time=,lstart=,comm="]]);
     expect(parsePosixProcesses("1 120 /Applications/TeX Live/pdftex\n")[0].name).toBe("/Applications/TeX Live/pdftex");
     expect(() => parsePosixProcesses("invalid output")).toThrow();
@@ -65,7 +65,7 @@ describe("TeX process memory", () => {
     const record = { ProcessId: 12, Name: "perl.exe", WorkingSetSize: "20480", CommandLine: '"C:\\Program Files\\Perl\\perl.exe" "C:\\Program Files\\TeX\\latexmk.pl" main.tex' };
     const command = vi.fn(async (_file: string, _args: string[]) => `\uFEFF${JSON.stringify(record)}`);
     const io = { read: files({}), directories: async () => [], command };
-    expect(await collectTexMemory("win32", io)).toEqual({ rssBytes: 20480, processCount: 1 });
+    expect((await collectTexResources("win32", io)).memory).toEqual({ rssBytes: 20480, processCount: 1 });
     expect(command.mock.calls[0]?.[0]).toBe("powershell.exe");
     expect(sumTexMemory(parseWindowsProcesses(JSON.stringify([record, { ProcessId: 13, Name: "pdflatex.exe", WorkingSetSize: 4096 }]))))
       .toEqual({ rssBytes: 24576, processCount: 2 });
@@ -76,16 +76,16 @@ describe("TeX process memory", () => {
     const failed = async (): Promise<never> => { throw new Error("unavailable"); };
     const io = { read: failed, directories: failed, command: failed };
     for (const platform of ["linux", "darwin", "win32", "freebsd"] as const) {
-      expect(await collectTexMemory(platform, io)).toEqual({ rssBytes: null, processCount: null });
+      expect((await collectTexResources(platform, io)).memory).toEqual({ rssBytes: null, processCount: null });
     }
-    expect(await collectTexMemory("win32", { ...io, command: async () => "not JSON" })).toEqual({ rssBytes: null, processCount: null });
+    expect((await collectTexResources("win32", { ...io, command: async () => "not JSON" })).memory).toEqual({ rssBytes: null, processCount: null });
   });
 
   it.skipIf(process.platform !== "linux")("includes a visible TeX-named process not started by the compiler", async () => {
     const child = spawn(process.execPath, ["-e", 'process.title = "pdflatex"; process.stdout.write("ready"); setInterval(() => {}, 1000);'], { stdio: ["ignore", "pipe", "ignore"] });
     try {
       await once(child.stdout!, "data");
-      const sample = await collectTexMemory();
+      const { memory: sample } = await collectTexResources();
       expect(sample.processCount).toBeGreaterThanOrEqual(1);
       expect(sample.rssBytes).toBeGreaterThan(MiB);
     } finally {

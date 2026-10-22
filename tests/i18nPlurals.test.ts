@@ -15,10 +15,7 @@ beforeAll(async () => {
 const countedNouns = [
   ["auth.passwordMinimum", "character", "characters"],
   ["projects.pageOf", "project", "projects"],
-  ["projects.unresolvedComments", "comment", "comments"],
   ["projects.unresolvedCommentsTooltip", "comment", "comments"],
-  ["projects.allCommentsResolvedTooltip", "comment", "comments"],
-  ["projects.unreadMentions", "message", "messages"],
   ["projects.unreadMentionsTooltip", "message", "messages"],
   ["users.ownedChoice", "project", "projects"],
   ["editor.wordCountWordsUnit", "word", "words"],
@@ -43,7 +40,6 @@ const countedNouns = [
   ["selectionHistory.description", "character", "characters"],
   ["projectSettings.writingIssues", "issue", "issues"],
   ["git.changedFiles", "file", "files"],
-  ["metrics.texProcesses", "process", "processes"],
   ["metrics.sessions", "session", "sessions"],
   ["metrics.rooms", "room", "rooms"],
   ["metrics.dirtyFiles", "file", "files"],
@@ -69,7 +65,7 @@ describe("count-aware translations", () => {
 
   it.each([0, 1, 2])("keeps Chinese quantities natural (%i)", (count) => {
     const t = translations.getFixedT("zh");
-    expect(t("projects.unreadMentions", { count })).toBe(`${count} 条消息`);
+    expect(t("projects.unreadMentionsTooltip", { count })).toBe(`${count} 条未读消息`);
     expect(t("metrics.sessions", { count })).toBe(`${count} 个会话`);
     expect(t("history.fileCount", { count })).toBe(`${count} 个文件`);
     expect(t("editor.wordCountWordsUnit", { count })).toBe("字");
