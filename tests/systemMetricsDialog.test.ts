@@ -40,6 +40,19 @@ afterEach(async () => {
 
 describe("system resource tooltips", () => {
   it.each([
+    [1, 1, 2, "1 session", "1 room · 2 dirty files"],
+    [2, 2, 1, "2 sessions", "2 rooms · 1 dirty file"],
+    [0, 0, 0, "0 sessions", "0 rooms · 0 dirty files"]
+  ])("pluralizes sessions, rooms and dirty files independently (%i, %i, %i)", async (sessions, rooms, dirtyFiles, value, detail) => {
+    await i18n.changeLanguage("en");
+    vi.mocked(api).mockResolvedValue({ ...metrics, collaboration: { sessions, rooms, dirtyFiles } });
+    await act(async () => root.render(createElement(SystemMetricsDialog, { open: true, onOpenChange: () => {} })));
+    const collaboration = host.querySelectorAll(".metric-runtime-item")[2];
+    expect(collaboration.querySelector("strong")?.textContent).toBe(value);
+    expect(collaboration.querySelector(".metric-runtime-detail")?.getAttribute("data-tooltip")).toBe(detail);
+  });
+
+  it.each([
     [{ p50Ms: 0.1, p95Ms: 0.2, maxMs: 80.5 }, ["0.1 ms", "0.2 ms", "80.5 ms"]],
     [{ p50Ms: null, p95Ms: null, maxMs: null }, ["—", "—", "—"]]
   ])("renders corrected lag or missing samples without adding the interval again", async (eventLoopDelay, values) => {

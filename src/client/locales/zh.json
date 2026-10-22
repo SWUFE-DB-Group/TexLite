@@ -24,7 +24,7 @@
   "auth": {
     "tagline": "轻量 LaTeX 写作环境", "username": "用户名", "password": "密码", "login": "登录",
     "contact": "需要账号？请联系 {{email}}", "firstLogin": "首次登录，请修改初始密码", "currentPassword": "当前密码",
-    "newPassword": "新密码", "confirmPassword": "确认新密码", "updatePassword": "更新密码", "mismatch": "两次输入的新密码不一致", "passwordMinimum": "至少 {{count}} 位", "sessionExpired": "登录状态已过期，请重新登录。", "logout": "退出"
+    "newPassword": "新密码", "confirmPassword": "确认新密码", "updatePassword": "更新密码", "mismatch": "两次输入的新密码不一致", "passwordMinimum_one": "至少 {{count}} 位", "passwordMinimum_other": "至少 {{count}} 位", "sessionExpired": "登录状态已过期，请重新登录。", "logout": "退出"
   },
   "account": {
     "avatarTitle": "头像",
@@ -50,9 +50,9 @@
     "noArchivedDescription": "归档让项目列表更清爽，已归档项目可随时恢复。", "backToActive": "返回活跃项目",
     "upload": "上传项目", "uploadDescription": "上传 ZIP 压缩包；若只有一个顶层目录会自动去除。单文件最大 {{size}} MB。", "zipFile": "ZIP 压缩包",
     "import": "导入项目", "uploading": "正在上传 ZIP…", "processing": "正在解析压缩包…", "processingHint": "正在校验压缩包并逐个解压文件，请稍候。", "uploadProgress": "ZIP 上传进度", "search": "搜索项目…", "grid": "网格", "list": "列表", "allTags": "全部标签",
-    "sortBy": "排序", "sortModified": "最后修改时间", "sortCreated": "创建时间", "scope": "项目状态", "active": "活跃项目", "archived": "已归档", "archive": "归档", "unarchive": "取消归档", "noArchived": "还没有归档项目", "pagination": "项目分页", "pageOf": "第 {{page}} / {{totalPages}} 页 · 共 {{count}} 个项目", "previousPage": "上一页", "nextPage": "下一页",
+    "sortBy": "排序", "sortModified": "最后修改时间", "sortCreated": "创建时间", "scope": "项目状态", "active": "活跃项目", "archived": "已归档", "archive": "归档", "unarchive": "取消归档", "noArchived": "还没有归档项目", "pagination": "项目分页", "pageOf_one": "第 {{page}} / {{totalPages}} 页 · 共 {{count}} 个项目", "pageOf_other": "第 {{page}} / {{totalPages}} 页 · 共 {{count}} 个项目", "previousPage": "上一页", "nextPage": "下一页",
     "owner": "所有者", "created": "创建时间", "modified": "最后修改", "mentionsColumn": "消息", "actions": "操作", "openProject": "打开“{{project}}”", "projectActions": "“{{project}}”的操作", "relativeHoursPast": "{{hours}}小时前", "relativeHoursMinutesPast": "{{hours}}小时{{minutes}}分钟前", "relativeHoursFuture": "{{hours}}小时后", "relativeHoursMinutesFuture": "{{hours}}小时{{minutes}}分钟后", "relativeDaysPast": "{{days}}天前", "relativeDaysHoursPast": "{{days}}天{{hours}}小时前", "relativeDaysFuture": "{{days}}天后", "relativeDaysHoursFuture": "{{days}}天{{hours}}小时后", "modifiedBy": "最后修改人", "byUser": "由 {{user}} 修改", "modifiedByUser": "{{time}} · 由 {{user}} 修改", "deletedUser": "已删除用户",
-    "comments": "批注", "unresolvedComments": "{{count}} 条未解决批注", "unresolvedCommentsTooltip": "{{unresolved}} 条未解决批注 / 共 {{total}} 条", "allResolved": "全部已解决 ({{count}})", "allCommentsResolvedTooltip": "全部 {{count}} 条批注已解决", "noComments": "暂无批注", "unresolvedCount": "{{count}} 条待解决", "unreadMentions": "{{count}} 条消息", "unreadMentionsTooltip": "{{count}} 条未读消息",
+    "comments": "批注", "unresolvedComments_one": "{{count}} 条未解决批注", "unresolvedComments_other": "{{count}} 条未解决批注", "unresolvedCommentsTooltip_one": "{{unresolved}} 条未解决批注 / 共 {{total}} 条", "unresolvedCommentsTooltip_other": "{{unresolved}} 条未解决批注 / 共 {{total}} 条", "allResolved": "全部已解决 ({{count}})", "allCommentsResolvedTooltip_one": "全部 {{count}} 条批注已解决", "allCommentsResolvedTooltip_other": "全部 {{count}} 条批注已解决", "noComments": "暂无批注", "unresolvedCount": "{{count}} 条待解决", "unreadMentions_one": "{{count}} 条消息", "unreadMentions_other": "{{count}} 条消息", "unreadMentionsTooltip_one": "{{count}} 条未读消息", "unreadMentionsTooltip_other": "{{count}} 条未读消息",
     "filterTags": "按标签过滤", "rename": "重命名", "renameTitle": "重命名项目", "duplicate": "复制项目", "duplicating": "正在复制…", "duplicateTitle": "复制项目", "duplicateDescription": "创建“{{project}}”的独立副本。会复制文件和项目设置，但不会复制成员、批注、Git 历史和编译产物。", "download": "下载",
     "transfer": "转让", "transferOwnership": "转让项目", "transferDescription": "为“{{project}}”选择新的所有者。", "newOwner": "新所有者", "chooseNewOwner": "请选择用户", "noTransferUsers": "没有其他可用用户", "transferWarning": "转让后你仍保留读写权限。源码、历史、批注和成员不会改变。GitHub 凭据属于个人账户：本项目之后使用新所有者的 token，你自己的 token 仍保留在你的账户中。",
     "transferForbidden": "只有当前项目所有者可以转让项目。", "transferTargetInvalid": "请选择新的项目所有者。", "transferSelf": "你已经是该项目的所有者。",
@@ -181,7 +181,7 @@
     "resetPassword": "重置密码", "initialPassword": "登录密码", "displayName": "显示名称", "addDescription": "设置登录密码，或生成一个安全的随机密码。",
     "createUser": "创建用户", "randomPassword": "随机密码", "generatePassword": "生成随机密码",
     "resetDescription": "为 {{username}} 设置初始密码；其现有会话会被注销。", "reset": "重置",
-    "deleteTitle": "删除用户", "deleteDescription": "确认删除 {{username}}？此操作不可撤销。", "ownedChoice": "其拥有的 {{count}} 个项目",
+    "deleteTitle": "删除用户", "deleteDescription": "确认删除 {{username}}？此操作不可撤销。", "ownedChoice_one": "其拥有的 {{count}} 个项目", "ownedChoice_other": "其拥有的 {{count}} 个项目",
     "transferProjects": "转移给当前管理员", "deleteProjects": "永久删除项目及全部文件"
   },
   "chktex": { "recoveryTitle": "ChkTeX 不可用。", "recoveryHint": " 请确认服务器已安装 ChkTeX，然后重试；如果暂时无法安装，也可以关闭此设置。", "unavailable": "服务器未安装 ChkTeX，或 ChkTeX 当前无法运行。请在服务器安装 TeX Live 的 chktex 包后重试。", "enabled": "启用 ChkTeX 写作检查", "description": "停止编辑 2 秒后，TexLite 会调用宿主机上可选的 ChkTeX 命令。结果使用蓝灰色点线标记；整个服务器同时最多运行 8 个检查。", "noIssues": "未发现写作问题。" },
@@ -213,19 +213,19 @@
     "saved": "已保存", "savedAt": "已于 {{time}} 保存到服务器", "loading": "载入中", "pending": "等待保存", "saving": "正在保存到服务器", "saveFailed": "保存失败", "offlineDraft": "离线 · 本地草稿已保留", "harperRecoveryTitle": "Harper 暂不可用。", "harperFallbackHint": " 已自动改用浏览器内置拼写检查。", "texFmtRecoveryTitle": "tex-fmt 无法加载。", "texFmtOptionsRecoveryTitle": "tex-fmt 无法处理当前源码或参数。", "texFmtRuntimeRecoveryTitle": "tex-fmt 返回了异常结果。", "clientToolRecoveryHint": " 可立即重试；如果页面在系统更新前已经打开，请刷新页面加载最新资源。", "resetFormatterOptions": "清空参数并重试", "formattingBy": "{{name}} 正在格式化此文件，请稍候…", "citationJumpHint": "按住 Ctrl/Cmd 并点击以打开参考文献条目“{{key}}”。", "labelJumpHint": "按住 Ctrl/Cmd 并点击以打开标签定义“{{key}}”。", "citationTargetNotFound": "没有找到“{{key}}”对应的参考文献条目。", "labelTargetNotFound": "没有找到“{{key}}”对应的标签定义。",
     "compile": "编译 · {{engine}}", "compiling": "编译中…", "compileQueued": "编译已排队…", "compileFailedRetained": "编译失败，当前显示上一次成功生成的 PDF（{{time}}）。", "compileFailedNoPdf": "编译失败，且没有可用的成功 PDF。", "upToDate": "文件已是最新，无需重新编译。", "compileSnapshotStale": "PDF 基于较早的一致快照编译，未包含之后的源码修改。", "addComment": "添加批注", "sourceComments": "源码批注", "mentionUsers": "@ 项目成员", "mentionedYou": "提到了你", "markMentionRead": "标记已读", "markAllMentionsRead": "全部标记已读", "commentScope": "批注范围", "commentScopeFile": "当前文件", "commentScopeProject": "整个项目", "commentFilter": "批注筛选", "commentFilterUnresolved": "待解决 {{count}}", "commentFilterResolved": "已解决 {{count}}", "commentPrevious": "上一条批注", "commentNext": "下一条批注", "commentPosition": "{{current}} / {{total}}", "commentNoMatches": "没有符合此筛选条件的批注。", "commentLocation": "{{path}} · 第 {{line}} 行",
     "projectSettings": "项目设置", "uploadAttachment": "上传附件", "newFile": "新建文本文件", "binary": "二进制附件已保存，但不能在文本编辑器中打开。",
-    "noOutline": "当前文件没有章节", "collapseOutline": "折叠大纲", "expandOutline": "展开大纲", "collapseOutlineItem": "折叠“{{title}}”", "expandOutlineItem": "展开“{{title}}”", "wordCountTitle": "字数统计", "wordCountFull": "全文", "wordCountSelection": "所选", "wordCountFullHint": "统计当前主文档及其引入的 TeX 文件", "wordCountSelectionHint": "统计选中的 LaTeX 源码", "wordCountLoading": "正在运行 TeXcount…", "wordCountTotal": "总字数", "wordCountCharacters": "字符数", "wordCountCharactersHint": "不含空格和标点", "wordCountText": "正文", "wordCountHeaders": "标题", "wordCountCaptions": "图注/表注", "wordCountFloats": "图表数量", "wordCountInlineMath": "行内公式", "wordCountDisplayMath": "独立公式", "wordCountFiles": "引入文件", "wordCountWordsUnit": "字", "wordCountItemsUnit": "个", "wordCountExpressionsUnit": "个", "wordCountParserErrors": "TeXcount 报告了 {{count}} 个解析问题。", "wordCountSelectionEmpty": "请选择 LaTeX 源码后再统计。", "wordCountSaveRequired": "最新编辑修改无法保存，已取消统计。", "wordCountFailed": "TeXcount 无法统计这段源码。", "wordCountSourceInvalid": "请选择 LaTeX 源码后再统计。", "wordCountSourceTooLarge": "所选源码过大，无法统计。", "wordCountUnavailable": "服务器未安装 TeX Live 的 texcount 包，请安装后重试。", "wordCountHelp": "TeXcount 说明", "wordCountTemplateNote": "自定义 %TC:newtemplate 或 %TC:template 指令可能覆盖 TexLite 的统计格式，并导致统计失败。", "preview": "PDF 预览", "previewHint": "点击“编译”生成文档", "loadingPdf": "正在加载 PDF…", "pdfCompiledAt": "成功编译于 {{time}}", "pdfCompiledAtFor": "{{file}} 成功编译于 {{time}}", "pdfUpdatedAt": "更新于 {{time}}", "currentMainDocument": "当前作为主文档编译：{{path}}", "currentMainShort": "主文档", "deletedUser": "已删除用户",
+    "noOutline": "当前文件没有章节", "collapseOutline": "折叠大纲", "expandOutline": "展开大纲", "collapseOutlineItem": "折叠“{{title}}”", "expandOutlineItem": "展开“{{title}}”", "wordCountTitle": "字数统计", "wordCountFull": "全文", "wordCountSelection": "所选", "wordCountFullHint": "统计当前主文档及其引入的 TeX 文件", "wordCountSelectionHint": "统计选中的 LaTeX 源码", "wordCountLoading": "正在运行 TeXcount…", "wordCountTotal": "总字数", "wordCountCharacters": "字符数", "wordCountCharactersHint": "不含空格和标点", "wordCountText": "正文", "wordCountHeaders": "标题", "wordCountCaptions": "图注/表注", "wordCountFloats": "图表数量", "wordCountInlineMath": "行内公式", "wordCountDisplayMath": "独立公式", "wordCountFiles": "引入文件", "wordCountWordsUnit_one": "字", "wordCountWordsUnit_other": "字", "wordCountItemsUnit_one": "个", "wordCountItemsUnit_other": "个", "wordCountExpressionsUnit_one": "个", "wordCountExpressionsUnit_other": "个", "wordCountParserErrors_one": "TeXcount 报告了 {{count}} 个解析问题。", "wordCountParserErrors_other": "TeXcount 报告了 {{count}} 个解析问题。", "wordCountSelectionEmpty": "请选择 LaTeX 源码后再统计。", "wordCountSaveRequired": "最新编辑修改无法保存，已取消统计。", "wordCountFailed": "TeXcount 无法统计这段源码。", "wordCountSourceInvalid": "请选择 LaTeX 源码后再统计。", "wordCountSourceTooLarge": "所选源码过大，无法统计。", "wordCountUnavailable": "服务器未安装 TeX Live 的 texcount 包，请安装后重试。", "wordCountHelp": "TeXcount 说明", "wordCountTemplateNote": "自定义 %TC:newtemplate 或 %TC:template 指令可能覆盖 TexLite 的统计格式，并导致统计失败。", "preview": "PDF 预览", "previewHint": "点击“编译”生成文档", "loadingPdf": "正在加载 PDF…", "pdfCompiledAt": "成功编译于 {{time}}", "pdfCompiledAtFor": "{{file}} 成功编译于 {{time}}", "pdfUpdatedAt": "更新于 {{time}}", "currentMainDocument": "当前作为主文档编译：{{path}}", "currentMainShort": "主文档", "deletedUser": "已删除用户",
     "previewEmptyTitle": "尚未生成 PDF", "previewCompilingHint": "编译完成后，PDF 将显示在这里。",
     "orphaned": "源码已删除", "line": "第 {{line}} 行", "reopen": "重新打开", "resolve": "解决", "resolvedBy": "由 <user>{{user}}</user> 标记为已解决", "noComments": "当前文件没有批注",
-    "newFileDescription": "可以包含目录，例如 chapters/introduction.tex。", "filePath": "文件路径", "commentDescription": "已选择 {{count}} 个字符",
+    "newFileDescription": "可以包含目录，例如 chapters/introduction.tex。", "filePath": "文件路径", "commentDescription_one": "已选择 {{count}} 个字符", "commentDescription_other": "已选择 {{count}} 个字符",
     "pointComment": "未选择文本，将在当前光标位置添加批注。", "commentContent": "批注内容", "backToProjects": "返回项目列表",
     "outputTabs": "编译输出", "log": "日志", "warnings": "警告", "errors": "错误", "artifacts": "产物", "clean": "故障恢复", "noLog": "编译后将在此显示日志。",
     "noWarnings": "最近一次编译没有警告。", "noErrors": "最近一次编译没有错误。", "projectRoot": "项目根目录",
-    "uploadTo": "上传到 {{folder}}", "dropFiles": "拖放文件以上传（暂不支持文件夹）", "dropFoldersUnsupported": "暂不支持拖放文件夹，请拖放其中的文件。", "uploadingFile": "正在上传 {{file}}（{{current}}/{{total}}）", "uploadSucceeded": "已上传 {{count}} 个文件。", "uploadFailed": "上传失败：{{message}}", "uploadFailedPartial": "已上传 {{uploaded}}/{{total}} 个文件，之后上传失败：{{message}}", "uploadSucceededRefreshFailed": "文件已上传，但无法刷新文件列表：{{message}}", "newFolder": "新建文件夹", "folderName": "文件夹名称", "folderDestination": "文件夹将创建在 {{folder}} 中。", "uploadOverwriteTitle": "文件已存在", "uploadOverwriteDescription": "以下文件已经存在：{{files}}。要覆盖它们吗？", "uploadOverwrite": "覆盖文件",
+    "uploadTo": "上传到 {{folder}}", "dropFiles": "拖放文件以上传（暂不支持文件夹）", "dropFoldersUnsupported": "暂不支持拖放文件夹，请拖放其中的文件。", "uploadingFile": "正在上传 {{file}}（{{current}}/{{total}}）", "uploadSucceeded_one": "已上传 {{count}} 个文件。", "uploadSucceeded_other": "已上传 {{count}} 个文件。", "uploadFailed": "上传失败：{{message}}", "uploadFailedPartial_one": "已上传 {{uploaded}}/{{total}} 个文件，之后上传失败：{{message}}", "uploadFailedPartial_other": "已上传 {{uploaded}}/{{total}} 个文件，之后上传失败：{{message}}", "uploadSucceededRefreshFailed": "文件已上传，但无法刷新文件列表：{{message}}", "newFolder": "新建文件夹", "folderName": "文件夹名称", "folderDestination": "文件夹将创建在 {{folder}} 中。", "uploadOverwriteTitle": "文件已存在", "uploadOverwriteDescription_one": "以下文件已经存在：{{files}}。要覆盖它们吗？", "uploadOverwriteDescription_other": "以下文件已经存在：{{files}}。要覆盖它们吗？", "uploadOverwrite": "覆盖文件",
     "noArtifacts": "编译后将在此显示输出产物。", "selectArtifact": "选择一个文本产物进行预览。", "viewArtifact": "查看产物", "downloadArtifact": "下载产物", "downloadToView": "该产物需要下载后查看",
     "cleanTitle": "编译故障恢复", "cleanDescription": "这里只提供高级故障恢复操作：仅在编译卡住、历史错误状态残留或生成产物异常时使用。不会修改源码、项目设置、批注、历史或 Git 数据。", "cleanCache": "清除编译缓存", "cleanCacheDescription": "仅在编译失败或 latexmk 缓存状态异常时使用。删除增量缓存，但保留当前成功的 PDF。", "cleanArtifacts": "删除生成输出", "cleanArtifactsDescription": "仅在生成产物状态异常时使用。删除该主文档的 PDF、SyncTeX、日志和中间文件。", "cleanCacheConfirmTitle": "清除编译缓存？", "cleanCacheConfirmDescription": "此故障恢复操作会删除 latexmk 增量缓存。当前 PDF 会保留，下一次编译将从干净缓存开始。", "cleanArtifactsConfirmTitle": "删除生成输出？", "cleanArtifactsConfirmDescription": "此故障恢复操作会删除当前 PDF 以及该主文档的全部生成文件，但不会影响源码。", "cleanConfirm": "执行恢复", "cleanCacheComplete": "故障恢复缓存已清理，下一次编译将完整执行。", "cleanArtifactsComplete": "编译生成输出已删除。", "cleanBusy": "当前主文档正在编译，请完成后再执行故障恢复。",
     "showFileSizes": "显示文件大小", "hideFileSizes": "隐藏文件大小", "move": "移动或重命名", "moveTitle": "移动或重命名 {{name}}", "moveDescription": "选择目标文件夹和名称；源码、批注和项目路径会保持关联。", "pathName": "名称", "moveApply": "移动/重命名",
     "destinationFolder": "目标文件夹", "deletePath": "删除文件或文件夹", "deletePathTitle": "删除 {{name}}", "deletePathDescription": "确定删除 {{path}}？此操作不可撤销。",
-    "deletePathActiveDescription": "确定删除 {{path}}？{{users}} 当前正在打开它，删除后这些会话将关闭该文件。", "deletePathWillClose": "系统会拒绝该路径上迟到的修改，避免内容被静默丢失。", "fileDeletedByCollaborator": "{{path}} 已在其他会话中删除，现已打开安全的备用文件。",
+    "deletePathActiveDescription_one": "确定删除 {{path}}？{{users}} 当前正在打开它，删除后这些会话将关闭该文件。", "deletePathActiveDescription_other": "确定删除 {{path}}？{{users}} 当前正在打开它，删除后这些会话将关闭该文件。", "deletePathWillClose": "系统会拒绝该路径上迟到的修改，避免内容被静默丢失。", "fileDeletedByCollaborator": "{{path}} 已在其他会话中删除，现已打开安全的备用文件。",
     "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "format": "格式化", "formatFile": "文件", "formatFileHint": "格式化当前文件", "formatFileComplete": "当前文件已格式化。", "formatFileFailed": "无法格式化当前文件：{{message}}", "formatSelected": "选区", "commentsAll": "查看", "formatSelection": "格式化选区", "formatting": "正在格式化…", "formatSelectionHint": "选择一段 LaTeX 源码后格式化", "formatSelectionRequired": "请先选择 LaTeX 源码，再进行格式化。", "formatSelectionComplete": "所选 LaTeX 源码已格式化。", "formatFailedContinue": "格式化失败，仍将继续编译：{{message}}", "formatFailed": "无法格式化选区：{{message}}", "formatSourceChanged": "格式化期间源码已发生变化，已跳过本次格式化。", "formatSelectionChanged": "格式化期间所选源码已发生变化，请重新选择后再试。", "writingSuggestions": "写作建议", "noWritingSuggestions": "没有可用的修改建议", "removeText": "删除文本", "replaceWith": "替换为 {{word}}", "spellCheckReadOnly": "当前为只读，需要编辑权限才能替换。", "spellCheckSourceChanged": "源码在应用写作修正前发生了变化。", "mathPreview": "公式预览", "mathPreviewLoading": "正在渲染公式…", "mathPreviewUnavailable": "该公式暂时无法预览。", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
     "replyPlaceholder": "输入回复内容…（⌘/Ctrl+Enter 发送）", "sendReply": "发送回复", "editComment": "编辑批注", "deleteComment": "删除批注",
     "commentPlaceholder": "输入批注内容…（⌘/Ctrl+Enter 发送）",
@@ -264,8 +264,8 @@
       "permissionDowngradeOtherTab": "您的权限已变为只读。另一个浏览器标签页中仍有尚未保存的草稿，请返回该标签页处理。为避免误删，该页面不能清理共享的本地草稿。",
       "permissionDowngradeMultipleDrafts": "您的权限已变为只读。当前标签页和其他浏览器标签页都存在尚未保存的草稿。请先在其他标签页中处理草稿；当前页面不会清理共享数据。",
       "permissionDowngradeOtherTabBlocked": "另一个浏览器标签页刚刚产生了尚未保存的草稿，已取消清理以保护该草稿。",
-      "activeSessions": "{{count}} 个活跃会话",
-      "showMoreSessions": "展开另外 {{count}} 个会话", "showFewerSessions": "收起会话列表",
+      "activeSessions_one": "{{count}} 个活跃会话", "activeSessions_other": "{{count}} 个活跃会话",
+      "showMoreSessions_one": "展开另外 {{count}} 个会话", "showMoreSessions_other": "展开另外 {{count}} 个会话", "showFewerSessions": "收起会话列表",
       "sessionTooltip": "{{name}}（@{{username}}）· {{file}} · {{activity}} · {{permission}}"
     },
     "search": {
@@ -273,7 +273,7 @@
       "next": "下一个", "previous": "上一个", "all": "选择全部", "matchCase": "区分大小写", "regexp": "正则表达式",
       "wholeWord": "全字匹配", "replaceNext": "替换", "replaceAll": "全部替换", "currentMatch": "当前匹配",
       "onLine": "位于行", "replacedMatchOnLine": "已替换第 $ 行的匹配项", "replacedMatches": "已替换 $ 个匹配项",
-      "goToLine": "跳转到行", "go": "跳转", "matchCount": "共 {{count}} 个匹配", "noMatches": "没有匹配项",
+      "goToLine": "跳转到行", "go": "跳转", "matchCount_one": "共 {{count}} 个匹配", "matchCount_other": "共 {{count}} 个匹配", "noMatches": "没有匹配项",
       "invalidQuery": "正则表达式无效"
     }
   },
@@ -320,7 +320,7 @@
   "citationErrors": { "invalid": "请输入一个有效的 BibTeX 条目。", "tooLarge": "BibTeX 条目过大。", "notFound": "引用条目不存在。", "keyExists": "引用 key 已经存在，请检查现有条目后再决定是否替换。", "tagNotFound": "引用标签不存在。", "conflict": "该引用已在其他位置发生修改，请刷新引用库后重试。", "alreadyInFile": "{{key}} 已经存在于当前 BibTeX 文件中。" },
   "citationLibraryHomeDescription": "管理私有 BibTeX 文献和标签。打开 .bib 文件即可保存或导入条目。",
   "citationLibraryActions": { "addEntry": "添加条目", "addEntryTitle": "添加 BibTeX 条目", "addEntryDescription": "粘贴一个完整的 BibTeX 文献条目，保存前会进行校验。", "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}", "added": "引用已添加到你的引用库。" },
-  "citationLibraryPagination": { "pageOf": "第 {{page}} / {{totalPages}} 页 · {{count}} 条引用", "previous": "上一页", "next": "下一页" },
+  "citationLibraryPagination": { "pageOf_one": "第 {{page}} / {{totalPages}} 页 · {{count}} 条引用", "pageOf_other": "第 {{page}} / {{totalPages}} 页 · {{count}} 条引用", "previous": "上一页", "next": "下一页" },
   "navigation": {
     "quickOpen": "快速打开", "quickOpenDescription": "按名称打开项目文件（Ctrl/Cmd+P）。", "filePlaceholder": "输入文件名…", "noFiles": "没有匹配的文件。"
   },
@@ -329,23 +329,23 @@
     "saveWarning": "源码已保存，但部分历史未能保存。近期失败会自动重试，较早的历史可能不完整。请检查服务器日志及可用存储空间。",
     "storageBreakdown": "文件 {{objects}} · 元数据 {{metadata}} · 受保护 {{protected}}",
     "title": "历史", "projectSnapshots": "项目快照", "projectSnapshotsButton": "项目快照", "description": "浏览自动项目快照、比较文件，并安全恢复较早的工作。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",
-    "changedCount": "{{count}} 个文件有变化", "fileCount": "{{count}} 个文件", "changed": "有修改", "labelPlaceholder": "为此版本命名", "saveLabel": "保存标签",
+    "changedCount_one": "{{count}} 个文件有变化", "changedCount_other": "{{count}} 个文件有变化", "fileCount_one": "{{count}} 个文件", "fileCount_other": "{{count}} 个文件", "changed": "有修改", "labelPlaceholder": "为此版本命名", "saveLabel": "保存标签",
     "compareCurrent": "与当前版本比较", "comparingCurrent": "历史快照与当前文件的比较", "chooseFile": "选择文件后，可与当前源码进行比较。",
-    "changedFilesHeading": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "nonTextFileChanged": "非文本文件已变更：{{path}}，不展示文本差异。", "nonTextFileDeleted": "非文本文件已删除：{{path}}。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "historicalVersion": "历史快照", "currentVersion": "当前版本",
+    "changedFilesHeading_one": "修改的文件 ({{count}})", "changedFilesHeading_other": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "nonTextFileChanged": "非文本文件已变更：{{path}}，不展示文本差异。", "nonTextFileDeleted": "非文本文件已删除：{{path}}。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "historicalVersion": "历史快照", "currentVersion": "当前版本",
     "diffMode": "对比模式", "diffModeCommit": "本次修改", "diffModeCommitHint": "查看此快照相比上一快照的改动", "diffModeCurrent": "与当前对比", "diffModeCurrentHint": "查看此快照与当前工作区源码的差异", "changedAt": "修改于 {{time}}", "createdAt": "创建于 {{time}}", "previousVersion": "上一快照",
     "restore": "恢复", "restoreFile": "恢复文件", "restoreProject": "恢复项目", "restoreFileTitle": "恢复此文件", "restoreProjectTitle": "恢复此项目快照",
     "restoreFileDescription": "从此快照恢复 {{path}}？系统会先为当前项目创建安全检查点。", "restoreProjectDescription": "恢复此快照的全部源码和编译器设置？系统会先为当前项目创建安全检查点。",
-    "storage": "快照存储", "storageUsage": "已使用 {{used}}，上限 {{limit}}", "versionUsage": "普通快照 {{count}} / {{limit}}", "protectedVersions": "{{count}} 个已标记快照", "storageExceeded": "受保护快照或当前基线已超过存储软上限。",
+    "storage": "快照存储", "storageUsage": "已使用 {{used}}，上限 {{limit}}", "versionUsage_one": "普通快照 {{versions}} / {{limit}}", "versionUsage_other": "普通快照 {{versions}} / {{limit}}", "protectedVersions": "{{count}} 个已标记快照", "storageExceeded": "受保护快照或当前基线已超过存储软上限。",
     "deleteVersion": "删除快照", "deleteVersionTitle": "删除此项目快照", "deleteVersionDescription": "永久删除“{{name}}”？当前项目文件和选区历史不会改变。",
     "clearAll": "清空项目快照", "clearAllTitle": "清空全部项目快照", "clearAllDescription": "永久删除全部项目快照及不再引用的存储数据？当前项目文件和选区历史不会改变。",
     "reasons": { "initial": "项目创建", "autosave": "自动保存", "file": "文件操作", "settings": "编译器设置", "git": "Git 操作", "restore": "恢复版本", "checkpoint": "安全检查点" }
   },
   "selectionHistory": {
-    "storageUsage": "选区历史：{{used}} / {{limit}} MiB · {{count}} 个片段",
+    "storageUsage_one": "选区历史：{{used}} / {{limit}} MiB · {{count}} 个片段", "storageUsage_other": "选区历史：{{used}} / {{limit}} MiB · {{count}} 个片段",
     "storageDescription": "统计整个项目的修改数据，与项目快照独立；不包含共享数据库开销。",
     "clearAll": "清空项目选区历史", "clearDescription": "删除本项目所有文件的修改记录？源码和项目快照将保留，后续修改仍会继续记录。此操作不可撤销。",
-    "limited": "仅显示最近 {{count}} 个编辑窗口，更早的记录未展示。", "sourceChanged": "源码已发生变化。请等待同步完成，重新选择文本后再打开历史。",
-    "title": "选区历史", "buttonLabel": "编辑记录", "selectSourceHint": "请先选中源码，再查看其编辑历史。", "description": "{{path}} 中所选 {{count}} 个字符的编辑记录。",
+    "limited_one": "仅显示最近 {{count}} 个编辑窗口，更早的记录未展示。", "limited_other": "仅显示最近 {{count}} 个编辑窗口，更早的记录未展示。", "sourceChanged": "源码已发生变化。请等待同步完成，重新选择文本后再打开历史。",
+    "title": "选区历史", "buttonLabel": "编辑记录", "selectSourceHint": "请先选中源码，再查看其编辑历史。", "description_one": "{{path}} 中所选 {{count}} 个字符的编辑记录。", "description_other": "{{path}} 中所选 {{count}} 个字符的编辑记录。",
     "emptyTitle": "此选区还没有已保存的编辑记录", "emptyDescription": "继续编辑并保存后，这里会显示相关的编辑记录。",
     "boundary": "由于文件替换、恢复操作或较早记录已清理，此选区的历史从这里开始。",
     "changedBy": "修改者：", "contentTab": "内容", "diffTab": "差异", "view": "选区历史展示方式", "previousVersion": "上一状态", "currentVersion": "当前状态", "noPrevious": "没有更早的选区状态可供比较。", "diffUnavailable": "其中一个选区状态无法精确还原，暂无法比较。", "noDiff": "与上一选区状态没有文本差异。", "contentTruncated": "选区内容已缩短。", "contentUnavailable": "由于一次过大的修改无法精确还原，无法显示这个较早状态的选区内容。"
@@ -364,7 +364,7 @@
     "dictionary": "项目词典", "dictionaryDescription": "添加到这里的词会在 Harper 返回本项目拼写诊断后被忽略。", "dictionaryPlaceholder": "添加自定义词", "addWord": "添加词", "dictionaryEmpty": "暂未添加自定义词。",
     "harperCliStatus": { "checking": "检测中", "available": "可用", "unavailable": "不可用", "error": "状态未知" }, "harperCliRetry": "重新检测 Harper CLI",
     "showTooltips": "显示界面悬停提示",
-    "lineWrapping": "自动换行", "mathPreviewOnHover": "悬停预览数学公式", "spellCheck": "拼写和语法检查", "vimMode": "Vim 键位", "vimModeDescription": "在当前编辑器中使用 Vim 的普通、插入和可视模式。", "vimHelp": "查看帮助", "formatOnCompile": "编译前自动格式化 LaTeX", "formatRequiresWrite": "需要项目编辑权限才能使用格式化。", "formatterDescription": "tex、cls、sty 使用内置的浏览器 tex-fmt WASM 格式化器；BibTeX 使用浏览器中的 bibtex-tidy。", "formatterInstall": "查看 tex-fmt", "bibtexTidyInstall": "查看 bibtex-tidy", "texFmtOptions": "tex-fmt 参数（TOML）", "texFmtOptionsPlaceholder": "wrap = false", "texFmtOptionsDescription": "这些参数仅保存在当前浏览器中，并按当前用户和项目隔离；它们会直接传递给 tex-fmt。", "openFilesInTabs": "使用新 Tab 打开 LaTeX 文件", "writingIssues": "发现 {{count}} 个写作问题（去重后 {{uniqueCount}} 个）", "noWritingIssues": "未发现拼写或语法问题。", "spellCheckFirst": "第一个写作问题", "spellCheckPrevious": "上一个写作问题", "spellCheckNext": "下一个写作问题", "spellCheckLast": "最后一个写作问题", "spellCheckPosition": "第 {{current}}/{{total}} 个",
+    "lineWrapping": "自动换行", "mathPreviewOnHover": "悬停预览数学公式", "spellCheck": "拼写和语法检查", "vimMode": "Vim 键位", "vimModeDescription": "在当前编辑器中使用 Vim 的普通、插入和可视模式。", "vimHelp": "查看帮助", "formatOnCompile": "编译前自动格式化 LaTeX", "formatRequiresWrite": "需要项目编辑权限才能使用格式化。", "formatterDescription": "tex、cls、sty 使用内置的浏览器 tex-fmt WASM 格式化器；BibTeX 使用浏览器中的 bibtex-tidy。", "formatterInstall": "查看 tex-fmt", "bibtexTidyInstall": "查看 bibtex-tidy", "texFmtOptions": "tex-fmt 参数（TOML）", "texFmtOptionsPlaceholder": "wrap = false", "texFmtOptionsDescription": "这些参数仅保存在当前浏览器中，并按当前用户和项目隔离；它们会直接传递给 tex-fmt。", "openFilesInTabs": "使用新 Tab 打开 LaTeX 文件", "writingIssues_one": "发现 {{count}} 个写作问题（去重后 {{uniqueCount}} 个）", "writingIssues_other": "发现 {{count}} 个写作问题（去重后 {{uniqueCount}} 个）", "noWritingIssues": "未发现拼写或语法问题。", "spellCheckFirst": "第一个写作问题", "spellCheckPrevious": "上一个写作问题", "spellCheckNext": "下一个写作问题", "spellCheckLast": "最后一个写作问题", "spellCheckPosition": "第 {{current}}/{{total}} 个",
     "fontJetBrains": "JetBrains Mono", "fontSourceCode": "Source Code Pro",
     "fontIbmPlex": "IBM Plex Mono", "fontFiraCode": "Fira Code", "fontIosevka": "Iosevka", "lineHeightCompact": "紧凑",
     "lineHeightNormal": "标准", "lineHeightRelaxed": "宽松"
@@ -383,7 +383,7 @@
     "createToken": "创建细粒度 token", "connectedAs": "已连接为 @{{login}}", "removeToken": "移除 token",
     "repository": "仓库", "localReady": "项目源码已由本地 Git 仓库管理。", "localPending": "创建 GitHub 仓库时会初始化本地 Git 仓库。",
     "repositoryName": "GitHub 仓库名称", "privateRepository": "创建为私有仓库", "createRepository": "创建 GitHub 仓库", "repositoryCreated": "GitHub 仓库创建成功。",
-    "origin": "远程仓库", "openGitHub": "打开 GitHub", "clean": "工作区干净", "changedFiles": "{{count}} 个文件有修改",
+    "origin": "远程仓库", "openGitHub": "打开 GitHub", "clean": "工作区干净", "changedFiles_one": "{{count}} 个文件有修改", "changedFiles_other": "{{count}} 个文件有修改",
     "commitAndPush": "提交与推送", "identity": "本次提交临时使用 {{username}} <{{username}}@texlite.com>，不会写入 Git 配置。",
     "detachedHead": "当前处于 detached HEAD；请先返回默认分支再提交或推送。", "detachedAt": "detached 于 {{revision}}", "commitMessage": "提交说明",
     "commitPlaceholder": "说明本次备份的内容…", "commit": "提交", "committed": "修改已提交。", "commitFailed": "提交失败", "noChangesToCommit": "当前没有新的修改可以提交。",
@@ -407,8 +407,8 @@
     "hostCpu": "宿主机 CPU", "containerCpu": "容器 CPU", "texliteCpu": "TexLite + TeX", "cpuIdle": "空闲", "cpuCapacity": "总计 100%", "cpuSampling": "采样中…",
     "cpuNote": "按可用 CPU 容量归一化的区间采样值；已退出的短时 TeX 任务可能漏计。",
     "memoryCapacity": "总容量 {{total}}", "memoryLimit": "限制 {{total}}", "noReportedLimit": "未获取到内存限制", "unavailable": "无法获取", "sampleFailed": "无法读取进程内存",
-    "texProcesses": "{{count}} 个可见的 TeX 进程", "memoryNote": "当前采样值，非峰值。包含其他可见的 TeX 任务，共享内存可能重复计入。",
-    "collaboration": "协作", "sessions": "{{count}} 个会话", "roomsAndDirty": "{{rooms}} 个房间 · {{dirty}} 个待保存文件",
+    "texProcesses_one": "{{count}} 个可见的 TeX 进程", "texProcesses_other": "{{count}} 个可见的 TeX 进程", "memoryNote": "当前采样值，非峰值。包含其他可见的 TeX 任务，共享内存可能重复计入。",
+    "collaboration": "协作", "sessions_one": "{{count}} 个会话", "sessions_other": "{{count}} 个会话", "roomsAndDirty": "{{rooms}} · {{dirty}}", "rooms_one": "{{count}} 个房间", "rooms_other": "{{count}} 个房间", "dirtyFiles_one": "{{count}} 个待保存文件", "dirtyFiles_other": "{{count}} 个待保存文件",
     "eventLoop": "事件循环延迟", "latencySummary": "P50 {{p50}} · P95 {{p95}} · 最大 {{max}}", "eventLoopNote": "自服务启动以来的估算延迟，已扣除采样间隔。",
     "operationDurations": "近期操作耗时", "noSamples": "尚未采集到操作样本。", "operation": "操作", "samples": "样本", "last": "最近", "max": "最大",
     "operations": { "collaboration": { "connect": "打开协作房间", "persist": "保存协作修改" }, "workspace": { "project": "加载项目元数据", "files": "加载项目文件", "compileState": "加载保留的 PDF 状态" }, "compile": { "snapshot": "准备编译快照", "request": "编译请求总耗时", "cacheSync": "更新编译缓存", "latexmk": "运行 latexmk", "artifactCopy": "发布编译产物" }, "outline": { "build": "生成项目大纲" }, "completions": { "build": "生成补全索引" } }
@@ -439,7 +439,7 @@
   "completions": {
     "section": "章节", "subsection": "小节", "bold": "粗体", "emphasis": "强调", "citation": "引用文献", "reference": "交叉引用",
     "label": "标签", "image": "插入图片", "unordered": "无序列表", "ordered": "有序列表", "equation": "公式", "figure": "图片环境",
-    "projectCommand": "项目命令", "projectCommandArgs": "项目命令（{{count}} 个参数）", "projectMacro": "项目宏", "expl3Command": "Expl3 项目命令", "mathOperator": "项目数学算子",
+    "projectCommand": "项目命令", "projectCommandArgs_one": "项目命令（{{count}} 个参数）", "projectCommandArgs_other": "项目命令（{{count}} 个参数）", "projectMacro": "项目宏", "expl3Command": "Expl3 项目命令", "mathOperator": "项目数学算子",
     "mathDelimiter": "项目数学定界符", "projectEnvironment": "项目环境", "projectFile": "项目文件", "package": "宏包",
     "documentClass": "文档类", "currentFile": "当前文件", "project": "项目", "latex": "LaTeX", "standard": "LaTeX 命令"
   }

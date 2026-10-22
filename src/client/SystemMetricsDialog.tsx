@@ -75,7 +75,7 @@ export function SystemMetricsDialog({ open, onOpenChange }: { open: boolean; onO
       <div className="metric-runtime">
         <RuntimeMetric icon={Clock3} label={t("metrics.uptime")} value={formatDuration(metrics.uptimeSeconds)} />
         <RuntimeMetric icon={Layers3} label={t("metrics.compileQueue")} value={`${metrics.compileQueue.running} / ${metrics.compileQueue.concurrency}`} detail={t("metrics.pending", { count: metrics.compileQueue.pending })} />
-        <RuntimeMetric icon={Users} label={t("metrics.collaboration")} value={t("metrics.sessions", { count: metrics.collaboration.sessions })} detail={t("metrics.roomsAndDirty", { rooms: metrics.collaboration.rooms, dirty: metrics.collaboration.dirtyFiles })} />
+        <RuntimeMetric icon={Users} label={t("metrics.collaboration")} value={t("metrics.sessions", { count: metrics.collaboration.sessions })} detail={t("metrics.roomsAndDirty", { rooms: t("metrics.rooms", { count: metrics.collaboration.rooms }), dirty: t("metrics.dirtyFiles", { count: metrics.collaboration.dirtyFiles }) })} />
       </div>
       <section className="metric-section metric-latency">
         <h3><Activity aria-hidden="true" size={16} />{t("metrics.eventLoop")}</h3>

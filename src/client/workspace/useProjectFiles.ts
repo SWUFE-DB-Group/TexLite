@@ -245,7 +245,7 @@ export function useProjectFiles({
       // server-side before its response was lost.
       try { await loadFiles(); } catch { /* Keep the upload error visible. */ }
       const message = uploaded > 0
-        ? t("editor.uploadFailedPartial", { uploaded, total: filesToUpload.length, message: errorMessage(error) })
+        ? t("editor.uploadFailedPartial", { count: filesToUpload.length, uploaded, total: filesToUpload.length, message: errorMessage(error) })
         : t("editor.uploadFailed", { message: errorMessage(error) });
       setUploadFeedback({ kind: "error", message });
     } finally {

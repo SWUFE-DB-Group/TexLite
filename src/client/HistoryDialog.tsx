@@ -386,7 +386,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
             <strong>{t("history.storageUsage", { used: formatBytes(stats.totalBytes), limit: formatBytes(stats.maxStorageBytes) })}</strong>
             <progress max={stats.maxStorageBytes} value={Math.min(stats.totalBytes, stats.maxStorageBytes)} />
             <small>{t("history.storageBreakdown", { objects: formatBytes(stats.objectBytes), metadata: formatBytes(stats.metadataBytes), protected: formatBytes(stats.protectedBytes) })}</small>
-            <small>{t("history.versionUsage", { count: stats.ordinaryVersionCount, limit: stats.maxVersions > 0 ? stats.maxVersions : "∞" })}{stats.labeledVersionCount > 0 ? ` · ${t("history.protectedVersions", { count: stats.labeledVersionCount })}` : ""}</small>
+            <small>{t("history.versionUsage", { count: stats.maxVersions, versions: stats.ordinaryVersionCount, limit: stats.maxVersions > 0 ? stats.maxVersions : "∞" })}{stats.labeledVersionCount > 0 ? ` · ${t("history.protectedVersions", { count: stats.labeledVersionCount })}` : ""}</small>
             {stats.storageLimitExceeded && <small className="history-storage-warning">{t("history.storageExceeded")}</small>}
           </div>}
           {versions.map((version) => {

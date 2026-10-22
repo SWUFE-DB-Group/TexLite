@@ -30,13 +30,13 @@ export function WordCountDialog({ open, mode, path, busy, error, result, onOpenC
         <div className="word-count-total word-count-characters"><Type size={20} /><strong>{result.totalCharacters.toLocaleString()}</strong><span>{t("editor.wordCountCharacters")}<small>{t("editor.wordCountCharactersHint")}</small></span></div>
       </div>
       <dl className="word-count-breakdown">
-        <div><dt>{t("editor.wordCountText")}</dt><dd>{result.textWords.toLocaleString()}<small>{t("editor.wordCountWordsUnit")}</small></dd></div>
-        <div><dt>{t("editor.wordCountHeaders")}</dt><dd>{result.headerWords.toLocaleString()}<small>{t("editor.wordCountWordsUnit")}</small></dd></div>
-        <div><dt>{t("editor.wordCountCaptions")}</dt><dd>{result.captionWords.toLocaleString()}<small>{t("editor.wordCountWordsUnit")}</small></dd></div>
-        <div><dt>{t("editor.wordCountFloats")}</dt><dd>{result.floats.toLocaleString()}<small>{t("editor.wordCountItemsUnit")}</small></dd></div>
-        <div><dt>{t("editor.wordCountInlineMath")}</dt><dd>{result.inlineMath.toLocaleString()}<small>{t("editor.wordCountExpressionsUnit")}</small></dd></div>
-        <div><dt>{t("editor.wordCountDisplayMath")}</dt><dd>{result.displayMath.toLocaleString()}<small>{t("editor.wordCountExpressionsUnit")}</small></dd></div>
-        {result.files !== null && <div><dt>{t("editor.wordCountFiles")}</dt><dd>{result.files.toLocaleString()}<small>{t("editor.wordCountItemsUnit")}</small></dd></div>}
+        <div><dt>{t("editor.wordCountText")}</dt><dd>{result.textWords.toLocaleString()}<small>{t("editor.wordCountWordsUnit", { count: result.textWords })}</small></dd></div>
+        <div><dt>{t("editor.wordCountHeaders")}</dt><dd>{result.headerWords.toLocaleString()}<small>{t("editor.wordCountWordsUnit", { count: result.headerWords })}</small></dd></div>
+        <div><dt>{t("editor.wordCountCaptions")}</dt><dd>{result.captionWords.toLocaleString()}<small>{t("editor.wordCountWordsUnit", { count: result.captionWords })}</small></dd></div>
+        <div><dt>{t("editor.wordCountFloats")}</dt><dd>{result.floats.toLocaleString()}<small>{t("editor.wordCountItemsUnit", { count: result.floats })}</small></dd></div>
+        <div><dt>{t("editor.wordCountInlineMath")}</dt><dd>{result.inlineMath.toLocaleString()}<small>{t("editor.wordCountExpressionsUnit", { count: result.inlineMath })}</small></dd></div>
+        <div><dt>{t("editor.wordCountDisplayMath")}</dt><dd>{result.displayMath.toLocaleString()}<small>{t("editor.wordCountExpressionsUnit", { count: result.displayMath })}</small></dd></div>
+        {result.files !== null && <div><dt>{t("editor.wordCountFiles")}</dt><dd>{result.files.toLocaleString()}<small>{t("editor.wordCountItemsUnit", { count: result.files })}</small></dd></div>}
       </dl>
       {result.parserErrors > 0 && <p className="warning word-count-warning"><AlertTriangle size={14} />{t("editor.wordCountParserErrors", { count: result.parserErrors })}</p>}
     </div>}

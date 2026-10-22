@@ -103,7 +103,7 @@ describe("history author identities", () => {
     expect(host.querySelector(".history-snapshot-attribution > span")?.textContent).toBe(i18n.t("history.lastChangedBy"));
     expect(host.querySelector(".history-snapshot-attribution strong")?.textContent).toBe("Administrator");
     expect(host.querySelector(".history-snapshot-time time")?.getAttribute("datetime")).toBe(version.createdAt);
-    expect(host.querySelector(".history-snapshot-file-count")?.textContent).toBe(i18n.t("history.fileCount", { count: 1 }));
+    expect(host.querySelector(".history-snapshot-file-count")?.textContent).toBe(language === "en" ? "1 file" : "1 个文件");
     expect(host.querySelector(".history-comparison")?.textContent).not.toContain("Administrator");
     expect(host.querySelector(".history-detail-header [data-tooltip]")).toBeNull();
     expect(host.textContent).not.toContain("@admin");

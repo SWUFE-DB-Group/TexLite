@@ -79,7 +79,7 @@ export function ProjectListRow({
         <span className="project-list-title-line">
           <strong className="project-list-title" title={project.name}>{project.name}</strong>
           {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
-            <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
+            <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { count: project.commentCount ?? project.unresolvedCommentCount, unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
               <MessageSquare aria-hidden size={10} />
               <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
             </span>
