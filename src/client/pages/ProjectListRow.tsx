@@ -87,7 +87,7 @@ export function ProjectListRow({
       <span className="sr-only">{t("projects.created")}: </span>
       <time dateTime={project.createdAt}>{formatCreatedDate(project.createdAt)}</time>
     </button>
-    <button type="button" className="project-list-cell-open project-list-modified" onClick={onOpenProject} title={t("projects.modifiedByUser", { time: formatExactTime(project.updatedAt), user: modifiedBy })} aria-label={t("projects.openProject", { project: project.name })}>
+    <button type="button" className="project-list-cell-open project-list-modified" onClick={onOpenProject} title={formatExactTime(project.updatedAt)} aria-label={t("projects.openProject", { project: project.name })}>
       <span className="sr-only">{t("projects.modified")}: </span>
       <time dateTime={project.updatedAt}>{formatUpdatedTime(project.updatedAt)}</time>
       <small>{t("projects.byUser", { user: modifiedBy })}</small>

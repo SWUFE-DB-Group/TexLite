@@ -243,7 +243,7 @@
     "commentDraftUseSelection": "Use this source selection",
     "commentSending": "Sending…", "commentSaving": "Saving…", "commentSubmitFailed": "Unable to submit. Your text has been kept. Please retry.",
     "editComment": "Edit comment", "deleteComment": "Delete comment", "saveChanges": "Save changes",
-    "deleteCommentTitle": "Delete comment", "deleteCommentDescription": "Delete this comment and its {{count}} replies? This cannot be undone.",
+    "deleteCommentTitle": "Delete comment", "deleteCommentDescription": "Delete this comment and its replies? This cannot be undone.",
     "editReply": "Edit reply", "deleteReply": "Delete reply", "deleteReplyTitle": "Delete reply",
     "deleteReplyDescription": "Delete this reply? This cannot be undone.", "editedAt": "Edited {{time}}", "commentEdited": "edited",
     "lineNumber": "line {{line}}", "showInSource": "Show the visible PDF location in source",

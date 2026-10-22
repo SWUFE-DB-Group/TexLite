@@ -972,6 +972,20 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .outline-row.current .outline-title { color: inherit; }
 .padded { padding: 14px; }
 .comments { padding: 9px; }
+.comment-paper-shred { position: fixed; z-index: 110; pointer-events: none; animation: comment-paper-fade 520ms linear both; }
+.comment-paper-shred > span { position: absolute; border: 1px solid color-mix(in srgb, var(--ui-muted, #78857c) 45%, transparent); border-radius: 1px; background: color-mix(in srgb, var(--ui-text, #33483b) 15%, var(--ui-raised, #fff)); box-shadow: 0 1px 2px #162e2012; animation: comment-paper-fall 440ms cubic-bezier(.25, .55, .5, 1) both; }
+.comment-paper-shred > span:nth-child(3n) { background: color-mix(in srgb, var(--ui-accent, #176b44) 18%, var(--ui-raised, #fff)); }
+.comment-paper-shred > span::after { content: ""; position: absolute; top: 3px; left: 2px; right: 2px; height: 1px; background: var(--ui-muted, #78857c); opacity: .3; }
+@keyframes comment-paper-fade { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes comment-paper-fall {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.8); }
+  12% { opacity: .9; }
+  to { opacity: 0; transform: translate(calc(-50% + var(--shred-x)), calc(-50% + var(--shred-y))) rotate(var(--shred-angle)) scale(.6); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .comment-paper-shred { display: none; animation-duration: 1ms; }
+  .comment-paper-shred > span { animation: none; }
+}
 .comment-thread-slot { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; }
 .comment-thread-slot-content { min-width: 0; min-height: 0; }
 .comment-thread-slot.is-exiting { pointer-events: none; animation: comment-thread-exit var(--comment-exit-duration, 280ms) cubic-bezier(.22, 1, .36, 1) both; }

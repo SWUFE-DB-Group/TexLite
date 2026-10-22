@@ -235,7 +235,7 @@
     "commentDraftRestored": "已恢复工作区草稿，仍关联原源码位置。",
     "commentDraftUseSelection": "使用本次源码位置",
     "commentSending": "正在发送…", "commentSaving": "正在保存…", "commentSubmitFailed": "提交失败，输入内容已保留，请重试。",
-    "saveChanges": "保存修改", "deleteCommentTitle": "删除批注", "deleteCommentDescription": "确定删除这条批注及其 {{count}} 条回复吗？此操作不可撤销。",
+    "saveChanges": "保存修改", "deleteCommentTitle": "删除批注", "deleteCommentDescription": "确定删除这条批注及其回复吗？此操作不可撤销。",
     "editReply": "编辑回复", "deleteReply": "删除回复", "deleteReplyTitle": "删除回复",
     "deleteReplyDescription": "确定删除这条回复吗？此操作不可撤销。", "editedAt": "编辑于 {{time}}", "commentEdited": "已编辑",
     "lineNumber": "第 {{line}} 行", "showInSource": "在源码中显示当前 PDF 位置",

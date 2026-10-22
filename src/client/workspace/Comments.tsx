@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { AtSign, Check, CheckCircle2, ChevronRight, ChevronUp, LoaderCircle, RotateCcw, Trash2, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
@@ -10,6 +10,7 @@ import { CommentActionsMenu } from "./CommentActionsMenu";
 import { CommentForm } from "./CommentForm";
 import { CommentDraftStore, type CommentDraftKey } from "./commentDrafts";
 import { commentReplyVisibility } from "./commentReplyVisibility";
+import { prepareCommentDeletionEffect } from "./commentDeletionEffect";
 import { UserAvatar } from "../UserAvatar";
 
 /**
@@ -101,6 +102,26 @@ export function CommentThread({
   const [autoFocusDraft, setAutoFocusDraft] = useState<CommentDraftKey | null>(null);
   const [deleteCommentOpen, setDeleteCommentOpen] = useState(false);
   const [deleteReplyId, setDeleteReplyId] = useState<string | null>(null);
+  const threadElement = useRef<HTMLElement>(null);
+  const deletingRef = useRef(false);
+  const [deleting, setDeleting] = useState(false);
+  const confirmDelete = async (replyId: string | null) => {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
+    const element = replyId ? threadElement.current?.querySelector<HTMLElement>(`[data-comment-reply-id="${replyId}"]`) ?? null : threadElement.current;
+    const playEffect = prepareCommentDeletionEffect(element);
+    try {
+      const deleted = replyId ? await onDeleteReply(replyId) : await onDelete();
+      if (!deleted) return;
+      if (replyId) setDeleteReplyId(null);
+      else setDeleteCommentOpen(false);
+      playEffect();
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
+    }
+  };
   const openDraft = (key: CommentDraftKey, content = "") => {
     onActivate();
     onReplyExpansionChange(true);
@@ -135,7 +156,7 @@ export function CommentThread({
     onReplyExpansionChange(true);
     await onMarkMentionRead(mentionId);
   };
-  return <><article data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}${currentComment ? " review-current" : ""}`} onFocusCapture={onActivate} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
+  return <><article ref={threadElement} data-comment-id={comment.id} className={`comment-thread${comment.resolved ? " resolved" : ""}${comment.orphaned ? " orphaned" : ""}${highlightedComment ? " mention-target" : ""}${currentComment ? " review-current" : ""}`} onFocusCapture={onActivate} onClick={() => { if (!window.getSelection()?.toString()) onFocus(); }}>
     <header className="comment-header">
       <CommentIdentity userId={comment.authorId} avatarStyle={comment.authorAvatarStyle} name={comment.authorDisplayName ?? username ?? t("editor.deletedUser")} username={username} highlighted={selectedParticipantIds?.has(comment.authorId)}>
         {times(comment.createdAt, comment.editedAt)}
@@ -204,7 +225,7 @@ export function CommentThread({
         openDraft("reply");
       }}>{t(replyDraft?.content ? "editor.resumeReply" : "editor.replyPrompt")}</button>}
     {draftForm("reply", t("editor.reply"), onReply)}
-  </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription", { count: comment.replies.length })} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void onDelete().then((deleted) => { if (deleted) setDeleteCommentOpen(false); })} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void onDeleteReply(deleteReplyId).then((deleted) => { if (deleted) setDeleteReplyId(null); }); }} /></>;
+  </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription")} confirmLabel={t("common.delete")} danger busy={deleting} onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void confirmDelete(null)} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger busy={deleting} onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void confirmDelete(deleteReplyId); }} /></>;
 }
 
 interface ShareMember { id: string; username: string; displayName?: string; avatarStyle?: string | null; permission: "read" | "edit" }
