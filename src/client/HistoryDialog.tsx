@@ -381,9 +381,11 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     : "";
 
   return <><Modal open={open} extraWide draggable className="history-dialog-modal" title={t("history.projectSnapshots")} description={t("history.description")} onOpenChange={onOpenChange}
-    footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
+    footer={<>
+      {canRestore && <button type="button" className="history-manage-files" disabled={controlsBusy} onClick={() => setManageFiles(true)}><ListChecks size={15} aria-hidden /><span>{t("history.manageFiles")}</span></button>}
+      <button type="button" className="history-close" onClick={() => onOpenChange(false)}>{t("common.close")}</button>
+    </>}>
     <div className="history-dialog">
-      {canRestore && <div className="history-tracking-toolbar"><button type="button" disabled={controlsBusy} onClick={() => setManageFiles(true)}><ListChecks size={14} />{t("history.manageFiles")}</button></div>}
       {error && <p className="error history-message">{error}</p>}
       {busy === "load" && versions.length === 0 ? <div className="history-loading"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div> : <div className="history-dialog-layout">
         <aside className="history-timeline">

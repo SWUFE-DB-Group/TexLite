@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, LoaderCircle, Trash2 } from "lucide-react";
+import { Clock3, HardDrive, LoaderCircle, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
@@ -102,12 +102,15 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
     count: selectedLength
   }), [t, filePath, selectedLength]);
 
-  return <Modal open={open} wide draggable className="selection-history-modal" title={t("selectionHistory.title")} description={description} onOpenChange={onOpenChange} footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
+  return <Modal open={open} wide draggable className="selection-history-modal" title={t("selectionHistory.title")} description={description} onOpenChange={onOpenChange} footer={<>
+    {project.permission === "owner" && stats && <button type="button" className="selection-history-clear" disabled={busy || clearing || stats.segmentCount === 0} aria-busy={clearing} onClick={() => { setClearError(""); setClearOpen(true); }}>{clearing ? <LoaderCircle className="spin" size={13} /> : <Trash2 size={13} />}<span>{t("selectionHistory.clearAll")}</span></button>}
+    <button type="button" className="history-close" onClick={() => onOpenChange(false)}>{t("common.close")}</button>
+  </>}>
     <div className="selection-history-dialog">
-      {project.permission === "owner" && stats && <div className="history-stats">
-        <strong>{t("selectionHistory.storageUsage", { used: (stats.payloadBytes / 1048576).toFixed(2), limit: (stats.maxStorageBytes / 1048576).toFixed(0), count: stats.segmentCount })}</strong>
-        <small>{t("selectionHistory.storageDescription")}</small>
-        <button type="button" className="selection-history-clear" disabled={busy || clearing || stats.segmentCount === 0} aria-busy={clearing} onClick={() => { setClearError(""); setClearOpen(true); }}>{clearing ? <LoaderCircle className="spin" size={13} /> : <Trash2 size={13} />}<span>{t("selectionHistory.clearAll")}</span></button>
+      {project.permission === "owner" && stats && <div className="selection-history-storage">
+        <HardDrive size={15} aria-hidden />
+        <div><strong>{t("selectionHistory.storageUsage", { used: (stats.payloadBytes / 1048576).toFixed(2), limit: (stats.maxStorageBytes / 1048576).toFixed(0), count: stats.segmentCount })}</strong>
+          <small>{t("selectionHistory.storageDescription")}</small></div>
       </div>}
       <ConfirmDialog open={clearOpen} title={t("selectionHistory.clearAll")} description={t("selectionHistory.clearDescription")} confirmLabel={t("common.delete")} danger busy={clearing} error={clearError} onConfirm={() => void clearHistory()} onCancel={() => { if (!clearing) setClearOpen(false); }} />
       {error && <p className="error selection-history-message">{error}</p>}

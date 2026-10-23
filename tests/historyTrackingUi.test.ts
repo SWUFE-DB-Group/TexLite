@@ -10,7 +10,7 @@ import type { Project } from "../src/client/types";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/Dialog", () => ({
-  Modal: ({ open, children }: { open: boolean; children: ReactNode }) => open ? createElement("div", null, children) : null,
+  Modal: ({ open, children, footer }: { open: boolean; children: ReactNode; footer?: ReactNode }) => open ? createElement("div", null, children, createElement("div", { className: "dialog-footer" }, footer)) : null,
   ConfirmDialog: () => null
 }));
 
@@ -53,5 +53,5 @@ it.each(["read", "edit", "owner"] as const)("only shows snapshot file management
   vi.mocked(api).mockResolvedValue({ versions: [], stats: null, nextCursor: null });
   const project = { id: "p", permission } as Project;
   await act(async () => root.render(createElement(HistoryDialog, { open: true, project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
-  expect(host.querySelector(".history-tracking-toolbar") !== null).toBe(permission !== "read");
+  expect(host.querySelector(".dialog-footer .history-manage-files") !== null).toBe(permission !== "read");
 });

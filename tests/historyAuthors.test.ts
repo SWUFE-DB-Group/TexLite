@@ -10,7 +10,7 @@ import i18n from "../src/client/i18n";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/Dialog", () => ({
-  Modal: ({ open, children }: { open: boolean; children: ReactNode }) => open ? createElement("div", null, children) : null,
+  Modal: ({ open, children, footer }: { open: boolean; children: ReactNode; footer?: ReactNode }) => open ? createElement("div", null, children, createElement("div", { className: "dialog-footer" }, footer)) : null,
   ConfirmDialog: () => null
 }));
 
@@ -51,6 +51,7 @@ describe("history author identities", () => {
       selection: { selectedText: "New", startOffset: 0, endOffset: 3 }, currentSource: "New", onOpenChange: () => {}
     })));
     const button = host.querySelector<HTMLButtonElement>(".selection-history-clear")!;
+    expect(button.closest(".dialog-footer")).not.toBeNull();
     expect(button.textContent).toBe(i18n.t("selectionHistory.clearAll"));
     expect(button.querySelector("svg")).not.toBeNull();
     expect(button.getAttribute("aria-busy")).toBe("false");
