@@ -15,6 +15,7 @@ export interface HistoryTrackedFile {
 }
 
 export function historyTextCandidate(filePath: string): boolean {
+  if (!filePath) return false;
   const kind = resourceFileKind(filePath);
   return kind === "text" || kind === "other";
 }

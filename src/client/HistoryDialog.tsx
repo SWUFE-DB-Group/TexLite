@@ -8,7 +8,7 @@ import { ApiError, api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { formatCommitTime, formatVersionTitle, generateUnifiedDiff } from "./diff";
 import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
-import { isHistoryTextFile } from "../shared/historyFiles";
+import { historyTextCandidate } from "../shared/historyTracking";
 import { HistoryFilesManager } from "./HistoryFilesManager";
 
 interface HistoryComparison {
@@ -164,8 +164,9 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   }, [open, project.id, selectedId]);
 
   const previousVersion = comparison?.previousVersion ?? null;
-  const selectedTextFile = isHistoryTextFile(selectedPath);
-  const selectedFileDeleted = detail?.files.find((file) => file.path === selectedPath)?.deleted === true;
+  const selectedFile = detail?.files.find((file) => file.path === selectedPath);
+  const selectedTextFile = selectedFile?.textContent ?? historyTextCandidate(selectedPath);
+  const selectedFileDeleted = selectedFile?.deleted === true;
 
   useEffect(() => {
     if (!open || !selectedId || !selectedPath || !selectedTextFile) {

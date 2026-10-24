@@ -56,22 +56,34 @@ it.each(["read", "edit", "owner"] as const)("only shows snapshot file management
   expect(host.querySelector(".dialog-footer .history-manage-files") !== null).toBe(permission !== "read");
 });
 
-it("renders Git ignore diffs and permits switching comparison modes", async () => {
+it.each([".gitignore", "build.bat", "scripts/RUN.CMD", "settings.ini", "notes.custom"])("renders recorded text diffs and permits switching comparison modes (%s)", async (filePath) => {
   const version: HistoryVersion = {
     id: "v", snapshotHash: "a".repeat(64), reason: "file", label: null,
-    createdAt: "2026-10-24T00:00:00Z", author: null, changedPaths: [".gitignore"], fileCount: 1, totalSize: 12
+    createdAt: "2026-10-24T00:00:00Z", author: null, changedPaths: [filePath], fileCount: 1, totalSize: 12
   };
   vi.mocked(api)
     .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
-    .mockResolvedValueOnce({ version, files: [{ path: ".gitignore", size: 12 }], settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null } })
-    .mockResolvedValue({ path: ".gitignore", historical: "*.aux\n*.log\n", comparison: "*.aux\n", against: "previous", previousVersion: null });
+    .mockResolvedValueOnce({ version, files: [{ path: filePath, size: 12, textContent: true }], settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null } })
+    .mockResolvedValue({ path: filePath, historical: "*.aux\n*.log\n", comparison: "*.aux\n", against: "previous", previousVersion: null });
   await act(async () => root.render(createElement(HistoryDialog, { open: true, project: { id: "p", permission: "read" } as Project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
-  expect(api).toHaveBeenLastCalledWith("/api/projects/p/history/v/file?path=.gitignore&against=__previous__", expect.anything());
+  expect(api).toHaveBeenLastCalledWith(`/api/projects/p/history/v/file?path=${encodeURIComponent(filePath)}&against=__previous__`, expect.anything());
   expect(host.querySelector(".history-attachment-change")).toBeNull();
   expect(host.querySelector(".history-git-diff")?.textContent).toContain("+*.log");
 
   const currentMode = host.querySelectorAll<HTMLButtonElement>(".history-mode-toggle button")[1];
   await act(async () => currentMode.click());
-  expect(api).toHaveBeenLastCalledWith("/api/projects/p/history/v/file?path=.gitignore", expect.anything());
+  expect(api).toHaveBeenLastCalledWith(`/api/projects/p/history/v/file?path=${encodeURIComponent(filePath)}`, expect.anything());
   expect(host.querySelector(".history-git-diff")?.textContent).toContain("-*.log");
+});
+
+it("summarizes recorded binary bytes even when the filename has a text extension", async () => {
+  const version: HistoryVersion = { id: "v", snapshotHash: "a".repeat(64), reason: "file", label: null,
+    createdAt: "2026-10-24T00:00:00Z", author: null, changedPaths: ["binary.bat"], fileCount: 1, totalSize: 3 };
+  vi.mocked(api)
+    .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
+    .mockResolvedValueOnce({ version, files: [{ path: "binary.bat", size: 3, textContent: false }], settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null } });
+  await act(async () => root.render(createElement(HistoryDialog, { open: true, project: { id: "p", permission: "read" } as Project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
+  expect(api).toHaveBeenCalledTimes(2);
+  expect(host.querySelector(".history-attachment-change")?.textContent).toContain("binary.bat");
+  expect(host.querySelector(".history-git-diff")).toBeNull();
 });

@@ -1153,7 +1153,7 @@ Copied source.
     expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/file?path=figure.pdf`, headers: { cookie } })).statusCode).toBe(200);
     const deletedPdf = (await getVersions())[0];
     const detail = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history/${deletedPdf.id}`, headers: { cookie } });
-    expect(detail.json().files).toContainEqual({ path: "figure.pdf", size: 0, deleted: true });
+    expect(detail.json().files).toContainEqual({ path: "figure.pdf", size: 0, deleted: true, textContent: false });
 
     expect((await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie }, payload: { path: "notes.txt", content: "previous notes" } })).statusCode).toBe(200);
     expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/file?path=notes.txt`, headers: { cookie } })).statusCode).toBe(200);
@@ -1163,13 +1163,14 @@ Copied source.
     expect(comparison.json()).toMatchObject({ historical: "", comparison: "previous notes" });
   });
 
-  it.each([".gitignore", "chapters/.gitignore"])("compares Git ignore rules in snapshots (%s)", async (filePath) => {
+  it.each([".gitignore", "chapters/.gitignore", "build.bat", "scripts/RUN.CMD", "settings.ini", ".env.local"])("compares managed text files in snapshots (%s)", async (filePath) => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Git ignore snapshot" } });
     expect(created.statusCode).toBe(201);
     const projectId = created.json().project.id as string;
     const historyUrl = `/api/projects/${projectId}/history`;
-    const oldContent = "# Build output\n*.aux\n";
-    const newContent = "# Build output\n*.aux\n*.log\n";
+    const batch = /\.(bat|cmd)$/i.test(filePath);
+    const oldContent = batch ? "@echo off\r\necho Previous\r\n" : "# Build output\n*.aux\n";
+    const newContent = batch ? "@echo off\r\necho Updated\r\n" : "# Build output\n*.aux\n*.log\n";
     const getLatest = async () => (await app.inject({ method: "GET", url: historyUrl, headers: { cookie } })).json().versions[0];
     const write = async (content: string) => {
       const response = await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie }, payload: { path: filePath, content } });
@@ -1180,6 +1181,10 @@ Copied source.
     await write(newContent);
     const current = await getLatest();
     expect(current.changedPaths).toContain(filePath);
+    const detail = await app.inject({ method: "GET", url: `${historyUrl}/${current.id}`, headers: { cookie } });
+    expect(detail.json().files).toContainEqual({ path: filePath, size: Buffer.byteLength(newContent), textContent: true });
+    const tracked = await app.inject({ method: "GET", url: `${historyUrl}/files`, headers: { cookie } });
+    expect(tracked.json().files).toContainEqual(expect.objectContaining({ path: filePath, included: true, defaultIncluded: true }));
 
     const previousComparison = await app.inject({ method: "GET", url: `${historyUrl}/${current.id}/file?path=${encodeURIComponent(filePath)}&against=__previous__`, headers: { cookie } });
     expect(previousComparison.statusCode, previousComparison.body).toBe(200);
@@ -1191,6 +1196,8 @@ Copied source.
 
     await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/file?path=${encodeURIComponent(filePath)}`, headers: { cookie } });
     const deleted = await getLatest();
+    const deletionDetail = await app.inject({ method: "GET", url: `${historyUrl}/${deleted.id}`, headers: { cookie } });
+    expect(deletionDetail.json().files).toContainEqual({ path: filePath, size: 0, deleted: true, textContent: true });
     const deletion = await app.inject({ method: "GET", url: `${historyUrl}/${deleted.id}/file?path=${encodeURIComponent(filePath)}&against=__previous__`, headers: { cookie } });
     expect(deletion.statusCode, deletion.body).toBe(200);
     expect(deletion.json()).toMatchObject({ historical: "", comparison: newContent });

@@ -6,8 +6,6 @@ import type { DatabaseConnection, ProjectRow } from "./db.js";
 import { assertNoSourceSymlinks, listProjectFiles, outputRoot, projectRoot, resolveSourcePath, safeRelativePath, sourceRoot } from "./files.js";
 import { httpError } from "./http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
-import { isUtf8 } from "node:buffer";
-import { isHistoryTextFile } from "../shared/historyFiles.js";
 import { defaultHistoryTracking, historyTextCandidate, historyTrackingOverride, type HistoryTrackedFile, type HistoryTrackingPolicy } from "../shared/historyTracking.js";
 
 export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
@@ -15,6 +13,8 @@ export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git"
 interface HistoryFile {
   digest: string;
   size: number;
+  /** Derived from the bytes when stored; absent on older immutable snapshots. */
+  textContent?: boolean;
 }
 
 export interface HistoryManifest {
@@ -382,11 +382,26 @@ export class ProjectHistoryService {
     return result.changes ? this.version(versionId, projectId) : null;
   }
 
+  /** Share the recording classifier with the UI without rereading modern objects. */
+  isTextFile(projectId: string, filePath: string, file: HistoryFile | undefined): boolean | undefined {
+    if (!historyTextCandidate(filePath)) return false;
+    if (file?.textContent !== undefined) return file.textContent;
+    // Do not read oversized legacy objects just to build the file list. The
+    // comparison endpoint reports size/missing-object errors when selected.
+    if (!file || file.size > MAX_TEXT_PREVIEW_BYTES) return undefined;
+    try {
+      return defaultHistoryTracking(filePath, fs.readFileSync(this.objectPath(projectId, file.digest)));
+    } catch {
+      // Keep snapshot metadata browsable even if an old object is unavailable.
+      return undefined;
+    }
+  }
+
   readTextFile(projectId: string, versionId: string, filePathInput: string): string | null {
     const filePath = safeRelativePath(filePathInput);
-    if (!isHistoryTextFile(filePath)) return null;
+    if (!historyTextCandidate(filePath)) return null;
     const entry = this.manifest(projectId, versionId)?.files[filePath];
-    if (!entry || entry.size > MAX_TEXT_PREVIEW_BYTES) return null;
+    if (!entry || entry.textContent === false || entry.size > MAX_TEXT_PREVIEW_BYTES) return null;
     return this.readStoredObject(projectId, entry.digest, filePath);
   }
 
@@ -519,7 +534,8 @@ export class ProjectHistoryService {
     const override = historyTrackingOverride(tracking, filePath);
     if (override === false || (override === null && !historyTextCandidate(filePath))) return null;
     const content = fs.readFileSync(resolveSourcePath(this.config, projectId, filePath));
-    if (override === null && !defaultHistoryTracking(filePath, content)) return null;
+    const textContent = defaultHistoryTracking(filePath, content);
+    if (override === null && !textContent) return null;
     const digest = createHash("sha256").update(content).digest("hex");
     const target = this.objectPath(projectId, digest);
     if (!fs.existsSync(target)) {
@@ -531,7 +547,7 @@ export class ProjectHistoryService {
         if (!fs.existsSync(target)) throw error;
       }
     }
-    return { digest, size: content.length };
+    return { digest, size: content.length, textContent };
   }
 
   private objectPath(projectId: string, digest: string): string {
@@ -547,7 +563,7 @@ export class ProjectHistoryService {
   private readStoredObject(projectId: string, digest: string, filePath: string): string | null {
     try {
       const bytes = fs.readFileSync(this.objectPath(projectId, digest));
-      return !bytes.includes(0) && isUtf8(bytes) ? bytes.toString("utf8") : null;
+      return defaultHistoryTracking(filePath, bytes) ? bytes.toString("utf8") : null;
     } catch (error) {
       this.rethrowHistoryObjectError(error, filePath);
     }

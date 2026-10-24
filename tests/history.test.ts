@@ -333,6 +333,55 @@ describe("project history retention", () => {
     expect(fixture.history.stats(fixture.projectId).objectBytes).toBe(Buffer.byteLength("Akeepplain UTF-8 notes"));
   });
 
+  it("shares text classification between default recording, snapshot metadata and text comparisons", () => {
+    const fixture = createFixture();
+    const sources = {
+      "build.bat": "@echo off\r\necho Hello\r\n", "scripts/RUN.CMD": "echo Ready\r\n",
+      "notes.custom": "中文 notes\n", "custom-name": "plain text\n", "settings.ini": "[latex]\nengine=xelatex\n",
+      "plot.eps": "%!PS-Adobe-3.0 EPSF-3.0\n"
+    };
+    for (const [filePath, content] of Object.entries(sources)) writeSource(fixture, filePath, content);
+    writeSource(fixture, "figure.pdf", "ASCII bytes in a PDF resource");
+    const source = sourceRoot(fixture.config, fixture.projectId);
+    fs.writeFileSync(path.join(source, "binary.bat"), Uint8Array.of(0, 1, 255));
+    fs.writeFileSync(path.join(source, "control.custom"), Uint8Array.of(27, 91));
+    for (const filePath of ["figure.pdf", "binary.bat", "control.custom"]) fixture.history.setFileTracking(fixture.projectId, filePath, true);
+    const version = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    const manifest = fixture.history.manifest(fixture.projectId, version.id)!;
+    const tracked = fixture.history.trackedFiles(fixture.projectId);
+    for (const [filePath, content] of Object.entries(sources)) {
+      expect(tracked).toContainEqual(expect.objectContaining({ path: filePath, defaultIncluded: true, included: true }));
+      expect(manifest.files[filePath].textContent).toBe(true);
+      expect(fixture.history.isTextFile(fixture.projectId, filePath, manifest.files[filePath])).toBe(true);
+      expect(fixture.history.readTextFile(fixture.projectId, version.id, filePath)).toBe(content);
+    }
+    for (const filePath of ["figure.pdf", "binary.bat", "control.custom"]) {
+      expect(tracked).toContainEqual(expect.objectContaining({ path: filePath, defaultIncluded: false, included: true }));
+      expect(manifest.files[filePath].textContent).toBe(false);
+      expect(fixture.history.isTextFile(fixture.projectId, filePath, manifest.files[filePath])).toBe(false);
+      expect(fixture.history.readTextFile(fixture.projectId, version.id, filePath)).toBeNull();
+    }
+  });
+
+  it("classifies older snapshot contents without rewriting immutable manifests or creating false edits", () => {
+    const fixture = createFixture();
+    writeSource(fixture, "build.bat", "echo Hello\r\n");
+    fs.writeFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), "binary.bat"), Uint8Array.of(0, 255));
+    fixture.history.setFileTracking(fixture.projectId, "binary.bat", true);
+    const version = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    const manifest = fixture.history.manifest(fixture.projectId, version.id)!;
+    for (const file of Object.values(manifest.files)) delete file.textContent;
+    const legacyJson = JSON.stringify(manifest);
+    fixture.db.prepare("UPDATE project_history_versions SET manifest_json = ? WHERE id = ?").run(legacyJson, version.id);
+    fixture.db.prepare("UPDATE project_history_state SET manifest_json = ? WHERE project_id = ?").run(legacyJson, fixture.projectId);
+    expect(fixture.history.isTextFile(fixture.projectId, "build.bat", manifest.files["build.bat"])).toBe(true);
+    expect(fixture.history.isTextFile(fixture.projectId, "binary.bat", manifest.files["binary.bat"])).toBe(false);
+    expect(fixture.history.readTextFile(fixture.projectId, version.id, "build.bat")).toBe("echo Hello\r\n");
+    expect(fixture.history.readTextFile(fixture.projectId, version.id, "binary.bat")).toBeNull();
+    expect(fixture.history.record(fixture.projectId, "user-1", "file")).toBeNull();
+    expect(fixture.db.prepare("SELECT manifest_json FROM project_history_versions WHERE id = ?").get(version.id)).toEqual({ manifest_json: legacyJson });
+  });
+
   it("preserves unmanaged files on project restore while removing later managed text", () => {
     const fixture = createFixture();
     writeSource(fixture, "private.txt", "original excluded text");

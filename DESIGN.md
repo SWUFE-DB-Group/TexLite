@@ -573,7 +573,15 @@ checkpoint also captures currently excluded files that will be overwritten or
 deleted (including attachments affected by legacy restores), without changing
 project tracking settings. Failure to save that checkpoint aborts restoration.
 Explicitly included non-text attachments are shown as a compact change notice
-without decoding a text diff. Source and
+without decoding a text diff. Automatic recording and text comparison share
+the same file-kind and UTF-8 content classifier, rather than separate extension
+lists (including Windows batch scripts and text with unfamiliar extensions).
+New manifest entries cache this classification from the bytes already read
+during recording. Snapshot details expose it for changed files, including
+deleted files when the previous snapshot is available. Older snapshots are
+classified on demand within the text-preview size limit without rewriting
+their manifests; missing objects and oversized previews retain their normal
+comparison errors. Source and
 ordinary text/data formats support bounded UTF-8 comparisons, including file
 deletions; invalid or oversized text is reported as unavailable, not as unchanged.
 

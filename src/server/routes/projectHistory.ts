@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { isUtf8 } from "node:buffer";
 import type { FastifyInstance } from "fastify";
 import { requireUser } from "../auth.js";
 import type { Config } from "../config.js";
@@ -11,7 +10,7 @@ import { HISTORY_RETENTION_DELAY_MS } from "../historyRetention.js";
 import { resolveSourcePath, safeRelativePath } from "../files.js";
 import { apiError, httpError } from "../http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "../limits.js";
-import { isHistoryTextFile } from "../../shared/historyFiles.js";
+import { defaultHistoryTracking, historyTextCandidate } from "../../shared/historyTracking.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import {
@@ -153,13 +152,21 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     const version = history.version(versionId, id);
     const manifest = history.manifest(id, versionId);
     if (!version || !manifest) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND");
+    const changedPaths = new Set(version.changedPaths);
+    const deletedPaths = version.changedPaths.filter((filePath) => !manifest.files[filePath]);
+    const previous = deletedPaths.length > 0 ? history.previousVersion(id, versionId) : null;
+    const previousManifest = previous ? history.manifest(id, previous.id) : null;
     return {
       version,
       scoped: Boolean(manifest.tracking),
       settings: manifest.settings,
       files: [
-        ...Object.entries(manifest.files).map(([filePath, file]) => ({ path: filePath, size: file.size })),
-        ...version.changedPaths.filter((filePath) => !manifest.files[filePath]).map((filePath) => ({ path: filePath, size: 0, deleted: true }))
+        ...Object.entries(manifest.files).map(([filePath, file]) => ({
+          path: filePath, size: file.size,
+          ...(changedPaths.has(filePath) ? { textContent: history.isTextFile(id, filePath, file) } : {})
+        })),
+        ...deletedPaths.map((filePath) => ({ path: filePath, size: 0, deleted: true,
+          textContent: history.isTextFile(id, filePath, previousManifest?.files[filePath]) }))
       ].sort((left, right) => left.path.localeCompare(right.path))
     };
   });
@@ -177,7 +184,7 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
       if (!manifest || !version) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND");
       if (!manifest.files[filePath] && !version.changedPaths.includes(filePath)) return apiError(reply, 404, "HISTORY_FILE_NOT_FOUND");
       // Never decode attachment bytes as UTF-8, including direct API calls.
-      if (!isHistoryTextFile(filePath)) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
+      if (!historyTextCandidate(filePath)) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
       const historical = manifest.files[filePath] ? history.readTextFile(id, versionId, filePath) : "";
       if (historical === null) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
       let comparison = "";
@@ -196,7 +203,7 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
         if (fs.existsSync(current) && fs.statSync(current).isFile()) {
           if (fs.statSync(current).size > MAX_TEXT_PREVIEW_BYTES) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
           const bytes = fs.readFileSync(current);
-          if (bytes.includes(0) || !isUtf8(bytes)) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
+          if (!defaultHistoryTracking(filePath, bytes)) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
           comparison = bytes.toString("utf8");
         }
       }
