@@ -3,12 +3,27 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { UserMenu } from "../src/client/UserMenu";
 import { ThemeSwitcher } from "../src/client/ThemeSwitcher";
+import { LanguageSwitcher } from "../src/client/LanguageSwitcher";
 import i18n from "../src/client/i18n";
 import type { User } from "../src/client/types";
 
 const user: User = { id: "user", username: "alice", displayName: "Alice", role: "user", disabled: false, createdAt: "2026-10-20T00:00:00Z", canCreateProjects: false, mustChangePassword: false };
 
 describe("user menu", () => {
+  it("offers all three native language names and selects Traditional Chinese", async () => {
+    const previous = i18n.language;
+    try {
+      await i18n.changeLanguage("zh-Hant");
+      const html = renderToStaticMarkup(createElement(LanguageSwitcher));
+      expect(html).toContain('value="en">English</option>');
+      expect(html).toContain('value="zh">简体中文</option>');
+      expect(html).toContain('value="zh-Hant" selected="">繁體中文</option>');
+      expect(html).toContain('aria-label="語言"');
+    } finally {
+      await i18n.changeLanguage(previous);
+    }
+  });
+
   it("uses a single named avatar trigger and keeps controls inside a closed popover", () => {
     const html = renderToStaticMarkup(createElement(UserMenu, { user, onGitHub: () => {}, onSignOut: async () => {} }));
     expect(html).toContain(i18n.t("account.menu", { name: "Alice" }));

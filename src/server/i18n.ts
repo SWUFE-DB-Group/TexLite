@@ -3,7 +3,10 @@
  * browser API.  Keeping the catalog independent from route code makes API
  * responses useful to direct clients as well as to the React application.
  */
-export type ServerLocale = "en" | "zh";
+import { supportedLocale, type AppLocale } from "../shared/locales.js";
+import { zhHantMessages } from "./locales/zh-Hant.js";
+
+export type ServerLocale = AppLocale;
 
 type MessageParams = Record<string, unknown>;
 
@@ -295,7 +298,8 @@ const zhMessages: Record<ServerErrorCode, string> = {
 
 const messages: Record<ServerLocale, Record<ServerErrorCode, string>> = {
   en: enMessages,
-  zh: zhMessages
+  zh: zhMessages,
+  "zh-Hant": zhHantMessages
 };
 
 function headerValue(value: string | string[] | undefined): string {
@@ -304,10 +308,15 @@ function headerValue(value: string | string[] | undefined): string {
 
 /** Use the explicit app language first, then a standard Accept-Language header. */
 export function serverLocale(headers: Record<string, string | string[] | undefined> | undefined): ServerLocale {
-  const requested = headerValue(headers?.["x-texlite-language"])
-    || headerValue(headers?.["accept-language"]);
-  if (/\bzh(?:[-_]|\b)/i.test(requested)) return "zh";
-  if (/\ben(?:[-_]|\b)/i.test(requested)) return "en";
+  const explicit = supportedLocale(headerValue(headers?.["x-texlite-language"]));
+  if (explicit) return explicit;
+  const requested = headerValue(headers?.["accept-language"]).split(",").map((range) => {
+    const [language, ...params] = range.trim().split(";");
+    const weight = params.find((param) => /^\s*q\s*=/i.test(param));
+    return { locale: supportedLocale(language), quality: weight ? Number(weight.split("=")[1]) : 1 };
+  }).filter((range) => range.locale && Number.isFinite(range.quality) && range.quality > 0 && range.quality <= 1)
+    .sort((left, right) => right.quality - left.quality);
+  if (requested[0]?.locale) return requested[0].locale;
   // API clients without a language header follow the same fallback as the web
   // application: English. Browser clients always send Accept-Language.
   return "en";
@@ -327,6 +336,6 @@ function isServerErrorCode(code: string): code is ServerErrorCode {
 export function serverErrorMessage(locale: ServerLocale, code: ServerErrorCode | string, params: MessageParams = {}): string {
   const template = isServerErrorCode(code)
     ? messages[locale][code]
-    : (locale === "zh" ? "请求无法完成。" : "The request could not be completed.");
+    : ({ en: "The request could not be completed.", zh: "请求无法完成。", "zh-Hant": "無法完成請求。" })[locale];
   return template.replace(/{{\s*([\w.-]+)\s*}}/g, (_match: string, key: string) => stringValue(params[key]));
 }

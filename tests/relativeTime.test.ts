@@ -31,4 +31,12 @@ describe("shared project/comment relative times", () => {
     expect(relative(-153)).toBe("in 2h 33m");
     expect(formatRelativeTime("invalid", "en", now, (key) => key)).toBe("invalid");
   });
+
+  it("uses Traditional Chinese for both Intl and translated relative times", () => {
+    expect(relative(0, "zh-Hant")).toBe("現在");
+    expect(relative(16, "zh-Hant")).toBe("16 分鐘前");
+    expect(relative(153, "zh-Hant")).toBe("2小時33分鐘前");
+    expect(relative(25 * 60, "zh-Hant")).toBe("1天1小時前");
+    expect(relative(6 * 24 * 60, "zh-Hant")).toBe("6天前");
+  });
 });

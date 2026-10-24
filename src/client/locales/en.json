@@ -4,7 +4,7 @@
     "user": "User", "permission": "Permission", "readOnly": "Read only", "readWrite": "Read & write", "settings": "Settings",
     "comments": "Comments", "files": "Files", "outline": "Outline", "version": "Version", "loading": "Loading…", "enabled": "Enabled",
     "disabled": "Disabled", "normal": "Active", "admin": "Administrator", "language": "Language", "save": "Save", "edit": "Edit", "retry": "Retry", "reload": "Reload page",
-    "languageEnglish": "English", "languageChinese": "中文"
+    "languageEnglish": "English", "languageChinese": "简体中文", "languageTraditionalChinese": "繁體中文"
   },
   "theme": {
     "title": "Theme", "light": "Light", "dark": "Dark", "system": "System"

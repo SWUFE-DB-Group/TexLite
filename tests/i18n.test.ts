@@ -3,13 +3,44 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("i18n resources", () => {
-  it("keeps English and Chinese translation keys in sync", () => {
+  function catalog(locale: string): Record<string, unknown> {
     const root = path.resolve("src/client/locales");
-    const en = JSON.parse(fs.readFileSync(path.join(root, "en.json"), "utf8"));
-    const zh = JSON.parse(fs.readFileSync(path.join(root, "zh.json"), "utf8"));
-    expect(flattenKeys(zh)).toEqual(flattenKeys(en));
+    return JSON.parse(fs.readFileSync(path.join(root, `${locale}.json`), "utf8"));
+  }
+
+  it.each(["zh", "zh-Hant"])("keeps %s translation keys in sync with English", (locale) => {
+    expect(flattenKeys(catalog(locale))).toEqual(flattenKeys(catalog("en")));
+  });
+
+  it("preserves interpolation variables and rich-text tags in Traditional Chinese", () => {
+    const source = flattenStrings(catalog("zh"));
+    const traditional = flattenStrings(catalog("zh-Hant"));
+    const tokens = (text: string) => text.match(/{{[^}]+}}|<\/?[a-zA-Z][^>]*>/g)?.sort() ?? [];
+    for (const [key, value] of Object.entries(source)) {
+      expect(tokens(traditional[key]!), key).toEqual(tokens(value));
+    }
+  });
+
+  it("uses consistent Traditional Chinese software and writing terminology", () => {
+    const strings = flattenStrings(catalog("zh-Hant"));
+    expect(strings["projects.title"]).toBe("專案");
+    expect(strings["common.files"]).toBe("檔案");
+    expect(strings["common.save"]).toBe("儲存");
+    expect(strings["common.readOnly"]).toBe("唯讀");
+    expect(strings["common.comments"]).toBe("批註");
+    expect(strings["editor.destinationFolder"]).toBe("目標資料夾");
+    expect(strings["projectSettings.spellCheck"]).toBe("拼字與文法檢查");
+    expect(strings["git.repository"]).toBe("儲存庫");
   });
 });
+
+function flattenStrings(value: Record<string, unknown>, prefix = ""): Record<string, string> {
+  return Object.fromEntries(Object.entries(value).flatMap(([key, nested]) => {
+    const path = prefix ? `${prefix}.${key}` : key;
+    return typeof nested === "string" ? [[path, nested]]
+      : Object.entries(flattenStrings(nested as Record<string, unknown>, path));
+  }));
+}
 
 function flattenKeys(value: Record<string, unknown>, prefix = ""): string[] {
   return Object.entries(value).flatMap(([key, nested]) => {

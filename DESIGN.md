@@ -37,11 +37,18 @@ and day-to-day operation.
 
 ## Localization
 
-The browser owns interface copy through the English and Chinese JSON resources
-in `src/client/locales`. API errors use stable codes rather than route-local
+The browser owns interface copy through English (`en`), Simplified Chinese (`zh`),
+and Traditional Chinese (`zh-Hant`) JSON resources in `src/client/locales`.
+The shared locale resolver preserves existing `zh` preferences and recognizes
+`zh-TW`, `zh-HK`, and `zh-MO` as Traditional Chinese; an explicit `Hans` or
+`Hant` script takes precedence over the region. Saved choices take precedence
+over browser preferences. The active locale also drives the HTML language and
+localized dates and relative times. API errors use stable codes rather than route-local
 human text. The server resolves those codes through `src/server/i18n.ts` using
 the request's `Accept-Language` header; the browser API helper always supplies
-its active language, and unmatched or non-browser requests fall back to
+its active language for both JSON requests and ZIP uploads. The server honors
+language preference weights and uses matching Traditional Chinese messages;
+unmatched or non-browser requests fall back to
 English. This keeps direct API clients usable while allowing the React client
 to retain its more contextual local translations.
 
@@ -50,6 +57,11 @@ response or `httpError()` for a thrown response. Do not place translated text
 in route, filesystem, Git, or compiler-control code. Operational logs and
 raw LaTeX output remain in their original form, so they can be searched and
 diagnosed without changing behavior by browser language.
+
+Traditional Chinese is a separately maintained catalog, not a runtime character
+conversion. Use consistent terminology such as 專案, 檔案, 原始碼, 儲存庫,
+and 批註 (collaborative comments). Tests check catalog keys, interpolation
+variables, rich-text tags, language detection, persistence, and API headers.
 
 ### Citation library
 

@@ -8,6 +8,7 @@ import { errorMessage } from "./errors";
 import { GitHubIcon } from "./GitHubIcon";
 import { UserAvatar } from "./UserAvatar";
 import { LazyModal } from "./LazyLoadBoundary";
+import { appLocale } from "../shared/locales";
 
 const AvatarSettingsDialog = lazy(() => import("./AvatarSettingsDialog").then((module) => ({ default: module.AvatarSettingsDialog })));
 
@@ -59,8 +60,8 @@ export function UserMenu({ user, onGitHub, onSignOut, onUserChange }: {
           </button>
           <div className="user-menu-language">
             <label htmlFor={languageId}><Languages size={16} aria-hidden="true" />{t("common.language")}</label>
-            <div className="user-menu-language-select"><select id={languageId} value={i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en"} onChange={(event) => void i18n.changeLanguage(event.target.value)}>
-              <option value="en">{t("common.languageEnglish")}</option><option value="zh">{t("common.languageChinese")}</option>
+            <div className="user-menu-language-select"><select id={languageId} value={appLocale(i18n.resolvedLanguage)} onChange={(event) => void i18n.changeLanguage(event.target.value)}>
+              <option value="en">{t("common.languageEnglish")}</option><option value="zh">{t("common.languageChinese")}</option><option value="zh-Hant">{t("common.languageTraditionalChinese")}</option>
             </select><ChevronDown size={13} aria-hidden="true" /></div>
           </div>
           <div className="user-menu-theme"><span className="user-menu-setting-label"><Palette size={16} aria-hidden="true" />{t("theme.title")}</span><ThemeSwitcher /></div>

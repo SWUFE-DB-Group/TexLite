@@ -1,5 +1,6 @@
 import i18n from "./i18n";
 import { appPath } from "./basePath";
+import { appLocale } from "../shared/locales";
 
 export interface ApiRequestInit extends RequestInit {
   /**
@@ -34,7 +35,7 @@ export async function api<T>(url: string, options: ApiRequestInit = {}): Promise
   const { suppressSessionExpired = false, ...requestOptions } = options;
   const headers = new Headers(requestOptions.headers);
   if (!headers.has("Accept-Language")) {
-    headers.set("Accept-Language", i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en");
+    headers.set("Accept-Language", appLocale(i18n.resolvedLanguage));
   }
   if (requestOptions.body && !isFormData(requestOptions.body) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   let response: Response;
@@ -90,7 +91,7 @@ export function apiUpload<T>(
     }
     xhr.open("POST", appPath(url), true);
     xhr.withCredentials = true;
-    xhr.setRequestHeader("Accept-Language", i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en");
+    xhr.setRequestHeader("Accept-Language", appLocale(i18n.resolvedLanguage));
     xhr.upload.addEventListener("progress", (event) => {
       options.onProgress?.(event.loaded, event.lengthComputable ? event.total : null);
     });
