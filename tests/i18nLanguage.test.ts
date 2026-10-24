@@ -78,21 +78,6 @@ describe("document language", () => {
     expect(reloaded.i18n.t("auth.logout")).toBe("登出");
   });
 
-  it.each([
-    ["en", 0, "0 projects"],
-    ["en", 1, "1 project"],
-    ["en", 2, "2 projects"],
-    ["zh", 0, "0 个项目"],
-    ["zh", 1, "1 个项目"],
-    ["zh", 2, "2 个项目"],
-    ["zh-Hant", 0, "0 個專案"],
-    ["zh-Hant", 1, "1 個專案"],
-    ["zh-Hant", 2, "2 個專案"]
-  ] as const)("resolves plural project counts in %s (%s)", async (language, count, expected) => {
-    const { i18n } = await loadLanguage(language);
-    expect(i18n.t("tags.projectCount", { count })).toBe(expected);
-  });
-
   it("interpolates display names as text without interpreting translation markup", async () => {
     const { i18n } = await loadLanguage("en-US");
     const name = "Alice & Bob <研究组>";

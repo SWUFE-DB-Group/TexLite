@@ -1,11 +1,9 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { CompletionContext, type Completion } from "@codemirror/autocomplete";
 import { defaultHighlightStyle, foldable, matchBrackets, syntaxTree } from "@codemirror/language";
 import { EditorState, type Extension, type Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { buildParserFile } from "@lezer/generator";
-import { highlightTree } from "@lezer/highlight";
+import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import { findBibtexEntryKeys } from "../src/shared/bibtexReferences";
 import {
   bibtexBracketMatching,
@@ -14,6 +12,7 @@ import {
   bibtexLanguage,
   bibtexLinter,
   collectDocumentValues,
+  createBibtexEditorExtensions,
   defaultBibtexMessages,
   splitAuthors,
   type BibtexLinterOptions
@@ -73,16 +72,6 @@ function applyCompletion(
 }
 
 describe("internal BibTeX CodeMirror language", () => {
-  it("keeps the checked-in parser synchronized with the upstream-style grammar", async () => {
-    const grammar = await readFile(new URL("../src/client/bibtex/grammar/bibtex.grammar", import.meta.url), "utf8");
-    const generated = buildParserFile(grammar, { moduleStyle: "es", exportName: "parser", warn: () => undefined });
-    const header = "// Generated from grammar/bibtex.grammar; derived from TeXlyre/codemirror-lang-bib (MIT). See LICENSE.\n";
-    await expect(readFile(new URL("../src/client/bibtex/generatedParser.mjs", import.meta.url), "utf8"))
-      .resolves.toBe(header + generated.parser);
-    await expect(readFile(new URL("../src/client/bibtex/generatedParser.terms.mjs", import.meta.url), "utf8"))
-      .resolves.toBe(header + generated.terms);
-  });
-
   it("parses the BibTeX forms and nested TeX escapes covered by the upstream grammar", () => {
     const source = String.raw`% A line comment
 @string{cvpr = "Proceedings of CVPR"}
@@ -219,6 +208,127 @@ End of export.`;
       end: { from: authorOpening, to: authorOpening + 1 },
       matched: true
     });
+  });
+
+  it("parses TeX accent escapes in BibTeX values without losing brace matching", () => {
+    const source = String.raw`@inproceedings{rombach2022high,
+  title={High-Resolution Image Synthesis with Latent Diffusion Models},
+  author={Rombach, Robin and Blattmann, Andreas and Lorenz, Dominik and Esser, Patrick and Ommer, Bj{\"o}rn},
+  booktitle={Proceedings of the IEEE/CVF conference on computer vision and pattern recognition},
+  pages={10684--10695},
+  year={2022}
+}
+@article{next,
+  title="The next entry"
+}`;
+    const state = EditorState.create({ doc: source, extensions: [bibtexLanguage] });
+    const errors: Array<{ from: number; to: number }> = [];
+    let entryCount = 0;
+    let escapeCount = 0;
+    syntaxTree(state).iterate({
+      enter(node) {
+        if (node.type.isError) errors.push({ from: node.from, to: node.to });
+        if (node.name === "Entry") entryCount += 1;
+        if (node.name === "Escape") escapeCount += 1;
+      }
+    });
+
+    expect(errors).toEqual([]);
+    expect(entryCount).toBe(2);
+    expect(escapeCount).toBe(1);
+
+    const authorClosing = source.indexOf("},\n  booktitle");
+    const authorOpening = source.indexOf("{", source.indexOf("author="));
+    expect(matchBrackets(state, authorClosing + 1, -1)).toMatchObject({
+      start: { from: authorClosing, to: authorClosing + 1 },
+      end: { from: authorOpening, to: authorOpening + 1 },
+      matched: true
+    });
+  });
+
+  it("parses common BibTeX value forms and nested TeX accents", () => {
+    const source = String.raw`@string{cvpr = "Proceedings of CVPR"}
+@inproceedings(garcia2025,
+  author = {Garc{\'i}a and M{\"u}ller},
+  booktitle = cvpr # " 2025",
+  year = 2025,
+)`;
+    const state = EditorState.create({ doc: source, extensions: [bibtexLanguage] });
+    const errors: Array<{ from: number; to: number }> = [];
+    syntaxTree(state).iterate({
+      enter(node) {
+        if (node.type.isError) errors.push({ from: node.from, to: node.to });
+      }
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it("highlights BibTeX control words and protected nested brace groups", () => {
+    const source = String.raw`@misc{example,
+  url = {\url{https://example.com}},
+  institution = {{ISO/IEC}},
+  author = {Ommer, Bj{\"o}rn}
+}`;
+    const state = EditorState.create({ doc: source, extensions: [bibtexLanguage] });
+    const commands: string[] = [];
+    const nestedValues: string[] = [];
+    const errors: string[] = [];
+    const highlightRanges: Array<{ text: string; style: string }> = [];
+    syntaxTree(state).iterate({
+      enter(node) {
+        if (node.name === "Command") commands.push(source.slice(node.from, node.to));
+        if (node.name === "NestedBracedValue") nestedValues.push(source.slice(node.from, node.to));
+        if (node.type.isError) errors.push(source.slice(node.from, node.to));
+      }
+    });
+    highlightTree(syntaxTree(state), tagHighlighter([
+      { tag: tags.macroName, class: "bib-command" },
+      { tag: tags.special(tags.string), class: "bib-nested" },
+      { tag: tags.string, class: "bib-value" }
+    ]), (from, to, style) => {
+      highlightRanges.push({ text: source.slice(from, to), style });
+    });
+
+    expect(errors).toEqual([]);
+    expect(commands).toEqual(["\\url"]);
+    expect(nestedValues).toEqual(["{https://example.com}", "{ISO/IEC}", "{\\\"o}"]);
+    expect(highlightRanges).toEqual(expect.arrayContaining([
+      { text: "\\url", style: "bib-command" },
+      { text: "{ISO/IEC}", style: "bib-nested" }
+    ]));
+  });
+
+  it("keeps braces inside quoted BibTeX values valid", () => {
+    const source = String.raw`@article{quoted,
+  title = "A {protected} title with {\url{https://example.com}}"
+}`;
+    const state = EditorState.create({ doc: source, extensions: [bibtexLanguage] });
+    const errors: Array<{ from: number; to: number }> = [];
+    syntaxTree(state).iterate({ enter(node) { if (node.type.isError) errors.push({ from: node.from, to: node.to }); } });
+    expect(errors).toEqual([]);
+  });
+
+  it("enables internal BibTeX folding, diagnostics, and field completion", () => {
+    const incompleteSource = String.raw`@article{example,
+  title = {An incomplete entry}
+}`;
+    const state = EditorState.create({ doc: incompleteSource, extensions: [bibtexLanguage, ...createBibtexEditorExtensions()] });
+    const openingLine = state.doc.line(1);
+    const fold = foldable(state, openingLine.from, openingLine.to);
+    expect(fold).toMatchObject({ to: state.doc.line(3).from });
+    expect(fold?.from).toBeLessThan(openingLine.to);
+
+    const diagnostics = bibtexLinter()({ state } as unknown as EditorView);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: "error", source: "BibTeX" })
+    ]));
+
+    const completionSource = "@inproceedings{example,\n  aut";
+    const completionState = EditorState.create({ doc: completionSource, extensions: [bibtexLanguage] });
+    const completion = bibtexCompletionSource(new CompletionContext(completionState, completionSource.length, true));
+    expect(completion?.options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "author", type: "property" })
+    ]));
   });
 
   it("reports syntax, duplicate, unknown-field, required-field and crossref diagnostics", () => {

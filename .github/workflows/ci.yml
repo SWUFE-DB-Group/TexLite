@@ -48,5 +48,15 @@ jobs:
       - name: Build browser and server bundles
         run: npm run build
 
+      # Tests/build regenerate parsers. Catch stale checked-in artifacts rather
+      # than comparing files that were just produced by the same generator.
+      - name: Check generated parsers are committed
+        run: >-
+          git diff --exit-code --
+          src/client/bibtex/generatedParser.mjs
+          src/client/bibtex/generatedParser.terms.mjs
+          src/client/latex/latex.mjs
+          src/client/latex/latex.terms.mjs
+
       - name: Inspect npm package contents
         run: npm pack --dry-run --ignore-scripts

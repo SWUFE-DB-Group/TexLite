@@ -108,7 +108,8 @@ describe("avatar selection", () => {
     expect(styleOptions().find((option) => option.getAttribute("aria-selected") === "true")?.textContent).toBe("Pixel Art Neutral");
     await act(async () => styleTrigger().click());
     expect(document.querySelector('[role="listbox"]')).toBeNull();
-    expect(document.activeElement).toBe(styleTrigger());
+    // Radix returns focus after the popover's deferred unmount cleanup.
+    await vi.waitFor(() => expect(document.activeElement).toBe(styleTrigger()));
     expect(api).not.toHaveBeenCalled();
   });
 

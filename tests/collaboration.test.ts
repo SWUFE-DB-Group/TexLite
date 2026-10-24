@@ -17,6 +17,9 @@ import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection, type UserRow } from "../src/server/db.js";
 import { hashPassword } from "../src/server/security.js";
 import { COLLABORATION_PROTOCOL_VERSION, CollaborationMessageType } from "../src/shared/collaborationProtocol.js";
+import { useFakeTexTools } from "./texTools";
+
+useFakeTexTools();
 
 const REMOTE_ORIGIN = Symbol("remote");
 const {

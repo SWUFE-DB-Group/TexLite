@@ -16,6 +16,9 @@ import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
 import { sourceRoot } from "../src/server/files.js";
 import { ProjectHistoryService } from "../src/server/history.js";
 import * as metricSummaries from "../src/server/metrics.js";
+import { useFakeTexTools } from "./texTools";
+
+useFakeTexTools();
 
 const hostHarperAvailable = spawnSync("harper-cli", ["--version"], { stdio: "ignore" }).status === 0;
 const hostHarperIt = hostHarperAvailable ? it : it.skip;

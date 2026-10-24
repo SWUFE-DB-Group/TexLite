@@ -2,11 +2,12 @@ import { createInstance } from "i18next";
 import { beforeAll, describe, expect, it } from "vitest";
 import en from "../src/client/locales/en.json";
 import zh from "../src/client/locales/zh.json";
+import zhHant from "../src/client/locales/zh-Hant.json";
 
 const translations = createInstance();
 beforeAll(async () => {
   await translations.init({
-    resources: { en: { translation: en }, zh: { translation: zh } },
+    resources: { en: { translation: en }, zh: { translation: zh }, "zh-Hant": { translation: zhHant } },
     lng: "en", fallbackLng: "en", interpolation: { escapeValue: false }
   });
 });
@@ -63,15 +64,21 @@ describe("count-aware translations", () => {
     }
   });
 
-  it.each([0, 1, 2])("keeps Chinese quantities natural (%i)", (count) => {
-    const t = translations.getFixedT("zh");
-    expect(t("projects.unreadMentionsTooltip", { count })).toBe(`${count} 条未读消息`);
-    expect(t("metrics.sessions", { count })).toBe(`${count} 个会话`);
-    expect(t("history.fileCount", { count })).toBe(`${count} 个文件`);
-    expect(t("editor.wordCountWordsUnit", { count })).toBe("字");
-    expect(t("metrics.roomsAndDirty", {
-      rooms: t("metrics.rooms", { count }), dirty: t("metrics.dirtyFiles", { count })
-    })).toBe(`${count} 个房间 · ${count} 个待保存文件`);
+  describe.each([
+    { language: "zh", project: "个项目", mention: "条未读消息", session: "个会话", file: "个文件", word: "字", room: "个房间", dirty: "个待保存文件" },
+    { language: "zh-Hant", project: "個專案", mention: "條未讀訊息", session: "個工作階段", file: "個檔案", word: "詞", room: "個協作空間", dirty: "個待儲存檔案" }
+  ])("$language quantities", (expected) => {
+    const t = translations.getFixedT(expected.language);
+    it.each([0, 1, 2])("keeps quantities natural (%i)", (count) => {
+      expect(t("tags.projectCount", { count })).toBe(`${count} ${expected.project}`);
+      expect(t("projects.unreadMentionsTooltip", { count })).toBe(`${count} ${expected.mention}`);
+      expect(t("metrics.sessions", { count })).toBe(`${count} ${expected.session}`);
+      expect(t("history.fileCount", { count })).toBe(`${count} ${expected.file}`);
+      expect(t("editor.wordCountWordsUnit", { count })).toBe(expected.word);
+      expect(t("metrics.roomsAndDirty", {
+        rooms: t("metrics.rooms", { count }), dirty: t("metrics.dirtyFiles", { count })
+      })).toBe(`${count} ${expected.room} · ${count} ${expected.dirty}`);
+    });
   });
 
   it("uses the snapshot limit, not usage, for the noun after 'of'", () => {

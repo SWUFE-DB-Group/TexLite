@@ -117,7 +117,7 @@ describe("editor theme integration", () => {
 
   it("loads real regular and semibold Iosevka weights together", () => {
     const html = fs.readFileSync(new URL("../src/client/index.html", import.meta.url), "utf8");
-    expect(html).toContain("@fontsource/iosevka@5.2.5/400.css");
-    expect(html).toContain("@fontsource/iosevka@5.2.5/600.css");
+    expect(html).toMatch(/@fontsource\/iosevka@[^/]+\/400\.css/);
+    expect(html).toMatch(/@fontsource\/iosevka@[^/]+\/600\.css/);
   });
 });

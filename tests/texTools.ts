@@ -1,15 +1,41 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { afterAll, beforeAll } from "vitest";
 
-// Application-level tests exercise successful compilation and SyncTeX routes.
-// Keep them independent from a host TeX Live installation so that the same
-// suite runs locally and in CI. Individual compiler tests can still provide a
-// purpose-built executable when they need to inspect compiler arguments.
-const toolsDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-test-tools-"));
-process.env.PATH = `${toolsDirectory}${path.delimiter}${process.env.PATH ?? ""}`;
+/** Opt in only for suites exercising compiler/SyncTeX routes without TeX Live. */
+export function useFakeTexTools(): void {
+  let directory: string | undefined;
+  let previousPath: string | undefined;
 
-writeExecutable("latexmk", `#!/usr/bin/env node
+  beforeAll(() => {
+    previousPath = process.env.PATH;
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-test-tools-"));
+    process.env.PATH = `${directory}${path.delimiter}${previousPath ?? ""}`;
+    writeExecutable(directory, "latexmk", latexmkSource);
+    writeExecutable(directory, "synctex", synctexSource);
+  });
+
+  // Registered at the suite's outer scope, after nested application teardown.
+  afterAll(() => {
+    if (!directory) return;
+    try {
+      fs.rmSync(directory, { recursive: true, force: true });
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      directory = undefined;
+    }
+  });
+}
+
+function writeExecutable(directory: string, name: string, source: string): void {
+  const executable = path.join(directory, name);
+  fs.writeFileSync(executable, source, { mode: 0o700 });
+  fs.chmodSync(executable, 0o700);
+}
+
+const latexmkSource = `#!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
@@ -34,9 +60,9 @@ fs.writeFileSync(
   gzipSync("SyncTeX Version:1\\nInput:1:" + path.resolve(mainFile) + "\\n")
 );
 console.log("Fake latexmk completed.");
-`);
+`;
 
-writeExecutable("synctex", `#!/bin/sh
+const synctexSource = `#!/bin/sh
 set -e
 
 case "$1" in
@@ -62,10 +88,4 @@ case "$1" in
     exit 2
     ;;
 esac
-`);
-
-function writeExecutable(name: string, source: string): void {
-  const executable = path.join(toolsDirectory, name);
-  fs.writeFileSync(executable, source, { mode: 0o700 });
-  fs.chmodSync(executable, 0o700);
-}
+`;
