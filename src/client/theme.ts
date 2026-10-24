@@ -7,16 +7,16 @@ export type ThemePreference = Theme | "system";
 export const themeStorageKey = scopedStorageKey("texlite-theme");
 const listeners = new Set<() => void>();
 let theme: Theme = "light";
-let preference: ThemePreference = "light";
+let preference: ThemePreference = "system";
 let initialized = false;
 let systemQuery: MediaQueryList | null = null;
 
 function savedTheme(): ThemePreference {
   try {
     const value = window.localStorage.getItem(themeStorageKey);
-    return value === "dark" || value === "system" ? value : "light";
+    return value === "light" || value === "dark" ? value : "system";
   } catch {
-    return "light";
+    return "system";
   }
 }
 
@@ -90,5 +90,5 @@ export function useTheme(): Theme {
 }
 
 export function useThemePreference(): ThemePreference {
-  return useSyncExternalStore(subscribe, currentThemePreference, () => "light");
+  return useSyncExternalStore(subscribe, currentThemePreference, () => "system");
 }

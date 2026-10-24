@@ -718,7 +718,10 @@ prose, subdued cool-gray comments and quieter line numbers. One browser-local
 light/dark/system preference controls the whole application and editor. The
 dashboard user popover groups identity, GitHub integration, language, theme and
 sign-out controls. Explicit light/dark selections remain unchanged; system mode
-follows OS color-scheme changes while the page is open. The default remains light.
+follows OS color-scheme changes while the page is open. New browsers default to
+System; existing explicit Light/Dark choices are preserved. Missing or blocked
+browser storage follows the system too, with Light as the fallback when media
+queries are unavailable. The pre-paint script uses the same resolution rules.
 It is stored in localStorage
 (scoped to the deployment base path), never in the database or tied to a
 user/project. Other tabs follow

@@ -9,13 +9,19 @@
     <script>
       // Apply the browser preference before styles paint; keep this key in
       // sync with scopedStorageKey("texlite-theme") in theme.ts.
+      let preference = "system";
       try {
         const base = document.querySelector('meta[name="texlite-base-path"]').content;
         const key = base === "/" ? "texlite-theme" : `texlite-theme:base=${encodeURIComponent(base)}`;
-        const preference = localStorage.getItem(key);
-        const dark = preference === "dark" || (preference === "system" && typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.dataset.theme = dark ? "dark" : "light";
-      } catch { document.documentElement.dataset.theme = "light"; }
+        const saved = localStorage.getItem(key);
+        if (saved === "light" || saved === "dark") preference = saved;
+      } catch { /* Follow the system when browser storage is unavailable. */ }
+      let dark = preference === "dark";
+      if (preference === "system") {
+        try { dark = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches; }
+        catch { /* Fall back to light if media queries are unavailable. */ }
+      }
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
       document.documentElement.style.colorScheme = document.documentElement.dataset.theme;
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

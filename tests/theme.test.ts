@@ -19,11 +19,13 @@ describe("browser-wide theme", () => {
   });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it.each([undefined, "unknown", "light", "dark"])("initializes %s without any user/project state", async (saved) => {
+  it.each([undefined, "unknown", "system", "light", "dark"].flatMap((saved) => [false, true].map((systemDark) => ({ saved, systemDark }))))("initializes $saved with system dark=$systemDark without any user/project state", async ({ saved, systemDark }) => {
     if (saved) storage.set("texlite-theme", saved);
+    vi.stubGlobal("window", { localStorage, addEventListener: vi.fn(), matchMedia: () => ({ matches: systemDark, addEventListener: vi.fn() }) });
     const store = await import("../src/client/theme");
     store.initializeTheme();
-    const expected = saved === "dark" ? "dark" : "light";
+    const expected = saved === "light" || saved === "dark" ? saved : systemDark ? "dark" : "light";
+    expect(store.currentThemePreference()).toBe(saved === "light" || saved === "dark" ? saved : "system");
     expect(store.currentTheme()).toBe(expected);
     expect(root.dataset.theme).toBe(expected);
     expect(root.style.colorScheme).toBe(expected);
@@ -119,8 +121,8 @@ describe("browser-wide theme", () => {
     expect(store.currentTheme()).toBe("dark");
     storage.clear();
     storageListener({ key: null, storageArea: localStorage });
-    expect(store.currentThemePreference()).toBe("light");
-    expect(store.currentTheme()).toBe("light");
+    expect(store.currentThemePreference()).toBe("system");
+    expect(store.currentTheme()).toBe("dark");
   });
 
   it("supports Safari's older MediaQueryList listener API", async () => {
@@ -134,11 +136,10 @@ describe("browser-wide theme", () => {
     expect(store.currentTheme()).toBe("dark");
   });
 
-  it("retains system mode when media queries or storage are unavailable", async () => {
+  it("uses system mode when media queries or storage are unavailable", async () => {
     vi.stubGlobal("window", { get localStorage() { throw new Error("Blocked"); }, addEventListener: vi.fn() });
     const store = await import("../src/client/theme");
     store.initializeTheme();
-    store.setTheme("system");
     expect(store.currentThemePreference()).toBe("system");
     expect(store.currentTheme()).toBe("light");
   });
@@ -166,10 +167,10 @@ describe("theme before first paint", () => {
     expect(root.style.colorScheme).toBe("light");
   });
 
-  it.each([false, true])("resolves saved system mode before first paint (dark=%s)", (matches) => {
+  it.each(["system", null, "unknown"].flatMap((saved) => [false, true].map((matches) => ({ saved, matches }))))("resolves $saved before first paint (dark=$matches)", ({ saved, matches }) => {
     const root = { dataset: { theme: "" }, style: { colorScheme: "" } };
     vm.runInNewContext(bootstrap, { document: { documentElement: root, querySelector: () => ({ content: "/" }) },
-      localStorage: { getItem: () => "system" }, matchMedia: () => ({ matches }) });
+      localStorage: { getItem: () => saved }, matchMedia: () => ({ matches }) });
     expect(root.dataset.theme).toBe(matches ? "dark" : "light");
     expect(root.style.colorScheme).toBe(root.dataset.theme);
   });
@@ -178,5 +179,24 @@ describe("theme before first paint", () => {
     const root = { dataset: { theme: "" }, style: { colorScheme: "" } };
     vm.runInNewContext(bootstrap, { document: { documentElement: root, querySelector: () => ({ content: "/" }) }, localStorage: { getItem: () => "system" } });
     expect(root.dataset.theme).toBe("light");
+  });
+
+  it("follows a dark OS preference when storage is blocked, both before and after React starts", async () => {
+    const root = { dataset: { theme: "" }, style: { colorScheme: "", setProperty: vi.fn() } };
+    const document = { documentElement: root, querySelector: () => ({ content: "/" }) };
+    const localStorage = { getItem() { throw new Error("Blocked"); } };
+    const matchMedia = () => ({ matches: true, addEventListener: vi.fn() });
+    vm.runInNewContext(bootstrap, { document, localStorage, matchMedia });
+    expect(root.dataset.theme).toBe("dark");
+    vi.resetModules();
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", { localStorage, matchMedia, addEventListener: vi.fn() });
+    try {
+      const store = await import("../src/client/theme");
+      store.initializeTheme();
+      expect(store.currentThemePreference()).toBe("system");
+      expect(store.currentTheme()).toBe("dark");
+      expect(root.dataset.theme).toBe("dark");
+    } finally { vi.unstubAllGlobals(); }
   });
 });
