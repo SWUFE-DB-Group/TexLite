@@ -296,9 +296,12 @@ export function WorkspaceContextPanel({
                 selectedParticipantIds={singleCommentMode ? undefined : participantIds} highlightReplyParticipants={!singleCommentMode && !topLevelOnly}
                 onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onActivate={() => setActiveComposerId(comment.id)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} /></div></div>;
             })}
-            {displayedComments.length === 0 && !commentsLoading && !commentsError && <p className="muted padded" role="status">{singleCommentMode
-              ? t(comments.some((comment) => comment.id === singleCommentId && comment.resolved) ? "editor.currentCommentResolved" : "editor.currentCommentUnavailable")
-              : comments.length ? t("editor.commentNoMatches") : t("editor.noComments")}</p>}
+            {displayedComments.length === 0 && !commentsLoading && !commentsError && <div className="comment-review-empty" role="status">
+              <span className="comment-review-empty-icon" aria-hidden="true"><MessagesSquare size={23} strokeWidth={1.5} /></span>
+              <p>{singleCommentMode
+                ? t(comments.some((comment) => comment.id === singleCommentId && comment.resolved) ? "editor.currentCommentResolved" : "editor.currentCommentUnavailable")
+                : reviewCounts.unresolved + reviewCounts.resolved > 0 ? t("editor.commentNoMatches") : t("editor.noComments")}</p>
+            </div>}
             {!singleCommentMode && commentFilter === "resolved" && hasMore && <div className="comment-review-pagination">
               <button type="button" onClick={loadMore}>{t("editor.commentLoadMore")}</button>
             </div>}

@@ -767,7 +767,7 @@
     "reopen": "重新開啟",
     "resolve": "解決",
     "resolvedBy": "由 <user>{{user}}</user> 標示為已解決",
-    "noComments": "目前檔案沒有批註",
+    "noComments": "尚無批註",
     "newFileDescription": "可以包含目錄，例如 chapters/introduction.tex。",
     "filePath": "檔案路徑",
     "commentDescription_one": "已選擇 {{count}} 個字元",

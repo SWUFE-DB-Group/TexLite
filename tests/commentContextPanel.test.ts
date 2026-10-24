@@ -38,6 +38,33 @@ function render(overrides: Partial<WorkspaceContextPanelProps> = {}) {
 }
 
 describe("comment drawer modes", () => {
+  it.each([["en", "No comments yet"], ["zh", "暂无批注"], ["zh-Hant", "尚無批註"]])("shows the same centered empty state for either scope (%s)", async (language, message) => {
+    const previousLanguage = i18n.language;
+    try {
+      await i18n.changeLanguage(language);
+      for (const commentScope of ["file", "project"] as const) {
+        const html = render({ comments: [], commentScope });
+        expect(html).toContain('class="comment-review-empty" role="status"');
+        expect(html).toContain('class="comment-review-empty-icon" aria-hidden="true"');
+        expect(html).toContain(`<p>${message}</p>`);
+      }
+    } finally {
+      await i18n.changeLanguage(previousLanguage);
+    }
+  });
+
+  it("uses the empty-scope message when only other files have comments", () => {
+    const html = render({ comments: [comment("chapter", "intro.tex")] });
+    expect(html).toContain(i18n.t("editor.noComments"));
+    expect(html).not.toContain(i18n.t("editor.commentNoMatches"));
+  });
+
+  it("preserves the filter message when the scope contains comments in another status", () => {
+    const html = render({ comments: [comment("resolved", "main.tex", true)] });
+    expect(html).toContain(i18n.t("editor.commentNoMatches"));
+    expect(html).not.toContain(i18n.t("editor.noComments"));
+  });
+
   it("shows the full review controls by default", () => {
     const html = render();
     expect(html).toContain('data-comment-id="first"');
