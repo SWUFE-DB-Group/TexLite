@@ -9,6 +9,7 @@ import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } 
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
 import { BibtexFormatterError, createBibtexTextEdits, formatBibtexInWorker } from "../bibtexFormatter";
 import { classifyCompileLog } from "../compileLog";
+import { formatDateTime } from "../dateTime";
 import type { CollaborationSaveReceipt, FormatLease, ProjectCollaboration } from "../collaboration";
 import { errorMessage } from "../errors";
 import type { WordCountMode, WorkspaceLayout } from "../workspace/types";
@@ -1327,7 +1328,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     && (compileState.status === "queued" || compileState.status === "running");
   const compileBusy = localCompiling || sharedCompiling || cleaning;
   const collaborativeText = activeFile ? collaboration.getText(activeFile) : null;
-  const pdfCompiledLabel = pdfCompiledAt ? new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage, {
+  const pdfCompiledLabel = pdfCompiledAt ? formatDateTime(pdfCompiledAt, i18n.resolvedLanguage, {
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
   }) : "";
   const pdfTargetLabel = activeMainFile.split("/").at(-1) ?? activeMainFile;
@@ -1363,13 +1364,13 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       : t("editor.compiling")
     : compileOutcome === "failed"
       ? pdfUrl && pdfCompiledAt
-        ? t("editor.compileFailedRetained", { time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) })
+        ? t("editor.compileFailedRetained", { time: formatDateTime(pdfCompiledAt, i18n.resolvedLanguage) })
         : t("editor.compileFailedNoPdf")
       : compileOutcome === "cancelled"
         ? t("compileControls.cancelled")
       : "";
   const saveStateLabel = saveState === "editor.savedAt" && lastSavedAt
-    ? t("editor.savedAt", { time: new Date(lastSavedAt).toLocaleTimeString(i18n.resolvedLanguage, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
+    ? t("editor.savedAt", { time: formatDateTime(lastSavedAt, i18n.resolvedLanguage, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
     : t(saveState);
 
   return <div className="workspace" data-texlite-tooltips={editorPreferences.showTooltips ? "on" : "off"}>

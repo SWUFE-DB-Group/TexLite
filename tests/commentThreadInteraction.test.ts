@@ -77,7 +77,7 @@ describe("comment reading and actions", () => {
     expect(host.querySelector(".comment-location")?.textContent).toBe("Source deleted");
     expect(host.querySelector(".comment-times small")?.textContent).toBe("edited");
     await act(async () => { await i18n.changeLanguage("zh"); });
-    expect(host.querySelector(".comment-times time")?.textContent).toBe("5天前");
+    expect(host.querySelector(".comment-times time")?.textContent).toBe("5 天前");
     expect(host.querySelector(".comment-location")?.textContent).toBe("源码已删除");
     expect(host.querySelector(".comment-times small")?.textContent).toBe("已编辑");
   });

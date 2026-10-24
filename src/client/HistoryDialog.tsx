@@ -10,6 +10,7 @@ import { formatCommitTime, formatVersionTitle, generateUnifiedDiff } from "./dif
 import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
 import { historyTextCandidate } from "../shared/historyTracking";
 import { HistoryFilesManager } from "./HistoryFilesManager";
+import { formatDateTime } from "./dateTime";
 
 interface HistoryComparison {
   path: string;
@@ -410,7 +411,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                     <strong title={title}>{title}</strong>
                     <span className={`history-reason-badge reason-${version.reason}`}>{reasonLabel}</span>
                   </div>
-                  <small>{new Date(version.createdAt).toLocaleString(i18n.resolvedLanguage)}</small>
+                  <small>{formatDateTime(version.createdAt, i18n.resolvedLanguage)}</small>
                   <small><span className="history-author-name" data-tooltip={version.author?.username ? `@${version.author.username}` : undefined} data-texlite-tooltip-always>{author}</span> · {t("history.changedCount", { count: version.changedPaths.length })}</small>
                 </span>
               </button>
@@ -433,8 +434,8 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                   <span className={`history-reason-badge reason-${detail.version.reason}`}>{detailReasonLabel}</span>
                 </div>
                 <div className="history-snapshot-meta">
-                  <span className="history-snapshot-time"><Clock3 size={12} aria-hidden /><time dateTime={detail.version.createdAt} title={new Date(detail.version.createdAt).toLocaleString(i18n.resolvedLanguage)}>
-                    {new Date(detail.version.createdAt).toLocaleString(i18n.resolvedLanguage, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  <span className="history-snapshot-time"><Clock3 size={12} aria-hidden /><time dateTime={detail.version.createdAt} title={formatDateTime(detail.version.createdAt, i18n.resolvedLanguage)}>
+                    {formatDateTime(detail.version.createdAt, i18n.resolvedLanguage, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </time></span>
                   {detail.version.author
                     ? <span className="history-snapshot-attribution"><span>{t("history.lastChangedBy")}</span><strong>{authorName}</strong></span>

@@ -32,6 +32,14 @@ describe("i18n resources", () => {
     expect(strings["projectSettings.spellCheck"]).toBe("拼字與文法檢查");
     expect(strings["git.repository"]).toBe("儲存庫");
   });
+
+  it.each(["zh", "zh-Hant"])("separates Han characters from literal numbers and numeric placeholders (%s)", (locale) => {
+    const number = "(?:\\d|\\{\\{(?:count|total|current|page|totalPages|days|hours|minutes|seconds|line|column|versions|limit|uploaded|uniqueCount)\\}\\})";
+    const touching = new RegExp(`\\p{Script=Han}${number}|${number}\\p{Script=Han}`, "u");
+    for (const [key, value] of Object.entries(flattenStrings(catalog(locale)))) {
+      expect(value, key).not.toMatch(touching);
+    }
+  });
 });
 
 function flattenStrings(value: Record<string, unknown>, prefix = ""): Record<string, string> {

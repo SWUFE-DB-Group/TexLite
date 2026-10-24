@@ -6,6 +6,7 @@ import { ConfirmDialog, Modal } from "./Dialog";
 import { generateSelectionHistoryDiff, type SelectionHistoryDiffPiece, type SelectionHistorySemanticDiff } from "./selectionHistoryDiff";
 import { sourceHash } from "./sourceHash";
 import { UserAvatar } from "./UserAvatar";
+import { formatDateTime } from "./dateTime";
 import type { Project, SelectionHistoryAuthor, SelectionHistoryEntry, SelectionHistoryResult } from "./types";
 
 interface SourceSelection {
@@ -140,7 +141,7 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
             return <li key={entry.id}>
             <article className="selection-history-entry">
               <header>
-                <time title={new Date(entry.updatedAt).toLocaleString(i18n.resolvedLanguage)}>{formatTime(entry.updatedAt, i18n.resolvedLanguage)}</time>
+                <time title={formatDateTime(entry.updatedAt, i18n.resolvedLanguage)}>{formatTime(entry.updatedAt, i18n.resolvedLanguage)}</time>
                 <span className="selection-history-authors"><span>{t("selectionHistory.changedBy")}</span><span className="selection-history-author-list">{entry.authors.map((author, authorIndex) => {
                   const name = authorLabel(author, t("editor.deletedUser"));
                   return <span key={author.id || `deleted-${authorIndex}`} data-tooltip={author.username ? `@${author.username}` : undefined} data-texlite-tooltip-always>
@@ -201,9 +202,7 @@ function DiffSide({ label, pieces, variant }: {
 }
 
 function formatTime(value: string, language?: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(language, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatDateTime(value, language, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function isAbort(error: unknown): boolean {

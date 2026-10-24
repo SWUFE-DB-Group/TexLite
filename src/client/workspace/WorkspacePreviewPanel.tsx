@@ -9,6 +9,7 @@ import type { FileEntry } from "../types";
 import type { PdfTarget } from "../PdfPreview";
 import { PdfDocumentIcon } from "../PdfDocumentIcon";
 import i18n from "../i18n";
+import { formatDateTime } from "../dateTime";
 import { loadPdfPreview } from "../workspacePreload";
 import type { CompileCleanMode } from "./useProjectCompilation";
 import type { CompileArtifact, DiagnosticTab, PreviewSurface, PreviewTab, WorkspaceLayout } from "./types";
@@ -91,7 +92,7 @@ export function WorkspacePreviewPanel({
       <section className="preview-panel">
         <div className="preview-tabs">
           <div className="preview-tab-list" role="tablist" aria-label={t("editor.outputTabs")}>
-            <button role="tab" aria-selected={previewTab === "pdf"} className={`pdf-tab${previewTab === "pdf" ? " active" : ""}`} onClick={() => selectPreviewTab("pdf")} title={pdfCompiledAt ? t("editor.pdfCompiledAtFor", { file: activeMainFile, time: new Date(pdfCompiledAt).toLocaleString(i18n.resolvedLanguage) }) : t("editor.currentMainDocument", { path: activeMainFile })}><PdfDocumentIcon className="pdf-tab-icon" /><span className="pdf-tab-label"><span className="pdf-tab-title">PDF · {pdfTargetLabel}</span>{pdfMetaLabel && <small>{pdfMetaLabel}</small>}</span></button>
+            <button role="tab" aria-selected={previewTab === "pdf"} className={`pdf-tab${previewTab === "pdf" ? " active" : ""}`} onClick={() => selectPreviewTab("pdf")} title={pdfCompiledAt ? t("editor.pdfCompiledAtFor", { file: activeMainFile, time: formatDateTime(pdfCompiledAt, i18n.resolvedLanguage) }) : t("editor.currentMainDocument", { path: activeMainFile })}><PdfDocumentIcon className="pdf-tab-icon" /><span className="pdf-tab-label"><span className="pdf-tab-title">PDF · {pdfTargetLabel}</span>{pdfMetaLabel && <small>{pdfMetaLabel}</small>}</span></button>
             <button role="tab" aria-selected={previewTab === "diagnostics"} className={`diagnostics-tab${previewTab === "diagnostics" ? " active" : ""}`} onClick={() => selectPreviewTab("diagnostics")}><ScrollText size={14} />{t("editor.outputTabs")}<span className="diagnostic-count">{diagnosticCount}</span></button>
           </div>
           {pdfDownloadUrl && <a className="pdf-download-top" href={pdfDownloadUrl} download title={t("editor.downloadPdf")} aria-label={t("editor.downloadPdf")}><Download size={15} /><span>{t("editor.downloadPdf")}</span></a>}

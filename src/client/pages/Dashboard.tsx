@@ -15,6 +15,7 @@ import { ProjectIconAvatar } from "../projectIcons";
 import { LazyModal, LazyPage } from "../LazyLoadBoundary";
 import { appPath, scopedStorageKey } from "../basePath";
 import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
+import { formatDateTime } from "../dateTime";
 import { captureDeletionHeight, PROJECT_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
 
 const projectKey = (project: Project) => project.id;
@@ -360,11 +361,9 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     }
   };
 
-  const formatTime = (value: string) => new Date(value).toLocaleString(i18n.resolvedLanguage);
+  const formatTime = (value: string) => formatDateTime(value, i18n.resolvedLanguage);
   const formatProjectCreatedDate = (value: string) => {
-    const date = new Date(value);
-    if (!Number.isFinite(date.getTime())) return value;
-    return new Intl.DateTimeFormat(i18n.resolvedLanguage ?? "en", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+    return formatDateTime(value, i18n.resolvedLanguage ?? "en", { year: "numeric", month: "2-digit", day: "2-digit" });
   };
   const formatProjectUpdatedTime = (value: string) => formatRelativeTime(
     value,

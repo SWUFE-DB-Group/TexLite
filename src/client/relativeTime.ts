@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { spaceDateTimeNumbers } from "./dateTime";
 
 /** Refresh minute-resolution labels without polling for new data. */
 export function useRelativeTimeNow(): number {
@@ -25,7 +26,7 @@ export function formatRelativeTime(
   const hour = 60 * minute;
   const day = 24 * hour;
   const threeDays = 3 * day;
-  if (absoluteDifference < minute) return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(0, "second");
+  if (absoluteDifference < minute) return spaceDateTimeNumbers(new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(0, "second"));
   if (absoluteDifference > threeDays) {
     const days = Math.floor(absoluteDifference / day);
     const direction = difference < 0 ? "Past" : "Future";
@@ -46,5 +47,5 @@ export function formatRelativeTime(
     return translate(`projects.relative${unit}${direction}`, { days: 0, hours, minutes });
   }
   const amount = Math.sign(difference) * Math.max(1, Math.floor(absoluteDifference / minute));
-  return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(amount, "minute");
+  return spaceDateTimeNumbers(new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(amount, "minute"));
 }

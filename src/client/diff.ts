@@ -1,4 +1,5 @@
 import { makeLineDiff } from "./lineDiff";
+import { formatDateTime } from "./dateTime";
 
 export interface UnifiedDiffResult {
   diffText: string;
@@ -119,9 +120,9 @@ export function formatCommitTime(isoString: string, lang?: string): string {
       date.getMonth() === now.getMonth() &&
       date.getDate() === now.getDate();
     if (isSameDay) {
-      return date.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+      return formatDateTime(date, lang, { hour: "2-digit", minute: "2-digit" });
     }
-    return date.toLocaleString(lang, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return formatDateTime(date, lang, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   } catch {
     return isoString;
   }

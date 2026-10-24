@@ -8,6 +8,7 @@ import { api } from "./api";
 import { Modal } from "./Dialog";
 import type { GitCommit, Project, ProjectGitStatus } from "./types";
 import { GitHubIcon } from "./GitHubIcon";
+import { formatDateTime } from "./dateTime";
 
 interface GitDiffResult {
   title: string;
@@ -207,7 +208,7 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
           <div className="git-section-heading"><GitBranch size={16} /><div><strong>{t("git.history")}</strong><small>{t("git.historyHint")}</small></div></div>
           <div className="git-history">{commits.map((commitItem) => {
             const diffOpen = diff?.revision === commitItem.sha;
-            return <article key={commitItem.sha}><code>{commitItem.shortSha}</code><div><strong>{commitItem.message}</strong><small>{commitItem.authorName} · {new Date(commitItem.authoredAt).toLocaleString(i18n.resolvedLanguage)}</small></div><span data-texlite-tooltip-always><button type="button" className={diffOpen ? "is-active" : undefined} title={t(diffOpen ? "git.hideCommitDiff" : "git.viewCommitDiff")} aria-label={t(diffOpen ? "git.hideCommitDiff" : "git.viewCommitDiff")} aria-pressed={diffOpen} disabled={Boolean(busy)} onClick={() => toggleCommitDiff(commitItem.sha)}>{diffOpen ? <EyeOff size={14} /> : <Eye size={14} />}</button><button type="button" title={t("git.checkoutVersion")} disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget(commitItem); }}><Undo2 size={14} /></button></span></article>;
+            return <article key={commitItem.sha}><code>{commitItem.shortSha}</code><div><strong>{commitItem.message}</strong><small>{commitItem.authorName} · {formatDateTime(commitItem.authoredAt, i18n.resolvedLanguage)}</small></div><span data-texlite-tooltip-always><button type="button" className={diffOpen ? "is-active" : undefined} title={t(diffOpen ? "git.hideCommitDiff" : "git.viewCommitDiff")} aria-label={t(diffOpen ? "git.hideCommitDiff" : "git.viewCommitDiff")} aria-pressed={diffOpen} disabled={Boolean(busy)} onClick={() => toggleCommitDiff(commitItem.sha)}>{diffOpen ? <EyeOff size={14} /> : <Eye size={14} />}</button><button type="button" title={t("git.checkoutVersion")} disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget(commitItem); }}><Undo2 size={14} /></button></span></article>;
           })}{commits.length === 0 && <p className="muted">{t("git.noCommits")}</p>}</div>
         </section>}
       </>}

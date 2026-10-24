@@ -22,8 +22,10 @@ describe("shared project/comment relative times", () => {
     expect(relative(24 * 60)).toBe("1d ago");
     expect(relative(25 * 60)).toBe("1d 1h ago");
     expect(relative(6 * 24 * 60)).toBe("6d ago");
-    expect(relative(153, "zh")).toBe("2小时33分钟前");
-    expect(relative(6 * 24 * 60, "zh")).toBe("6天前");
+    expect(relative(16, "zh")).toBe("16 分钟前");
+    expect(relative(153, "zh")).toBe("2 小时 33 分钟前");
+    expect(relative(25 * 60, "zh")).toBe("1 天 1 小时前");
+    expect(relative(6 * 24 * 60, "zh")).toBe("6 天前");
   });
 
   it("supports future clock differences and invalid legacy dates without throwing", () => {
@@ -35,8 +37,18 @@ describe("shared project/comment relative times", () => {
   it("uses Traditional Chinese for both Intl and translated relative times", () => {
     expect(relative(0, "zh-Hant")).toBe("現在");
     expect(relative(16, "zh-Hant")).toBe("16 分鐘前");
-    expect(relative(153, "zh-Hant")).toBe("2小時33分鐘前");
-    expect(relative(25 * 60, "zh-Hant")).toBe("1天1小時前");
-    expect(relative(6 * 24 * 60, "zh-Hant")).toBe("6天前");
+    expect(relative(153, "zh-Hant")).toBe("2 小時 33 分鐘前");
+    expect(relative(25 * 60, "zh-Hant")).toBe("1 天 1 小時前");
+    expect(relative(6 * 24 * 60, "zh-Hant")).toBe("6 天前");
+  });
+
+  it.each(["zh", "zh-Hant"])("keeps number/Han spacing consistent across time units and clock directions (%s)", (locale) => {
+    for (const minutes of [16, 60, 153, 24 * 60, 25 * 60, 6 * 24 * 60]) {
+      for (const direction of [-1, 1]) {
+        const label = relative(minutes * direction, locale);
+        expect(label).not.toMatch(/\d\p{Script=Han}|\p{Script=Han}\d/u);
+        expect(label).not.toContain("  ");
+      }
+    }
   });
 });

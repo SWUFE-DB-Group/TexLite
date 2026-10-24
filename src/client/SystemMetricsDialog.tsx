@@ -3,6 +3,7 @@ import { Activity, Clock3, Cpu, Info, Layers3, MemoryStick, RefreshCw, Timer, Us
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { Modal } from "./Dialog";
+import { formatDateTime } from "./dateTime";
 import type { CpuUsageSample, ResourceSample } from "../shared/resourceMetrics";
 
 interface MetricSummary {
@@ -54,7 +55,7 @@ export function SystemMetricsDialog({ open, onOpenChange }: { open: boolean; onO
 
   return <Modal open={open} onOpenChange={onOpenChange} extraWide className="system-metrics-dialog" title={t("metrics.title")} description={t("metrics.description")}
     footer={<>
-      <span className="metric-refresh-status">{updatedAt ? t("metrics.updatedAt", { time: updatedAt.toLocaleTimeString(i18n.resolvedLanguage, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }) : t("metrics.autoRefresh")}</span>
+      <span className="metric-refresh-status">{updatedAt ? t("metrics.updatedAt", { time: formatDateTime(updatedAt, i18n.resolvedLanguage, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }) : t("metrics.autoRefresh")}</span>
       <button onClick={() => void load()} disabled={loading}><RefreshCw aria-hidden="true" size={14} className={loading ? "spin" : ""} />{t("metrics.refresh")}</button>
     </>}>
     {error && <p className="error">{error}</p>}

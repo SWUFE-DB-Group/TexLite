@@ -5,6 +5,7 @@ import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
+import { formatDateTime } from "../dateTime";
 import type { Comment, Project } from "../types";
 import { CommentActionsMenu } from "./CommentActionsMenu";
 import { CommentForm } from "./CommentForm";
@@ -143,10 +144,9 @@ export function CommentThread({
   const username = comment.authorUsername;
   const relativeTime = (value: string) => formatRelativeTime(value, i18n.resolvedLanguage ?? "en", now, (key, options) => t(key, options));
   const formatTime = (value: string) => {
-    const date = new Date(value);
-    return Number.isFinite(date.getTime()) ? date.toLocaleString(i18n.resolvedLanguage, {
+    return formatDateTime(value, i18n.resolvedLanguage, {
       year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
-    }) : value;
+    });
   };
   const timestamp = (value: string) => <time dateTime={value} data-tooltip={formatTime(value)} data-texlite-tooltip-always>{relativeTime(value)}</time>;
   const times = (createdAt: string, editedAt: string | null) => <span className="comment-times">
