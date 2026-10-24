@@ -7,8 +7,13 @@ describe("snapshot text comparisons", () => {
       expect(isHistoryTextFile(path), path).toBe(true);
     }
   });
+  it("recognizes Git text configuration files, including nested dotfiles", () => {
+    for (const path of [".gitignore", "chapters/.gitignore", ".gitattributes", ".gitmodules"]) {
+      expect(isHistoryTextFile(path), path).toBe(true);
+    }
+  });
   it("excludes PDFs, images, archives and unknown attachments", () => {
-    for (const path of ["figure.pdf", "figure.PNG", "plot.svg", "plot.eps", "archive.zip", "data.bin", "other.unknown", ""]) {
+    for (const path of ["figure.pdf", "figure.PNG", "plot.svg", "plot.eps", "archive.zip", "data.bin", "other.unknown", ".gitignore.zip", ".unknown", ""]) {
       expect(isHistoryTextFile(path), path).toBe(false);
     }
   });

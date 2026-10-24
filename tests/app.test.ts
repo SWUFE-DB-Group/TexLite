@@ -1160,6 +1160,39 @@ Copied source.
     expect(comparison.json()).toMatchObject({ historical: "", comparison: "previous notes" });
   });
 
+  it.each([".gitignore", "chapters/.gitignore"])("compares Git ignore rules in snapshots (%s)", async (filePath) => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Git ignore snapshot" } });
+    expect(created.statusCode).toBe(201);
+    const projectId = created.json().project.id as string;
+    const historyUrl = `/api/projects/${projectId}/history`;
+    const oldContent = "# Build output\n*.aux\n";
+    const newContent = "# Build output\n*.aux\n*.log\n";
+    const getLatest = async () => (await app.inject({ method: "GET", url: historyUrl, headers: { cookie } })).json().versions[0];
+    const write = async (content: string) => {
+      const response = await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie }, payload: { path: filePath, content } });
+      expect(response.statusCode, response.body).toBe(200);
+    };
+    await write(oldContent);
+    const previous = await getLatest();
+    await write(newContent);
+    const current = await getLatest();
+    expect(current.changedPaths).toContain(filePath);
+
+    const previousComparison = await app.inject({ method: "GET", url: `${historyUrl}/${current.id}/file?path=${encodeURIComponent(filePath)}&against=__previous__`, headers: { cookie } });
+    expect(previousComparison.statusCode, previousComparison.body).toBe(200);
+    expect(previousComparison.json()).toMatchObject({ path: filePath, historical: newContent, comparison: oldContent, previousVersion: { id: previous.id } });
+
+    const currentComparison = await app.inject({ method: "GET", url: `${historyUrl}/${previous.id}/file?path=${encodeURIComponent(filePath)}`, headers: { cookie } });
+    expect(currentComparison.statusCode, currentComparison.body).toBe(200);
+    expect(currentComparison.json()).toMatchObject({ path: filePath, historical: oldContent, comparison: newContent, against: "current" });
+
+    await app.inject({ method: "DELETE", url: `/api/projects/${projectId}/file?path=${encodeURIComponent(filePath)}`, headers: { cookie } });
+    const deleted = await getLatest();
+    const deletion = await app.inject({ method: "GET", url: `${historyUrl}/${deleted.id}/file?path=${encodeURIComponent(filePath)}&against=__previous__`, headers: { cookie } });
+    expect(deletion.statusCode, deletion.body).toBe(200);
+    expect(deletion.json()).toMatchObject({ historical: "", comparison: newContent });
+  });
+
   it("allows writers to share snapshot file choices and rejects reader mutations and malformed paths", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Snapshot choices" } });
     const projectId = created.json().project.id as string;

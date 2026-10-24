@@ -6,7 +6,7 @@ import { api } from "../src/client/api";
 import { HistoryFilesManager } from "../src/client/HistoryFilesManager";
 import { HistoryDialog } from "../src/client/HistoryDialog";
 import type { HistoryTrackedFile } from "../src/shared/historyTracking";
-import type { Project } from "../src/client/types";
+import type { HistoryVersion, Project } from "../src/client/types";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/Dialog", () => ({
@@ -54,4 +54,24 @@ it.each(["read", "edit", "owner"] as const)("only shows snapshot file management
   const project = { id: "p", permission } as Project;
   await act(async () => root.render(createElement(HistoryDialog, { open: true, project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
   expect(host.querySelector(".dialog-footer .history-manage-files") !== null).toBe(permission !== "read");
+});
+
+it("renders Git ignore diffs and permits switching comparison modes", async () => {
+  const version: HistoryVersion = {
+    id: "v", snapshotHash: "a".repeat(64), reason: "file", label: null,
+    createdAt: "2026-10-24T00:00:00Z", author: null, changedPaths: [".gitignore"], fileCount: 1, totalSize: 12
+  };
+  vi.mocked(api)
+    .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
+    .mockResolvedValueOnce({ version, files: [{ path: ".gitignore", size: 12 }], settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null } })
+    .mockResolvedValue({ path: ".gitignore", historical: "*.aux\n*.log\n", comparison: "*.aux\n", against: "previous", previousVersion: null });
+  await act(async () => root.render(createElement(HistoryDialog, { open: true, project: { id: "p", permission: "read" } as Project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
+  expect(api).toHaveBeenLastCalledWith("/api/projects/p/history/v/file?path=.gitignore&against=__previous__", expect.anything());
+  expect(host.querySelector(".history-attachment-change")).toBeNull();
+  expect(host.querySelector(".history-git-diff")?.textContent).toContain("+*.log");
+
+  const currentMode = host.querySelectorAll<HTMLButtonElement>(".history-mode-toggle button")[1];
+  await act(async () => currentMode.click());
+  expect(api).toHaveBeenLastCalledWith("/api/projects/p/history/v/file?path=.gitignore", expect.anything());
+  expect(host.querySelector(".history-git-diff")?.textContent).toContain("-*.log");
 });
