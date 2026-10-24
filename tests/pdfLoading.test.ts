@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pdfLoadingMode } from "../src/server/compileArtifacts.js";
 
 describe("PDF loading strategy", () => {
-  const threshold = 5 * 1024 * 1024;
+  const threshold = 2 * 1024 * 1024;
 
   it("uses one full response up to and including the automatic threshold", () => {
     const config = { pdfLoadingStrategy: "auto" as const, pdfRangeThresholdBytes: threshold };

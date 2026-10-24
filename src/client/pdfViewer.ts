@@ -116,10 +116,16 @@ export class PdfViewerSession {
     listen("pagesinit", () => {
       if (this.destroyed) return;
       this.initialized = true;
-      this.applyZoom();
       const location = this.target ?? initialLocation;
       if (location) {
         this.initialNavigationPending = true;
+        // Setting a scale starts the native rendering queue. Select the
+        // destination page first so a replacement doesn't spend its first
+        // draw on page 1 while we fetch its actual SyncTeX coordinates.
+        this.viewer.currentPageNumber = this.clampPageNumber(location.page);
+      }
+      this.applyZoom();
+      if (location) {
         void this.navigate(location, Boolean(this.target)).finally(() => {
           this.initialNavigationPending = false;
           if (!this.destroyed) { this.viewer.update(); this.checkReady(); }
@@ -278,7 +284,7 @@ export class PdfViewerSession {
 
   private async navigate(location: PdfLocation, mark: boolean): Promise<void> {
     const sequence = ++this.navigation;
-    const pageNumber = Math.max(1, Math.min(this.document.numPages, location.page));
+    const pageNumber = this.clampPageNumber(location.page);
     try {
       const page = await this.document.getPage(pageNumber);
       if (this.destroyed || sequence !== this.navigation) return;
@@ -288,6 +294,10 @@ export class PdfViewerSession {
       if (mark) this.updateMarker();
       this.viewer.update();
     } catch { if (!this.destroyed && sequence === this.navigation) this.callbacks.onError(); }
+  }
+
+  private clampPageNumber(page: number): number {
+    return Math.max(1, Math.min(this.document.numPages, page));
   }
 
   private updateMarker(): void {

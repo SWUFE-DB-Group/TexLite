@@ -25,8 +25,9 @@ vi.mock("pdfjs-dist/web/pdf_viewer.mjs", () => ({
     currentPageNumber = 1; pagesCount = 2;
     private scale = 1;
     scaleChanges: number[] = [];
+    scalePages: number[] = [];
     get currentScale() { return this.scale; }
-    set currentScale(value: number) { this.scale = value; this.scaleChanges.push(value); }
+    set currentScale(value: number) { this.scale = value; this.scaleChanges.push(value); this.scalePages.push(this.currentPageNumber); }
     set currentScaleValue(value: string) {
       if (value === "page-width") this.currentScale = (this.options.container.clientWidth - 40) / 560;
     }
@@ -98,7 +99,7 @@ function flushFrames() {
   const frames = [...state.frames.values()]; state.frames.clear();
   for (const callback of frames) callback(0);
 }
-function create(options: { zoom: number; target?: { page: number; x: number; y: number; nonce: number } } = { zoom: 100 }) {
+function create(options: { zoom: number; location?: { page: number; x: number; y: number }; target?: { page: number; x: number; y: number; nonce: number } } = { zoom: 100 }) {
   session = new PdfViewerSession(host, pdf, callbacks, options);
   session.container.getBoundingClientRect = () => ({ left: 0, top: 0, right: 600, bottom: 700, width: 600, height: 700 } as DOMRect);
   Object.defineProperty(session.container, "clientWidth", { value: 600, configurable: true });
@@ -201,6 +202,33 @@ describe("PDFViewer adapter", () => {
     await Promise.resolve();
     expect(viewer().scrollPageIntoView).not.toHaveBeenCalled();
     expect(session!.container.querySelector(".pdf-sync-marker")).toBeNull();
+  });
+
+  it.each(["target", "viewport"])("selects the initial %s page before scaling can start the native rendering queue", async (kind) => {
+    let resolve!: (page: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>) => void;
+    vi.mocked(pdf.getPage).mockReturnValue(new Promise((done) => { resolve = done; }));
+    const destination = { page: 2, x: 80, y: 150 };
+    create({ zoom: 150, location: kind === "viewport" ? destination : { page: 1, x: 0, y: 0 },
+      ...(kind === "target" ? { target: { ...destination, nonce: 1 } } : {}) });
+    emit("pagesinit");
+    // Do not wait for getPage(): the scale setter itself can schedule a draw.
+    expect(viewer().currentPageNumber).toBe(2);
+    expect(viewer().scalePages).toEqual([2]);
+    viewer().pages[0].renderingState = 3;
+    emit("pagerendered", { pageNumber: 1 });
+    expect(callbacks.onReady).not.toHaveBeenCalled();
+    resolve({ getViewport: () => viewport() } as Awaited<ReturnType<PDFDocumentProxy["getPage"]>>);
+    await Promise.resolve(); await Promise.resolve();
+    expect(viewer().scrollPageIntoView).toHaveBeenLastCalledWith(expect.objectContaining({ pageNumber: 2 }));
+  });
+
+  it("clamps a retained position when a recompiled document has fewer pages", async () => {
+    create({ zoom: 100, location: { page: 30, x: 0, y: 0 } });
+    emit("pagesinit");
+    expect(viewer().currentPageNumber).toBe(2);
+    await Promise.resolve(); await Promise.resolve();
+    expect(pdf.getPage).toHaveBeenCalledWith(2);
+    expect(viewer().scrollPageIntoView).toHaveBeenCalledWith(expect.objectContaining({ pageNumber: 2 }));
   });
 
   it("handles double-clicks in rendered pages but not on links or unrendered pages", () => {

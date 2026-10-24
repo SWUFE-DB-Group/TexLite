@@ -28,7 +28,7 @@ export const CONFIG_DEFAULTS = {
   allowProjectLatexmkrc: true,
   maxFileSizeMB: 50,
   pdfLoadingStrategy: "auto" as PdfLoadingStrategy,
-  pdfRangeThresholdMB: 5,
+  pdfRangeThresholdMB: 2,
   historyMaxVersions: 0,
   historyMaxStorageMB: 128,
   editHistoryMaxStorageMB: 32,

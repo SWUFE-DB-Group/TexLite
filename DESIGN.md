@@ -930,9 +930,12 @@ The previous successful PDF remains visible during a new compile. The latest
 published bundle is recovered after a restart and can be served before a cold
 collaboration room is initialized. PDF requests support range responses for
 PDF.js and expose the successful compile time and artifact size. The default
-automatic loading policy uses a complete, cache-friendly response through 5 MB
+automatic loading policy uses a complete, cache-friendly response through 2 MB
 and enables PDF.js byte-range loading above that threshold; deployments can
-force either mode without changing project compiler settings. The output panel groups the PDF,
+force either mode without changing project compiler settings. The threshold is
+a size-based heuristic, not a universal latency optimum. Range mode allows
+PDF.js to combine streaming and ranged requests; it does not guarantee that
+only the visible page's bytes are downloaded. The output panel groups the PDF,
 log, warnings, errors, generated artifacts, and recovery actions; clean-cache
 and clean-artifact actions are for recovery rather than routine compilation.
 The Vite build publishes the installed PDF.js version's predefined Adobe CMaps
@@ -953,6 +956,14 @@ worker. Rendering and viewer assets remain lazy, in separate core/viewer chunks.
 TexLite retains its own toolbar and fit-width-relative zoom percentages. Resize
 and viewport reporting are coalesced with animation frames. Only effective width
 changes recalculate the fit scale, and each zoom applies the final scale once.
+The initial destination page is selected before scaling starts the native
+rendering queue, avoiding an unnecessary first-page draw when restoring a later
+page. A local compile uses its POST result rather than refetching the same run
+after a WebSocket completion; if that POST fails in transit, the shared state
+still provides a recovery lookup. Collaborators continue fetching completed
+runs normally. Post-compile artifact-list refreshes wait for the replacement
+PDF's first paint, or run when the PDF panel is hidden so output inspection
+never depends on a successful PDF render.
 Page numbers use separate elements, leaving PDF.js's loading pseudo-element intact.
 A replacement viewer is laid out and rendered without displaying it; the old PDF stays visible until
 a visible page in the replacement has painted successfully. Failed replacements

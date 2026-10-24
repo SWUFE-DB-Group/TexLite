@@ -223,7 +223,7 @@ preferred.
 | `clientDir` | Installed package's `dist/client` | Normally changed only for development or a custom deployment. |
 | `sessionDays` | `14` | Login-session lifetime. |
 | `uploads.maxFileSizeMB` | `50` MB | Limit for uploads, ZIP entries, and attachments. |
-| `pdf.loadingStrategy` / `pdf.rangeThresholdMB` | `auto` / `5` MB | Chooses full transfer for small PDFs and byte ranges for larger ones. |
+| `pdf.loadingStrategy` / `pdf.rangeThresholdMB` | `auto` / `2` MB | Uses full transfer through the threshold and allows PDF.js byte-range requests above it. Explicitly configured thresholds are preserved. |
 | `history.maxVersions` / `history.maxStorageMB` | `0` (unlimited) / `128` MiB | Per-project ordinary-version count (`0` = unlimited) and soft limit for deduplicated files plus snapshot metadata. Protected snapshots may exceed the limit; shared SQLite overhead is excluded. |
 | `editHistory.maxStorageMB` | `32` MB | Independent per-project cap for author-attributed selection-edit deltas; retains the newest records and never consumes snapshot storage. |
 | `latex.latexmk` | `latexmk` | Host command. |

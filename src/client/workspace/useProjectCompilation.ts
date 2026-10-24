@@ -52,6 +52,7 @@ interface UseProjectCompilationOptions {
   getCurrentMainFile?: () => string;
   initialLatest?: Promise<LatestCompileResponse> | null;
   collaborationSynced: boolean;
+  pdfVisible: boolean;
   sharedState: SharedCompileState | null;
   onSharedState: (state: SharedCompileState | null) => void;
   save: () => Promise<boolean>;
@@ -85,7 +86,7 @@ function isOpenDialogTarget(target: EventTarget | null): boolean {
 }
 
 export function useProjectCompilation({
-  projectId, project, mainFile, resolveCompileMainFile, getCurrentMainFile, initialLatest, collaborationSynced, sharedState, onSharedState, save,
+  projectId, project, mainFile, resolveCompileMainFile, getCurrentMainFile, initialLatest, collaborationSynced, pdfVisible, sharedState, onSharedState, save,
   loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged
 }: UseProjectCompilationOptions) {
   const { t } = useTranslation();
@@ -124,20 +125,24 @@ export function useProjectCompilation({
   const artifactPreviewRequest = useRef<AbortController | null>(null);
   const backgroundRequests = useRef(new Set<AbortController>());
   const compileRequests = useRef(new Map<string, AbortController>());
+  const appliedCompletedRun = useRef<{ mainFile: string; runId: string } | null>(null);
+  const displayedPdfUrl = useRef("");
+  const pendingArtifactRefresh = useRef<{ mainFile: string; pdfUrl: string } | null>(null);
   const focusedCompileRun = useRef<string | null>(null);
   const compileAction = useRef<() => void>(() => undefined);
   const callbacks = useRef({
     onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged,
-    resolveCompileMainFile, getCurrentMainFile
+    resolveCompileMainFile, getCurrentMainFile, pdfVisible
   });
   mainFileRef.current = mainFile;
   callbacks.current = {
     onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged,
-    resolveCompileMainFile, getCurrentMainFile
+    resolveCompileMainFile, getCurrentMainFile, pdfVisible
   };
 
   const currentMainFile = (): string => callbacks.current.getCurrentMainFile?.() || mainFileRef.current;
   const selectionVisible = displaySelection.projectId === projectId && displaySelection.mainFile === mainFile;
+  const localCompiling = compilingMainFiles.has(mainFile);
 
   const focusPdfAfterCompile = (runId: string) => {
     if (focusedCompileRun.current === runId) return;
@@ -163,18 +168,21 @@ export function useProjectCompilation({
       artifactsRequest.current = new AbortController();
       signal = artifactsRequest.current.signal;
     }
+    const requestedPdfUrl = publishedPdfUrl.current;
+    const isCurrent = () => !signal?.aborted && mainFileRef.current === requestedMainFile
+      && publishedPdfUrl.current === requestedPdfUrl;
     try {
       const query = requestedMainFile ? `?mainFile=${encodeURIComponent(requestedMainFile)}` : "";
       const result = await api<{ artifacts: CompileArtifact[] }>(
         `/api/projects/${projectId}/compile/artifacts${query}`,
         { signal }
       );
-      if (mainFileRef.current === requestedMainFile) {
+      if (isCurrent()) {
         setArtifacts(result.artifacts);
         setArtifactPreview(null);
       }
     } catch (error) {
-      if (!isAbortError(error) && mainFileRef.current === requestedMainFile) {
+      if (!isAbortError(error) && isCurrent()) {
         setArtifacts([]);
         setArtifactPreview(null);
       }
@@ -182,6 +190,31 @@ export function useProjectCompilation({
       if (artifactsRequest.current?.signal === signal) artifactsRequest.current = null;
     }
   };
+
+  const flushArtifactRefresh = () => {
+    const refresh = pendingArtifactRefresh.current;
+    if (!refresh) return;
+    pendingArtifactRefresh.current = null;
+    if (refresh.mainFile === mainFileRef.current && refresh.pdfUrl === publishedPdfUrl.current) {
+      void loadArtifacts(refresh.mainFile);
+    }
+  };
+
+  const refreshArtifactsAfterPdf = (file: string, url: string) => {
+    pendingArtifactRefresh.current = { mainFile: file, pdfUrl: url };
+    // The output panel must remain usable if the PDF is hidden or failed to
+    // load. Otherwise give downloading/painting the new PDF priority.
+    if (!callbacks.current.pdfVisible || displayedPdfUrl.current === url) flushArtifactRefresh();
+  };
+
+  const pdfDisplayed = (url: string) => {
+    displayedPdfUrl.current = url;
+    if (url && pendingArtifactRefresh.current?.pdfUrl === url) flushArtifactRefresh();
+  };
+
+  useEffect(() => {
+    if (!pdfVisible) flushArtifactRefresh();
+  }, [pdfVisible]);
 
   useEffect(() => {
     latestRequest.current?.abort();
@@ -191,6 +224,8 @@ export function useProjectCompilation({
     const switchedMainFile = sameProject && Boolean(previous.mainFile)
       && Boolean(mainFile) && previous.mainFile !== mainFile;
     previousSelection.current = { projectId, mainFile };
+    appliedCompletedRun.current = null;
+    pendingArtifactRefresh.current = null;
     setDisplaySelection((current) => current.projectId === projectId && current.mainFile === mainFile
       ? current : { projectId, mainFile });
     if (!sameProject) {
@@ -342,6 +377,8 @@ export function useProjectCompilation({
 
   useEffect(() => {
     if (!sharedState || sharedState.mainFile !== mainFile || sharedState.status !== "cleaned" || !sharedState.cleanMode) return;
+    appliedCompletedRun.current = null;
+    pendingArtifactRefresh.current = null;
     latestRequest.current?.abort();
     completedStateRequest.current?.abort();
     artifactsRequest.current?.abort();
@@ -390,6 +427,12 @@ export function useProjectCompilation({
     if (!sharedState || sharedState.mainFile !== mainFile
       || (sharedState.status !== "succeeded" && sharedState.status !== "failed")) return;
     if (!allowCompletedAfterSwitch.current) return;
+    // Our POST already returns the complete result. Only collaborators (or a
+    // local POST that failed in transit) need the WebSocket-triggered lookup.
+    // localCompiling changes in finally, so a lost response still falls back
+    // to the shared state instead of silently losing a successful compile.
+    if (localCompiling || (appliedCompletedRun.current?.mainFile === mainFile
+      && appliedCompletedRun.current.runId === sharedState.runId)) return;
     let cancelled = false;
     completedStateRequest.current?.abort();
     artifactPreviewRequest.current?.abort();
@@ -401,6 +444,7 @@ export function useProjectCompilation({
       { signal: controller.signal }
     ).then((latest) => {
       if (cancelled || latest.mainFile !== mainFileRef.current || latest.latestRun?.id !== sharedState.runId) return;
+      appliedCompletedRun.current = { mainFile, runId: sharedState.runId };
       setCompileLog(latest.latestRun.log);
       setCompileDiagnostics(latest.latestRun.diagnostics);
       setCompileOutcome(compileOutcomeForRun(latest.latestRun));
@@ -410,7 +454,7 @@ export function useProjectCompilation({
         publishPdf(mainFile, latest.pdfUrl, latest.pdfCompiledAt, latest.pdfSizeBytes, latest.pdfLoadingMode);
         callbacks.current.onPreviewTab("pdf");
         focusPdfAfterCompile(sharedState.runId);
-        void loadArtifacts(mainFile);
+        refreshArtifactsAfterPdf(mainFile, latest.pdfUrl);
       } else if (sharedState.status === "failed") {
         callbacks.current.onPreviewTab(latest.latestRun.diagnostics.errors.length ? "errors" : "log");
       }
@@ -425,7 +469,7 @@ export function useProjectCompilation({
       controller.abort();
       if (completedStateRequest.current === controller) completedStateRequest.current = null;
     };
-  }, [sharedState?.runId, sharedState?.status, sharedState?.mainFile, sharedState?.stale, mainFile, projectId, t]);
+  }, [sharedState?.runId, sharedState?.status, sharedState?.mainFile, sharedState?.stale, mainFile, projectId, localCompiling, t]);
 
   const compile = async () => {
     if (!project || project.permission === "read" || !collaborationSynced) return;
@@ -454,6 +498,8 @@ export function useProjectCompilation({
       // Do not replace the active preview if the user selected another root
       // while this compile was running.
       if (result.mainFile !== requestedMainFile || currentMainFile() !== requestedMainFile) return;
+      appliedCompletedRun.current = { mainFile: requestedMainFile, runId: result.runId };
+      setPdfLoading(false);
       setCompileLog(result.log);
       setCompileDiagnostics(result.diagnostics);
       setCompileOutcome(result.cancelled ? "cancelled" : result.ok ? "succeeded" : "failed");
@@ -463,6 +509,7 @@ export function useProjectCompilation({
       if (result.pdfUrl) {
         if (result.ok) authoritativeCompileRun.current = { mainFile: requestedMainFile, runId: result.runId };
         publishPdf(requestedMainFile, result.pdfUrl, result.pdfCompiledAt, result.pdfSizeBytes, result.pdfLoadingMode);
+        refreshArtifactsAfterPdf(requestedMainFile, result.pdfUrl);
         callbacks.current.onPreviewTab("pdf");
         if (result.ok) {
           // A skipped request reuses the published run id and is not
@@ -529,6 +576,8 @@ export function useProjectCompilation({
       || compileRequests.current.has(requestedMainFile)
       || (sharedState?.mainFile === requestedMainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
     setCleaning(true);
+    appliedCompletedRun.current = null;
+    pendingArtifactRefresh.current = null;
     latestRequest.current?.abort();
     completedStateRequest.current?.abort();
     artifactsRequest.current?.abort();
@@ -633,7 +682,8 @@ export function useProjectCompilation({
     artifactPreview: selectionVisible ? artifactPreview : null,
     artifactLoading: selectionVisible && artifactLoading,
     editorNotice: selectionVisible ? editorNotice : "",
-    localCompiling: compilingMainFiles.has(mainFile),
+    localCompiling,
+    pdfDisplayed,
     cancelling: cancellingMainFiles.has(mainFile),
     cleaning,
     compile,

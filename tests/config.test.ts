@@ -84,11 +84,22 @@ describe("configuration", () => {
       siteName: "TexLite", host: "127.0.0.1", port: 3000, basePath: "/", sessionDays: 14,
       compileTimeoutMs: 600_000, maxCompileJobs: 10, defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
-      pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
+      pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 2 * 1024 * 1024,
       historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024,
       editHistoryMaxStorageBytes: 32 * 1024 * 1024,
       git: "git", gitOperationTimeoutMs: 120_000, githubApiBaseUrl: "https://api.github.com"
     });
+  });
+
+  it("uses the new PDF threshold when omitted without replacing explicit file or environment settings", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-pdf-default-"));
+    const configPath = path.join(root, "texlite.config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ pdf: { loadingStrategy: "auto" } }));
+    expect(loadConfig(configPath).pdfRangeThresholdBytes).toBe(2 * 1024 * 1024);
+    fs.writeFileSync(configPath, JSON.stringify({ pdf: { loadingStrategy: "auto", rangeThresholdMB: 5 } }));
+    expect(loadConfig(configPath).pdfRangeThresholdBytes).toBe(5 * 1024 * 1024);
+    process.env.TEXLITE_PDF_RANGE_THRESHOLD_MB = "3";
+    expect(loadConfig(configPath).pdfRangeThresholdBytes).toBe(3 * 1024 * 1024);
   });
 
   it("rejects invalid limits instead of silently restoring a default", () => {

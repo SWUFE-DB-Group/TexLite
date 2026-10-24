@@ -18,7 +18,7 @@ function render(overrides: Partial<WorkspacePreviewPanelProps> = {}): string {
     compileMessages: { warnings: [], errors: [] }, artifacts: [], artifactPreview: null, artifactLoading: false,
     cleaning: false, readOnly: false, collaborationSynced: true, workspaceLayout: "editor-pdf", showSyncResize: false,
     diagnosticCount: 0, selectPreviewTab: noop, changeWorkspaceLayout: noop, onSetPdfViewport: noop,
-    onResetPdfViewport: noop, syncVisiblePdfToSource: noop, syncCurrentSourceToPdf: asyncNoop,
+    onResetPdfViewport: noop, onPdfDisplayed: noop, syncVisiblePdfToSource: noop, syncCurrentSourceToPdf: asyncNoop,
     syncPdfToSource: asyncNoop, canSyncWithPdf: false, canSyncPdfToSource: false, files: [],
     jumpToSource: noop, onSetCleanMode: noop, viewArtifact: asyncNoop, ...overrides
   }));

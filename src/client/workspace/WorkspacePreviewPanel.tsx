@@ -49,6 +49,7 @@ export interface WorkspacePreviewPanelProps {
   changeWorkspaceLayout: (layout: WorkspaceLayout) => void;
   onSetPdfViewport: (viewport: { page: number; x: number; y: number }) => void;
   onResetPdfViewport: () => void;
+  onPdfDisplayed: (url: string) => void;
   syncVisiblePdfToSource: () => void;
   syncCurrentSourceToPdf: () => Promise<void>;
   syncPdfToSource: (page: number, x: number, y: number) => Promise<void>;
@@ -65,7 +66,7 @@ export function WorkspacePreviewPanel({
   pdfCompiledLabel, pdfTargetLabel, pdfDownloadUrl, pdfTarget, pdfViewport, activeFile, compileBusy, compileLog,
   compileDiagnostics, compileMessages, artifacts, artifactPreview, artifactLoading, cleaning, readOnly,
   collaborationSynced, workspaceLayout, showSyncResize, diagnosticCount, selectPreviewTab, changeWorkspaceLayout,
-  onSetPdfViewport, onResetPdfViewport, syncVisiblePdfToSource, syncCurrentSourceToPdf, syncPdfToSource, canSyncWithPdf, canSyncPdfToSource,
+  onSetPdfViewport, onResetPdfViewport, onPdfDisplayed, syncVisiblePdfToSource, syncCurrentSourceToPdf, syncPdfToSource, canSyncWithPdf, canSyncPdfToSource,
   files, jumpToSource, onSetCleanMode, viewArtifact
 }: WorkspacePreviewPanelProps) {
   const { t } = useTranslation();
@@ -76,6 +77,7 @@ export function WorkspacePreviewPanel({
     displayedPdfUrlRef.current = loadedUrl;
     setDisplayedPdfUrl(loadedUrl);
     onResetPdfViewport();
+    onPdfDisplayed(loadedUrl);
   };
   const canSyncWithDisplayedPdf = canSyncPdfToSource && Boolean(pdfUrl) && displayedPdfUrl === pdfUrl;
   const pdfSizeLabel = pdfSizeBytes == null ? "" : formatPdfSize(pdfSizeBytes);

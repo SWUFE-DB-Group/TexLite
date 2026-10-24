@@ -1178,7 +1178,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const {
     pdfUrl, pdfCompiledAt, pdfSizeBytes, pdfLoadingMode, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
     artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cancelling, cleaning,
-    compile, cancelCompile, cleanCompile, viewArtifact
+    compile, cancelCompile, cleanCompile, viewArtifact, pdfDisplayed
   } = useProjectCompilation({
     projectId,
     project,
@@ -1187,6 +1187,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     getCurrentMainFile,
     initialLatest: preload?.projectId === projectId ? preload.latestCompile : null,
     collaborationSynced,
+    pdfVisible: previewTab === "pdf" && workspaceLayout !== "editor-only",
     sharedState: compileState,
     onSharedState: setCompileState,
     save: saveForCompile,
@@ -1459,7 +1460,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         artifactPreview={artifactPreview} artifactLoading={artifactLoading} cleaning={cleaning}
         readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={showEditor && showPreview}
         diagnosticCount={diagnosticCount} selectPreviewTab={selectPreviewTab}
-        changeWorkspaceLayout={changeWorkspaceLayout} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport}
+        changeWorkspaceLayout={changeWorkspaceLayout} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport} onPdfDisplayed={pdfDisplayed}
         syncVisiblePdfToSource={syncVisiblePdfToSource}
         syncCurrentSourceToPdf={() => {
           const path = activeFileRef.current;
