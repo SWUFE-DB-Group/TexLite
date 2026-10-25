@@ -20,7 +20,7 @@ import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
 import { openDatabase, type DatabaseConnection, type UserRow } from "../src/server/db.js";
 import { loadConfig, type Config } from "../src/server/config.js";
 import { createProjectFiles, sourceRoot } from "../src/server/files.js";
-import { ProjectEditHistoryService } from "../src/server/editHistory.js";
+import { ProjectEditHistoryService, type EditHistoryStep } from "../src/server/editHistory.js";
 import { buildApp } from "../src/server/app.js";
 import { hashPassword } from "../src/server/security.js";
 import * as Y from "yjs";
@@ -519,6 +519,69 @@ describe("agent direct project editing", () => {
     expect(db.prepare("SELECT start_offset FROM comments WHERE id = ?").get(commentId)).toEqual({ start_offset: 17 });
     expect(db.prepare("SELECT author_id FROM project_edit_segments WHERE project_id = ?").get(projectId)).toEqual({ author_id: editor.id });
     await service.stop(task.id, editor);
+  });
+
+  it.each(["browser", "agent-live", "agent-cold", "agent-hydrated"] as const)(
+    "retains reversible large replacements from %s without per-span truncation", async (mode) => {
+      const filePath = path.join(sourceRoot(config, projectId), "main.tex");
+      const before = "\\begin{abstract}\n" + "甲".repeat(7500) + "\n\\end{abstract}\n";
+      const after = "\\begin{abstract}\n" + "乙".repeat(8000) + "\n\\end{abstract}\n";
+      fs.writeFileSync(filePath, before);
+      if (mode === "browser") {
+        const room = await liveRoom();
+        const text = room.doc.getText("source:main.tex");
+        room.doc.transact(() => { text.delete(0, text.length); text.insert(0, after); }, { socket: {}, user: editor });
+        expect(collaboration.flushProject(projectId)?.ok).toBe(true);
+      } else {
+        if (mode === "agent-live") await liveRoom();
+        const task = await create("codex", editor);
+        await service.start(task.id, editor);
+        fs.writeFileSync(filePath, after);
+        if (mode === "agent-hydrated") await liveRoom();
+        await service.stop(task.id, editor);
+      }
+      const rows = db.prepare("SELECT steps_json, author_id FROM project_edit_segments WHERE project_id = ? AND file_path = 'main.tex'")
+        .all(projectId) as { steps_json: string; author_id: string }[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0].author_id).toBe(editor.id);
+      const steps = JSON.parse(rows[0].steps_json) as EditHistoryStep[];
+      // Replay persisted replacements, not a second diff, to verify their full payload and coordinates.
+      let restored = after;
+      for (const step of [...steps].reverse()) {
+        for (const span of [...step.spans].reverse()) {
+          expect(span.truncated).toBe(false);
+          expect(span.deletedPreview.length).toBe(span.deletedLength);
+          expect(span.insertedPreview.length).toBe(span.insertedLength);
+          expect(restored.slice(span.afterStart, span.afterEnd)).toBe(span.insertedPreview);
+          restored = restored.slice(0, span.afterStart) + span.deletedPreview + restored.slice(span.afterEnd);
+        }
+      }
+      expect(restored).toBe(before);
+      const result = new ProjectEditHistoryService(db).selectionHistory(projectId, "main.tex", after, 0, after.length);
+      expect(result.chainComplete).toBe(true);
+      expect(result.entries[0].contentTruncated).toBe(true);
+      expect(result.baseline).toEqual({ content: `${before.slice(0, 2999)}…${before.slice(-2999)}`, contentTruncated: true });
+    }
+  );
+
+  it("keeps the many-span Yjs fallback reversible for formatter-sized transactions", async () => {
+    const before = Array.from({ length: 110 }, (_, index) => `Original paragraph ${index}.\n`).join("");
+    fs.writeFileSync(path.join(sourceRoot(config, projectId), "main.tex"), before);
+    const room = await liveRoom();
+    const text = room.doc.getText("source:main.tex");
+    room.doc.transact(() => {
+      for (let position = before.length - 1; position >= 0; position--) {
+        if (before[position] === "\n") text.insert(position, "!");
+      }
+    }, { socket: {}, user: owner });
+    expect(collaboration.flushProject(projectId)?.ok).toBe(true);
+    const row = db.prepare("SELECT steps_json FROM project_edit_segments WHERE project_id = ?").get(projectId) as { steps_json: string };
+    const steps = JSON.parse(row.steps_json) as EditHistoryStep[];
+    expect(steps[0].spans).toHaveLength(1);
+    expect(steps[0].spans[0]).toMatchObject({ truncated: false });
+    expect(steps[0].spans[0].deletedLength).toBeGreaterThan(1200);
+    const result = new ProjectEditHistoryService(db).selectionHistory(projectId, "main.tex", text.toString(), 0, text.length);
+    expect(result).toMatchObject({ chainComplete: true, baseline: { content: before, contentTruncated: false } });
   });
 
   it("merges non-overlapping human drafts before autosave and retains both authors in edit history", async () => {

@@ -16,9 +16,21 @@ export interface EditHistorySpan {
   afterEnd: number;
   deletedLength: number;
   insertedLength: number;
+  /** Historical field names: new records store complete replacement text. */
   deletedPreview: string;
   insertedPreview: string;
+  /** Only older, lossy records may be truncated. */
   truncated: boolean;
+}
+
+/** Store reversible replacements; only selection-history presentation is shortened. */
+export function createEditHistorySpan(beforeStart: number, afterStart: number, deleted: string, inserted: string): EditHistorySpan {
+  return {
+    beforeStart, beforeEnd: beforeStart + deleted.length,
+    afterStart, afterEnd: afterStart + inserted.length,
+    deletedLength: deleted.length, insertedLength: inserted.length,
+    deletedPreview: deleted, insertedPreview: inserted, truncated: false
+  };
 }
 
 export interface EditHistoryStep {
@@ -385,7 +397,7 @@ function authorKey(row: EditHistoryRow): string {
 /**
  * Reconstruct just the selected passage while walking a Yjs step backwards.
  * We avoid rebuilding the full source tree and abandon the exact passage only
- * when a deliberately truncated stored preview makes reconstruction unsafe.
+ * when a legacy truncated replacement makes reconstruction unsafe.
  */
 function undoPassage(current: PassageState, beforeRange: TextRange, spans: readonly EditHistorySpan[]): PassageState {
   if (!spans.length) return { ...current, range: beforeRange, exact: current.exact && current.text.length === beforeRange.end - beforeRange.start };

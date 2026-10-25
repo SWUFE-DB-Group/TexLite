@@ -12,7 +12,7 @@ import { httpError } from "../http.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import { requireEditableProject, touchProject } from "../routes/projectShared.js";
 import { reanchorFileComments } from "../anchors.js";
-import { hashText, type EditHistorySegmentInput } from "../editHistory.js";
+import { createEditHistorySpan, hashText, type EditHistorySegmentInput } from "../editHistory.js";
 
 export function agentTaskRoot(config: Config, taskId: string): string {
   if (!/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i.test(taskId)) throw httpError(404, "AGENT_SESSION_NOT_FOUND");
@@ -291,9 +291,7 @@ function externalEdit(filePath: string, before: string, after: string, authorId:
   const spans = changes(before, after).map((edit) => {
     const afterStart = edit.from + shift;
     shift += edit.insert.length - (edit.to - edit.from);
-    return { beforeStart: edit.from, beforeEnd: edit.to, afterStart, afterEnd: afterStart + edit.insert.length,
-      deletedLength: edit.to - edit.from, insertedLength: edit.insert.length, deletedPreview: before.slice(edit.from, edit.to).slice(0, 6000),
-      insertedPreview: edit.insert.slice(0, 6000), truncated: edit.to - edit.from > 6000 || edit.insert.length > 6000 };
+    return createEditHistorySpan(edit.from, afterStart, before.slice(edit.from, edit.to), edit.insert);
   });
   return { filePath, authorId, kind: "edit", beforeHash: hashText(before), afterHash: hashText(after), createdAt, updatedAt: createdAt,
     steps: [{ beforeHash: hashText(before), afterHash: hashText(after), createdAt, spans }] };

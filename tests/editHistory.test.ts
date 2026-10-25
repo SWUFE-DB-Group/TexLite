@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import {
+  createEditHistorySpan,
   hashText,
   ProjectEditHistoryService,
   type EditHistorySegmentInput,
@@ -26,6 +27,60 @@ interface FixtureOptions {
 const fixtures: Fixture[] = [];
 
 describe("selection edit history", () => {
+  it.each(["edit", "format"] as const)("keeps complete %s replacements while shortening only displayed passages", (kind) => {
+    const fixture = createFixture();
+    const original = "Initial paragraph.";
+    const expanded = "中文段落 😀 with evidence.\n".repeat(400);
+    const final = "Final paragraph.";
+    const first = replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", original, expanded, kind);
+    first.steps[0].spans = [createEditHistorySpan(0, 0, original, expanded)];
+    const second = replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", expanded, final, kind);
+    second.steps[0].spans = [createEditHistorySpan(0, 0, expanded, final)];
+    fixture.history.record(fixture.projectId, [first, second]);
+
+    const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", final, 0, final.length);
+    expect(result.chainComplete).toBe(true);
+    expect(result.entries[0]).toMatchObject({ content: final, contentTruncated: false, authors: [{ id: "bob" }] });
+    expect(result.entries[1]).toMatchObject({ contentTruncated: true, authors: [{ id: "alice" }] });
+    expect(result.entries[1].content).toBe(`${expanded.slice(0, 2999)}…${expanded.slice(-2999)}`);
+    // Passing a shortened display block back into reconstruction would lose this baseline.
+    expect(result.baseline).toEqual({ content: original, contentTruncated: false });
+    expect(fixture.history.stats(fixture.projectId).payloadBytes).toBeGreaterThan(Buffer.byteLength(expanded) * 2);
+  });
+
+  it("reads legacy truncated records without inventing lost text or hiding newer reversible edits", () => {
+    const fixture = createFixture();
+    const original = "Old paragraph. ".repeat(150);
+    const replaced = "New paragraph. ".repeat(150);
+    const legacy = replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", original, replaced, "edit");
+    legacy.steps[0].spans[0].deletedPreview = "Old…";
+    legacy.steps[0].spans[0].insertedPreview = "New…";
+    legacy.steps[0].spans[0].truncated = true;
+    const final = "Final paragraph.";
+    fixture.history.record(fixture.projectId, [legacy,
+      replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", replaced, final, "edit")]);
+    const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", final, 0, final.length);
+    expect(result.entries.map((entry) => entry.content)).toEqual([final, replaced]);
+    expect(result.baseline).toEqual({ content: null, contentTruncated: false });
+  });
+
+  it("omits an over-budget complete replacement and stops newer history at its explicit boundary", () => {
+    const fixture = createFixture({ editHistoryMaxStorageBytes: 1000 });
+    const original = "Initial";
+    const huge = "大段修改".repeat(1000);
+    const skipped = replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", original, huge, "edit");
+    fixture.history.record(fixture.projectId, [skipped]);
+    expect(fixture.history.stats(fixture.projectId)).toMatchObject({ segmentCount: 0, payloadBytes: 0 });
+    expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", huge, 0, huge.length))
+      .toMatchObject({ entries: [], baseline: null, chainComplete: false });
+    const final = huge + "!";
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", huge, final, "edit")]);
+    const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", final, huge.length - 4, final.length);
+    expect(result).toMatchObject({ chainComplete: false, baseline: { content: huge.slice(-4), contentTruncated: false } });
+    expect(result.entries[0].content).toBe(final.slice(-5));
+    expect(fixture.history.stats(fixture.projectId).payloadBytes).toBeLessThanOrEqual(1000);
+  });
+
   it.each(["author", "kind", "createdAt", "updatedAt", "stepTime", "hash", "path", "emptySteps", "span", "step"])(
     "rejects a whole internal batch with an invalid %s instead of silently repairing or dropping it", (field) => {
       const fixture = createFixture();

@@ -25,7 +25,7 @@ import {
   type CollaborationProjectAccess
 } from "./projects.js";
 import { reanchorFileComments, type SourceCommentEdit } from "./anchors.js";
-import { hashText, type EditHistorySegmentInput, type EditHistorySpan, type EditHistoryStep } from "./editHistory.js";
+import { createEditHistorySpan, hashText, type EditHistorySegmentInput, type EditHistorySpan, type EditHistoryStep } from "./editHistory.js";
 import { isEditableTextFile, isTextContent, MAX_TEXT_EDITOR_BYTES } from "../shared/fileTypes.js";
 import {
   COLLABORATION_PROTOCOL_VERSION,
@@ -73,7 +73,6 @@ const MAX_FORMAT_LEASE_WAITERS = MAX_PROJECT_SESSIONS * 2;
 // collaborator's edit, so the resulting record remains attributable.
 const EDIT_SEGMENT_IDLE_MS = 30_000;
 const MAX_EDIT_SPANS_PER_STEP = 96;
-const MAX_EDIT_PREVIEW_CHARS = 1_200;
 // Completion notifications are useful only to browsers that were already
 // present when the operation finished. The database and retained manifests
 // are the authority for a later workspace open.
@@ -1816,9 +1815,8 @@ function replaceText(text: Y.Text, content: string): void {
 }
 
 /**
- * Turn Y.Text's transaction delta into compact positional spans. We retain
- * lengths for exact range mapping, while previews keep a pasted/formatter
- * change from turning the edit-history database into a second source store.
+ * Turn Y.Text's transaction delta into reversible positional replacements.
+ * The history service bounds total storage, not individual replacement text.
  */
 function editSpansFromYDelta(delta: readonly unknown[], before: string, after: string): EditHistorySpan[] {
   if (before === after) return [];
@@ -1832,9 +1830,8 @@ function editSpansFromYDelta(delta: readonly unknown[], before: string, after: s
     const deletedLength = pending.deleted.length;
     const insertedLength = pending.inserted.length;
     if (deletedLength || insertedLength) {
-      spans.push(editSpan(
-        pending.beforeStart, pending.beforeStart + deletedLength,
-        pending.afterStart, pending.afterStart + insertedLength,
+      spans.push(createEditHistorySpan(
+        pending.beforeStart, pending.afterStart,
         pending.deleted, pending.inserted
       ));
     }
@@ -1888,40 +1885,10 @@ function editSpansFromYDelta(delta: readonly unknown[], before: string, after: s
 function wholeDocumentEditSpan(before: string, after: string): EditHistorySpan {
   const prefix = commonPrefixLength(before, after);
   const suffix = commonSuffixLength(before, after, prefix);
-  return editSpan(
-    prefix, before.length - suffix,
-    prefix, after.length - suffix,
+  return createEditHistorySpan(
+    prefix, prefix,
     before.slice(prefix, before.length - suffix), after.slice(prefix, after.length - suffix)
   );
-}
-
-function editSpan(
-  beforeStart: number,
-  beforeEnd: number,
-  afterStart: number,
-  afterEnd: number,
-  deleted: string,
-  inserted: string
-): EditHistorySpan {
-  const deletedPreview = previewEditText(deleted);
-  const insertedPreview = previewEditText(inserted);
-  return {
-    beforeStart,
-    beforeEnd,
-    afterStart,
-    afterEnd,
-    deletedLength: deleted.length,
-    insertedLength: inserted.length,
-    deletedPreview,
-    insertedPreview,
-    truncated: deletedPreview.length < deleted.length || insertedPreview.length < inserted.length
-  };
-}
-
-function previewEditText(value: string): string {
-  if (value.length <= MAX_EDIT_PREVIEW_CHARS) return value;
-  const edge = Math.floor((MAX_EDIT_PREVIEW_CHARS - 1) / 2);
-  return `${value.slice(0, edge)}…${value.slice(value.length - edge)}`;
 }
 
 function commonPrefixLength(left: string, right: string): number {

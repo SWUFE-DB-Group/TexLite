@@ -589,8 +589,11 @@ deletions; invalid or oversized text is reported as unavailable, not as unchange
 After a source write succeeds, connection-originated Yjs text deltas are also
 stored as ordered edit segments. Each segment belongs to exactly one user, one
 file, and one operation type (`edit` or `format`). The edit records store only
-positional replacements and bounded source previews, not duplicate complete
-files. They live in SQLite separately from recovery snapshots and are retained
+positional replacements with complete deleted and inserted text, rather than
+per-edit whole-file snapshots. Browser and agent edits use the same lossless
+span encoding; only displayed passage previews are shortened. Older truncated
+records remain readable but cannot reconstruct affected earlier passages.
+The records live in SQLite separately from recovery snapshots and are retained
 as the newest 5,000 project segments within an independent 32 MB serialized
 payload budget (`editHistory.maxStorageMB`). This budget never shares or
 reduces the 128 MB recovery-snapshot budget. A too-large individual edit burst
