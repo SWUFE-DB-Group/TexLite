@@ -12,7 +12,7 @@ import { hashPassword, MIN_PASSWORD_LENGTH } from "./security.js";
 import { assertEnvironment, hostRequirementsSatisfied, inspectHostEnvironment, inspectHostRequirements, type EnvironmentTool } from "./environment.js";
 import { serve } from "./index.js";
 import { processStatus, restartManaged, startManaged, stopManaged, streamLogs, waitForOnline, type ProcessStatus } from "./pm2.js";
-import { defaultDataDirectory, resolveConfigPath } from "./runtimePaths.js";
+import { resolveConfigPath } from "./runtimePaths.js";
 import { basePathHref } from "../shared/basePath.js";
 
 export interface CliOptions {
@@ -108,55 +108,26 @@ function configPathFor(options: CliOptions): string {
   return resolveConfigPath(options.configPath);
 }
 
-function writeInitialConfig(configPath: string, siteName: string, adminEmail: string): void {
-  const dataDirectory = defaultDataDirectory();
-  const configuredDataDirectory = process.env.TEXLITE_DATA_DIR?.trim();
-  const effectiveDataDirectory = configuredDataDirectory
-    ? path.resolve(path.dirname(configPath), configuredDataDirectory)
-    : dataDirectory;
-  const configuredPort = Number.parseInt(process.env.TEXLITE_PORT ?? "", 10);
-  const initialPort = Number.isInteger(configuredPort) && configuredPort >= 1 && configuredPort <= 65_535
-    ? configuredPort : CONFIG_DEFAULTS.port;
+function writeInitialConfig(configPath: string, siteName: string | undefined, adminEmail: string | undefined): void {
+  // Validate explicit environment settings before creating a file. Defaults
+  // remain runtime defaults, not permanent overrides in a generated config.
+  const config = loadConfig(configPath);
+  const server = {
+    host: process.env.TEXLITE_HOST !== undefined ? config.host : undefined,
+    port: process.env.TEXLITE_PORT !== undefined ? config.port : undefined,
+    basePath: process.env.TEXLITE_BASE_PATH !== undefined ? config.basePath : undefined
+  };
   fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
   // Data parents are not guaranteed to exist on a fresh account. Create only
   // the parent here; the configured data directory itself is created by
   // openDatabase after configuration validation.
-  for (const parent of new Set([path.dirname(dataDirectory), path.dirname(effectiveDataDirectory)])) {
-    fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
-  }
+  fs.mkdirSync(path.dirname(config.dataDir), { recursive: true, mode: 0o700 });
   try { fs.chmodSync(path.dirname(configPath), 0o700); } catch { /* Windows and restricted filesystems may not support chmod. */ }
   const configFile = {
     siteName,
     adminEmail,
-    sessionDays: CONFIG_DEFAULTS.sessionDays,
-    server: { host: process.env.TEXLITE_HOST?.trim() || CONFIG_DEFAULTS.host, port: initialPort, basePath: CONFIG_DEFAULTS.basePath },
-    storage: { dataDir: configuredDataDirectory || dataDirectory },
-    uploads: { maxFileSizeMB: CONFIG_DEFAULTS.maxFileSizeMB },
-    pdf: {
-      loadingStrategy: CONFIG_DEFAULTS.pdfLoadingStrategy,
-      rangeThresholdMB: CONFIG_DEFAULTS.pdfRangeThresholdMB
-    },
-    history: {
-      maxVersions: CONFIG_DEFAULTS.historyMaxVersions,
-      maxStorageMB: CONFIG_DEFAULTS.historyMaxStorageMB
-    },
-    editHistory: {
-      maxStorageMB: CONFIG_DEFAULTS.editHistoryMaxStorageMB
-    },
-    git: {
-      binary: CONFIG_DEFAULTS.git,
-      operationTimeoutSeconds: CONFIG_DEFAULTS.gitOperationTimeoutSeconds,
-      githubApiBaseUrl: CONFIG_DEFAULTS.githubApiBaseUrl
-    },
-    latex: {
-      latexmk: CONFIG_DEFAULTS.latexmk,
-      defaultEngine: CONFIG_DEFAULTS.defaultEngine,
-      allowedEngines: CONFIG_DEFAULTS.allowedEngines,
-      extraArgs: CONFIG_DEFAULTS.extraArgs,
-      allowProjectLatexmkrc: CONFIG_DEFAULTS.allowProjectLatexmkrc,
-      compileTimeoutSeconds: CONFIG_DEFAULTS.compileTimeoutSeconds,
-      maxCompileJobs: CONFIG_DEFAULTS.maxCompileJobs
-    }
+    server: Object.values(server).some((value) => value !== undefined) ? server : undefined,
+    storage: process.env.TEXLITE_DATA_DIR !== undefined ? { dataDir: process.env.TEXLITE_DATA_DIR } : undefined
   };
   fs.writeFileSync(configPath, `${JSON.stringify(configFile, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
   try { fs.chmodSync(configPath, 0o600); } catch { /* Windows and restricted filesystems may not support chmod. */ }
@@ -171,16 +142,16 @@ async function initialize(options: CliOptions): Promise<void> {
     if (!fs.existsSync(configPath)) {
       const configuredSiteName = process.env.TEXLITE_SITE_NAME;
       const siteName = configuredSiteName !== undefined
-        ? configuredSiteName.trim() || CONFIG_DEFAULTS.siteName
+        ? configuredSiteName.trim() || undefined
         : rl
-          ? (await rl.question(`Site name [${CONFIG_DEFAULTS.siteName}]: `)).trim() || CONFIG_DEFAULTS.siteName
-          : CONFIG_DEFAULTS.siteName;
+          ? (await rl.question(`Site name [${CONFIG_DEFAULTS.siteName}]: `)).trim() || undefined
+          : undefined;
       const configuredAdminEmail = process.env.TEXLITE_ADMIN_EMAIL;
       const adminEmail = configuredAdminEmail !== undefined
-        ? configuredAdminEmail.trim()
+        ? configuredAdminEmail.trim() || undefined
         : rl
-          ? (await rl.question("Administrator contact email (optional): ")).trim()
-          : "";
+          ? (await rl.question("Administrator contact email (optional): ")).trim() || undefined
+          : undefined;
       writeInitialConfig(configPath, siteName, adminEmail);
       output(`Created configuration file: ${configPath}`);
     } else {
@@ -313,6 +284,7 @@ async function printConfig(options: CliOptions): Promise<void> {
     historyMaxVersions: config.historyMaxVersions,
     historyMaxStorageBytes: config.historyMaxStorageBytes,
     editHistoryMaxStorageBytes: config.editHistoryMaxStorageBytes,
+    editHistoryMaxSegments: config.editHistoryMaxSegments,
     git: config.git
   }, null, 2));
 }

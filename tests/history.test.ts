@@ -537,7 +537,7 @@ describe("project history retention", () => {
       pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
       historyMaxVersions: options.maxVersions ?? 200,
       historyMaxStorageBytes: options.maxStorageBytes ?? 512 * 1024 * 1024,
-      editHistoryMaxStorageBytes: 32 * 1024 * 1024,
+      editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
       git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
     };
     const db = openDatabase(config);

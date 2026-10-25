@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadBasePath, loadConfig } from "../src/server/config.js";
+import { loadBasePath, loadConfig, validateConfig } from "../src/server/config.js";
 
 describe("configuration", () => {
   const envKeys = [
@@ -11,7 +11,7 @@ describe("configuration", () => {
     "TEXLITE_MAX_COMPILE_JOBS", "TEXLITE_LATEXMK", "TEXLITE_DEFAULT_ENGINE", "TEXLITE_MAX_UPLOAD_SIZE_MB",
     "TEXLITE_PDF_LOADING_STRATEGY", "TEXLITE_PDF_RANGE_THRESHOLD_MB",
     "TEXLITE_HISTORY_MAX_VERSIONS", "TEXLITE_HISTORY_MAX_STORAGE_MB",
-    "TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB",
+    "TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB", "TEXLITE_EDIT_HISTORY_MAX_SEGMENTS",
     "TEXLITE_GIT", "TEXLITE_GIT_TIMEOUT", "TEXLITE_GITHUB_API_URL"
   ] as const;
   const originalEnvironment = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -38,7 +38,7 @@ describe("configuration", () => {
       uploads: { maxFileSizeMB: 25 },
       pdf: { loadingStrategy: "range", rangeThresholdMB: 7 },
       history: { maxVersions: 120, maxStorageMB: 256 },
-      editHistory: { maxStorageMB: 48 },
+      editHistory: { maxStorageMB: 48, maxSegments: 8000 },
       git: { binary: "/usr/local/bin/git", operationTimeoutSeconds: 45, githubApiBaseUrl: "https://github.example/api/v3/" },
       latex: { defaultEngine: "lualatex", allowedEngines: ["lualatex"], allowProjectLatexmkrc: false }
     }));
@@ -56,6 +56,7 @@ describe("configuration", () => {
     expect(config.historyMaxVersions).toBe(120);
     expect(config.historyMaxStorageBytes).toBe(256 * 1024 * 1024);
     expect(config.editHistoryMaxStorageBytes).toBe(48 * 1024 * 1024);
+    expect(config.editHistoryMaxSegments).toBe(8000);
     expect(config.git).toBe("/usr/local/bin/git");
     expect(config.gitOperationTimeoutMs).toBe(45_000);
     expect(config.githubApiBaseUrl).toBe("https://github.example/api/v3");
@@ -86,7 +87,7 @@ describe("configuration", () => {
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
       pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 2 * 1024 * 1024,
       historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024,
-      editHistoryMaxStorageBytes: 32 * 1024 * 1024,
+      editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
       git: "git", gitOperationTimeoutMs: 120_000, githubApiBaseUrl: "https://api.github.com"
     });
   });
@@ -124,6 +125,45 @@ describe("configuration", () => {
     fs.writeFileSync(configPath, JSON.stringify({ editHistory: { maxStorageMB: 3 } }));
     process.env.TEXLITE_CONFIG = configPath;
     expect(() => loadConfig()).toThrow(/editHistory\.maxStorageMB.*4 to 102400/);
+  });
+
+  it.each([undefined, {}, { maxStorageMB: 32 }, { maxSegments: 5000 }])(
+    "defaults omitted edit-history settings without replacing explicit existing values (%j)", (editHistory) => {
+      root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-edit-defaults-"));
+      const configPath = path.join(root, "config.json");
+      fs.writeFileSync(configPath, JSON.stringify({ storage: { dataDir: root }, editHistory }));
+      const config = loadConfig(configPath);
+      expect(config.editHistoryMaxStorageBytes).toBe((editHistory?.maxStorageMB ?? 64) * 1024 * 1024);
+      expect(config.editHistoryMaxSegments).toBe(editHistory?.maxSegments ?? 20_000);
+      expect(config.historyMaxStorageBytes).toBe(128 * 1024 * 1024);
+    }
+  );
+
+  it("overrides both edit-history file limits through environment variables", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-edit-env-"));
+    const configPath = path.join(root, "config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ editHistory: { maxStorageMB: 32, maxSegments: 5000 } }));
+    process.env.TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB = "96";
+    process.env.TEXLITE_EDIT_HISTORY_MAX_SEGMENTS = "30000";
+    expect(loadConfig(configPath)).toMatchObject({ editHistoryMaxStorageBytes: 96 * 1024 * 1024, editHistoryMaxSegments: 30_000 });
+    process.env.TEXLITE_EDIT_HISTORY_MAX_SEGMENTS = "many";
+    expect(() => loadConfig(configPath)).toThrow(/editHistory\.maxSegments.*many/);
+  });
+
+  it.each([0, -1, 1.5, 100001, "20000", null])("rejects an invalid edit-history segment limit (%j)", (maxSegments) => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-edit-count-"));
+    const configPath = path.join(root, "config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ editHistory: { maxSegments } }));
+    expect(() => loadConfig(configPath)).toThrow(/editHistory\.maxSegments/);
+  });
+
+  it("validates materialized segment limits and accepts their documented endpoints", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-edit-range-"));
+    const configPath = path.join(root, "config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ storage: { dataDir: root } }));
+    const config = loadConfig(configPath);
+    for (const count of [1, 100_000]) expect(() => validateConfig({ ...config, editHistoryMaxSegments: count })).not.toThrow();
+    expect(() => validateConfig({ ...config, editHistoryMaxSegments: 0 })).toThrow(/editHistory\.maxSegments.*1 to 100000/);
   });
 
   it("validates the PDF loading strategy and range threshold", () => {

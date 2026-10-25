@@ -102,7 +102,7 @@ export async function buildApp(
   const eventLoopDelay = monitorEventLoopDelay({ resolution: EVENT_LOOP_DELAY_RESOLUTION_MS });
   eventLoopDelay.enable();
   const history = new ProjectHistoryService(config, db);
-  const editHistory = new ProjectEditHistoryService(db, config.editHistoryMaxStorageBytes);
+  const editHistory = new ProjectEditHistoryService(db, config.editHistoryMaxStorageBytes, config.editHistoryMaxSegments);
   const historyRetention = new HistoryRetentionScheduler(history, {
     onError: (error, projectId) => app.log.error({ err: error, projectId }, "Failed to enforce project history retention")
   });

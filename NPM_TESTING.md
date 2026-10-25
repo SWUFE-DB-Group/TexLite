@@ -76,6 +76,9 @@ XDG_DATA_HOME="$TEST_ROOT/data" \
 ~~~
 
 The `config` output should show the temporary configuration and data paths.
+The generated JSON is intentionally minimal: unspecified settings are omitted
+and resolved at runtime. The explicit test site name is saved; default history,
+compiler, PDF and other settings should not be copied into the file.
 `requirements` is safe before initialization: it checks only default host
 commands on `PATH` and does not read the temporary configuration or data.
 `doctor` verifies the configuration, database, administrator, and required

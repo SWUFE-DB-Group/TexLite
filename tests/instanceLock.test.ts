@@ -37,7 +37,7 @@ describe("instance lock", () => {
       pdfRangeThresholdBytes: 5 * 1024 * 1024,
       historyMaxVersions: 50,
       historyMaxStorageBytes: 100 * 1024 * 1024,
-      editHistoryMaxStorageBytes: 32 * 1024 * 1024,
+      editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
       latexmk: "latexmk",
       defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"],

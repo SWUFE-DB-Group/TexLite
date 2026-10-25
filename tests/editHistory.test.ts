@@ -22,11 +22,62 @@ interface Fixture {
 
 interface FixtureOptions {
   editHistoryMaxStorageBytes?: number;
+  editHistoryMaxSegments?: number;
 }
 
 const fixtures: Fixture[] = [];
 
 describe("selection edit history", () => {
+  it("defaults to 64 MiB and retains the newest 20,000 segments instead of 5,000", () => {
+    const fixture = createFixture();
+    const inputs = Array.from({ length: 20_001 }, (_, index) => replaceSegment(
+      "main.tex", "alice", new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(), `v${index}`, `v${index + 1}`, "edit"
+    ));
+    fixture.history.record(fixture.projectId, inputs);
+    expect(fixture.history.stats(fixture.projectId)).toMatchObject({ segmentCount: 20_000, maxStorageBytes: 64 * 1024 * 1024 });
+    const rows = fixture.db.prepare("SELECT before_hash FROM project_edit_segments WHERE project_id = ? ORDER BY updated_at LIMIT 1")
+      .all(fixture.projectId);
+    expect(rows).toEqual([{ before_hash: hashText("v1") }]);
+    expect(fixture.db.prepare("SELECT after_hash FROM project_edit_history_boundaries WHERE project_id = ?").get(fixture.projectId))
+      .toEqual({ after_hash: hashText("v1") });
+  });
+
+  it("applies a configured project-wide count independently of the byte cap, including on startup", () => {
+    const fixture = createFixture({ editHistoryMaxSegments: 3 });
+    fixture.history.record(fixture.projectId, [
+      replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "first", "edit"),
+      replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", "first", "second", "edit"),
+      replaceSegment("other.tex", "alice", "2026-01-01T10:06:00.000Z", "other old", "other new", "edit"),
+      replaceSegment("main.tex", "alice", "2026-01-01T10:09:00.000Z", "second", "final", "edit")
+    ]);
+    expect(fixture.history.stats(fixture.projectId).segmentCount).toBe(3);
+    expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", "final", 0, 5))
+      .toMatchObject({ chainComplete: false, baseline: { content: "first" } });
+    const reduced = new ProjectEditHistoryService(fixture.db, undefined, 2);
+    reduced.enforceRetention(fixture.projectId);
+    expect(reduced.stats(fixture.projectId).segmentCount).toBe(2);
+    expect(reduced.selectionHistory(fixture.projectId, "main.tex", "final", 0, 5))
+      .toMatchObject({ chainComplete: false, baseline: { content: "second" } });
+    expect(reduced.selectionHistory(fixture.projectId, "other.tex", "other new", 0, 9))
+      .toMatchObject({ chainComplete: true, baseline: { content: "other old" } });
+  });
+
+  it("streams past 5,000 unrelated edits to reconstruct an older selection", () => {
+    const fixture = createFixture();
+    let source = "new\n";
+    const inputs = [replaceSegment("main.tex", "alice", "2026-01-01T00:00:00.000Z", "old\n", source, "edit")];
+    for (let index = 1; index <= 5001; index++) {
+      const next = source + "!";
+      inputs.push(replaceSegment("main.tex", "bob", new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(), source, next, "edit"));
+      source = next;
+    }
+    fixture.history.record(fixture.projectId, inputs);
+    const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", source, 0, 3);
+    expect(result).toMatchObject({ chainComplete: true, hasMore: false, baseline: { content: "old", contentTruncated: false } });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]).toMatchObject({ content: "new", authors: [{ id: "alice" }] });
+  });
+
   it.each(["edit", "format"] as const)("keeps complete %s replacements while shortening only displayed passages", (kind) => {
     const fixture = createFixture();
     const original = "Initial paragraph.";
@@ -420,7 +471,7 @@ function createFixture(options: FixtureOptions = {}): Fixture {
     compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
     allowedEngines: ["xelatex"], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024 * 1024,
     pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-    historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024, editHistoryMaxStorageBytes: 32 * 1024 * 1024,
+    historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024, editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
     git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
   };
   const db = openDatabase(config);
@@ -431,7 +482,7 @@ function createFixture(options: FixtureOptions = {}): Fixture {
   const projectId = "project-1";
   db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, created_at, updated_at)
     VALUES (?, 'owner', 'owner', 'Paper', 'main.tex', NULL, 'xelatex', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`).run(projectId);
-  const fixture = { root, db, history: new ProjectEditHistoryService(db, options.editHistoryMaxStorageBytes), projectId };
+  const fixture = { root, db, history: new ProjectEditHistoryService(db, options.editHistoryMaxStorageBytes, options.editHistoryMaxSegments), projectId };
   fixtures.push(fixture);
   return fixture;
 }

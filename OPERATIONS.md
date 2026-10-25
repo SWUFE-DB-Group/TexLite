@@ -196,6 +196,16 @@ one process.
 
 ## Configuration
 
+`texlite init` writes a minimal configuration, not a copy of all defaults.
+Accepting the default site name and leaving optional inputs empty can produce
+`{}`. Custom site/contact inputs and explicitly supplied initialization
+overrides (`TEXLITE_HOST`, `TEXLITE_PORT`, `TEXLITE_BASE_PATH`, and
+`TEXLITE_DATA_DIR`) are saved; other environment variables remain runtime
+overrides. Omitted options use the current defaults, including after upgrades.
+Use `texlite config` to inspect effective values and the example JSON as a
+reference when adding overrides. Existing configuration files are left intact;
+to adopt a new default, remove the corresponding explicit setting yourself.
+
 ### Where configuration and data live
 
 Configuration path precedence:
@@ -231,7 +241,7 @@ preferred.
 | `uploads.maxFileSizeMB` | `50` MB | Limit for uploads, ZIP entries, and attachments. |
 | `pdf.loadingStrategy` / `pdf.rangeThresholdMB` | `auto` / `2` MB | Uses full transfer through the threshold and allows PDF.js byte-range requests above it. Explicitly configured thresholds are preserved. |
 | `history.maxVersions` / `history.maxStorageMB` | `0` (unlimited) / `128` MiB | Per-project ordinary-version count (`0` = unlimited) and soft limit for deduplicated files plus snapshot metadata. Protected snapshots may exceed the limit; shared SQLite overhead is excluded. |
-| `editHistory.maxStorageMB` | `32` MB | Independent per-project cap for author-attributed selection-edit deltas; retains the newest records and never consumes snapshot storage. |
+| `editHistory.maxStorageMB` / `editHistory.maxSegments` | `64` MiB / `20000` | Independent per-project payload and segment-count caps for author-attributed selection edits. Retains the newest records within both limits and never consumes snapshot storage. Both settings are optional; existing explicit limits are preserved. |
 | `latex.latexmk` | `latexmk` | Host command. |
 | `latex.defaultEngine` | `xelatex` | Must appear in the allowed list. |
 | `updates.enabled` | `true` | Background release checks and administrator dashboard reminders. Set to `false` for offline deployments. |
@@ -255,7 +265,7 @@ TEXLITE_DATA_DIR                TEXLITE_CLIENT_DIR
 TEXLITE_SESSION_DAYS            TEXLITE_MAX_UPLOAD_SIZE_MB
 TEXLITE_PDF_LOADING_STRATEGY    TEXLITE_PDF_RANGE_THRESHOLD_MB
 TEXLITE_HISTORY_MAX_VERSIONS    TEXLITE_HISTORY_MAX_STORAGE_MB
-TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB
+TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB   TEXLITE_EDIT_HISTORY_MAX_SEGMENTS
 TEXLITE_LATEXMK                 TEXLITE_DEFAULT_ENGINE
 TEXLITE_COMPILE_TIMEOUT         TEXLITE_MAX_COMPILE_JOBS
 TEXLITE_GIT                     TEXLITE_GIT_TIMEOUT
@@ -270,7 +280,7 @@ default. `texlite init` applies the same validation.
 
 Accepted limits are: port `1–65535`, sessions `1–3650` days, upload size
 `1–2048` MB, history count `0–50000` (`0` = unlimited), snapshot history size `16–102400` MB,
-edit-history size `4–102400` MB, PDF range
+edit-history size `4–102400` MB and count `1–100000`, PDF range
 threshold `1–2048` MB, compile timeout `1–3600` seconds, compile jobs `1–32`,
 and Git timeout `1–3600` seconds.
 

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseConnection } from "./db.js";
+import { CONFIG_DEFAULTS } from "./config.js";
 import { safeRelativePath } from "./files.js";
 
 /**
@@ -95,12 +96,10 @@ export interface SelectionHistoryResult {
   chainComplete: boolean;
 }
 
-const MAX_SEGMENTS_PER_PROJECT = 5_000;
-const MAX_SEGMENTS_TO_SCAN = MAX_SEGMENTS_PER_PROJECT;
 const DEFAULT_RESULT_LIMIT = 60;
 const EDIT_SESSION_GAP_MS = 2 * 60 * 1_000;
 const MAX_PASSAGE_PREVIEW_CHARS = 6_000;
-export const DEFAULT_EDIT_HISTORY_MAX_STORAGE_BYTES = 32 * 1024 * 1024;
+export const DEFAULT_EDIT_HISTORY_MAX_STORAGE_BYTES = CONFIG_DEFAULTS.editHistoryMaxStorageMB * 1024 * 1024;
 
 interface StoredSegment {
   segment: EditHistorySegmentInput;
@@ -134,7 +133,11 @@ interface OpenSelectionHistoryEntry extends SelectionHistoryEntry {
 export class ProjectEditHistoryService {
   private readonly maxStorageBytes: number;
 
-  constructor(private readonly db: DatabaseConnection, maxStorageBytes = DEFAULT_EDIT_HISTORY_MAX_STORAGE_BYTES) {
+  constructor(
+    private readonly db: DatabaseConnection,
+    maxStorageBytes = DEFAULT_EDIT_HISTORY_MAX_STORAGE_BYTES,
+    private readonly maxSegments: number = CONFIG_DEFAULTS.editHistoryMaxSegments
+  ) {
     this.maxStorageBytes = normalizeStorageLimit(maxStorageBytes);
   }
 
@@ -200,7 +203,7 @@ export class ProjectEditHistoryService {
     let firstDiscard = rows.length;
     for (let index = 0; index < rows.length; index += 1) {
       const size = Math.max(0, Number(rows[index]!.steps_bytes) || 0);
-      if (retainedCount >= MAX_SEGMENTS_PER_PROJECT || retainedBytes + size > this.maxStorageBytes) {
+      if (retainedCount >= this.maxSegments || retainedBytes + size > this.maxStorageBytes) {
         firstDiscard = index;
         break;
       }
@@ -239,11 +242,14 @@ export class ProjectEditHistoryService {
     const filePath = safeRelativePath(filePathInput);
     const start = clamp(Math.min(startInput, endInput), 0, currentSource.length);
     const end = clamp(Math.max(startInput, endInput), start, currentSource.length);
+    // Stream retained rows instead of loading every replacement payload into
+    // an array. Stop as soon as the requested display windows are complete;
+    // retention count and query memory usage must not be coupled.
     const rows = this.db.prepare(`SELECT segment.*, user.username AS author_username, user.display_name AS author_name, user.avatar_style AS author_avatar_style
       FROM project_edit_segments segment LEFT JOIN users user ON user.id = segment.author_id
       WHERE segment.project_id = ? AND segment.file_path = ?
-      ORDER BY segment.updated_at DESC, segment.rowid DESC LIMIT ?`)
-      .all(projectId, filePath, MAX_SEGMENTS_TO_SCAN) as EditHistoryRow[];
+      ORDER BY segment.updated_at DESC, segment.rowid DESC`)
+      .iterate(projectId, filePath) as IterableIterator<EditHistoryRow>;
 
     const entries: SelectionHistoryEntry[] = [];
     let passage: PassageState = {

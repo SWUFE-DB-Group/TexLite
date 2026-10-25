@@ -155,7 +155,12 @@ collaboration drafts and layout preferences include the mount point in their
 storage namespace so two instances under one origin cannot share local state.
 
 `texlite init` creates the configuration when necessary and creates the first
-administrator. The server refuses to start without at least one active
+administrator. New configuration files contain only explicit initialization
+choices: a supplied site name/contact email and host, port, base-path or data
+directory overrides. Accepting all defaults can produce an empty JSON object;
+omitted options use runtime defaults and can follow future default changes.
+Existing configuration files are never automatically rewritten or stripped.
+The server refuses to start without at least one active
 administrator; public registration is not enabled. Configuration values are
 validated before environment checks, database opening, or binding the HTTP
 listener. Validation covers paths, limits, engines, timeout/queue settings,
@@ -594,8 +599,12 @@ per-edit whole-file snapshots. Browser and agent edits use the same lossless
 span encoding; only displayed passage previews are shortened. Older truncated
 records remain readable but cannot reconstruct affected earlier passages.
 The records live in SQLite separately from recovery snapshots and are retained
-as the newest 5,000 project segments within an independent 32 MB serialized
-payload budget (`editHistory.maxStorageMB`). This budget never shares or
+as the newest 20,000 project segments (`editHistory.maxSegments`) within an
+independent 64 MB serialized payload budget (`editHistory.maxStorageMB`). Both
+settings are optional; omitted values use these defaults. Explicit existing
+limits are preserved. Selection-history reads stream records and stop when
+the requested display windows are complete, rather than loading all retained
+payloads at once. This budget never shares or
 reduces the 128 MB recovery-snapshot budget. A too-large individual edit burst
 is omitted, and retention removes the oldest records; both deliberately create
 a visible history boundary rather than presenting an unsafe attribution. When selection history is viewed,
@@ -1073,7 +1082,7 @@ to collaborators. The separate selection-history stream provides that
 author-attributed editing view and never changes snapshot retention or restore
 semantics.
 Its edit segments have their own `editHistory.maxStorageMB` hard payload cap
-(32 MB by default), so selection-history retention cannot consume the snapshot
+(64 MB by default), so selection-history retention cannot consume the snapshot
 budget or affect recovery capacity.
 Internal edit batches are validated before any records are inserted. Invalid
 steps, spans, timestamps, or hash chains fail the batch and use the existing

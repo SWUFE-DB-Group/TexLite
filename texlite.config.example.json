@@ -22,7 +22,8 @@
     "maxStorageMB": 128
   },
   "editHistory": {
-    "maxStorageMB": 32
+    "maxStorageMB": 64,
+    "maxSegments": 20000
   },
   "git": {
     "binary": "git",
