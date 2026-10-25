@@ -48,7 +48,7 @@ function isFormTarget(target: EventTarget | null): boolean {
   // Ctrl/Cmd+S without compiling or opening the browser's Save Page dialog.
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
     || target instanceof HTMLSelectElement
-    || (target instanceof Element && Boolean(target.closest('[role="dialog"], [role="alertdialog"]')));
+    || (target instanceof Element && Boolean(target.closest('[role="dialog"], [role="alertdialog"], [data-agent-terminal]')));
 }
 
 export function useProjectCompilation(options: UseProjectCompilationOptions) {

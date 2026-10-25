@@ -123,6 +123,9 @@ shared browser writing, not a replacement for a personal IDE.
   project-level `latexmkrc`.
 - Per-project history and owner-only Git/GitHub backup. Git is optional and is
   checked only when its integration is used.
+- Optional browser terminals for host-installed coding agents, enabled by an
+  administrator. Agents edit the project directly, with one running task per
+  project. See [external agent terminals](OPERATIONS.md#external-agent-terminals).
 
 <a id="docker-deployment"></a>
 

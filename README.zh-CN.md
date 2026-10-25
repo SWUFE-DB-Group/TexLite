@@ -109,6 +109,8 @@ TeX 更新、数据位置与协作工作流的掌控。
   可下载产物以及可选的项目级 `latexmkrc`。
 - 每个项目拥有历史版本和仅所有者可用的 Git/GitHub 备份；Git 是可选依赖，仅在使用
   集成时才检查。
+- 可选的网页终端可调用服务器上安装的代码 agent，由管理员启用。Agent 直接编辑项目，
+  每个项目同时只能运行一个任务。参见[外部 agent 终端](OPERATIONS.md#external-agent-terminals)。
 
 <a id="docker-deployment"></a>
 

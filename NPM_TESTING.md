@@ -109,6 +109,26 @@ Ctrl+C to stop the server.
 The package requires Node.js 24 or newer and the LaTeX engines enabled in the
 selected configuration.
 
+## Test optional external agent terminals
+
+On the isolated test installation, sign in as an administrator and open
+**Coding Agent CLI**. The default agent allowlist must be empty. Confirm that missing
+commands are reported without blocking normal project editing, then allow only
+the agents intentionally configured for this test.
+
+In a writable project, open **Terminal**, create a task and explicitly start it.
+Verify input, resize, browser reconnect, and end execution. Make a small direct
+source edit and check live editor synchronization, attributed history and comment
+anchors. Another user's/agent's task in the same project must fail to start until
+the first execution ends. Delete the task and verify project files remain.
+Never use a real model for an automated
+package smoke test; the integration tests use deterministic fake agents.
+
+For a second package installation, `npm install --omit=dev --omit=optional` must
+still allow normal startup and login; the external-tools page should report
+unavailable terminal support. Terminal resources must be present in the built
+browser assets even though xterm packages are development dependencies.
+
 ## Test the PM2 lifecycle in isolation
 
 Use both a private `PM2_HOME` and a test-only port. Every lifecycle command must

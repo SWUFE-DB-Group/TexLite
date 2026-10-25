@@ -1,4 +1,4 @@
-import { lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api";
 import type { CitationLibraryEntry, Comment, CommentMention, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
@@ -35,6 +35,7 @@ import { findLatexSourceIncludes } from "../../shared/latexDependencies";
 import { WorkspaceTopbar } from "../workspace/WorkspaceTopbar";
 import { WorkspaceFilePanel } from "../workspace/WorkspaceFilePanel";
 import { WorkspaceEditorPanel } from "../workspace/WorkspaceEditorPanel";
+import { useAgentAccess } from "../agents/useAgentAccess";
 import { WorkspacePreviewPanel } from "../workspace/WorkspacePreviewPanel";
 import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
 import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
@@ -42,6 +43,7 @@ import { createSourceCursorStore, type SourceCursorStore } from "../workspace/so
 import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
 import { workspaceOutlineForMainFile, type LoadedProjectOutline, type OutlineSourceSnapshot } from "../workspace/outlineState";
 import { LazyModal } from "../LazyLoadBoundary";
+const AgentTerminal = lazy(() => import("../workspace/AgentTerminal").then((module) => ({ default: module.AgentTerminal })));
 import type { LatexReference } from "../../shared/latexReferences";
 import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
@@ -91,6 +93,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
 }) {
   const { t } = useTranslation();
   const currentProjectId = useRef(projectId);
+  const agentAccess = useAgentAccess(`${user.id}:${projectId}`);
+  const [terminalOpen, setTerminalOpen] = useState(false);
   currentProjectId.current = projectId;
   const [project, setProject] = useState<Project | null>(null);
   useEffect(() => {
@@ -1375,6 +1379,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
 
   return <div className="workspace" data-texlite-tooltips={editorPreferences.showTooltips ? "on" : "off"}>
     <WorkspaceTopbar
+      agentTerminal={showEditor && agentAccess.visible && project.permission !== "read" ? { open: terminalOpen, toggle: () => setTerminalOpen((value) => !value) } : undefined}
       site={site} project={project} activeFile={activeFile} saveStateLabel={saveStateLabel}
       editorPreferences={editorPreferences} activeSessions={activeSessions} collaborationStatus={collaborationStatus}
       reconnectCollaboration={reconnectCollaboration} protocolUpgradeRequired={protocolUpgradeRequired} showEditor={showEditor} filesCollapsed={filesCollapsed}
@@ -1435,6 +1440,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       />}
       {showEditor && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel
+        terminal={terminalOpen ? <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} /></Suspense> : null}
         project={project} activeFile={activeFile} openTabs={openTabs}
         content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
         focusComment={focusComment} editorPreferences={editorPreferences} completionIndex={completionIndex}

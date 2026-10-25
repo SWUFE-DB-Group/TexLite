@@ -26,7 +26,7 @@ describe("database migrations", () => {
     const config = migrationConfig(root, path.join(root, "texlite.db"));
     let database = openDatabase(config);
     try {
-      database.exec(`DROP TABLE project_history_files; DELETE FROM texlite_schema_migrations WHERE version = 9;
+      database.exec(`DROP TABLE project_history_files; DELETE FROM texlite_schema_migrations WHERE version >= 9;
         INSERT INTO users (id, username, display_name, password_hash, role, created_at)
           VALUES ('u', 'owner', 'Owner', 'hash', 'user', '2026-10-23');
         INSERT INTO projects (id, owner_id, name, main_file, engine, created_at, updated_at)
@@ -207,7 +207,8 @@ describe("database migrations", () => {
           { version: 6, name: "add_user_avatar_style" },
           { version: 7, name: "add_user_avatar_svg" },
           { version: 8, name: "use_username_avatar_seed" },
-          { version: 9, name: "add_snapshot_file_tracking" }
+          { version: 9, name: "add_snapshot_file_tracking" },
+          { version: 10, name: "add_external_agent_tasks" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -227,7 +228,8 @@ describe("database migrations", () => {
           { version: 6, name: "add_user_avatar_style" },
           { version: 7, name: "add_user_avatar_svg" },
           { version: 8, name: "use_username_avatar_seed" },
-          { version: 9, name: "add_snapshot_file_tracking" }
+          { version: 9, name: "add_snapshot_file_tracking" },
+          { version: 10, name: "add_external_agent_tasks" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -267,7 +269,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -355,7 +357,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }]);
       } finally {
         migrated.close();
       }
@@ -372,13 +374,13 @@ describe("database migrations", () => {
       CREATE TABLE texlite_schema_migrations (
         version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL
       );
-      INSERT INTO texlite_schema_migrations VALUES (10, 'future_schema', '2026-01-01T00:00:00.000Z');
+      INSERT INTO texlite_schema_migrations VALUES (11, 'future_schema', '2026-01-01T00:00:00.000Z');
     `);
     database.close();
 
     try {
       expect(() => openDatabase(migrationConfig(root, databasePath)))
-        .toThrow(/version 10 is newer than this TexLite release/);
+        .toThrow(/version 11 is newer than this TexLite release/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

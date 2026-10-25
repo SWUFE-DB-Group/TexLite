@@ -39,6 +39,15 @@ type ProjectReadOptions = Pick<ProjectMutationOptions, "preflight">;
  * completion so clients cannot replay edits made against the replaced tree.
  */
 export class ProjectMutationCoordinator {
+  private readonly externalWriters = new Map<string, () => Promise<void>>();
+  private readonly exclusivePending = new Map<string, number>();
+
+  /** Source-tree replacement ends external writers before reserving the short queue. */
+  registerExternalWriter(projectId: string, stop: () => Promise<void>): (() => void) | null {
+    if (this.exclusivePending.has(projectId) || this.externalWriters.has(projectId)) return null;
+    this.externalWriters.set(projectId, stop);
+    return () => { if (this.externalWriters.get(projectId) === stop) this.externalWriters.delete(projectId); };
+  }
   private readonly queues = new Map<string, ProjectQueue>();
   /**
    * Compilation is deliberately not represented by the ordinary project
@@ -66,8 +75,11 @@ export class ProjectMutationCoordinator {
     operation: () => Promise<T> | T,
     options: ProjectMutationOptions = {}
   ): Promise<T> {
+    this.exclusivePending.set(projectId, (this.exclusivePending.get(projectId) ?? 0) + 1);
     const exclusion = this.beginCompileExclusion(projectId);
     try {
+      const stopWriter = this.externalWriters.get(projectId);
+      if (stopWriter) { options.preflight?.(); await stopWriter(); }
       // Do not reserve the ordinary queue until active compilations have
       // drained.  Otherwise a compile waiting for a short snapshot lock could
       // deadlock behind this exclusive operation.
@@ -93,6 +105,9 @@ export class ProjectMutationCoordinator {
       }
     } finally {
       exclusion.release();
+      const pending = this.exclusivePending.get(projectId)! - 1;
+      if (pending) this.exclusivePending.set(projectId, pending);
+      else this.exclusivePending.delete(projectId);
     }
   }
 

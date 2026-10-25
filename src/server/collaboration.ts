@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { WebSocket, type RawData } from "ws";
 import * as Y from "yjs";
+import { makeDiff } from "@sanity/diff-match-patch";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import * as syncProtocol from "y-protocols/sync";
@@ -160,6 +161,10 @@ export interface CollaborationPersistEvent {
 }
 
 export class CollaborationService {
+  private readonly externalSources = new Map<string, {
+    beforeFlush: (paths: readonly string[]) => void;
+    written: (paths: readonly string[]) => void;
+  }>();
   private readonly rooms = new Map<string, Room>();
   private readonly maintenanceProjects = new Map<string, string>();
   private readonly roomInitializations = new Map<string, Promise<Room>>();
@@ -250,6 +255,37 @@ export class CollaborationService {
     return room ? this.flushRoom(room) : null;
   }
 
+  /** Active external writers reconcile disk edits before an autosave can overwrite them. */
+  observeExternalSources(projectId: string, observer: {
+    beforeFlush: (paths: readonly string[]) => void;
+    written: (paths: readonly string[]) => void;
+  }): () => void {
+    this.externalSources.set(projectId, observer);
+    return () => { if (this.externalSources.get(projectId) === observer) this.externalSources.delete(projectId); };
+  }
+
+  /** Apply disk edits as a real attributed Yjs delta, retaining pending human edits and anchors. */
+  importExternalText(projectId: string, filePath: string, content: string, userId: string): boolean {
+    const room = this.rooms.get(projectId);
+    if (!room || !isCollaborativeTextFile(filePath)) return false;
+    room.allowedPaths.add(filePath);
+    const text = this.trackedText(room, filePath);
+    // A cold room may have hydrated this disk revision before the observer's
+    // next scan. Let its caller record that external transition. An identical
+    // still-dirty human draft, however, already has its own edit attribution.
+    if (text.toString() === content) return room.persistedContent.get(filePath) !== content;
+    const diffs = makeDiff(text.toString(), content, { checkLines: true, timeout: 1 });
+    room.doc.transact(() => {
+      let offset = 0;
+      for (const [kind, value] of diffs) {
+        if (kind === -1) text.delete(offset, value.length);
+        else { if (kind === 1) text.insert(offset, value); offset += value.length; }
+      }
+    }, { externalUserId: userId });
+    this.bumpFiles(room, { kind: "update", path: filePath });
+    return true;
+  }
+
   /**
    * Prevent collaboration autosaves from changing the source tree while a
    * compiler is copying an immutable snapshot. Yjs updates remain accepted in
@@ -319,6 +355,7 @@ export class CollaborationService {
   }
 
   updateFile(projectId: string, filePathInput: string, content: string, userId: string): void {
+    this.externalSources.get(projectId)?.written([filePathInput]);
     const room = this.rooms.get(projectId);
     if (!room) {
       this.invalidateProject(projectId);
@@ -446,6 +483,7 @@ export class CollaborationService {
   }
 
   movePath(projectId: string, sourceInput: string, destinationInput: string, userId: string): void {
+    this.externalSources.get(projectId)?.written([sourceInput, destinationInput]);
     const room = this.rooms.get(projectId);
     if (!room) {
       this.invalidateProject(projectId);
@@ -474,6 +512,7 @@ export class CollaborationService {
   }
 
   removePath(projectId: string, filePathInput: string): void {
+    this.externalSources.get(projectId)?.written([filePathInput]);
     const room = this.rooms.get(projectId);
     if (!room) {
       this.invalidateProject(projectId);
@@ -495,6 +534,7 @@ export class CollaborationService {
   }
 
   invalidateSourceTree(projectId: string, filePathInput?: string): void {
+    this.externalSources.get(projectId)?.written(filePathInput ? [filePathInput] : []);
     this.invalidateProject(projectId);
     const room = this.rooms.get(projectId);
     if (!room) return;
@@ -878,7 +918,7 @@ export class CollaborationService {
         // the stable identifier before getText() materializes the public type.
         const hasRecoveredText = bootstrap.recoveredState && room.doc.share.has(name);
         const text = this.trackedText(room, file.path);
-        if (hasRecoveredText && text.toString() !== file.content) {
+        if (hasRecoveredText && text.toString() !== file.content && !this.externalSources.has(projectId)) {
           room.dirtyPaths.add(file.path);
           recoveredDirty = true;
         } else {
@@ -916,6 +956,7 @@ export class CollaborationService {
         if (origin && typeof origin === "object" && "user" in origin) {
           room.lastModifiedUserId = (origin as Connection).user.id;
         }
+        if (isExternalOrigin(origin)) room.lastModifiedUserId = origin.externalUserId;
         this.scheduleSave(room);
       }
     });
@@ -1014,7 +1055,10 @@ export class CollaborationService {
       }
       if (isConnectionOrigin(transaction.origin) && before !== after) {
         const connection = transaction.origin;
-        this.recordEditStep(room, filePath, connection, event, before, after);
+        this.recordEditStep(room, filePath, connection.user.id, event, before, after, this.activeFormatLease(room, filePath)?.connection === connection);
+      }
+      if (isExternalOrigin(transaction.origin) && before !== after) {
+        this.recordEditStep(room, filePath, transaction.origin.externalUserId, event, before, after);
       }
       if (before !== after) {
         const edits: SourceCommentEdit[] = [];
@@ -1055,16 +1099,16 @@ export class CollaborationService {
   private recordEditStep(
     room: Room,
     filePath: string,
-    connection: Connection,
+    authorId: string,
     event: Y.YTextEvent,
     before: string,
-    after: string
+    after: string,
+    formatted = false
   ): void {
     const spans = editSpansFromYDelta(event.delta, before, after);
     if (!spans.length) return;
     const createdAt = new Date().toISOString();
-    const activeLease = this.activeFormatLease(room, filePath);
-    const kind: EditHistorySegmentInput["kind"] = activeLease?.connection === connection ? "format" : "edit";
+    const kind: EditHistorySegmentInput["kind"] = formatted ? "format" : "edit";
     const step: EditHistoryStep = {
       beforeHash: hashText(before),
       afterHash: hashText(after),
@@ -1075,7 +1119,7 @@ export class CollaborationService {
     const previousTime = previous ? Date.parse(previous.updatedAt) : Number.NaN;
     if (previous
       && previous.filePath === filePath
-      && previous.authorId === connection.user.id
+      && previous.authorId === authorId
       && previous.kind === kind
       && previous.afterHash === step.beforeHash
       && Number.isFinite(previousTime)
@@ -1087,7 +1131,7 @@ export class CollaborationService {
     }
     room.pendingEditSegments.push({
       filePath,
-      authorId: connection.user.id,
+      authorId,
       kind,
       beforeHash: step.beforeHash,
       afterHash: step.afterHash,
@@ -1508,6 +1552,7 @@ export class CollaborationService {
       if (roomHasPendingChanges(room)) room.snapshotFlushPending = true;
       return this.currentReceipt(room);
     }
+    this.externalSources.get(room.projectId)?.beforeFlush([...room.dirtyPaths]);
     const startedAt = performance.now();
     if (room.saveTimer) clearTimeout(room.saveTimer);
     room.saveTimer = null;
@@ -1606,6 +1651,7 @@ export class CollaborationService {
       }, 2000);
     }
     const receipt = this.currentReceipt(room, ok, [...new Set(failedPaths)]);
+    if (changedPaths.length) this.externalSources.get(room.projectId)?.written(changedPaths);
     room.rejectedPaths.clear();
     return receipt;
   }
@@ -1915,6 +1961,10 @@ function protocolMessage(epoch: string): Uint8Array {
 
 function isConnectionOrigin(origin: unknown): origin is Connection {
   return Boolean(origin && typeof origin === "object" && "socket" in origin);
+}
+
+function isExternalOrigin(origin: unknown): origin is { externalUserId: string } {
+  return Boolean(origin && typeof origin === "object" && "externalUserId" in origin);
 }
 
 function isSharedCompileState(mainFile: string, value: unknown): value is SharedCompileState {

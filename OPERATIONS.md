@@ -299,14 +299,14 @@ Nginx, omitting a URI from `proxy_pass` keeps `/texlite` intact:
 ~~~nginx
 location = /texlite {
     proxy_pass http://127.0.0.1:3000;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 
 location ^~ /texlite/ {
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -372,6 +372,95 @@ npm test
 npm run build
 npm start
 ~~~
+
+## External agent terminals
+
+No agents are allowed by default. Administrators open **Coding Agent CLI** from the
+dashboard to select allowed agents and refresh executable detection. There is no
+separate global switch. Deselecting an agent stops its active executions while
+preserving task context and cleanup access; other allowed agents are unaffected.
+Supported launch commands are `codex`, `opencode`, and `claude` on the
+TexLite service account's `PATH`. Detection reports installation/version, not
+authentication or provider quota. A PM2/systemd service may have a different
+`PATH` from an interactive login shell.
+
+The management screen is a normal page. Administrators can filter all projects'
+tasks by project, user, agent, execution state, or failed cleanup,
+with 20 entries per page. They can end/delete individual or selected tasks;
+administrative access does not grant access to other users' terminal streams or
+private project files. Other users get a personal task list from **Agent tasks**.
+
+Users with project write access can open **Terminal** in the workspace toolbar.
+Create a named task, select an allowed installed agent, then explicitly start it.
+Multiple tasks may use the same agent in the same project. The resizable terminal
+sits below the editor. Browser tabs attach to the same running task; one tab
+controls input, and another can take control. Hiding the panel, leaving a project,
+disconnecting a browser, or archiving a project does not stop executions.
+Agent tasks have no archive state: end an execution to free its process, or
+delete a task to remove its saved conversation.
+
+Agents execute directly in the project's source directory. Only one task may
+execute per project, across all users and agents (including different tasks of
+the same user). Other projects are independent. An execution retains the claim
+through startup, termination, and final file synchronization. Hiding a terminal or archiving a project
+does not release it. Stop the active task before starting another one.
+
+Pending collaboration edits are saved before launch. While the CLI runs, file
+changes are synchronized into Yjs, comment anchors, edit history and snapshots,
+attributed to the task owner. Autosave checks for external edits before writing;
+non-overlapping human and agent changes are merged. Conflicting agent versions
+are saved under `.texlite-agent-conflicts/<task-id>/` in the project, the human
+draft is preserved, and execution ends with a warning. Review those files manually.
+Source-tree replacement (Git checkout/restore, snapshot restore or project
+deletion) ends execution and synchronizes its last writes first.
+
+Task-specific CLI state stays under `dataDir/agent-tasks/<task-id>/state/`.
+`TEXLITE_PROJECT_CONTEXT` names a JSON file containing the source directory,
+configured main file, output directory and last compile result.
+`TEXLITE_COMPILE_LOG` names its log file; it is refreshed after compilation through
+TexLite. Ask the agent to read these paths when diagnosing a compile failure.
+There is no separate source copy or review/apply step.
+
+Before an agent starts, TexLite copies its fixed English `AGENTS.md` template
+into the project source root if the file is missing. It explains TexLite, the
+source/output directory layout and how to find compilation logs and results.
+Existing instructions (even an empty file) are never overwritten. Edit the
+project's copy normally to customize it; upgrades do not rewrite that file.
+
+**End execution** releases processes while preserving task files/context.
+**Delete task** ends execution, cleans its native conversation/state and removes
+only task-owned state, never project files. A failed cleanup stays visible
+for retry. Apart from the per-project writer claim, there are no execution-count limits, idle expiry, task timeouts, token
+budgets, or billing controls. A server restart interrupts executions; it does not
+automatically restart them. Exact-context continuation depends on the adapter
+being able to identify a saved native session; a new execution is also available.
+
+| Agent | Native state and continuation | Cleanup |
+| --- | --- | --- |
+| Codex | Task-specific `CODEX_HOME`; resume an identified transcript UUID. Use `--no-daemon` when advertised by the installed CLI. | Prefer detected native `delete --force`; remove the task-owned state directory afterward. |
+| OpenCode | Task-specific XDG data/state/cache and database; resume an ID reported by JSON session listing. | Native session deletion where identifiable, followed by removal of task-owned state. |
+| Claude Code | Task-specific `CLAUDE_CONFIG_DIR`; start with a task UUID and resume its matching saved transcript. | Remove task-owned state without touching the host's other conversations. |
+
+On the first start, isolated adapters copy selected host credential/configuration
+files if available; they do not copy host conversation history. Credentials
+subsequently refreshed within a task are preserved. Keychain/credential formats
+vary by CLI version, so an individual task may require login. Provider environment
+variables supported by the adapters are passed through. CLI authentication stays
+in the native terminal; TexLite does not provide an account or model. Agents may
+use the same server account quota and send project contents to their providers.
+
+Agent terminals are not OS sandboxes. Enable these terminals only for trusted writers
+who may use server-side tools with the TexLite service account's permissions.
+In Docker, install commands and configure credentials **inside the container**;
+host executables are not automatically available there.
+
+`node-pty` is an optional production dependency. If its native module cannot be
+installed or loaded, ordinary TexLite operation remains available and the tool
+page reports terminal support unavailable. Reinstall optional dependencies for
+the server's Node/platform and restart before retrying. The browser's terminal
+renderer is bundled and loaded only when a terminal is opened. Linux PTY I/O and
+termination are covered by a local, deterministic test agent without any model
+calls; platform/native-agent login behavior should also be checked when deploying.
 
 ## Backup and security
 

@@ -5,7 +5,7 @@ import { ConfirmDialog, Modal } from "../Dialog";
 import type { Project, ProjectListPagination, ProjectTag, SiteConfig, TagColor, User } from "../types";
 import i18n from "../i18n";
 import { errorMessage } from "../errors";
-import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Sparkles, Tags, Upload, Users, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Sparkles, Tags, TerminalSquare, Upload, Users, X } from "lucide-react";
 import { UserMenu } from "../UserMenu";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
 import { UpdateNotification } from "../UpdateNotification";
@@ -17,12 +17,14 @@ import { appPath, scopedStorageKey } from "../basePath";
 import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
 import { formatDateTime } from "../dateTime";
 import { captureDeletionHeight, PROJECT_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
+import { useAgentAccess } from "../agents/useAgentAccess";
 
 const projectKey = (project: Project) => project.id;
 
 const SystemMetricsDialog = lazy(() => import("../SystemMetricsDialog").then((module) => ({ default: module.SystemMetricsDialog })));
 const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then((module) => ({ default: module.CitationLibraryDialog })));
 const AdminUsers = lazy(() => import("./AdminUsers").then((module) => ({ default: module.AdminUsers })));
+const AgentManagement = lazy(() => import("./AgentManagement").then((module) => ({ default: module.AgentManagement })));
 const TagManagementDialog = lazy(() => import("./TagManagementDialog").then((module) => ({ default: module.TagManagementDialog })));
 const ProjectIconPickerDialog = lazy(() => import("./ProjectIconPickerDialog").then((module) => ({ default: module.ProjectIconPickerDialog })));
 const GitHubAccountDialog = lazy(() => import("../GitHubAccountDialog").then((module) => ({ default: module.GitHubAccountDialog })));
@@ -52,6 +54,8 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   });
   const [hasLoaded, setHasLoaded] = useState(Boolean(initialData));
   const [adminOpen, setAdminOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const agentAccess = useAgentAccess(user.id);
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [githubAccountOpen, setGitHubAccountOpen] = useState(false);
@@ -376,13 +380,14 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     <header className="topbar">
       <a className="brand-link" href={appPath("/")} aria-label={site.siteName}><SiteLogo siteName={site.siteName} /><span className="site-title">{site.siteName}</span></a>
       <div className="top-actions">
-        {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen((current) => !current); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
-        <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
+        {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen((current) => !current); setAgentsOpen(false); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
+        <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen(false); setAgentsOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
+        {(user.role === "admin" || agentAccess.visible) && <button className={`ghost${agentsOpen ? " top-return-action" : ""}`} onClick={() => { setAgentsOpen((value) => !value); setAdminOpen(false); setCitationLibraryOpen(false); }}>{agentsOpen ? <ArrowLeft size={14} /> : <TerminalSquare size={14} />}{t(agentsOpen ? "agents.back" : user.role === "admin" ? "agents.title" : "agents.tasks")}</button>}
         <UserMenu user={user} onGitHub={() => setGitHubAccountOpen(true)} onSignOut={logout} onUserChange={onUser} />
       </div>
     </header>
     {user.role === "admin" && <div className="dashboard-update"><UpdateNotification key={user.id} userId={user.id} /></div>}
-    {adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} onBack={() => setAdminOpen(false)} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard">
+    {agentsOpen ? <main className="dashboard"><LazyPage onClose={() => setAgentsOpen(false)}><AgentManagement user={user} onBack={() => setAgentsOpen(false)} /></LazyPage></main> : adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} onBack={() => setAdminOpen(false)} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard">
       <LazyPage onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} maxBibtexBytes={site.maxCitationBibtexBytes} /></LazyPage>
     </main> : <main className="dashboard">
       <div className="section-title"><div><h1><FolderOpen aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} />{t("tags.manage")}</button>{user.canCreateProjects && <><button onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} />{t("projects.upload")}</button><button className="primary" onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} />{t("projects.new")}</button></>}</div></div>

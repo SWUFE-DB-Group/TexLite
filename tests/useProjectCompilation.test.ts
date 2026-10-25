@@ -740,7 +740,9 @@ describe("compilation selection and request lifetimes", () => {
     const controls: HTMLElement[] = [document.createElement("input"), document.createElement("textarea"), document.createElement("select")];
     const dialog = document.createElement("div"); dialog.setAttribute("role", "dialog");
     const dialogButton = document.createElement("button"); dialog.append(dialogButton); controls.push(dialogButton);
-    container.append(...controls.slice(0, 3), dialog);
+    const terminal = document.createElement("section"); terminal.setAttribute("data-agent-terminal", "true");
+    const terminalButton = document.createElement("button"); terminal.append(terminalButton); controls.push(terminalButton);
+    container.append(...controls.slice(0, 3), dialog, terminal);
     for (const target of controls) {
       const event = new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true });
       await act(async () => { target.dispatchEvent(event); });

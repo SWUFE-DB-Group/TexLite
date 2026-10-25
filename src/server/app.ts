@@ -45,6 +45,8 @@ import { registerProjectCatalogRoutes } from "./routes/projects.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerUserManagementRoutes } from "./routes/users.js";
 import { registerWordCountRoutes } from "./routes/wordCount.js";
+import { registerAgentRoutes } from "./routes/agents.js";
+import { AgentService, type AgentServiceOptions } from "./agents/sessions.js";
 import { HarperService } from "./harper.js";
 import { ChktexService } from "./chktex.js";
 import { TexcountService } from "./texcount.js";
@@ -85,7 +87,7 @@ function escapeHtmlAttribute(value: string): string {
 export async function buildApp(
   config: Config,
   db: DatabaseConnection,
-  options: { logger?: boolean; githubFetch?: typeof fetch; updateFetch?: typeof fetch } = {}
+  options: { logger?: boolean; githubFetch?: typeof fetch; updateFetch?: typeof fetch; agents?: AgentServiceOptions } = {}
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: options.logger ?? true,
@@ -155,6 +157,21 @@ export async function buildApp(
     metrics.record("collaboration.persist", durationMs + performance.now() - started);
   });
   const projectMutations = new ProjectMutationCoordinator(collaboration);
+  const agents = new AgentService({ config, db, collaboration, projectMutations, recordHistory,
+    recordEdits: (id, edits) => editRetry.save(id, edits)
+  }, { onError: (error) => app.log.error({ err: error }, "External agent operation failed"), ...options.agents });
+  app.addHook("onResponse", async (request) => {
+    if (request.method === "GET" || request.method === "HEAD") return;
+    try { await agents.reconcilePermissions(request.method === "DELETE"); }
+    catch (error) { app.log.error({ err: error }, "Failed to revoke external agent access"); }
+    if (request.method === "POST" && request.routeOptions.url?.includes("/compile")) {
+      const { id } = request.params as { id?: string };
+      if (id) {
+        try { await agents.refreshProjectContext(id); }
+        catch (error) { app.log.error({ err: error }, "Failed to refresh agent compilation context"); }
+      }
+    }
+  });
   const projectGit = new ProjectGitService(config, db, options.githubFetch);
   const loginLimiter = new LoginRateLimiter();
   for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
@@ -244,6 +261,9 @@ export async function buildApp(
   });
 
   app.addHook("onClose", async () => collaboration.destroy());
+  // Fastify runs close hooks in reverse registration order. Drain external
+  // writers while Yjs rooms and history retry/retention services still exist.
+  app.addHook("onClose", async () => { await agents.dispose(); });
 
   const indexPath = path.join(config.clientDir, "index.html");
   const renderedIndex = fs.existsSync(indexPath)
@@ -276,6 +296,7 @@ export async function buildApp(
       updates
     });
     registerCollaborationRoutes(routes, { db, collaboration, metrics });
+    registerAgentRoutes(routes, { db, agents });
     registerAuthRoutes(routes, { config, db, loginLimiter });
     registerAvatarRoutes(routes, { db, collaboration });
     registerCitationRoutes(routes, { db });

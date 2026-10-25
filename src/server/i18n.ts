@@ -5,12 +5,14 @@
  */
 import { supportedLocale, type AppLocale } from "../shared/locales.js";
 import { zhHantMessages } from "./locales/zh-Hant.js";
+import { agentMessages } from "../shared/agentMessages.js";
 
 export type ServerLocale = AppLocale;
 
 type MessageParams = Record<string, unknown>;
 
 const enMessages = {
+    ...agentMessages.en,
     AVATAR_STYLE_INVALID: "Choose a supported avatar style.",
     AVATAR_NOT_FOUND: "No custom avatar is configured for this user.",
     AVATAR_PREVIEW_FORBIDDEN: "You can only preview avatars for your own account.",
@@ -156,6 +158,7 @@ const enMessages = {
 export type ServerErrorCode = keyof typeof enMessages;
 
 const zhMessages: Record<ServerErrorCode, string> = {
+    ...agentMessages.zh,
     AVATAR_STYLE_INVALID: "请选择支持的头像风格。",
     AVATAR_NOT_FOUND: "该用户尚未设置自定义头像。",
     AVATAR_PREVIEW_FORBIDDEN: "只能预览自己账号的头像。",

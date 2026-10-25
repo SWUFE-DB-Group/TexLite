@@ -114,6 +114,34 @@ const databaseMigrations: readonly DatabaseMigration[] = [
       included INTEGER NOT NULL CHECK (included IN (0, 1)),
       PRIMARY KEY (project_id, path)
     )`);
+  } },
+  { version: 10, name: "add_external_agent_tasks", apply: (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_policy (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        allowed TEXT NOT NULL DEFAULT '[]'
+      );
+      INSERT OR IGNORE INTO agent_policy (id) VALUES (1);
+      -- Keep ownership labels and cleanup locators after a project/user is deleted.
+      -- External processes and native conversations cannot be removed by FK cascades.
+      CREATE TABLE IF NOT EXISTS agent_tasks (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL,
+        project_name TEXT NOT NULL, user_name TEXT NOT NULL, agent_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'ready', cleanup_state TEXT NOT NULL DEFAULT 'none',
+        error_code TEXT, native_session_id TEXT, ever_started INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, started_at TEXT, ended_at TEXT,
+        exit_code INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS agent_tasks_project_user ON agent_tasks(project_id, user_id, updated_at);
+      CREATE INDEX IF NOT EXISTS agent_tasks_user ON agent_tasks(user_id, updated_at);
+      CREATE INDEX IF NOT EXISTS agent_tasks_state ON agent_tasks(state, updated_at);
+      CREATE TABLE IF NOT EXISTS agent_cleanup_events (
+        id INTEGER PRIMARY KEY, task_id TEXT NOT NULL, actor_id TEXT,
+        project_id TEXT NOT NULL, agent_id TEXT NOT NULL,
+        action TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL
+      );
+    `);
   } }
 ];
 

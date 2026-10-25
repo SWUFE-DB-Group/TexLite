@@ -1,7 +1,9 @@
 import type { ServerErrorCode } from "../i18n.js";
+import { agentMessages } from "../../shared/agentMessages.js";
 
 /** Traditional Chinese API messages, using the same stable error codes. */
 export const zhHantMessages: Record<ServerErrorCode, string> = {
+  ...agentMessages["zh-Hant"],
   AVATAR_STYLE_INVALID: "請選擇支援的頭像風格。",
   AVATAR_NOT_FOUND: "該使用者尚未設定自訂頭像。",
   AVATAR_PREVIEW_FORBIDDEN: "只能預覽自己帳號的頭像。",

@@ -34,6 +34,7 @@ and day-to-day operation.
 | Formatting | Browser-side `tex-fmt` WASM package and `bibtex-tidy` |
 | Git backup | Optional host Git and the GitHub REST API |
 | Process management | Foreground `serve`, or the bundled PM2 lifecycle commands |
+| External tool terminals | Administrator opt-in; adapter-based host CLIs, optional `node-pty`, lazy xterm.js UI, independent task working copies |
 
 ## Localization
 
@@ -1196,6 +1197,92 @@ owner's token is used for project operations. Administrators do not otherwise
 receive implicit access to another user's projects; they see a project only
 when they own it or it has been explicitly shared with them. The last active
 administrator cannot be removed or disabled.
+
+## External agent terminals
+
+Schema migration 10 adds an initially empty administrator agent allowlist, task records,
+and operation records. Tasks have independent UUIDs; project/user/agent is a
+grouping key, not a uniqueness constraint. One project admits only one active
+execution across all users, tasks and agents; different projects are independent.
+There are no limits on distinct tasks, elapsed runtime, provider quotas, or billing. Historical
+records do not retain live PTY handles. The application never automatically
+starts an agent in response to a compile failure or writing action.
+
+`AgentAdapter` in `src/server/agents/adapters/types.ts` defines feature discovery,
+native preparation, start, exact-context resume, native-session identification,
+and scoped cleanup. Codex, OpenCode, and Claude implement it separately;
+registration/discovery and session orchestration do not contain native command
+switches. PTY attachment, input ownership, process termination, task authorization,
+and retry state are shared service responsibilities.
+
+The administrative screen is a separate lazy page, with agent settings and a
+paginated cross-project task catalog. Administrators can stop/delete tasks but
+cannot attach to another user's terminal. This metadata-specific authority does
+not change ordinary project visibility. Users can manage their own tasks, and
+execution/attachment additionally requires current project write
+access and membership in the administrator allowlist. Mutating requests reconcile active tasks after
+permission changes. Terminal input/output also validates access, and WebSocket
+authentication queries the actual session row rather than the HTTP request cache.
+
+Tasks have no archive state; project archival only organizes project lists.
+Explicit termination releases the owned process
+group, including children, while retaining context. Explicit deletion also
+removes only task state, never project files. Cleanup failure preserves its record
+for retry; an unverified native operation is never represented as successful.
+Deleting a project/account stops affected executions and attempts scoped
+cleanup; orphaned tasks keep ownership labels and cleanup locators independently
+of the deleted rows, so administrators can resolve failures. Operation records
+retain project, agent, task, and actor identity after deletion, without transcripts.
+
+Agents run directly in the project source directory. Task directories retain
+native state and compilation context, not baseline/work copies. A synchronous
+project claim is acquired before asynchronous startup and released only after
+process-tree termination and final source synchronization. Source-tree exclusive
+operations end the writer before entering the project queue, preventing deadlocks
+with its final synchronization. This is a single-instance claim, not an OS lock.
+
+An active source synchronizer polls directory metadata every 750 ms; only changed
+small files are read. Before a dirty collaborative file is saved, the same
+synchronizer checks its disk contents synchronously. Non-overlapping edits are
+three-way merged against the last known disk text. External text is applied as
+an attributed incremental Yjs transaction, preserving human edit segments and
+the exact anchor-update chain. Ordinary HTTP/browser writes advance the known
+disk state and are not attributed to the agent. Added/deleted/binary files update
+the tree and snapshots. Overlapping replacements preserve the editor draft and
+save the agent version under `.texlite-agent-conflicts/<task-id>/`, then stop the
+task with a visible warning. Symlinks and unreadable files stop synchronization
+instead of being followed. Polling ends with execution, not browser attachment.
+
+Task context JSON and a compile log are exposed through `TEXLITE_PROJECT_CONTEXT`
+and `TEXLITE_COMPILE_LOG`; compile API completion refreshes this context. A CLI
+does not become sandboxed by running in a project, nor does this watcher impose
+filesystem barriers on arbitrary host processes. Compile snapshots retain their
+existing consistency checks; external edits should not be treated as OS-locked
+transactions across several files.
+
+Before each launch, the service copies the fixed English
+`templates/agents/AGENTS.md` into the source root if `AGENTS.md` is absent. The
+exclusive-create copy never overwrites existing instructions. Creation uses
+the project write coordinator and updates collaboration, metadata and snapshots.
+The template explains the source/output layout and compilation context without
+embedding deployment-specific paths; it ships as a package runtime asset.
+
+The browser mounts a terminal only for the visible task, and streams private
+terminal data over authenticated, origin-checked WebSockets with base-path and
+HTTPS support. One attachment owns input/resize; takeover is explicit. Server
+display replay is bounded, slow sockets disconnect without stopping the task,
+and full transcripts are not persisted by TexLite. Native CLI history can still
+exist in its task state. Raw terminal replay is a bounded recent stream, not a
+complete saved terminal screen; very long full-screen sessions may need a redraw.
+
+`node-pty` loads dynamically and is an optional production dependency. xterm.js
+and its fit addon are build dependencies behind a lazy terminal boundary. Missing
+PTY support does not block startup. Graceful shutdown stops managed executions;
+restart marks prior executions interrupted without trusting stored PIDs or
+automatically respawning them. Native state formats and resume capabilities vary
+by agent version; the deployed tools remain responsible for their own authentication.
+Working copies do not provide OS isolation. See `OPERATIONS.md` for the current
+adapter capability matrix and usage.
 
 ## Known limitations and TODO
 

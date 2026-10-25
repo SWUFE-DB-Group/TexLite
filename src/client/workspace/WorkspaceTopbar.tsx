@@ -1,4 +1,4 @@
-import { ArrowLeft, BookMarked, FileClock, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, Users, X } from "lucide-react";
+import { ArrowLeft, BookMarked, FileClock, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, TerminalSquare, Users, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ActiveSession, CollaborationStatus } from "../collaboration";
 import type { EditorPreferences } from "../editorPreferences";
@@ -9,6 +9,7 @@ import { SiteLogo } from "../pages/SiteChrome";
 import { appPath } from "../basePath";
 
 export interface WorkspaceTopbarProps {
+  agentTerminal?: { open: boolean; toggle: () => void };
   site: SiteConfig;
   project: Project;
   activeFile: string;
@@ -53,7 +54,7 @@ export function WorkspaceTopbar({
   changeWorkspaceLayout, onBack, onShare, showCitationLibrary, citationLibraryOpen,
   onCitationLibrary, onHistory, onGit, canManageGit, formatting, readOnly, collaborationSynced,
   onToggleComments, commentsOpen, unresolvedCommentCount, onToggleSettings,
-  settingsOpen, compileBusy, sharedCompiling, localCompiling, cancelling, onCompile, onCancelCompile
+  settingsOpen, compileBusy, sharedCompiling, localCompiling, cancelling, onCompile, onCancelCompile, agentTerminal
 }: WorkspaceTopbarProps) {
   const { t } = useTranslation();
   return <header className="editor-topbar">
@@ -81,6 +82,7 @@ export function WorkspaceTopbar({
         {unresolvedCommentCount > 0 && <sup className="comments-action-count">{unresolvedCommentCount}</sup>}
       </button>
       <button className="git-action" title={canManageGit ? t("git.title") : t("git.ownerOnly")} disabled={!canManageGit} onClick={onGit}><GitBranch size={15} />Git</button>
+      {agentTerminal && <button type="button" className={agentTerminal.open ? "active" : ""} aria-expanded={agentTerminal.open} onClick={agentTerminal.toggle}><TerminalSquare size={15} />{t("agents.terminal")}</button>}
       <button className={settingsOpen ? "active" : ""} onClick={onToggleSettings}><Settings size={15} />{t("common.settings")}</button>
       {sharedCompiling || localCompiling
         ? <button className="compile cancel-compile" title={t("compileControls.cancel")} onClick={onCancelCompile} disabled={cancelling || formatting || readOnly || !collaborationSynced}>{cancelling ? <LoaderCircle className="spin" size={15} /> : <X size={15} />}{cancelling ? t("compileControls.cancelling") : t("compileControls.cancel")}</button>

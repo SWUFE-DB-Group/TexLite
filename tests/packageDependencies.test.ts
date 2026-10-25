@@ -8,9 +8,19 @@ import { describe, expect, it } from "vitest";
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 
 describe("npm runtime dependencies", () => {
+  it("ships the fixed agent instructions as a package runtime asset", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8")) as { files: string[] };
+    expect(manifest.files).toContain("templates/agents/AGENTS.md");
+    const template = fs.readFileSync(path.join(repositoryRoot, "templates/agents/AGENTS.md"), "utf8");
+    expect(template).toContain("TexLite");
+    expect(template).toContain("../output");
+    expect(template).toContain("TEXLITE_PROJECT_CONTEXT");
+  });
+
   it("declares every server and shared runtime import as a production dependency", () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8")) as {
       dependencies: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
     };
     const missing: string[] = [];
 
@@ -31,7 +41,7 @@ describe("npm runtime dependencies", () => {
           const name = specifier.text;
           if (name.startsWith(".") || isBuiltin(name)) return;
           const packageName = name.split("/").slice(0, name.startsWith("@") ? 2 : 1).join("/");
-          if (!Object.hasOwn(manifest.dependencies, packageName)) {
+          if (!Object.hasOwn(manifest.dependencies, packageName) && !Object.hasOwn(manifest.optionalDependencies ?? {}, packageName)) {
             missing.push(`${path.relative(repositoryRoot, file)}: ${name}`);
           }
         }

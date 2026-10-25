@@ -5,6 +5,8 @@ import en from "./locales/en.json";
 import zh from "./locales/zh.json";
 import zhHant from "./locales/zh-Hant.json";
 import { documentLocale, supportedLocale, supportedLocales } from "../shared/locales";
+import { agentMessages } from "../shared/agentMessages";
+import { agentUiMessages } from "./agents/messages";
 
 // Register before initialization so detected/saved languages and later switches
 // both update the page language used by browsers and assistive technology.
@@ -15,7 +17,11 @@ i18n.on("languageChanged", () => {
 });
 
 void i18n.use(LanguageDetector).use(initReactI18next).init({
-  resources: { en: { translation: en }, zh: { translation: zh }, "zh-Hant": { translation: zhHant } },
+  resources: {
+    en: { translation: { ...en, agents: agentUiMessages.en, errors: { ...en.errors, codes: { ...en.errors.codes, ...agentMessages.en } } } },
+    zh: { translation: { ...zh, agents: agentUiMessages.zh, errors: { ...zh.errors, codes: { ...zh.errors.codes, ...agentMessages.zh } } } },
+    "zh-Hant": { translation: { ...zhHant, agents: agentUiMessages["zh-Hant"], errors: { ...zhHant.errors, codes: { ...zhHant.errors.codes, ...agentMessages["zh-Hant"] } } } }
+  },
   fallbackLng: "en",
   supportedLngs: [...supportedLocales],
   load: "currentOnly",

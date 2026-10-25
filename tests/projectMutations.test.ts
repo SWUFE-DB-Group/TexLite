@@ -2,6 +2,34 @@ import { describe, expect, it } from "vitest";
 import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
 
 describe("project mutation coordination", () => {
+  it("prevents new external writers during maintenance and drains the current one before reserving the queue", async () => {
+    const events: string[] = [];
+    const coordinator = new ProjectMutationCoordinator({ flushProject: () => null,
+      beginMaintenance: () => events.push("begin"), endMaintenance: () => events.push("end") } as never);
+    const release = coordinator.registerExternalWriter("paper", async () => {
+      events.push("stop");
+      expect(coordinator.registerExternalWriter("paper", async () => undefined)).toBeNull();
+      // Final synchronization can reserve the queue; maintenance must not own it yet.
+      await coordinator.runSnapshot("paper", () => events.push("last sync"));
+      release!();
+    });
+    expect(release).not.toBeNull();
+    await coordinator.runExclusive("paper", "restore", () => events.push("restore"));
+    expect(events).toEqual(["stop", "last sync", "begin", "restore", "end"]);
+    coordinator.registerExternalWriter("paper", async () => undefined)!();
+  });
+
+  it("does not stop another writer for an invalid maintenance request", async () => {
+    let stopped = false;
+    const coordinator = new ProjectMutationCoordinator({} as never);
+    const release = coordinator.registerExternalWriter("paper", async () => { stopped = true; });
+    await expect(coordinator.runExclusive("paper", "restore", () => undefined,
+      { preflight: () => { throw new Error("No permission"); } })).rejects.toThrow("No permission");
+    expect(stopped).toBe(false);
+    release!();
+    expect(coordinator.registerExternalWriter("paper", async () => undefined)).not.toBeNull();
+  });
+
   it("serializes exclusive operations and resets the collaboration epoch", async () => {
     const events: string[] = [];
     const collaboration = {
