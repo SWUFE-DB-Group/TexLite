@@ -1,54 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
-import type { CompileDiagnostics } from "../compileDiagnostics";
-import type { CompileOutcome } from "../compileLog";
 import type { SharedCompileState } from "../collaboration";
 import { errorMessage } from "../errors";
 import type { Project } from "../types";
+import { CompilationResults, type CompileResponse, type LatestCompileResponse } from "./compilationResults";
 import type { CompileArtifact } from "./types";
 
+export type { LatestCompileResponse } from "./compilationResults";
 type PreviewTab = "pdf" | "log" | "warnings" | "errors" | "artifacts";
 export type CompileCleanMode = "cache" | "artifacts";
-
-interface LatestRun {
-  id: string;
-  status: string;
-  log: string;
-  diagnostics: CompileDiagnostics;
-  requestedBy?: { id: string; username: string; name: string } | null;
-}
-
-function compileOutcomeForRun(run: Pick<LatestRun, "status" | "log"> | null | undefined): CompileOutcome {
-  if (run?.status === "succeeded") return "succeeded";
-  // Compile runs intentionally reuse the existing failed status in SQLite so
-  // no schema migration is needed. The controlled cancellation marker keeps
-  // the UI from presenting a user-requested stop as a compiler failure.
-  if (run?.log.includes("Compilation was cancelled.")) return "cancelled";
-  return run?.status === "failed" ? "failed" : null;
-}
-
-export interface LatestCompileResponse {
-  mainFile: string;
-  latestRun: LatestRun | null;
-  pdfUrl: string | null;
-  pdfCompiledAt: string | null;
-  pdfSizeBytes: number | null;
-  pdfLoadingMode: "full" | "range" | null;
-}
 
 interface UseProjectCompilationOptions {
   projectId: string;
   project: Project | null;
   mainFile: string;
-  /**
-   * Resolve the currently intended root only when a new compile is about to
-   * start. This keeps
-   * a Ctrl/Cmd+S immediately after adding \documentclass from compiling the
-   * root that was selected before the debounced workspace analysis ran.
-   */
+  /** May promote the active source to a root before React commits that change. */
   resolveCompileMainFile?: () => string;
-  /** A side-effect-free current-root lookup for async response checks. */
   getCurrentMainFile?: () => string;
   initialLatest?: Promise<LatestCompileResponse> | null;
   collaborationSynced: boolean;
@@ -64,631 +32,417 @@ interface UseProjectCompilationOptions {
   onPdfChanged: () => void;
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
+interface ScopedRequest { owner: CompilationResults; controller: AbortController }
+const targetKey = (projectId: string, mainFile: string) => `${projectId}\0${mainFile}`;
+const isAbortError = (error: unknown) => error instanceof Error && error.name === "AbortError";
+
+function abortRequest(ref: { current: ScopedRequest | null }, owner?: CompilationResults): void {
+  if (ref.current && (!owner || ref.current.owner === owner)) {
+    ref.current.controller.abort();
+    ref.current = null;
+  }
 }
 
-/**
- * The workspace owns Ctrl/Cmd+S so it can save and compile from CodeMirror.
- * Native form controls and open dialogs consume the shortcut locally rather
- * than compiling in the background or opening the browser's Save Page dialog.
- * Do not include generic contenteditable elements here:
- * CodeMirror itself is contenteditable.
- */
-function isNativeTextControl(target: EventTarget | null): boolean {
-  return target instanceof HTMLInputElement
-    || target instanceof HTMLTextAreaElement
-    || target instanceof HTMLSelectElement;
+function isFormTarget(target: EventTarget | null): boolean {
+  // CodeMirror is contenteditable: only native form controls/dialogs consume
+  // Ctrl/Cmd+S without compiling or opening the browser's Save Page dialog.
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || (target instanceof Element && Boolean(target.closest('[role="dialog"], [role="alertdialog"]')));
 }
 
-function isOpenDialogTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('[role="dialog"], [role="alertdialog"]'));
-}
-
-export function useProjectCompilation({
-  projectId, project, mainFile, resolveCompileMainFile, getCurrentMainFile, initialLatest, collaborationSynced, pdfVisible, sharedState, onSharedState, save,
-  loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged
-}: UseProjectCompilationOptions) {
+export function useProjectCompilation(options: UseProjectCompilationOptions) {
+  const { projectId, project, mainFile, initialLatest, collaborationSynced, pdfVisible, sharedState } = options;
   const { t } = useTranslation();
-  const [pdfUrl, setPdfUrl] = useState("");
-  const [pdfLoading, setPdfLoading] = useState(true);
-  const [pdfCompiledAt, setPdfCompiledAt] = useState<string | null>(null);
-  const [pdfSizeBytes, setPdfSizeBytes] = useState<number | null>(null);
-  const [pdfLoadingMode, setPdfLoadingMode] = useState<"full" | "range">("full");
-  const [compileLog, setCompileLog] = useState("");
-  const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostics | null>(null);
-  const [compileOutcome, setCompileOutcome] = useState<CompileOutcome>(null);
+  const callbacks = useRef({ ...options, t });
+  callbacks.current = { ...options, t };
+  const mounted = useRef(false);
+  const ownerRef = useRef<CompilationResults | null>(null);
+  const previousOwner = ownerRef.current;
+  if (!previousOwner || previousOwner.selection.projectId !== projectId || previousOwner.selection.mainFile !== mainFile) {
+    ownerRef.current = new CompilationResults({ projectId, mainFile },
+      !previousOwner || previousOwner.selection.projectId !== projectId || !previousOwner.selection.mainFile);
+  }
+  const owner = ownerRef.current!;
+  const [snapshot, setSnapshot] = useState(owner.snapshot);
+  const [initialLoad, setInitialLoad] = useState<ScopedRequest | null>(null);
+  const [sharedLoad, setSharedLoad] = useState<ScopedRequest | null>(null);
   const [artifacts, setArtifacts] = useState<CompileArtifact[]>([]);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; content: string } | null>(null);
   const [artifactLoading, setArtifactLoading] = useState(false);
-  const [cleaning, setCleaning] = useState(false);
-  const [compilingMainFiles, setCompilingMainFiles] = useState<ReadonlySet<string>>(() => new Set());
-  const [cancellingMainFiles, setCancellingMainFiles] = useState<ReadonlySet<string>>(() => new Set());
+  const [cleaningOwner, setCleaningOwner] = useState<CompilationResults | null>(null);
+  const [compilingTargets, setCompilingTargets] = useState<ReadonlySet<string>>(() => new Set());
+  const [cancellingTargets, setCancellingTargets] = useState<ReadonlySet<string>>(() => new Set());
   const [editorNotice, setEditorNotice] = useState("");
-  // A new root must not render the previous root's results before its effect runs.
-  const [displaySelection, setDisplaySelection] = useState({ projectId, mainFile });
-  const mainFileRef = useRef(mainFile);
-  const pdfMainFileRef = useRef("");
-  const publishedPdfUrl = useRef("");
-  const previousSelection = useRef({ projectId, mainFile });
-  // Ignore replayed completed states until a compile starts for the new root.
-  const allowCompletedAfterSwitch = useRef(true);
-  const latestRequest = useRef<AbortController | null>(null);
-  // The initial retained-PDF lookup is authoritative when a workspace opens.
-  // Keep state-replay lookups separate so an old Yjs completed state cannot
-  // abort that lookup before it publishes the retained PDF.
-  const completedStateRequest = useRef<AbortController | null>(null);
-  const authoritativeCompileRun = useRef<{ mainFile: string; runId: string } | null>(null);
-  const initialLatestRef = useRef(initialLatest);
-  const initialLatestConsumed = useRef(false);
-  const artifactsRequest = useRef<AbortController | null>(null);
-  const artifactPreviewRequest = useRef<AbortController | null>(null);
-  const backgroundRequests = useRef(new Set<AbortController>());
-  const compileRequests = useRef(new Map<string, AbortController>());
-  const appliedCompletedRun = useRef<{ mainFile: string; runId: string } | null>(null);
-  const displayedPdfUrl = useRef("");
-  const pendingArtifactRefresh = useRef<{ mainFile: string; pdfUrl: string } | null>(null);
-  const focusedCompileRun = useRef<string | null>(null);
+  const latestRequest = useRef<ScopedRequest | null>(null);
+  const completedRequest = useRef<ScopedRequest | null>(null);
+  const artifactsRequest = useRef<ScopedRequest | null>(null);
+  const previewRequest = useRef<ScopedRequest | null>(null);
+  const cleanRequest = useRef<ScopedRequest | null>(null);
+  const cancelRequests = useRef(new Map<string, ScopedRequest>());
+  const compileRequests = useRef(new Map<string, ScopedRequest>());
+  const backgroundRequests = useRef(new Set<ScopedRequest>());
+  const preload = useRef({ projectId, promise: initialLatest });
+  if (preload.current.projectId !== projectId) preload.current = { projectId, promise: initialLatest };
+  const paintedPdf = useRef<{ owner: CompilationResults; url: string } | null>(null);
+  const pendingArtifacts = useRef<{ owner: CompilationResults; url: string } | null>(null);
   const compileAction = useRef<() => void>(() => undefined);
-  const callbacks = useRef({
-    onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged,
-    resolveCompileMainFile, getCurrentMainFile, pdfVisible
-  });
-  mainFileRef.current = mainFile;
-  callbacks.current = {
-    onSharedState, save, loadOutline, onPreviewTab, onError, onCompileStart, onCompileSuccess, onPdfChanged,
-    resolveCompileMainFile, getCurrentMainFile, pdfVisible
-  };
 
-  const currentMainFile = (): string => callbacks.current.getCurrentMainFile?.() || mainFileRef.current;
-  const selectionVisible = displaySelection.projectId === projectId && displaySelection.mainFile === mainFile;
-  const localCompiling = compilingMainFiles.has(mainFile);
+  const currentMainFile = () => callbacks.current.getCurrentMainFile?.() || ownerRef.current!.selection.mainFile;
+  const isCurrent = (scope: CompilationResults, signal?: AbortSignal) => mounted.current && !signal?.aborted
+    && ownerRef.current === scope && currentMainFile() === scope.selection.mainFile;
+  const key = targetKey(projectId, mainFile);
+  const selectionVisible = snapshot.selection === owner.selection;
+  const localCompiling = compilingTargets.has(key);
+  const cleaning = cleaningOwner === owner;
 
-  const focusPdfAfterCompile = (runId: string) => {
-    if (focusedCompileRun.current === runId) return;
-    focusedCompileRun.current = runId;
-    callbacks.current.onCompileSuccess();
-  };
-
-  const publishPdf = (file: string, url: string, compiledAt: string | null, sizeBytes: number | null, loadingMode: "full" | "range" | null) => {
-    // The HTTP compile response and the shared completion replay can publish
-    // the same run. Preserve an in-flight SyncTeX lookup in that case.
-    if (publishedPdfUrl.current !== url || pdfMainFileRef.current !== file) callbacks.current.onPdfChanged();
-    publishedPdfUrl.current = url;
-    pdfMainFileRef.current = file;
-    setPdfUrl(url);
-    setPdfCompiledAt(compiledAt);
-    setPdfSizeBytes(sizeBytes);
-    setPdfLoadingMode(loadingMode ?? "full");
-  };
-
-  const loadArtifacts = async (requestedMainFile: string, signal?: AbortSignal) => {
-    if (!signal) {
-      artifactsRequest.current?.abort();
-      artifactsRequest.current = new AbortController();
-      signal = artifactsRequest.current.signal;
+  const abortReads = (scope: CompilationResults) => {
+    for (const ref of [latestRequest, completedRequest, artifactsRequest, previewRequest]) abortRequest(ref, scope);
+    for (const request of backgroundRequests.current) {
+      if (request.owner === scope) { request.controller.abort(); backgroundRequests.current.delete(request); }
     }
-    const requestedPdfUrl = publishedPdfUrl.current;
-    const isCurrent = () => !signal?.aborted && mainFileRef.current === requestedMainFile
-      && publishedPdfUrl.current === requestedPdfUrl;
+    setInitialLoad((current) => current?.owner === scope ? null : current);
+    setSharedLoad((current) => current?.owner === scope ? null : current);
+    setArtifactLoading(false);
+  };
+
+  const resetPanels = () => {
+    pendingArtifacts.current = null;
+    paintedPdf.current = null;
+    setArtifacts([]); setArtifactPreview(null); setArtifactLoading(false); setEditorNotice("");
+    callbacks.current.onPdfChanged();
+  };
+
+  const loadArtifacts = async (scope: CompilationResults, supplied?: ScopedRequest) => {
+    if (!isCurrent(scope)) return;
+    const request = supplied ?? { owner: scope, controller: new AbortController() };
+    if (!supplied) { abortRequest(artifactsRequest); artifactsRequest.current = request; }
+    const pdfUrl = scope.snapshot.pdf?.url;
+    const valid = () => isCurrent(scope, request.controller.signal) && scope.snapshot.pdf?.url === pdfUrl;
     try {
-      const query = requestedMainFile ? `?mainFile=${encodeURIComponent(requestedMainFile)}` : "";
       const result = await api<{ artifacts: CompileArtifact[] }>(
-        `/api/projects/${projectId}/compile/artifacts${query}`,
-        { signal }
+        `/api/projects/${scope.selection.projectId}/compile/artifacts?mainFile=${encodeURIComponent(scope.selection.mainFile)}`,
+        { signal: request.controller.signal }
       );
-      if (isCurrent()) {
-        setArtifacts(result.artifacts);
-        setArtifactPreview(null);
-      }
+      if (valid()) { setArtifacts(result.artifacts); setArtifactPreview(null); }
     } catch (error) {
-      if (!isAbortError(error) && isCurrent()) {
-        setArtifacts([]);
-        setArtifactPreview(null);
-      }
+      if (!isAbortError(error) && valid()) { setArtifacts([]); setArtifactPreview(null); }
     } finally {
-      if (artifactsRequest.current?.signal === signal) artifactsRequest.current = null;
+      if (artifactsRequest.current === request) artifactsRequest.current = null;
     }
   };
 
   const flushArtifactRefresh = () => {
-    const refresh = pendingArtifactRefresh.current;
-    if (!refresh) return;
-    pendingArtifactRefresh.current = null;
-    if (refresh.mainFile === mainFileRef.current && refresh.pdfUrl === publishedPdfUrl.current) {
-      void loadArtifacts(refresh.mainFile);
-    }
+    const pending = pendingArtifacts.current;
+    if (!pending) return;
+    pendingArtifacts.current = null;
+    if (isCurrent(pending.owner) && pending.owner.snapshot.pdf?.url === pending.url) void loadArtifacts(pending.owner);
   };
 
-  const refreshArtifactsAfterPdf = (file: string, url: string) => {
-    pendingArtifactRefresh.current = { mainFile: file, pdfUrl: url };
-    // The output panel must remain usable if the PDF is hidden or failed to
-    // load. Otherwise give downloading/painting the new PDF priority.
-    if (!callbacks.current.pdfVisible || displayedPdfUrl.current === url) flushArtifactRefresh();
+  const refreshArtifactsAfterPdf = (scope: CompilationResults) => {
+    const url = scope.snapshot.pdf?.url;
+    if (!url) return;
+    pendingArtifacts.current = { owner: scope, url };
+    if (!callbacks.current.pdfVisible || (paintedPdf.current?.owner === scope && paintedPdf.current.url === url)) flushArtifactRefresh();
   };
 
   const pdfDisplayed = (url: string) => {
-    displayedPdfUrl.current = url;
-    if (url && pendingArtifactRefresh.current?.pdfUrl === url) flushArtifactRefresh();
+    if (!isCurrent(owner) || owner.snapshot.pdf?.url !== url) return;
+    paintedPdf.current = { owner, url };
+    if (pendingArtifacts.current?.owner === owner && pendingArtifacts.current.url === url) flushArtifactRefresh();
   };
+
+  const publish = (scope: CompilationResults, reception: ReturnType<CompilationResults["receiveLocal"]>) => {
+    if (!reception || !isCurrent(scope)) return false;
+    setSnapshot(reception.snapshot);
+    if (reception.pdfChanged) callbacks.current.onPdfChanged();
+    if (reception.focusPdf) callbacks.current.onCompileSuccess();
+    return true;
+  };
+
+  const applyClean = (scope: CompilationResults, mode: CompileCleanMode) => {
+    abortReads(scope);
+    pendingArtifacts.current = null;
+    scope.clean(mode);
+    setSnapshot(scope.snapshot);
+    if (mode === "artifacts") {
+      resetPanels();
+      callbacks.current.onPreviewTab("pdf");
+    }
+    setEditorNotice(callbacks.current.t(mode === "cache" ? "editor.cleanCacheComplete" : "editor.cleanArtifactsComplete"));
+  };
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const ref of [latestRequest, completedRequest, artifactsRequest, previewRequest, cleanRequest]) abortRequest(ref);
+      for (const request of [...backgroundRequests.current, ...compileRequests.current.values(), ...cancelRequests.current.values()]) request.controller.abort();
+      backgroundRequests.current.clear(); compileRequests.current.clear(); cancelRequests.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!pdfVisible) flushArtifactRefresh();
   }, [pdfVisible]);
 
   useEffect(() => {
-    latestRequest.current?.abort();
-    latestRequest.current = null;
-    const previous = previousSelection.current;
-    const sameProject = previous.projectId === projectId;
-    const switchedMainFile = sameProject && Boolean(previous.mainFile)
-      && Boolean(mainFile) && previous.mainFile !== mainFile;
-    previousSelection.current = { projectId, mainFile };
-    appliedCompletedRun.current = null;
-    pendingArtifactRefresh.current = null;
-    setDisplaySelection((current) => current.projectId === projectId && current.mainFile === mainFile
-      ? current : { projectId, mainFile });
-    if (!sameProject) {
-      initialLatestRef.current = initialLatest;
-      initialLatestConsumed.current = false;
-      authoritativeCompileRun.current = null;
-      pdfMainFileRef.current = "";
-      publishedPdfUrl.current = "";
+    setSnapshot(owner.snapshot);
+    resetPanels();
+    // A project change retires mutations too; switching roots in the same
+    // project can leave an already-started compiler running in the background.
+    for (const requests of [compileRequests.current, cancelRequests.current]) {
+      for (const [id, request] of requests) {
+        if (request.owner.selection.projectId !== projectId) { request.controller.abort(); requests.delete(id); }
+      }
     }
-    if (!mainFile) {
-      // Project metadata and the selected root document are loaded separately.
-      // Do not query the server with an implicit root while the real root is
-      // still unknown; the metadata response will rerun this effect exactly
-      // once with the selected main file.
-      setPdfLoading(false);
-      publishedPdfUrl.current = "";
-      setPdfUrl("");
-      setPdfCompiledAt(null);
-      setPdfSizeBytes(null);
-      setPdfLoadingMode("full");
-      setCompileLog("");
-      setCompileDiagnostics(null);
-      setCompileOutcome(null);
-      setArtifacts([]);
-      setArtifactPreview(null);
-      setArtifactLoading(false);
-      setEditorNotice("");
-      authoritativeCompileRun.current = null;
-      callbacks.current.onPdfChanged();
-      return;
-    }
-    if (authoritativeCompileRun.current?.mainFile !== mainFile) {
-      authoritativeCompileRun.current = null;
-    }
-    setCompileLog("");
-    setCompileDiagnostics(null);
-    setCompileOutcome(null);
-    if (switchedMainFile) {
-      // This workspace needs a fresh compile of the newly selected root. An
-      // older retained result may still be loaded when the project is reopened.
-      allowCompletedAfterSwitch.current = false;
-      completedStateRequest.current?.abort();
-      artifactsRequest.current?.abort();
-      artifactPreviewRequest.current?.abort();
-      pdfMainFileRef.current = "";
-      publishedPdfUrl.current = "";
-      setPdfUrl("");
-      setPdfCompiledAt(null);
-      setPdfSizeBytes(null);
-      setPdfLoadingMode("full");
-      setPdfLoading(false);
-      setArtifacts([]);
-      setArtifactPreview(null);
-      setArtifactLoading(false);
-      setEditorNotice("");
-      callbacks.current.onPdfChanged();
+    if (cleanRequest.current?.owner !== owner) abortRequest(cleanRequest);
+    if (!mainFile) return;
+    if (!owner.restoreRetained) {
       callbacks.current.onPreviewTab("pdf");
-      const outlineController = new AbortController();
-      void callbacks.current.loadOutline(outlineController.signal, mainFile).catch(() => undefined);
-      return () => outlineController.abort();
+      const request = { owner, controller: new AbortController() };
+      void callbacks.current.loadOutline(request.controller.signal, mainFile).catch(() => undefined);
+      return () => { request.controller.abort(); abortReads(owner); };
     }
-    allowCompletedAfterSwitch.current = true;
-    const controller = new AbortController();
-    latestRequest.current = controller;
-    setPdfLoading(true);
-    const retainPdf = Boolean(sameProject && pdfUrl && mainFile && pdfMainFileRef.current === mainFile);
-    if (!retainPdf) {
-      publishedPdfUrl.current = "";
-      setPdfUrl("");
-      setPdfCompiledAt(null);
-      setPdfSizeBytes(null);
-      setPdfLoadingMode("full");
-    }
-    setArtifacts([]);
-    setArtifactPreview(null);
-    callbacks.current.onPdfChanged();
-    let bgTimer: number | null = null;
-    const query = `?mainFile=${encodeURIComponent(mainFile)}`;
-    // The retained PDF is the critical path when reopening a project. Do not
-    // make it wait for the outline or the (potentially large) artifact scan.
-    // The background requests are started after the PDF URL is published and
-    // then run in parallel with PDF.js network loading and rendering.
-    const preloadedLatest = !initialLatestConsumed.current ? initialLatestRef.current : null;
-    // A route preload is a one-shot optimization. Consume it before awaiting
-    // so a rejection, main-file mismatch, or effect cancellation cannot make
-    // every later root-document change reuse the same stale promise.
-    if (preloadedLatest) initialLatestConsumed.current = true;
-    const requestLatest = () => api<LatestCompileResponse>(
-      `/api/projects/${projectId}/compile/latest${query}`,
-      { signal: controller.signal }
+    const request = { owner, controller: new AbortController() };
+    latestRequest.current = request;
+    setInitialLoad(request);
+    let backgroundTimer: number | null = null;
+    const fetchLatest = () => api<LatestCompileResponse>(
+      `/api/projects/${projectId}/compile/latest?mainFile=${encodeURIComponent(mainFile)}`, { signal: request.controller.signal }
     );
-    const latestRequestPromise = preloadedLatest
-      ? preloadedLatest.then((latest) => {
-        if (latest.mainFile !== mainFile) return requestLatest();
-        return latest;
-      }, () => requestLatest())
-      : requestLatest();
-    let backgroundStarted = false;
-    const startBackgroundLoads = () => {
-      if (backgroundStarted || controller.signal.aborted || !mainFile) return;
-      backgroundStarted = true;
-      // Start these only after the latest PDF URL has been published to React.
-      // They then run in parallel with PDF.js network loading and rendering.
-      const artifactsController = new AbortController();
-      backgroundRequests.current.add(artifactsController);
-      void loadArtifacts(mainFile, artifactsController.signal).finally(() => {
-        backgroundRequests.current.delete(artifactsController);
-      });
-      void callbacks.current.loadOutline(controller.signal, mainFile).catch(() => undefined);
-    };
-    void latestRequestPromise.then((latest) => {
-      if (controller.signal.aborted || (mainFile && latest.mainFile !== mainFileRef.current)) return;
-      const authoritativeRun = authoritativeCompileRun.current;
-      if (authoritativeRun && authoritativeRun.mainFile === mainFile
-        && latest.latestRun?.id !== authoritativeRun.runId) return;
-      setCompileLog(latest.latestRun?.log ?? "");
-      setCompileDiagnostics(latest.latestRun?.diagnostics ?? null);
-      setCompileOutcome(compileOutcomeForRun(latest.latestRun));
-      if (mainFile && latest.latestRun?.requestedBy && (latest.latestRun.status === "queued" || latest.latestRun.status === "running")) {
+    // Route preload is consumed once per project, including failed/mismatched
+    // preloads. StrictMode can then retry normally rather than reusing one
+    // aborted bootstrap forever.
+    const preloaded = preload.current.promise;
+    preload.current.promise = null;
+    const lookup = preloaded ? preloaded.then((value) => {
+      if (!isCurrent(owner, request.controller.signal)) return null;
+      return value.mainFile === mainFile ? value : fetchLatest();
+    }, () => isCurrent(owner, request.controller.signal) ? fetchLatest() : null) : fetchLatest();
+    void lookup.then((latest) => {
+      if (!latest || !isCurrent(owner, request.controller.signal)) return;
+      if (!publish(owner, owner.receiveLatest(latest, "initial"))) return;
+      if (latest.latestRun?.requestedBy && (latest.latestRun.status === "queued" || latest.latestRun.status === "running")) {
         callbacks.current.onSharedState({
-          mainFile,
-          runId: latest.latestRun.id,
-          status: latest.latestRun.status,
-          requestedBy: latest.latestRun.requestedBy,
-          updatedAt: new Date().toISOString()
+          mainFile, runId: latest.latestRun.id, status: latest.latestRun.status,
+          requestedBy: latest.latestRun.requestedBy, updatedAt: new Date().toISOString()
         });
       }
-      if (latest.pdfUrl) {
-        publishPdf(latest.mainFile, latest.pdfUrl, latest.pdfCompiledAt, latest.pdfSizeBytes, latest.pdfLoadingMode);
-        callbacks.current.onPreviewTab("pdf");
-      }
+      if (latest.pdfUrl) callbacks.current.onPreviewTab("pdf");
     }).catch((error) => {
-      if (!isAbortError(error) && mainFileRef.current === mainFile) callbacks.current.onError(errorMessage(error));
+      if (!isAbortError(error) && isCurrent(owner, request.controller.signal)) callbacks.current.onError(errorMessage(error));
     }).finally(() => {
-      if (latestRequest.current === controller) latestRequest.current = null;
-      if (!controller.signal.aborted) {
-        setPdfLoading(false);
-        bgTimer = window.setTimeout(startBackgroundLoads, 0);
-      }
+      if (latestRequest.current === request) latestRequest.current = null;
+      setInitialLoad((current) => current === request ? null : current);
+      if (!isCurrent(owner, request.controller.signal)) return;
+      // Keep the bootstrap's deferred work cancellable even after its HTTP
+      // response has settled. A compile can start before this timer runs.
+      backgroundRequests.current.add(request);
+      backgroundTimer = window.setTimeout(() => {
+        if (!isCurrent(owner, request.controller.signal)) { backgroundRequests.current.delete(request); return; }
+        void Promise.all([
+          loadArtifacts(owner, request),
+          callbacks.current.loadOutline(request.controller.signal, mainFile).catch(() => undefined)
+        ]).finally(() => backgroundRequests.current.delete(request));
+      }, 0);
     });
     return () => {
-      if (bgTimer !== null) window.clearTimeout(bgTimer);
-      controller.abort();
-      artifactPreviewRequest.current?.abort();
-      for (const request of backgroundRequests.current) request.abort();
-      backgroundRequests.current.clear();
+      if (backgroundTimer !== null) window.clearTimeout(backgroundTimer);
+      request.controller.abort();
+      abortReads(owner);
     };
-  }, [projectId, mainFile]);
+  }, [owner]);
 
   useEffect(() => {
     if (!sharedState || sharedState.mainFile !== mainFile || sharedState.status !== "cleaned" || !sharedState.cleanMode) return;
-    appliedCompletedRun.current = null;
-    pendingArtifactRefresh.current = null;
-    latestRequest.current?.abort();
-    completedStateRequest.current?.abort();
-    artifactsRequest.current?.abort();
-    artifactPreviewRequest.current?.abort();
-    for (const request of backgroundRequests.current) request.abort();
-    backgroundRequests.current.clear();
-    if (sharedState.cleanMode === "artifacts") {
-      authoritativeCompileRun.current = null;
-      setCompileLog("");
-      setCompileDiagnostics(null);
-      setCompileOutcome(null);
-      publishedPdfUrl.current = "";
-      setPdfUrl("");
-      setPdfCompiledAt(null);
-      setPdfSizeBytes(null);
-      setPdfLoadingMode("full");
-      setArtifacts([]);
-      setArtifactPreview(null);
-      callbacks.current.onPdfChanged();
-      callbacks.current.onPreviewTab("pdf");
-      setEditorNotice(t("editor.cleanArtifactsComplete"));
-    } else {
-      setEditorNotice(t("editor.cleanCacheComplete"));
-    }
-  }, [sharedState?.runId, sharedState?.status, sharedState?.cleanMode, sharedState?.mainFile, mainFile, t]);
+    applyClean(owner, sharedState.cleanMode);
+  }, [owner, sharedState?.runId, sharedState?.status, sharedState?.cleanMode, sharedState?.mainFile]);
 
   useEffect(() => {
-    if (!mainFile || (sharedState?.mainFile === mainFile
-      && (sharedState.status === "queued" || sharedState.status === "running"))) return;
-    setCancellingMainFiles((current) => {
-      if (!current.has(mainFile)) return current;
-      const next = new Set(current);
-      next.delete(mainFile);
-      return next;
+    if (sharedState?.mainFile === mainFile && (sharedState.status === "queued" || sharedState.status === "running")) {
+      owner.observeRunning();
+      return;
+    }
+    setCancellingTargets((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current); next.delete(key); return next;
     });
-  }, [mainFile, sharedState?.mainFile, sharedState?.status]);
+  }, [owner, sharedState?.mainFile, sharedState?.status, sharedState?.runId]);
 
   useEffect(() => {
-    if (sharedState?.mainFile === mainFile
-      && (sharedState.status === "queued" || sharedState.status === "running")) {
-      allowCompletedAfterSwitch.current = true;
-    }
-  }, [mainFile, sharedState?.mainFile, sharedState?.status, sharedState?.runId]);
-
-  useEffect(() => {
-    if (!sharedState || sharedState.mainFile !== mainFile
-      || (sharedState.status !== "succeeded" && sharedState.status !== "failed")) return;
-    if (!allowCompletedAfterSwitch.current) return;
-    // Our POST already returns the complete result. Only collaborators (or a
-    // local POST that failed in transit) need the WebSocket-triggered lookup.
-    // localCompiling changes in finally, so a lost response still falls back
-    // to the shared state instead of silently losing a successful compile.
-    if (localCompiling || (appliedCompletedRun.current?.mainFile === mainFile
-      && appliedCompletedRun.current.runId === sharedState.runId)) return;
-    let cancelled = false;
-    completedStateRequest.current?.abort();
-    artifactPreviewRequest.current?.abort();
-    const controller = new AbortController();
-    completedStateRequest.current = controller;
-    setPdfLoading(true);
+    if (!sharedState || sharedState.mainFile !== mainFile || (sharedState.status !== "succeeded" && sharedState.status !== "failed")) return;
+    // Bootstrap and cleanup defer shared replays. Their state transitions
+    // retrigger reconciliation even when the completion event is unchanged.
+    if (latestRequest.current?.owner === owner || cleanRequest.current?.owner === owner || cleaning
+      || localCompiling || !owner.sharedCompletionAllowed || owner.hasRun(sharedState.runId)) return;
+    const request = { owner, controller: new AbortController() };
+    abortRequest(completedRequest);
+    abortRequest(previewRequest);
+    setArtifactLoading(false);
+    completedRequest.current = request;
+    setSharedLoad(request);
     void api<LatestCompileResponse>(
-      `/api/projects/${projectId}/compile/latest?mainFile=${encodeURIComponent(mainFile)}`,
-      { signal: controller.signal }
+      `/api/projects/${projectId}/compile/latest?mainFile=${encodeURIComponent(mainFile)}`, { signal: request.controller.signal }
     ).then((latest) => {
-      if (cancelled || latest.mainFile !== mainFileRef.current || latest.latestRun?.id !== sharedState.runId) return;
-      appliedCompletedRun.current = { mainFile, runId: sharedState.runId };
-      setCompileLog(latest.latestRun.log);
-      setCompileDiagnostics(latest.latestRun.diagnostics);
-      setCompileOutcome(compileOutcomeForRun(latest.latestRun));
-      if (sharedState.status === "succeeded" && sharedState.stale) setEditorNotice(t("editor.compileSnapshotStale"));
+      if (!isCurrent(owner, request.controller.signal) || latest.latestRun?.id !== sharedState.runId) return;
+      if (!publish(owner, owner.receiveLatest(latest, "shared"))) return;
+      if (sharedState.status === "succeeded" && sharedState.stale) setEditorNotice(callbacks.current.t("editor.compileSnapshotStale"));
       if (sharedState.status === "succeeded" && latest.pdfUrl) {
-        authoritativeCompileRun.current = { mainFile, runId: sharedState.runId };
-        publishPdf(mainFile, latest.pdfUrl, latest.pdfCompiledAt, latest.pdfSizeBytes, latest.pdfLoadingMode);
-        callbacks.current.onPreviewTab("pdf");
-        focusPdfAfterCompile(sharedState.runId);
-        refreshArtifactsAfterPdf(mainFile, latest.pdfUrl);
+        callbacks.current.onPreviewTab("pdf"); refreshArtifactsAfterPdf(owner);
       } else if (sharedState.status === "failed") {
         callbacks.current.onPreviewTab(latest.latestRun.diagnostics.errors.length ? "errors" : "log");
       }
     }).catch((error) => {
-      if (!isAbortError(error) && !cancelled) callbacks.current.onError(errorMessage(error));
+      if (!isAbortError(error) && isCurrent(owner, request.controller.signal)) callbacks.current.onError(errorMessage(error));
     }).finally(() => {
-      if (completedStateRequest.current === controller) completedStateRequest.current = null;
-      if (!cancelled) setPdfLoading(false);
+      if (completedRequest.current === request) completedRequest.current = null;
+      setSharedLoad((current) => current === request ? null : current);
     });
-    return () => {
-      cancelled = true;
-      controller.abort();
-      if (completedStateRequest.current === controller) completedStateRequest.current = null;
-    };
-  }, [sharedState?.runId, sharedState?.status, sharedState?.mainFile, sharedState?.stale, mainFile, projectId, localCompiling, t]);
+    return () => { request.controller.abort(); if (completedRequest.current === request) completedRequest.current = null; };
+  }, [owner, sharedState?.runId, sharedState?.status, sharedState?.mainFile, sharedState?.stale, localCompiling, initialLoad, cleaning]);
 
   const compile = async () => {
     if (!project || project.permission === "read" || !collaborationSynced) return;
     const requestedMainFile = callbacks.current.resolveCompileMainFile?.() || currentMainFile();
-    if (!requestedMainFile
-      || compileRequests.current.has(requestedMainFile)
-      || (sharedState?.mainFile === requestedMainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
-    setCompilingMainFiles((current) => new Set([...current, requestedMainFile]));
-    callbacks.current.onCompileStart();
+    const id = targetKey(projectId, requestedMainFile);
+    const shared = callbacks.current.sharedState;
+    if (!requestedMainFile || compileRequests.current.has(id)
+      || (shared?.mainFile === requestedMainFile && (shared.status === "queued" || shared.status === "running"))) return;
+    let scope = ownerRef.current!;
+    // Adopt a synchronously promoted root so its request and the following
+    // React render share the same selection lifetime.
+    if (scope.selection.mainFile !== requestedMainFile) {
+      abortReads(scope);
+      scope = new CompilationResults({ projectId, mainFile: requestedMainFile }, false);
+      ownerRef.current = scope;
+      resetPanels();
+    }
+    abortReads(scope);
     setEditorNotice("");
-    artifactPreviewRequest.current?.abort();
-    artifactPreviewRequest.current = null;
-    setCompileLog("");
-    setCompileDiagnostics(null);
-    setCompileOutcome(null);
-    callbacks.current.onPreviewTab(selectionVisible && pdfUrl ? "pdf" : "log");
-    const controller = new AbortController();
-    compileRequests.current.set(requestedMainFile, controller);
+    callbacks.current.onCompileStart();
+    callbacks.current.onPreviewTab(scope.snapshot.pdf ? "pdf" : "log");
+    const request = { owner: scope, controller: new AbortController() };
+    compileRequests.current.set(id, request);
+    setCompilingTargets((current) => new Set([...current, id]));
     try {
-      if (!(await callbacks.current.save())) return;
-      allowCompletedAfterSwitch.current = true;
-      const result = await api<{ runId: string; mainFile: string; ok: boolean; cancelled?: boolean; skipped?: boolean; stale?: boolean; log: string; diagnostics: CompileDiagnostics; pdfUrl: string | null; pdfCompiledAt: string | null; pdfSizeBytes: number | null; pdfLoadingMode: "full" | "range" | null }>(
-        `/api/projects/${projectId}/compile`,
-        { method: "POST", signal: controller.signal, body: JSON.stringify({ mainFile: requestedMainFile }) }
-      );
-      // Do not replace the active preview if the user selected another root
-      // while this compile was running.
-      if (result.mainFile !== requestedMainFile || currentMainFile() !== requestedMainFile) return;
-      appliedCompletedRun.current = { mainFile: requestedMainFile, runId: result.runId };
-      setPdfLoading(false);
-      setCompileLog(result.log);
-      setCompileDiagnostics(result.diagnostics);
-      setCompileOutcome(result.cancelled ? "cancelled" : result.ok ? "succeeded" : "failed");
-      if (result.cancelled) setEditorNotice(t("compileControls.cancelled"));
-      if (result.skipped) setEditorNotice(t("editor.upToDate"));
-      if (result.ok && result.stale) setEditorNotice(t("editor.compileSnapshotStale"));
-      if (result.pdfUrl) {
-        if (result.ok) authoritativeCompileRun.current = { mainFile: requestedMainFile, runId: result.runId };
-        publishPdf(requestedMainFile, result.pdfUrl, result.pdfCompiledAt, result.pdfSizeBytes, result.pdfLoadingMode);
-        refreshArtifactsAfterPdf(requestedMainFile, result.pdfUrl);
-        callbacks.current.onPreviewTab("pdf");
-        if (result.ok) {
-          // A skipped request reuses the published run id and is not
-          // broadcast as a new shared compile state, so it must always move
-          // the local PDF to the current source cursor.
-          if (result.skipped) callbacks.current.onCompileSuccess();
-          else focusPdfAfterCompile(result.runId);
-        }
-      } else {
-        callbacks.current.onPreviewTab(result.diagnostics.errors.length ? "errors" : "log");
-      }
+      if (!(await callbacks.current.save()) || !isCurrent(scope, request.controller.signal)) return;
+      // Saving can fail without ever starting a compile. Keep the previous
+      // received run (and its replay suppression) until a POST is submitted.
+      scope.beginCompile(); setSnapshot(scope.snapshot);
+      const result = await api<CompileResponse>(`/api/projects/${projectId}/compile`, {
+        method: "POST", signal: request.controller.signal, body: JSON.stringify({ mainFile: requestedMainFile })
+      });
+      if (!isCurrent(scope, request.controller.signal) || !publish(scope, scope.receiveLocal(result))) return;
+      if (result.cancelled) setEditorNotice(callbacks.current.t("compileControls.cancelled"));
+      if (result.skipped) setEditorNotice(callbacks.current.t("editor.upToDate"));
+      if (result.ok && result.stale) setEditorNotice(callbacks.current.t("editor.compileSnapshotStale"));
+      if (result.pdfUrl) { refreshArtifactsAfterPdf(scope); callbacks.current.onPreviewTab("pdf"); }
+      else callbacks.current.onPreviewTab(result.diagnostics.errors.length ? "errors" : "log");
     } catch (error) {
-      if (!isAbortError(error) && currentMainFile() === requestedMainFile) callbacks.current.onError(errorMessage(error));
+      if (!isAbortError(error) && isCurrent(scope, request.controller.signal)) callbacks.current.onError(errorMessage(error));
     } finally {
-      if (compileRequests.current.get(requestedMainFile) === controller) {
-        compileRequests.current.delete(requestedMainFile);
-        setCompilingMainFiles((current) => {
-          const next = new Set(current);
-          next.delete(requestedMainFile);
-          return next;
-        });
-        setCancellingMainFiles((current) => {
-          if (!current.has(requestedMainFile)) return current;
-          const next = new Set(current);
-          next.delete(requestedMainFile);
-          return next;
-        });
+      if (compileRequests.current.get(id) === request) {
+        compileRequests.current.delete(id);
+        setCompilingTargets((current) => { const next = new Set(current); next.delete(id); return next; });
+        setCancellingTargets((current) => { const next = new Set(current); next.delete(id); return next; });
       }
     }
   };
 
-  const cancelCompile = async (): Promise<void> => {
-    if (!project || project.permission === "read" || !collaborationSynced) return;
-    // Cancellation is tied to the root currently shown as compiling. It must
-    // not re-evaluate the active source, which may have changed since start.
-    const requestedMainFile = currentMainFile();
-    if (!requestedMainFile) return;
-    setCancellingMainFiles((current) => new Set([...current, requestedMainFile]));
+  const cancelCompile = async () => {
+    if (!project || project.permission === "read" || !collaborationSynced || !isCurrent(owner)) return;
+    const id = targetKey(projectId, mainFile);
+    if (!mainFile || cancelRequests.current.has(id)) return;
+    const request = { owner, controller: new AbortController() };
+    cancelRequests.current.set(id, request);
+    setCancellingTargets((current) => new Set([...current, id]));
     try {
       const result = await api<{ cancelled: boolean }>(`/api/projects/${projectId}/compile/cancel`, {
-        method: "POST", body: JSON.stringify({ mainFile: requestedMainFile })
+        method: "POST", signal: request.controller.signal, body: JSON.stringify({ mainFile })
       });
-      if (!result.cancelled) {
-        setCancellingMainFiles((current) => {
-          const next = new Set(current);
-          next.delete(requestedMainFile);
-          return next;
-        });
+      if (!result.cancelled && isCurrent(owner, request.controller.signal)) {
+        setCancellingTargets((current) => { const next = new Set(current); next.delete(id); return next; });
       }
     } catch (error) {
-      setCancellingMainFiles((current) => {
-        const next = new Set(current);
-        next.delete(requestedMainFile);
-        return next;
+      if (isCurrent(owner, request.controller.signal)) {
+        setCancellingTargets((current) => { const next = new Set(current); next.delete(id); return next; });
+        if (!isAbortError(error)) callbacks.current.onError(errorMessage(error));
+      }
+    } finally { if (cancelRequests.current.get(id) === request) cancelRequests.current.delete(id); }
+  };
+
+  const cleanCompile = async (mode: CompileCleanMode) => {
+    if (!project || project.permission === "read" || !collaborationSynced || !isCurrent(owner)) return;
+    if (!mainFile || cleanRequest.current || compileRequests.current.has(key)
+      || (sharedState?.mainFile === mainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
+    const request = { owner, controller: new AbortController() };
+    const sharedAtStart = callbacks.current.sharedState;
+    cleanRequest.current = request; setCleaningOwner(owner); abortReads(owner);
+    try {
+      const result = await api<{ ok: boolean; mode: CompileCleanMode; mainFile: string }>(`/api/projects/${projectId}/compile/clean`, {
+        method: "POST", signal: request.controller.signal, body: JSON.stringify({ mainFile, mode })
       });
-      if (!isAbortError(error) && currentMainFile() === requestedMainFile) callbacks.current.onError(errorMessage(error));
+      if (!isCurrent(owner, request.controller.signal) || result.mainFile !== mainFile) return;
+      // The HTTP response may arrive after a newer collaboration event.
+      // Preserve it so reconciliation can resume when cleaning becomes false.
+      if (callbacks.current.sharedState === sharedAtStart) callbacks.current.onSharedState(null);
+      applyClean(owner, mode);
+    } catch (error) {
+      if (!isAbortError(error) && isCurrent(owner, request.controller.signal)) callbacks.current.onError(errorMessage(error));
+    } finally {
+      if (cleanRequest.current === request) cleanRequest.current = null;
+      setCleaningOwner((current) => current === owner ? null : current);
     }
   };
 
-  const cleanCompile = async (mode: CompileCleanMode): Promise<void> => {
-    if (!project || project.permission === "read" || !collaborationSynced || cleaning) return;
-    const requestedMainFile = currentMainFile();
-    if (!requestedMainFile
-      || compileRequests.current.has(requestedMainFile)
-      || (sharedState?.mainFile === requestedMainFile && (sharedState.status === "queued" || sharedState.status === "running"))) return;
-    setCleaning(true);
-    appliedCompletedRun.current = null;
-    pendingArtifactRefresh.current = null;
-    latestRequest.current?.abort();
-    completedStateRequest.current?.abort();
-    artifactsRequest.current?.abort();
-    artifactPreviewRequest.current?.abort();
+  const viewArtifact = async (artifact: CompileArtifact) => {
+    if (!artifact.viewable || !isCurrent(owner)) return;
+    abortRequest(previewRequest);
+    const request = { owner, controller: new AbortController() };
+    const pdfUrl = owner.snapshot.pdf?.url;
+    previewRequest.current = request; setArtifactLoading(true);
     try {
-      const result = await api<{ ok: boolean; mode: CompileCleanMode; mainFile: string; retainedPdf: boolean }>(
-        `/api/projects/${projectId}/compile/clean`,
-        { method: "POST", body: JSON.stringify({ mainFile: requestedMainFile, mode }) }
+      const result = await api<{ path: string; content: string }>(
+        `/api/projects/${projectId}/compile/artifacts?mainFile=${encodeURIComponent(mainFile)}&path=${encodeURIComponent(artifact.path)}`,
+        { signal: request.controller.signal }
       );
-      if (result.mainFile !== requestedMainFile || currentMainFile() !== requestedMainFile) return;
-      callbacks.current.onSharedState(null);
-      if (mode === "artifacts") {
-        authoritativeCompileRun.current = null;
-        setCompileLog("");
-        setCompileDiagnostics(null);
-        setCompileOutcome(null);
-        publishedPdfUrl.current = "";
-        setPdfUrl("");
-        setPdfCompiledAt(null);
-        setPdfSizeBytes(null);
-        setPdfLoadingMode("full");
-        setArtifacts([]);
-        setArtifactPreview(null);
-        callbacks.current.onPdfChanged();
-      }
-      setEditorNotice(mode === "cache" ? t("editor.cleanCacheComplete") : t("editor.cleanArtifactsComplete"));
+      if (isCurrent(owner, request.controller.signal) && owner.snapshot.pdf?.url === pdfUrl) setArtifactPreview(result);
     } catch (error) {
-      if (!isAbortError(error) && currentMainFile() === requestedMainFile) callbacks.current.onError(errorMessage(error));
+      if (!isAbortError(error) && isCurrent(owner, request.controller.signal) && owner.snapshot.pdf?.url === pdfUrl) callbacks.current.onError(errorMessage(error));
     } finally {
-      setCleaning(false);
+      if (previewRequest.current === request) { previewRequest.current = null; setArtifactLoading(false); }
     }
   };
 
   compileAction.current = () => void compile();
-
   useEffect(() => {
     if (!editorNotice) return;
     const timeout = window.setTimeout(() => setEditorNotice(""), 3_000);
     return () => window.clearTimeout(timeout);
-  }, [editorNotice]);
+  }, [editorNotice, owner]);
 
   useEffect(() => {
-    const handleCompileShortcut = (event: KeyboardEvent) => {
+    const shortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== "s") return;
-      if (isNativeTextControl(event.target) || isOpenDialogTarget(event.target)) {
-        event.preventDefault();
-        return;
-      }
       event.preventDefault();
+      if (isFormTarget(event.target)) return;
       event.stopPropagation();
       if (!event.repeat) compileAction.current();
     };
-    window.addEventListener("keydown", handleCompileShortcut, true);
-    return () => window.removeEventListener("keydown", handleCompileShortcut, true);
+    window.addEventListener("keydown", shortcut, true);
+    return () => window.removeEventListener("keydown", shortcut, true);
   }, []);
 
-  useEffect(() => () => {
-    latestRequest.current?.abort();
-    completedStateRequest.current?.abort();
-    artifactsRequest.current?.abort();
-    artifactPreviewRequest.current?.abort();
-    for (const request of backgroundRequests.current) request.abort();
-    backgroundRequests.current.clear();
-    for (const request of compileRequests.current.values()) request.abort();
-    compileRequests.current.clear();
-  }, []);
-
-  const viewArtifact = async (artifact: CompileArtifact) => {
-    if (!artifact.viewable) return;
-    artifactPreviewRequest.current?.abort();
-    const controller = new AbortController();
-    artifactPreviewRequest.current = controller;
-    setArtifactLoading(true);
-    try {
-      const result = await api<{ path: string; content: string }>(
-        `/api/projects/${projectId}/compile/artifacts?mainFile=${encodeURIComponent(mainFile)}&path=${encodeURIComponent(artifact.path)}`,
-        { signal: controller.signal }
-      );
-      if (!controller.signal.aborted && artifactPreviewRequest.current === controller && mainFileRef.current === mainFile) {
-        setArtifactPreview(result);
-      }
-    } catch (error) {
-      if (!isAbortError(error)) callbacks.current.onError(errorMessage(error));
-    } finally {
-      if (artifactPreviewRequest.current === controller) {
-        artifactPreviewRequest.current = null;
-        setArtifactLoading(false);
-      }
-    }
-  };
-
+  const visible = selectionVisible ? snapshot : null;
   return {
-    pdfUrl: selectionVisible ? pdfUrl : "",
-    pdfCompiledAt: selectionVisible ? pdfCompiledAt : null,
-    pdfSizeBytes: selectionVisible ? pdfSizeBytes : null,
-    pdfLoadingMode,
-    pdfLoading: selectionVisible ? pdfLoading : false,
-    compileLog: selectionVisible ? compileLog : "",
-    compileDiagnostics: selectionVisible ? compileDiagnostics : null,
-    compileOutcome: selectionVisible ? compileOutcome : null,
-    artifacts: selectionVisible ? artifacts : [],
-    artifactPreview: selectionVisible ? artifactPreview : null,
-    artifactLoading: selectionVisible && artifactLoading,
-    editorNotice: selectionVisible ? editorNotice : "",
-    localCompiling,
-    pdfDisplayed,
-    cancelling: cancellingMainFiles.has(mainFile),
-    cleaning,
-    compile,
-    cancelCompile,
-    cleanCompile,
-    viewArtifact
+    pdfUrl: visible?.pdf?.url ?? "", pdfCompiledAt: visible?.pdf?.compiledAt ?? null,
+    pdfSizeBytes: visible?.pdf?.sizeBytes ?? null, pdfLoadingMode: visible?.pdf?.loadingMode ?? "full",
+    pdfLoading: Boolean((initialLoad?.owner === owner && !initialLoad.controller.signal.aborted) || (sharedLoad?.owner === owner && !sharedLoad.controller.signal.aborted)),
+    compileLog: visible?.run?.log ?? "", compileDiagnostics: visible?.run?.diagnostics ?? null, compileOutcome: visible?.run?.outcome ?? null,
+    artifacts: selectionVisible ? artifacts : [], artifactPreview: selectionVisible ? artifactPreview : null,
+    artifactLoading: selectionVisible && artifactLoading, editorNotice: selectionVisible ? editorNotice : "",
+    localCompiling, cancelling: cancellingTargets.has(key), cleaning,
+    pdfDisplayed, compile, cancelCompile, cleanCompile, viewArtifact
   };
 }

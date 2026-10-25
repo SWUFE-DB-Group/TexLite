@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../src/client/api";
@@ -13,7 +13,7 @@ vi.mock("react-i18next", async (importOriginal) => {
 });
 
 type Options = Parameters<typeof useProjectCompilation>[0];
-type CompileResult = LatestCompileResponse & { runId: string; ok: boolean; skipped?: boolean; log: string; diagnostics: { warnings: []; errors: [] } };
+type CompileResult = LatestCompileResponse & { runId: string; ok: boolean; skipped?: boolean; cancelled?: boolean; log: string; diagnostics: { warnings: []; errors: [] } };
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (reason: Error) => void;
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
@@ -36,11 +36,13 @@ let current: ReturnType<typeof useProjectCompilation>;
 let latest: LatestCompileResponse;
 let post: ReturnType<typeof deferred<CompileResult>>;
 let compilePromise: Promise<void>;
+let strictMode = false;
+let unmounted = false;
 
 function Harness(props: Options) { current = useProjectCompilation(props); return null; }
 async function render(overrides: Partial<Options> = {}) {
   options = { ...options, ...overrides };
-  await act(async () => { root.render(createElement(Harness, options)); });
+  await act(async () => { root.render(strictMode ? createElement(StrictMode, null, createElement(Harness, options)) : createElement(Harness, options)); });
 }
 const requests = (suffix: string) => vi.mocked(api).mock.calls.filter(([url]) => url.includes(suffix));
 async function prepare() {
@@ -57,11 +59,14 @@ async function finishCompile(value = result()) {
 }
 
 beforeEach(() => {
+  strictMode = false; unmounted = false;
   vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   latest = result("old-run"); post = deferred<CompileResult>();
   vi.mocked(api).mockReset().mockImplementation(async (url, init) => {
     if (url.includes("/compile/latest")) return latest;
     if (url.includes("/compile/artifacts")) return { artifacts: [] };
+    if (url.endsWith("/compile/clean")) return { ok: true, ...JSON.parse(String(init?.body)) };
+    if (url.endsWith("/compile/cancel")) return { cancelled: true };
     if (url.endsWith("/compile") && init?.method === "POST") return post.promise;
     throw new Error(`Unexpected request: ${url}`);
   });
@@ -78,7 +83,527 @@ beforeEach(() => {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => {
-  await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals();
+  if (!unmounted) await act(async () => root.unmount());
+  container.remove(); vi.useRealTimers(); vi.unstubAllGlobals();
+});
+
+describe("compilation selection and request lifetimes", () => {
+  it("waits for a known root and never requests an implicit default first", async () => {
+    await render({ mainFile: "" });
+    expect(requests("/compile/latest")).toHaveLength(0);
+    expect(current.pdfLoading).toBe(false);
+    await render({ mainFile: "main.tex" });
+    expect(requests("/compile/latest")).toHaveLength(1);
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+  });
+
+  it.each(["mismatch", "failure"])("consumes a %s route preload and falls back to a fresh lookup", async (mode) => {
+    const preload = deferred<LatestCompileResponse>();
+    await render({ initialLatest: preload.promise });
+    expect(requests("/compile/latest")).toHaveLength(0);
+    await act(async () => {
+      if (mode === "failure") preload.reject(new Error("preload failed"));
+      else preload.resolve({ ...result("wrong-root"), mainFile: "other.tex" });
+    });
+    expect(requests("/compile/latest")).toHaveLength(1);
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    await render({ onPdfChanged: vi.fn() });
+    expect(requests("/compile/latest")).toHaveLength(1);
+    await render({ mainFile: "other.tex" });
+    await render({ mainFile: "main.tex" });
+    expect(current.pdfUrl).toBe("");
+    expect(requests("/compile/latest")).toHaveLength(1);
+  });
+
+  it("lets StrictMode cancel and retry bootstrap without accepting the first request's late failure", async () => {
+    strictMode = true;
+    const stale = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => stale.promise);
+    await render();
+    expect(requests("/compile/latest")).toHaveLength(2);
+    expect(requests("/compile/latest")[0][1]?.signal?.aborted).toBe(true);
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    await act(async () => stale.reject(new Error("late bootstrap failure")));
+    expect(current.pdfLoading).toBe(false);
+    expect(options.onError).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("does not overwrite a local result with a delayed bootstrap (ok=%s)", async (ok) => {
+    const bootstrap = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => bootstrap.promise);
+    await render();
+    const signal = requests("/compile/latest")[0][1]?.signal;
+    await startCompile(); await finishCompile(result("local", ok));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => bootstrap.resolve(result("outdated")));
+    expect(current.compileLog).toBe(ok ? "Compiled successfully." : "Compilation failed.");
+    expect(current.compileOutcome).toBe(ok ? "succeeded" : "failed");
+    expect(current.pdfUrl).toBe(ok ? "/pdf?run=local" : "");
+    expect(current.pdfLoading).toBe(false);
+  });
+
+  it("defers shared replays during bootstrap and does not request a run already returned by bootstrap", async () => {
+    const bootstrap = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => bootstrap.promise);
+    await render({ sharedState: sharedState() });
+    expect(requests("/compile/latest")).toHaveLength(1);
+    await act(async () => bootstrap.resolve(result()));
+    expect(requests("/compile/latest")).toHaveLength(1);
+    expect(current.pdfUrl).toBe("/pdf?run=new-run");
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it("recovers through a shared completion if the initial lookup fails", async () => {
+    const bootstrap = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => bootstrap.promise);
+    latest = result();
+    await render({ sharedState: sharedState() });
+    await act(async () => bootstrap.reject(new Error("initial connection lost")));
+    expect(requests("/compile/latest")).toHaveLength(2);
+    expect(current.pdfUrl).toBe("/pdf?run=new-run");
+    expect(current.pdfLoading).toBe(false);
+    expect(options.onCompileSuccess).toHaveBeenCalledOnce();
+  });
+
+  it("retains the last good PDF while exposing a failed or cancelled run", async () => {
+    await prepare(); await startCompile();
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    await finishCompile({ ...result("cancelled", false), cancelled: true });
+    expect(current.compileOutcome).toBe("cancelled");
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    expect(current.editorNotice).toBe("compileControls.cancelled");
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it("prevents duplicate compiles while waiting for source to be saved", async () => {
+    await prepare();
+    const saved = deferred<boolean>();
+    await render({ save: vi.fn(() => saved.promise) });
+    await startCompile();
+    await act(async () => { await current.compile(); });
+    expect(current.localCompiling).toBe(true);
+    expect(requests("/compile")).toHaveLength(0);
+    await act(async () => saved.resolve(true));
+    expect(requests("/compile")).toHaveLength(1);
+    await finishCompile();
+    expect(current.localCompiling).toBe(false);
+  });
+
+  it.each([false, "error"])("does not start compilation after an unsuccessful save (%s)", async (outcome) => {
+    await prepare();
+    const saved = deferred<boolean>();
+    await render({ sharedState: sharedState("old-run"), save: vi.fn(() => saved.promise) });
+    await startCompile();
+    expect(current.compileLog).toBe("Compiled successfully.");
+    expect(current.compileOutcome).toBe("succeeded");
+    await act(async () => {
+      if (outcome === "error") saved.reject(new Error("save failed"));
+      else saved.resolve(false);
+      await compilePromise;
+    });
+    expect(requests("/compile")).toHaveLength(0);
+    expect(current.localCompiling).toBe(false);
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    expect(current.compileLog).toBe("Compiled successfully.");
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+    expect(options.onError).toHaveBeenCalledTimes(outcome === "error" ? 1 : 0);
+  });
+
+  it("clears the previous run only after source saving succeeds", async () => {
+    await prepare();
+    const saved = deferred<boolean>();
+    await render({ sharedState: sharedState("old-run"), save: vi.fn(() => saved.promise) });
+    await startCompile();
+    expect(current.compileOutcome).toBe("succeeded");
+    expect(requests("/compile")).toHaveLength(0);
+    await act(async () => saved.resolve(true));
+    expect(current.compileOutcome).toBeNull();
+    expect(current.compileLog).toBe("");
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    expect(requests("/compile")).toHaveLength(1);
+    latest = result();
+    await finishCompile();
+    expect(options.onCompileSuccess).toHaveBeenCalledOnce();
+  });
+
+  it("still receives a new collaborator result when local source saving fails", async () => {
+    await prepare();
+    const saved = deferred<boolean>();
+    await render({ sharedState: sharedState("old-run"), save: vi.fn(() => saved.promise) });
+    await startCompile();
+    latest = result("collaborator");
+    await render({ sharedState: sharedState("collaborator") });
+    expect(requests("/compile/latest")).toHaveLength(0);
+    await act(async () => { saved.resolve(false); await compilePromise; });
+    expect(requests("/compile").filter(([url]) => url.endsWith("/compile"))).toHaveLength(0);
+    expect(requests("/compile/latest")).toHaveLength(1);
+    expect(current.pdfUrl).toBe("/pdf?run=collaborator");
+    expect(options.onCompileSuccess).toHaveBeenCalledOnce();
+  });
+
+  it("does not restore a switched root's old result when source saving fails", async () => {
+    await prepare();
+    const saved = deferred<boolean>();
+    await render({ mainFile: "other.tex", sharedState: { ...sharedState("old-other"), mainFile: "other.tex" }, save: vi.fn(() => saved.promise) });
+    latest = { ...result("old-other"), mainFile: "other.tex" };
+    await startCompile();
+    await act(async () => { saved.resolve(false); await compilePromise; });
+    expect(requests("/compile")).toHaveLength(0);
+    expect(current.pdfUrl).toBe("");
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it("does not start a stale compile if the project changes while saving", async () => {
+    await prepare();
+    const saved = deferred<boolean>();
+    await render({ save: vi.fn(() => saved.promise) });
+    await startCompile();
+    latest = result("project-b");
+    await render({ projectId: "other", project: { ...options.project!, id: "other" } });
+    await act(async () => { saved.resolve(true); await compilePromise; });
+    expect(requests("/compile").filter(([url]) => url.endsWith("/compile"))).toHaveLength(0);
+    expect(current.pdfUrl).toBe("/pdf?run=project-b");
+    expect(current.localCompiling).toBe(false);
+  });
+
+  it.each(["success", "failure"])("ignores a previous project's late POST %s even when both roots have the same filename", async (outcome) => {
+    await prepare(); await startCompile();
+    const postSignal = requests("/compile")[0][1]?.signal;
+    latest = result("project-b");
+    await render({ projectId: "other", project: { ...options.project!, id: "other" } });
+    expect(postSignal?.aborted).toBe(true);
+    await act(async () => {
+      if (outcome === "failure") post.reject(new Error("old project error"));
+      else post.resolve(result("project-a"));
+      await compilePromise;
+    });
+    expect(current.pdfUrl).toBe("/pdf?run=project-b");
+    expect(current.localCompiling).toBe(false);
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+    expect(options.onError).not.toHaveBeenCalled();
+  });
+
+  it("does not revive the first A's compile after an A -> B -> A root switch", async () => {
+    await prepare(); await startCompile();
+    await render({ mainFile: "other.tex" }); await render({ mainFile: "main.tex" });
+    await finishCompile();
+    expect(current.pdfUrl).toBe("");
+    expect(current.compileLog).toBe("");
+    expect(current.localCompiling).toBe(false);
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it("does not revive an old local result after leaving and reopening the same project", async () => {
+    await prepare(); await startCompile();
+    latest = result("project-b");
+    await render({ projectId: "other" });
+    latest = result("reopened-a");
+    await render({ projectId: "paper" });
+    await finishCompile();
+    expect(current.pdfUrl).toBe("/pdf?run=reopened-a");
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it("adopts a root promoted synchronously by the compile command before React commits it", async () => {
+    await prepare();
+    let intendedRoot = "main.tex";
+    await render({ getCurrentMainFile: () => intendedRoot, resolveCompileMainFile: () => {
+      intendedRoot = "other.tex";
+      options = { ...options, mainFile: intendedRoot };
+      root.render(createElement(Harness, options));
+      return intendedRoot;
+    } });
+    await startCompile();
+    expect(JSON.parse(String(requests("/compile")[0][1]?.body))).toEqual({ mainFile: "other.tex" });
+    await finishCompile({ ...result("promoted-root"), mainFile: "other.tex" });
+    expect(current.pdfUrl).toBe("/pdf?run=promoted-root");
+    expect(current.localCompiling).toBe(false);
+    expect(options.onCompileSuccess).toHaveBeenCalledOnce();
+  });
+
+  it("ignores an earlier shared lookup without hiding the later lookup's loading state", async () => {
+    await prepare();
+    const first = deferred<LatestCompileResponse>(), second = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+    await render({ sharedState: sharedState("one") });
+    const signal = requests("/compile/latest")[0][1]?.signal;
+    await render({ sharedState: sharedState("two") });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => first.resolve(result("one")));
+    expect(current.pdfLoading).toBe(true);
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    await act(async () => second.resolve(result("two")));
+    expect(current.pdfLoading).toBe(false);
+    expect(current.pdfUrl).toBe("/pdf?run=two");
+    expect(options.onCompileSuccess).toHaveBeenCalledOnce();
+  });
+
+  it.each(["root", "run"])("ignores a shared completion lookup for a different %s", async (mismatch) => {
+    await prepare();
+    latest = mismatch === "run" ? result("another-run") : { ...result(), mainFile: "other.tex" };
+    await render({ sharedState: sharedState() });
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    expect(current.pdfLoading).toBe(false);
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it("ignores completed root-switch replays until a new shared compile starts", async () => {
+    await prepare();
+    const state = { ...sharedState(), mainFile: "other.tex" };
+    await render({ mainFile: "other.tex", sharedState: state });
+    expect(requests("/compile/latest")).toHaveLength(0);
+    expect(current.pdfUrl).toBe("");
+    await render({ sharedState: { ...state, status: "running" } });
+    latest = { ...result(), mainFile: "other.tex" };
+    await render({ sharedState: state });
+    expect(requests("/compile/latest")).toHaveLength(1);
+    expect(current.pdfUrl).toBe("/pdf?run=new-run");
+  });
+
+  it.each(["cache", "artifacts"] as const)("applies %s cleanup at the correct scope and guards repeat submissions", async (mode) => {
+    await prepare();
+    const onSharedState = vi.fn((state: Options["sharedState"]) => {
+      options = { ...options, sharedState: state };
+      root.render(createElement(Harness, options));
+    });
+    await render({ sharedState: sharedState("old-run"), onSharedState });
+    const clean = deferred<{ ok: boolean; mode: typeof mode; mainFile: string }>();
+    vi.mocked(api).mockImplementationOnce(() => clean.promise);
+    let cleaning!: Promise<void>;
+    await act(async () => { cleaning = current.cleanCompile(mode); });
+    expect(current.cleaning).toBe(true);
+    await act(async () => { await current.cleanCompile(mode); });
+    expect(requests("/compile/clean")).toHaveLength(1);
+    await act(async () => { clean.resolve({ ok: true, mode, mainFile: "main.tex" }); await cleaning; });
+    expect(current.pdfUrl).toBe(mode === "cache" ? "/pdf?run=old-run" : "");
+    expect(current.compileLog).toBe(mode === "cache" ? "Compiled successfully." : "");
+    expect(current.cleaning).toBe(false);
+    expect(options.onSharedState).toHaveBeenLastCalledWith(null);
+    expect(requests("/compile/latest")).toHaveLength(0);
+  });
+
+  it.each(["succeeded", "failed"] as const)("receives a deferred %s completion after cleanup fails", async (status) => {
+    await prepare();
+    const clean = deferred<{ ok: boolean; mode: string; mainFile: string }>();
+    vi.mocked(api).mockImplementationOnce(() => clean.promise);
+    let cleaning!: Promise<void>;
+    await act(async () => { cleaning = current.cleanCompile("cache"); });
+    latest = result("collaborator", status === "succeeded");
+    await render({ sharedState: sharedState("collaborator", status) });
+    expect(requests("/compile/latest")).toHaveLength(0);
+    await act(async () => { clean.reject(new Error("cleanup failed")); await cleaning; });
+    expect(current.cleaning).toBe(false);
+    expect(requests("/compile/latest")).toHaveLength(1);
+    expect(current.pdfLoading).toBe(false);
+    expect(current.compileOutcome).toBe(status);
+    expect(current.pdfUrl).toBe(status === "succeeded" ? "/pdf?run=collaborator" : "/pdf?run=old-run");
+    expect(options.onCompileSuccess).toHaveBeenCalledTimes(status === "succeeded" ? 1 : 0);
+    expect(options.onError).toHaveBeenCalledWith("cleanup failed");
+  });
+
+  it("restarts a completion lookup interrupted by failed cleanup without accepting the aborted response", async () => {
+    await prepare();
+    const lookup = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => lookup.promise);
+    await render({ sharedState: sharedState("collaborator") });
+    const signal = requests("/compile/latest")[0][1]?.signal;
+    const clean = deferred<{ ok: boolean; mode: string; mainFile: string }>();
+    vi.mocked(api).mockImplementationOnce(() => clean.promise);
+    let cleaning!: Promise<void>;
+    await act(async () => { cleaning = current.cleanCompile("artifacts"); });
+    expect(signal?.aborted).toBe(true);
+    latest = result("collaborator");
+    await act(async () => { clean.reject(new Error("cleanup failed")); await cleaning; });
+    expect(requests("/compile/latest")).toHaveLength(2);
+    expect(current.pdfUrl).toBe("/pdf?run=collaborator");
+    await act(async () => lookup.resolve(result("outdated")));
+    expect(current.pdfUrl).toBe("/pdf?run=collaborator");
+    expect(current.pdfLoading).toBe(false);
+    expect(options.onCompileSuccess).toHaveBeenCalledOnce();
+  });
+
+  it.each(["cache", "artifacts"] as const)("does not discard a newer completion when %s cleanup succeeds", async (mode) => {
+    await prepare();
+    const onSharedState = vi.fn((state: Options["sharedState"]) => {
+      options = { ...options, sharedState: state };
+      root.render(createElement(Harness, options));
+    });
+    await render({ onSharedState });
+    const clean = deferred<{ ok: boolean; mode: string; mainFile: string }>();
+    vi.mocked(api).mockImplementationOnce(() => clean.promise);
+    let cleaning!: Promise<void>;
+    await act(async () => { cleaning = current.cleanCompile(mode); });
+    // The server finished cleaning, then published another compile before
+    // the original cleanup response reached this browser.
+    latest = result("after-cleanup");
+    await render({ sharedState: sharedState("after-cleanup") });
+    expect(requests("/compile/latest")).toHaveLength(0);
+    await act(async () => { clean.resolve({ ok: true, mode, mainFile: "main.tex" }); await cleaning; });
+    expect(onSharedState).not.toHaveBeenCalled();
+    expect(requests("/compile/latest")).toHaveLength(1);
+    expect(current.pdfUrl).toBe("/pdf?run=after-cleanup");
+    expect(current.compileOutcome).toBe("succeeded");
+    expect(options.onCompileSuccess).toHaveBeenCalledOnce();
+  });
+
+  it("does not restore an output removed by cleanup merely because its completion was deferred", async () => {
+    await prepare();
+    const clean = deferred<{ ok: boolean; mode: string; mainFile: string }>();
+    vi.mocked(api).mockImplementationOnce(() => clean.promise);
+    let cleaning!: Promise<void>;
+    await act(async () => { cleaning = current.cleanCompile("artifacts"); });
+    await render({ sharedState: sharedState("removed") });
+    latest = { mainFile: "main.tex", latestRun: null, pdfUrl: null, pdfCompiledAt: null, pdfSizeBytes: null, pdfLoadingMode: null };
+    await act(async () => { clean.resolve({ ok: true, mode: "artifacts", mainFile: "main.tex" }); await cleaning; });
+    expect(requests("/compile/latest")).toHaveLength(1);
+    expect(current.pdfUrl).toBe("");
+    expect(current.compileLog).toBe("");
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it("does not let a late bootstrap restore output removed by a shared cleanup", async () => {
+    const bootstrap = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => bootstrap.promise);
+    await render();
+    await render({ sharedState: { ...sharedState("clean"), status: "cleaned", cleanMode: "artifacts" } });
+    await act(async () => bootstrap.resolve(result("removed")));
+    expect(current.pdfUrl).toBe("");
+    expect(current.compileLog).toBe("");
+    expect(current.pdfLoading).toBe(false);
+    expect(options.onError).not.toHaveBeenCalled();
+  });
+
+  it.each(["success", "failure"])("does not apply a previous root's cleanup %s after switching away and back", async (outcome) => {
+    await prepare();
+    const clean = deferred<{ ok: boolean; mode: string; mainFile: string }>();
+    vi.mocked(api).mockImplementationOnce(() => clean.promise);
+    let cleaning!: Promise<void>;
+    await act(async () => { cleaning = current.cleanCompile("artifacts"); });
+    const signal = requests("/compile/clean")[0][1]?.signal;
+    await render({ mainFile: "other.tex" }); await render({ mainFile: "main.tex" });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => {
+      if (outcome === "failure") clean.reject(new Error("old cleanup failure"));
+      else clean.resolve({ ok: true, mode: "artifacts", mainFile: "main.tex" });
+      await cleaning;
+    });
+    expect(current.editorNotice).toBe("");
+    expect(options.onSharedState).not.toHaveBeenCalled();
+    expect(options.onError).not.toHaveBeenCalled();
+  });
+
+  it.each(["content", "error"])("ignores late artifact preview %s after publishing a new PDF", async (outcome) => {
+    await prepare();
+    const preview = deferred<{ path: string; content: string }>();
+    vi.mocked(api).mockImplementationOnce(() => preview.promise);
+    let reading!: Promise<void>;
+    await act(async () => { reading = current.viewArtifact({ path: "main.log", size: 1, viewable: true }); });
+    const signal = requests("/compile/artifacts")[0][1]?.signal;
+    await startCompile(); await finishCompile();
+    expect(signal?.aborted).toBe(true);
+    await act(async () => {
+      if (outcome === "error") preview.reject(new Error("old artifact error"));
+      else preview.resolve({ path: "main.log", content: "outdated log" });
+      await reading;
+    });
+    expect(current.artifactPreview).toBeNull();
+    expect(current.artifactLoading).toBe(false);
+    expect(options.onError).not.toHaveBeenCalled();
+  });
+
+  it("cancels outstanding POSTs and ignores their errors after unmount", async () => {
+    await prepare(); await startCompile();
+    const signal = requests("/compile")[0][1]?.signal;
+    await act(async () => { root.unmount(); unmounted = true; });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { post.reject(new Error("unmounted compile error")); await compilePromise; });
+    expect(options.onError).not.toHaveBeenCalled();
+    expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it("cancels deferred bootstrap scans if compilation starts before the background timer runs", async () => {
+    await render();
+    vi.mocked(api).mockClear();
+    await startCompile(); await finishCompile();
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    expect(requests("/compile/artifacts")).toHaveLength(0);
+    expect(options.loadOutline).not.toHaveBeenCalled();
+    await act(async () => current.pdfDisplayed("/pdf?run=new-run"));
+    expect(requests("/compile/artifacts")).toHaveLength(1);
+  });
+
+  it("keeps the matching artifact preview readable and aborts it on a root switch", async () => {
+    await prepare();
+    const implementation = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation((url, init) => url.includes("&path=")
+      ? Promise.resolve({ path: "main.log", content: "current log" }) : implementation(url, init));
+    await act(async () => { await current.viewArtifact({ path: "main.log", size: 10, viewable: true }); });
+    expect(current.artifactPreview).toEqual({ path: "main.log", content: "current log" });
+    expect(current.artifactLoading).toBe(false);
+    const pending = deferred<{ path: string; content: string }>();
+    vi.mocked(api).mockImplementationOnce(() => pending.promise);
+    let reading!: Promise<void>;
+    await act(async () => { reading = current.viewArtifact({ path: "main.log", size: 10, viewable: true }); });
+    const signal = requests("&path=").at(-1)![1]?.signal;
+    await render({ mainFile: "other.tex" }); await render({ mainFile: "main.tex" });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { pending.resolve({ path: "main.log", content: "old selection" }); await reading; });
+    expect(current.artifactPreview).toBeNull();
+    expect(current.artifactLoading).toBe(false);
+  });
+
+  it("deduplicates pending cancellation and clears its state when the shared run ends", async () => {
+    await prepare();
+    await render({ sharedState: { ...sharedState(), status: "running" } });
+    const cancel = deferred<{ cancelled: boolean }>();
+    vi.mocked(api).mockImplementationOnce(() => cancel.promise);
+    let cancelling!: Promise<void>;
+    await act(async () => { cancelling = current.cancelCompile(); });
+    await act(async () => { await current.cancelCompile(); });
+    expect(current.cancelling).toBe(true);
+    expect(requests("/compile/cancel")).toHaveLength(1);
+    await act(async () => { cancel.resolve({ cancelled: true }); await cancelling; });
+    latest = { ...result("new-run", false), latestRun: { ...result("new-run", false).latestRun!, log: "Compilation was cancelled." } };
+    await render({ sharedState: sharedState("new-run", "failed") });
+    expect(current.cancelling).toBe(false);
+    expect(current.compileOutcome).toBe("cancelled");
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+  });
+
+  it("keeps cancellation errors and finally handlers scoped to their original project", async () => {
+    await prepare();
+    const cancel = deferred<{ cancelled: boolean }>();
+    vi.mocked(api).mockImplementationOnce(() => cancel.promise);
+    let cancelling!: Promise<void>;
+    await act(async () => { cancelling = current.cancelCompile(); });
+    const signal = requests("/compile/cancel")[0][1]?.signal;
+    latest = result("project-b");
+    await render({ projectId: "other" });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { cancel.reject(new Error("old cancellation failure")); await cancelling; });
+    expect(current.cancelling).toBe(false);
+    expect(current.pdfUrl).toBe("/pdf?run=project-b");
+    expect(options.onError).not.toHaveBeenCalled();
+  });
+
+  it("consumes Ctrl/Cmd+S in forms and dialogs but still compiles from the source editor", async () => {
+    await prepare();
+    const controls: HTMLElement[] = [document.createElement("input"), document.createElement("textarea"), document.createElement("select")];
+    const dialog = document.createElement("div"); dialog.setAttribute("role", "dialog");
+    const dialogButton = document.createElement("button"); dialog.append(dialogButton); controls.push(dialogButton);
+    container.append(...controls.slice(0, 3), dialog);
+    for (const target of controls) {
+      const event = new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true });
+      await act(async () => { target.dispatchEvent(event); });
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(options.save).not.toHaveBeenCalled();
+    const source = document.createElement("div"); source.contentEditable = "true"; container.append(source);
+    await act(async () => { source.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true, cancelable: true })); });
+    expect(requests("/compile")).toHaveLength(1);
+    await act(async () => post.resolve(result()));
+    expect(current.compileOutcome).toBe("succeeded");
+  });
 });
 
 describe("compile completion and PDF priority", () => {

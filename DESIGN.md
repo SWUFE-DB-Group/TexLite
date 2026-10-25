@@ -983,6 +983,29 @@ still provides a recovery lookup. Collaborators continue fetching completed
 runs normally. Post-compile artifact-list refreshes wait for the replacement
 PDF's first paint, or run when the PDF panel is hidden so output inspection
 never depends on a successful PDF render.
+
+`CompilationResults` owns an immutable result snapshot for one workspace
+selection lifetime. Both the latest run and the retained successful PDF carry
+`projectId`, `mainFile`, and their own `runId`; a failed latest run does not
+change the successful PDF's identity. Switching project/root creates a new
+owner, including A-to-B-to-A navigation, and old responses cannot publish into
+that owner. Opening/reopening a workspace restores retained output; switching
+roots inside it starts empty until another compile is observed or requested.
+The initial metadata lookup settles before shared completion replays can start
+a recovery lookup. Local POSTs, shared completions, and bootstrap results all
+use the same result receiver, so acceptance, duplicate suppression, PDF
+replacement and reset rules are not maintained as separate run/URL refs.
+Saving finishes before the previous run is cleared or root-switch replay
+suppression is lifted; a failed save cannot replay an old result as a new
+compile success. Shared completions deferred or interrupted by cleanup are
+reconciled when cleanup ends. A successful cleanup response does not discard
+newer collaboration events received while its HTTP request was pending.
+The hook still owns request cancellation and output-panel lifetimes. Artifact
+lists/previews are checked against both the selection owner and the published
+PDF, and deferred bootstrap scans are cancelled when a compile begins. Pending
+local compiles are keyed by project and root; leaving a project or unmounting
+cancels their HTTP requests without letting late errors affect the next view.
+
 Page numbers use separate elements, leaving PDF.js's loading pseudo-element intact.
 A replacement viewer is laid out and rendered without displaying it; the old PDF stays visible until
 a visible page in the replacement has painted successfully. Failed replacements
