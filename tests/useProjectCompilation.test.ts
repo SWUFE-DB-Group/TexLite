@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, StrictMode } from "react";
+import { act, createElement, StrictMode, useState, type SetStateAction } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../src/client/api";
@@ -30,6 +30,12 @@ function result(runId = "new-run", ok = true): CompileResult {
 const sharedState = (runId = "new-run", status: "succeeded" | "failed" = "succeeded"): NonNullable<Options["sharedState"]> => ({
   mainFile: "main.tex", runId, status, requestedBy: { id: "owner", name: "Owner", username: "owner" }, updatedAt: "2026-10-24T00:00:00Z"
 });
+function activeResult(runId: string, status: "queued" | "running" = "running"): LatestCompileResponse {
+  return {
+    ...result("old-run"),
+    latestRun: { ...result(runId).latestRun!, status, requestedBy: sharedState(runId).requestedBy }
+  };
+}
 
 let root: Root, container: HTMLDivElement, options: Options;
 let current: ReturnType<typeof useProjectCompilation>;
@@ -40,6 +46,10 @@ let strictMode = false;
 let unmounted = false;
 
 function Harness(props: Options) { current = useProjectCompilation(props); return null; }
+function updateSharedState(update: SetStateAction<Options["sharedState"]>) {
+  options = { ...options, sharedState: typeof update === "function" ? update(options.sharedState) : update };
+  root.render(createElement(Harness, options));
+}
 async function render(overrides: Partial<Options> = {}) {
   options = { ...options, ...overrides };
   await act(async () => { root.render(strictMode ? createElement(StrictMode, null, createElement(Harness, options)) : createElement(Harness, options)); });
@@ -165,6 +175,109 @@ describe("compilation selection and request lifetimes", () => {
     expect(options.onCompileSuccess).toHaveBeenCalledOnce();
   });
 
+  it.each(["succeeded", "failed"] as const)("does not replace an already-known %s state with the same run's initial running state", async (status) => {
+    const bootstrap = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => bootstrap.promise);
+    const terminal = sharedState("same-run", status);
+    latest = result("same-run", status === "succeeded");
+    await render({ sharedState: terminal, onSharedState: vi.fn(updateSharedState) });
+    await act(async () => bootstrap.resolve(activeResult("same-run")));
+    expect(options.sharedState).toBe(terminal);
+    expect(current.compileOutcome).toBe(status);
+    expect(current.pdfUrl).toBe(status === "succeeded" ? "/pdf?run=same-run" : "/pdf?run=old-run");
+    expect(requests("/compile/latest")).toHaveLength(2);
+  });
+
+  it.each(["succeeded", "failed"] as const)("preserves a %s notification delivered before bootstrap finishes in the same React batch", async (status) => {
+    const bootstrap = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => bootstrap.promise);
+    const terminal = sharedState("same-run", status);
+    latest = result("same-run", status === "succeeded");
+    let liveState: Options["sharedState"] = null;
+    let deliver!: (state: Options["sharedState"]) => void;
+    function LiveHarness() {
+      const [state, setState] = useState<Options["sharedState"]>(null);
+      liveState = state; deliver = setState;
+      current = useProjectCompilation({ ...options, sharedState: state, onSharedState: setState });
+      return null;
+    }
+    await act(async () => root.render(createElement(LiveHarness)));
+    await act(async () => {
+      deliver(terminal);
+      bootstrap.resolve(activeResult("same-run"));
+    });
+    expect(liveState).toBe(terminal);
+    expect(current.compileOutcome).toBe(status);
+    expect(current.pdfUrl).toBe(status === "succeeded" ? "/pdf?run=same-run" : "/pdf?run=old-run");
+    expect(current.pdfLoading).toBe(false);
+  });
+
+  it.each(["running", "succeeded"] as const)("keeps a different run's newer %s notification instead of a delayed bootstrap state", async (status) => {
+    const bootstrap = deferred<LatestCompileResponse>();
+    vi.mocked(api).mockImplementationOnce(() => bootstrap.promise);
+    await render({ onSharedState: vi.fn(updateSharedState) });
+    const newer = { ...sharedState("newer-run"), status };
+    await render({ sharedState: newer });
+    latest = result("newer-run");
+    await act(async () => bootstrap.resolve(activeResult("old-run")));
+    expect(options.sharedState).toBe(newer);
+    if (status === "running") await render({ sharedState: sharedState("newer-run") });
+    expect(current.pdfUrl).toBe("/pdf?run=newer-run");
+    expect(current.compileOutcome).toBe("succeeded");
+  });
+
+  it.each(["queued", "running"] as const)("seeds an initial %s state when no collaboration state exists", async (status) => {
+    latest = activeResult("active-run", status);
+    await render({ onSharedState: vi.fn(updateSharedState) });
+    expect(options.sharedState).toMatchObject({ mainFile: "main.tex", runId: "active-run", status });
+    expect(current.pdfUrl).toBe("/pdf?run=old-run");
+    expect(requests("/compile/latest")).toHaveLength(1);
+  });
+
+  it("allows an initial lookup to discover a new run after an older completed run", async () => {
+    latest = activeResult("genuinely-new");
+    await render({ sharedState: sharedState("completed-earlier"), onSharedState: vi.fn(updateSharedState) });
+    expect(options.sharedState).toMatchObject({ runId: "genuinely-new", status: "running" });
+    expect(requests("/compile/latest")).toHaveLength(1);
+    latest = result("genuinely-new");
+    await render({ sharedState: sharedState("genuinely-new") });
+    expect(current.pdfUrl).toBe("/pdf?run=genuinely-new");
+    expect(current.compileOutcome).toBe("succeeded");
+  });
+
+  it("does not let a route preload overwrite a different run's existing completion", async () => {
+    const terminal = sharedState("latest-run");
+    latest = result("latest-run");
+    await render({
+      initialLatest: Promise.resolve(activeResult("preloaded-run")),
+      sharedState: terminal, onSharedState: vi.fn(updateSharedState)
+    });
+    expect(options.sharedState).toBe(terminal);
+    expect(current.pdfUrl).toBe("/pdf?run=latest-run");
+    expect(current.compileOutcome).toBe("succeeded");
+    expect(requests("/compile/latest")).toHaveLength(1);
+  });
+
+  it("can discover a genuinely new run through a fresh lookup after a mismatched route preload", async () => {
+    latest = activeResult("fresh-run");
+    await render({
+      initialLatest: Promise.resolve({ ...activeResult("wrong-root"), mainFile: "other.tex" }),
+      sharedState: sharedState("previous-run"), onSharedState: vi.fn(updateSharedState)
+    });
+    expect(options.sharedState).toMatchObject({ runId: "fresh-run", status: "running" });
+    expect(requests("/compile/latest")).toHaveLength(1);
+  });
+
+  it.each([
+    ["running", "queued"], ["queued", "running"]
+  ] as const)("never regresses a task when its shared status is %s and bootstrap reports %s", async (status, initialStatus) => {
+    const existing = { ...sharedState("active"), status };
+    latest = activeResult("active", initialStatus);
+    await render({ sharedState: existing, onSharedState: vi.fn(updateSharedState) });
+    expect(options.sharedState).toMatchObject({ runId: "active", status: "running" });
+    if (status === "running") expect(options.sharedState).toBe(existing);
+  });
+
   it("retains the last good PDF while exposing a failed or cancelled run", async () => {
     await prepare(); await startCompile();
     expect(current.pdfUrl).toBe("/pdf?run=old-run");
@@ -285,7 +398,12 @@ describe("compilation selection and request lifetimes", () => {
 
   it("does not revive the first A's compile after an A -> B -> A root switch", async () => {
     await prepare(); await startCompile();
+    const signal = requests("/compile")[0][1]?.signal;
     await render({ mainFile: "other.tex" }); await render({ mainFile: "main.tex" });
+    expect(signal?.aborted).toBe(false);
+    expect(current.localCompiling).toBe(true);
+    await act(async () => { await current.compile(); });
+    expect(requests("/compile").filter(([url]) => url.endsWith("/compile"))).toHaveLength(1);
     await finishCompile();
     expect(current.pdfUrl).toBe("");
     expect(current.compileLog).toBe("");
@@ -299,9 +417,32 @@ describe("compilation selection and request lifetimes", () => {
     await render({ projectId: "other" });
     latest = result("reopened-a");
     await render({ projectId: "paper" });
+    expect(current.localCompiling).toBe(false);
     await finishCompile();
     expect(current.pdfUrl).toBe("/pdf?run=reopened-a");
     expect(options.onCompileSuccess).not.toHaveBeenCalled();
+  });
+
+  it.each(["success", "failure"])("keeps a new compile busy when a retired project's request finishes with %s", async (outcome) => {
+    await prepare(); await startCompile();
+    const retiredPost = post, retiredCompile = compilePromise;
+    await render({ projectId: "other" });
+    await render({ projectId: "paper" });
+    expect(current.localCompiling).toBe(false);
+    post = deferred<CompileResult>();
+    await startCompile();
+    expect(current.localCompiling).toBe(true);
+    expect(requests("/compile").filter(([url]) => url.endsWith("/compile"))).toHaveLength(2);
+    await act(async () => {
+      if (outcome === "failure") retiredPost.reject(new Error("retired compile failed"));
+      else retiredPost.resolve(result("retired"));
+      await retiredCompile;
+    });
+    expect(current.localCompiling).toBe(true);
+    expect(options.onError).not.toHaveBeenCalled();
+    await finishCompile(result("fresh"));
+    expect(current.localCompiling).toBe(false);
+    expect(current.pdfUrl).toBe("/pdf?run=fresh");
   });
 
   it("adopts a root promoted synchronously by the compile command before React commits it", async () => {
@@ -362,10 +503,7 @@ describe("compilation selection and request lifetimes", () => {
 
   it.each(["cache", "artifacts"] as const)("applies %s cleanup at the correct scope and guards repeat submissions", async (mode) => {
     await prepare();
-    const onSharedState = vi.fn((state: Options["sharedState"]) => {
-      options = { ...options, sharedState: state };
-      root.render(createElement(Harness, options));
-    });
+    const onSharedState = vi.fn(updateSharedState);
     await render({ sharedState: sharedState("old-run"), onSharedState });
     const clean = deferred<{ ok: boolean; mode: typeof mode; mainFile: string }>();
     vi.mocked(api).mockImplementationOnce(() => clean.promise);
@@ -424,10 +562,7 @@ describe("compilation selection and request lifetimes", () => {
 
   it.each(["cache", "artifacts"] as const)("does not discard a newer completion when %s cleanup succeeds", async (mode) => {
     await prepare();
-    const onSharedState = vi.fn((state: Options["sharedState"]) => {
-      options = { ...options, sharedState: state };
-      root.render(createElement(Harness, options));
-    });
+    const onSharedState = vi.fn(updateSharedState);
     await render({ onSharedState });
     const clean = deferred<{ ok: boolean; mode: string; mainFile: string }>();
     vi.mocked(api).mockImplementationOnce(() => clean.promise);
@@ -584,6 +719,20 @@ describe("compilation selection and request lifetimes", () => {
     expect(current.cancelling).toBe(false);
     expect(current.pdfUrl).toBe("/pdf?run=project-b");
     expect(options.onError).not.toHaveBeenCalled();
+  });
+
+  it("clears cancellation state even after its request has settled when leaving a project", async () => {
+    await prepare();
+    const running = { ...sharedState(), status: "running" as const };
+    await render({ sharedState: running });
+    await act(async () => { await current.cancelCompile(); });
+    expect(current.cancelling).toBe(true);
+    await render({ projectId: "other", sharedState: null });
+    await render({ projectId: "paper", sharedState: running });
+    expect(current.cancelling).toBe(false);
+    expect(requests("/compile/cancel")).toHaveLength(1);
+    await act(async () => { await current.cancelCompile(); });
+    expect(requests("/compile/cancel")).toHaveLength(2);
   });
 
   it("consumes Ctrl/Cmd+S in forms and dialogs but still compiles from the source editor", async () => {

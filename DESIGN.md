@@ -1005,6 +1005,14 @@ lists/previews are checked against both the selection owner and the published
 PDF, and deferred bootstrap scans are cancelled when a compile begins. Pending
 local compiles are keyed by project and root; leaving a project or unmounting
 cancels their HTTP requests without letting late errors affect the next view.
+Leaving a project also retires its compiling/cancelling flags, independently
+of whether those requests have settled; root switches within that project
+keep pending tasks intact. Bootstrap active-state hints use a functional
+state update so queued React notifications cannot be overwritten. The same
+run cannot regress from running or completed to an earlier phase. A fresh
+lookup can discover a different run when no notification arrived during it;
+route preloads cannot replace existing notifications because their starting
+state is unknown. This ordering does not depend on browser clock timestamps.
 
 Page numbers use separate elements, leaving PDF.js's loading pseudo-element intact.
 A replacement viewer is laid out and rendered without displaying it; the old PDF stays visible until

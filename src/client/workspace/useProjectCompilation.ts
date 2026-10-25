@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import type { SharedCompileState } from "../collaboration";
@@ -22,7 +22,7 @@ interface UseProjectCompilationOptions {
   collaborationSynced: boolean;
   pdfVisible: boolean;
   sharedState: SharedCompileState | null;
-  onSharedState: (state: SharedCompileState | null) => void;
+  onSharedState: Dispatch<SetStateAction<SharedCompileState | null>>;
   save: () => Promise<boolean>;
   loadOutline: (signal: AbortSignal, mainFile: string) => Promise<void>;
   onPreviewTab: (tab: PreviewTab) => void;
@@ -196,6 +196,15 @@ export function useProjectCompilation(options: UseProjectCompilationOptions) {
         if (request.owner.selection.projectId !== projectId) { request.controller.abort(); requests.delete(id); }
       }
     }
+    // A settled cancellation may still be waiting for a terminal notification,
+    // so retire busy flags independently of the outstanding request maps.
+    const projectPrefix = targetKey(projectId, "");
+    const retainProjectTargets = (current: ReadonlySet<string>) => {
+      const next = new Set([...current].filter((id) => id.startsWith(projectPrefix)));
+      return next.size === current.size ? current : next;
+    };
+    setCompilingTargets(retainProjectTargets);
+    setCancellingTargets(retainProjectTargets);
     if (cleanRequest.current?.owner !== owner) abortRequest(cleanRequest);
     if (!mainFile) return;
     if (!owner.restoreRetained) {
@@ -208,9 +217,16 @@ export function useProjectCompilation(options: UseProjectCompilationOptions) {
     latestRequest.current = request;
     setInitialLoad(request);
     let backgroundTimer: number | null = null;
-    const fetchLatest = () => api<LatestCompileResponse>(
-      `/api/projects/${projectId}/compile/latest?mainFile=${encodeURIComponent(mainFile)}`, { signal: request.controller.signal }
-    );
+    // Route preloads started before this hook have no state baseline. They
+    // must not replace an existing notification; a fresh lookup can discover
+    // a different run if its starting state has not changed in the meantime.
+    let sharedAtStart: SharedCompileState | null | undefined;
+    const fetchLatest = () => {
+      sharedAtStart = callbacks.current.sharedState;
+      return api<LatestCompileResponse>(
+        `/api/projects/${projectId}/compile/latest?mainFile=${encodeURIComponent(mainFile)}`, { signal: request.controller.signal }
+      );
+    };
     // Route preload is consumed once per project, including failed/mismatched
     // preloads. StrictMode can then retry normally rather than reusing one
     // aborted bootstrap forever.
@@ -224,9 +240,20 @@ export function useProjectCompilation(options: UseProjectCompilationOptions) {
       if (!latest || !isCurrent(owner, request.controller.signal)) return;
       if (!publish(owner, owner.receiveLatest(latest, "initial"))) return;
       if (latest.latestRun?.requestedBy && (latest.latestRun.status === "queued" || latest.latestRun.status === "running")) {
-        callbacks.current.onSharedState({
+        const initialState: SharedCompileState = {
           mainFile, runId: latest.latestRun.id, status: latest.latestRun.status,
           requestedBy: latest.latestRun.requestedBy, updatedAt: new Date().toISOString()
+        };
+        callbacks.current.onSharedState((current) => {
+          if (!isCurrent(owner, request.controller.signal)) return current;
+          // Bootstrap only fills in state. Preserve notifications received
+          // during the lookup, including updates not committed by React yet.
+          // For the same run, queued may advance to running, never backwards
+          // from running or a terminal state. A different new run is allowed
+          // when no notification has superseded this lookup.
+          if (current?.mainFile === mainFile && (current !== sharedAtStart
+            || (current.runId === initialState.runId && (current.status !== "queued" || initialState.status === "queued")))) return current;
+          return initialState;
         });
       }
       if (latest.pdfUrl) callbacks.current.onPreviewTab("pdf");
