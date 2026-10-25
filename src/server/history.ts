@@ -789,10 +789,11 @@ function parseManifest(value: string): HistoryManifest {
 }
 
 function parseStringArray(value: string): string[] {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch { return []; }
+  const parsed: unknown = JSON.parse(value);
+  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+    throw new Error("Invalid snapshot changed paths");
+  }
+  return parsed;
 }
 
 /**

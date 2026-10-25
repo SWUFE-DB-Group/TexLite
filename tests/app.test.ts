@@ -15,6 +15,7 @@ import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
 import { sourceRoot } from "../src/server/files.js";
 import { ProjectHistoryService } from "../src/server/history.js";
+import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
 import * as metricSummaries from "../src/server/metrics.js";
 import { useFakeTexTools } from "./texTools";
 
@@ -763,12 +764,37 @@ Standalone document.
     expect(invalid.json()).toMatchObject({ code: "MAIN_DOCUMENT_INVALID" });
   }, 30_000);
 
+  it("does not capture or compile when the combined reservation cannot flush collaborative source", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Failed snapshot flush" }
+    });
+    const projectId = created.json().project.id as string;
+    const flush = vi.spyOn(CollaborationService.prototype, "flushProject").mockReturnValueOnce({
+      revision: 1, persistedAt: new Date().toISOString(), ok: false, failedPaths: ["main.tex"]
+    });
+    const barrier = vi.spyOn(CollaborationService.prototype, "beginSnapshotBarrier");
+    try {
+      const response = await app.inject({
+        method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ ok: false, pdfUrl: null });
+      expect(flush).toHaveBeenCalledWith(projectId);
+      expect(barrier).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(config.projectsDir, projectId, "output", ".texlite", "runs"))).toBe(false);
+    } finally {
+      barrier.mockRestore();
+      flush.mockRestore();
+    }
+  });
+
   it("returns a retryable response when a stable compile snapshot cannot be obtained", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Busy snapshot" }
     });
     const projectId = created.json().project.id as string;
     const stable = vi.spyOn(CollaborationService.prototype, "isStable").mockReturnValue(false);
+    const serialized = vi.spyOn(ProjectMutationCoordinator.prototype, "runSerialized");
     try {
       const response = await app.inject({
         method: "POST", url: `/api/projects/${projectId}/compile`, headers: { cookie }
@@ -777,7 +803,12 @@ Standalone document.
       expect(response.headers["retry-after"]).toBe("1");
       expect(response.json()).toMatchObject({ code: "COMPILE_SNAPSHOT_BUSY", retryable: true });
       expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(projectId) as { count: number }).count).toBe(0);
+      // One reservation covers validation/flush and every capture attempt;
+      // the only other reservation performs final orphan cleanup.
+      expect(serialized.mock.calls.filter(([id]) => id === projectId)).toHaveLength(2);
+      expect(serialized.mock.calls[0][2]?.flush).not.toBe(false);
     } finally {
+      serialized.mockRestore();
       stable.mockRestore();
     }
   });

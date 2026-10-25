@@ -18,8 +18,9 @@ function staticIconPath(name: string): string {
 function staticIconExists(name: string): boolean {
   try {
     return fs.statSync(staticIconPath(name)).isFile();
-  } catch {
-    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
 }
 
@@ -28,15 +29,13 @@ export function resolveLucideIconName(value: unknown): string | null {
   const name = normalizeLucideIconName(value);
   if (!name) return null;
   if (!selectableIconNames) {
-    try {
-      const manifest = JSON.parse(fs.readFileSync(path.join(staticIconDirectory, "manifest.json"), "utf8")) as {
-        selectableIconNames: string[];
-      };
-      if (!Array.isArray(manifest.selectableIconNames)) return null;
-      selectableIconNames = new Set(manifest.selectableIconNames);
-    } catch {
-      return null;
+    const manifest = JSON.parse(fs.readFileSync(path.join(staticIconDirectory, "manifest.json"), "utf8")) as {
+      selectableIconNames: string[];
+    };
+    if (!Array.isArray(manifest.selectableIconNames) || manifest.selectableIconNames.some((name) => typeof name !== "string")) {
+      throw new Error("Invalid generated Lucide icon manifest");
     }
+    selectableIconNames = new Set(manifest.selectableIconNames);
   }
   return selectableIconNames.has(name) && staticIconExists(name) ? name : null;
 }
@@ -47,16 +46,15 @@ export async function lucideIconSvg(value: string): Promise<string | null> {
   if (!name) return null;
   const cached = svgCache.get(name);
   if (cached !== undefined) return cached;
-  if (!staticIconExists(name)) {
-    svgCache.set(name, null);
-    return null;
-  }
   try {
     const svg = await fs.promises.readFile(staticIconPath(name), "utf8");
     svgCache.set(name, svg);
     return svg;
-  } catch {
-    svgCache.set(name, null);
-    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      svgCache.set(name, null);
+      return null;
+    }
+    throw error;
   }
 }

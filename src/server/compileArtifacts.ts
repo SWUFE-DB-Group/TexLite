@@ -95,8 +95,9 @@ export function compileMainFile(
   try {
     if (!fs.statSync(absolute).isFile()) return null;
     if (!isMainDocumentCandidateSync(config, projectId, mainFile)) return null;
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
   return mainFile;
 }

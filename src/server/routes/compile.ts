@@ -446,18 +446,8 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
           // in-memory collaboration revision to skip before a snapshot: it is
           // not a durable content version and can collide after a room restart
           // or reconnect.
-          await projectMutations.runSerialized(id, () => {
-            throwIfCompileCancelled(signal);
-            const currentProject = accessibleProject(db, id, user);
-            if (!currentProject || !canEdit(currentProject)) {
-              throw new Error("Project access changed while waiting for a source snapshot");
-            }
-            const currentMainFile = compileMainFile(config, id, currentProject.main_file, body.mainFile);
-            if (!currentMainFile) throw new Error("Selected main document is no longer available");
-            if (!requestedMainFile && currentMainFile !== mainFile) throw mainDocumentChangedError();
-            project = currentProject;
-            mainFile = currentMainFile;
-          });
+          // Flush and revalidate inside the same reservation used for capture.
+          // Releasing a separate validation lock first only repeats this work.
           const captured = await projectMutations.runSerialized(id, async () => {
             throwIfCompileCancelled(signal);
             const currentProject = accessibleProject(db, id, user);
@@ -529,7 +519,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
               discardCompileSnapshot(candidate);
             }
             throw new CompileSnapshotBusyError();
-          }, { flush: false });
+          });
           snapshot = captured;
           throwIfCompileCancelled(signal);
           snapshotMs = performance.now() - snapshotStartedAt;

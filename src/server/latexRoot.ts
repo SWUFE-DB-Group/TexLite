@@ -85,8 +85,9 @@ export function isMainDocumentCandidateSync(config: Config, projectId: string, f
       cacheRootDetection(absolute, stat, result);
       if (result) return true;
     }
-  } catch {
-    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
   const texFiles = texFilePaths(listProjectFiles(config, projectId));
   return texFiles.length === 1 && texFiles[0] === filePath;

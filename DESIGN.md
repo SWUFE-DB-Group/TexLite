@@ -913,7 +913,8 @@ Compilation follows this sequence:
 
 1. Admission validates permissions/root selection and coalesces requests by
    project, root, and a cheap source/settings generation.
-2. After coalescing, TexLite flushes the room and captures a source snapshot.
+2. After coalescing, one project-queue reservation flushes the room,
+   revalidates permissions/root selection, and captures a source snapshot.
    A short snapshot barrier prevents autosave from modifying the source tree
    while the asynchronous copy and digest run. Edits that arrive during the
    barrier remain in Yjs memory until the snapshot is complete, so the
@@ -1018,6 +1019,15 @@ semantics.
 Its edit segments have their own `editHistory.maxStorageMB` hard payload cap
 (32 MB by default), so selection-history retention cannot consume the snapshot
 budget or affect recovery capacity.
+Internal edit batches are validated before any records are inserted. Invalid
+steps, spans, timestamps, or hash chains fail the batch and use the existing
+bounded retry/history-warning path; they are not silently dropped or assigned
+replacement timestamps. A damaged stored edit row stops selection-history
+reconstruction at that boundary instead of reconstructing a partial chain.
+Invalid snapshot changed-path metadata is reported as an error rather than an
+empty file list. File-backed root validation and icon lookup likewise preserve
+normal not-found results while allowing permission, I/O, and malformed generated
+resource errors to reach the server's error handler and logs.
 Autosaves across authors are coalesced within a fixed two-minute project window.
 A mixed-author snapshot has no single author attribution; selection edit history
 retains the individual contributions independently. File

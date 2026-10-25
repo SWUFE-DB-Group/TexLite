@@ -4,9 +4,11 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../src/server/config.js";
 import { openDatabase } from "../src/server/db.js";
+import { compileMainFile } from "../src/server/compileArtifacts.js";
+import { isMainDocumentCandidate, isMainDocumentCandidateSync } from "../src/server/latexRoot.js";
 import {
   CompileQueue,
   ProjectCompileCoordinator,
@@ -27,7 +29,42 @@ describe("reliable project compilation", () => {
   const temporaryRoots: string[] = [];
 
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const root of temporaryRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("treats absent or non-file main documents as invalid without swallowing operational errors", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-main-document-"));
+    temporaryRoots.push(root);
+    const config = testConfig(root);
+    const projectId = randomUUID();
+    const source = path.join(config.projectsDir, projectId, "source");
+    fs.mkdirSync(path.join(source, "directory.tex"), { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), "\\documentclass{article}\n");
+    expect(compileMainFile(config, projectId, "main.tex", "missing.tex")).toBeNull();
+    expect(compileMainFile(config, projectId, "main.tex", "../main.tex")).toBeNull();
+    expect(compileMainFile(config, projectId, "main.tex", "directory.tex")).toBeNull();
+    expect(isMainDocumentCandidateSync(config, projectId, "missing.tex")).toBe(false);
+    expect(compileMainFile(config, projectId, "main.tex", undefined)).toBe("main.tex");
+  });
+
+  it.each(["EACCES", "EIO"])("propagates %s while validating a main document", async (code) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-main-document-error-"));
+    temporaryRoots.push(root);
+    const config = testConfig(root);
+    const projectId = randomUUID();
+    const source = path.join(config.projectsDir, projectId, "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), "\\documentclass{article}\n");
+    const error = Object.assign(new Error(`test ${code}`), { code });
+    const stat = vi.spyOn(fs, "statSync").mockImplementationOnce(() => { throw error; });
+    expect(() => compileMainFile(config, projectId, "main.tex", undefined)).toThrow(error);
+    stat.mockRestore();
+    const read = vi.spyOn(fs, "readFileSync").mockImplementationOnce(() => { throw error; });
+    expect(() => isMainDocumentCandidateSync(config, projectId, "main.tex")).toThrow(error);
+    read.mockRestore();
+    vi.spyOn(fs.promises, "readFile").mockRejectedValueOnce(error);
+    await expect(isMainDocumentCandidate(config, projectId, "main.tex")).rejects.toBe(error);
   });
 
   it("reuses identical work and keeps only the latest pending revision per project", async () => {

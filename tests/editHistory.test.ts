@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import {
@@ -10,6 +10,7 @@ import {
   type EditHistorySegmentInput,
   type EditHistorySpan
 } from "../src/server/editHistory.js";
+import { EditHistoryRetry } from "../src/server/editHistoryRetry.js";
 
 interface Fixture {
   root: string;
@@ -25,6 +26,63 @@ interface FixtureOptions {
 const fixtures: Fixture[] = [];
 
 describe("selection edit history", () => {
+  it.each(["author", "kind", "createdAt", "updatedAt", "stepTime", "hash", "path", "emptySteps", "span", "step"])(
+    "rejects a whole internal batch with an invalid %s instead of silently repairing or dropping it", (field) => {
+      const fixture = createFixture();
+      const valid = replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit");
+      const invalid = replaceSegment("main.tex", "alice", "2026-01-01T10:03:00.000Z", "new", "next", "edit");
+      switch (field) {
+        case "author": invalid.authorId = ""; break;
+        case "kind": Object.assign(invalid, { kind: "unknown" }); break;
+        case "createdAt": invalid.createdAt = "not-a-timestamp"; break;
+        case "updatedAt": invalid.updatedAt = "not-a-timestamp"; break;
+        case "stepTime": invalid.steps[0].createdAt = "not-a-timestamp"; break;
+        case "hash": invalid.afterHash = hashText("unrelated"); break;
+        case "path": invalid.filePath = "../main.tex"; break;
+        case "emptySteps": invalid.steps = []; break;
+        case "span": invalid.steps[0].spans.push({ ...invalid.steps[0].spans[0], insertedLength: -1 }); break;
+        case "step": invalid.steps.push({ ...invalid.steps[0], beforeHash: "invalid-hash" }); break;
+      }
+      const original = structuredClone([valid, invalid]);
+      expect(() => fixture.history.record(fixture.projectId, [valid, invalid])).toThrow();
+      expect(fixture.history.stats(fixture.projectId)).toMatchObject({ segmentCount: 0, payloadBytes: 0 });
+      expect([valid, invalid]).toEqual(original);
+    }
+  );
+
+  it("reports invalid internal history through the existing bounded retry and warning path", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    const invalid = replaceSegment("main.tex", "alice", "invalid-time", "old", "new", "edit");
+    const report = vi.fn();
+    const retry = new EditHistoryRetry((id, edits) => fixture.history.record(id, edits), () => true, report);
+    try {
+      retry.save(fixture.projectId, [invalid]);
+      expect(report).toHaveBeenLastCalledWith(fixture.projectId, "retrying", expect.any(Error));
+      vi.advanceTimersByTime(15_000);
+      expect(report).toHaveBeenLastCalledWith(fixture.projectId, "incomplete", expect.any(Error));
+      expect(fixture.history.stats(fixture.projectId).segmentCount).toBe(0);
+    } finally {
+      retry.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops at a damaged stored step without reconstructing a partial chain or inventing its timestamp", () => {
+    const fixture = createFixture();
+    const segment = replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit");
+    fixture.history.record(fixture.projectId, [segment]);
+    for (const invalid of [
+      { ...segment.steps[0], beforeHash: "invalid-hash" },
+      { ...segment.steps[0], createdAt: "invalid-time" }
+    ]) {
+      fixture.db.prepare("UPDATE project_edit_segments SET steps_json = ? WHERE project_id = ?")
+        .run(JSON.stringify([...segment.steps, invalid]), fixture.projectId);
+      expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", "new", 0, 3))
+        .toMatchObject({ entries: [], baseline: null, chainComplete: false });
+    }
+  });
+
   it("returns each author's current avatar style and clears identity for deleted users", () => {
     const fixture = createFixture();
     fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit")]);

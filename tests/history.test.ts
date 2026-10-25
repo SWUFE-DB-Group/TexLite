@@ -27,6 +27,15 @@ describe("project history retention", () => {
     }
   });
 
+  it("reports malformed snapshot changed paths instead of turning them into an empty or partial list", () => {
+    const fixture = createFixture();
+    const version = fixture.history.record(fixture.projectId, "user-1", "initial")!;
+    for (const value of ["not-json", "{}", '["main.tex", 42]']) {
+      fixture.db.prepare("UPDATE project_history_versions SET changed_paths_json = ? WHERE id = ?").run(value, version.id);
+      expect(() => fixture.history.version(version.id, fixture.projectId)).toThrow();
+    }
+  });
+
   it("uses fixed two-minute autosave windows", () => {
     vi.useFakeTimers();
     const fixture = createFixture();

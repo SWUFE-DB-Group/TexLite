@@ -127,13 +127,14 @@ export class ProjectEditHistoryService {
   }
 
   record(projectId: string, inputs: readonly EditHistorySegmentInput[]): void {
-    const normalized = inputs
-      .map(normalizeSegment)
-      .filter((segment): segment is EditHistorySegmentInput => segment !== null);
-    if (!normalized.length) return;
+    // These records are produced by our Yjs rooms, not supplied by an API.
+    // Reject a broken batch before writing anything so the caller can report
+    // the history failure instead of silently accepting a partial edit chain.
+    const validated = inputs.map(validateSegment);
+    if (!validated.length) return;
     const segments: StoredSegment[] = [];
     const skipped: EditHistorySegmentInput[] = [];
-    for (const segment of normalized) {
+    for (const segment of validated) {
       const stepsJson = JSON.stringify(segment.steps);
       const stepsBytes = Buffer.byteLength(stepsJson, "utf8");
       // A single oversized burst would make the quota ineffective. Dropping it
@@ -419,62 +420,50 @@ export function hashText(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-function normalizeSegment(input: EditHistorySegmentInput): EditHistorySegmentInput | null {
-  if (!input.authorId || !input.steps.length) return null;
-  let filePath: string;
-  try { filePath = safeRelativePath(input.filePath); }
-  catch { return null; }
-  const steps = input.steps.map(normalizeStep).filter((step): step is EditHistoryStep => step !== null);
-  if (!steps.length) return null;
-  const first = steps[0];
-  const last = steps.at(-1)!;
-  if (input.beforeHash !== first.beforeHash || input.afterHash !== last.afterHash) return null;
-  for (let index = 1; index < steps.length; index += 1) {
-    if (steps[index - 1].afterHash !== steps[index].beforeHash) return null;
+function validateSegment(input: EditHistorySegmentInput): EditHistorySegmentInput {
+  if (!input.authorId || !input.steps.length || (input.kind !== "edit" && input.kind !== "format")) {
+    throw new Error(`Invalid edit history segment for ${input.filePath}`);
   }
-  return {
-    filePath,
-    authorId: input.authorId,
-    kind: input.kind === "format" ? "format" : "edit",
-    beforeHash: input.beforeHash,
-    afterHash: input.afterHash,
-    createdAt: safeTimestamp(input.createdAt),
-    updatedAt: safeTimestamp(input.updatedAt),
-    steps
-  };
+  const filePath = safeRelativePath(input.filePath);
+  validateTimestamp(input.createdAt);
+  validateTimestamp(input.updatedAt);
+  input.steps.forEach(validateStep);
+  const first = input.steps[0];
+  const last = input.steps.at(-1)!;
+  if (input.beforeHash !== first.beforeHash || input.afterHash !== last.afterHash
+    || input.steps.some((step, index) => index > 0 && input.steps[index - 1].afterHash !== step.beforeHash)) {
+    throw new Error(`Broken edit history chain for ${filePath}`);
+  }
+  return { ...input, filePath };
 }
 
-function normalizeStep(step: EditHistoryStep): EditHistoryStep | null {
-  if (!isHash(step.beforeHash) || !isHash(step.afterHash)) return null;
-  const spans = step.spans.map(normalizeSpan).filter((span): span is EditHistorySpan => span !== null);
-  return spans.length ? { beforeHash: step.beforeHash, afterHash: step.afterHash, createdAt: safeTimestamp(step.createdAt), spans } : null;
+function validateStep(step: EditHistoryStep): void {
+  if (!isHash(step.beforeHash) || !isHash(step.afterHash) || !Array.isArray(step.spans) || !step.spans.length) {
+    throw new Error("Invalid edit history step");
+  }
+  validateTimestamp(step.createdAt);
+  step.spans.forEach(validateSpan);
 }
 
-function normalizeSpan(span: EditHistorySpan): EditHistorySpan | null {
+function validateSpan(span: EditHistorySpan): void {
   const numeric = [span.beforeStart, span.beforeEnd, span.afterStart, span.afterEnd, span.deletedLength, span.insertedLength];
-  if (numeric.some((value) => !Number.isInteger(value) || value < 0)
+  if (numeric.some((value) => !Number.isSafeInteger(value) || value < 0)
     || span.beforeEnd < span.beforeStart || span.afterEnd < span.afterStart
     || span.deletedLength !== span.beforeEnd - span.beforeStart
-    || span.insertedLength !== span.afterEnd - span.afterStart) return null;
-  return {
-    beforeStart: span.beforeStart,
-    beforeEnd: span.beforeEnd,
-    afterStart: span.afterStart,
-    afterEnd: span.afterEnd,
-    deletedLength: span.deletedLength,
-    insertedLength: span.insertedLength,
-    deletedPreview: typeof span.deletedPreview === "string" ? span.deletedPreview.slice(0, 4_096) : "",
-    insertedPreview: typeof span.insertedPreview === "string" ? span.insertedPreview.slice(0, 4_096) : "",
-    truncated: Boolean(span.truncated)
-  };
+    || span.insertedLength !== span.afterEnd - span.afterStart
+    || typeof span.deletedPreview !== "string" || typeof span.insertedPreview !== "string"
+    || typeof span.truncated !== "boolean") throw new Error("Invalid edit history span");
 }
 
 function parseSteps(input: string): EditHistoryStep[] {
   try {
     const parsed = JSON.parse(input);
     if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeStep).filter((step): step is EditHistoryStep => step !== null);
+    parsed.forEach(validateStep);
+    return parsed;
   } catch {
+    // Legacy/damaged rows end the selection-history chain. Never keep only
+    // their valid-looking steps and guess across the missing replacements.
     return [];
   }
 }
@@ -519,8 +508,8 @@ function rangesIntersect(leftStart: number, leftEnd: number, rightStart: number,
   return leftStart < rightEnd && rightStart < leftEnd;
 }
 
-function safeTimestamp(value: string): string {
-  return Number.isNaN(Date.parse(value)) ? new Date().toISOString() : value;
+function validateTimestamp(value: string): void {
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) throw new Error("Invalid edit history timestamp");
 }
 
 function isHash(value: string): boolean {
