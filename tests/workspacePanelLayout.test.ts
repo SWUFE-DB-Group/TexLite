@@ -15,12 +15,11 @@ function fixture(values: Record<string, string> = {}, panelIds = ids, groupId = 
   return { storage, data };
 }
 
-describe("workspace panel layout compatibility", () => {
-  it("migrates v2 sizes in DOM order without swapping source and PDF widths", () => {
+describe("workspace panel layout storage", () => {
+  it("ignores v2 layout records without deleting existing browser data", () => {
     const legacy = JSON.stringify({ "files,preview,source": { layout: [18, 52, 30], expandToSizes: {} } });
     const { storage, data } = fixture({ [legacyKey]: legacy });
-    expect(JSON.parse(storage.getItem(key)!)).toEqual({ files: 18, source: 52, preview: 30 });
-    // Leave the legacy record intact for old versions/other panel combinations.
+    expect(storage.getItem(key)).toBeNull();
     expect(data.get(legacyKey)).toBe(legacy);
     expect(storage.getItem(legacyKey)).toBeNull();
   });
@@ -33,14 +32,14 @@ describe("workspace panel layout compatibility", () => {
       [["preview"], [100]],
       [["preview", "context"], [76, 24]]
     ] as Array<[string[], number[]]>) {
-      const legacy = JSON.stringify({ [[...panelIds].sort().join(",")]: { layout: sizes } });
-      const { storage } = fixture({ [legacyKey]: legacy }, panelIds);
-      expect(JSON.parse(storage.getItem(`${legacyKey}:${panelIds.join(":")}`)!))
-        .toEqual(Object.fromEntries(panelIds.map((name, i) => [name, sizes[i]])));
+      const layout = Object.fromEntries(panelIds.map((name, i) => [name, sizes[i]]));
+      const currentKey = `${legacyKey}:${panelIds.join(":")}`;
+      const { storage } = fixture({ [currentKey]: JSON.stringify(layout) }, panelIds);
+      expect(JSON.parse(storage.getItem(currentKey)!)).toEqual(layout);
     }
   });
 
-  it("prefers v4 records and saves each panel combination independently", () => {
+  it("reads and saves current records independently for each panel combination", () => {
     const { storage, data } = fixture({
       [legacyKey]: JSON.stringify({ "files,preview,source": { layout: [18, 52, 30] } }),
       [key]: JSON.stringify({ files: 20, source: 45, preview: 35 })
@@ -57,7 +56,10 @@ describe("workspace panel layout compatibility", () => {
   it.each(["broken JSON", "null", "[]", '{"files":16}', '{"files":16,"source":42,"preview":-1}',
     '{"files":16,"source":42,"preview":"42"}', '{"files":16,"source":42,"unknown":42}',
     '{"files":16,"source":42,"preview":420}'])("ignores damaged saved preferences: %s", (saved) => {
-    expect(fixture({ [key]: saved }).storage.getItem(key)).toBeNull();
+    expect(fixture({
+      [key]: saved,
+      [legacyKey]: JSON.stringify({ "files,preview,source": { layout: [18, 52, 30] } })
+    }).storage.getItem(key)).toBeNull();
   });
 
   it("isolates subpath deployments and tolerates blocked localStorage", () => {

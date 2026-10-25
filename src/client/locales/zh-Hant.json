@@ -1485,6 +1485,7 @@
     "zipOnly": "請選擇 ZIP 壓縮檔。",
     "collaborationUnavailable": "即時協作尚未連線，請在重新連線後儲存或編譯。",
     "codes": {
+      "CLIENT_UPDATE_REQUIRED": "目前頁面版本過舊。請先儲存修改，再重新整理頁面，以繼續寫作檢查。",
       "AUTH_INVALID": "使用者名稱或密碼錯誤。",
       "CURRENT_PASSWORD_INVALID": "目前密碼錯誤。",
       "USER_NOT_FOUND": "使用者不存在或已被刪除。",

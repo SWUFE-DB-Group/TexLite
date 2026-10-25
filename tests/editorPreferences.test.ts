@@ -34,13 +34,9 @@ describe("editor preference scope", () => {
     expect(loadEditorPreferences("alice", "project-two")).toEqual(defaultEditorPreferences);
   });
 
-  it("keeps newer opt-in editor preferences off for preferences saved before the options existed", () => {
-    storage.setItem("texlite-editor-preferences:alice:legacy", JSON.stringify({ fontSize: 18 }));
-    expect(loadEditorPreferences("alice", "legacy").formatOnCompile).toBe(false);
-    expect(loadEditorPreferences("alice", "legacy").texFmtConfig).toBe(defaultTexFmtConfig);
-    expect(loadEditorPreferences("alice", "legacy").openFilesInTabs).toBe(false);
-    expect(loadEditorPreferences("alice", "legacy").mathPreviewOnHover).toBe(false);
-    expect(loadEditorPreferences("alice", "legacy").showTooltips).toBe(false);
+  it("uses defaults for missing preferences without losing valid saved values", () => {
+    storage.setItem("texlite-editor-preferences:alice:paper", JSON.stringify({ fontSize: 18 }));
+    expect(loadEditorPreferences("alice", "paper")).toEqual({ ...defaultEditorPreferences, fontSize: 18 });
   });
 
   it("does not bind an obsolete theme value to a user or project", () => {
@@ -57,14 +53,9 @@ describe("editor preference scope", () => {
     expect(loadEditorPreferences("bob", "paper").texFmtConfig).toBe(defaultTexFmtConfig);
   });
 
-  it("upgrades the previous empty default without overriding custom or newly cleared TOML", () => {
-    storage.setItem("texlite-editor-preferences:alice:legacy-empty", JSON.stringify({ texFmtConfig: "" }));
-    storage.setItem("texlite-editor-preferences:alice:legacy-custom", JSON.stringify({ texFmtConfig: "wrap = true\nwraplen = 100" }));
-
-    expect(loadEditorPreferences("alice", "legacy-empty").texFmtConfig).toBe(defaultTexFmtConfig);
-    expect(loadEditorPreferences("alice", "legacy-custom").texFmtConfig).toBe("wrap = true\nwraplen = 100");
-
-    saveEditorPreferences("alice", "current-empty", { ...defaultEditorPreferences, texFmtConfig: "" });
-    expect(loadEditorPreferences("alice", "current-empty").texFmtConfig).toBe("");
+  it("treats an empty TOML string as an explicit choice without a migration marker", () => {
+    saveEditorPreferences("alice", "paper", { ...defaultEditorPreferences, texFmtConfig: "" });
+    expect(loadEditorPreferences("alice", "paper").texFmtConfig).toBe("");
+    expect(JSON.parse(storage.getItem("texlite-editor-preferences:alice:paper")!)).not.toHaveProperty("texFmtConfigInitialized");
   });
 });

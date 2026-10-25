@@ -74,4 +74,17 @@ describe("client API session handling", () => {
     await expect(api("/api/projects/project-1"))
       .rejects.toMatchObject({ name: "Error", status: 200, code: "INVALID_RESPONSE" });
   });
+
+  it.each(["en", "zh", "zh-Hant"])("localizes the outdated-client refresh hint in %s without reloading automatically", async (locale) => {
+    await i18n.changeLanguage(locale);
+    const windowTarget = new EventTarget();
+    const dispatch = vi.spyOn(windowTarget, "dispatchEvent");
+    vi.stubGlobal("window", windowTarget);
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ code: "CLIENT_UPDATE_REQUIRED", error: "Server fallback" }, { status: 409 })));
+    await expect(api("/api/projects/project-1/spellcheck", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      status: 409, code: "CLIENT_UPDATE_REQUIRED", message: i18n.t("errors.codes.CLIENT_UPDATE_REQUIRED")
+    });
+    expect(i18n.exists("errors.codes.CLIENT_UPDATE_REQUIRED")).toBe(true);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 });

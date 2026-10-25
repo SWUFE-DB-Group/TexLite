@@ -35,4 +35,12 @@ describe("server API localization", () => {
       .toBe(`密碼至少需要 ${MIN_PASSWORD_LENGTH} 個字元。`);
     expect(serverErrorMessage("zh-Hant", "UNKNOWN_ERROR_CODE")).toBe("無法完成請求。");
   });
+
+  it.each([
+    ["en", "This page is out of date. Save your changes and reload it to continue writing checks."],
+    ["zh", "当前页面版本过旧。请先保存修改，再刷新页面以继续写作检查。"],
+    ["zh-Hant", "目前頁面版本過舊。請先儲存修改，再重新整理頁面，以繼續寫作檢查。"]
+  ] as const)("provides a safe refresh hint for outdated %s clients", (locale, message) => {
+    expect(serverErrorMessage(locale, "CLIENT_UPDATE_REQUIRED")).toBe(message);
+  });
 });

@@ -416,7 +416,6 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       // This key is computed before snapshot creation. The content digest
       // returned by captureCompileSnapshot is only the result revision.
       generation: admission.generation,
-      revision: admission.generation,
       onQueued: broadcast,
       onSelected: broadcast,
       onDiscarded: () => {

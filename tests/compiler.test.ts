@@ -77,8 +77,8 @@ describe("reliable project compilation", () => {
     let activeForProject = 0;
     let maximumActiveForProject = 0;
 
-    const job = (runId: string, revision: string, gate?: Promise<void>): CoordinatedCompileJob => ({
-      projectId: "project-a", runId, revision,
+    const job = (runId: string, generation: string, gate?: Promise<void>): CoordinatedCompileJob => ({
+      projectId: "project-a", runId, generation,
       onQueued: () => events.push(`queued:${runId}`),
       onSelected: () => events.push(`selected:${runId}`),
       onDiscarded: (reason) => events.push(`${reason}:${runId}`),
@@ -88,15 +88,15 @@ describe("reliable project compilation", () => {
         maximumActiveForProject = Math.max(maximumActiveForProject, activeForProject);
         await gate;
         activeForProject -= 1;
-        return { runId, revision, ok: true, log: runId, diagnostics: { warnings: [], errors: [] }, pdfPath: `${runId}.pdf`, synctexPath: null };
+        return { runId, revision: `digest:${generation}`, ok: true, log: runId, diagnostics: { warnings: [], errors: [] }, pdfPath: `${runId}.pdf`, synctexPath: null };
       }
     });
 
-    const first = coordinator.request(job("run-1", "revision-1", firstGate));
-    const duplicate = coordinator.request(job("run-1-duplicate", "revision-1"));
+    const first = coordinator.request(job("run-1", "generation-1", firstGate));
+    const duplicate = coordinator.request(job("run-1-duplicate", "generation-1"));
     expect(duplicate).toBe(first);
-    const superseded = coordinator.request(job("run-2", "revision-2"));
-    const latest = coordinator.request(job("run-3", "revision-3"));
+    const superseded = coordinator.request(job("run-2", "generation-2"));
+    const latest = coordinator.request(job("run-3", "generation-3"));
     expect(executions).toBe(1);
     releaseFirst();
 
@@ -114,7 +114,7 @@ describe("reliable project compilation", () => {
     let snapshotCreations = 0;
     const job = (runId: string, resultRevision: string): CoordinatedCompileJob => ({
       projectId: "project-a", target: "main.tex", runId,
-      generation: "source-generation-7", revision: resultRevision,
+      generation: "source-generation-7",
       onQueued: () => undefined,
       onSelected: () => undefined,
       onDiscarded: () => undefined,
@@ -148,7 +148,7 @@ describe("reliable project compilation", () => {
     let executions = 0;
     let cancelled = 0;
     const result = coordinator.request({
-      projectId: "project-a", target: "main.tex", runId: "run-cancelled", revision: "revision-cancelled",
+      projectId: "project-a", target: "main.tex", runId: "run-cancelled", generation: "generation-cancelled",
       onQueued: () => undefined,
       onSelected: () => undefined,
       onDiscarded: () => undefined,
@@ -163,7 +163,7 @@ describe("reliable project compilation", () => {
     });
 
     expect(coordinator.cancel("project-a", "main.tex")).toEqual({ runId: "run-cancelled", status: "queued" });
-    await expect(result).resolves.toMatchObject({ ok: false, cancelled: true, runId: "run-cancelled" });
+    await expect(result).resolves.toMatchObject({ ok: false, cancelled: true, runId: "run-cancelled", revision: "generation-cancelled" });
     expect(executions).toBe(0);
     expect(cancelled).toBe(1);
     releaseBlocker();
@@ -401,7 +401,7 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     const active = new Set<string>();
     let overlapped = false;
     const job = (target: string): CoordinatedCompileJob => ({
-      projectId: "project-a", target, runId: target, revision: `revision:${target}`,
+      projectId: "project-a", target, runId: target, generation: `generation:${target}`,
       onQueued: () => undefined,
       onSelected: () => undefined,
       onDiscarded: () => undefined,

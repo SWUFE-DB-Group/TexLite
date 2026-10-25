@@ -92,9 +92,7 @@ export interface CoordinatedCompileJob {
    * content digest is only available after a snapshot has been copied, so it
    * must not be used as the coordinator key at request admission time.
    */
-  generation?: string;
-  /** Backwards-compatible name used by callers that already provide a key. */
-  revision: string;
+  generation: string;
   onQueued: () => void;
   onSelected: () => void;
   onDiscarded: (reason: "duplicate" | "superseded" | "cancelled") => void;
@@ -191,10 +189,10 @@ export class ProjectCompileCoordinator {
     const targetKey = `${input.projectId}\0${input.target ?? ""}`;
     const state = this.targets.get(targetKey) ?? { active: null, pending: null };
     this.targets.set(targetKey, state);
-    const generation = input.generation ?? input.revision;
+    const generation = input.generation;
 
     const active = state.active;
-    if (active && (active.input.generation ?? active.input.revision) === generation) {
+    if (active && active.input.generation === generation) {
       const pending = state.pending;
       if (pending) {
         this.redirect(pending, active);
@@ -206,7 +204,7 @@ export class ProjectCompileCoordinator {
       return active.promise;
     }
     const pending = state.pending;
-    if (pending && (pending.input.generation ?? pending.input.revision) === generation) {
+    if (pending && pending.input.generation === generation) {
       input.onDiscarded("duplicate");
       return pending.promise;
     }
@@ -293,7 +291,8 @@ function deferredJob(input: CoordinatedCompileJob): ManagedCompileJob {
 function cancelledCompileResult(input: CoordinatedCompileJob): CoordinatedCompileResult {
   return {
     runId: input.runId,
-    revision: input.revision,
+    // A queued cancellation has no content snapshot yet.
+    revision: input.generation,
     ok: false,
     cancelled: true,
     log: new CompileCancelledError().message,

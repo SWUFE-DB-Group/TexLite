@@ -283,7 +283,7 @@ describe("texLite application", () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Server spellcheck" } });
     const response = await app.inject({
       method: "POST", url: `/api/projects/${created.json().project.id}/spellcheck`, headers: { cookie },
-      payload: { path: "main.tex", source: "This wrng source is checked by Harper." }
+      payload: { path: "main.tex", source: "This wrng source is checked by Harper.", clientId: randomUUID(), sequence: 1 }
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().lints).toEqual(expect.arrayContaining([expect.objectContaining({ problem: "wrng" })]));
@@ -294,7 +294,7 @@ describe("texLite application", () => {
     const projectId = created.json().project.id as string;
     const disabled = await app.inject({
       method: "POST", url: `/api/projects/${projectId}/chktex`, headers: { cookie },
-      payload: { path: "main.tex", source: "\\documentclass{article}\n" }
+      payload: { path: "main.tex", source: "\\documentclass{article}\n", clientId: randomUUID(), sequence: 1 }
     });
     expect(disabled.statusCode).toBe(200);
     expect(disabled.json()).toEqual({ issues: [] });
@@ -313,10 +313,42 @@ describe("texLite application", () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Bibliography writing checks" } });
     const response = await app.inject({
       method: "POST", url: `/api/projects/${created.json().project.id}/spellcheck`, headers: { cookie },
-      payload: { path: "references.BIB", source: "author = {Mispeled}" }
+      payload: { path: "references.BIB", source: "author = {Mispeled}", clientId: randomUUID(), sequence: 1 }
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ lints: [] });
+  });
+
+  it.each(["spellcheck", "chktex"] as const)("requires current client identifiers for %s and tells old pages to reload", async (endpoint) => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Writing check request identifiers" } });
+    const url = `/api/projects/${created.json().project.id}/${endpoint}`;
+    // Unsupported bibliography content never starts a host checker. The
+    // request contract is still enforced, even when ChkTeX is disabled.
+    const source = { path: "references.bib", source: "author = {Mispeled}" };
+    for (const identifiers of [{}, { clientId: randomUUID() }, { sequence: 1 }]) {
+      const response = await app.inject({ method: "POST", url, headers: { cookie }, payload: { ...source, ...identifiers } });
+      expect(response.statusCode, JSON.stringify(identifiers)).toBe(409);
+      expect(response.json()).toMatchObject({ code: "CLIENT_UPDATE_REQUIRED", error: expect.stringMatching(/reload/i) });
+    }
+    const current = await app.inject({
+      method: "POST", url, headers: { cookie }, payload: { ...source, clientId: randomUUID(), sequence: 1 }
+    });
+    expect(current.statusCode).toBe(200);
+    expect(current.json()).toEqual(endpoint === "spellcheck" ? { lints: [] } : { issues: [] });
+  });
+
+  it.each(["spellcheck", "chktex"] as const)("rejects malformed %s identifiers rather than creating a fallback session lane", async (endpoint) => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Invalid writing check identifiers" } });
+    const url = `/api/projects/${created.json().project.id}/${endpoint}`;
+    const valid = { path: "references.bib", source: "author = {Mispeled}", clientId: randomUUID(), sequence: 1 };
+    for (const invalid of [
+      { clientId: null }, { clientId: "invalid" }, { clientId: 12 },
+      { sequence: null }, { sequence: "1" }, { sequence: 0 }, { sequence: -1 }, { sequence: 1.5 }, { sequence: Number.MAX_SAFE_INTEGER + 1 }
+    ]) {
+      const response = await app.inject({ method: "POST", url, headers: { cookie }, payload: { ...valid, ...invalid } });
+      expect(response.statusCode, JSON.stringify(invalid)).toBe(400);
+      expect(response.json()).toMatchObject({ code: endpoint === "spellcheck" ? "SPELLCHECK_SOURCE_INVALID" : "CHK_TEX_SOURCE_INVALID" });
+    }
   });
 
   it("uses one collaboration size limit for the API and editable text files", async () => {

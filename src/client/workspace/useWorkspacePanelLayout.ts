@@ -11,32 +11,20 @@ function validLayout(value: unknown, panelIds: readonly string[]): value is Layo
     && Math.abs(entries.reduce((sum, [, size]) => sum + size, 0) - 100) < 0.1;
 }
 
-/** Preserve v2's DOM-order percentages; its record key alone was alphabetized. */
+/** Read only current per-combination layouts; invalid/missing records use defaults. */
 export function createWorkspacePanelStorage(
   id: string,
   panelIds: readonly string[],
   getStorage: () => LayoutStorage = () => window.localStorage
 ): LayoutStorage {
-  const legacyKey = `react-resizable-panels:${id}`;
-  const key = `${legacyKey}:${panelIds.join(":")}`;
+  const key = `react-resizable-panels:${id}:${panelIds.join(":")}`;
   return {
     getItem(requestedKey) {
-      // Handle legacy reads ourselves: the library's generic migration maps
-      // array values to the sorted ids, swapping source and preview in v2.
+      // Restrict the upstream storage adapter to current-format keys too.
       if (requestedKey !== key) return null;
       try {
-        const storage = getStorage();
-        const saved = storage.getItem(key);
-        if (saved) {
-          try {
-            if (validLayout(JSON.parse(saved), panelIds)) return saved;
-          } catch { /* A damaged preference may fall back to the old record. */ }
-        }
-        const legacy = JSON.parse(storage.getItem(legacyKey) ?? "null");
-        const sizes = legacy?.[[...panelIds].sort().join(",")]?.layout;
-        if (!Array.isArray(sizes) || sizes.length !== panelIds.length) return null;
-        const layout = Object.fromEntries(panelIds.map((panelId, index) => [panelId, sizes[index]]));
-        return validLayout(layout, panelIds) ? JSON.stringify(layout) : null;
+        const saved = getStorage().getItem(key);
+        return saved && validLayout(JSON.parse(saved), panelIds) ? saved : null;
       } catch { return null; }
     },
     setItem(requestedKey, value) {

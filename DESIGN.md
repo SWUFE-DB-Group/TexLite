@@ -691,11 +691,10 @@ Workspace resizing uses `react-resizable-panels` v4 (`Group`, `Panel`,
 would mean pixels. The editor and preview share the space remaining after the
 file panel and optional drawer. Each visible panel combination keeps its own
 browser layout using `useDefaultLayout` and a storage adapter scoped to the
-deployment base path. The adapter validates saved preferences and reads v2's
-legacy array in visual order, rather than the alphabetized record-key order,
-so source/PDF widths do not get swapped. Legacy records remain intact; new
-layouts use v4's per-combination keys. Blocked or corrupt browser storage
-falls back to usable defaults. File-panel collapse state follows `onResize`.
+deployment base path. The adapter validates current v4 per-combination records
+and does not convert v2 layout arrays. Missing, unsupported or corrupt records
+use default sizes; older browser records are left untouched. Blocked browser
+storage also falls back to usable defaults. File-panel collapse state follows `onResize`.
 SyncTeX arrows are portalled outside the group and anchored to the separator,
 so v4's document-level drag capture does not consume their pointer/keyboard
 actions. Observers and window listeners are removed when the separator unmounts.
@@ -858,6 +857,13 @@ uses a process-wide queue capped at eight checks across projects and users. Its
 LaTeX writing diagnostics use a blue-gray dotted underline and never replace
 the compile diagnostics; the setting is off by default.
 
+Both writing-check endpoints require a page-local UUID `clientId` and a
+positive safe-integer `sequence` with each source request. Missing identifiers
+return HTTP 409 `CLIENT_UPDATE_REQUIRED` with a localized save-and-reload hint;
+malformed identifiers return HTTP 400. There is no session-cookie lane fallback.
+The server always scopes lanes by project, authenticated user, client and file.
+It never forces a browser reload or discards local edits for this error.
+
 Formatting is independent from the editor's local appearance. A user can
 manually format a selection or enable the per-user/per-project “format before
 compile” preference. The browser uses bundled `tex-fmt` WASM for `.tex`, `.cls`,
@@ -871,6 +877,9 @@ localized messages; a failed or timed-out worker is discarded and recreated on
 the next format attempt, with a 30-second request timeout. Citation-library form
 validation remains in the browser's main thread. A formatter failure reports an
 error but does not prevent compilation. There is no silent Prettier fallback.
+Missing, non-string or oversized stored TOML values use `wrap = false`; an explicitly
+saved empty string uses tex-fmt's own defaults. The browser no longer guesses
+whether an empty value came from an older default or requires a migration marker.
 
 Before a formatter computes a replacement it acquires a short-lived, per-file
 lease from the live Yjs room. The lease is held only for the format/snapshot,
@@ -923,6 +932,8 @@ Compilation follows this sequence:
 
 1. Admission validates permissions/root selection and coalesces requests by
    project, root, and a cheap source/settings generation.
+   The internal coordinator accepts only `generation`; `revision` remains the
+   content fingerprint on results, not an alternate admission-key parameter.
 2. After coalescing, one project-queue reservation flushes the room,
    revalidates permissions/root selection, and captures a source snapshot.
    A short snapshot barrier prevents autosave from modifying the source tree

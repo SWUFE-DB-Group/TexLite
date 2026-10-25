@@ -22,6 +22,7 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   CHK_TEX_SOURCE_TOO_LARGE: "待檢查原始碼過大。",
   CHK_TEX_SUPERSEDED: "更新的 ChkTeX 檢查已替代此請求。",
   CHK_TEX_UNAVAILABLE: "伺服器尚未安裝 ChkTeX，或目前無法執行。請安裝 TeX Live 的 chktex 套件後再試一次。",
+  CLIENT_UPDATE_REQUIRED: "目前頁面版本過舊。請先儲存修改，再重新整理頁面，以繼續寫作檢查。",
   COMMENT_DELETE_FORBIDDEN: "只能刪除自己的批註。",
   COMMENT_EDIT_FORBIDDEN: "只能編輯自己的批註。",
   COMMENT_FILE_NOT_FOUND: "批註對應的檔案不存在。",

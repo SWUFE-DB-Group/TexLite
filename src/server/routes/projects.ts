@@ -27,7 +27,6 @@ import { writeProjectArchive } from "../archive.js";
 import { extractProjectZip, ZipValidationError } from "../zip.js";
 import { HarperLintSupersededError, HarperUnavailableError, type HarperService } from "../harper.js";
 import { ChktexLintSupersededError, ChktexUnavailableError, type ChktexService } from "../chktex.js";
-import { digestToken } from "../security.js";
 import { supportsChktexChecks, supportsWritingChecks } from "../../shared/writingChecks.js";
 import { unreadMentionCountsForProjects } from "../commentMentions.js";
 import {
@@ -419,13 +418,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     if (typeof source !== "string" || typeof sourcePath !== "string") {
       return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
     }
-    // Accept already-open clients during a rolling update. Current clients
-    // pair a page-local UUID with a monotonically increasing sequence so a
-    // delayed HTTP request cannot replace a newer queued check.
-    if (clientId !== undefined && (typeof clientId !== "string" || !clientIdPattern.test(clientId))) {
-      return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
-    }
-    if (sequence !== undefined && (typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= 0 || clientId === undefined)) {
+    if (clientId === undefined || sequence === undefined) return apiError(reply, 409, "CLIENT_UPDATE_REQUIRED");
+    if (typeof clientId !== "string" || !clientIdPattern.test(clientId)
+      || typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= 0) {
       return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
     }
     if (Buffer.byteLength(source, "utf8") > maxCollaborativeFileBytes(config)) {
@@ -438,16 +433,13 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       return apiError(reply, 400, "SPELLCHECK_SOURCE_INVALID");
     }
     // Bibliography files are structured reference data rather than prose.
-    // Keep this server-side guard for legacy clients and direct API callers.
     if (!supportsWritingChecks(filePath)) return { lints: [] };
     // A login session is shared by browser tabs. Pair the authenticated user
     // with the page-local client ID so each new editor can replace only its
-    // own obsolete waiting work. Legacy clients retain their former session
-    // grouping until their page is refreshed.
-    const laneClientId = clientId ?? `legacy:${digestToken(request.cookies.texlite_session ?? "")}`;
-    const lane = `${id}\0${user.id}\0${laneClientId}\0${filePath}`;
+    // own obsolete waiting work.
+    const lane = `${id}\0${user.id}\0${clientId}\0${filePath}`;
     try {
-      return { lints: await harper.lint(source, filePath, lane, typeof sequence === "number" ? sequence : undefined) };
+      return { lints: await harper.lint(source, filePath, lane, sequence) };
     } catch (error) {
       if (error instanceof HarperLintSupersededError) {
         return apiError(reply, 409, "SPELLCHECK_SUPERSEDED");
@@ -466,19 +458,18 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
     if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    if (!project.chktex_enabled) return { issues: [] };
     const body = request.body as { path?: unknown; source?: unknown; clientId?: unknown; sequence?: unknown } | undefined;
     const source = body?.source;
     const sourcePath = body?.path;
     const clientId = body?.clientId;
     const sequence = body?.sequence;
     if (typeof source !== "string" || typeof sourcePath !== "string") return apiError(reply, 400, "CHK_TEX_SOURCE_INVALID");
-    if (clientId !== undefined && (typeof clientId !== "string" || !clientIdPattern.test(clientId))) {
+    if (clientId === undefined || sequence === undefined) return apiError(reply, 409, "CLIENT_UPDATE_REQUIRED");
+    if (typeof clientId !== "string" || !clientIdPattern.test(clientId)
+      || typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= 0) {
       return apiError(reply, 400, "CHK_TEX_SOURCE_INVALID");
     }
-    if (sequence !== undefined && (typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= 0 || clientId === undefined)) {
-      return apiError(reply, 400, "CHK_TEX_SOURCE_INVALID");
-    }
+    if (!project.chktex_enabled) return { issues: [] };
     if (Buffer.byteLength(source, "utf8") > maxCollaborativeFileBytes(config)) {
       return apiError(reply, 413, "CHK_TEX_SOURCE_TOO_LARGE");
     }
@@ -489,10 +480,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       return apiError(reply, 400, "CHK_TEX_SOURCE_INVALID");
     }
     if (!supportsChktexChecks(filePath)) return { issues: [] };
-    const laneClientId = clientId ?? `legacy:${digestToken(request.cookies.texlite_session ?? "")}`;
-    const lane = `${id}\0${user.id}\0${laneClientId}\0${filePath}`;
+    const lane = `${id}\0${user.id}\0${clientId}\0${filePath}`;
     try {
-      return { issues: await chktex.lint(source, filePath, lane, typeof sequence === "number" ? sequence : undefined) };
+      return { issues: await chktex.lint(source, filePath, lane, sequence) };
     } catch (error) {
       if (error instanceof ChktexLintSupersededError) return apiError(reply, 409, "CHK_TEX_SUPERSEDED");
       if (error instanceof ChktexUnavailableError) {
