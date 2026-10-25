@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import "../agents/agents.css";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, ChevronRight, LoaderCircle, Pencil, Play, Plus, Square, TerminalSquare, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, LoaderCircle, Pencil, Play, Plus, Square, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
 import { api } from "../api";
 import { Modal } from "../Dialog";
 import { useAgentTasks } from "../agents/useAgentTasks";
@@ -28,9 +28,9 @@ export function AgentTerminal({ projectId, readOnly, onHide }: { projectId: stri
   const projectBusy = Boolean(tasks.result.activeTaskId && tasks.result.activeTaskId !== task?.id);
   const available = !projectBusy && !readOnly && activeAgent?.installed && activeAgent.enabled && tasks.catalog?.ptyAvailable && task?.cleanupState === "none";
   const choose = (id: string) => { tasks.setSelectedId(id); setRenaming(false); };
-  const act = (suffix: string, body?: unknown) => tasks.mutate(async () => {
+  const act = (suffix: string) => tasks.mutate(async () => {
     if (!task) return;
-    const result = await api<{ task: AgentTask }>(`/api/agent-tasks/${task.id}${suffix}`, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) });
+    const result = await api<{ task: AgentTask }>(`/api/agent-tasks/${task.id}${suffix}`, { method: "POST" });
     tasks.acceptTask(result.task);
   });
   return <section className="agent-terminal-panel" data-agent-terminal="true" aria-label={t("agents.terminal")}>
@@ -48,8 +48,7 @@ export function AgentTerminal({ projectId, readOnly, onHide }: { projectId: stri
       {tasks.result.total > 20 && <><button disabled={tasks.page <= 1} aria-label={t("agents.previous")} onClick={() => tasks.setPage((value) => value - 1)}><ChevronLeft size={13} /></button><small>{tasks.result.page} / {Math.ceil(tasks.result.total / 20)}</small><button disabled={tasks.page * 20 >= tasks.result.total} aria-label={t("agents.next")} onClick={() => tasks.setPage((value) => value + 1)}><ChevronRight size={13} /></button></>}
       {task && <><span className="agent-task-state">{t(`agents.state_${task.state}`)}</span><span className="agent-toolbar-spacer" />
         {running ? <button disabled={tasks.busy} onClick={() => void act("/stop")}><Square size={12} />{t("agents.end")}</button>
-          : <button disabled={!available || tasks.busy} onClick={() => void act("/start", { resume: task.canResume })}><Play size={13} />{task.canResume ? t("agents.resume") : task.state === "ready" ? t("agents.start") : t("agents.newExecution")}</button>}
-        {!running && task.canResume && <button disabled={!available || tasks.busy} onClick={() => void act("/start", { resume: false })}>{t("agents.newExecution")}</button>}
+          : <button disabled={!available || tasks.busy} onClick={() => void act("/start")}><Play size={13} />{task.canResume ? t("agents.resume") : t("agents.start")}</button>}
         <button className="agent-icon-button" title={t("agents.rename")} aria-label={t("agents.rename")} disabled={tasks.busy} onClick={() => { setRenameTitle(task.title); setRenaming((value) => !value); }}><Pencil size={13} /></button>
         <button className="agent-icon-button agent-danger" title={t("agents.delete")} aria-label={t("agents.delete")} disabled={tasks.busy} onClick={() => { tasks.setError(""); setDeleteOpen(true); }}><Trash2 size={13} /></button>
       </>}
@@ -73,7 +72,7 @@ export function AgentTerminal({ projectId, readOnly, onHide }: { projectId: stri
     }); }}><input value={renameTitle} onChange={(event) => setRenameTitle(event.target.value)} required maxLength={160} aria-label={t("agents.task")} /><button disabled={tasks.busy}>{t("common.save")}</button></form>}
     {tasks.error && !deleteOpen && <p className="error agent-inline-error" role="alert">{tasks.error}<button onClick={() => tasks.setError("")} aria-label={t("common.close")}><X size={13} /></button></p>}
     {task?.errorCode && !tasks.error && !deleteOpen && <p className="error agent-inline-error" role="alert">{t(`errors.codes.${task.errorCode}`, { defaultValue: t("agents.taskUnavailable") })}</p>}
-    {projectBusy && <p className="agent-inline-notice" role="status">{t("errors.codes.AGENT_PROJECT_BUSY")}</p>}
+    {projectBusy && <p className="agent-inline-warning" role="status"><TriangleAlert size={14} aria-hidden="true" /><span>{t("errors.codes.AGENT_PROJECT_BUSY")}</span></p>}
     {tasks.catalog && !tasks.catalog.ptyAvailable && <p className="error agent-inline-error">{t("agents.ptyUnavailable")}</p>}
     <div className="agent-terminal-body">
       <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}>

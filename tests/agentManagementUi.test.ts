@@ -51,7 +51,9 @@ describe("coding agent management presentation", () => {
   it.each([null, 0, 7])("keeps terminal hints concise and shows only abnormal exit codes: %s", async (exitCode) => {
     const task: AgentTask = { id: "task", projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
       agentId: "codex", title: "Revise abstract", state: exitCode === null ? "ready" : "exited", cleanupState: "none", errorCode: null,
-      createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt: null, endedAt: null, exitCode, nativeSessionId: null, canResume: false };
+      createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt: null, endedAt: null, exitCode,
+      nativeSessionId: exitCode === null ? null : "native-conversation", canResume: exitCode !== null };
+    catalog.agents[0].enabled = true;
     vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 20, total: 1 },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
       refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() });
@@ -60,6 +62,14 @@ describe("coding agent management presentation", () => {
     expect(empty?.querySelector("p")?.textContent).toBe("啟動或繼續此任務。");
     expect(Boolean(empty?.querySelector("small"))).toBe(exitCode !== null && exitCode !== 0);
     if (exitCode === 7) expect(empty?.querySelector("small")?.textContent).toContain("退出碼");
+    const launchLabel = task.canResume ? "繼續任務" : "啟動";
+    const launchButtons = [...container.querySelectorAll<HTMLButtonElement>(".agent-task-toolbar button")]
+      .filter((button) => button.textContent === "啟動" || button.textContent === "繼續任務" || button.textContent?.includes("新一輪"));
+    expect(launchButtons).toHaveLength(1);
+    expect(launchButtons[0].textContent).toBe(launchLabel);
+    vi.mocked(api).mockResolvedValueOnce({ task });
+    await act(async () => launchButtons[0].click());
+    expect(api).toHaveBeenCalledWith("/api/agent-tasks/task/start", { method: "POST" });
   });
 
   it("identifies the feature as a CLI in every locale", () => {
@@ -97,7 +107,7 @@ describe("coding agent management presentation", () => {
     expect(cells[2].querySelector("a, button")).toBeNull();
     const time = cells[6].querySelector("time");
     expect(time?.getAttribute("datetime")).toBe(task.updatedAt);
-    expect(time?.getAttribute("data-tooltip")).toBe("建立時間：" + formatDateTime(task.createdAt, "zh-Hant") + "\n最近變更：" + formatDateTime(task.updatedAt, "zh-Hant"));
+    expect(time?.getAttribute("data-tooltip")).toBe("建立時間：" + formatDateTime(task.createdAt, "zh-Hant"));
     expect(time?.hasAttribute("title")).toBe(false);
     expect(time?.tabIndex).toBe(0);
     expect(time?.textContent).toBe(formatDateTime(task.updatedAt, "zh-Hant", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }));
@@ -127,5 +137,18 @@ describe("coding agent management presentation", () => {
     expect(paginationButtons).toHaveLength(2);
     expect(paginationButtons.map((button) => button.textContent)).toEqual([agentUiMessages["zh-Hant"].previous, agentUiMessages["zh-Hant"].next]);
     expect(container.querySelector('option[value="archived"]')).toBeNull();
+  });
+
+  it("presents project execution contention as a warning with an accessible decorative icon", async () => {
+    vi.mocked(useAgentTasks).mockReturnValue({ catalog,
+      result: { tasks: [], page: 1, pageSize: 20, total: 0, activeTaskId: "another-task" }, selected: null,
+      selectedId: "", page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
+      refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() });
+    await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
+    const warning = container.querySelector('.agent-inline-warning[role="status"]');
+    expect(warning?.textContent).toBe("errors.codes.AGENT_PROJECT_BUSY");
+    expect(warning?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect(warning?.querySelector(".lucide-triangle-alert")).not.toBeNull();
+    expect(warning?.classList.contains("agent-inline-notice")).toBe(false);
   });
 });

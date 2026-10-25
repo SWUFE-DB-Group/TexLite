@@ -94,9 +94,7 @@ export function registerAgentRoutes(app: FastifyInstance, { db, agents }: { db: 
   app.post("/api/agent-tasks/:taskId/start", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const body = request.body as { resume?: unknown } | undefined;
-    if (body?.resume !== undefined && typeof body.resume !== "boolean") return apiError(reply, 400, "REQUEST_INVALID");
-    return { task: await agents.start((request.params as { taskId: string }).taskId, user, body?.resume === true) };
+    return { task: await agents.start((request.params as { taskId: string }).taskId, user) };
   });
   app.get("/api/agent-tasks/:taskId/terminal", { websocket: true }, (socket, request) => {
     const user = currentUser(request, db);

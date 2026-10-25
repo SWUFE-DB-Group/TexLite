@@ -166,17 +166,17 @@ describe("external agent tasks", () => {
     const a = await create(); const b = await create("claude", editor); const c = await create("opencode");
     let release!: () => void;
     vi.mocked(adapters[0].prepare).mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
-    const starting = service.start(a.id, owner, false);
+    const starting = service.start(a.id, owner);
     await vi.waitFor(() => expect(release).toBeTypeOf("function"));
-    await expect(service.start(b.id, editor, false)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
-    await expect(service.start(c.id, owner, false)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
+    await expect(service.start(b.id, editor)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
+    await expect(service.start(c.id, owner)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
     release(); await starting;
-    await service.start(a.id, owner, false);
+    await service.start(a.id, owner);
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(spawn).toHaveBeenCalledWith(process.execPath, [], expect.objectContaining({ cwd: sourceRoot(config, projectId) }));
     expect(service.list(editor, false, { project: projectId }).activeTaskId).toBe(a.id);
     await service.stop(a.id, owner);
-    await service.start(b.id, editor, false);
+    await service.start(b.id, editor);
     expect(spawn).toHaveBeenCalledTimes(2);
     expect(service.list(owner, false, { project: projectId }).activeTaskId).toBe(b.id);
   });
@@ -185,7 +185,7 @@ describe("external agent tasks", () => {
     const a = await create();
     const other = anotherProject();
     const b = await service.create(other, editor, "claude", "Other paper");
-    await Promise.all([service.start(a.id, owner, false), service.start(b.id, editor, false)]);
+    await Promise.all([service.start(a.id, owner), service.start(b.id, editor)]);
     expect(spawn).toHaveBeenCalledTimes(2);
   });
 
@@ -193,8 +193,8 @@ describe("external agent tasks", () => {
     const a = await create(); const b = await create("claude", editor);
     expect(fs.readdirSync(agentTaskRoot(config, a.id))).toEqual(["state"]);
     vi.mocked(adapters[0].prepare).mockRejectedValueOnce(new Error("Credentials unavailable"));
-    await expect(service.start(a.id, owner, false)).rejects.toThrow("Credentials unavailable");
-    await service.start(b.id, editor, false);
+    await expect(service.start(a.id, owner)).rejects.toThrow("Credentials unavailable");
+    await service.start(b.id, editor);
     expect(service.task(b.id, editor).state).toBe("running");
   });
 
@@ -204,16 +204,16 @@ describe("external agent tasks", () => {
     const stop = vi.fn<(process: AgentPty) => Promise<void>>(async () => { throw new Error("Cannot stop process group"); });
     service = new AgentService({ config, db, collaboration, projectMutations: coordinator, recordHistory, recordEdits: () => undefined },
       { registry, loadPty: async () => spawn, stopPty: stop });
-    await service.start(a.id, owner, false);
+    await service.start(a.id, owner);
     await expect(service.stop(a.id, owner)).rejects.toThrow("Cannot stop process group");
-    await expect(service.start(b.id, editor, false)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
+    await expect(service.start(b.id, editor)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
     stop.mockImplementation(async (process) => { (process as FakePty).end(); });
     await service.stop(a.id, owner);
-    await service.start(b.id, editor, false);
+    await service.start(b.id, editor);
   });
 
   it("keeps processes across disconnect/project archive and stops without deleting context", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     const socket = new FakeSocket(); service.attach(task.id, owner, socket.ws, () => true);
     socket.close();
     db.prepare("INSERT INTO user_project_archives (user_id, project_id, archived_at) VALUES (?, ?, ?)").run(owner.id, projectId, new Date().toISOString());
@@ -224,12 +224,63 @@ describe("external agent tasks", () => {
     await service.stop(task.id, owner);
     expect(service.task(task.id, owner)).toMatchObject({ state: "stopped", canResume: true, nativeSessionId: task.id });
     expect(fs.existsSync(workingFile(task))).toBe(true);
-    await service.start(task.id, owner, true);
+    await service.start(task.id, owner);
+    expect(spawn.mock.calls.at(-1)?.[1]).toEqual(["resume", task.id]);
+  });
+
+  it("always resumes an existing task and uses a separate task for a new conversation", async () => {
+    const task = await create();
+    const firstLaunch = vi.spyOn(adapters[0], "start");
+    const resume = vi.spyOn(adapters[0], "resume");
+    await service.start(task.id, owner);
+    await service.stop(task.id, owner);
+    expect(service.task(task.id, owner).nativeSessionId).toBe(task.id);
+    await service.start(task.id, owner);
+    expect(firstLaunch).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledWith(expect.objectContaining({ nativeSessionId: task.id }));
+    expect(service.task(task.id, owner).nativeSessionId).toBe(task.id);
+    await service.stop(task.id, owner);
+    const next = await create();
+    await service.start(next.id, owner);
+    expect(firstLaunch).toHaveBeenCalledTimes(2);
+    expect(firstLaunch.mock.calls[0][0].stateDirectory).not.toBe(firstLaunch.mock.calls[1][0].stateDirectory);
+  });
+
+  it("does not silently replace a conversation when native context is unavailable", async () => {
+    const task = await create();
+    const firstLaunch = vi.spyOn(adapters[0], "start");
+    const resume = vi.spyOn(adapters[0], "resume");
+    vi.spyOn(adapters[0], "findNativeSession").mockResolvedValue(null);
+    await service.start(task.id, owner);
+    await service.stop(task.id, owner);
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_NO_CONTEXT" });
+    expect(firstLaunch).toHaveBeenCalledTimes(1);
+    expect(resume).not.toHaveBeenCalled();
+    expect(service.task(task.id, owner).state).toBe("stopped");
+    expect(service.list(owner, false, { project: projectId }).activeTaskId).toBeNull();
+    const next = await create();
+    await service.start(next.id, owner);
+    expect(firstLaunch).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves the original context after a failed resume, without falling back to a fresh start", async () => {
+    const task = await create();
+    const firstLaunch = vi.spyOn(adapters[0], "start");
+    const resume = vi.spyOn(adapters[0], "resume");
+    await service.start(task.id, owner);
+    await service.stop(task.id, owner);
+    resume.mockImplementationOnce(() => { throw new Error("Native resume failed"); });
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_START_FAILED" });
+    expect(service.task(task.id, owner)).toMatchObject({ state: "failed", nativeSessionId: task.id });
+    expect(firstLaunch).toHaveBeenCalledTimes(1);
+    await service.start(task.id, owner);
+    expect(resume).toHaveBeenCalledTimes(2);
     expect(spawn.mock.calls.at(-1)?.[1]).toEqual(["resume", task.id]);
   });
 
   it("isolates terminal access and implements single-input ownership and takeover", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     const first = new FakeSocket(); const second = new FakeSocket();
     service.attach(task.id, owner, first.ws, () => true); service.attach(task.id, owner, second.ws, () => true);
     expect(() => service.attach(task.id, admin, new FakeSocket().ws, () => true)).toThrow();
@@ -245,7 +296,7 @@ describe("external agent tasks", () => {
   });
 
   it("drops slow/expired attachments without stopping a task just because no browser is attached", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     const slow = new FakeSocket(); const expired = new FakeSocket();
     service.attach(task.id, owner, slow.ws, () => true); service.attach(task.id, owner, expired.ws, () => false);
     slow.bufferedAmount = 1024 * 1024; processes[0].output("progress");
@@ -255,17 +306,17 @@ describe("external agent tasks", () => {
   });
 
   it("stops executions when access is revoked, but preserves the task for cleanup", async () => {
-    const task = await create("codex", editor); await service.start(task.id, editor, false);
+    const task = await create("codex", editor); await service.start(task.id, editor);
     db.prepare("UPDATE project_members SET permission = 'read' WHERE user_id = ? AND project_id = ?").run(editor.id, projectId);
     await service.reconcilePermissions();
     expect(service.task(task.id, editor).state).toBe("stopped");
-    await expect(service.start(task.id, editor, true)).rejects.toMatchObject({ code: "AGENT_DISABLED" });
+    await expect(service.start(task.id, editor)).rejects.toMatchObject({ code: "AGENT_DISABLED" });
     await service.remove(task.id, admin, true);
     expect(service.list(admin, true, {}).total).toBe(0);
   });
 
   it("administrator disablement stops active executions while cleanup remains available", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     await service.setPolicy({ allowed: [] });
     expect(service.task(task.id, owner).state).toBe("stopped");
     await service.remove(task.id, owner);
@@ -276,18 +327,18 @@ describe("external agent tasks", () => {
   it("stops only the deselected agent while other allowed agents continue", async () => {
     const codex = await create("codex");
     const opencode = await service.create(anotherProject(), owner, "opencode", "Other project");
-    await service.start(codex.id, owner, false);
-    await service.start(opencode.id, owner, false);
+    await service.start(codex.id, owner);
+    await service.start(opencode.id, owner);
     await service.setPolicy({ allowed: ["opencode"] });
     expect(service.policy()).toEqual({ allowed: ["opencode"] });
     expect(service.task(codex.id, owner).state).toBe("stopped");
     expect(service.task(opencode.id, owner).state).toBe("running");
-    await expect(service.start(codex.id, owner, true)).rejects.toMatchObject({ code: "AGENT_DISABLED" });
+    await expect(service.start(codex.id, owner)).rejects.toMatchObject({ code: "AGENT_DISABLED" });
     await service.remove(codex.id, owner);
   });
 
   it("keeps failed native cleanup retryable and never purges unrelated data", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     vi.mocked(adapters[0].cleanup).mockRejectedValueOnce(new Error("cleanup unavailable"));
     fs.writeFileSync(path.join(root, "unrelated"), "keep");
     await expect(service.remove(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
@@ -299,7 +350,7 @@ describe("external agent tasks", () => {
   });
 
   it("retains cleanup locators across deletion of projects/users and cleans owned resources", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     db.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
     expect(service.list(admin, true, {}).total).toBe(1);
     await service.reconcilePermissions(true);
@@ -308,7 +359,7 @@ describe("external agent tasks", () => {
   });
 
   it("preserves orphan records when native cleanup fails", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     vi.mocked(adapters[0].cleanup).mockRejectedValueOnce(new Error("cleanup unavailable"));
     db.prepare("UPDATE projects SET owner_id = ? WHERE id = ?").run(admin.id, projectId);
     db.prepare("DELETE FROM users WHERE id = ?").run(owner.id);
@@ -319,7 +370,7 @@ describe("external agent tasks", () => {
   });
 
   it("reclaims state after failed cleanup without removing the task prematurely", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     vi.mocked(adapters[0].cleanup).mockRejectedValueOnce(new Error("unavailable"));
     await expect(service.remove(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
     expect(service.task(task.id, owner).cleanupState).toBe("failed");
@@ -330,19 +381,19 @@ describe("external agent tasks", () => {
   it("does not start processes when PTY support is missing", async () => {
     const task = await create(); await service.dispose();
     service = new AgentService({ config, db, collaboration, projectMutations: new ProjectMutationCoordinator(collaboration), recordHistory, recordEdits: () => undefined }, { registry, loadPty: async () => null });
-    await expect(service.start(task.id, owner, false)).rejects.toMatchObject({ code: "AGENT_PTY_UNAVAILABLE" });
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_PTY_UNAVAILABLE" });
     expect(service.task(task.id, owner).state).toBe("ready");
     expect((await service.catalog()).ptyAvailable).toBe(false);
   });
 
   it("handles process launch failure without leaving a task apparently running", async () => {
     const task = await create(); spawn.mockImplementationOnce(() => { throw new Error("native spawn failure"); });
-    await expect(service.start(task.id, owner, false)).rejects.toMatchObject({ code: "AGENT_START_FAILED" });
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_START_FAILED" });
     expect(service.task(task.id, owner)).toMatchObject({ state: "failed", errorCode: "AGENT_START_FAILED" });
   });
 
   it("releases naturally exited executions without automatically restarting them", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     processes[0].end(7);
     await vi.waitFor(() => expect(service.task(task.id, owner)).toMatchObject({ state: "exited", exitCode: 7, nativeSessionId: task.id }));
     expect(spawn).toHaveBeenCalledTimes(1);
@@ -355,7 +406,7 @@ describe("external agent tasks", () => {
     await service.dispose();
     service = new AgentService({ config, db, collaboration, projectMutations: new ProjectMutationCoordinator(collaboration), recordHistory, recordEdits: () => undefined }, { registry, loadPty: async () => spawn, stopPty: async (process) => (process as FakePty).end() });
     expect(service.task(task.id, owner).state).toBe("interrupted"); expect(spawn).not.toHaveBeenCalled();
-    await service.start(task.id, owner, true);
+    await service.start(task.id, owner);
     expect(spawn.mock.calls.at(-1)?.[1]).toEqual(["resume", task.id]);
   });
 
@@ -374,7 +425,7 @@ describe("agent direct project editing", () => {
     const task = await create("claude", editor);
     expect(fs.existsSync(workingFile(task, "AGENTS.md"))).toBe(false);
     const update = vi.spyOn(collaboration, "updateFile");
-    await service.start(task.id, editor, false);
+    await service.start(task.id, editor);
     const template = fs.readFileSync(new URL("../templates/agents/AGENTS.md", import.meta.url), "utf8");
     expect(fs.readFileSync(workingFile(task, "AGENTS.md"), "utf8")).toBe(template);
     expect(template).toContain("../output");
@@ -384,7 +435,7 @@ describe("agent direct project editing", () => {
     expect(recordHistory).toHaveBeenCalledWith(projectId, editor.id, "file", ["AGENTS.md"]);
     await service.stop(task.id, editor);
     recordHistory.mockClear();
-    await service.start(task.id, editor, true);
+    await service.start(task.id, editor);
     expect(fs.readFileSync(workingFile(task, "AGENTS.md"), "utf8")).toBe(template);
     expect(recordHistory).not.toHaveBeenCalled();
   });
@@ -392,7 +443,7 @@ describe("agent direct project editing", () => {
   it.each(["# Custom project instructions\nKeep this verbatim.\n", ""])("preserves an existing AGENTS.md verbatim: %j", async (content) => {
     const task = await create();
     fs.writeFileSync(workingFile(task, "AGENTS.md"), content);
-    await service.start(task.id, owner, false);
+    await service.start(task.id, owner);
     expect(fs.readFileSync(workingFile(task, "AGENTS.md"), "utf8")).toBe(content);
     expect(recordHistory).not.toHaveBeenCalled();
   });
@@ -401,11 +452,11 @@ describe("agent direct project editing", () => {
     const task = await create();
     const copy = vi.spyOn(fs.promises, "copyFile").mockRejectedValueOnce(Object.assign(new Error("Instructions unwritable"), { code: "EACCES" }));
     try {
-      await expect(service.start(task.id, owner, false)).rejects.toThrow("Instructions unwritable");
+      await expect(service.start(task.id, owner)).rejects.toThrow("Instructions unwritable");
       expect(spawn).not.toHaveBeenCalled();
       expect(service.list(owner, false, { project: projectId }).activeTaskId).toBeNull();
     } finally { copy.mockRestore(); }
-    await service.start(task.id, owner, false);
+    await service.start(task.id, owner);
     expect(spawn).toHaveBeenCalledTimes(1);
   });
 
@@ -424,7 +475,7 @@ describe("agent direct project editing", () => {
     `], env: { PATH: process.env.PATH ?? "", TERM: "xterm-256color" } });
     service = new AgentService({ config, db, collaboration, projectMutations: new ProjectMutationCoordinator(collaboration), recordHistory,
       recordEdits: (id, edits) => new ProjectEditHistoryService(db).record(id, edits) }, { registry, loadPty: async () => factory });
-    await service.start(task.id, owner, false);
+    await service.start(task.id, owner);
     const socket = new FakeSocket(); service.attach(task.id, owner, socket.ws, () => true);
     await vi.waitFor(() => expect(socket.messages.some((message) => message.type === "output" && message.data.includes("NATIVE_READY"))).toBe(true));
     socket.input({ type: "input", data: "hello\r" });
@@ -444,7 +495,7 @@ describe("agent direct project editing", () => {
   it("attributes direct edits to the initiating user and preserves project source when deleting a task", async () => {
     const task = await create("claude", editor);
     const before = fs.readFileSync(workingFile(task), "utf8");
-    await service.start(task.id, editor, false);
+    await service.start(task.id, editor);
     fs.writeFileSync(workingFile(task), before + "\nAgent revision.\n");
     await service.stop(task.id, editor);
     expect(db.prepare("SELECT author_id FROM project_edit_segments WHERE project_id = ?").get(projectId)).toEqual({ author_id: editor.id });
@@ -462,7 +513,7 @@ describe("agent direct project editing", () => {
     db.prepare("INSERT INTO comments (id, project_id, file_path, author_id, content, selected_text, start_offset, end_offset, context_before, context_after, created_at, updated_at) VALUES (?, ?, 'main.tex', ?, 'Review', ?, ?, ?, ?, ?, ?, ?)")
       .run(commentId, projectId, owner.id, anchor.selectedText, anchor.startOffset, anchor.endOffset, anchor.contextBefore, anchor.contextAfter, new Date().toISOString(), new Date().toISOString());
     const task = await create("codex", editor);
-    await service.start(task.id, editor, false);
+    await service.start(task.id, editor);
     fs.writeFileSync(workingFile(task), "% Added by agent\n" + before);
     await vi.waitFor(() => expect(collaboration.fileContent(projectId, "main.tex")).toBe("% Added by agent\n" + before), { timeout: 3000 });
     expect(db.prepare("SELECT start_offset FROM comments WHERE id = ?").get(commentId)).toEqual({ start_offset: 17 });
@@ -475,7 +526,7 @@ describe("agent direct project editing", () => {
     const task = await create("codex", editor);
     const text = room.doc.getText("source:main.tex");
     const before = text.toString();
-    await service.start(task.id, editor, false);
+    await service.start(task.id, editor);
     room.doc.transact(() => text.insert(text.length, "\nHuman appendix.\n"), { socket: {}, user: owner });
     fs.writeFileSync(workingFile(task), "% Agent header\n" + before);
     const receipt = collaboration.flushProject(projectId);
@@ -489,7 +540,7 @@ describe("agent direct project editing", () => {
   it("does not misattribute ordinary browser saves or HTTP file writes to the agent", async () => {
     const room = await liveRoom();
     const task = await create("claude", editor);
-    await service.start(task.id, editor, false);
+    await service.start(task.id, editor);
     const text = room.doc.getText("source:main.tex");
     room.doc.transact(() => text.insert(text.length, "\nHuman only.\n"), { socket: {}, user: owner });
     collaboration.flushProject(projectId);
@@ -502,7 +553,7 @@ describe("agent direct project editing", () => {
 
   it("records an external edit even if a cold room hydrates it before the next poll", async () => {
     const task = await create("codex", editor);
-    await service.start(task.id, editor, false);
+    await service.start(task.id, editor);
     const next = fs.readFileSync(workingFile(task), "utf8") + "\nAgent edit before reconnect\n";
     fs.writeFileSync(workingFile(task), next);
     await liveRoom();
@@ -514,7 +565,7 @@ describe("agent direct project editing", () => {
   it("preserves conflicting agent content, keeps the human draft and ends execution", async () => {
     const room = await liveRoom();
     const task = await create("codex", editor);
-    await service.start(task.id, editor, false);
+    await service.start(task.id, editor);
     const text = room.doc.getText("source:main.tex");
     room.doc.transact(() => { text.delete(0, text.length); text.insert(0, "Human replacement"); }, { socket: {}, user: owner });
     fs.writeFileSync(workingFile(task), "Agent replacement");
@@ -529,7 +580,7 @@ describe("agent direct project editing", () => {
   it("handles new text, deleted files, binary updates and files written just before exit", async () => {
     const old = path.join(sourceRoot(config, projectId), "old.txt");
     fs.writeFileSync(old, "Old");
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     fs.rmSync(old);
     fs.writeFileSync(workingFile(task, "image.png"), Buffer.from([0, 1, 2, 3]));
     fs.writeFileSync(workingFile(task, "new.tex"), "New text");
@@ -537,14 +588,14 @@ describe("agent direct project editing", () => {
     await vi.waitFor(() => expect(service.task(task.id, owner).state).toBe("exited"));
     expect(recordHistory).toHaveBeenCalledWith(projectId, owner.id, "file", expect.arrayContaining(["old.txt", "image.png", "new.tex"]));
     expect(fs.readFileSync(workingFile(task, "new.tex"), "utf8")).toBe("New text");
-    const next = await create("claude", editor); await service.start(next.id, editor, false);
+    const next = await create("claude", editor); await service.start(next.id, editor);
   });
 
   it("flushes edits before launch and ends the agent before an exclusive tree replacement", async () => {
     const room = await liveRoom();
     const text = room.doc.getText("source:main.tex");
     room.doc.transact(() => text.insert(text.length, "\nBefore launch\n"), { socket: {}, user: owner });
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     expect(fs.readFileSync(workingFile(task), "utf8")).toContain("Before launch");
     fs.writeFileSync(workingFile(task, "last.txt"), "Last agent write");
     await coordinator.runExclusive(projectId, "test restore", () => {
@@ -557,7 +608,7 @@ describe("agent direct project editing", () => {
     const task = await create();
     fs.mkdirSync(workingFile(task, "folder"));
     fs.writeFileSync(workingFile(task, "folder/chapter.tex"), "Chapter");
-    await service.start(task.id, owner, false);
+    await service.start(task.id, owner);
     fs.renameSync(workingFile(task, "folder"), workingFile(task, "renamed"));
     collaboration.movePath(projectId, "folder", "renamed", editor.id);
     recordHistory.mockClear();
@@ -568,7 +619,7 @@ describe("agent direct project editing", () => {
   it("provides project/main-file/log context outside the source tree", async () => {
     const task = await create();
     db.prepare("INSERT INTO compile_runs (id, project_id, main_file, status, log, created_at) VALUES (?, ?, 'main.tex', 'failed', 'Missing package', ?)").run(randomUUID(), projectId, new Date().toISOString());
-    await service.start(task.id, owner, false);
+    await service.start(task.id, owner);
     const state = path.join(agentTaskRoot(config, task.id), "state");
     expect(JSON.parse(fs.readFileSync(path.join(state, "project-context.json"), "utf8"))).toMatchObject({
       sourceDirectory: sourceRoot(config, projectId), mainFile: "main.tex", latestCompile: { status: "failed" }
@@ -580,7 +631,7 @@ describe("agent direct project editing", () => {
   });
 
   it("rejects agent-created symlinks without reading outside the project", async () => {
-    const task = await create(); await service.start(task.id, owner, false);
+    const task = await create(); await service.start(task.id, owner);
     fs.symlinkSync(path.join(root, "config.json"), workingFile(task, "link.txt"));
     await vi.waitFor(() => expect(service.task(task.id, owner).state).toBe("stopped"), { timeout: 3000 });
     expect(service.task(task.id, owner).errorCode).toBe("AGENT_SYNC_FAILED");
@@ -649,6 +700,22 @@ describe("agent HTTP and WebSocket permissions", () => {
     expect(db.prepare("SELECT state FROM agent_tasks WHERE id = ?").get(task.id)).toEqual({ state: "stopped" });
     expect(db.prepare("SELECT author_id FROM project_edit_segments WHERE project_id = ?").get(projectId)).toEqual({ author_id: owner.id });
     expect(fs.readFileSync(workingFile(task), "utf8")).toContain("Last edit before shutdown");
+  });
+
+  it("automatically resumes through the start endpoint without a browser-selected launch mode", async () => {
+    const cookies = await httpApp();
+    db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
+    const created = await app!.inject({ method: "POST", url: `/api/projects/${projectId}/agent-tasks`, headers: { cookie: cookies.ownerCookie },
+      payload: { agentId: "codex", title: "One conversation" } });
+    const { task } = created.json() as { task: AgentTask };
+    const first = await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/start`, headers: { cookie: cookies.ownerCookie } });
+    expect(first.statusCode).toBe(200);
+    expect(spawn.mock.calls[0][1]).toEqual([]);
+    await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/stop`, headers: { cookie: cookies.ownerCookie } });
+    const continued = await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/start`, headers: { cookie: cookies.ownerCookie } });
+    expect(continued.statusCode).toBe(200);
+    expect(continued.json().task.nativeSessionId).toBe(task.id);
+    expect(spawn.mock.calls[1][1]).toEqual(["resume", task.id]);
   });
 
   it("preserves tasks across project archive, reuses a process, and exposes an authenticated terminal", async () => {

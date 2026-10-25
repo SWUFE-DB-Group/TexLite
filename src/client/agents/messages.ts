@@ -15,7 +15,7 @@ const en = {
   selected: "Selected: {{count}}", batchEnd: "End selected", batchDelete: "Delete selected", operationFailed: "Some tasks could not be processed. Their errors are listed below.",
   noTasks: "No agent tasks yet", noTasksHint: "Create a task in a project's terminal to get started.",
   newTask: "New task", titlePlaceholder: "For example, revise the abstract", create: "Create task", rename: "Rename task",
-  start: "Start", resume: "Continue task", newExecution: "Start new execution", hide: "Hide terminal",
+  start: "Start", resume: "Continue task", hide: "Hide terminal",
   readyHint: "Start or continue this task.",
   takeControl: "Take control", viewOnly: "Another tab controls this terminal", connecting: "Connecting…", reconnect: "Reconnect",
   connectionLost: "Terminal disconnected. The agent may still be running.",
@@ -25,7 +25,7 @@ const en = {
   permissionLost: "Project write access is required.", policySaved: "Coding Agent CLI settings saved.",
   saved: "Saved",
   managedCleanup: "Task-scoped cleanup", next: "Next", previous: "Previous", bulkDeleteDescription: "End and delete the selected tasks and their saved conversations? Project files are kept.",
-  updated: "Last changed", timeDetails: "Created: {{created}}\nLast changed: {{updated}}", taskUnavailable: "Task unavailable", exitCode: "Exit code: {{code}}"
+  updated: "Last changed", createdTooltip: "Created: {{created}}", taskUnavailable: "Task unavailable", exitCode: "Exit code: {{code}}"
 };
 const zh: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任务", terminal: "终端", back: "返回项目",
@@ -39,14 +39,14 @@ const zh: Record<keyof typeof en, string> = {
   deleteDescription: "结束此任务并删除其保存的对话？已修改的项目文件会保留。",
   selected: "已选择：{{count}}", batchEnd: "结束所选任务", batchDelete: "删除所选任务", operationFailed: "部分任务操作失败，详情如下。",
   noTasks: "暂无 agent 任务", noTasksHint: "在项目终端中创建任务即可开始。", newTask: "新建任务", titlePlaceholder: "例如：修改摘要", create: "创建任务", rename: "重命名任务",
-  start: "启动", resume: "继续任务", newExecution: "开始新一轮运行", hide: "收起终端",
+  start: "启动", resume: "继续任务", hide: "收起终端",
   readyHint: "启动或继续此任务。",
   takeControl: "接管输入", viewOnly: "其他标签页正在控制此终端", connecting: "正在连接…", reconnect: "重新连接", connectionLost: "终端连接已断开，agent 可能仍在运行。",
   taskCount: "{{count}} 个任务",
   state_ready: "待启动", state_starting: "启动中", state_running: "运行中", state_stopping: "停止中", state_stopped: "已停止", state_exited: "已退出", state_interrupted: "服务重启后已中断", state_failed: "失败",
   permissionLost: "需要项目写入权限。", policySaved: "Coding Agent CLI 设置已保存。", saved: "已保存", managedCleanup: "支持任务级清理",
   next: "下一页", previous: "上一页", bulkDeleteDescription: "结束并删除所选任务及其保存的对话？项目文件会保留。",
-  updated: "最近变更", timeDetails: "创建时间：{{created}}\n最近变更：{{updated}}", taskUnavailable: "任务不可用", exitCode: "退出码：{{code}}"
+  updated: "最近变更", createdTooltip: "创建时间：{{created}}", taskUnavailable: "任务不可用", exitCode: "退出码：{{code}}"
 };
 const zhHant: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任務", terminal: "終端機", back: "返回專案",
@@ -60,13 +60,13 @@ const zhHant: Record<keyof typeof en, string> = {
   deleteDescription: "結束此任務並刪除其儲存的對話？已修改的專案檔案會保留。",
   selected: "已選取：{{count}}", batchEnd: "結束所選任務", batchDelete: "刪除所選任務", operationFailed: "部分任務操作失敗，詳情如下。",
   noTasks: "尚無 agent 任務", noTasksHint: "在專案終端機中建立任務即可開始。", newTask: "新增任務", titlePlaceholder: "例如：修改摘要", create: "建立任務", rename: "重新命名任務",
-  start: "啟動", resume: "繼續任務", newExecution: "開始新一輪執行", hide: "收起終端機",
+  start: "啟動", resume: "繼續任務", hide: "收起終端機",
   readyHint: "啟動或繼續此任務。",
   takeControl: "接管輸入", viewOnly: "其他分頁正在控制此終端機", connecting: "正在連線…", reconnect: "重新連線", connectionLost: "終端機連線已中斷，agent 可能仍在執行。",
   taskCount: "{{count}} 個任務",
   state_ready: "待啟動", state_starting: "啟動中", state_running: "執行中", state_stopping: "停止中", state_stopped: "已停止", state_exited: "已退出", state_interrupted: "服務重啟後已中斷", state_failed: "失敗",
   permissionLost: "需要專案寫入權限。", policySaved: "Coding Agent CLI 設定已儲存。", saved: "已儲存", managedCleanup: "支援任務級清理",
   next: "下一頁", previous: "上一頁", bulkDeleteDescription: "結束並刪除所選任務及其儲存的對話？專案檔案會保留。",
-  updated: "最近變更", timeDetails: "建立時間：{{created}}\n最近變更：{{updated}}", taskUnavailable: "任務無法使用", exitCode: "退出碼：{{code}}"
+  updated: "最近變更", createdTooltip: "建立時間：{{created}}", taskUnavailable: "任務無法使用", exitCode: "退出碼：{{code}}"
 };
 export const agentUiMessages = { en, zh, "zh-Hant": zhHant };

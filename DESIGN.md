@@ -1213,7 +1213,12 @@ native preparation, start, exact-context resume, native-session identification,
 and scoped cleanup. Codex, OpenCode, and Claude implement it separately;
 registration/discovery and session orchestration do not contain native command
 switches. PTY attachment, input ownership, process termination, task authorization,
-and retry state are shared service responsibilities.
+and retry state are shared service responsibilities. A task owns one native
+conversation: its first launch starts it and subsequent launches must resume
+the saved context. The service chooses this from persisted task metadata,
+not a browser-supplied start/resume toggle. Missing context is an explicit error,
+never a fallback to a fresh conversation in the same task directory. New
+conversations require a new task UUID and state directory.
 
 The administrative screen is a separate lazy page, with agent settings and a
 paginated cross-project task catalog. Administrators can stop/delete tasks but

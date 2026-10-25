@@ -11,6 +11,17 @@ import { windowsAgentCommand } from "../src/server/agents/terminal.js";
 
 let root: string;
 let context: AgentAdapterContext;
+
+function fakeOpenCode(sessions: Array<{ id: string }>): string {
+  fs.mkdirSync(context.workingDirectory, { recursive: true });
+  fs.copyFileSync(new URL("./fixtures/opencode-session.cjs", import.meta.url), path.join(context.workingDirectory, "session"));
+  context.executable = process.execPath;
+  const database = opencodeAdapter.start(context).env.OPENCODE_DB;
+  fs.mkdirSync(path.dirname(database), { recursive: true });
+  fs.writeFileSync(database, JSON.stringify(sessions));
+  return database;
+}
+
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-agent-adapters-"));
   context = { taskId: "11111111-2222-4333-8444-555555555555", nativeSessionId: null,
@@ -65,6 +76,26 @@ describe("native agent adapters", () => {
     expect(start.env.OPENCODE_DB).toBe(path.join(context.stateDirectory, "data", "opencode", "opencode.db"));
     expect(start.env.OPENCODE_SERVER_URL).toBeUndefined();
     expect(opencodeAdapter.resume({ ...context, nativeSessionId: "ses_test" }).args).toEqual(["--session", "ses_test"]);
+  });
+
+  it("discovers an OpenCode session in the project's cwd, not the TexLite server's cwd", async () => {
+    fakeOpenCode([{ id: "ses_existingProjectConversation" }]);
+    expect(process.cwd()).not.toBe(context.workingDirectory);
+    expect(await opencodeAdapter.findNativeSession(context)).toBe("ses_existingProjectConversation");
+  });
+
+  it("deletes only the identified OpenCode session in the same project cwd and state", async () => {
+    const database = fakeOpenCode([{ id: "ses_ownConversation" }]);
+    await opencodeAdapter.cleanup({ ...context, nativeSessionId: "ses_ownConversation" });
+    expect(JSON.parse(fs.readFileSync(database, "utf8"))).toEqual([]);
+  });
+
+  it("does not guess or delete another OpenCode conversation when discovery is ambiguous", async () => {
+    const sessions = [{ id: "ses_first" }, { id: "ses_second" }];
+    const database = fakeOpenCode(sessions);
+    expect(await opencodeAdapter.findNativeSession(context)).toBeNull();
+    await opencodeAdapter.cleanup({ ...context, nativeSessionId: "ses_first" });
+    expect(JSON.parse(fs.readFileSync(database, "utf8"))).toEqual(sessions);
   });
 
   it("uses a deterministic Claude conversation ID and requires its actual transcript before restoring it", async () => {

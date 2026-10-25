@@ -433,7 +433,10 @@ only task-owned state, never project files. A failed cleanup stays visible
 for retry. Apart from the per-project writer claim, there are no execution-count limits, idle expiry, task timeouts, token
 budgets, or billing controls. A server restart interrupts executions; it does not
 automatically restart them. Exact-context continuation depends on the adapter
-being able to identify a saved native session; a new execution is also available.
+being able to identify a saved native session. A task starts a new conversation
+only on its first launch; later launches resume that conversation. If it cannot
+be identified or resumed, use **+** to create a separate task instead. Existing
+task state is never reset to start another conversation.
 
 | Agent | Native state and continuation | Cleanup |
 | --- | --- | --- |

@@ -138,7 +138,7 @@ export function AgentManagement({ user, onBack }: {
         {admin && <td>{task.userName}</td>}<td><span className="agent-identity"><AgentIcon agent={task.agentId} size={15} />{AGENT_LABELS[task.agentId]}</span></td>
         <td><span className={`agent-state-badge ${task.state}`}>{t(`agents.state_${task.state}`)}</span>{task.cleanupState !== "none" && <small className="error">{t("agents.cleanup")}</small>}{task.errorCode && !failures[task.id] && <small className="error">{t(`errors.codes.${task.errorCode}`, { defaultValue: t("agents.taskUnavailable") })}</small>}{failures[task.id] && !deleting.length && <small className="error">{failures[task.id]}</small>}</td>
         <td className="agent-table-time"><time dateTime={task.updatedAt} tabIndex={0}
-          data-tooltip={t("agents.timeDetails", { created: formatDateTime(task.createdAt, i18n.resolvedLanguage), updated: formatDateTime(task.updatedAt, i18n.resolvedLanguage) })}
+          data-tooltip={t("agents.createdTooltip", { created: formatDateTime(task.createdAt, i18n.resolvedLanguage) })}
         >{formatDateTime(task.updatedAt, i18n.resolvedLanguage, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></td>
         <td className="agent-row-actions"><button disabled={busy || !["running", "starting", "stopping"].includes(task.state)} onClick={() => void mutate(() => operate([task], "stop"))}><Square size={12} />{t("agents.end")}</button><button className="agent-icon-button agent-danger" title={t("agents.delete")} aria-label={t("agents.delete")} disabled={busy} onClick={() => beginDelete([task])}><Trash2 size={14} /></button></td>
       </tr>)}</tbody></table>

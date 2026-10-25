@@ -134,7 +134,7 @@ export class AgentService {
     return this.task(id, user);
   }
 
-  async start(id: string, user: UserRow, resume: boolean): Promise<AgentTask> {
+  async start(id: string, user: UserRow): Promise<AgentTask> {
     return this.withTask(id, async () => {
       let row = this.owned(id, user);
       this.requireEditable(row);
@@ -152,6 +152,9 @@ export class AgentService {
       };
       let source: AgentSourceSync | undefined;
       try {
+        // A task owns one native conversation. Only never-started tasks may
+        // create it; subsequent launches must resume that exact conversation.
+        const resume = Boolean(row.ever_started || row.native_session_id);
         if (resume && !row.native_session_id) { await this.captureContext(id); row = this.owned(id, user); }
         const adapter = this.registry.adapter(row.agent_id);
         const root = agentTaskRoot(this.context.config, id);
@@ -173,7 +176,7 @@ export class AgentService {
         await source.start();
         this.requireEditable(row);
         if (this.closing) throw httpError(409, "AGENT_UNAVAILABLE");
-        this.db.prepare("UPDATE agent_tasks SET state = 'starting', error_code = NULL, native_session_id = CASE WHEN ? THEN native_session_id ELSE NULL END, updated_at = ? WHERE id = ?").run(Number(resume), now(), id);
+        this.db.prepare("UPDATE agent_tasks SET state = 'starting', error_code = NULL, updated_at = ? WHERE id = ?").run(now(), id);
         try {
           const command = resume ? adapter.resume({ ...context, nativeSessionId: row.native_session_id! }) : adapter.start(context);
           const pty = spawn(command.executable, command.args, { name: "xterm-256color", cwd: context.workingDirectory, env: command.env, cols: 100, rows: 24 });

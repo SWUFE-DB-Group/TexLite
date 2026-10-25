@@ -18,7 +18,8 @@ export const opencodeAdapter: AgentAdapter = {
   async findNativeSession(context) {
     try {
       const { stdout } = await executeAgentCommand(context.executable, ["session", "list", "--format", "json"], {
-        env: this.start(context).env, timeout: 5_000, maxBuffer: 1024 * 1024, windowsHide: true });
+        // OpenCode resolves project sessions from cwd as well as its state DB.
+        cwd: context.workingDirectory, env: this.start(context).env, timeout: 5_000, maxBuffer: 1024 * 1024, windowsHide: true });
       const records: unknown = JSON.parse(stdout);
       if (Array.isArray(records) && records.length === 1 && typeof records[0]?.id === "string" && /^ses_[\w-]+$/.test(records[0].id)) return records[0].id;
     } catch { /* Version-dependent management capability. */ }
@@ -26,6 +27,6 @@ export const opencodeAdapter: AgentAdapter = {
   },
   async cleanup(context) {
     if (context.nativeSessionId && context.executable && await this.findNativeSession(context) === context.nativeSessionId) await executeAgentCommand(context.executable, ["session", "delete", context.nativeSessionId], {
-      env: this.start(context).env, timeout: 15_000, maxBuffer: 64 * 1024, windowsHide: true });
+      cwd: context.workingDirectory, env: this.start(context).env, timeout: 15_000, maxBuffer: 64 * 1024, windowsHide: true });
   }
 };
