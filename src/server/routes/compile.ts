@@ -111,15 +111,11 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       WHERE project_id = ? AND main_file = ? AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1`).get(id, mainFile) as {
         id: string; finished_at: string | null;
       } | undefined;
-    const pdf = availablePdf(config, id, mainFile, project.main_file);
-    const published = publishedCompileArtifacts(config, id, mainFile, mainFile === project.main_file);
-    const publishedRun = published ? db.prepare(`SELECT id, finished_at FROM compile_runs
-      WHERE id = ? AND project_id = ? AND status = 'succeeded'`).get(published.runId, id) as {
+    const pdf = availablePdf(config, id, mainFile);
+    const publishedRun = pdf ? db.prepare(`SELECT id, finished_at FROM compile_runs
+      WHERE id = ? AND project_id = ? AND status = 'succeeded'`).get(pdf.version, id) as {
         id: string; finished_at: string | null;
       } | undefined : undefined;
-    // A retained legacy PDF has no run bundle, so its file version (mtime) is
-    // the only stable token that can be resolved back to those bytes.
-    const pdfVersion = published?.runId ?? pdf?.version;
     const pdfMetadata = pdfResponseMetadata(config, pdf?.path ?? null);
     return {
       mainFile,
@@ -137,7 +133,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         } : null
       } : null,
       hasPdf: Boolean(pdf),
-      pdfUrl: pdf ? compilePdfUrl(config, id, mainFile, pdfVersion ?? pdf.version) : null,
+      pdfUrl: pdf ? compilePdfUrl(config, id, mainFile, pdf.version) : null,
       pdfCompiledAt: publishedRun?.finished_at ?? latestSuccess?.finished_at ?? null,
       ...pdfMetadata
     };
@@ -152,7 +148,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const query = request.query as { mainFile?: string; path?: string; download?: string };
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
     if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
-    const published = publishedCompileArtifacts(config, id, mainFile, mainFile === project.main_file);
+    const published = publishedCompileArtifacts(config, id, mainFile);
     if (!query.path) {
       if (!published) return { mainFile, runId: null, artifacts: [] };
       try {
@@ -245,7 +241,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       if (!currentProject || !canEdit(currentProject)) return apiError(reply, 403, "COMPILE_FORBIDDEN");
       const runs = db.prepare(`SELECT id FROM compile_runs
         WHERE project_id = ? AND main_file = ? AND status NOT IN ('queued', 'running')`).all(id, mainFile) as Array<{ id: string }>;
-      cleanCompileArtifacts(config, id, mainFile, currentProject.main_file, runs.map((run) => run.id));
+      cleanCompileArtifacts(config, id, mainFile, runs.map((run) => run.id));
       db.prepare("DELETE FROM compile_runs WHERE project_id = ? AND main_file = ? AND status NOT IN ('queued', 'running')").run(id, mainFile);
       pruneCompileRuns(id);
       collaboration.signalCompileState(id, {
@@ -284,7 +280,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       if (!fs.existsSync(resolveSourcePath(config, id, sourcePath))) {
         return apiError(reply, 404, "SOURCE_FILE_NOT_FOUND");
       }
-      const artifacts = syncArtifacts(config, id, mainFile, project.main_file);
+      const artifacts = syncArtifacts(config, id, mainFile);
       if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE");
       return await sourceToPdf(artifacts.source, artifacts.pdf, sourcePath, line, column);
     }, { preflight: () => {
@@ -308,7 +304,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       return apiError(reply, 400, "SYNC_PDF_INVALID");
     }
     return await projectMutations.runConsistentRead(id, async () => {
-      const artifacts = syncArtifacts(config, id, mainFile, project.main_file);
+      const artifacts = syncArtifacts(config, id, mainFile);
       if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE");
       const location = await pdfToSource(artifacts.source, artifacts.pdf, page, x, y);
       const sourceDirectory = path.resolve(artifacts.source);
@@ -525,7 +521,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
           snapshotMs = performance.now() - snapshotStartedAt;
           metrics.record("compile.snapshot", snapshotMs);
 
-          const published = publishedCompileArtifacts(config, id, mainFile, mainFile === project.main_file);
+          const published = publishedCompileArtifacts(config, id, mainFile);
           const publishedRun = published ? db.prepare(`SELECT id, status, log, finished_at
             FROM compile_runs WHERE id = ? AND project_id = ?`).get(published.runId, id) as {
               id: string; status: string; log: string; finished_at: string | null;
@@ -682,7 +678,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const timings = result.timings
       ? { snapshotMs: result.snapshotMs ?? 0, ...result.timings, requestMs }
       : { snapshotMs: result.snapshotMs ?? 0, requestMs };
-    const responsePdf = result.ok ? availablePdf(config, id, mainFile, project.main_file) : null;
+    const responsePdf = result.ok ? availablePdf(config, id, mainFile) : null;
     const pdfMetadata = pdfResponseMetadata(config, responsePdf?.path ?? null);
     reply.header("Server-Timing", [
       `snapshot;dur=${timingDuration(result.snapshotMs ?? 0)}`,
@@ -716,24 +712,21 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
     if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const downloading = query.download === "1";
-    let artifact = availablePdf(config, id, mainFile, project.main_file);
+    let artifact = availablePdf(config, id, mainFile);
     if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND");
     let versioned = false;
     if (query.run) {
-      if (/^[a-f0-9-]{36}$/i.test(query.run)) {
-        const run = db.prepare(`SELECT main_file, status FROM compile_runs
-          WHERE id = ? AND project_id = ?`).get(query.run, id) as {
-            main_file: string; status: string;
-          } | undefined;
-        if (!run || run.status !== "succeeded" || run.main_file !== mainFile) {
-          return apiError(reply, 404, "PDF_NOT_FOUND");
-        }
-        artifact = compileRunPdf(config, id, mainFile, query.run);
-        if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND");
-        versioned = true;
-      } else if (artifact.version !== query.run) {
+      if (!/^[a-f0-9-]{36}$/i.test(query.run)) return apiError(reply, 404, "PDF_NOT_FOUND");
+      const run = db.prepare(`SELECT main_file, status FROM compile_runs
+        WHERE id = ? AND project_id = ?`).get(query.run, id) as {
+          main_file: string; status: string;
+        } | undefined;
+      if (!run || run.status !== "succeeded" || run.main_file !== mainFile) {
         return apiError(reply, 404, "PDF_NOT_FOUND");
       }
+      artifact = compileRunPdf(config, id, mainFile, query.run);
+      if (!artifact) return apiError(reply, 404, "PDF_NOT_FOUND");
+      versioned = true;
     }
     const pdf = artifact.path;
     const stat = regularFileStat(pdf);

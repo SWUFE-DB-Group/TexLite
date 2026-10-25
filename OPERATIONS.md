@@ -94,6 +94,12 @@ npm update --global texlite
 texlite restart
 ~~~
 
+Direct upgrades are supported from TexLite 0.2.0 onward. Back up the data
+directory before upgrading; database migrations run automatically at startup.
+Compilation output layouts from before 0.2.0 are no longer read. If an old
+project has no PDF preview after upgrading, compile it again. This change does
+not remove source files, comments, or project snapshots.
+
 Uninstalling the package does not remove configuration or data:
 
 ~~~bash

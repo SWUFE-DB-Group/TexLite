@@ -16,6 +16,7 @@ import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
 import { sourceRoot } from "../src/server/files.js";
 import { ProjectHistoryService } from "../src/server/history.js";
 import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
+import { captureCompileSnapshot, publishCompileArtifacts } from "../src/server/compiler.js";
 import * as metricSummaries from "../src/server/metrics.js";
 import { useFakeTexTools } from "./texTools";
 
@@ -2059,17 +2060,21 @@ Second version.
       (id, project_id, requested_by, main_file, status, log, created_at, finished_at)
       VALUES (?, ?, ?, 'main.tex', 'failed', 'Latest compile failed', ?, ?)`)
       .run(failedRunId, projectId, comment.json().comment.authorId, failedAt, failedAt);
-    const outputDirectory = path.join(config.projectsDir, projectId, "output");
-    fs.mkdirSync(outputDirectory, { recursive: true });
-    fs.mkdirSync(path.join(outputDirectory, ".texlite"), { recursive: true });
-    fs.writeFileSync(path.join(outputDirectory, ".texlite", "latest.pdf"), "%PDF-1.4\nretained\n");
+    const snapshot = await captureCompileSnapshot(config, projectId, successfulRunId, {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const pdf = path.join(snapshot.outputDir, "main.pdf");
+    fs.writeFileSync(pdf, "%PDF-1.4\nretained\n");
+    publishCompileArtifacts(config, projectId, snapshot, {
+      ok: true, log: "Successful compile", diagnostics: { warnings: [], errors: [] }, pdfPath: pdf, synctexPath: null
+    });
     const latestCompile = await app.inject({
       method: "GET", url: `/api/projects/${projectId}/compile/latest`, headers: { cookie: readerCookie }
     });
     expect(latestCompile.statusCode).toBe(200);
     expect(latestCompile.json()).toMatchObject({
       hasPdf: true,
-      pdfUrl: expect.stringMatching(new RegExp(`^/api/projects/${projectId}/pdf\\?mainFile=main\\.tex&run=\\d+(?:\\.\\d+)?$`)),
+      pdfUrl: `/api/projects/${projectId}/pdf?mainFile=main.tex&run=${successfulRunId}`,
       latestRun: { id: failedRunId, status: "failed", log: "Latest compile failed" }
     });
     const retainedPdf = await app.inject({
@@ -2077,6 +2082,14 @@ Second version.
     });
     expect(retainedPdf.statusCode).toBe(200);
     expect(retainedPdf.headers["content-type"]).toContain("application/pdf");
+    const versionedPdf = await app.inject({
+      method: "GET", url: latestCompile.json().pdfUrl, headers: { cookie: readerCookie }
+    });
+    expect(versionedPdf.statusCode).toBe(200);
+    expect(versionedPdf.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
+    expect((await app.inject({
+      method: "GET", url: `/api/projects/${projectId}/pdf?run=1790000000000`, headers: { cookie: readerCookie }
+    })).statusCode).toBe(404);
   });
 
   it("imports ZIP projects and manages colored tags", async () => {

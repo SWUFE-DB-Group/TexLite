@@ -909,6 +909,16 @@ the currently selected root is compiled. Compile state, logs, retained PDF,
 artifacts, outline, and SyncTeX are keyed by root, so collaborators working on
 different roots do not replace each other's result or compile notification.
 
+The supported direct-upgrade baseline is TexLite 0.2.0. Compilation artifacts
+use the per-root v2 manifest introduced in that release:
+`output/.texlite/targets/<root-hash>/latest.json` points to an immutable run
+bundle under `output/.texlite/runs/<run-id>/`. Pre-0.2.0 project-wide v1
+manifests, `.texlite/latest.pdf`, and direct `output/<root>.pdf` fallbacks are
+not read; those generated results can be recreated by compiling. The optional
+`generation` field remains backward-compatible with 0.2.0 manifests. This
+output-format policy does not remove database migrations or source, comment,
+and snapshot data compatibility.
+
 Compilation follows this sequence:
 
 1. Admission validates permissions/root selection and coalesces requests by

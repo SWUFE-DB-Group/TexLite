@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Config } from "./config.js";
 import { publishedCompileArtifacts } from "./compiler.js";
-import { outputRoot, resolveSourcePath, safeRelativePath, sourceRoot, texFileStem } from "./files.js";
+import { outputRoot, resolveSourcePath, safeRelativePath, texFileStem } from "./files.js";
 import { isMainDocumentCandidateSync } from "./latexRoot.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
 import { withBasePath } from "../shared/basePath.js";
@@ -28,19 +28,10 @@ export interface CompileArtifact {
 export function availablePdf(
   config: Config,
   projectId: string,
-  mainFile: string,
-  defaultMainFile: string
+  mainFile: string
 ): { path: string; version: string } | null {
-  const isDefault = mainFile === defaultMainFile;
-  const published = publishedCompileArtifacts(config, projectId, mainFile, isDefault);
-  if (published) return { path: published.pdf, version: published.runId };
-  if (!isDefault) return null;
-  const retained = retainedPdfPath(config, projectId);
-  const retainedStat = regularFileStat(retained);
-  if (retainedStat) return { path: retained, version: String(retainedStat.mtimeMs) };
-  const legacy = path.join(outputRoot(config, projectId), `${texFileStem(mainFile)}.pdf`);
-  const legacyStat = regularFileStat(legacy);
-  return legacyStat ? { path: legacy, version: String(legacyStat.mtimeMs) } : null;
+  const published = publishedCompileArtifacts(config, projectId, mainFile);
+  return published ? { path: published.pdf, version: published.runId } : null;
 }
 
 /** Resolve the PDF bytes belonging to one successful compile run. */
@@ -59,26 +50,10 @@ export function compileRunPdf(
 export function syncArtifacts(
   config: Config,
   projectId: string,
-  mainFile: string,
-  defaultMainFile: string
+  mainFile: string
 ): { source: string; pdf: string; synctex: string } | null {
-  const isDefault = mainFile === defaultMainFile;
-  const published = publishedCompileArtifacts(config, projectId, mainFile, isDefault);
-  if (published?.synctex) return { source: published.source, pdf: published.pdf, synctex: published.synctex };
-  if (!isDefault) return null;
-  const retained = {
-    source: sourceRoot(config, projectId),
-    pdf: retainedPdfPath(config, projectId),
-    synctex: retainedSynctexPath(config, projectId)
-  };
-  if (fs.existsSync(retained.pdf) && fs.existsSync(retained.synctex)) return retained;
-  const basename = texFileStem(mainFile);
-  const legacy = {
-    source: sourceRoot(config, projectId),
-    pdf: path.join(outputRoot(config, projectId), `${basename}.pdf`),
-    synctex: path.join(outputRoot(config, projectId), `${basename}.synctex.gz`)
-  };
-  return fs.existsSync(legacy.pdf) && fs.existsSync(legacy.synctex) ? legacy : null;
+  const published = publishedCompileArtifacts(config, projectId, mainFile);
+  return published?.synctex ? { source: published.source, pdf: published.pdf, synctex: published.synctex } : null;
 }
 
 export function compileMainFile(
@@ -125,14 +100,6 @@ export function listCompileArtifacts(directory: string): CompileArtifact[] {
 
 export function isTextCompileArtifact(filePath: string): boolean {
   return /(?:\.aux|\.bbl|\.bcf|\.blg|\.fls|\.log|\.lof|\.lot|\.nav|\.out|\.run\.xml|\.snm|\.toc|\.vrb|\.fdb_latexmk)$/i.test(filePath);
-}
-
-function retainedPdfPath(config: Config, projectId: string): string {
-  return path.join(outputRoot(config, projectId), ".texlite", "latest.pdf");
-}
-
-function retainedSynctexPath(config: Config, projectId: string): string {
-  return path.join(outputRoot(config, projectId), ".texlite", "latest.synctex.gz");
 }
 
 function regularFileStat(filePath: string): fs.Stats | null {

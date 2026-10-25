@@ -119,7 +119,7 @@ fs.writeFileSync(path.join(output, stem + ".pdf"), "%PDF-1.4\\n");
     expect(fs.existsSync(path.join(snapshot.outputDir, "paper.pdf"))).toBe(true);
     expect(fs.existsSync(path.join(snapshot.outputDir, "paper.TEX.pdf"))).toBe(false);
     publishCompileArtifacts(config, projectId, snapshot, result);
-    expect(availablePdf(config, projectId, "paper.TEX", "paper.TEX")).toMatchObject({ path: result.pdfPath });
+    expect(availablePdf(config, projectId, "paper.TEX")).toMatchObject({ path: result.pdfPath });
     expect(compileRunPdf(config, projectId, "paper.TEX", snapshot.runId)).toMatchObject({ path: result.pdfPath });
   });
 

@@ -7,7 +7,7 @@ import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../src/server/config.js";
 import { openDatabase } from "../src/server/db.js";
-import { compileMainFile } from "../src/server/compileArtifacts.js";
+import { availablePdf, compileMainFile, syncArtifacts } from "../src/server/compileArtifacts.js";
 import { isMainDocumentCandidate, isMainDocumentCandidateSync } from "../src/server/latexRoot.js";
 import {
   CompileQueue,
@@ -17,6 +17,7 @@ import {
   cleanCompileCache,
   compileProject,
   hasCompileCache,
+  listPublishedCompileArtifacts,
   publishCompileArtifacts,
   publishedCompileArtifacts,
   pruneOrphanedCompileRuns,
@@ -189,7 +190,7 @@ describe("reliable project compilation", () => {
     publishCompileArtifacts(config, projectId, first, {
       ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: firstPdf, synctexPath: firstSync
     });
-    expect(publishedCompileArtifacts(config, projectId)).toMatchObject({
+    expect(publishedCompileArtifacts(config, projectId, "main.tex")).toMatchObject({
       runId: first.runId, revision: first.revision, generation: "generation-1", source: first.sourceDir, pdf: firstPdf, synctex: firstSync
     });
 
@@ -202,7 +203,7 @@ describe("reliable project compilation", () => {
     publishCompileArtifacts(config, projectId, second, {
       ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: secondPdf, synctexPath: null
     });
-    expect(publishedCompileArtifacts(config, projectId)).toMatchObject({ runId: second.runId, pdf: secondPdf, synctex: null });
+    expect(publishedCompileArtifacts(config, projectId, "main.tex")).toMatchObject({ runId: second.runId, pdf: secondPdf, synctex: null });
     fs.writeFileSync(path.join(liveSource, "appendix.tex"), "appendix revision\n");
     const appendix = await captureCompileSnapshot(config, projectId, randomUUID(), {
       mainFile: "appendix.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
@@ -219,6 +220,58 @@ describe("reliable project compilation", () => {
     expect(fs.existsSync(first.root)).toBe(false);
     expect(fs.existsSync(second.root)).toBe(true);
     expect(fs.existsSync(appendix.root)).toBe(true);
+  });
+
+  it("supports 0.2.0 per-root manifests without generation metadata and ignores older output layouts", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compile-compatibility-"));
+    temporaryRoots.push(root);
+    const config = testConfig(root);
+    const projectId = randomUUID();
+    const source = path.join(config.projectsDir, projectId, "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), "source\n");
+    const snapshot = await captureCompileSnapshot(config, projectId, randomUUID(), {
+      mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, extraArgs: []
+    });
+    const pdf = path.join(snapshot.outputDir, "main.pdf");
+    const synctex = path.join(snapshot.outputDir, "main.synctex.gz");
+    fs.writeFileSync(pdf, "supported pdf");
+    fs.writeFileSync(synctex, "supported sync");
+    const output = path.join(config.projectsDir, projectId, "output");
+    const data = path.join(output, ".texlite");
+    const legacyManifest = JSON.stringify({
+      version: 1, runId: snapshot.runId, revision: snapshot.revision, pdf: "main.pdf", synctex: "main.synctex.gz"
+    });
+    fs.writeFileSync(path.join(data, "latest.json"), legacyManifest);
+    fs.writeFileSync(path.join(data, "latest.pdf"), "legacy retained pdf");
+    fs.writeFileSync(path.join(data, "latest.synctex.gz"), "legacy retained sync");
+    fs.writeFileSync(path.join(output, "main.pdf"), "legacy direct pdf");
+    fs.writeFileSync(path.join(output, "main.synctex.gz"), "legacy direct sync");
+    const targetKey = createHash("sha256").update("main.tex").digest("hex").slice(0, 24);
+    const target = path.join(data, "targets", targetKey);
+    fs.mkdirSync(target, { recursive: true });
+    fs.writeFileSync(path.join(target, "latest.json"), legacyManifest);
+
+    expect(publishedCompileArtifacts(config, projectId, "main.tex")).toBeNull();
+    expect(listPublishedCompileArtifacts(config, projectId)).toEqual([]);
+    expect(availablePdf(config, projectId, "main.tex")).toBeNull();
+    expect(syncArtifacts(config, projectId, "main.tex")).toBeNull();
+    expect(fs.readFileSync(path.join(source, "main.tex"), "utf8")).toBe("source\n");
+
+    publishCompileArtifacts(config, projectId, snapshot, {
+      ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: pdf, synctexPath: synctex
+    });
+    const manifestPath = path.join(target, "latest.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    delete manifest.generation; // The original 0.2.0 format did not have this field.
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+    expect(publishedCompileArtifacts(config, projectId, "main.tex")).toMatchObject({
+      mainFile: "main.tex", runId: snapshot.runId, generation: null
+    });
+    expect(listPublishedCompileArtifacts(config, projectId)).toHaveLength(1);
+    expect(availablePdf(config, projectId, "main.tex")).toEqual({ path: pdf, version: snapshot.runId });
+    expect(syncArtifacts(config, projectId, "main.tex")).toEqual({ source: snapshot.sourceDir, pdf, synctex });
+    expect(availablePdf(config, projectId, "appendix.tex")).toBeNull();
   });
 
   it("reuses a stable latexmk work directory and isolates caches by compile target", async () => {
@@ -391,7 +444,7 @@ console.log(JSON.stringify({ count, cwd: process.cwd() }));
     cleanCompileCache(config, projectId, "main.tex");
     expect(hasCompileCache(config, projectId, "main.tex")).toBe(false);
     expect(publishedCompileArtifacts(config, projectId, "main.tex")).toMatchObject({ runId: snapshot.runId });
-    cleanCompileArtifacts(config, projectId, "main.tex", "main.tex", [snapshot.runId]);
+    cleanCompileArtifacts(config, projectId, "main.tex", [snapshot.runId]);
     expect(publishedCompileArtifacts(config, projectId, "main.tex")).toBeNull();
     expect(fs.existsSync(snapshot.root)).toBe(false);
   });

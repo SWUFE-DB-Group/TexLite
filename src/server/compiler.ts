@@ -405,26 +405,15 @@ export function cleanCompileArtifacts(
   config: Config,
   projectId: string,
   mainFile: string,
-  defaultMainFile: string,
   runIds: readonly string[] = []
 ): void {
-  const published = publishedCompileArtifacts(config, projectId, mainFile, mainFile === defaultMainFile);
+  const published = publishedCompileArtifacts(config, projectId, mainFile);
   cleanCompileCache(config, projectId, mainFile);
   fs.rmSync(compileTargetRoot(config, projectId, mainFile), { recursive: true, force: true });
   const runIdsToRemove = new Set(runIds);
   if (published) runIdsToRemove.add(published.runId);
   for (const runId of runIdsToRemove) {
     if (/^[a-f0-9-]{36}$/i.test(runId)) fs.rmSync(compileRunRoot(config, projectId, runId), { recursive: true, force: true });
-  }
-  if (mainFile === defaultMainFile) {
-    const output = outputRoot(config, projectId);
-    for (const generated of [
-      path.join(output, ".texlite", "latest.json"),
-      path.join(output, ".texlite", "latest.pdf"),
-      path.join(output, ".texlite", "latest.synctex.gz"),
-      path.join(output, `${texFileStem(mainFile)}.pdf`),
-      path.join(output, `${texFileStem(mainFile)}.synctex.gz`)
-    ]) fs.rmSync(generated, { force: true });
   }
 }
 
@@ -465,19 +454,10 @@ export function publishCompileArtifacts(
 export function publishedCompileArtifacts(
   config: Config,
   projectId: string,
-  mainFile?: string,
-  allowLegacy = false
+  mainFile: string
 ): PublishedCompileArtifacts | null {
-  if (mainFile !== undefined) {
-    const normalized = safeRelativePath(mainFile);
-    const targeted = readPublishedManifest(config, projectId, path.join(compileTargetRoot(config, projectId, normalized), "latest.json"), normalized);
-    if (targeted) return targeted;
-    return allowLegacy ? readPublishedManifest(config, projectId, path.join(compileDataRoot(config, projectId), "latest.json"), normalized, true) : null;
-  }
-  const legacy = readPublishedManifest(config, projectId, path.join(compileDataRoot(config, projectId), "latest.json"), "", true);
-  if (legacy) return legacy;
-  return listPublishedCompileArtifacts(config, projectId)
-    .sort((left, right) => fs.statSync(right.pdf).mtimeMs - fs.statSync(left.pdf).mtimeMs)[0] ?? null;
+  const normalized = safeRelativePath(mainFile);
+  return readPublishedManifest(config, projectId, path.join(compileTargetRoot(config, projectId, normalized), "latest.json"), normalized);
 }
 
 export function listPublishedCompileArtifacts(config: Config, projectId: string): PublishedCompileArtifacts[] {
@@ -490,8 +470,6 @@ export function listPublishedCompileArtifacts(config: Config, projectId: string)
       if (artifact) result.push(artifact);
     }
   }
-  const legacy = readPublishedManifest(config, projectId, path.join(compileDataRoot(config, projectId), "latest.json"), "", true);
-  if (legacy && !result.some((artifact) => artifact.runId === legacy.runId)) result.push(legacy);
   return result;
 }
 
@@ -523,20 +501,19 @@ function readPublishedManifest(
   config: Config,
   projectId: string,
   manifestPath: string,
-  expectedMainFile?: string,
-  legacy = false
+  expectedMainFile?: string
 ): PublishedCompileArtifacts | null {
   if (!fs.existsSync(manifestPath)) return null;
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
       version?: unknown; mainFile?: unknown; runId?: unknown; revision?: unknown; generation?: unknown; pdf?: unknown; synctex?: unknown;
     };
-    const mainFile = manifest.version === 2 && typeof manifest.mainFile === "string"
-      ? safeRelativePath(manifest.mainFile)
-      : legacy && manifest.version === 1 ? expectedMainFile ?? "" : null;
+    // Per-root v2 manifests have been the published format since 0.2.0.
+    if (manifest.version !== 2 || typeof manifest.mainFile !== "string") return null;
+    const mainFile = safeRelativePath(manifest.mainFile);
     const generation = manifest.generation === undefined || manifest.generation === null
       ? null : typeof manifest.generation === "string" ? manifest.generation : null;
-    if (mainFile === null || (expectedMainFile !== undefined && mainFile !== expectedMainFile)
+    if ((expectedMainFile !== undefined && mainFile !== expectedMainFile)
       || typeof manifest.runId !== "string" || !/^[a-f0-9-]{36}$/i.test(manifest.runId)
       || typeof manifest.revision !== "string" || typeof manifest.pdf !== "string"
       || (manifest.generation !== undefined && manifest.generation !== null && generation === null)
