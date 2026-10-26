@@ -10,13 +10,14 @@ export interface AgentPty {
 }
 export type AgentPtyFactory = (executable: string, args: string[], options: {
   name: string; cwd: string; env: Record<string, string>; cols: number; rows: number;
-}) => AgentPty;
+  executionFile?: string; beforeStart?: () => void;
+}) => AgentPty | Promise<AgentPty>;
 
 /** The native module is optional and must never break normal application startup. */
 export async function loadAgentPty(): Promise<AgentPtyFactory | null> {
   try {
     const pty = await import("node-pty");
-    return (executable, args, options) => {
+    const spawn: AgentPtyFactory = (executable, args, options) => {
       if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executable)) {
         // npm's Windows entrypoints are command scripts. CreateProcess cannot
         // launch them directly; use the OS command processor for this fixed CLI.
@@ -24,6 +25,11 @@ export async function loadAgentPty(): Promise<AgentPtyFactory | null> {
         return pty.spawn(command.executable, command.args, options);
       }
       return pty.spawn(executable, args, options);
+    };
+    return async (executable, args, { executionFile, beforeStart, ...options }) => {
+      if (!executionFile) { beforeStart?.(); return spawn(executable, args, options); }
+      const { spawnRecoverableAgent } = await import("./execution.js");
+      return spawnRecoverableAgent(spawn, executable, args, options, executionFile, beforeStart);
     };
   } catch { return null; }
 }
@@ -39,8 +45,8 @@ export function windowsAgentCommand(executable: string, args: string[]): { execu
   return { executable: process.env.COMSPEC ?? process.env.ComSpec ?? "cmd.exe", args: `/d /v:off /s /c "${command}"` };
 }
 
-/** Only accepts the live PTY handle owned by this server, never a stored PID. */
-export async function stopAgentPty(pty: AgentPty): Promise<void> {
+/** Caller must own the live PTY or verify the persisted launcher's birth identity. */
+export async function stopAgentPty(pty: Pick<AgentPty, "pid">): Promise<void> {
   if (process.platform === "win32") {
     // Natural exit (or another stop) may have already removed the process.
     // Do not interpret localized taskkill output/exit codes as proof of this:

@@ -13,6 +13,7 @@ export const agentMessages = {
     AGENT_CONTEXT_CHECK_FAILED: "The task's saved conversation could not be verified. Retry, or check the agent's installation and task data. No new conversation was started.",
     AGENT_START_FAILED: "The agent could not start. Check its installation and server logs.",
     AGENT_STOP_FAILED: "The agent has not stopped. Retry ending execution before cleaning its files.",
+    AGENT_RECOVERY_FAILED: "A previous execution could not be safely recovered. Its project remains reserved. Retry ending the task; if needed, stop its processes on the host first.",
     AGENT_CLEANUP_FAILED: "Task cleanup did not finish. Its record has been kept for retry."
   },
   zh: {
@@ -28,6 +29,7 @@ export const agentMessages = {
     AGENT_CONTEXT_CHECK_FAILED: "无法确认此任务的对话状态。请重试，或检查 Agent 安装及任务数据；尚未创建新对话。",
     AGENT_START_FAILED: "无法启动 agent。请检查命令安装情况及服务器日志。",
     AGENT_STOP_FAILED: "Agent 尚未停止。请重试结束运行，再清理其文件。",
+    AGENT_RECOVERY_FAILED: "无法安全回收上一次执行，项目执行权仍被保留。请重试结束任务；必要时先在宿主机停止其进程。",
     AGENT_CLEANUP_FAILED: "任务清理未完成。已保留记录，可重试清理。"
   },
   "zh-Hant": {
@@ -43,6 +45,7 @@ export const agentMessages = {
     AGENT_CONTEXT_CHECK_FAILED: "無法確認此任務的對話狀態。請重試，或檢查 Agent 安裝及任務資料；尚未建立新對話。",
     AGENT_START_FAILED: "無法啟動 agent。請檢查命令安裝情況及伺服器日誌。",
     AGENT_STOP_FAILED: "Agent 尚未停止。請重試結束執行，再清理其檔案。",
+    AGENT_RECOVERY_FAILED: "無法安全回收上一次執行，專案執行權仍被保留。請重試結束任務；必要時先在主機停止其處理程序。",
     AGENT_CLEANUP_FAILED: "任務清理未完成。已保留記錄，可重試清理。"
   }
 };

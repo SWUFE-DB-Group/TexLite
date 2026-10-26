@@ -228,10 +228,11 @@ describe("external agent tasks", () => {
     const b = await service.create(anotherProject(), editor, "claude", "Other paper");
     await service.dispose();
     const failure = new Error("Cannot stop the first process group");
+    let failingProcess: AgentPty | undefined;
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const stop = vi.fn(async (process: AgentPty) => {
-      if (process === processes[0]) throw failure;
+      if (process === failingProcess) throw failure;
       await gate;
       fs.writeFileSync(workingFile(b, "last.txt"), "Final agent write during shutdown");
       (process as FakePty).end();
@@ -240,6 +241,7 @@ describe("external agent tasks", () => {
       recordEdits: (id, edits) => new ProjectEditHistoryService(db).record(id, edits) },
     { registry, loadPty: async () => spawn, stopPty: stop });
     await Promise.all([service.start(a.id, owner), service.start(b.id, editor)]);
+    failingProcess = processes[spawn.mock.calls.findIndex(([, , options]) => options.cwd === sourceRoot(config, a.projectId))];
     let settled = false;
     const disposing = service.dispose().then(() => { settled = true; return null; }, (error: unknown) => { settled = true; return error; });
     try {
@@ -570,6 +572,18 @@ describe("external agent tasks", () => {
     expect(service.task(task.id, owner)).toMatchObject({ state: "failed", errorCode: "AGENT_START_FAILED" });
   });
 
+  it("persists native cleanup ownership before the launcher may create a conversation", async () => {
+    const task = await create();
+    spawn.mockImplementationOnce((_command, _args, options) => {
+      options.beforeStart?.();
+      expect(db.prepare("SELECT ever_started FROM agent_tasks WHERE id = ?").get(task.id)).toEqual({ ever_started: 1 });
+      throw new Error("Execution interrupted after the launch permit");
+    });
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_START_FAILED" });
+    await service.remove(task.id, owner);
+    expect(adapters[0].cleanup).toHaveBeenCalled();
+  });
+
   it("releases naturally exited executions without automatically restarting them", async () => {
     const task = await create(); await service.start(task.id, owner);
     processes[0].end(7);
@@ -586,6 +600,62 @@ describe("external agent tasks", () => {
     expect(service.task(task.id, owner).state).toBe("interrupted"); expect(spawn).not.toHaveBeenCalled();
     await service.start(task.id, owner);
     expect(spawn.mock.calls.at(-1)?.[1]).toEqual(["resume", task.id]);
+  });
+
+  it("cancels a durable uncommitted execution on restart before releasing its project", async () => {
+    const task = await create();
+    await service.dispose();
+    const filename = path.join(agentTaskRoot(config, task.id), "execution.json");
+    fs.writeFileSync(filename, JSON.stringify({ version: 1, executionId: randomUUID(), platform: process.platform, pid: null, identity: null }));
+    db.prepare("UPDATE agent_tasks SET state = 'starting' WHERE id = ?").run(task.id);
+    service = new AgentService({ config, db, collaboration, projectMutations: coordinator, recordHistory, recordEdits: () => undefined },
+      { registry, loadPty: async () => spawn, stopPty: async (process) => (process as FakePty).end() });
+    await service.ready();
+    expect(fs.existsSync(filename)).toBe(false);
+    expect(service.task(task.id, owner)).toMatchObject({ state: "interrupted", errorCode: null });
+    expect(service.list(owner, false, { project: projectId }).activeTaskId).toBeNull();
+    expect(spawn).not.toHaveBeenCalled();
+    expect(recordHistory).toHaveBeenCalledWith(projectId, owner.id, "file");
+    await service.start(task.id, owner);
+    expect(service.task(task.id, owner).state).toBe("running");
+  });
+
+  it("keeps an unverifiable recovered task manageable and blocks project replacement or duplicate execution", async () => {
+    const task = await create();
+    const next = await create("claude", editor);
+    await service.dispose();
+    const filename = path.join(agentTaskRoot(config, task.id), "execution.json");
+    fs.writeFileSync(filename, '{"version":999}');
+    service = new AgentService({ config, db, collaboration, projectMutations: coordinator, recordHistory, recordEdits: () => undefined },
+      { registry, loadPty: async () => spawn, stopPty: async (process) => (process as FakePty).end() });
+    try {
+      await service.ready();
+      expect(service.list(admin, true, { state: "running" }).tasks).toEqual(expect.arrayContaining([expect.objectContaining({
+        id: task.id, state: "stopping", errorCode: "AGENT_RECOVERY_FAILED"
+      })]));
+      expect(service.list(editor, false, { project: projectId }).activeTaskId).toBe(task.id);
+      await expect(service.start(next.id, editor)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
+      await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_RECOVERY_FAILED" });
+      const replace = vi.fn();
+      await expect(coordinator.runExclusive(projectId, "test replacement", replace)).rejects.toMatchObject({ code: "AGENT_RECOVERY_FAILED" });
+      expect(replace).not.toHaveBeenCalled();
+      await expect(service.remove(task.id, admin, true)).rejects.toMatchObject({ code: "AGENT_RECOVERY_FAILED" });
+      expect(fs.existsSync(filename)).toBe(true);
+      expect(service.task(task.id, admin, true).cleanupState).toBe("failed");
+      // The administrator can retry after fixing host/process metadata; no
+      // record or native conversation is silently forgotten in the meantime.
+      fs.writeFileSync(filename, JSON.stringify({ version: 1, executionId: randomUUID(), platform: process.platform, pid: null, identity: null }));
+      await service.remove(task.id, admin, true);
+      expect(fs.existsSync(agentTaskRoot(config, task.id))).toBe(false);
+      expect(service.list(editor, false, { project: projectId }).activeTaskId).toBeNull();
+      await service.start(next.id, editor);
+      expect(service.task(next.id, editor).state).toBe("running");
+    } finally {
+      if (fs.existsSync(filename)) {
+        fs.writeFileSync(filename, JSON.stringify({ version: 1, executionId: randomUUID(), platform: process.platform, pid: null, identity: null }));
+        await service.stop(task.id, admin, true);
+      }
+    }
   });
 
   it("relaunches an unused interrupted task after restart without requiring a new task", async () => {

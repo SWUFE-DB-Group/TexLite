@@ -13,6 +13,7 @@ import { agentTaskRoot, AgentSourceSync, ensureAgentInstructions, writeAgentProj
 import { sourceRoot } from "../files.js";
 import { loadAgentPty, stopAgentPty, type AgentPty, type AgentPtyFactory } from "./terminal.js";
 import type { NativeSessionInspection } from "./adapters/types.js";
+import { clearAgentExecution, recoverAgentExecution } from "./execution.js";
 
 interface TaskRow {
   id: string; project_id: string; user_id: string; project_name: string; user_name: string;
@@ -50,6 +51,8 @@ export class AgentService {
   private readonly executions = new Map<string, Execution>();
   private readonly operations = new Map<string, Promise<unknown>>();
   private readonly activeProjects = new Map<string, string>();
+  private readonly recoveries = new Map<string, () => void>();
+  private readonly recovery: Promise<void>;
   private closing = false;
 
   constructor(private readonly context: AgentWorkspaceContext, private readonly options: AgentServiceOptions = {}) {
@@ -57,7 +60,21 @@ export class AgentService {
     this.registry = options.registry ?? new AgentRegistry();
     this.db.prepare("UPDATE agent_tasks SET state = 'interrupted', ended_at = ?, updated_at = ? WHERE state IN ('starting', 'running', 'stopping')").run(now(), now());
     this.db.prepare("UPDATE agent_tasks SET cleanup_state = 'failed', error_code = 'AGENT_CLEANUP_FAILED' WHERE cleanup_state = 'deleting'").run();
+    for (const row of this.db.prepare("SELECT * FROM agent_tasks").all() as TaskRow[]) {
+      if (!fs.existsSync(this.executionFile(row.id))) continue;
+      this.db.prepare("UPDATE agent_tasks SET state = 'stopping', error_code = 'AGENT_RECOVERY_FAILED' WHERE id = ?").run(row.id);
+      this.activeProjects.set(row.project_id, row.id);
+      const releaseWriter = this.context.projectMutations.registerExternalWriter(row.project_id, async () => { await this.stop(row.id); });
+      this.recoveries.set(row.id, () => {
+        if (this.activeProjects.get(row.project_id) === row.id) this.activeProjects.delete(row.project_id);
+        releaseWriter?.();
+      });
+    }
+    this.recovery = this.recoverOnStartup();
   }
+
+  /** Startup recovery completes before new executions or HTTP traffic are admitted. */
+  ready(): Promise<void> { return this.recovery; }
 
   policy(): AgentPolicy {
     const row = this.db.prepare("SELECT allowed FROM agent_policy WHERE id = 1").get() as { allowed: string };
@@ -65,6 +82,7 @@ export class AgentService {
   }
 
   async catalog(refresh = false): Promise<AgentCatalog> {
+    await this.recovery;
     if (refresh) this.registry.refresh();
     const policy = this.policy();
     const [agents, factory] = await Promise.all([this.registry.catalog(policy), (this.options.loadPty ?? loadAgentPty)()]);
@@ -72,6 +90,7 @@ export class AgentService {
   }
 
   async setPolicy(policy: AgentPolicy): Promise<void> {
+    await this.recovery;
     this.db.prepare("UPDATE agent_policy SET allowed = ? WHERE id = 1").run(JSON.stringify([...new Set(policy.allowed)]));
     await this.reconcilePermissions();
   }
@@ -109,6 +128,7 @@ export class AgentService {
   }
 
   async create(projectId: string, user: UserRow, agentId: AgentId, title?: string): Promise<AgentTask> {
+    await this.recovery;
     this.requireEnabled(agentId);
     const project = requireEditableProject(this.db, projectId, user);
     if (!(await this.registry.detect(agentId)).executable) throw httpError(409, "AGENT_UNAVAILABLE");
@@ -143,6 +163,7 @@ export class AgentService {
     return this.withTask(id, async () => {
       let row = this.owned(id, user);
       this.requireEditable(row);
+      if (this.recoveries.has(id)) throw httpError(409, "AGENT_RECOVERY_FAILED");
       if (this.executions.has(id)) return this.json(row);
       if (row.cleanup_state !== "none") throw httpError(409, "AGENT_SESSION_BUSY");
       // Claim synchronously before discovery/credential preparation can yield.
@@ -187,7 +208,9 @@ export class AgentService {
         this.db.prepare("UPDATE agent_tasks SET state = 'starting', error_code = NULL, updated_at = ? WHERE id = ?").run(now(), id);
         try {
           const command = resume ? adapter.resume({ ...context, nativeSessionId: row.native_session_id! }) : adapter.start(context);
-          const pty = spawn(command.executable, command.args, { name: "xterm-256color", cwd: context.workingDirectory, env: command.env, cols: 100, rows: 24 });
+          const pty = await spawn(command.executable, command.args, { name: "xterm-256color", cwd: context.workingDirectory, env: command.env, cols: 100, rows: 24,
+            executionFile: this.executionFile(id),
+            beforeStart: () => { this.db.prepare("UPDATE agent_tasks SET ever_started = 1 WHERE id = ?").run(id); } });
           let finish!: () => void;
           const execution: Execution = { pty, attachments: new Set(), controller: null, output: "", stopping: false, termination: null, exitCode: null,
             finished: new Promise<void>((resolve) => { finish = resolve; }), finish: () => finish(), subscriptions: [], source, releaseProject };
@@ -288,8 +311,9 @@ export class AgentService {
 
   /** Called after permission/policy mutations, not by a perpetual polling timer. */
   async reconcilePermissions(cleanOrphans = false): Promise<void> {
+    await this.recovery;
     const stops: Promise<unknown>[] = [];
-    for (const id of this.executions.keys()) {
+    for (const id of new Set([...this.executions.keys(), ...this.recoveries.keys()])) {
       const row = this.row(id);
       if (!row || !this.editable(row)) stops.push(this.stop(id));
     }
@@ -307,10 +331,11 @@ export class AgentService {
 
   async dispose(): Promise<void> {
     this.closing = true;
+    await this.recovery;
     await Promise.allSettled([...this.operations.values()]);
     // A failed stop must not let app.close() close the database while other
     // executions are still flushing their last source/history changes.
-    const results = await Promise.allSettled([...this.executions.keys()].map((id) => this.stop(id)));
+    const results = await Promise.allSettled([...new Set([...this.executions.keys(), ...this.recoveries.keys()])].map((id) => this.stop(id)));
     const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
     if (errors.length) throw new AggregateError(errors, "Failed to stop all coding agent tasks");
   }
@@ -326,6 +351,7 @@ export class AgentService {
   }
 
   private async stopExecution(id: string): Promise<void> {
+    if (this.recoveries.has(id)) { await this.recoverExecution(id, "stopped"); return; }
     const execution = this.executions.get(id);
     if (!execution) return;
     return this.terminate(id, execution, "stopped");
@@ -351,6 +377,7 @@ export class AgentService {
         this.db.prepare("UPDATE agent_tasks SET error_code = 'AGENT_SYNC_FAILED' WHERE id = ?").run(id);
         this.options.onError?.(error);
       }
+      clearAgentExecution(this.executionFile(id));
       this.executions.delete(id);
       execution.releaseProject();
       this.db.prepare("UPDATE agent_tasks SET state = ?, exit_code = ?, ended_at = ?, updated_at = ? WHERE id = ?")
@@ -414,7 +441,36 @@ export class AgentService {
       endedAt: row.ended_at, exitCode: row.exit_code, nativeSessionId: row.native_session_id,
       canResume: Boolean(row.native_session_id && this.registry.adapter(row.agent_id).supportsResume) };
   }
+  private executionFile(id: string): string { return path.join(agentTaskRoot(this.context.config, id), "execution.json"); }
+
+  private async recoverOnStartup(): Promise<void> {
+    await Promise.all([...this.recoveries.keys()].map(async (id) => {
+      try { await this.recoverExecution(id, "interrupted"); }
+      catch { /* Failure is logged and its task/claim remains available for retry. */ }
+    }));
+  }
+
+  private async recoverExecution(id: string, state: "interrupted" | "stopped"): Promise<void> {
+    try {
+      await recoverAgentExecution(this.executionFile(id));
+      const row = this.row(id);
+      // Source files left by an interrupted CLI are authoritative at startup.
+      // Preserve them in snapshot history before releasing its project claim.
+      if (row && this.db.prepare("SELECT 1 FROM projects WHERE id = ?").get(row.project_id)) {
+        const author = this.db.prepare("SELECT 1 FROM users WHERE id = ?").get(row.user_id) ? row.user_id : null;
+        this.context.recordHistory(row.project_id, author, "file");
+      }
+      this.db.prepare("UPDATE agent_tasks SET state = ?, error_code = NULL, ended_at = ?, updated_at = ? WHERE id = ?").run(state, now(), now(), id);
+      this.recoveries.get(id)?.();
+      this.recoveries.delete(id);
+    } catch (error) {
+      this.db.prepare("UPDATE agent_tasks SET state = 'stopping', error_code = 'AGENT_RECOVERY_FAILED' WHERE id = ?").run(id);
+      this.options.onError?.(error);
+      throw httpError(409, "AGENT_RECOVERY_FAILED");
+    }
+  }
   private async withTask<T>(id: string, operation: () => Promise<T>): Promise<T> {
+    await this.recovery;
     const previous = this.operations.get(id) ?? Promise.resolve();
     const pending = previous.catch(() => undefined).then(operation);
     this.operations.set(id, pending);

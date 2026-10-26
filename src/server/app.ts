@@ -160,6 +160,7 @@ export async function buildApp(
   const agents = new AgentService({ config, db, collaboration, projectMutations, recordHistory,
     recordEdits: (id, edits) => editRetry.save(id, edits)
   }, { onError: (error) => app.log.error({ err: error }, "External agent operation failed"), ...options.agents });
+  await agents.ready();
   app.addHook("onResponse", async (request) => {
     if (request.method === "GET" || request.method === "HEAD") return;
     try { await agents.reconcilePermissions(request.method === "DELETE"); }

@@ -1320,6 +1320,31 @@ cleanup; orphaned tasks keep ownership labels and cleanup locators independently
 of the deleted rows, so administrators can resolve failures. Operation records
 retain project, agent, task, and actor identity after deletion, without transcripts.
 
+New executions persist a task-owned `execution.json` lease with an independent
+execution UUID, platform, launcher PID and OS birth identity. A small Node
+launcher preserves the CLI's inherited TTY and waits for its verified identity
+to be committed before starting the CLI. It remains the identifiable process
+group leader after CLI exit; the normal stop path reaps the group before
+releasing the project. The CLI's exit code is relayed through an execution-scoped
+result file, not confused with the launcher's eventual termination code.
+
+Startup recovery runs before requests are accepted. It verifies the UUID marker
+and birth identity (Linux boot ID/start ticks, macOS start time, Windows CIM
+creation time) before terminating any previous execution. Uncommitted launch
+permits are cancelled without starting their CLI. PID reuse never authorizes a
+kill. Unreadable identities, failed termination, or a live leaderless POSIX group
+retain the lease, task record, project claim, and an actionable recovery error;
+owners/admins can retry **End execution** or deletion after resolving the host
+problem. Project replacement cannot bypass the claim. Recovered source files
+are preserved and recorded in project snapshots; lost in-memory per-edit
+attribution cannot be reconstructed after a service crash.
+
+These leases apply to executions started by this implementation. Pre-lease
+executions have no verifiable process locator: stop them before upgrading.
+Recovery does not discover or kill unrelated native CLI sessions or deliberately
+detached/escaped processes; Coding Agent terminals remain trusted host tools,
+not OS sandboxes. No database schema change is required.
+
 Agents run directly in the project source directory. Task directories retain
 session bindings, private native state where used, and compilation context, not baseline/work copies. A synchronous
 project claim is acquired before asynchronous startup and released only after

@@ -482,6 +482,24 @@ new conversation. Once a native session ID is saved, later launches resume that
 exact conversation; a failure never resets its state. Use **+** for a separate
 conversation instead.
 
+Executions started by current versions keep an `execution.json` recovery lease
+under their task directory. After an abnormal shutdown, TexLite verifies the
+launcher's execution marker and OS creation identity and reaps the old process
+tree before permitting another task in that project. It never kills a process
+solely because a saved PID matches. The task and native conversation remain
+available for explicit continuation; source files left on disk are preserved
+and included in project snapshots.
+
+If recovery cannot verify or stop an execution, its task remains visible as
+stopping with a recovery error, and the project stays reserved. Owners or
+administrators can retry **End execution**. If instructed, stop the task's
+processes on the host first, then retry; do not delete its recovery file to
+bypass the reservation. Deletion and source-tree replacement also require
+successful recovery. This does not manage host sessions started outside TexLite
+or deliberately detached processes. Stop active tasks before upgrading from a
+version that did not write recovery leases; those older processes cannot be
+identified retrospectively.
+
 | Agent | Native state and continuation | Cleanup |
 | --- | --- | --- |
 | Codex | Task-specific `CODEX_HOME`; resume an identified transcript UUID. Use `--no-daemon` when advertised by the installed CLI. | Prefer detected native `delete --force`; remove the task-owned state directory afterward. |
