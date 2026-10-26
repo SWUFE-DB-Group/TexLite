@@ -8,6 +8,7 @@ import { useAgentTasks } from "../agents/useAgentTasks";
 import type { AgentTask } from "../../shared/agentProtocol";
 import { AGENT_LABELS } from "../../shared/agentProtocol";
 import { AgentIcon } from "../agents/AgentIcon";
+import { AgentSelect } from "../agents/AgentSelect";
 import { terminalThemeStyle } from "../terminalTheme";
 
 const AgentTerminalSurface = lazy(() => import("../agents/AgentTerminalSurface").then((module) => ({ default: module.AgentTerminalSurface })));
@@ -72,9 +73,7 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
       });
     }}>
       <input aria-label={t("agents.task")} placeholder={t("agents.titlePlaceholder")} maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} disabled={tasks.busy || readOnly} />
-      <select aria-label={t("agents.agent")} value={creationAgent?.id || ""} onChange={(event) => setAgentId(event.target.value)}>
-        <option value="" disabled>{t("agents.agent")}</option>{tasks.catalog?.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={!agent.installed || !agent.enabled}>{agent.label}{!agent.installed ? ` · ${t("agents.notInstalled")}` : !agent.enabled ? ` · ${t("agents.disabled")}` : ""}</option>)}
-      </select>
+      <AgentSelect agents={tasks.catalog?.agents ?? []} value={creationAgent?.id ?? ""} onChange={setAgentId} disabled={readOnly || tasks.busy} />
       <button type="submit" disabled={cannotCreate}>{tasks.busy && <LoaderCircle className="spin" size={13} />}{t("agents.create")}</button>
     </form>}
     {renaming && task && <form className="agent-task-create" onSubmit={(event) => { event.preventDefault(); void tasks.mutate(async () => {

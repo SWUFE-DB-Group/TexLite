@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTerminal } from "../src/client/workspace/AgentTerminal";
 import { api } from "../src/client/api";
-import type { AgentTask } from "../src/shared/agentProtocol";
+import type { AgentCatalog, AgentId, AgentTask } from "../src/shared/agentProtocol";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("react-i18next", async (original) => ({ ...await original<typeof import("react-i18next")>(),
@@ -24,16 +24,21 @@ function deferred<T>() {
 let root: Root;
 let host: HTMLDivElement;
 let tasks: AgentTask[];
+let catalog: AgentCatalog;
 let start: ReturnType<typeof deferred<{ task: AgentTask }>>;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   tasks = []; start = deferred();
+  catalog = { policy: { allowed: ["codex", "opencode"] }, ptyAvailable: true, agents: [
+    { id: "codex", label: "Codex", installed: true, enabled: true, version: "1.0.0" },
+    { id: "opencode", label: "OpenCode", installed: true, enabled: true, version: "2.0.0" }
+  ] };
   vi.mocked(api).mockReset();
   vi.mocked(api).mockImplementation(async (url, options) => {
-    if (url === "/api/agents") return { policy: { allowed: ["codex"] }, ptyAvailable: true,
-      agents: [{ id: "codex", label: "Codex", installed: true, enabled: true, version: "1.0.0" }] } as never;
+    if (url === "/api/agents") return catalog as never;
     if (url === "/api/projects/paper/agent-tasks" && options?.method === "POST") {
-      const created = task("generated", "ready"); tasks.push(created); return { task: created } as never;
+      const { agentId } = JSON.parse(String(options.body)) as { agentId: AgentId };
+      const created = { ...task("generated", "ready"), agentId }; tasks.push(created); return { task: created } as never;
     }
     if (url.endsWith("/start")) return start.promise as Promise<never>;
     return { tasks: [...tasks], page: 1, total: tasks.length, pageSize: 20,
@@ -47,6 +52,26 @@ const creations = () => vi.mocked(api).mock.calls.filter(([url, options]) => url
 const starts = () => vi.mocked(api).mock.calls.filter(([url]) => url.endsWith("/start"));
 
 describe("one-step optional-name agent tasks", () => {
+  it("creates the selected agent task only after submitting, not when choosing an icon option", async () => {
+    await render();
+    const trigger = host.querySelector<HTMLButtonElement>(".agent-select-trigger")!;
+    expect(trigger.textContent).toBe("Codex");
+    await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((item) => item.textContent === "OpenCode")!;
+    expect(option.querySelector(".agent-identity-icon")).not.toBeNull();
+    await act(async () => option.click());
+    expect(trigger.textContent).toBe("OpenCode");
+    expect(trigger.querySelector(".agent-identity-icon")).not.toBeNull();
+    expect(creations()).toHaveLength(0); expect(starts()).toHaveLength(0);
+    await act(async () => host.querySelector("form.agent-task-create")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(JSON.parse(String(creations()[0][1]?.body))).toMatchObject({ agentId: "opencode" });
+    const running = { ...task("generated", "running"), agentId: "opencode" as const };
+    tasks = [running];
+    await act(async () => start.resolve({ task: running }));
+    expect(host.querySelector("[data-live-terminal]")).not.toBeNull();
+  });
+
   it("allows an empty name, creates and starts in one operation, and prevents repeated submission", async () => {
     await render();
     const form = host.querySelector<HTMLFormElement>("form.agent-task-create")!;
