@@ -944,6 +944,7 @@
     },
     "collaboration": {
       "connecting": "正在連線協作服務…",
+      "syncing": "正在同步文件…",
       "connected": "即時協作已連線",
       "disconnected": "即時協作連線已斷開",
       "editing": "正在編輯",

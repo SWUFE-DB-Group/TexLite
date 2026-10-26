@@ -47,7 +47,8 @@ const WRITABLE_DRAFT_HEARTBEAT_MS = 15_000;
 // the lease immediately during an ordinary close or navigation.
 const WRITABLE_DRAFT_ACTIVE_MAX_AGE_MS = 5 * 60_000;
 
-export type CollaborationStatus = "connecting" | "connected" | "disconnected";
+/** Workspace readiness includes the document handshake, not just an open socket. */
+export type CollaborationStatus = "connecting" | "syncing" | "connected" | "disconnected";
 
 export interface ActiveSession {
   clientId: number;

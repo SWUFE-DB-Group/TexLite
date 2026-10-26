@@ -262,7 +262,7 @@
       "pdf-only": { "name": "PDF only", "description": "Use the workspace for the PDF and compile output" }
     },
     "collaboration": {
-      "connecting": "Connecting collaboration…", "connected": "Live collaboration connected", "disconnected": "Collaboration disconnected",
+      "connecting": "Connecting collaboration…", "syncing": "Synchronizing document…", "connected": "Live collaboration connected", "disconnected": "Collaboration disconnected",
       "editing": "Editing", "viewing": "Viewing", "joining": "Joining project", "reconnect": "Reconnect",
       "permissionDowngradeTitle": "Edit permission changed",
       "permissionDowngradeDescription": "Your access changed from {{previous}} to read-only. Any unsaved local draft is still retained in this tab and cannot be saved. Keep it visible, or discard it and reload the latest server version.",

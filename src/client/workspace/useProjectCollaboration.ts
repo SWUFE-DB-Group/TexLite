@@ -26,10 +26,9 @@ export function useProjectCollaboration(
   collaboration: ProjectCollaboration,
   activeMainFile: string,
   projectPermission: Project["permission"],
-  ready: boolean,
-  onDisconnected: () => void
+  ready: boolean
 ) {
-  const [status, setStatus] = useState<CollaborationStatus>("connecting");
+  const [transportStatus, setTransportStatus] = useState<Exclude<CollaborationStatus, "syncing">>("connecting");
   const [synced, setSynced] = useState(false);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [compileState, setCompileState] = useState<SharedCompileState | null>(null);
@@ -44,10 +43,8 @@ export function useProjectCollaboration(
   const [permissionDowngrade, setPermissionDowngrade] = useState<PermissionDowngradeNotice | null>(null);
   const [protocolUpgradeRequired, setProtocolUpgradeRequired] = useState(false);
   const activeMainFileRef = useRef(activeMainFile);
-  const onDisconnectedRef = useRef(onDisconnected);
   const readyRef = useRef(ready);
   activeMainFileRef.current = activeMainFile;
-  onDisconnectedRef.current = onDisconnected;
   readyRef.current = ready;
 
   useEffect(() => {
@@ -57,7 +54,7 @@ export function useProjectCollaboration(
 
   useEffect(() => {
     const refreshSessions = () => setActiveSessions(collaboration.sessions());
-    const clearDisconnectedState = () => {
+    const clearConnectionState = () => {
       setSynced(false);
       setActiveSessions([]);
       setCompileState(null);
@@ -67,19 +64,24 @@ export function useProjectCollaboration(
       setDictionaryRevision("");
       setChktexSettingsRevision("");
       setFormatLeaseStates([]);
-      onDisconnectedRef.current();
     };
-    const handleStatus = ({ status: nextStatus }: { status: CollaborationStatus }) => {
-      setStatus(nextStatus);
-      if (nextStatus !== "connected") clearDisconnectedState();
+    const handleStatus = ({ status: nextStatus }: { status: Exclude<CollaborationStatus, "syncing"> }) => {
+      setTransportStatus(nextStatus);
+      if (nextStatus !== "connected") clearConnectionState();
+      else setSynced(collaboration.synced);
     };
     const handleSync = (nextSynced: boolean) => {
       setSynced(nextSynced);
-      if (!nextSynced) clearDisconnectedState();
+      // An open socket can still be waiting for the initial Yjs handshake.
+      // Losing synchronization alone is not evidence of a network failure.
+      if (nextSynced) {
+        refreshSessions();
+        handleMeta();
+      }
     };
     const handleConnectionFailure = () => {
-      setStatus("disconnected");
-      clearDisconnectedState();
+      setTransportStatus("disconnected");
+      clearConnectionState();
     };
     const handleMeta = () => {
       setHistoryWarning(collaboration.meta.get("historyWarning") === true);
@@ -107,8 +109,8 @@ export function useProjectCollaboration(
     const stopCompileStateListener = collaboration.onCompileStates(handleAuthoritativeCompileStates);
     const stopProtocolUpgradeListener = collaboration.onProtocolUpgrade(() => {
       setProtocolUpgradeRequired(true);
-      setStatus("disconnected");
-      clearDisconnectedState();
+      setTransportStatus("disconnected");
+      clearConnectionState();
     });
     const refreshFormatLeases = () => setFormatLeaseStates(collaboration.formatLeaseStates());
     const stopFormatLeaseListener = collaboration.onFormatLeaseState(refreshFormatLeases);
@@ -129,9 +131,8 @@ export function useProjectCollaboration(
     });
     const stopPermissionListener = collaboration.onPermissionChanged((nextPermission, previousPermission) => {
       if (nextPermission === "revoked") {
-        setStatus("disconnected");
-        setSynced(false);
-        onDisconnectedRef.current();
+        setTransportStatus("disconnected");
+        clearConnectionState();
         return;
       }
       setPermission(nextPermission);
@@ -150,7 +151,7 @@ export function useProjectCollaboration(
     // connect(), and provider events update these values. Do not capture
     // `ready` here: this listener is installed once and would otherwise keep
     // the initial false value forever.
-    setStatus(collaboration.connected ? "connected" : "connecting");
+    setTransportStatus(collaboration.connected ? "connected" : "connecting");
     setSynced(collaboration.synced);
     return () => {
       collaboration.awareness.off("change", refreshSessions);
@@ -215,7 +216,7 @@ export function useProjectCollaboration(
 
   const reconnect = () => {
     if (protocolUpgradeRequired) return;
-    setStatus("connecting");
+    setTransportStatus("connecting");
     setSynced(false);
     setActiveSessions([]);
     setCompileState(null);
@@ -235,10 +236,11 @@ export function useProjectCollaboration(
     return true;
   };
 
+  const status: CollaborationStatus = transportStatus === "connected" && !synced ? "syncing" : transportStatus;
   return {
     collaboration,
     status,
-    synced,
+    synced: transportStatus === "connected" && synced,
     activeSessions,
     compileState,
     setCompileState,

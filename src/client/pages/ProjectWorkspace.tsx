@@ -33,6 +33,7 @@ import { loadPdfPreview, type WorkspacePreload } from "../workspacePreload";
 import { hasDocumentClass as hasDocumentClassInSource } from "../latexRoot";
 import { findLatexSourceIncludes } from "../../shared/latexDependencies";
 import { WorkspaceTopbar } from "../workspace/WorkspaceTopbar";
+import { collaborationSaveState } from "../workspace/collaborationStatus";
 import { WorkspaceFilePanel } from "../workspace/WorkspaceFilePanel";
 import { WorkspaceEditorPanel } from "../workspace/WorkspaceEditorPanel";
 import { useAgentAccess } from "../agents/useAgentAccess";
@@ -295,7 +296,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     permissionDowngrade,
     dismissPermissionDowngrade,
     discardLocalDraft
-  } = useProjectCollaboration(collaboration, activeMainFile, project?.permission ?? "read", collaborationReady, () => setSaveState("editor.offlineDraft"));
+  } = useProjectCollaboration(collaboration, activeMainFile, project?.permission ?? "read", collaborationReady);
 
   const { unreadMentions, mentionsError, markMentionRead, markAllMentionsRead } = useProjectMentions(projectId, commentsRevision, setError,
     (count, all) => onMentionsReadRef.current?.(count, all));
@@ -667,15 +668,12 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
 
   useEffect(() => {
     if (!dirty || !activeFile) return;
-    if (!collaborationSynced) {
-      setSaveState("editor.offlineDraft");
-      return;
-    }
+    if (!collaborationSynced) return;
     setSaveState("editor.pending");
     const timer = window.setTimeout(() => {
       setSaveState("editor.saving");
       void persistPendingEdits().catch(() => {
-        setSaveState(collaboration.connected ? "editor.saveFailed" : "editor.offlineDraft");
+        setSaveState("editor.saveFailed");
       });
     }, 750);
     return () => window.clearTimeout(timer);
@@ -1373,9 +1371,11 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       : compileOutcome === "cancelled"
         ? t("compileControls.cancelled")
       : "";
-  const saveStateLabel = saveState === "editor.savedAt" && lastSavedAt
+  const hasOfflineDraft = collaborationStatus === "disconnected" && (dirty || collaboration.hasWritableDraft);
+  const visibleSaveState = collaborationSaveState(collaborationStatus, saveState, hasOfflineDraft);
+  const saveStateLabel = visibleSaveState === "editor.savedAt" && lastSavedAt
     ? t("editor.savedAt", { time: formatDateTime(lastSavedAt, i18n.resolvedLanguage, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
-    : t(saveState);
+    : t(visibleSaveState);
 
   return <div className="workspace" data-texlite-tooltips={editorPreferences.showTooltips ? "on" : "off"}>
     <WorkspaceTopbar

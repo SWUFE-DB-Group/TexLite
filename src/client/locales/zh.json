@@ -254,7 +254,7 @@
       "pdf-only": { "name": "仅 PDF", "description": "将工作区用于 PDF 和编译输出" }
     },
     "collaboration": {
-      "connecting": "正在连接协作服务…", "connected": "实时协作已连接", "disconnected": "实时协作连接已断开",
+      "connecting": "正在连接协作服务…", "syncing": "正在同步文档…", "connected": "实时协作已连接", "disconnected": "实时协作连接已断开",
       "editing": "正在编辑", "viewing": "正在查看", "joining": "正在进入项目", "reconnect": "重新连接",
       "permissionDowngradeTitle": "编辑权限已变更",
       "permissionDowngradeDescription": "您的权限已从{{previous}}变为只读。任何尚未保存的本地草稿仍保留在当前标签页中，但无法保存。您可以继续查看草稿，或放弃草稿并重新加载服务器上的最新版本。",

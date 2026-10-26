@@ -294,8 +294,17 @@ session exists and remounts only when that session is replaced. The
 collaboration hook owns subscriptions; the session boundary owns resources.
 Ordinary file, permission and UI updates retain the current session, and
 leaving never deletes the persisted offline draft. A client DOM regression
-test exercises StrictMode replay, identity changes and cleanup; only that
-test uses the development-only DOM emulator.
+test exercises StrictMode replay, identity changes and cleanup.
+
+Workspace connection status distinguishes opening the socket (`connecting`),
+an open socket awaiting document synchronization (`syncing`), a synchronized
+connection (`connected`), and an actual connection failure (`disconnected`).
+Only a synchronized connection enables editing. Connection labels overlay
+save progress rather than overwrite it, so a successful reconnect cannot leave
+an old offline label behind. The retained-draft notice is shown on disconnect
+only when there are pending local edits or a recoverable browser draft. Client
+DOM tests cover startup, synchronization, failed connections, retries and
+subscription cleanup without changing or deleting the draft.
 
 Read permission is intentionally different from edit permission: read-only
 members cannot modify source files, but can view the project and add or reply

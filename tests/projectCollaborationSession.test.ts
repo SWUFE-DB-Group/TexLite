@@ -89,7 +89,7 @@ function Editor({ collaboration, ready, permission }: {
   ready: boolean;
   permission: Project["permission"];
 }) {
-  const state = useProjectCollaboration(collaboration, "main.tex", permission, ready, () => {});
+  const state = useProjectCollaboration(collaboration, "main.tex", permission, ready);
   const [draft, setDraft] = useState("");
   useEffect(() => { effectSetup(); return effectCleanup; }, []);
   return createElement("section", { "data-session": collaboration.doc.guid },
