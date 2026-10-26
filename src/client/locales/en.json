@@ -376,6 +376,7 @@
     "addMember": "Add member", "noMembers": "This project has not been shared with anyone.", "removeTitle": "Remove shared member",
     "removeDescription": "Remove {{username}}? Their account and other projects are unaffected.",
     "editorTab": "Editor appearance", "compilerTab": "LaTeX compiler", "compilerDescription": "Choose the main document and compiler options shared by everyone in this project.",
+    "terminalTab": "Terminal appearance", "terminalDescription": "Stored in this browser and shared across projects. Does not affect editor appearance.", "terminalFont": "Terminal font", "fontSystem": "System monospace", "terminalPreview": "Terminal font preview", "saveTerminal": "Save terminal appearance",
     "editorAppearance": "Editor appearance", "editorAppearanceDescription": "These preferences are private to this user and project on this browser. The project dictionary is shared.",
     "toolStatus": { "loading": "Loading", "working": "Working", "error": "Error" }, "reloadTool": "Reload",
     "saveAppearance": "Save appearance", "saveCompiler": "Save compiler settings",

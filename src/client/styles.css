@@ -1113,13 +1113,15 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .settings { display: flex; flex-direction: column; gap: 14px; }
 .settings > section { display: flex; flex-direction: column; gap: 14px; }
 .settings button { border: 1px solid var(--ui-border, #c9d0ca); background: var(--ui-surface, white); border-radius: 6px; padding: 7px 9px; font-size: 12px; }
-.settings-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--ui-border, #d7ded8); border-radius: 9px; background: var(--ui-surface, #f4f7f4); }
+.settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--ui-border, #d7ded8); border-radius: 9px; background: var(--ui-surface, #f4f7f4); }
 .settings-tab { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px solid transparent !important; border-radius: 7px !important; background: transparent !important; color: var(--ui-muted, #66716a); font-weight: 650; }
 .settings-tab:hover { background: var(--ui-hover, #eaf1eb) !important; color: var(--ui-accent, #31523e); }
 .settings-tab.active { border-color: var(--ui-border, #c8d9cb) !important; background: var(--ui-accent-bg, white) !important; color: var(--ui-accent, #176b44); box-shadow: 0 1px 2px #233c2a12; }
 .settings-tab:focus-visible { outline: 2px solid var(--ui-accent-border, #176b44); outline-offset: 1px; }
 .settings-actions { display: flex; width: 100%; justify-content: flex-end; padding-top: 2px; }
 .settings-section-title { display: flex; align-items: center; gap: 7px; color: var(--ui-accent, #31523e); font-size: 13px; }
+.terminal-appearance-preview { margin: 0; padding: 16px; overflow-x: auto; border: 1px solid var(--ui-border, #d7ded8); border-radius: 8px; background: var(--ui-page, #fafbf9); color: var(--ui-text, #1f2328); }
+.terminal-preview-prompt { color: var(--ui-accent, #176b44); }
 .dictionary-heading { flex-wrap: wrap; }
 .harper-cli-status { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border: 1px solid var(--ui-border, #d9ded9); border-radius: 999px; background: var(--ui-surface, #f7f9f7); color: var(--ui-muted, #6d776f); font-size: 10px; line-height: 1.2; }
 .harper-cli-status.available { border-color: var(--ui-accent-border, #bddbc7); background: var(--ui-accent-bg, #f0f8f2); color: var(--ui-accent, #187348); }

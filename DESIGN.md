@@ -1292,6 +1292,15 @@ and full transcripts are not persisted by TexLite. Native CLI history can still
 exist in its task state. Raw terminal replay is a bounded recent stream, not a
 complete saved terminal screen; very long full-screen sessions may need a redraw.
 
+Terminal appearance is separate from editor appearance. Its font, size and line
+spacing are browser-local preferences shared across projects and scoped to the
+deployment base path, without user/database or CLI configuration changes. The
+default is JetBrains Mono at 13 px with 1.2 line spacing; existing web fonts and
+a system-monospace fallback are available. Saving updates the current xterm
+instance and fits its row/column geometry without reconnecting or clearing
+output. Font loading completes before measuring the selected font, with stale
+loads and unmounted terminals ignored; failed web fonts use the fallback stack.
+
 `node-pty` loads dynamically and is an optional production dependency. xterm.js
 and its fit addon are build dependencies behind a lazy terminal boundary. Missing
 PTY support does not block startup. Graceful shutdown stops managed executions;

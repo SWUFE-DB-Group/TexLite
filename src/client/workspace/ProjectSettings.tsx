@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, AlertTriangle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Save, Settings, Sigma, SpellCheck2, Type, WrapText, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Save, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
@@ -9,6 +9,8 @@ import { preloadTexFmt, reloadTexFmt } from "../latexFormatter";
 import type { FileEntry, Project, SiteConfig } from "../types";
 import { projectLatexmkrcCandidates } from "./projectLatexmkrc";
 import { CompilerVersions } from "./CompilerVersions";
+import { saveTerminalPreferences, useTerminalPreferences } from "../terminalPreferences";
+import { TerminalAppearanceSettings } from "./TerminalAppearanceSettings";
 
 function BrowserToolStatus({ name, state, label, reloadLabel, onReload, compact = false }: {
   name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void; compact?: boolean;
@@ -59,13 +61,16 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const [dictionaryError, setDictionaryError] = useState("");
   const [harperCliStatus, setHarperCliStatus] = useState<"checking" | "available" | "unavailable" | "error">("checking");
   const [harperProbeToken, setHarperProbeToken] = useState(0);
-  const [settingsTab, setSettingsTab] = useState<"appearance" | "compiler">("appearance");
+  const [settingsTab, setSettingsTab] = useState<"appearance" | "terminal" | "compiler">("appearance");
   const [appearancePreferences, setAppearancePreferences] = useState(editorPreferences);
+  const terminalPreferences = useTerminalPreferences();
+  const [terminalDraft, setTerminalDraft] = useState(terminalPreferences);
   const texFmtStatus = useSyncExternalStore(texFmtToolStatus.subscribe, texFmtToolStatus.getSnapshot, texFmtToolStatus.getSnapshot);
   const canManage = project.permission === "owner";
   const canEdit = project.permission !== "read";
   const canManageDictionary = project.permission !== "read";
   useEffect(() => setAppearancePreferences(editorPreferences), [editorPreferences]);
+  useEffect(() => setTerminalDraft(terminalPreferences), [terminalPreferences]);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
@@ -162,10 +167,12 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const saveAppearanceSettings = () => onEditorPreferences(appearancePreferences);
   const saveCurrentSettings = () => {
     if (settingsTab === "appearance") return saveAppearanceSettings();
+    if (settingsTab === "terminal") return saveTerminalPreferences(terminalDraft);
     if (canManage) void saveCompilerSettings();
   };
-  const headerSaveLabel = settingsTab === "appearance" ? t("projectSettings.saveAppearance") : t("projectSettings.saveCompiler");
-  const canSaveCurrentTab = settingsTab === "appearance" || canManage;
+  const headerSaveLabel = settingsTab === "appearance" ? t("projectSettings.saveAppearance")
+    : settingsTab === "terminal" ? t("projectSettings.saveTerminal") : t("projectSettings.saveCompiler");
+  const canSaveCurrentTab = settingsTab !== "compiler" || canManage;
   const addDictionaryWord = async () => {
     const word = dictionaryValue.trim();
     if (!word) return;
@@ -190,6 +197,9 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     <div className="settings-tabs" role="tablist" aria-label={t("common.settings")}>
       <button id="settings-tab-appearance" type="button" role="tab" aria-selected={settingsTab === "appearance"} aria-controls="settings-panel-appearance" className={`settings-tab${settingsTab === "appearance" ? " active" : ""}`} onClick={() => setSettingsTab("appearance")}>
         <Type size={15} />{t("projectSettings.editorTab")}
+      </button>
+      <button id="settings-tab-terminal" type="button" role="tab" aria-selected={settingsTab === "terminal"} aria-controls="settings-panel-terminal" className={`settings-tab${settingsTab === "terminal" ? " active" : ""}`} onClick={() => setSettingsTab("terminal")}>
+        <Terminal size={15} />{t("projectSettings.terminalTab")}
       </button>
       <button id="settings-tab-compiler" type="button" role="tab" aria-selected={settingsTab === "compiler"} aria-controls="settings-panel-compiler" className={`settings-tab${settingsTab === "compiler" ? " active" : ""}`} onClick={() => setSettingsTab("compiler")}>
         <Settings size={15} />{t("projectSettings.compilerTab")}
@@ -238,7 +248,9 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       {canManageDictionary && <div className="dictionary-add"><input value={dictionaryValue} placeholder={t("projectSettings.dictionaryPlaceholder")} onChange={(event) => setDictionaryValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addDictionaryWord(); } }} /><button type="button" disabled={!dictionaryValue.trim()} onClick={() => void addDictionaryWord()}>{t("projectSettings.addWord")}</button></div>}
       <div className="dictionary-words">{dictionaryWords.map((word) => <span className="dictionary-word" key={word}><code>{word}</code>{canManageDictionary && <button type="button" title={t("common.delete")} aria-label={`${t("common.delete")} ${word}`} onClick={() => void removeDictionaryWord(word)}><X size={13} /></button>}</span>)}{dictionaryWords.length === 0 && <span className="dictionary-empty">{t("projectSettings.dictionaryEmpty")}</span>}</div>
       <div className="settings-actions"><button className="settings-save" onClick={saveAppearanceSettings}><Save size={15} />{t("projectSettings.saveAppearance")}</button></div>
-    </section> : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
+    </section> : settingsTab === "terminal"
+      ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={setTerminalDraft} onSave={() => saveTerminalPreferences(terminalDraft)} />
+      : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
       <div className="settings-section-title"><Settings size={15} /><strong>{t("projectSettings.compilerTab")}</strong></div>
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>
       <label>{t("projects.name")}<input disabled={!canManage || savingCompiler} value={name} onChange={(event) => setName(event.target.value)} /></label>

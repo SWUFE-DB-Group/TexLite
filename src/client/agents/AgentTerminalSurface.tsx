@@ -7,12 +7,15 @@ import type { AgentClientMessage, AgentServerMessage, AgentTask } from "../../sh
 import { agentInputChunks } from "../../shared/agentProtocol";
 import { appPath } from "../basePath";
 import { useTheme } from "../theme";
+import { terminalFontStack, useTerminalPreferences } from "../terminalPreferences";
 
 export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask: (task: AgentTask) => void }) {
   const { t } = useTranslation();
   const theme = useTheme();
+  const preferences = useTerminalPreferences();
   const root = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
+  const fitAddon = useRef<FitAddon | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const writableRef = useRef(false);
   const onTaskRef = useRef(onTask);
@@ -33,9 +36,13 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
   useEffect(() => {
     const element = root.current;
     if (!element) return;
-    const term = new Terminal({ convertEol: false, scrollback: 1000, fontSize: 12, fontFamily: "Iosevka, ui-monospace, monospace", cursorBlink: true });
+    // Start with a local fallback. Apply the selected web font after it loads,
+    // so xterm measures real glyphs rather than caching fallback dimensions.
+    const term = new Terminal({ convertEol: false, scrollback: 1000, fontSize: preferences.fontSize,
+      lineHeight: preferences.lineHeight, fontFamily: "monospace", fontWeight: 400, fontWeightBold: 600, cursorBlink: true });
     terminal.current = term;
     const fit = new FitAddon();
+    fitAddon.current = fit;
     term.loadAddon(fit);
     term.open(element);
     term.attachCustomKeyEventHandler((event) => {
@@ -48,8 +55,25 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     const observer = new ResizeObserver(() => { try { fit.fit(); } catch { /* Hidden panel. */ } });
     observer.observe(element);
     fit.fit();
-    return () => { observer.disconnect(); input.dispose(); resize.dispose(); term.dispose(); terminal.current = null; };
+    return () => { observer.disconnect(); input.dispose(); resize.dispose(); term.dispose(); terminal.current = null; fitAddon.current = null; };
   }, []);
+  useEffect(() => {
+    const term = terminal.current;
+    const fit = fitAddon.current;
+    if (!term || !fit) return;
+    let cancelled = false;
+    const fontFamily = terminalFontStack(preferences.font);
+    const apply = () => {
+      if (cancelled) return;
+      Object.assign(term.options, { fontFamily, fontSize: preferences.fontSize, lineHeight: preferences.lineHeight });
+      try { fit.fit(); } catch { /* Hidden panel. */ }
+      term.refresh(0, term.rows - 1);
+    };
+    if (document.fonts?.load) {
+      void Promise.all([400, 600].map((weight) => document.fonts.load(`${weight} ${preferences.fontSize}px ${fontFamily}`))).then(apply, apply);
+    } else apply();
+    return () => { cancelled = true; };
+  }, [preferences]);
   useEffect(() => {
     if (!terminal.current) return;
     terminal.current.options.theme = theme === "dark"
