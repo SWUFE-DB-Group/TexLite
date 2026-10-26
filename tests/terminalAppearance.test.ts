@@ -6,6 +6,8 @@ import { AgentTerminalSurface } from "../src/client/agents/AgentTerminalSurface"
 import { ProjectSettings } from "../src/client/workspace/ProjectSettings";
 import { currentTerminalPreferences, defaultTerminalPreferences, saveTerminalPreferences } from "../src/client/terminalPreferences";
 import { defaultEditorPreferences } from "../src/client/editorPreferences";
+import { initializeTheme, setTheme, useTheme } from "../src/client/theme";
+import { terminalTheme } from "../src/client/terminalTheme";
 import type { AgentTask } from "../src/shared/agentProtocol";
 import type { Project, SiteConfig } from "../src/client/types";
 
@@ -25,7 +27,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({ t: (key: string) => key, i18n: { resolvedLanguage: "en" } })
 }));
-vi.mock("../src/client/theme", () => ({ useTheme: () => "light" }));
 vi.mock("../src/client/api", () => ({ api: vi.fn(async () => ({ available: false, mainFiles: ["main.tex"] })) }));
 vi.mock("../src/client/latexFormatter", () => ({ preloadTexFmt: vi.fn(async () => undefined), reloadTexFmt: vi.fn(async () => undefined) }));
 
@@ -52,6 +53,7 @@ beforeEach(() => {
   vi.stubGlobal("WebSocket", MockSocket);
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   saveTerminalPreferences(defaultTerminalPreferences);
+  setTheme("light");
   mocks.terms = []; mocks.fits = []; MockSocket.instances = [];
   loadFont = vi.fn(async () => []);
   fontDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
@@ -62,7 +64,7 @@ afterEach(async () => {
   await act(async () => root.unmount()); container.remove();
   if (fontDescriptor) Object.defineProperty(document, "fonts", fontDescriptor);
   else Reflect.deleteProperty(document, "fonts");
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 const renderTerminal = () => act(async () => root.render(createElement(AgentTerminalSurface, { task, onTask: vi.fn() })));
 function deferred() {
@@ -72,6 +74,40 @@ function deferred() {
 }
 
 describe("terminal appearance", () => {
+  it("keeps an existing terminal dark across real system and application theme changes", async () => {
+    let systemChanged!: () => void;
+    const media = { matches: false, addEventListener: (_type: string, listener: () => void) => { systemChanged = listener; } };
+    vi.spyOn(window, "matchMedia").mockReturnValue(media as unknown as MediaQueryList);
+    initializeTheme();
+    setTheme("system");
+    function ThemedWorkspace() {
+      const theme = useTheme();
+      return createElement("section", { "data-shell-theme": theme }, createElement(AgentTerminalSurface, { task, onTask: vi.fn() }));
+    }
+    await act(async () => root.render(createElement(ThemedWorkspace)));
+    const term = mocks.terms[0];
+    const palette = term.options.theme;
+    expect(palette).toEqual(terminalTheme);
+    expect(container.querySelector<HTMLElement>(".agent-terminal-surface")?.style.getPropertyValue("--terminal-bg")).toBe(terminalTheme.background);
+    const ws = MockSocket.instances[0];
+    await act(async () => { ws.onopen?.(); ws.onmessage?.({ data: JSON.stringify({ type: "output", data: "Existing output" }) }); });
+    const resets = term.reset.mock.calls.length;
+    for (const dark of [true, false]) {
+      await act(async () => { media.matches = dark; systemChanged(); });
+      expect(container.querySelector("section")?.getAttribute("data-shell-theme")).toBe(dark ? "dark" : "light");
+      expect(term.options.theme).toBe(palette);
+    }
+    for (const theme of ["dark", "light"] as const) {
+      await act(async () => setTheme(theme));
+      expect(container.querySelector("section")?.getAttribute("data-shell-theme")).toBe(theme);
+      expect(term.options.theme).toBe(palette);
+    }
+    expect(mocks.terms).toHaveLength(1); expect(MockSocket.instances).toHaveLength(1);
+    expect(term.reset).toHaveBeenCalledTimes(resets);
+    expect(term.dispose).not.toHaveBeenCalled(); expect(ws.close).not.toHaveBeenCalled();
+    expect(term.write).toHaveBeenCalledWith("Existing output");
+  });
+
   it("updates a running terminal without reconnecting or clearing its output", async () => {
     await renderTerminal();
     const term = mocks.terms[0];
@@ -132,6 +168,8 @@ describe("terminal appearance", () => {
     await act(async () => { selects[1].value = "18"; selects[1].dispatchEvent(new Event("change", { bubbles: true })); });
     expect(currentTerminalPreferences().fontSize).toBe(13);
     expect((panel.querySelector("pre") as HTMLElement).style.fontSize).toBe("18px");
+    expect((panel.querySelector("pre") as HTMLElement).style.getPropertyValue("--terminal-bg")).toBe(terminalTheme.background);
+    expect((panel.querySelector("pre") as HTMLElement).style.getPropertyValue("--terminal-fg")).toBe(terminalTheme.foreground);
     await act(async () => container.querySelector<HTMLButtonElement>(".drawer-settings-save")!.click());
     expect(currentTerminalPreferences().fontSize).toBe(18);
     expect(onEditorPreferences).not.toHaveBeenCalled(); expect(onProject).not.toHaveBeenCalled();

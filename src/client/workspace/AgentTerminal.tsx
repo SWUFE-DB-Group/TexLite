@@ -8,6 +8,7 @@ import { useAgentTasks } from "../agents/useAgentTasks";
 import type { AgentTask } from "../../shared/agentProtocol";
 import { AGENT_LABELS } from "../../shared/agentProtocol";
 import { AgentIcon } from "../agents/AgentIcon";
+import { terminalThemeStyle } from "../terminalTheme";
 
 const AgentTerminalSurface = lazy(() => import("../agents/AgentTerminalSurface").then((module) => ({ default: module.AgentTerminalSurface })));
 
@@ -83,7 +84,7 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
     {task?.errorCode && !tasks.error && !deleteOpen && <p className="error agent-inline-error" role="alert">{t(`errors.codes.${task.errorCode}`, { defaultValue: t("agents.taskUnavailable") })}</p>}
     {(projectBusy || (creating && tasks.result.activeTaskId)) && <p className="agent-inline-warning" role="status"><TriangleAlert size={14} aria-hidden="true" /><span>{t("errors.codes.AGENT_PROJECT_BUSY")}</span></p>}
     {tasks.catalog && !tasks.catalog.ptyAvailable && <p className="error agent-inline-error">{t("agents.ptyUnavailable")}</p>}
-    <div className="agent-terminal-body">
+    <div className="agent-terminal-body" style={terminalThemeStyle}>
       <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}>
         {task && running && !readOnly ? <AgentTerminalSurface key={task.id} task={task} onTask={tasks.acceptTask} />
             : <div className="agent-task-empty"><TerminalSquare size={24} /><strong>{task?.title || t("agents.noTasks")}</strong><p>{readOnly ? t("agents.permissionLost") : t("agents.readyHint")}</p>{task?.exitCode !== null && task?.exitCode !== undefined && task.exitCode !== 0 && <small>{t("agents.exitCode", { code: task.exitCode })}</small>}</div>}

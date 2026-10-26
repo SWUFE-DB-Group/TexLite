@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import postcss from "postcss";
+import { terminalTheme } from "../src/client/terminalTheme";
 
 const css = fs.readFileSync(new URL("../src/client/siteTheme.css", import.meta.url), "utf8");
 const styles = fs.readFileSync(new URL("../src/client/styles.css", import.meta.url), "utf8");
@@ -20,6 +21,17 @@ function contrast(first: string, second: string): number {
 }
 
 describe("application dark palette", () => {
+  it("keeps fixed terminal text, ANSI accents, cursor and selections readable", () => {
+    for (const role of ["foreground", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "brightBlack",
+      "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite"] as const) {
+      expect(contrast(terminalTheme[role], terminalTheme.background), role).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(contrast(terminalTheme.cursor, terminalTheme.cursorAccent)).toBeGreaterThanOrEqual(4.5);
+    for (const background of [terminalTheme.selectionBackground, terminalTheme.selectionInactiveBackground]) {
+      expect(contrast(terminalTheme.selectionForeground, background)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it("defines every semantic role used by the application", () => {
     const boundary = fs.readFileSync(new URL("../src/client/ErrorBoundary.tsx", import.meta.url), "utf8");
     for (const match of (css + styles + boundary).matchAll(/var\((--ui-[\w-]+)/g)) expect(tokens[match[1]], match[1]).toBeDefined();

@@ -6,12 +6,11 @@ import "@xterm/xterm/css/xterm.css";
 import type { AgentClientMessage, AgentServerMessage, AgentTask } from "../../shared/agentProtocol";
 import { agentInputChunks } from "../../shared/agentProtocol";
 import { appPath } from "../basePath";
-import { useTheme } from "../theme";
 import { terminalFontStack, useTerminalPreferences } from "../terminalPreferences";
+import { terminalTheme, terminalThemeStyle } from "../terminalTheme";
 
 export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask: (task: AgentTask) => void }) {
   const { t } = useTranslation();
-  const theme = useTheme();
   const preferences = useTerminalPreferences();
   const root = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -39,7 +38,8 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     // Start with a local fallback. Apply the selected web font after it loads,
     // so xterm measures real glyphs rather than caching fallback dimensions.
     const term = new Terminal({ convertEol: false, scrollback: 1000, fontSize: preferences.fontSize,
-      lineHeight: preferences.lineHeight, fontFamily: "monospace", fontWeight: 400, fontWeightBold: 600, cursorBlink: true });
+      lineHeight: preferences.lineHeight, fontFamily: "monospace", fontWeight: 400, fontWeightBold: 600, cursorBlink: true,
+      theme: { ...terminalTheme } });
     terminal.current = term;
     const fit = new FitAddon();
     fitAddon.current = fit;
@@ -74,16 +74,6 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     } else apply();
     return () => { cancelled = true; };
   }, [preferences]);
-  useEffect(() => {
-    if (!terminal.current) return;
-    terminal.current.options.theme = theme === "dark"
-      ? { background: "#20252d", foreground: "#d7dae0", cursor: "#d7dae0", cursorAccent: "#20252d", selectionBackground: "#3c536f",
-        black: "#343b47", red: "#ed8d8d", green: "#8ccf9c", yellow: "#dfc283", blue: "#8fb9ef", magenta: "#c5a0e6", cyan: "#81c7d2", white: "#d7dae0",
-        brightBlack: "#929bad", brightRed: "#ffa3a3", brightGreen: "#a5e3b4", brightYellow: "#f3d494", brightBlue: "#a7ceff", brightMagenta: "#dbb9f6", brightCyan: "#a1e0e8", brightWhite: "#eef0f4" }
-      : { background: "#fafbf9", foreground: "#1f2328", cursor: "#1f2328", cursorAccent: "#fafbf9", selectionBackground: "#c8dcf0",
-        black: "#1f2328", red: "#b43132", green: "#2f6b40", yellow: "#8a6700", blue: "#245da5", magenta: "#873b9f", cyan: "#166f78", white: "#555d69",
-        brightBlack: "#6b7280", brightRed: "#c63737", brightGreen: "#357a4b", brightYellow: "#936900", brightBlue: "#2868b3", brightMagenta: "#9047ac", brightCyan: "#167a84", brightWhite: "#5f6875" };
-  }, [theme]);
   useEffect(() => {
     let disposed = false;
     let retry: number | undefined;
@@ -121,7 +111,7 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     connect();
     return () => { disposed = true; window.clearTimeout(retry); socket.current?.close(); socket.current = null; writableRef.current = false; };
   }, [task.id, reconnect]);
-  return <div className="agent-terminal-surface">
+  return <div className="agent-terminal-surface" style={terminalThemeStyle}>
     {(connection !== "open" || !writable) && <div className="agent-terminal-status" role="status">
       <span>{errorCode ? t(`errors.codes.${errorCode}`, { defaultValue: t("agents.connectionLost") })
         : connection === "connecting" ? t("agents.connecting") : connection === "closed" ? t("agents.connectionLost") : t("agents.viewOnly")}</span>

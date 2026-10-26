@@ -1229,7 +1229,7 @@
     "removeDescription": "確認移除 {{username}}？其帳號和其他專案不會受到影響。",
     "editorTab": "編輯器",
     "terminalTab": "終端機",
-    "terminalDescription": "儲存於目前瀏覽器，所有專案共用；不影響編輯器外觀。",
+    "terminalDescription": "字型設定儲存於目前瀏覽器，所有專案共用；終端機一律使用深色配色。",
     "terminalFont": "終端機字型",
     "fontSystem": "系統等寬字型",
     "terminalPreview": "終端機字型預覽",

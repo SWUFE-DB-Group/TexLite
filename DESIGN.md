@@ -1360,7 +1360,14 @@ Terminal appearance is separate from editor appearance. Its font, size and line
 spacing are browser-local preferences shared across projects and scoped to the
 deployment base path, without user/database or CLI configuration changes. The
 default is JetBrains Mono at 13 px with 1.2 line spacing; existing web fonts and
-a system-monospace fallback are available. Saving updates the current xterm
+a system-monospace fallback are available. Terminal output always uses a fixed,
+Catppuccin-inspired dark palette defined in `terminalTheme.ts`, independent of
+the app/system theme. xterm receives it at construction, before the CLI can query
+terminal colors. Padding, empty states and the font preview share the same
+palette; outer task controls still follow the application theme. Switching the
+app/system theme does not recolor, recreate or reconnect a running terminal.
+No Starship installation or host/agent configuration changes are required.
+Saving updates the current xterm
 instance and fits its row/column geometry without reconnecting or clearing
 output. Font loading completes before measuring the selected font, with stale
 loads and unmounted terminals ignored; failed web fonts use the fallback stack.
