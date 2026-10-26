@@ -163,6 +163,7 @@ describe("coding agent management presentation", () => {
     expect(container.querySelector(".agent-policy-heading strong")?.textContent).toBe(agentUiMessages["zh-Hant"].allowedAgents);
     expect(container.querySelector(".agent-policy-heading [data-tooltip]")).toBeNull();
     expect(container.querySelector(".agent-policy-note")?.textContent).toBe(agentUiMessages["zh-Hant"].credentials);
+    expect(container.querySelector(".agent-list-reminder")?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
     expect(cards.find((card) => card.textContent?.includes("Claude Code"))?.classList.contains("unavailable")).toBe(true);
     await act(async () => vi.advanceTimersByTime(150));
     expect(container.querySelector(".agent-task-empty p")?.textContent).toBe(agentUiMessages["zh-Hant"].noTasksHint);
@@ -171,6 +172,11 @@ describe("coding agent management presentation", () => {
     expect(paginationButtons).toHaveLength(2);
     expect(paginationButtons.map((button) => button.textContent)).toEqual([agentUiMessages["zh-Hant"].previous, agentUiMessages["zh-Hant"].next]);
     expect(container.querySelector('option[value="archived"]')).toBeNull();
+  });
+
+  it("reminds ordinary task owners to end execution when done", async () => {
+    await act(async () => root.render(createElement(AgentManagement, { user: { ...user, role: "user" }, onBack() {} })));
+    expect(container.querySelector(".agent-list-reminder")?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
   });
 
   it("presents project execution contention as a warning with an accessible decorative icon", async () => {

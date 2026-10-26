@@ -22,6 +22,8 @@
 .agent-catalog-item small { display: block; font-size: 11px; color: var(--ui-muted, #788178); margin-top: 6px; }
 .agent-catalog-item.unavailable { opacity: .6; }
 .agent-list-controls { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.agent-list-reminder { display: flex; align-items: flex-start; gap: 7px; margin: 0; padding: 10px 12px; border: 1px solid var(--ui-border, #d8e1db); border-radius: 8px; background: var(--ui-subtle, #f3f6f3); color: var(--ui-muted, #65756b); font-size: 12px; line-height: 1.5; }
+.agent-list-reminder > svg { flex: none; margin-top: 2px; }
 .agent-list-controls > input { flex: 1 1 130px; max-width: 220px; }
 .agent-list-controls small { color: var(--ui-muted, #788178); }
 .agent-toolbar-spacer { flex: 1; }

@@ -33,6 +33,8 @@ export interface AgentTask {
   canResume: boolean;
 }
 export interface AgentCatalog { policy: AgentPolicy; agents: AgentInfo[]; ptyAvailable: boolean }
+/** Counts always belong to the authenticated user, including administrators. */
+export interface AgentAccess { visible: boolean; activeCount: number }
 export interface AgentTaskPage { tasks: AgentTask[]; page: number; total: number; pageSize: number; activeTaskId?: string | null }
 export type AgentClientMessage =
   | { type: "input"; data: string }

@@ -9,7 +9,7 @@ import { SiteLogo } from "../pages/SiteChrome";
 import { appPath } from "../basePath";
 
 export interface WorkspaceTopbarProps {
-  agentTerminal?: { open: boolean; toggle: () => void };
+  agentTerminal?: { open: boolean; activeCount: number; toggle: () => void };
   site: SiteConfig;
   project: Project;
   activeFile: string;
@@ -82,7 +82,11 @@ export function WorkspaceTopbar({
         {unresolvedCommentCount > 0 && <sup className="comments-action-count">{unresolvedCommentCount}</sup>}
       </button>
       <button className="git-action" title={canManageGit ? t("git.title") : t("git.ownerOnly")} disabled={!canManageGit} onClick={onGit}><GitBranch size={15} />Git</button>
-      {agentTerminal && <button type="button" className={agentTerminal.open ? "active" : ""} aria-expanded={agentTerminal.open} onClick={agentTerminal.toggle}><TerminalSquare size={15} />{t("agents.terminal")}</button>}
+      {agentTerminal && <button type="button" className={agentTerminal.open ? "active" : ""} aria-expanded={agentTerminal.open}
+        aria-label={agentTerminal.activeCount > 0 ? `${t("agents.terminal")}: ${t("agents.activeCount", { count: agentTerminal.activeCount })}` : t("agents.terminal")}
+        onClick={agentTerminal.toggle}><TerminalSquare size={15} /><span>{t("agents.terminal")}</span>
+        {agentTerminal.activeCount > 0 && <sup className="agent-active-count" aria-label={t("agents.activeCount", { count: agentTerminal.activeCount })}>{agentTerminal.activeCount}</sup>}
+      </button>}
       <button className={settingsOpen ? "active" : ""} onClick={onToggleSettings}><Settings size={15} />{t("common.settings")}</button>
       {sharedCompiling || localCompiling
         ? <button className="compile cancel-compile" title={t("compileControls.cancel")} onClick={onCancelCompile} disabled={cancelling || formatting || readOnly || !collaborationSynced}>{cancelling ? <LoaderCircle className="spin" size={15} /> : <X size={15} />}{cancelling ? t("compileControls.cancelling") : t("compileControls.cancel")}</button>

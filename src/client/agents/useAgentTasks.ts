@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { AgentCatalog, AgentTask, AgentTaskPage } from "../../shared/agentProtocol";
 import { errorMessage } from "../errors";
+import { notifyAgentTasksChanged } from "./useAgentAccess";
 
 export function useAgentTasks(projectId: string) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
@@ -49,6 +50,7 @@ export function useAgentTasks(projectId: string) {
       activeTaskId: ["starting", "running", "stopping"].includes(task.state) ? task.id : current.activeTaskId === task.id ? null : current.activeTaskId,
       tasks: current.tasks.some((entry) => entry.id === task.id) ? current.tasks.map((entry) => entry.id === task.id ? task : entry) : [task, ...current.tasks],
       total: current.tasks.some((entry) => entry.id === task.id) ? current.total : current.total + 1 }));
+    if (!pending.current) notifyAgentTasksChanged();
   }, []);
   const mutate = async <T,>(operation: () => Promise<T>): Promise<T | undefined> => {
     if (pending.current) return;
@@ -57,7 +59,7 @@ export function useAgentTasks(projectId: string) {
     setBusy(true); setError("");
     try { return await operation(); }
     catch (failure) { if (mounted.current) setError(errorMessage(failure)); }
-    finally { pending.current = false; if (mounted.current) { setBusy(false); refreshTasks(); } }
+    finally { pending.current = false; notifyAgentTasksChanged(); if (mounted.current) { setBusy(false); refreshTasks(); } }
   };
   return { catalog, result, page, setPage, selectedId, setSelectedId,
     selected: result.tasks.find((task) => task.id === selectedId) ?? null,

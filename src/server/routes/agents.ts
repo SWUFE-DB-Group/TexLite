@@ -28,9 +28,8 @@ export function registerAgentRoutes(app: FastifyInstance, { db, agents }: { db: 
   app.get("/api/agents/access", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const { allowed } = agents.policy();
-    const hasTasks = agents.list(user, false, {}).total > 0;
-    return { visible: allowed.length > 0 || hasTasks };
+    const { project } = request.query as { project?: unknown };
+    return agents.access(user.id, typeof project === "string" ? project : undefined);
   });
   app.get("/api/agents", async (request, reply) => {
     if (!requireUser(request, reply, db)) return;

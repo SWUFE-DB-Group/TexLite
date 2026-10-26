@@ -94,7 +94,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
 }) {
   const { t } = useTranslation();
   const currentProjectId = useRef(projectId);
-  const agentAccess = useAgentAccess(`${user.id}:${projectId}`);
+  const agentAccess = useAgentAccess(user.id, projectId);
   const [terminalOpen, setTerminalOpen] = useState(false);
   currentProjectId.current = projectId;
   const [project, setProject] = useState<Project | null>(null);
@@ -1379,7 +1379,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
 
   return <div className="workspace" data-texlite-tooltips={editorPreferences.showTooltips ? "on" : "off"}>
     <WorkspaceTopbar
-      agentTerminal={showEditor && agentAccess.visible && project.permission !== "read" ? { open: terminalOpen, toggle: () => setTerminalOpen((value) => !value) } : undefined}
+      agentTerminal={showEditor && agentAccess.visible && project.permission !== "read" ? { open: terminalOpen, activeCount: agentAccess.activeCount, toggle: () => setTerminalOpen((value) => !value) } : undefined}
       site={site} project={project} activeFile={activeFile} saveStateLabel={saveStateLabel}
       editorPreferences={editorPreferences} activeSessions={activeSessions} collaborationStatus={collaborationStatus}
       reconnectCollaboration={reconnectCollaboration} protocolUpgradeRequired={protocolUpgradeRequired} showEditor={showEditor} filesCollapsed={filesCollapsed}

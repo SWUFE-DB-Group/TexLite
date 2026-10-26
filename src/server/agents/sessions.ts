@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomInt, randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
-import type { AgentCatalog, AgentId, AgentPolicy, AgentTask, AgentTaskPage, AgentServerMessage } from "../../shared/agentProtocol.js";
+import type { AgentAccess, AgentCatalog, AgentId, AgentPolicy, AgentTask, AgentTaskPage, AgentServerMessage } from "../../shared/agentProtocol.js";
 import { parseAgentClientMessage } from "../../shared/agentProtocol.js";
 import type { DatabaseConnection, UserRow } from "../db.js";
 import { httpError } from "../http.js";
@@ -79,6 +79,14 @@ export class AgentService {
   policy(): AgentPolicy {
     const row = this.db.prepare("SELECT allowed FROM agent_policy WHERE id = 1").get() as { allowed: string };
     return { allowed: JSON.parse(row.allowed) as AgentId[] };
+  }
+
+  access(userId: string, projectId?: string): AgentAccess {
+    const { total, activeCount } = this.db.prepare(`SELECT COUNT(*) AS total,
+      COUNT(CASE WHEN state IN ('starting', 'running', 'stopping')
+        AND (? IS NULL OR project_id = ?) THEN 1 END) AS activeCount
+      FROM agent_tasks WHERE user_id = ?`).get(projectId ?? null, projectId ?? null, userId) as { total: number; activeCount: number };
+    return { visible: this.policy().allowed.length > 0 || total > 0, activeCount };
   }
 
   async catalog(refresh = false): Promise<AgentCatalog> {

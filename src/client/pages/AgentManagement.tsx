@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "../agents/agents.css";
-import { ArrowDown, ArrowLeft, Check, ChevronLeft, ChevronRight, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, Check, ChevronLeft, ChevronRight, Info, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Modal } from "../Dialog";
@@ -10,6 +10,7 @@ import type { AgentCatalog, AgentPolicy, AgentTask, AgentTaskPage } from "../../
 import { AGENT_LABELS } from "../../shared/agentProtocol";
 import { formatDateTime } from "../dateTime";
 import { AgentIcon } from "../agents/AgentIcon";
+import { notifyAgentTasksChanged } from "../agents/useAgentAccess";
 
 export function AgentManagement({ user, onBack }: {
   user: User; onBack: () => void;
@@ -73,7 +74,7 @@ export function AgentManagement({ user, onBack }: {
     pending.current = true; setBusy(true); setError("");
     try { await action(); }
     catch (failure) { if (mounted.current) setError(errorMessage(failure)); }
-    finally { pending.current = false; if (mounted.current) { setBusy(false); setRefresh((value) => value + 1); } }
+    finally { pending.current = false; notifyAgentTasksChanged(); if (mounted.current) { setBusy(false); setRefresh((value) => value + 1); } }
   };
   const operate = async (tasks: AgentTask[], action: "stop" | "delete") => {
     const results = await Promise.allSettled(tasks.map((task) => api(`${prefix}/${task.id}${action === "stop" ? "/stop" : ""}`, {
@@ -119,6 +120,7 @@ export function AgentManagement({ user, onBack }: {
       </label>)}</div>
       {catalog && !catalog.ptyAvailable && <p className="error">{t("agents.ptyUnavailable")}</p>}
     </section>}
+    <p className="agent-list-reminder"><Info size={14} aria-hidden="true" /><span>{t("agents.endReminder")}</span></p>
     <div className="agent-list-controls">
       <select aria-label={t("agents.state")} value={state} onChange={(event) => changeFilter(setState, event.target.value)}>
         <option value="">{t("agents.all")}</option><option value="running">{t("agents.running")}</option><option value="cleanup">{t("agents.cleanup")}</option>

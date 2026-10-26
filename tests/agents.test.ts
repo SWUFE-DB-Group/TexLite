@@ -995,6 +995,52 @@ describe("agent HTTP and WebSocket permissions", () => {
     return { ownerCookie: await login(owner), adminCookie: await login(admin), readerCookie: await login(reader), editorCookie: await login(editor) };
   }
 
+  it("counts only the caller's active tasks, independent of task pages and administrator visibility", async () => {
+    const cookies = await httpApp();
+    expect((await app!.inject({ url: "/api/agents/access" })).statusCode).toBe(401);
+    const access = async (cookie: string, project?: string) => (await app!.inject({
+      url: `/api/agents/access${project ? `?project=${project}` : ""}`, headers: { cookie }
+    })).json();
+    expect(await access(cookies.ownerCookie)).toEqual({ visible: false, activeCount: 0 });
+    db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
+    const launch = async (project: string, cookie: string) => {
+      const created = await app!.inject({ method: "POST", url: `/api/projects/${project}/agent-tasks`,
+        headers: { cookie }, payload: { agentId: "codex" } });
+      expect(created.statusCode).toBe(201);
+      const task = created.json().task as AgentTask;
+      expect((await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/start`, headers: { cookie } })).statusCode).toBe(200);
+      return task;
+    };
+    const own = await launch(projectId, cookies.ownerCookie);
+    const adminProject = anotherProject();
+    db.prepare("UPDATE projects SET owner_id = ? WHERE id = ?").run(admin.id, adminProject);
+    await launch(adminProject, cookies.adminCookie);
+
+    // Fill the first page with newer, inactive tasks so it contains no active execution.
+    const insert = db.prepare(`INSERT INTO agent_tasks (id, project_id, user_id, project_name, user_name,
+      agent_id, title, state, created_at, updated_at) VALUES (?, ?, ?, 'Paper', 'Owner', 'codex', 'Old task', ?, ?, ?)`);
+    const inactiveStates = ["ready", "stopped", "exited", "interrupted", "failed"];
+    for (let index = 0; index < 25; index++) insert.run(randomUUID(), projectId, owner.id,
+      inactiveStates[index % inactiveStates.length], "2099-01-01T00:00:00Z", "2099-01-01T00:00:00Z");
+    const firstPage = (await app!.inject({ url: "/api/agent-tasks", headers: { cookie: cookies.ownerCookie } })).json();
+    expect(firstPage.tasks).toHaveLength(20);
+    expect(firstPage.tasks.some((task: AgentTask) => task.id === own.id)).toBe(false);
+    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 1 });
+    expect(await access(cookies.adminCookie)).toEqual({ visible: true, activeCount: 1 });
+    expect(await access(cookies.readerCookie, projectId)).toEqual({ visible: true, activeCount: 0 });
+    expect(await access(cookies.adminCookie, projectId)).toEqual({ visible: true, activeCount: 0 });
+    expect(await access(cookies.adminCookie, adminProject)).toEqual({ visible: true, activeCount: 1 });
+    for (const state of ["starting", "running", "stopping"]) {
+      db.prepare("UPDATE agent_tasks SET state = ? WHERE id = ?").run(state, own.id);
+      expect(await access(cookies.ownerCookie, projectId)).toEqual({ visible: true, activeCount: 1 });
+    }
+    await app!.inject({ method: "POST", url: `/api/agent-tasks/${own.id}/stop`, headers: { cookie: cookies.ownerCookie } });
+    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 0 });
+    expect(await access(cookies.adminCookie)).toEqual({ visible: true, activeCount: 1 });
+    db.prepare("UPDATE agent_policy SET allowed = '[]' WHERE id = 1").run();
+    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 0 });
+  });
+
   it("accepts optional task names but still validates provided values and explicit renames", async () => {
     const cookies = await httpApp();
     db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
