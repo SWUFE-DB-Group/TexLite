@@ -11,6 +11,7 @@ import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, P
 import { historyTextCandidate } from "../shared/historyTracking";
 import { HistoryFilesManager } from "./HistoryFilesManager";
 import { formatDateTime } from "./dateTime";
+import { SuccessNotice, useSuccessNotice } from "./SuccessNotice";
 
 interface HistoryComparison {
   path: string;
@@ -28,6 +29,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   onOpenChange: (open: boolean) => void;
   onBeforeMutation: () => Promise<boolean>;
 }) {
+  const savedNotice = useSuccessNotice();
   const { t, i18n } = useTranslation();
   const [versions, setVersions] = useState<HistoryVersion[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
@@ -64,6 +66,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const controlsBusy = Boolean(busy) || loadingOlder;
 
   useEffect(() => {
+    savedNotice.clear();
     if (!open) {
       setManageFiles(false);
       snapshotRefreshAbortRef.current?.abort();
@@ -105,6 +108,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   useEffect(() => {
     snapshotRefreshAbortRef.current?.abort();
     snapshotRefreshAbortRef.current = null;
+    savedNotice.clear();
   }, [selectedId]);
 
   const loadOlder = async () => {
@@ -254,6 +258,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const saveLabel = async () => {
     if (!detail) return;
     setBusy("label"); setError("");
+    savedNotice.clear();
     try {
       const result = await api<{ version: HistoryVersion; retentionScheduled: boolean; retentionRefreshAfterMs: number; stats: HistoryStats | null }>(`/api/projects/${project.id}/history/${detail.version.id}`, {
         method: "PATCH", body: JSON.stringify({ label: label.trim() || null, snapshotHash: detail.version.snapshotHash })
@@ -261,6 +266,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       setDetail((current) => current ? { ...current, version: result.version } : current);
       setVersions((current) => current.map((version) => version.id === result.version.id ? result.version : version));
       setStats(result.stats);
+      savedNotice.show(t("common.saveSuccess"));
       if (result.retentionScheduled) {
         if (retentionRefreshRef.current !== null) window.clearTimeout(retentionRefreshRef.current);
         retentionRefreshRef.current = window.setTimeout(() => {
@@ -388,6 +394,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       <button type="button" className="history-close" onClick={() => onOpenChange(false)}>{t("common.close")}</button>
     </>}>
     <div className="history-dialog">
+      <SuccessNotice message={savedNotice.message} onDismiss={savedNotice.clear} />
       {error && <p className="error history-message">{error}</p>}
       {busy === "load" && versions.length === 0 ? <div className="history-loading"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div> : <div className="history-dialog-layout">
         <aside className="history-timeline">

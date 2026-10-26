@@ -11,6 +11,7 @@ import { projectLatexmkrcCandidates } from "./projectLatexmkrc";
 import { CompilerVersions } from "./CompilerVersions";
 import { saveTerminalPreferences, useTerminalPreferences } from "../terminalPreferences";
 import { TerminalAppearanceSettings } from "./TerminalAppearanceSettings";
+import { SuccessNotice, useSuccessNotice } from "../SuccessNotice";
 
 function BrowserToolStatus({ name, state, label, reloadLabel, onReload, compact = false }: {
   name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void; compact?: boolean;
@@ -57,6 +58,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   });
   const [mainFileOptions, setMainFileOptions] = useState<string[] | null>(null);
   const [error, setError] = useState("");
+  const savedNotice = useSuccessNotice();
   const [dictionaryValue, setDictionaryValue] = useState("");
   const [dictionaryError, setDictionaryError] = useState("");
   const [harperCliStatus, setHarperCliStatus] = useState<"checking" | "available" | "unavailable" | "error">("checking");
@@ -117,6 +119,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const invalidCurrentMainFile = mainFileOptions !== null && !mainFileOptions.includes(mainFile);
   const saveCompilerSettings = async () => {
     if (compilerSaveRef.current) return;
+    savedNotice.clear();
     const latexmkrc = files.length === 0 && project.latexmkrc && site.allowProjectLatexmkrc !== false
       ? project.latexmkrc
       : rcEnabled && site.allowProjectLatexmkrc !== false ? selectedRcPath || null : null;
@@ -127,7 +130,10 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     if (engine !== previous.engine) changes.engine = engine;
     if (latexmkrc !== previous.latexmkrc) changes.latexmkrc = latexmkrc;
     if (chktexEnabled !== previous.chktexEnabled) changes.chktexEnabled = chktexEnabled;
-    if (Object.keys(changes).length === 0) return;
+    if (Object.keys(changes).length === 0) {
+      savedNotice.show(t("common.noChangesToSave"));
+      return;
+    }
     const expectedSettings = Object.fromEntries(
       Object.keys(changes).map((field) => [field, previous[field as keyof typeof previous]])
     );
@@ -155,6 +161,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       setChktexEnabled(result.project.chktexEnabled);
       setRcEnabled(Boolean(result.project.latexmkrc));
       onProject(result.project);
+      savedNotice.show(t("common.saveSuccess"));
     } catch (requestError) {
       if (mountedRef.current) setError(errorMessage(requestError));
     } finally {
@@ -164,10 +171,21 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       }
     }
   };
-  const saveAppearanceSettings = () => onEditorPreferences(appearancePreferences);
+  const saveAppearanceSettings = () => {
+    savedNotice.clear(); setError("");
+    try {
+      onEditorPreferences(appearancePreferences);
+      savedNotice.show(t("common.saveSuccess"));
+    } catch { setError(t("projectSettings.appearanceSaveFailed")); }
+  };
+  const saveTerminalSettings = () => {
+    savedNotice.clear(); setError("");
+    if (saveTerminalPreferences(terminalDraft)) savedNotice.show(t("common.saveSuccess"));
+    else setError(t("projectSettings.appearanceSaveFailed"));
+  };
   const saveCurrentSettings = () => {
     if (settingsTab === "appearance") return saveAppearanceSettings();
-    if (settingsTab === "terminal") return saveTerminalPreferences(terminalDraft);
+    if (settingsTab === "terminal") return saveTerminalSettings();
     if (canManage) void saveCompilerSettings();
   };
   const headerSaveLabel = settingsTab === "appearance" ? t("projectSettings.saveAppearance")
@@ -192,7 +210,8 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       setDictionaryError("");
     } catch (requestError) { setDictionaryError(errorMessage(requestError)); }
   };
-  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <button type="button" className="drawer-settings-save" disabled={settingsTab === "compiler" && savingCompiler} aria-busy={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{settingsTab === "compiler" && savingCompiler ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}<span>{headerSaveLabel}</span></button>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div><div className="settings padded">
+  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <button type="button" className="drawer-settings-save" disabled={settingsTab === "compiler" && savingCompiler} aria-busy={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{settingsTab === "compiler" && savingCompiler ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}<span>{headerSaveLabel}</span></button>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div>
+    <SuccessNotice message={savedNotice.message} onDismiss={savedNotice.clear} /><div className="settings padded">
     {error && <p className="error">{error}</p>}
     <div className="settings-tabs" role="tablist" aria-label={t("common.settings")}>
       <button id="settings-tab-appearance" type="button" role="tab" aria-selected={settingsTab === "appearance"} aria-controls="settings-panel-appearance" className={`settings-tab${settingsTab === "appearance" ? " active" : ""}`} onClick={() => setSettingsTab("appearance")}>
@@ -249,7 +268,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       <div className="dictionary-words">{dictionaryWords.map((word) => <span className="dictionary-word" key={word}><code>{word}</code>{canManageDictionary && <button type="button" title={t("common.delete")} aria-label={`${t("common.delete")} ${word}`} onClick={() => void removeDictionaryWord(word)}><X size={13} /></button>}</span>)}{dictionaryWords.length === 0 && <span className="dictionary-empty">{t("projectSettings.dictionaryEmpty")}</span>}</div>
       <div className="settings-actions"><button className="settings-save" onClick={saveAppearanceSettings}><Save size={15} />{t("projectSettings.saveAppearance")}</button></div>
     </section> : settingsTab === "terminal"
-      ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={setTerminalDraft} onSave={() => saveTerminalPreferences(terminalDraft)} />
+      ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={setTerminalDraft} onSave={saveTerminalSettings} />
       : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
       <div className="settings-section-title"><Settings size={15} /><strong>{t("projectSettings.compilerTab")}</strong></div>
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>

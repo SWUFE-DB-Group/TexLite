@@ -1,5 +1,6 @@
 {
   "common": {
+    "saveSuccess": "Saved successfully.", "noChangesToSave": "No changes to save.",
     "cancel": "Cancel", "create": "Create", "add": "Add", "remove": "Remove", "delete": "Delete", "close": "Close",
     "user": "User", "permission": "Permission", "readOnly": "Read only", "readWrite": "Read & write", "settings": "Settings",
     "comments": "Comments", "files": "Files", "outline": "Outline", "version": "Version", "loading": "Loading…", "enabled": "Enabled",
@@ -377,6 +378,7 @@
     "removeDescription": "Remove {{username}}? Their account and other projects are unaffected.",
     "editorTab": "Editor appearance", "compilerTab": "LaTeX compiler", "compilerDescription": "Choose the main document and compiler options shared by everyone in this project.",
     "terminalTab": "Terminal appearance", "terminalDescription": "Stored in this browser and shared across projects. Does not affect editor appearance.", "terminalFont": "Terminal font", "fontSystem": "System monospace", "terminalPreview": "Terminal font preview", "saveTerminal": "Save terminal appearance",
+    "appearanceSaveFailed": "Could not save settings in this browser. Check browser storage permissions or available space, then try again.",
     "editorAppearance": "Editor appearance", "editorAppearanceDescription": "These preferences are private to this user and project on this browser. The project dictionary is shared.",
     "toolStatus": { "loading": "Loading", "working": "Working", "error": "Error" }, "reloadTool": "Reload",
     "saveAppearance": "Save appearance", "saveCompiler": "Save compiler settings",

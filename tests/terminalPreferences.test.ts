@@ -65,7 +65,7 @@ describe("browser-wide terminal preferences", () => {
     storage.getItem = () => { throw new Error("Storage disabled"); };
     storage.setItem = () => { throw new Error("Storage disabled"); };
     const store = await import("../src/client/terminalPreferences");
-    store.saveTerminalPreferences({ font: "source-code", fontSize: 18, lineHeight: 1 });
+    expect(store.saveTerminalPreferences({ font: "source-code", fontSize: 18, lineHeight: 1 })).toBe(false);
     expect(store.currentTerminalPreferences()).toEqual({ font: "source-code", fontSize: 18, lineHeight: 1 });
   });
 

@@ -53,12 +53,15 @@ export function currentTerminalPreferences(): TerminalPreferences {
   return current;
 }
 
-export function saveTerminalPreferences(value: TerminalPreferences): void {
+/** Apply immediately, returning whether the choice was durably saved in this browser. */
+export function saveTerminalPreferences(value: TerminalPreferences): boolean {
   currentTerminalPreferences();
   current = normalize(value);
-  try { window.localStorage.setItem(terminalPreferencesStorageKey, JSON.stringify(current)); }
+  let persisted = false;
+  try { window.localStorage.setItem(terminalPreferencesStorageKey, JSON.stringify(current)); persisted = true; }
   catch { /* Keep the current page usable when browser storage is unavailable. */ }
   notify();
+  return persisted;
 }
 
 function subscribe(listener: () => void): () => void {

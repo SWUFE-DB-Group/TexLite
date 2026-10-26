@@ -546,6 +546,12 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .layout-option small { color: var(--ui-muted, #748078); font-size: 10px; line-height: 1.35; white-space: normal; }
 .toast { position: fixed; z-index: 10; top: 66px; left: 50%; transform: translateX(-50%); background: #8f271f; color: white; padding: 9px 16px; border-radius: 7px; font-size: 13px; box-shadow: 0 8px 30px #0003; }
 .toast.success { background: #1d6b46; }
+.operation-success { flex: none; display: flex; align-items: center; gap: 7px; margin: 8px 0; padding: 7px 10px; border: 1px solid var(--ui-accent-border, #bddbc7); border-radius: 6px; background: var(--ui-accent-bg, #f0f8f2); color: var(--ui-accent, #187348); font-size: 12px; line-height: 1.4; }
+.operation-success > span { flex: 1; }
+.operation-success > svg { flex: none; }
+.operation-success > button[type="button"] { display: grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: inherit; cursor: pointer; }
+.operation-success > button:hover { background: var(--ui-hover, #dceee3); }
+.operation-success > button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
 .global-tooltip { position: fixed; z-index: 1500; width: max-content; max-width: min(320px, calc(100vw - 16px)); box-sizing: border-box; padding: 6px 8px; border: 1px solid #12241a; border-radius: 6px; transform: translate(-50%, -100%); background: #1c2d23; color: #fff; font: 500 11px/1.35 Inter, ui-sans-serif, system-ui, sans-serif; white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; box-shadow: 0 6px 18px #06180e40; }
 .work-grid { min-height: 0; flex: 1; background: var(--ui-surface, white); }
 .resize-handle { position: relative; width: 6px; flex: 0 0 6px; display: grid; place-items: center; background: var(--ui-subtle, #e4e7e4); color: var(--ui-muted, #98a09a); outline: none; transition: background .12s ease; }

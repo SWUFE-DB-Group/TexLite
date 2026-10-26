@@ -1,5 +1,7 @@
 {
   "common": {
+    "saveSuccess": "儲存成功。",
+    "noChangesToSave": "沒有需要儲存的變更。",
     "cancel": "取消",
     "create": "建立",
     "add": "新增",
@@ -1231,6 +1233,7 @@
     "fontSystem": "系統等寬字型",
     "terminalPreview": "終端機字型預覽",
     "saveTerminal": "儲存終端機外觀",
+    "appearanceSaveFailed": "無法在目前瀏覽器中儲存設定，請檢查瀏覽器儲存權限或可用空間後重試。",
     "compilerTab": "LaTeX 編譯器",
     "compilerDescription": "選擇本專案所有成員共用的主文件和 LaTeX 編譯選項。",
     "editorAppearance": "編輯器外觀",

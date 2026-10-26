@@ -1229,7 +1229,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     return () => window.removeEventListener("keydown", openNavigation, true);
   }, []);
   const updateEditorPreferences = (next: EditorPreferences) => {
-    setEditorPreferences(next); saveEditorPreferences(user.id, projectId, next);
+    saveEditorPreferences(user.id, projectId, next); setEditorPreferences(next);
   };
   const retryFormatter = (resetOptions = false): void => {
     const recovery = formatterRecovery;

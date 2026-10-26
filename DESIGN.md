@@ -1300,6 +1300,10 @@ a system-monospace fallback are available. Saving updates the current xterm
 instance and fits its row/column geometry without reconnecting or clearing
 output. Font loading completes before measuring the selected font, with stale
 loads and unmounted terminals ignored; failed web fonts use the fallback stack.
+Manual saves for editor/terminal/compiler settings, snapshot names and project
+tag edits show dismissible inline confirmation for two seconds. Unchanged
+compiler settings are reported separately; browser-storage failures show an
+error instead of claiming that local preferences were saved.
 
 `node-pty` loads dynamically and is an optional production dependency. xterm.js
 and its fit addon are build dependencies behind a lazy terminal boundary. Missing

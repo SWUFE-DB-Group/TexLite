@@ -5,6 +5,7 @@ import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import { TagColorSelect } from "../TagColorSelect";
+import { SuccessNotice, useSuccessNotice } from "../SuccessNotice";
 import type { ProjectTag, TagColor } from "../types";
 
 export interface ManagedProjectTag extends ProjectTag {
@@ -37,6 +38,7 @@ export function TagManagementDialog({
   const [tags, setTags] = useState<ManagedProjectTag[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const savedNotice = useSuccessNotice();
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState<TagColor>("blue");
   const [creating, setCreating] = useState(false);
@@ -53,6 +55,7 @@ export function TagManagementDialog({
     const controller = new AbortController();
     setLoading(true);
     setError("");
+    savedNotice.clear();
     api<{ tags: ManagedProjectTag[] }>("/api/tags/management", { signal: controller.signal })
       .then((result) => setTags(sortTags(result.tags)))
       .catch((requestError) => { if (!isAbortError(requestError)) setError(errorMessage(requestError)); })
@@ -64,6 +67,7 @@ export function TagManagementDialog({
     if (!newName.trim() || creating) return;
     setCreating(true);
     setError("");
+    savedNotice.clear();
     try {
       const result = await api<{ tag: ProjectTag }>("/api/tags", {
         method: "POST",
@@ -78,6 +82,7 @@ export function TagManagementDialog({
   };
 
   const beginEdit = (tag: ManagedProjectTag) => {
+    savedNotice.clear();
     setEditingId(tag.id);
     setEditingName(tag.name);
     setEditingColor(tag.color);
@@ -88,6 +93,7 @@ export function TagManagementDialog({
     if (!editingName.trim() || savingId) return;
     setSavingId(tag.id);
     setError("");
+    savedNotice.clear();
     try {
       const result = await api<{ tag: ProjectTag }>(`/api/tags/${tag.id}`, {
         method: "PATCH",
@@ -97,6 +103,7 @@ export function TagManagementDialog({
       setTags((current) => sortTags(current.map((item) => item.id === tag.id ? updated : item)));
       onTagUpdated(result.tag);
       setEditingId(null);
+      savedNotice.show(t("common.saveSuccess"));
     } catch (requestError) { setError(errorMessage(requestError)); }
     finally { setSavingId(null); }
   };
@@ -105,6 +112,7 @@ export function TagManagementDialog({
     if (!deleteTarget || deleting) return;
     setDeleting(true);
     setDeleteError("");
+    savedNotice.clear();
     try {
       await api<{ deletedId: string; projectCount: number }>(`/api/tags/${deleteTarget.id}`, { method: "DELETE" });
       setTags((current) => current.filter((tag) => tag.id !== deleteTarget.id));
@@ -136,6 +144,7 @@ export function TagManagementDialog({
     footer={<button onClick={() => close(false)} disabled={busy}>{t("common.close")}</button>}
   >
     <div className="tag-management">
+      <SuccessNotice message={savedNotice.message} onDismiss={savedNotice.clear} />
       {error && <p className="error dialog-error" role="alert">{error}</p>}
       <div className="tag-management-create">
         <label className="tag-management-field">
