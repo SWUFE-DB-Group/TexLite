@@ -5,6 +5,7 @@
 .agent-management button:hover:not(:disabled), .agent-terminal-panel button:hover:not(:disabled) { background: var(--ui-hover, #edf4ef); }
 .agent-management button:disabled, .agent-terminal-panel button:disabled { opacity: .45; cursor: default; }
 .agent-management button.primary, .agent-terminal-panel button.primary { background: var(--ui-accent, #176b44); color: var(--ui-surface, #fff); border-color: transparent; }
+.agent-management button.primary:hover:not(:disabled), .agent-terminal-panel button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-accent, #176b44), #000 12%); }
 .agent-management input:not([type="checkbox"]), .agent-management select, .agent-terminal-panel input:not([type="checkbox"]), .agent-terminal-panel select { min-width: 0; border: 1px solid var(--ui-border, #d4ddd7); border-radius: 6px; padding: 7px 9px; background: var(--ui-surface, #fff); color: var(--ui-text, #273a2f); font-size: 12px; }
 .agent-policy-card { padding: 20px; border: 1px solid var(--ui-border, #d8e1db); border-radius: 12px; background: var(--ui-surface, #fff); }
 .agent-policy-heading, .agent-policy-actions { display: flex; align-items: center; gap: 10px; }
