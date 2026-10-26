@@ -15,6 +15,7 @@ import type { User } from "../src/client/types";
 
 vi.mock("../src/client/api", () => ({ api: vi.fn() }));
 vi.mock("../src/client/agents/useAgentTasks", () => ({ useAgentTasks: vi.fn() }));
+vi.mock("../src/client/agents/AgentTerminalSurface", () => ({ AgentTerminalSurface: () => createElement("div", { "data-live-terminal": true }) }));
 vi.mock("react-i18next", async (importOriginal) => ({ ...await importOriginal<typeof import("react-i18next")>(), useTranslation: () => ({
   t: (key: string, options?: Record<string, unknown>) => {
     const text = key.startsWith("agents.") ? agentUiMessages["zh-Hant"][key.slice(7) as keyof typeof agentUiMessages.en] ?? key : key;
@@ -76,6 +77,41 @@ describe("coding agent management presentation", () => {
     for (const messages of Object.values(agentUiMessages)) {
       expect(messages.title).toBe("Coding Agent CLI");
       expect(messages.description).toContain("CLI");
+    }
+  });
+
+  it("visibly reminds active task owners to end execution without turning hide into stop", async () => {
+    const task: AgentTask = { id: "task", projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
+      agentId: "codex", title: "Revise abstract", state: "running", cleanupState: "none", errorCode: null,
+      createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt: "2026-10-25", endedAt: null, exitCode: null,
+      nativeSessionId: "native-conversation", canResume: true };
+    const onHide = vi.fn();
+    const acceptTask = vi.fn();
+    catalog.agents[0].enabled = true;
+    vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 20, total: 1, activeTaskId: task.id },
+      selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
+      refreshTasks: vi.fn(), acceptTask, mutate: async (operation) => operation() });
+    const render = () => act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide })));
+    await render();
+    const reminder = container.querySelector(".agent-execution-reminder");
+    expect(reminder?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
+    expect(reminder?.closest(".agent-terminal-body")).toBeNull();
+    expect(reminder?.hasAttribute("title")).toBe(false);
+
+    await act(async () => container.querySelector<HTMLButtonElement>(`[aria-label="${agentUiMessages["zh-Hant"].hide}"]`)!.click());
+    expect(onHide).toHaveBeenCalledOnce();
+    expect(api).not.toHaveBeenCalled();
+
+    const stopped = { ...task, state: "stopped" as const };
+    vi.mocked(api).mockResolvedValueOnce({ task: stopped });
+    const end = [...container.querySelectorAll<HTMLButtonElement>(".agent-task-toolbar button")].find((button) => button.textContent === agentUiMessages["zh-Hant"].end)!;
+    await act(async () => end.click());
+    expect(api).toHaveBeenCalledWith("/api/agent-tasks/task/stop", { method: "POST" });
+    expect(acceptTask).toHaveBeenCalledWith(stopped);
+    for (const state of ["stopping", "stopped", "starting"] as const) {
+      task.state = state;
+      await render();
+      expect(Boolean(container.querySelector(".agent-execution-reminder"))).toBe(state === "starting");
     }
   });
 

@@ -423,6 +423,10 @@ execute per project, across all users and agents (including different tasks of
 the same user). Other projects are independent. An execution retains the claim
 through startup, termination, and final file synchronization. Hiding a terminal or archiving a project
 does not release it. Stop the active task before starting another one.
+This is a source-consistency and attribution rule, not a CLI limitation or a
+provider quota control. Waiting for input still counts as an active execution;
+the terminal shows a reminder to use **End execution** when finished. Hiding the
+terminal is deliberately separate and keeps the task running.
 
 Pending collaboration edits are saved before launch. While the CLI runs, file
 changes are synchronized into Yjs, comment anchors, edit history and snapshots,

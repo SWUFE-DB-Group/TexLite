@@ -89,6 +89,7 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
             : <div className="agent-task-empty"><TerminalSquare size={24} /><strong>{task?.title || t("agents.noTasks")}</strong><p>{readOnly ? t("agents.permissionLost") : t("agents.readyHint")}</p>{task?.exitCode !== null && task?.exitCode !== undefined && task.exitCode !== 0 && <small>{t("agents.exitCode", { code: task.exitCode })}</small>}</div>}
       </Suspense>
     </div>
+    {running && task.state !== "stopping" && <p className="agent-execution-reminder">{t("agents.endReminder")}</p>}
     {task && <Modal open={deleteOpen} title={t("agents.delete")} description={t("agents.deleteDescription")} onOpenChange={(open) => { if (!tasks.busy) setDeleteOpen(open); }} footer={<><button disabled={tasks.busy} onClick={() => setDeleteOpen(false)}>{t("common.cancel")}</button><button className="danger" disabled={tasks.busy} onClick={() => void tasks.mutate(async () => {
       await api(`/api/agent-tasks/${task.id}`, { method: "DELETE" }); setDeleteOpen(false);
     })}>{tasks.busy && <LoaderCircle className="spin" size={13} />}{t("agents.delete")}</button></>}>

@@ -70,6 +70,7 @@
 .agent-xterm { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 7px 5px; }
 .agent-xterm .xterm { height: 100%; }
 .agent-terminal-status { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 10px; color: var(--ui-muted, #788178); font-size: 11px; }
+.agent-execution-reminder { flex: none; margin: 0; padding: 5px 10px; border-top: 1px solid var(--ui-border, #d8e1db); color: var(--ui-muted, #788178); font-size: 11px; line-height: 1.5; }
 .agent-task-empty { display: flex; min-height: 90px; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 28px 20px 36px; text-align: center; color: var(--ui-muted, #788178); }
 .agent-terminal-body .agent-task-empty { height: 100%; }
 .agent-task-empty strong { color: var(--ui-text, #273a2f); font-size: 13px; }
