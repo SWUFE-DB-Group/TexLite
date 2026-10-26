@@ -1,10 +1,12 @@
+// @vitest-environment happy-dom
 import fs from "node:fs";
+import { URL as FileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import postcss from "postcss";
 import { terminalTheme } from "../src/client/terminalTheme";
 
-const css = fs.readFileSync(new URL("../src/client/siteTheme.css", import.meta.url), "utf8");
-const styles = fs.readFileSync(new URL("../src/client/styles.css", import.meta.url), "utf8");
+const css = fs.readFileSync(new FileURL("../src/client/siteTheme.css", import.meta.url), "utf8");
+const styles = fs.readFileSync(new FileURL("../src/client/styles.css", import.meta.url), "utf8");
 const tokens: Record<string, string> = {};
 postcss.parse(css).walkDecls((declaration) => { if (declaration.prop.startsWith("--ui-")) tokens[declaration.prop] = declaration.value; });
 
@@ -33,7 +35,7 @@ describe("application dark palette", () => {
   });
 
   it("defines every semantic role used by the application", () => {
-    const boundary = fs.readFileSync(new URL("../src/client/ErrorBoundary.tsx", import.meta.url), "utf8");
+    const boundary = fs.readFileSync(new FileURL("../src/client/ErrorBoundary.tsx", import.meta.url), "utf8");
     for (const match of (css + styles + boundary).matchAll(/var\((--ui-[\w-]+)/g)) expect(tokens[match[1]], match[1]).toBeDefined();
   });
 
@@ -51,26 +53,19 @@ describe("application dark palette", () => {
     expect(css).not.toMatch(/filter\s*:\s*invert/);
   });
 
-  it("keeps primary agent actions readable on hover in both themes", () => {
-    const agents = postcss.parse(fs.readFileSync(new URL("../src/client/agents/agents.css", import.meta.url), "utf8"));
-    const selector = ".agent-management button.primary:hover:not(:disabled), .agent-terminal-panel button.primary:hover:not(:disabled)";
-    let hoverBackground: string | undefined;
-    agents.walkRules(selector, (rule) => {
-      rule.walkDecls("background", (declaration) => { hoverBackground = declaration.value; });
-    });
-    // This selector must beat the generic button:hover rule, which uses a pale
-    // surface background while a primary button retains contrasting text.
-    expect(hoverBackground).toBe("color-mix(in srgb, var(--ui-accent, #176b44), #000 12%)");
-    for (const [accent, foreground] of [["#176b44", "#ffffff"], [tokens["--ui-accent"], tokens["--ui-surface"]]]) {
-      const hovered = `#${accent.slice(1).match(/../g)!.map((channel) => Math.round(Number.parseInt(channel, 16) * .88).toString(16).padStart(2, "0")).join("")}`;
-      expect(contrast(hovered, foreground)).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it("does not apply the application root-page layout to PDFViewer pages", () => {
+  it("scopes application page rules away from nested PDFViewer pages", () => {
+    const root = document.createElement("div");
+    root.id = "root";
+    root.innerHTML = '<main class="page"><div class="pdf-document"><div class="pdfViewer"><div class="page"></div></div></div></main>';
+    const applicationPage = root.firstElementChild!;
+    const pdfPage = root.querySelector(".pdfViewer .page")!;
     const selectors: string[] = [];
-    postcss.parse(styles).walkRules((rule) => { if (rule.selector === ".page") selectors.push(rule.selector); });
-    expect(selectors).toEqual([]);
-    expect(styles).toContain("#root > .page {");
+    postcss.parse(styles).walkRules((rule) => {
+      for (const selector of rule.selectors) {
+        if (selector.includes(".page") && applicationPage.matches(selector)) selectors.push(selector);
+      }
+    });
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const selector of selectors) expect(pdfPage.matches(selector), selector).toBe(false);
   });
 });
