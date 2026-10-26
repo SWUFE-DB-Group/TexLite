@@ -17,8 +17,9 @@
 
 </div>
 
-![TexLite 工作区](preview-1.png)
-![TexLite 项目视图](preview-2.png)
+<p align="center">
+  <a href="https://github.com/SWUFE-DB-Group/TexLite/blob/main/demo.mp4">▶ 观看 TexLite 演示视频</a>
+</p>
 
 ## 为什么选择 TexLite
 

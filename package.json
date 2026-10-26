@@ -30,8 +30,6 @@
     "NPM_TESTING.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
-    "preview-1.png",
-    "preview-2.png",
     "texlite.config.example.json"
   ],
   "engines": {
