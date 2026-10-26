@@ -31,6 +31,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
+## Terminal color palettes
+
+The terminal presets in `src/client/terminalTheme.ts` adapt ANSI palette values from:
+
+- [Catppuccin Latte](https://github.com/catppuccin/windows-terminal/blob/main/latte.json),
+  copyright (c) 2021 Catppuccin, distributed under the MIT license.
+- [Gruvbox Dark](https://github.com/morhetz/gruvbox-contrib/blob/master/xresources/gruvbox-dark.xresources),
+  by morhetz, published as part of [Gruvbox](https://github.com/morhetz/gruvbox)
+  under MIT/X11.
+
+The MIT license terms reproduced above apply to these palette adaptations.
+
 ## xterm.js and node-pty
 
 The optional external-agent terminal bundles `@xterm/xterm` and `@xterm/addon-fit`

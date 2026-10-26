@@ -1395,20 +1395,29 @@ and full transcripts are not persisted by TexLite. Native CLI history can still
 exist in its task state. Raw terminal replay is a bounded recent stream, not a
 complete saved terminal screen; very long full-screen sessions may need a redraw.
 
-Terminal appearance is separate from editor appearance. Its font and size
+Terminal appearance is separate from editor appearance. Its font, size and theme
 are browser-local preferences shared across projects and scoped to the
 deployment base path, without user/database or CLI configuration changes. The
 default is JetBrains Mono at 13 px with fixed 1.2 line spacing; existing web fonts and
-a system-monospace fallback are available. Terminal output always uses a fixed,
-Catppuccin-inspired dark palette defined in `terminalTheme.ts`, independent of
-the app/system theme. xterm receives it at construction, before the CLI can query
+a system-monospace fallback are available. The original Catppuccin-inspired
+TexLite dark palette remains the default; Catppuccin Latte (light) and Gruvbox
+Dark are also bundled in `terminalTheme.ts`. Terminal color schemes and
+scrollbars follow the selected terminal palette, independently of the app/system
+theme. Existing preferences without a theme retain the original
+palette. xterm receives the selected palette at construction, before the CLI can query
 terminal colors. Padding, empty states and the font preview share the same
 palette; outer task controls still follow the application theme. Switching the
 app/system theme does not recolor, recreate or reconnect a running terminal.
+The palettes control xterm's default and ANSI colors; explicit true-color output
+and a coding agent's own application theme remain under that CLI's control.
+Latte uses xterm's minimum-contrast adjustment at 4.5 for readable terminal text;
+dark palettes retain xterm's default contrast behavior. Cursor, selection and
+preview accents are adapted for legibility on the pale Latte background.
 No Starship installation or host/agent configuration changes are required.
-Saving updates the current xterm
-instance and fits its row/column geometry without reconnecting or clearing
-output. Font loading completes before measuring the selected font, with stale
+Saving updates the current xterm palette immediately without reconnecting or
+clearing output. Theme-only changes do not reload fonts or resize the terminal;
+font changes fit its row/column geometry after loading. Font loading completes
+before measuring the selected font, with stale
 loads and unmounted terminals ignored; failed web fonts use the fallback stack.
 Previously stored terminal line-spacing choices are ignored and omitted on the
 next save; the editor's independent line-spacing setting is unchanged.

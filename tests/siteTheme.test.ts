@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { URL as FileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import postcss from "postcss";
-import { terminalTheme } from "../src/client/terminalTheme";
+import { terminalTheme, terminalThemes } from "../src/client/terminalTheme";
 
 const css = fs.readFileSync(new FileURL("../src/client/siteTheme.css", import.meta.url), "utf8");
 const styles = fs.readFileSync(new FileURL("../src/client/styles.css", import.meta.url), "utf8");
@@ -23,14 +23,22 @@ function contrast(first: string, second: string): number {
 }
 
 describe("application dark palette", () => {
-  it("keeps fixed terminal text, ANSI accents, cursor and selections readable", () => {
-    for (const role of ["foreground", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "brightBlack",
+  it("keeps the default terminal ANSI text and accents readable", () => {
+    for (const role of ["red", "green", "yellow", "blue", "magenta", "cyan", "white", "brightBlack",
       "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite"] as const) {
       expect(contrast(terminalTheme[role], terminalTheme.background), role).toBeGreaterThanOrEqual(4.5);
     }
-    expect(contrast(terminalTheme.cursor, terminalTheme.cursorAccent)).toBeGreaterThanOrEqual(4.5);
-    for (const background of [terminalTheme.selectionBackground, terminalTheme.selectionInactiveBackground]) {
-      expect(contrast(terminalTheme.selectionForeground, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each(Object.entries(terminalThemes))("keeps %s terminal text, selection, cursor and preview hints readable", (_id, { colors, muted, preview }) => {
+    expect(contrast(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.cursor, colors.cursorAccent)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(muted, colors.background)).toBeGreaterThanOrEqual(4.5);
+    for (const background of [colors.selectionBackground, colors.selectionInactiveBackground]) {
+      expect(contrast(colors.selectionForeground, background)).toBeGreaterThanOrEqual(4.5);
+    }
+    for (const [role, color] of Object.entries(preview)) {
+      expect(contrast(color, colors.background), role).toBeGreaterThanOrEqual(4.5);
     }
   });
 

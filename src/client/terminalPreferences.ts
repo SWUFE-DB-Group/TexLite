@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { scopedStorageKey } from "./basePath";
 import { editorFonts, type EditorFont } from "./editorPreferences";
+import { terminalThemes, type TerminalThemeId } from "./terminalTheme";
 
 export interface TerminalPreferences {
   font: EditorFont | "system";
   fontSize: number;
+  theme: TerminalThemeId;
 }
 
 export const terminalFonts = [
@@ -13,7 +15,7 @@ export const terminalFonts = [
 ];
 export const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18, 20];
 export const terminalLineHeight = 1.2;
-export const defaultTerminalPreferences: TerminalPreferences = { font: "jetbrains", fontSize: 13 };
+export const defaultTerminalPreferences: TerminalPreferences = { font: "jetbrains", fontSize: 13, theme: "default" };
 export const terminalPreferencesStorageKey = scopedStorageKey("texlite-terminal-preferences");
 
 export function terminalFontStack(font: TerminalPreferences["font"]): string {
@@ -24,7 +26,8 @@ function normalize(value: unknown): TerminalPreferences {
   const stored = value && typeof value === "object" ? value as Partial<TerminalPreferences> : {};
   return {
     font: terminalFonts.some((option) => option.id === stored.font) ? stored.font! : defaultTerminalPreferences.font,
-    fontSize: terminalFontSizes.includes(stored.fontSize!) ? stored.fontSize! : defaultTerminalPreferences.fontSize
+    fontSize: terminalFontSizes.includes(stored.fontSize!) ? stored.fontSize! : defaultTerminalPreferences.fontSize,
+    theme: typeof stored.theme === "string" && Object.hasOwn(terminalThemes, stored.theme) ? stored.theme : defaultTerminalPreferences.theme
   };
 }
 

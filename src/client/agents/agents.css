@@ -79,7 +79,7 @@
 .agent-select-check { display: flex; flex: none; margin-left: auto; color: var(--ui-accent, #176b44); }
 .agent-terminal-body { flex: 1; min-height: 0; overflow: hidden; background: var(--terminal-bg); color: var(--terminal-fg); }
 .agent-terminal-surface { height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--terminal-bg); color: var(--terminal-fg); }
-.agent-xterm { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 7px 5px; background: var(--terminal-bg); color-scheme: dark; }
+.agent-xterm { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 7px 5px; background: var(--terminal-bg); }
 .agent-xterm .xterm { height: 100%; }
 .agent-terminal-status { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 10px; background: var(--ui-surface, #fafbf9); color: var(--ui-muted, #788178); font-size: 11px; }
 .agent-execution-reminder { flex: none; margin: 0; padding: 5px 10px; border-top: 1px solid var(--ui-border, #d8e1db); color: var(--ui-muted, #788178); font-size: 11px; line-height: 1.5; }

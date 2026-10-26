@@ -1128,7 +1128,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .settings-tab:focus-visible { outline: 2px solid var(--ui-accent-border, #176b44); outline-offset: 1px; }
 .settings-actions { display: flex; width: 100%; justify-content: flex-end; padding-top: 2px; }
 .settings-section-title { display: flex; align-items: center; gap: 7px; color: var(--ui-accent, #31523e); font-size: 13px; }
-.terminal-appearance-preview { margin: 0; padding: 16px; overflow-x: auto; border: 1px solid var(--terminal-border); border-radius: 8px; background: var(--terminal-bg); color: var(--terminal-fg); color-scheme: dark; }
+.terminal-appearance-preview { margin: 0; padding: 16px; overflow-x: auto; border: 1px solid var(--terminal-border); border-radius: 8px; background: var(--terminal-bg); color: var(--terminal-fg); }
 .terminal-preview-prompt { color: var(--terminal-green); }
 .terminal-preview-directory { color: var(--terminal-blue); }
 .terminal-preview-branch { color: var(--terminal-purple); }
