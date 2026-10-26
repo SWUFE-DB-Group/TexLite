@@ -1310,6 +1310,11 @@ Explicit termination releases the owned process
 group, including children, while retaining context. Explicit deletion also
 removes only task state, never project files. Cleanup failure preserves its record
 for retry; an unverified native operation is never represented as successful.
+Windows termination treats an OS-confirmed missing process as already stopped,
+including the race with natural exit; command failures and permission errors
+alone are not proof of termination. Graceful shutdown awaits every task's stop
+and final source synchronization before aggregating failures, so one failed
+task cannot make database shutdown overtake another task's final writes.
 Deleting a project/account stops affected executions and attempts scoped
 cleanup; orphaned tasks keep ownership labels and cleanup locators independently
 of the deleted rows, so administrators can resolve failures. Operation records

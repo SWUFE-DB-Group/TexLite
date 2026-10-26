@@ -308,7 +308,11 @@ export class AgentService {
   async dispose(): Promise<void> {
     this.closing = true;
     await Promise.allSettled([...this.operations.values()]);
-    await Promise.all([...this.executions.keys()].map((id) => this.stop(id)));
+    // A failed stop must not let app.close() close the database while other
+    // executions are still flushing their last source/history changes.
+    const results = await Promise.allSettled([...this.executions.keys()].map((id) => this.stop(id)));
+    const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (errors.length) throw new AggregateError(errors, "Failed to stop all coding agent tasks");
   }
 
   private async captureContext(id: string, afterExit = false): Promise<NativeSessionInspection> {

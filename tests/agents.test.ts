@@ -223,6 +223,72 @@ describe("external agent tasks", () => {
     await service.start(b.id, editor);
   });
 
+  it("waits for other tasks and their last writes before reporting a shutdown failure", async () => {
+    const a = await create();
+    const b = await service.create(anotherProject(), editor, "claude", "Other paper");
+    await service.dispose();
+    const failure = new Error("Cannot stop the first process group");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const stop = vi.fn(async (process: AgentPty) => {
+      if (process === processes[0]) throw failure;
+      await gate;
+      fs.writeFileSync(workingFile(b, "last.txt"), "Final agent write during shutdown");
+      (process as FakePty).end();
+    });
+    service = new AgentService({ config, db, collaboration, projectMutations: coordinator, recordHistory,
+      recordEdits: (id, edits) => new ProjectEditHistoryService(db).record(id, edits) },
+    { registry, loadPty: async () => spawn, stopPty: stop });
+    await Promise.all([service.start(a.id, owner), service.start(b.id, editor)]);
+    let settled = false;
+    const disposing = service.dispose().then(() => { settled = true; return null; }, (error: unknown) => { settled = true; return error; });
+    try {
+      await vi.waitFor(() => {
+        expect(stop).toHaveBeenCalledTimes(2);
+        expect(service.task(a.id, owner)).toMatchObject({ state: "stopping", errorCode: "AGENT_STOP_FAILED" });
+      });
+      expect(settled).toBe(false);
+      release();
+      const result = await disposing;
+      expect(result).toBeInstanceOf(AggregateError);
+      expect((result as AggregateError).errors).toEqual([failure]);
+      expect(service.task(b.id, editor)).toMatchObject({ state: "stopped", errorCode: null });
+      expect(recordHistory).toHaveBeenCalledWith(b.projectId, editor.id, "file", ["last.txt"]);
+      expect(service.list(editor, false, { project: b.projectId }).activeTaskId).toBeNull();
+      expect(service.list(owner, false, { project: a.projectId }).activeTaskId).toBe(a.id);
+      expect(fs.existsSync(agentTaskRoot(config, a.id))).toBe(true);
+    } finally {
+      release();
+      await disposing;
+      stop.mockImplementation(async (process) => { (process as FakePty).end(); });
+    }
+    // A failed task remains stoppable even after shutdown has been requested.
+    await service.dispose();
+    expect(service.task(a.id, owner).state).toBe("stopped");
+  });
+
+  it("reports every failed task stop and preserves their records for retry", async () => {
+    const a = await create();
+    const b = await service.create(anotherProject(), editor, "claude", "Other paper");
+    await service.dispose();
+    const failures = [new Error("First group failed"), new Error("Second group failed")];
+    const stop = vi.fn<(process: AgentPty) => Promise<void>>(async (process) => { throw failures[processes.indexOf(process as FakePty)]; });
+    service = new AgentService({ config, db, collaboration, projectMutations: coordinator, recordHistory, recordEdits: () => undefined },
+      { registry, loadPty: async () => spawn, stopPty: stop });
+    await Promise.all([service.start(a.id, owner), service.start(b.id, editor)]);
+    try {
+      await expect(service.dispose()).rejects.toMatchObject({ errors: failures });
+      expect(stop).toHaveBeenCalledTimes(2);
+      for (const task of [a, b]) expect(service.task(task.id, admin, true)).toMatchObject({
+        state: "stopping", errorCode: "AGENT_STOP_FAILED", cleanupState: "none"
+      });
+    } finally {
+      stop.mockImplementation(async (process) => { (process as FakePty).end(); });
+    }
+    await service.dispose();
+    expect(service.list(admin, true, { state: "running" }).total).toBe(0);
+  });
+
   it("keeps processes across disconnect/project archive and stops without deleting context", async () => {
     const task = await create(); await service.start(task.id, owner);
     const socket = new FakeSocket(); service.attach(task.id, owner, socket.ws, () => true);

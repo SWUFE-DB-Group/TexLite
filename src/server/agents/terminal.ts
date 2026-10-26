@@ -42,7 +42,16 @@ export function windowsAgentCommand(executable: string, args: string[]): { execu
 /** Only accepts the live PTY handle owned by this server, never a stored PID. */
 export async function stopAgentPty(pty: AgentPty): Promise<void> {
   if (process.platform === "win32") {
-    await promisify(execFile)("taskkill", ["/pid", String(pty.pid), "/T", "/F"], { windowsHide: true });
+    // Natural exit (or another stop) may have already removed the process.
+    // Do not interpret localized taskkill output/exit codes as proof of this:
+    // access denied and a genuinely failed tree termination must stay retryable.
+    if (processHasExited(pty.pid)) return;
+    try {
+      await promisify(execFile)("taskkill", ["/pid", String(pty.pid), "/T", "/F"], { windowsHide: true });
+    } catch (error) {
+      // The parent can exit between the initial probe and taskkill.
+      if (!processHasExited(pty.pid)) throw error;
+    }
     return;
   }
   try { process.kill(-pty.pid, "SIGTERM"); }
@@ -54,4 +63,10 @@ export async function stopAgentPty(pty: AgentPty): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 500));
   try { process.kill(-pty.pid, "SIGKILL"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+}
+
+function processHasExited(pid: number): boolean {
+  try { process.kill(pid, 0); }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH"; }
+  return false;
 }
