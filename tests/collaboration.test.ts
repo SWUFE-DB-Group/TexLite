@@ -497,11 +497,9 @@ describe("project collaboration", () => {
     });
     const projectId = created.json().project.id as string;
     const epochs: string[] = [];
-    let socket: WebSocket | null = null;
     const closed = new Promise<number>((resolve) => {
       void app.injectWS(`/api/collaboration/${projectId}`, { headers: { cookie: adminCookie } }, {
         onInit: (createdSocket) => {
-          socket = createdSocket;
           createdSocket.binaryType = "arraybuffer";
           createdSocket.on("message", (data) => {
             const decoder = decoding.createDecoder(rawData(data));

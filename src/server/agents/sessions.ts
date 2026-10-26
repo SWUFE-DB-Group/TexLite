@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomInt, randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import type { AgentCatalog, AgentId, AgentPolicy, AgentTask, AgentTaskPage, AgentServerMessage } from "../../shared/agentProtocol.js";
-import { AGENT_IDS, parseAgentClientMessage } from "../../shared/agentProtocol.js";
+import { parseAgentClientMessage } from "../../shared/agentProtocol.js";
 import type { DatabaseConnection, UserRow } from "../db.js";
 import { httpError } from "../http.js";
 import { accessibleProject, canEdit } from "../projects.js";

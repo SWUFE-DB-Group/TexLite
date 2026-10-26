@@ -2356,6 +2356,7 @@ Second version.
       method: "POST", url: "/api/admin/users", headers: { cookie },
       payload: { username, displayName: "Private Owner", password: "owner-password", canCreateProjects: true }
     });
+    expect(createdUser.statusCode).toBe(201);
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "owner-password" } });
     const ownerCookie = sessionCookie(login.headers);
     const created = await app.inject({

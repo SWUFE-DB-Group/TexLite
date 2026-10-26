@@ -73,7 +73,7 @@ function completionFromItem(entry: LatexCompletionItem, t: TFunction, useSnippet
   const argumentDetail = entry.detail.match(/^Project command \((\d+) arguments?\)$/);
   const detail = entry.source === "LaTeX" ? "" : argumentDetail
     ? t("completions.projectCommandArgs", { count: Number(argumentDetail[1]) })
-    : detailKey ? t(`completions.${detailKey}`) : entry.source === "LaTeX" ? t("completions.standard") : entry.detail;
+    : detailKey ? t(`completions.${detailKey}`) : entry.detail;
   const source = entry.source === "LaTeX" ? "" : sourceKey ? t(`completions.${sourceKey}`) : entry.source;
   const completionDetail = source && detail ? `${detail} · ${source}` : detail || source || undefined;
   const completion: Completion = {
