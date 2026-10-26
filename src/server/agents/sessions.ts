@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import type { AgentCatalog, AgentId, AgentPolicy, AgentTask, AgentTaskPage, AgentServerMessage } from "../../shared/agentProtocol.js";
 import { AGENT_IDS, parseAgentClientMessage } from "../../shared/agentProtocol.js";
@@ -12,6 +12,7 @@ import { AgentRegistry } from "./registry.js";
 import { agentTaskRoot, AgentSourceSync, ensureAgentInstructions, writeAgentProjectContext, type AgentWorkspaceContext } from "./workspaces.js";
 import { sourceRoot } from "../files.js";
 import { loadAgentPty, stopAgentPty, type AgentPty, type AgentPtyFactory } from "./terminal.js";
+import type { NativeSessionInspection } from "./adapters/types.js";
 
 interface TaskRow {
   id: string; project_id: string; user_id: string; project_name: string; user_name: string;
@@ -37,6 +38,10 @@ export interface AgentServiceOptions {
   onError?: (error: unknown) => void;
 }
 const now = () => new Date().toISOString();
+const taskNameCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-";
+function randomTaskName(): string {
+  return Array.from({ length: 6 }, () => taskNameCharacters[randomInt(taskNameCharacters.length)]).join("");
+}
 
 /** Owns tasks and executions, not provider quotas or per-user runtime limits. */
 export class AgentService {
@@ -103,7 +108,7 @@ export class AgentService {
     });
   }
 
-  async create(projectId: string, user: UserRow, agentId: AgentId, title: string): Promise<AgentTask> {
+  async create(projectId: string, user: UserRow, agentId: AgentId, title?: string): Promise<AgentTask> {
     this.requireEnabled(agentId);
     const project = requireEditableProject(this.db, projectId, user);
     if (!(await this.registry.detect(agentId)).executable) throw httpError(409, "AGENT_UNAVAILABLE");
@@ -113,7 +118,7 @@ export class AgentService {
     this.db.prepare(`INSERT INTO agent_tasks
       (id, project_id, user_id, project_name, user_name, agent_id, title, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(id, projectId, user.id, project.name, user.display_name, agentId, title, timestamp, timestamp);
+      .run(id, projectId, user.id, project.name, user.display_name, agentId, title?.trim() || randomTaskName(), timestamp, timestamp);
     try {
       await fs.promises.mkdir(path.join(agentTaskRoot(this.context.config, id), "state"), { recursive: true, mode: 0o700 });
       requireEditableProject(this.db, projectId, user);
@@ -152,15 +157,18 @@ export class AgentService {
       };
       let source: AgentSourceSync | undefined;
       try {
-        // A task owns one native conversation. Only never-started tasks may
-        // create it; subsequent launches must resume that exact conversation.
-        const resume = Boolean(row.ever_started || row.native_session_id);
-        if (resume && !row.native_session_id) { await this.captureContext(id); row = this.owned(id, user); }
+        // Starting a CLI is not the same as creating its first conversation.
+        // A verified empty native store may be launched again in the same task;
+        // a known conversation is always resumed, never silently replaced.
+        let native: NativeSessionInspection | undefined;
+        if (row.ever_started && !row.native_session_id) { native = await this.captureContext(id); row = this.owned(id, user); }
+        const resume = Boolean(row.native_session_id);
         const adapter = this.registry.adapter(row.agent_id);
         const root = agentTaskRoot(this.context.config, id);
         const context = await this.registry.context(row.agent_id, id, root, row.native_session_id, sourceRoot(this.context.config, row.project_id));
         if (!context.executable) throw httpError(409, "AGENT_UNAVAILABLE");
-        if (resume && (!row.native_session_id || !adapter.supportsResume)) throw httpError(409, "AGENT_NO_CONTEXT");
+        if (!resume && row.ever_started && native?.status !== "empty") throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
+        if (resume && !adapter.supportsResume) throw httpError(409, "AGENT_NO_CONTEXT");
         const spawn = await (this.options.loadPty ?? loadAgentPty)();
         if (!spawn) throw httpError(409, "AGENT_PTY_UNAVAILABLE");
         await fs.promises.mkdir(context.stateDirectory, { recursive: true, mode: 0o700 });
@@ -303,12 +311,14 @@ export class AgentService {
     await Promise.all([...this.executions.keys()].map((id) => this.stop(id)));
   }
 
-  private async captureContext(id: string, afterExit = false): Promise<void> {
+  private async captureContext(id: string, afterExit = false): Promise<NativeSessionInspection> {
     const row = this.row(id);
-    if (!row || !row.ever_started || row.native_session_id || (!afterExit && this.executions.has(id))) return;
+    if (row?.native_session_id) return { status: "found", id: row.native_session_id };
+    if (!row || !row.ever_started || (!afterExit && this.executions.has(id))) return { status: "unknown" };
     const context = await this.registry.context(row.agent_id, id, agentTaskRoot(this.context.config, id), null, sourceRoot(this.context.config, row.project_id));
-    const nativeId = await this.registry.adapter(row.agent_id).findNativeSession(context);
-    if (nativeId) this.db.prepare("UPDATE agent_tasks SET native_session_id = ? WHERE id = ?").run(nativeId, id);
+    const native = await this.registry.adapter(row.agent_id).findNativeSession(context);
+    if (native.status === "found") this.db.prepare("UPDATE agent_tasks SET native_session_id = ? WHERE id = ?").run(native.id, id);
+    return native;
   }
 
   private async stopExecution(id: string): Promise<void> {
@@ -398,7 +408,7 @@ export class AgentService {
       agentId: row.agent_id, title: row.title, state: row.state, cleanupState: row.cleanup_state,
       errorCode: row.error_code, createdAt: row.created_at, updatedAt: row.updated_at, startedAt: row.started_at,
       endedAt: row.ended_at, exitCode: row.exit_code, nativeSessionId: row.native_session_id,
-      canResume: Boolean((row.native_session_id || row.ever_started) && this.registry.adapter(row.agent_id).supportsResume) };
+      canResume: Boolean(row.native_session_id && this.registry.adapter(row.agent_id).supportsResume) };
   }
   private async withTask<T>(id: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.operations.get(id) ?? Promise.resolve();

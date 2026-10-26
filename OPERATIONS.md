@@ -401,7 +401,10 @@ administrative access does not grant access to other users' terminal streams or
 private project files. Other users get a personal task list from **Agent tasks**.
 
 Users with project write access can open **Terminal** in the workspace toolbar.
-Create a named task, select an allowed installed agent, then explicitly start it.
+Select an allowed installed agent and click **Start task** to create and launch
+it in one action. The task name is optional; an omitted name receives six random
+characters from uppercase/lowercase ASCII letters, digits and `-`. If launch
+fails, the same task stays selected for retry.
 Multiple tasks may use the same agent in the same project. The resizable terminal
 sits below the editor. Browser tabs attach to the same running task; one tab
 controls input, and another can take control. Hiding the panel, leaving a project,
@@ -443,18 +446,40 @@ only task-owned state, never project files. A failed cleanup stays visible
 for retry. Apart from the per-project writer claim, there are no execution-count limits, idle expiry, task timeouts, token
 budgets, or billing controls. A server restart interrupts executions; it does not
 automatically restart them. Exact-context continuation depends on the adapter
-being able to identify a saved native session. A task starts a new conversation
-only on its first launch; later launches resume that conversation. If it cannot
-be identified or resumed, use **+** to create a separate task instead. Existing
-task state is never reset to start another conversation.
+being able to identify a saved native session. Starting a CLI without sending a
+message may leave no conversation to resume. If the adapter confirms that its
+task context has no conversation and no session ID has been saved, the same task can be
+started again. Failed or ambiguous checks require a retry, not an automatic
+new conversation. Once a native session ID is saved, later launches resume that
+exact conversation; a failure never resets its state. Use **+** for a separate
+conversation instead.
 
 | Agent | Native state and continuation | Cleanup |
 | --- | --- | --- |
 | Codex | Task-specific `CODEX_HOME`; resume an identified transcript UUID. Use `--no-daemon` when advertised by the installed CLI. | Prefer detected native `delete --force`; remove the task-owned state directory afterward. |
-| OpenCode | Task-specific XDG data/state/cache and database; resume an ID reported by JSON session listing. | Native session deletion where identifiable, followed by removal of task-owned state. |
+| OpenCode | New V2 tasks share the host database, sign-ins and native history. Bind a separate session ID per task and use `--standalone` to own the execution process tree. Existing private conversations keep their original state. | Delete only the task's registered native session, verify deletion, then remove its task directory. Never remove the shared database or host credentials. |
 | Claude Code | Task-specific `CLAUDE_CONFIG_DIR`; start with a task UUID and resume its matching saved transcript. | Remove task-owned state without touching the host's other conversations. |
 
-On the first start, isolated adapters copy selected host credential/configuration
+All agents inherit the TexLite service account's `XDG_CACHE_HOME`. If unset,
+the CLI uses its own default cache location. This lets model catalogs and
+downloaded dependencies be reused without merging task conversations. It does
+not share the mixed state/cache files inside task-specific native homes.
+Different projects and native terminals may use the cache concurrently; clearing
+or updating shared caches can affect all of them. Task deletion never clears the
+host cache. Existing per-task cache directories are left untouched on startup
+and are removed with their task on deletion. No new cache configuration is needed.
+
+OpenCode 2 resolves the host database using `opencode debug paths db`, including
+custom `OPENCODE_DB` settings. Its path and a task-specific session ID are recorded
+in `agent-tasks/<task-id>/state/opencode-session.json`; no database migration or
+credential copying is needed. An older task with an empty private database moves
+to this layout on its next start. An existing private conversation is kept in
+place to avoid losing history; use `/connect` there if needed, or create a new
+task to use shared host authentication. TexLite's task pages/API show and manage
+only its own registered tasks. OpenCode's native history picker inside the
+terminal can also show host conversations; those are not imported into TexLite.
+
+On the first start, Codex, Claude and legacy isolated OpenCode tasks copy selected host credential/configuration
 files if available; they do not copy host conversation history. Credentials
 subsequently refreshed within a task are preserved. Keychain/credential formats
 vary by CLI version, so an individual task may require login. Provider environment

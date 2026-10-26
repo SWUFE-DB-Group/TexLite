@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { agentLaunch, copyAgentSetting, executeAgentCommand, transcriptIds } from "./common.js";
+import { agentLaunch, copyAgentSetting, executeAgentCommand, inspectTranscriptSession, transcriptIds } from "./common.js";
 import type { AgentAdapter } from "./types.js";
 
 export const codexAdapter: AgentAdapter = {
@@ -31,8 +31,7 @@ export const codexAdapter: AgentAdapter = {
     return { ...launch, args: ["resume", context.nativeSessionId, ...launch.args] };
   },
   async findNativeSession(context) {
-    const ids = await transcriptIds(path.join(context.stateDirectory, "codex", "sessions"));
-    return ids.size === 1 ? [...ids][0] : null;
+    return inspectTranscriptSession(path.join(context.stateDirectory, "codex"), ["sessions", "archived_sessions"]);
   },
   async cleanup(context) {
     if (context.nativeSessionId && context.executable && context.features.has("delete-force")) {

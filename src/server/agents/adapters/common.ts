@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { AgentAdapterContext, AgentLaunch } from "./types.js";
+import type { AgentAdapterContext, AgentLaunch, NativeSessionInspection } from "./types.js";
 
 export const executeAgentCommand = promisify(execFile);
 export const noAgentFeatures = async (): Promise<ReadonlySet<string>> => new Set();
@@ -16,6 +16,8 @@ export function hostAgentEnvironment(): Record<string, string> {
 }
 
 export function agentLaunch(context: AgentAdapterContext, args: string[], overrides: Record<string, string> = {}): AgentLaunch {
+  // Inherit host cache settings for reuse across tasks and native terminals.
+  // Adapters define native state/session ownership independently of caching.
   return { executable: context.executable, args, env: { ...hostAgentEnvironment(),
     // Development data may itself live below the TexLite checkout. Keep Git
     // discovery from treating that ancestor repository as the paper's repo.
@@ -51,4 +53,18 @@ export async function transcriptIds(root: string): Promise<Set<string>> {
   };
   await visit(root);
   return ids;
+}
+
+/** Inspect only this task's CLI home; missing/unreadable homes are not proof of an unused conversation. */
+export async function inspectTranscriptSession(root: string, directories: readonly string[], expectedId?: string): Promise<NativeSessionInspection> {
+  try {
+    if (!(await fs.promises.lstat(root)).isDirectory()) return { status: "unknown" };
+    const ids = new Set<string>();
+    for (const directory of directories) {
+      for (const id of await transcriptIds(path.join(root, directory))) ids.add(id);
+    }
+    if (ids.size === 0) return { status: "empty" };
+    if (expectedId) return ids.has(expectedId) ? { status: "found", id: expectedId } : { status: "unknown" };
+    return ids.size === 1 ? { status: "found", id: [...ids][0] } : { status: "unknown" };
+  } catch { return { status: "unknown" }; }
 }

@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { agentLaunch, copyAgentSetting, noAgentFeatures, transcriptIds } from "./common.js";
+import { agentLaunch, copyAgentSetting, inspectTranscriptSession, noAgentFeatures } from "./common.js";
 import type { AgentAdapter } from "./types.js";
 
 export const claudeAdapter: AgentAdapter = {
@@ -15,8 +15,7 @@ export const claudeAdapter: AgentAdapter = {
   start(context) { return agentLaunch(context, ["--session-id", context.taskId], { CLAUDE_CONFIG_DIR: path.join(context.stateDirectory, "claude") }); },
   resume(context) { return { ...this.start(context), args: ["--resume", context.nativeSessionId] }; },
   async findNativeSession(context) {
-    const ids = await transcriptIds(path.join(context.stateDirectory, "claude", "projects"));
-    return ids.has(context.taskId) ? context.taskId : null;
+    return inspectTranscriptSession(path.join(context.stateDirectory, "claude"), ["projects"], context.taskId);
   },
   async cleanup() { /* Native state is confined to the task-owned directory. */ }
 };

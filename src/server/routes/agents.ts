@@ -6,8 +6,9 @@ import { apiError, httpError } from "../http.js";
 import { isAgentId } from "../../shared/agentProtocol.js";
 import { digestToken } from "../security.js";
 
-function title(value: unknown): string {
-  if (typeof value !== "string" || !value.trim() || value.length > 160) throw httpError(400, "REQUEST_INVALID");
+function title(value: unknown, optional = false): string {
+  if (optional && value === undefined) return "";
+  if (typeof value !== "string" || (!optional && !value.trim()) || value.length > 160) throw httpError(400, "REQUEST_INVALID");
   return value.trim();
 }
 
@@ -77,7 +78,7 @@ export function registerAgentRoutes(app: FastifyInstance, { db, agents }: { db: 
     if (!user) return;
     const body = request.body as { agentId?: unknown; title?: unknown } | null;
     if (!isAgentId(body?.agentId)) return apiError(reply, 400, "REQUEST_INVALID");
-    const task = await agents.create((request.params as { id: string }).id, user, body.agentId, title(body.title));
+    const task = await agents.create((request.params as { id: string }).id, user, body.agentId, title(body.title, true));
     return reply.code(201).send({ task });
   });
   app.get("/api/agent-tasks/:taskId", async (request, reply) => {

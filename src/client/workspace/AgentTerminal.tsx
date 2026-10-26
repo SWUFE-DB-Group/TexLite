@@ -26,6 +26,7 @@ export function AgentTerminal({ projectId, readOnly, onHide }: { projectId: stri
   const enabledAgents = tasks.catalog?.agents.filter((agent) => agent.installed && agent.enabled) ?? [];
   const creationAgent = agentId ? tasks.catalog?.agents.find((agent) => agent.id === agentId) : enabledAgents[0];
   const projectBusy = Boolean(tasks.result.activeTaskId && tasks.result.activeTaskId !== task?.id);
+  const cannotCreate = readOnly || tasks.busy || Boolean(tasks.result.activeTaskId) || !tasks.catalog?.ptyAvailable || !creationAgent?.installed || !creationAgent.enabled;
   const available = !projectBusy && !readOnly && activeAgent?.installed && activeAgent.enabled && tasks.catalog?.ptyAvailable && task?.cleanupState === "none";
   const choose = (id: string) => { tasks.setSelectedId(id); setRenaming(false); };
   const act = (suffix: string) => tasks.mutate(async () => {
@@ -55,24 +56,29 @@ export function AgentTerminal({ projectId, readOnly, onHide }: { projectId: stri
     </div>}
     {(creating || !task) && <form className="agent-task-create" onSubmit={(event) => {
       event.preventDefault();
+      if (cannotCreate) return;
       void tasks.mutate(async () => {
         const selectedAgent = creationAgent?.id;
         const response = await api<{ task: AgentTask }>(`/api/projects/${projectId}/agent-tasks`, { method: "POST", body: JSON.stringify({ agentId: selectedAgent, title }) });
+        // Keep the created task selected if launch fails so retry never creates
+        // a duplicate task or loses its generated name and state directory.
         tasks.acceptTask(response.task); tasks.setPage(1); tasks.setSelectedId(response.task.id); setCreating(false); setTitle("");
+        const started = await api<{ task: AgentTask }>(`/api/agent-tasks/${response.task.id}/start`, { method: "POST" });
+        tasks.acceptTask(started.task);
       });
     }}>
-      <input aria-label={t("agents.task")} placeholder={t("agents.titlePlaceholder")} maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} required disabled={tasks.busy || readOnly} />
+      <input aria-label={t("agents.task")} placeholder={t("agents.titlePlaceholder")} maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} disabled={tasks.busy || readOnly} />
       <select aria-label={t("agents.agent")} value={creationAgent?.id || ""} onChange={(event) => setAgentId(event.target.value)}>
         <option value="" disabled>{t("agents.agent")}</option>{tasks.catalog?.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={!agent.installed || !agent.enabled}>{agent.label}{!agent.installed ? ` · ${t("agents.notInstalled")}` : !agent.enabled ? ` · ${t("agents.disabled")}` : ""}</option>)}
       </select>
-      <button type="submit" disabled={tasks.busy || readOnly || !title.trim() || !creationAgent?.installed || !creationAgent.enabled}>{t("agents.create")}</button>
+      <button type="submit" disabled={cannotCreate}>{tasks.busy && <LoaderCircle className="spin" size={13} />}{t("agents.create")}</button>
     </form>}
     {renaming && task && <form className="agent-task-create" onSubmit={(event) => { event.preventDefault(); void tasks.mutate(async () => {
       const result = await api<{ task: AgentTask }>(`/api/agent-tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ title: renameTitle }) }); tasks.acceptTask(result.task); setRenaming(false);
     }); }}><input value={renameTitle} onChange={(event) => setRenameTitle(event.target.value)} required maxLength={160} aria-label={t("agents.task")} /><button disabled={tasks.busy}>{t("common.save")}</button></form>}
     {tasks.error && !deleteOpen && <p className="error agent-inline-error" role="alert">{tasks.error}<button onClick={() => tasks.setError("")} aria-label={t("common.close")}><X size={13} /></button></p>}
     {task?.errorCode && !tasks.error && !deleteOpen && <p className="error agent-inline-error" role="alert">{t(`errors.codes.${task.errorCode}`, { defaultValue: t("agents.taskUnavailable") })}</p>}
-    {projectBusy && <p className="agent-inline-warning" role="status"><TriangleAlert size={14} aria-hidden="true" /><span>{t("errors.codes.AGENT_PROJECT_BUSY")}</span></p>}
+    {(projectBusy || (creating && tasks.result.activeTaskId)) && <p className="agent-inline-warning" role="status"><TriangleAlert size={14} aria-hidden="true" /><span>{t("errors.codes.AGENT_PROJECT_BUSY")}</span></p>}
     {tasks.catalog && !tasks.catalog.ptyAvailable && <p className="error agent-inline-error">{t("agents.ptyUnavailable")}</p>}
     <div className="agent-terminal-body">
       <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}>

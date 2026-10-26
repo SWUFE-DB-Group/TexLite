@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { EventEmitter } from "node:events";
 import { Socket } from "node:net";
 import { randomUUID } from "node:crypto";
@@ -9,6 +10,7 @@ import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentService } from "../src/server/agents/sessions.js";
 import { AgentRegistry } from "../src/server/agents/registry.js";
+import { opencodeAdapter } from "../src/server/agents/adapters/opencode.js";
 import type { AgentAdapter } from "../src/server/agents/adapters/types.js";
 import { AGENT_IDS, AGENT_LABELS, agentInputChunks, parseAgentClientMessage, type AgentId, type AgentTask, type AgentServerMessage } from "../src/shared/agentProtocol.js";
 import { agentMessages } from "../src/shared/agentMessages.js";
@@ -90,7 +92,7 @@ beforeEach(() => {
     discoverFeatures: async () => new Set<string>(), prepare: vi.fn(async () => undefined),
     start: (context) => ({ executable: context.executable, args: [], env: {} }),
     resume: (context) => ({ executable: context.executable, args: ["resume", context.nativeSessionId], env: {} }),
-    findNativeSession: async (context) => context.taskId,
+    findNativeSession: async (context) => ({ status: "found", id: context.taskId }),
     cleanup: vi.fn(async () => undefined) }));
   registry = new AgentRegistry(() => process.execPath, adapters);
   vi.spyOn(registry, "detect").mockImplementation(async () => ({ executable: process.execPath, version: "1.0.0", features: new Set<string>() }));
@@ -109,6 +111,7 @@ afterEach(async () => {
   collaboration.destroy();
   db.close();
   fs.rmSync(root, { recursive: true, force: true });
+  vi.unstubAllEnvs();
 });
 
 async function enable() { await service.setPolicy({ allowed: [...AGENT_IDS] }); }
@@ -160,6 +163,14 @@ describe("external agent tasks", () => {
     expect(() => service.task(c.id, owner)).toThrow();
     expect(service.list(admin, true, { project: "Paper" }).total).toBe(3);
     expect(db.prepare("PRAGMA table_info(agent_tasks)").all()).not.toEqual(expect.arrayContaining([expect.objectContaining({ name: "archived" })]));
+  });
+
+  it("generates a six-character task name when the optional name is omitted or blank", async () => {
+    await enable();
+    const tasks = await Promise.all([undefined, "", "   "].map((title) => service.create(projectId, owner, "codex", title)));
+    for (const task of tasks) expect(task.title).toMatch(/^[A-Za-z0-9-]{6}$/);
+    expect(new Set(tasks.map((task) => task.id)).size).toBe(3);
+    expect((await service.create(projectId, owner, "codex", "  Abstract  ")).title).toBe("Abstract");
   });
 
   it("claims a project before asynchronous preparation and rejects all other tasks, including other users/agents", async () => {
@@ -251,10 +262,10 @@ describe("external agent tasks", () => {
     const task = await create();
     const firstLaunch = vi.spyOn(adapters[0], "start");
     const resume = vi.spyOn(adapters[0], "resume");
-    vi.spyOn(adapters[0], "findNativeSession").mockResolvedValue(null);
+    vi.spyOn(adapters[0], "findNativeSession").mockResolvedValue({ status: "unknown" });
     await service.start(task.id, owner);
     await service.stop(task.id, owner);
-    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_NO_CONTEXT" });
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CONTEXT_CHECK_FAILED" });
     expect(firstLaunch).toHaveBeenCalledTimes(1);
     expect(resume).not.toHaveBeenCalled();
     expect(service.task(task.id, owner).state).toBe("stopped");
@@ -262,6 +273,50 @@ describe("external agent tasks", () => {
     const next = await create();
     await service.start(next.id, owner);
     expect(firstLaunch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(AGENT_IDS)("allows %s to start again before its first conversation, then resumes the established one", async (agentId) => {
+    const adapter = adapters.find((value) => value.id === agentId)!;
+    const inspect = vi.spyOn(adapter, "findNativeSession").mockResolvedValue({ status: "empty" });
+    const launch = vi.spyOn(adapter, "start"); const resume = vi.spyOn(adapter, "resume");
+    const task = await create(agentId);
+    await service.start(task.id, owner); await service.stop(task.id, owner);
+    expect(service.task(task.id, owner)).toMatchObject({ state: "stopped", canResume: false, nativeSessionId: null });
+    await service.start(task.id, owner);
+    expect(launch).toHaveBeenCalledTimes(2); expect(resume).not.toHaveBeenCalled();
+    expect(launch.mock.calls[1][0].stateDirectory).toBe(launch.mock.calls[0][0].stateDirectory);
+    inspect.mockResolvedValue({ status: "found", id: "existing-conversation" });
+    await service.stop(task.id, owner);
+    expect(service.task(task.id, owner)).toMatchObject({ canResume: true, nativeSessionId: "existing-conversation" });
+    await service.start(task.id, owner);
+    expect(resume).toHaveBeenCalledWith(expect.objectContaining({ nativeSessionId: "existing-conversation" }));
+    expect(launch).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries uncertain discovery without resetting a task or holding its project claim", async () => {
+    const task = await create("opencode");
+    const inspect = vi.spyOn(adapters[1], "findNativeSession").mockResolvedValue({ status: "unknown" });
+    const launch = vi.spyOn(adapters[1], "start");
+    await service.start(task.id, owner); await service.stop(task.id, owner);
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CONTEXT_CHECK_FAILED" });
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(service.list(owner, false, { project: projectId }).activeTaskId).toBeNull();
+    inspect.mockResolvedValue({ status: "empty" });
+    await service.start(task.id, owner);
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(service.task(task.id, owner).id).toBe(task.id);
+  });
+
+  it("does not discard a saved conversation ID even when later discovery is empty", async () => {
+    const task = await create();
+    const launch = vi.spyOn(adapters[0], "start"); const resume = vi.spyOn(adapters[0], "resume");
+    await service.start(task.id, owner); await service.stop(task.id, owner);
+    vi.spyOn(adapters[0], "findNativeSession").mockResolvedValue({ status: "empty" });
+    resume.mockImplementationOnce(() => { throw new Error("Native conversation was deleted"); });
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_START_FAILED" });
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(service.task(task.id, owner).nativeSessionId).toBe(task.id);
+    expect(resume).toHaveBeenCalledWith(expect.objectContaining({ nativeSessionId: task.id }));
   });
 
   it("preserves the original context after a failed resume, without falling back to a fresh start", async () => {
@@ -349,6 +404,63 @@ describe("external agent tasks", () => {
     expect(fs.readFileSync(path.join(root, "unrelated"), "utf8")).toBe("keep");
   });
 
+  it("manages only registered OpenCode sessions while preserving host credentials, native history and shared caches", async () => {
+    const cache = path.join(root, "host-cache");
+    const catalog = path.join(cache, "opencode", "models.json");
+    fs.mkdirSync(path.dirname(catalog), { recursive: true });
+    fs.writeFileSync(catalog, "shared model catalog");
+    vi.stubEnv("XDG_CACHE_HOME", cache);
+    vi.stubEnv("XDG_DATA_HOME", path.join(root, "host-data-without-credentials"));
+    const filename = path.join(root, "host-opencode.db");
+    vi.stubEnv("OPENCODE_DB", filename);
+    const native = new Database(filename);
+    native.exec("CREATE TABLE session_v2 (id TEXT PRIMARY KEY); INSERT INTO session_v2 VALUES ('ses_native'); CREATE TABLE credential (value TEXT); INSERT INTO credential VALUES ('host fixture credential')");
+    native.close();
+    vi.spyOn(registry, "adapter").mockImplementation((id) => id === "opencode" ? opencodeAdapter : adapters.find((adapter) => adapter.id === id)!);
+    vi.mocked(registry.detect).mockResolvedValue({ executable: process.execPath, version: "2.1.4", features: new Set(["standalone"]) });
+
+    const first = await create("opencode");
+    const second = await service.create(anotherProject(), editor, "opencode", "Other project");
+    for (const task of [first, second]) {
+      for (const command of ["debug", "session"]) fs.copyFileSync(new URL("./fixtures/opencode-session.cjs", import.meta.url), workingFile(task, command));
+    }
+    await service.start(first.id, owner);
+    await service.start(second.id, editor);
+    const firstEnv = spawn.mock.calls[0][2].env;
+    const secondEnv = spawn.mock.calls[1][2].env;
+    expect(firstEnv.XDG_CACHE_HOME).toBe(cache);
+    expect(secondEnv.XDG_CACHE_HOME).toBe(cache);
+    expect(firstEnv.OPENCODE_DB).toBe(filename);
+    expect(secondEnv.OPENCODE_DB).toBe(filename);
+    const firstId = spawn.mock.calls[0][1].at(-1)!;
+    const secondId = spawn.mock.calls[1][1].at(-1)!;
+    expect(firstId).not.toBe(secondId);
+    const conversations = new Database(filename);
+    conversations.prepare("INSERT INTO session_v2 VALUES (?)").run(firstId);
+    conversations.prepare("INSERT INTO session_v2 VALUES (?)").run(secondId);
+    conversations.close();
+    expect(service.list(admin, true, {}).tasks.map((task) => task.id).sort()).toEqual([first.id, second.id].sort());
+    await expect(service.remove("ses_native", admin, true)).rejects.toMatchObject({ code: "AGENT_SESSION_NOT_FOUND" });
+    await expect(service.stop("ses_native", admin, true)).rejects.toMatchObject({ code: "AGENT_SESSION_NOT_FOUND" });
+    const retained = path.join(agentTaskRoot(config, second.id), "state", "private-context");
+    fs.writeFileSync(retained, "other task state");
+
+    await service.stop(first.id, owner);
+    expect(service.task(first.id, owner)).toMatchObject({ nativeSessionId: firstId, canResume: true });
+    await service.start(first.id, owner);
+    expect(spawn.mock.calls.at(-1)![1]).toEqual(["--standalone", "--session", firstId]);
+    await service.remove(first.id, owner);
+    expect(fs.existsSync(agentTaskRoot(config, first.id))).toBe(false);
+    expect(fs.readFileSync(catalog, "utf8")).toBe("shared model catalog");
+    expect(fs.readFileSync(retained, "utf8")).toBe("other task state");
+    expect(service.task(second.id, editor).state).toBe("running");
+    const check = new Database(filename, { readonly: true });
+    try {
+      expect(check.prepare("SELECT id FROM session_v2 ORDER BY id").all()).toEqual(["ses_native", secondId].sort().map((id) => ({ id })));
+      expect(check.prepare("SELECT value FROM credential").get()).toEqual({ value: "host fixture credential" });
+    } finally { check.close(); }
+  });
+
   it("retains cleanup locators across deletion of projects/users and cleans owned resources", async () => {
     const task = await create(); await service.start(task.id, owner);
     db.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
@@ -408,6 +520,18 @@ describe("external agent tasks", () => {
     expect(service.task(task.id, owner).state).toBe("interrupted"); expect(spawn).not.toHaveBeenCalled();
     await service.start(task.id, owner);
     expect(spawn.mock.calls.at(-1)?.[1]).toEqual(["resume", task.id]);
+  });
+
+  it("relaunches an unused interrupted task after restart without requiring a new task", async () => {
+    const task = await create("opencode");
+    vi.spyOn(adapters[1], "findNativeSession").mockResolvedValue({ status: "empty" });
+    db.prepare("UPDATE agent_tasks SET state = 'running', ever_started = 1 WHERE id = ?").run(task.id);
+    await service.dispose();
+    service = new AgentService({ config, db, collaboration, projectMutations: new ProjectMutationCoordinator(collaboration), recordHistory, recordEdits: () => undefined },
+      { registry, loadPty: async () => spawn, stopPty: async (process) => (process as FakePty).end() });
+    expect(service.task(task.id, owner)).toMatchObject({ state: "interrupted", canResume: false });
+    await service.start(task.id, owner);
+    expect(spawn.mock.calls.at(-1)?.[1]).toEqual([]);
   });
 
   it("paginates task metadata without enforcing a task-count limit", async () => {
@@ -730,6 +854,20 @@ describe("agent HTTP and WebSocket permissions", () => {
     };
     return { ownerCookie: await login(owner), adminCookie: await login(admin), readerCookie: await login(reader), editorCookie: await login(editor) };
   }
+
+  it("accepts optional task names but still validates provided values and explicit renames", async () => {
+    const cookies = await httpApp();
+    db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
+    for (const title of [undefined, "", "   "]) {
+      const created = await app!.inject({ method: "POST", url: `/api/projects/${projectId}/agent-tasks`, headers: { cookie: cookies.ownerCookie }, payload: { agentId: "codex", title } });
+      expect(created.statusCode).toBe(201);
+      expect(created.json().task.title).toMatch(/^[A-Za-z0-9-]{6}$/);
+      expect((await app!.inject({ method: "PATCH", url: `/api/agent-tasks/${created.json().task.id}`, headers: { cookie: cookies.ownerCookie }, payload: { title: "" } })).statusCode).toBe(400);
+    }
+    for (const title of [null, 5, "x".repeat(161)]) {
+      expect((await app!.inject({ method: "POST", url: `/api/projects/${projectId}/agent-tasks`, headers: { cookie: cookies.ownerCookie }, payload: { agentId: "codex", title } })).statusCode).toBe(400);
+    }
+  });
 
   it("restricts configuration/metadata administration without granting project access", async () => {
     const cookies = await httpApp();

@@ -1219,6 +1219,11 @@ execution across all users, tasks and agents; different projects are independent
 There are no limits on distinct tasks, elapsed runtime, provider quotas, or billing. Historical
 records do not retain live PTY handles. The application never automatically
 starts an agent in response to a compile failure or writing action.
+The workspace's Start task action creates and immediately launches a task; names
+are optional and default to six uniformly sampled characters from `A–Z`, `a–z`,
+`0–9` and `-`, independently of the task UUID.
+Creation is accepted into the UI before launching, so a launch failure retains
+the task and name for retry instead of creating duplicate conversations.
 
 `AgentAdapter` in `src/server/agents/adapters/types.ts` defines feature discovery,
 native preparation, start, exact-context resume, native-session identification,
@@ -1226,11 +1231,55 @@ and scoped cleanup. Codex, OpenCode, and Claude implement it separately;
 registration/discovery and session orchestration do not contain native command
 switches. PTY attachment, input ownership, process termination, task authorization,
 and retry state are shared service responsibilities. A task owns one native
-conversation: its first launch starts it and subsequent launches must resume
-the saved context. The service chooses this from persisted task metadata,
-not a browser-supplied start/resume toggle. Missing context is an explicit error,
-never a fallback to a fresh conversation in the same task directory. New
-conversations require a new task UUID and state directory.
+conversation, but launching a CLI process does not itself prove that a native
+conversation was created. A previously launched task without a saved session ID
+may launch again when its adapter verifies no conversation for that task. Discovery
+distinguishes found, empty and unknown states: missing storage, failed commands
+and ambiguous results never authorize a fresh conversation. OpenCode state is
+inspected through SQLite in read-only mode, preferring the V2 `session_v2`
+projection over a retained legacy `session` table. Older private layouts can use
+native JSON session listing. Detected `--standalone`
+support selects a private server owned by the task's process tree, avoiding
+host background-service dependencies for execution, discovery and cleanup.
+An existing session ID is verified before resuming because newer OpenCode
+versions may create an unknown `--session` ID instead of rejecting it.
+Once a session ID is saved, the service always resumes that
+exact ID and never clears it or silently replaces the conversation after a
+resume failure. The UI offers Continue only for an identified context. These
+decisions are server-owned, not a browser-supplied start/resume toggle. A separate
+conversation after an established one requires a new task UUID and state directory.
+
+New OpenCode 2 tasks reuse the service account's native database and XDG
+data/state locations, so provider sign-ins (including GitHub Copilot) and token
+refreshes are shared with native terminals. TexLite asks `opencode debug paths db`
+for the actual database path, respecting `OPENCODE_DB` and native channel/platform
+defaults. Before launching, it registers a task-derived `ses_texlite…` ID and pins
+the database path in the task's `state/opencode-session.json`. Launches always
+pass that exact `--session` ID, and shared-state discovery never enumerates host
+conversations or chooses a newest/unique one. An ID already present before its
+ownership binding is created is not claimed. The native CLI creates the bound
+conversation when needed; an unused task may still have no persisted conversation.
+Existing private OpenCode conversations stay in their original database. Only
+verified empty private stores switch to the shared layout; their old files remain
+until task deletion.
+
+TexLite lists and authorizes tasks exclusively from its own `agent_tasks` rows,
+not the OpenCode session catalog. Shared-state cleanup uses native
+`session delete <registered-id> --standalone` and verifies that exact ID is gone
+before removing the task record/files. It never removes the host database,
+credentials or unrelated native sessions. The native terminal's own history
+picker can expose shared host conversations; this is an accepted boundary for
+trusted writers, not additional tasks imported into TexLite.
+
+All adapters inherit the service account's `XDG_CACHE_HOME`; when it is unset,
+the CLI chooses its own default. Shared caches can reuse model catalogs and
+installed dependencies across projects, tasks and native terminals.
+Codex and Claude keep task-specific `CODEX_HOME` and `CLAUDE_CONFIG_DIR` because
+these directories also contain conversations and other persistent state.
+TexLite does not selectively share undocumented files inside those native homes.
+Filesystem cleanup removes only the task's UUID directory, not the inherited host cache.
+These locations organize tasks; they do not sandbox agents running as the same
+service account.
 
 The administrative screen is a separate lazy page, with agent settings and a
 paginated cross-project task catalog. Administrators can stop/delete tasks but
@@ -1252,7 +1301,7 @@ of the deleted rows, so administrators can resolve failures. Operation records
 retain project, agent, task, and actor identity after deletion, without transcripts.
 
 Agents run directly in the project source directory. Task directories retain
-native state and compilation context, not baseline/work copies. A synchronous
+session bindings, private native state where used, and compilation context, not baseline/work copies. A synchronous
 project claim is acquired before asynchronous startup and released only after
 process-tree termination and final source synchronization. Source-tree exclusive
 operations end the writer before entering the project queue, preventing deadlocks
