@@ -554,6 +554,10 @@ describe("agent direct project editing", () => {
     expect(fs.readFileSync(workingFile(task, "AGENTS.md"), "utf8")).toBe(template);
     expect(template).toContain("../output");
     expect(template).toContain("TEXLITE_COMPILE_LOG");
+    expect(template).toContain("LaTeX and academic-writing assistant");
+    expect(template).toContain("Refuse out-of-scope requests before using tools.");
+    expect(template).toContain("Never fabricate references, quotations, experimental results");
+    expect(fs.existsSync(workingFile(task, "CLAUDE.md"))).toBe(false);
     expect(template).not.toContain(root);
     expect(update).toHaveBeenCalledWith(projectId, "AGENTS.md", template, editor.id);
     expect(recordHistory).toHaveBeenCalledWith(projectId, editor.id, "file", ["AGENTS.md"]);

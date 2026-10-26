@@ -1345,8 +1345,17 @@ Before each launch, the service copies the fixed English
 `templates/agents/AGENTS.md` into the source root if `AGENTS.md` is absent. The
 exclusive-create copy never overwrites existing instructions. Creation uses
 the project write coordinator and updates collaboration, metadata and snapshots.
-The template explains the source/output layout and compilation context without
-embedding deployment-specific paths; it ships as a package runtime asset.
+The template scopes the agent to the current manuscript's LaTeX and academic
+writing, including bibliography work, compilation diagnostics and directly
+related supporting scripts. It directs the agent to refuse unrelated requests
+before using tools, handle mixed/ambiguous requests explicitly, and avoid
+fabricated references or results. The collaboration, source/output and compile
+context guidance remains deployment-independent; the template ships as a package
+runtime asset. Existing project instructions are not migrated automatically.
+The CLIs retain native instruction-file loading, without generated `CLAUDE.md`
+files or injected system-prompt flags. CLI versions/settings determine whether
+the file is loaded. Task scope is behavioral guidance for trusted users, not
+an enforced filesystem or execution boundary.
 
 The browser mounts a terminal only for the visible task, and streams private
 terminal data over authenticated, origin-checked WebSockets with base-path and

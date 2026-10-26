@@ -445,10 +445,28 @@ TexLite. Ask the agent to read these paths when diagnosing a compile failure.
 There is no separate source copy or review/apply step.
 
 Before an agent starts, TexLite copies its fixed English `AGENTS.md` template
-into the project source root if the file is missing. It explains TexLite, the
-source/output directory layout and how to find compilation logs and results.
+into the project source root if the file is missing. It defines the agent as a
+LaTeX and academic-writing assistant for this manuscript: writing, references,
+typesetting, compilation diagnostics and directly related supporting scripts
+are in scope; unrelated tasks and host administration should be refused before
+using tools. It also covers research integrity, live collaboration, the
+source/output layout and how to find compilation logs and results.
 Existing instructions (even an empty file) are never overwritten. Edit the
 project's copy normally to customize it; upgrades do not rewrite that file.
+To adopt an updated template in an existing project, review and merge the new
+guidance into its `AGENTS.md`, preserving project-specific conventions, then
+start a new conversation. Running or resumed conversations are not guaranteed
+to reload updated instructions.
+
+TexLite keeps the CLIs' native project-instruction loading and does not create
+a separate `CLAUDE.md` or change their settings. See the official instructions
+for [Codex](https://developers.openai.com/codex/guides/agents-md/),
+[OpenCode](https://opencode.ai/docs/rules/) and
+[Claude Code](https://code.claude.com/docs/en/memory#agents-md).
+Claude Code's native `AGENTS.md` support requires a supported version and enabled
+project-instruction loading; a project `CLAUDE.md` can take precedence depending
+on the user's CLI settings. These instructions guide model behavior, not enforce
+an OS sandbox or guarantee refusal. The trusted-user deployment model is unchanged.
 
 **End execution** releases processes while preserving task files/context.
 **Delete task** ends execution, cleans its native conversation/state and removes
