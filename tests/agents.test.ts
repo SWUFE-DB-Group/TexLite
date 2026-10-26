@@ -140,7 +140,13 @@ describe("external agent tasks", () => {
     update.run("2026-10-25T10:00:00Z", oldest.id);
     update.run("2026-10-25T12:00:00Z", newest.id);
     update.run("2026-10-25T11:00:00Z", middle.id);
-    expect(service.list(admin, true, {}).tasks.map((task) => task.id)).toEqual([newest.id, middle.id, oldest.id]);
+    const tasks = service.list(admin, true, {}).tasks;
+    expect(tasks.map((task) => task.id)).toEqual([newest.id, middle.id, oldest.id]);
+    expect(tasks).toMatchObject([
+      { userName: editor.display_name, userUsername: editor.username },
+      { userName: owner.display_name, userUsername: owner.username },
+      { userName: owner.display_name, userUsername: owner.username }
+    ]);
   });
 
   it("defaults off and distinguishes missing installations from administrator policy", async () => {
@@ -544,7 +550,7 @@ describe("external agent tasks", () => {
     db.prepare("UPDATE projects SET owner_id = ? WHERE id = ?").run(admin.id, projectId);
     db.prepare("DELETE FROM users WHERE id = ?").run(owner.id);
     await service.reconcilePermissions(true);
-    expect(service.list(admin, true, {}).tasks[0]).toMatchObject({ id: task.id, projectName: "Paper", userName: owner.display_name, cleanupState: "failed", state: "stopped" });
+    expect(service.list(admin, true, {}).tasks[0]).toMatchObject({ id: task.id, projectName: "Paper", userName: owner.display_name, userUsername: null, cleanupState: "failed", state: "stopped" });
     await service.remove(task.id, admin, true);
     expect(service.list(admin, true, {}).total).toBe(0);
   });

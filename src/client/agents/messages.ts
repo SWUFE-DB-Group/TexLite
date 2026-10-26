@@ -4,7 +4,7 @@ const en = {
   personalDescription: "Your tasks across projects. Hiding a terminal keeps its execution running.",
   allowedAgents: "Allowed coding agent CLIs", allowed: "Allowed", installed: "Installed", notInstalled: "Not installed",
   disabled: "Disabled by administrator", unknown: "Unknown", detection: "Refresh detection",
-  credentials: "Agents use credentials configured on this server and may send project content to their provider. All users may consume the same account's quota.",
+  opencodeSessionWarning: "Do not use /new inside OpenCode: additional sessions are not managed by TexLite.",
   ptyUnavailable: "Terminal support is unavailable (node-pty).",
   all: "All tasks", running: "Running", cleanup: "Cleanup incomplete",
   project: "Project", user: "User", agent: "Agent", task: "Task", state: "State", actions: "Actions",
@@ -26,14 +26,14 @@ const en = {
   state_stopped: "Stopped", state_exited: "Exited", state_interrupted: "Interrupted by restart", state_failed: "Failed",
   permissionLost: "Project write access is required.", policySaved: "Coding Agent CLI settings saved.",
   saved: "Saved",
-  managedCleanup: "Task-scoped cleanup", next: "Next", previous: "Previous", bulkDeleteDescription: "End and delete the selected tasks and their saved conversations? Project files are kept.",
+  next: "Next", previous: "Previous", bulkDeleteDescription: "End and delete the selected tasks and their saved conversations? Project files are kept.",
   updated: "Last changed", createdTooltip: "Created: {{created}}", taskUnavailable: "Task unavailable", exitCode: "Exit code: {{code}}"
 };
 const zh: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任务", terminal: "终端", back: "返回项目",
   description: "管理安装在服务器上的 Coding Agent CLI 及其项目任务会话。", personalDescription: "查看各项目中你的任务。收起终端不会结束运行。",
   allowedAgents: "允许使用的 Coding Agent CLI", allowed: "允许使用", installed: "已安装", notInstalled: "未安装", disabled: "管理员未启用", unknown: "未知", detection: "重新检测",
-  credentials: "Agent 使用服务器配置的凭据，可能将项目内容发送给其服务商。所有用户可能共用同一账号的额度。",
+  opencodeSessionWarning: "请勿在 OpenCode 内使用 /new 创建会话：额外会话不会纳入 TexLite 管理。",
   ptyUnavailable: "终端支持不可用（node-pty）。",
   all: "全部任务", running: "运行中", cleanup: "清理未完成", project: "项目", user: "用户", agent: "Agent", task: "任务", state: "状态", actions: "操作",
   projectFilter: "项目名称或 ID", userFilter: "用户姓名或 ID", filter: "筛选", refresh: "刷新", end: "结束运行", delete: "删除任务",
@@ -48,7 +48,7 @@ const zh: Record<keyof typeof en, string> = {
   taskCount: "{{count}} 个任务",
   activeCount_one: "你正在运行的任务：{{count}}", activeCount_other: "你正在运行的任务：{{count}}",
   state_ready: "待启动", state_starting: "启动中", state_running: "运行中", state_stopping: "停止中", state_stopped: "已停止", state_exited: "已退出", state_interrupted: "服务重启后已中断", state_failed: "失败",
-  permissionLost: "需要项目写入权限。", policySaved: "Coding Agent CLI 设置已保存。", saved: "已保存", managedCleanup: "支持任务级清理",
+  permissionLost: "需要项目写入权限。", policySaved: "Coding Agent CLI 设置已保存。", saved: "已保存",
   next: "下一页", previous: "上一页", bulkDeleteDescription: "结束并删除所选任务及其保存的对话？项目文件会保留。",
   updated: "最近变更", createdTooltip: "创建时间：{{created}}", taskUnavailable: "任务不可用", exitCode: "退出码：{{code}}"
 };
@@ -56,7 +56,7 @@ const zhHant: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任務", terminal: "終端機", back: "返回專案",
   description: "管理安裝在伺服器上的 Coding Agent CLI 與其專案任務工作階段。", personalDescription: "檢視各專案中你的任務。收起終端機不會結束執行。",
   allowedAgents: "允許使用的 Coding Agent CLI", allowed: "允許使用", installed: "已安裝", notInstalled: "未安裝", disabled: "管理員尚未啟用", unknown: "未知", detection: "重新偵測",
-  credentials: "Agent 使用伺服器設定的憑證，可能將專案內容傳送給其服務商。所有使用者可能共用同一帳號的額度。",
+  opencodeSessionWarning: "請勿在 OpenCode 內使用 /new 建立工作階段：額外工作階段不會納入 TexLite 管理。",
   ptyUnavailable: "終端機支援無法使用（node-pty）。",
   all: "全部任務", running: "執行中", cleanup: "清理未完成", project: "專案", user: "使用者", agent: "Agent", task: "任務", state: "狀態", actions: "操作",
   projectFilter: "專案名稱或 ID", userFilter: "使用者姓名或 ID", filter: "篩選", refresh: "重新整理", end: "結束執行", delete: "刪除任務",
@@ -71,7 +71,7 @@ const zhHant: Record<keyof typeof en, string> = {
   taskCount: "{{count}} 個任務",
   activeCount_one: "你正在執行的任務：{{count}}", activeCount_other: "你正在執行的任務：{{count}}",
   state_ready: "待啟動", state_starting: "啟動中", state_running: "執行中", state_stopping: "停止中", state_stopped: "已停止", state_exited: "已退出", state_interrupted: "服務重啟後已中斷", state_failed: "失敗",
-  permissionLost: "需要專案寫入權限。", policySaved: "Coding Agent CLI 設定已儲存。", saved: "已儲存", managedCleanup: "支援任務級清理",
+  permissionLost: "需要專案寫入權限。", policySaved: "Coding Agent CLI 設定已儲存。", saved: "已儲存",
   next: "下一頁", previous: "上一頁", bulkDeleteDescription: "結束並刪除所選任務及其儲存的對話？專案檔案會保留。",
   updated: "最近變更", createdTooltip: "建立時間：{{created}}", taskUnavailable: "任務無法使用", exitCode: "退出碼：{{code}}"
 };

@@ -117,10 +117,11 @@ export class AgentService {
     const { total } = this.db.prepare(`SELECT count(*) AS total ${from} ${where}`).get(...values) as { total: number };
     const requested = Number(query.page ?? 1);
     const page = Math.min(Math.max(1, Number.isSafeInteger(requested) ? requested : 1), Math.max(1, Math.ceil(total / 20)));
-    const rows = this.db.prepare(`SELECT t.*, COALESCE(p.name, t.project_name) AS project_name, COALESCE(u.display_name, t.user_name) AS user_name
-      ${from} ${where} ORDER BY t.updated_at DESC, t.id LIMIT 20 OFFSET ?`).all(...values, (page - 1) * 20) as TaskRow[];
+    const rows = this.db.prepare(`SELECT t.*, COALESCE(p.name, t.project_name) AS project_name,
+      COALESCE(u.display_name, t.user_name) AS user_name, u.username AS user_username
+      ${from} ${where} ORDER BY t.updated_at DESC, t.id LIMIT 20 OFFSET ?`).all(...values, (page - 1) * 20) as Array<TaskRow & { user_username: string | null }>;
     const project = query.project ? accessibleProject(this.db, query.project, user) : null;
-    return { tasks: rows.map((row) => this.json(row)), total, page, pageSize: 20,
+    return { tasks: rows.map((row) => ({ ...this.json(row), userUsername: row.user_username })), total, page, pageSize: 20,
       activeTaskId: project && canEdit(project) ? this.activeProjects.get(project.id) ?? null : null };
   }
 

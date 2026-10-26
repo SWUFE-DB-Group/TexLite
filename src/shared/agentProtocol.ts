@@ -19,6 +19,8 @@ export interface AgentTask {
   projectName: string;
   userId: string;
   userName: string;
+  /** Current owner username, included in task listings; null for a deleted account. */
+  userUsername?: string | null;
   agentId: AgentId;
   title: string;
   state: AgentExecutionState;

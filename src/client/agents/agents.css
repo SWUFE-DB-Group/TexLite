@@ -11,7 +11,6 @@
 .agent-policy-heading, .agent-policy-actions { display: flex; align-items: center; gap: 10px; }
 .agent-policy-heading { justify-content: space-between; flex-wrap: wrap; }
 .agent-policy-heading strong { font-size: 14px; }
-.agent-policy-note { font-size: 12px; line-height: 1.6; max-width: 880px; margin: 13px 0; }
 .agent-catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 12px; margin-top: 18px; }
 .agent-catalog-item { display: flex; align-items: flex-start; min-width: 0; gap: 10px; padding: 14px; border: 1px solid var(--ui-border, #d8e1db); border-radius: 8px; cursor: pointer; }
 .agent-catalog-item input { flex: none; margin: 3px 0 0; accent-color: #23704c; }
@@ -36,8 +35,8 @@
 .agent-task-table tr.selected { background: var(--ui-accent-bg, #eaf3ed); }
 .agent-task-name { display: inline-block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 .agent-task-table .agent-table-time { color: var(--ui-muted, #788178); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.agent-table-time time { cursor: default; border-radius: 3px; }
-.agent-table-time time:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 3px; }
+.agent-table-time time, .agent-table-user { cursor: default; border-radius: 3px; }
+.agent-table-time time:focus-visible, .agent-table-user:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 3px; }
 .agent-time-heading { display: inline-flex; align-items: center; gap: 5px; }
 .agent-state-badge { display: inline-block; padding: 4px 7px; border-radius: 5px; background: var(--ui-hover, #eef2ef); color: var(--ui-muted, #788178); font-size: 11px; white-space: nowrap; }
 .agent-state-badge.running, .agent-state-badge.starting { background: var(--ui-accent-bg, #eaf3ed); color: var(--ui-accent, #236544); }
@@ -76,6 +75,7 @@
 .agent-select-option[data-disabled] { opacity: .5; cursor: default; }
 .agent-select-label { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
 .agent-select-label small { color: var(--ui-muted, #788178); font-size: 10px; }
+.agent-select-warning { flex: none; color: var(--ui-warning, #91640f); }
 .agent-select-check { display: flex; flex: none; margin-left: auto; color: var(--ui-accent, #176b44); }
 .agent-terminal-body { flex: 1; min-height: 0; overflow: hidden; background: var(--terminal-bg); color: var(--terminal-fg); }
 .agent-terminal-surface { height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--terminal-bg); color: var(--terminal-fg); }

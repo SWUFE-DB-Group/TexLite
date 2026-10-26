@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,7 @@ import { AgentTerminal } from "../src/client/workspace/AgentTerminal";
 import { useAgentTasks } from "../src/client/agents/useAgentTasks";
 import { agentUiMessages } from "../src/client/agents/messages";
 import { formatDateTime } from "../src/client/dateTime";
+import { GlobalTooltip } from "../src/client/GlobalTooltip";
 import { AGENT_IDS, AGENT_LABELS, type AgentCatalog, type AgentTask } from "../src/shared/agentProtocol";
 import type { User } from "../src/client/types";
 
@@ -127,13 +128,15 @@ describe("coding agent management presentation", () => {
     }
   });
 
-  it("shows an independent newest-first time column and plain project names, even for an administrator's own task", async () => {
-    const task: AgentTask = { id: "admin-task", projectId: "private-paper", projectName: "Private paper", userId: user.id, userName: user.displayName,
+  it.each([true, false])("shows separate user/time metadata and the task owner's username tooltip (own task=%s)", async (ownTask) => {
+    const task: AgentTask = { id: "task", projectId: "private-paper", projectName: "Private paper",
+      userId: ownTask ? user.id : "writer", userName: ownTask ? user.displayName : "Writer", userUsername: ownTask ? user.username : "writer",
       agentId: "codex", title: "Check citations", state: "stopped", cleanupState: "none", errorCode: null, createdAt: "2026-10-25T00:00:00Z",
       updatedAt: "2026-10-25T12:30:00Z", startedAt: null, endedAt: null, exitCode: 0, nativeSessionId: null, canResume: false };
     vi.mocked(api).mockImplementation(async (url) => url === "/api/admin/agents" ? catalog
       : { tasks: [task], page: 1, pageSize: 20, total: 1 } as never);
-    await act(async () => root.render(createElement(AgentManagement, { user, onBack() {} })));
+    await act(async () => root.render(createElement(Fragment, null,
+      createElement(AgentManagement, { user, onBack() {} }), createElement(GlobalTooltip))));
     await act(async () => vi.advanceTimersByTime(150));
     expect(container.querySelector('th[aria-sort="descending"]')?.textContent).toBe("最近變更");
     const cells = container.querySelectorAll("tbody tr td");
@@ -141,12 +144,26 @@ describe("coding agent management presentation", () => {
     expect(cells[1].querySelector("time, small")).toBeNull();
     expect(cells[2].textContent).toBe(task.projectName);
     expect(cells[2].querySelector("a, button")).toBeNull();
+    const owner = cells[3].querySelector<HTMLElement>("[data-tooltip]")!;
+    expect(owner.textContent).toBe(task.userName);
+    expect(owner.tabIndex).toBe(0);
+    expect(owner.hasAttribute("title")).toBe(false);
+    await act(async () => owner.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(`@${task.userUsername}`);
+    await act(async () => owner.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
+    expect(container.querySelector('[role="tooltip"]')).toBeNull();
     const time = cells[6].querySelector("time");
     expect(time?.getAttribute("datetime")).toBe(task.updatedAt);
     expect(time?.getAttribute("data-tooltip")).toBe("建立時間：" + formatDateTime(task.createdAt, "zh-Hant"));
     expect(time?.hasAttribute("title")).toBe(false);
     expect(time?.tabIndex).toBe(0);
     expect(time?.textContent).toBe(formatDateTime(task.updatedAt, "zh-Hant", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }));
+    vi.mocked(api).mockResolvedValue({ tasks: [{ ...task, userUsername: null }], page: 1, pageSize: 20, total: 1 });
+    await act(async () => vi.advanceTimersByTime(5_000));
+    const deletedOwner = container.querySelector<HTMLElement>(".agent-table-user")!;
+    expect(deletedOwner.textContent).toBe(task.userName);
+    expect(deletedOwner.hasAttribute("data-tooltip")).toBe(false);
+    expect(deletedOwner.hasAttribute("tabindex")).toBe(false);
   });
 
   it("renders all agent cards with icons and allow controls, without a master switch", async () => {
@@ -158,11 +175,11 @@ describe("coding agent management presentation", () => {
       expect(card.querySelector("strong")?.textContent).toBe(AGENT_LABELS[AGENT_IDS[index]]);
       expect(card.querySelector(".agent-identity-icon")).not.toBeNull();
       expect(card.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false);
+      expect(card.querySelectorAll("small")).toHaveLength(1);
     });
     expect(container.querySelector('.agent-policy-heading input[type="checkbox"]')).toBeNull();
     expect(container.querySelector(".agent-policy-heading strong")?.textContent).toBe(agentUiMessages["zh-Hant"].allowedAgents);
     expect(container.querySelector(".agent-policy-heading [data-tooltip]")).toBeNull();
-    expect(container.querySelector(".agent-policy-note")?.textContent).toBe(agentUiMessages["zh-Hant"].credentials);
     expect(container.querySelector(".agent-list-reminder")?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
     expect(cards.find((card) => card.textContent?.includes("Claude Code"))?.classList.contains("unavailable")).toBe(true);
     await act(async () => vi.advanceTimersByTime(150));

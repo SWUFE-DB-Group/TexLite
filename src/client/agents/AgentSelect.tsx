@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AgentId, AgentInfo } from "../../shared/agentProtocol";
 import { AgentIcon } from "./AgentIcon";
@@ -15,15 +15,20 @@ export function AgentSelect({ agents, value, onChange, disabled = false }: {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const selected = agents.find((agent) => agent.id === value);
+  const sessionWarning = t("agents.opencodeSessionWarning");
+  const selectedWarning = selected?.id === "opencode" ? sessionWarning : undefined;
   const unavailable = disabled || agents.length === 0;
   useEffect(() => { if (unavailable) setOpen(false); }, [unavailable]);
 
   return <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
     <DropdownMenu.Trigger asChild>
       <button ref={trigger} type="button" className="agent-select-trigger" disabled={unavailable}
+        data-tooltip={selectedWarning} data-texlite-tooltip-always={selectedWarning ? true : undefined}
         aria-label={selected ? `${t("agents.agent")}: ${selected.label}` : t("agents.agent")}>
         {selected && <AgentIcon agent={selected.id} size={16} />}
-        <span>{selected?.label ?? t("agents.agent")}</span><ChevronDown size={13} aria-hidden="true" />
+        <span>{selected?.label ?? t("agents.agent")}</span>
+        {selectedWarning && <Info className="agent-select-warning" size={13} aria-hidden="true" />}
+        <ChevronDown size={13} aria-hidden="true" />
       </button>
     </DropdownMenu.Trigger>
     <DropdownMenu.Portal container={trigger.current?.closest<HTMLElement>('[role="dialog"]')}>
@@ -33,11 +38,14 @@ export function AgentSelect({ agents, value, onChange, disabled = false }: {
           if (!unavailable && agent?.installed && agent.enabled) onChange(agent.id);
         }}>
           {agents.map((agent) => <DropdownMenu.RadioItem key={agent.id} value={agent.id} textValue={agent.label}
+            data-tooltip={agent.id === "opencode" ? sessionWarning : undefined}
+            data-texlite-tooltip-always={agent.id === "opencode" ? true : undefined}
             className="agent-select-option" disabled={unavailable || !agent.installed || !agent.enabled}>
             <AgentIcon agent={agent.id} size={16} />
             <span className="agent-select-label">{agent.label}
               {(!agent.installed || !agent.enabled) && <small>{t(!agent.installed ? "agents.notInstalled" : "agents.disabled")}</small>}
             </span>
+            {agent.id === "opencode" && <Info className="agent-select-warning" size={13} aria-hidden="true" />}
             <DropdownMenu.ItemIndicator className="agent-select-check"><Check size={14} aria-hidden="true" /></DropdownMenu.ItemIndicator>
           </DropdownMenu.RadioItem>)}
         </DropdownMenu.RadioGroup>

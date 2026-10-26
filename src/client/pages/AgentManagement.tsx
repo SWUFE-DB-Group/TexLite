@@ -113,10 +113,9 @@ export function AgentManagement({ user, onBack }: {
           setCatalog(value); setPolicy(value.policy); setNotice(t("agents.policySaved")); window.dispatchEvent(new Event("texlite:agents-policy"));
         })}>{busy ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />}{t("common.save")}</button></div>
       </div>
-      <p className="muted agent-policy-note">{t("agents.credentials")}</p>
       <div className="agent-catalog">{catalog?.agents.map((entry) => <label key={entry.id} className={`agent-catalog-item${entry.installed ? "" : " unavailable"}`}>
         <input type="checkbox" aria-label={`${t("agents.allowed")} ${entry.label}`} disabled={busy} checked={policy.allowed.includes(entry.id)} onChange={(event) => setPolicy((value) => ({ ...value, allowed: event.target.checked ? [...value.allowed, entry.id] : value.allowed.filter((id) => id !== entry.id) }))} />
-        <div className="agent-catalog-details"><strong><AgentIcon agent={entry.id} />{entry.label}</strong><small>{entry.installed ? `${t("agents.installed")} · ${entry.version ?? t("agents.unknown")}` : t("agents.notInstalled")}</small><small>{t("agents.managedCleanup")}</small></div>
+        <div className="agent-catalog-details"><strong><AgentIcon agent={entry.id} />{entry.label}</strong><small>{entry.installed ? `${t("agents.installed")} · ${entry.version ?? t("agents.unknown")}` : t("agents.notInstalled")}</small></div>
       </label>)}</div>
       {catalog && !catalog.ptyAvailable && <p className="error">{t("agents.ptyUnavailable")}</p>}
     </section>}
@@ -137,7 +136,9 @@ export function AgentManagement({ user, onBack }: {
         <td><input type="checkbox" aria-label={task.title} checked={selected.has(task.id)} onChange={(event) => setSelected((value) => { const next = new Set(value); if (event.target.checked) next.add(task.id); else next.delete(task.id); return next; })} /></td>
         <td><strong className="agent-task-name" title={task.title}>{task.title}</strong></td>
         <td><span className="agent-task-name" title={task.projectId}>{task.projectName}</span></td>
-        {admin && <td>{task.userName}</td>}<td><span className="agent-identity"><AgentIcon agent={task.agentId} size={15} />{AGENT_LABELS[task.agentId]}</span></td>
+        {admin && <td><span className="agent-table-user" tabIndex={task.userUsername ? 0 : undefined}
+          data-tooltip={task.userUsername ? `@${task.userUsername}` : undefined}>{task.userName}</span></td>}
+        <td><span className="agent-identity"><AgentIcon agent={task.agentId} size={15} />{AGENT_LABELS[task.agentId]}</span></td>
         <td><span className={`agent-state-badge ${task.state}`}>{t(`agents.state_${task.state}`)}</span>{task.cleanupState !== "none" && <small className="error">{t("agents.cleanup")}</small>}{task.errorCode && !failures[task.id] && <small className="error">{t(`errors.codes.${task.errorCode}`, { defaultValue: t("agents.taskUnavailable") })}</small>}{failures[task.id] && !deleting.length && <small className="error">{failures[task.id]}</small>}</td>
         <td className="agent-table-time"><time dateTime={task.updatedAt} tabIndex={0}
           data-tooltip={t("agents.createdTooltip", { created: formatDateTime(task.createdAt, i18n.resolvedLanguage) })}

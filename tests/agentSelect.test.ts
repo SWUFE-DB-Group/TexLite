@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState } from "react";
+import { act, createElement, Fragment, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSelect } from "../src/client/agents/AgentSelect";
 import { AGENT_IDS, AGENT_LABELS, type AgentId, type AgentInfo } from "../src/shared/agentProtocol";
 import i18n from "../src/client/i18n";
+import { GlobalTooltip } from "../src/client/GlobalTooltip";
 
 let root: Root, host: HTMLDivElement, agents: AgentInfo[];
 const onChange = vi.fn(), onSubmit = vi.fn();
@@ -29,6 +30,28 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe("project terminal agent selection", () => {
+  it.each(["en", "zh", "zh-Hant"])("shows the OpenCode session warning on its option and selected trigger with interface tips disabled (%s)", async (locale) => {
+    await i18n.changeLanguage(locale);
+    host.dataset.texliteTooltips = "off";
+    await act(async () => root.render(createElement(Fragment, null, createElement(Form), createElement(GlobalTooltip))));
+    const trigger = host.querySelector<HTMLButtonElement>(".agent-select-trigger")!;
+    expect(trigger.hasAttribute("data-tooltip")).toBe(false);
+    await key(trigger, "ArrowDown"); await settleFocus();
+    const options = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+    const opencode = options.find((option) => option.textContent === "OpenCode")!;
+    expect(options.filter((option) => option.hasAttribute("data-tooltip"))).toEqual([opencode]);
+    await act(async () => opencode.focus());
+    expect(host.querySelector('[role="tooltip"]')?.textContent).toBe(i18n.t("agents.opencodeSessionWarning"));
+    expect(opencode.hasAttribute("title")).toBe(false);
+    await act(async () => opencode.click()); await settleFocus();
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("opencode");
+    expect(trigger.getAttribute("data-tooltip")).toBe(i18n.t("agents.opencodeSessionWarning"));
+    expect(trigger.hasAttribute("title")).toBe(false);
+    await act(async () => trigger.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    expect(host.querySelector('[role="tooltip"]')?.textContent).toBe(i18n.t("agents.opencodeSessionWarning"));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("shows brand icons on the trigger and every option and selects by keyboard without submitting the form", async () => {
     await act(async () => root.render(createElement(Form)));
     const trigger = host.querySelector<HTMLButtonElement>(".agent-select-trigger")!;
