@@ -6,7 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { AgentClientMessage, AgentServerMessage, AgentTask } from "../../shared/agentProtocol";
 import { agentInputChunks } from "../../shared/agentProtocol";
 import { appPath } from "../basePath";
-import { terminalFontStack, useTerminalPreferences } from "../terminalPreferences";
+import { terminalFontStack, terminalLineHeight, useTerminalPreferences } from "../terminalPreferences";
 import { terminalTheme, terminalThemeStyle } from "../terminalTheme";
 
 export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask: (task: AgentTask) => void }) {
@@ -38,7 +38,7 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     // Start with a local fallback. Apply the selected web font after it loads,
     // so xterm measures real glyphs rather than caching fallback dimensions.
     const term = new Terminal({ convertEol: false, scrollback: 1000, fontSize: preferences.fontSize,
-      lineHeight: preferences.lineHeight, fontFamily: "monospace", fontWeight: 400, fontWeightBold: 600, cursorBlink: true,
+      lineHeight: terminalLineHeight, fontFamily: "monospace", fontWeight: 400, fontWeightBold: 600, cursorBlink: true,
       theme: { ...terminalTheme } });
     terminal.current = term;
     const fit = new FitAddon();
@@ -65,7 +65,7 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     const fontFamily = terminalFontStack(preferences.font);
     const apply = () => {
       if (cancelled) return;
-      Object.assign(term.options, { fontFamily, fontSize: preferences.fontSize, lineHeight: preferences.lineHeight });
+      Object.assign(term.options, { fontFamily, fontSize: preferences.fontSize });
       try { fit.fit(); } catch { /* Hidden panel. */ }
       term.refresh(0, term.rows - 1);
     };

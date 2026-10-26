@@ -15,7 +15,7 @@ describe("browser-wide terminal preferences", () => {
 
   it("uses legible defaults without writing them into browser storage", async () => {
     const store = await import("../src/client/terminalPreferences");
-    expect(store.currentTerminalPreferences()).toEqual({ font: "jetbrains", fontSize: 13, lineHeight: 1.2 });
+    expect(store.currentTerminalPreferences()).toEqual({ font: "jetbrains", fontSize: 13 });
     expect(store.currentTerminalPreferences()).toBe(store.currentTerminalPreferences());
     expect(values.size).toBe(0);
   });
@@ -23,7 +23,7 @@ describe("browser-wide terminal preferences", () => {
   it("persists independently of editor/user/project settings and restores after reload", async () => {
     values.set("texlite-editor-preferences:alice:paper", '{"font":"iosevka","fontSize":20}');
     const store = await import("../src/client/terminalPreferences");
-    const selected = { font: "ibm-plex", fontSize: 15, lineHeight: 1.4 } as const;
+    const selected = { font: "ibm-plex", fontSize: 15 } as const;
     store.saveTerminalPreferences(selected);
     expect(store.currentTerminalPreferences()).toEqual(selected);
     expect(values.get("texlite-editor-preferences:alice:paper")).toBe('{"font":"iosevka","fontSize":20}');
@@ -32,7 +32,15 @@ describe("browser-wide terminal preferences", () => {
     expect(reloaded.currentTerminalPreferences()).toEqual(selected);
   });
 
-  it.each(["not-json", "null", "[]", '{"font":"unknown","fontSize":999,"lineHeight":0}', '{"fontSize":"15","lineHeight":"1.2"}'])(
+  it.each([1, 1.2, 1.4])("ignores previously saved line spacing %s while retaining font choices", async (lineHeight) => {
+    values.set("texlite-terminal-preferences", JSON.stringify({ font: "iosevka", fontSize: 16, lineHeight }));
+    const store = await import("../src/client/terminalPreferences");
+    expect(store.currentTerminalPreferences()).toEqual({ font: "iosevka", fontSize: 16 });
+    store.saveTerminalPreferences(store.currentTerminalPreferences());
+    expect(JSON.parse(values.get(store.terminalPreferencesStorageKey)!)).toEqual({ font: "iosevka", fontSize: 16 });
+  });
+
+  it.each(["not-json", "null", "[]", '{"font":"unknown","fontSize":999}', '{"fontSize":"15"}'])(
     "safely defaults malformed or unsupported settings (%s)", async (raw) => {
       values.set("texlite-terminal-preferences", raw);
       const store = await import("../src/client/terminalPreferences");
@@ -43,7 +51,7 @@ describe("browser-wide terminal preferences", () => {
   it("keeps valid partial settings and offers a system-font fallback", async () => {
     values.set("texlite-terminal-preferences", '{"font":"system","fontSize":16}');
     const store = await import("../src/client/terminalPreferences");
-    expect(store.currentTerminalPreferences()).toEqual({ font: "system", fontSize: 16, lineHeight: 1.2 });
+    expect(store.currentTerminalPreferences()).toEqual({ font: "system", fontSize: 16 });
     expect(store.terminalFontStack("system")).toContain("monospace");
     expect(store.terminalFonts).toHaveLength(6);
   });
@@ -65,8 +73,8 @@ describe("browser-wide terminal preferences", () => {
     storage.getItem = () => { throw new Error("Storage disabled"); };
     storage.setItem = () => { throw new Error("Storage disabled"); };
     const store = await import("../src/client/terminalPreferences");
-    expect(store.saveTerminalPreferences({ font: "source-code", fontSize: 18, lineHeight: 1 })).toBe(false);
-    expect(store.currentTerminalPreferences()).toEqual({ font: "source-code", fontSize: 18, lineHeight: 1 });
+    expect(store.saveTerminalPreferences({ font: "source-code", fontSize: 18 })).toBe(false);
+    expect(store.currentTerminalPreferences()).toEqual({ font: "source-code", fontSize: 18 });
   });
 
   it("isolates separate deployments on the same origin", async () => {

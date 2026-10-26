@@ -1395,10 +1395,10 @@ and full transcripts are not persisted by TexLite. Native CLI history can still
 exist in its task state. Raw terminal replay is a bounded recent stream, not a
 complete saved terminal screen; very long full-screen sessions may need a redraw.
 
-Terminal appearance is separate from editor appearance. Its font, size and line
-spacing are browser-local preferences shared across projects and scoped to the
+Terminal appearance is separate from editor appearance. Its font and size
+are browser-local preferences shared across projects and scoped to the
 deployment base path, without user/database or CLI configuration changes. The
-default is JetBrains Mono at 13 px with 1.2 line spacing; existing web fonts and
+default is JetBrains Mono at 13 px with fixed 1.2 line spacing; existing web fonts and
 a system-monospace fallback are available. Terminal output always uses a fixed,
 Catppuccin-inspired dark palette defined in `terminalTheme.ts`, independent of
 the app/system theme. xterm receives it at construction, before the CLI can query
@@ -1410,6 +1410,8 @@ Saving updates the current xterm
 instance and fits its row/column geometry without reconnecting or clearing
 output. Font loading completes before measuring the selected font, with stale
 loads and unmounted terminals ignored; failed web fonts use the fallback stack.
+Previously stored terminal line-spacing choices are ignored and omitted on the
+next save; the editor's independent line-spacing setting is unchanged.
 Manual saves for editor/terminal/compiler settings, snapshot names and project
 tag edits show dismissible inline confirmation for two seconds. Unchanged
 compiler settings are reported separately; browser-storage failures show an
