@@ -2,16 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { CommentDraftStore, type CommentDraftKey } from "../src/client/workspace/commentDrafts";
 
 describe("workspace comment drafts", () => {
-  it("retains text when hiding and reopening a reply", () => {
-    const store = new CommentDraftStore();
-    store.open("thread", "reply");
-    store.change("thread", "reply", "Unsent reply\nwith details");
-    store.hide("thread", "reply");
-    expect(store.getThread("thread").reply).toMatchObject({ open: false, content: "Unsent reply\nwith details" });
-    store.open("thread", "reply");
-    expect(store.getThread("thread").reply).toMatchObject({ open: true, content: "Unsent reply\nwith details" });
-  });
-
   it("isolates threads and form types, preserving each reply edit when switching editors", () => {
     const store = new CommentDraftStore();
     store.open("first", "reply", "Reply draft");
@@ -61,19 +51,18 @@ describe("workspace comment drafts", () => {
     expect(first).toHaveBeenCalledTimes(1);
   });
 
-  it.each<CommentDraftKey>(["reply", "edit-comment", "edit-reply:a"])("keeps %s request state across component lifetimes and prevents repeated submits", async (key) => {
+  it.each<CommentDraftKey>(["reply", "edit-comment", "edit-reply:a"])("keeps %s request state until completion and prevents repeated submits", async (key) => {
     const store = new CommentDraftStore();
     store.open("thread", key, "Draft text");
     let finish!: (value: boolean) => void;
     const action = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
     const first = store.submit("thread", key, action, "Failed");
     expect(store.getThread("thread")[key]).toMatchObject({ pending: true, content: "Draft text" });
-    const remountedSnapshot = store.getThread("thread");
+    const pendingSnapshot = store.getThread("thread");
     expect(await store.submit("thread", key, action, "Failed")).toBe(false);
     store.change("thread", key, "Cannot overwrite pending input");
-    store.hide("thread", key);
     store.open("thread", "reply", "Another action");
-    expect(store.getThread("thread")).toBe(remountedSnapshot);
+    expect(store.getThread("thread")).toBe(pendingSnapshot);
     expect(action).toHaveBeenCalledExactlyOnceWith("Draft text");
     finish(true);
     expect(await first).toBe(true);

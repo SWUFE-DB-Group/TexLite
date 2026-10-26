@@ -70,12 +70,6 @@ export class CommentDraftStore {
     this.publish(id, { ...this.getThread(id), [key]: { ...current, content } });
   }
 
-  hide(id: string, key: CommentDraftKey): void {
-    const current = this.getThread(id)[key];
-    if (!current || this.isPending(id)) return;
-    this.publish(id, { ...this.getThread(id), [key]: { ...current, open: false } });
-  }
-
   discard(id: string, key?: CommentDraftKey): void {
     const drafts = { ...this.getThread(id) };
     if (key === undefined) { this.publish(id, EMPTY_THREAD); return; }

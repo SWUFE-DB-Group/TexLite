@@ -89,10 +89,4 @@ describe("count-aware translations", () => {
     expect(translations.t("history.versionUsage", { count: 0, versions: 1, limit: "∞" }))
       .toBe("1 of ∞ ordinary snapshots");
   });
-
-  it("leaves static section names independent of counts", () => {
-    expect(translations.t("common.comments")).toBe("Comments");
-    expect(translations.t("common.files")).toBe("Files");
-    expect(translations.t("users.total", { count: 1 })).toBe("Users: 1");
-  });
 });

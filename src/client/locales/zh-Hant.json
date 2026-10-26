@@ -871,7 +871,6 @@
     "editComment": "編輯批註",
     "deleteComment": "刪除批註",
     "commentPlaceholder": "輸入批註內容…（⌘/Ctrl+Enter 傳送）",
-    "resumeReply": "繼續回覆",
     "replyPrompt": "回覆…",
     "showEarlierReplies_one": "之前的 {{count}} 條回覆",
     "showEarlierReplies_other": "之前的 {{count}} 條回覆",

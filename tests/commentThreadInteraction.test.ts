@@ -82,23 +82,45 @@ describe("comment reading and actions", () => {
     expect(host.querySelector(".comment-times small")?.textContent).toBe("已编辑");
   });
 
-  it("opens the reply placeholder without moving the source cursor, and resumes an existing hidden draft", async () => {
-    props.draftStore.open("thread", "reply", "Unsent reply");
-    props.draftStore.hide("thread", "reply");
+  it("opens and cancels a reply without moving the source cursor", async () => {
     await render();
     const placeholder = host.querySelector<HTMLButtonElement>(".reply-action")!;
-    expect(placeholder.textContent).toBe(i18n.t("editor.resumeReply"));
+    expect(placeholder.textContent).toBe(i18n.t("editor.replyPrompt"));
     await act(async () => placeholder.click());
     expect(props.onActivate).toHaveBeenCalled();
     expect(props.onFocus).not.toHaveBeenCalled();
     expect(props.onReplyExpansionChange).toHaveBeenCalledWith(true);
     expect(host.querySelector(".reply-action")).toBeNull();
-    expect(host.querySelector("textarea")?.value).toBe("Unsent reply");
+    expect(host.querySelector("textarea")?.value).toBe("");
     expect(document.activeElement).toBe(host.querySelector("textarea"));
     const cancel = host.querySelector<HTMLButtonElement>('.comment-reply-form button[type="button"]')!;
     await act(async () => cancel.click());
     expect(host.querySelector("textarea")).toBeNull();
-    expect(host.querySelector(".reply-action")?.textContent).toBe("Reply…");
+    expect(props.draftStore.getThread("thread").reply).toBeUndefined();
+    expect(host.querySelector(".reply-action")?.textContent).toBe(i18n.t("editor.replyPrompt"));
+  });
+
+  it("restores a typed reply after the thread unmounts without stealing focus", async () => {
+    await render();
+    await act(async () => host.querySelector<HTMLButtonElement>(".reply-action")!.click());
+    const editor = host.querySelector("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(editor, "Unsent reply\nwith details");
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(props.draftStore.getThread("thread").reply?.content).toBe("Unsent reply\nwith details");
+
+    await act(async () => root.render(null));
+    expect(host.querySelector("textarea")).toBeNull();
+    host.tabIndex = -1;
+    host.focus();
+    await render();
+
+    const restored = host.querySelector("textarea")!;
+    expect(restored).not.toBe(editor);
+    expect(restored.value).toBe("Unsent reply\nwith details");
+    expect(host.querySelector(".reply-action")).toBeNull();
+    expect(document.activeElement).toBe(host);
   });
 
   it("keeps resolve in the header, accessible to readers and protected while pending", async () => {

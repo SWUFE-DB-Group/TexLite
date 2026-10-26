@@ -12,6 +12,13 @@ describe("i18n resources", () => {
     expect(flattenKeys(catalog(locale))).toEqual(flattenKeys(catalog("en")));
   });
 
+  it.each(["en", "zh", "zh-Hant"])("includes the submission shortcut in %s comment and reply placeholders", (locale) => {
+    const strings = flattenStrings(catalog(locale));
+    for (const key of ["editor.commentPlaceholder", "editor.replyPlaceholder"]) {
+      expect(strings[key], key).toContain("⌘/Ctrl+Enter");
+    }
+  });
+
   it("preserves interpolation variables and rich-text tags in Traditional Chinese", () => {
     const source = flattenStrings(catalog("zh"));
     const traditional = flattenStrings(catalog("zh-Hant"));

@@ -114,20 +114,6 @@ describe("comment participant highlighting", () => {
     expect(html).not.toContain('class="comment-replies-toggle"');
   });
 
-  it("restores a reply after the thread unmounts without stealing editor focus", () => {
-    const draftStore = new CommentDraftStore();
-    draftStore.open("thread", "reply", "Unsent reply");
-    const first = render({ draftStore });
-    expect(first).toContain("Unsent reply</textarea>");
-    expect(first).not.toContain("autofocus");
-    const restored = render({ draftStore });
-    expect(restored).toContain("Unsent reply</textarea>");
-    draftStore.hide("thread", "reply");
-    const hidden = render({ draftStore });
-    expect(hidden).toContain(i18n.t("editor.resumeReply"));
-    expect(hidden).not.toContain("Unsent reply</textarea>");
-  });
-
   it("restores comment and reply edits without replacing them with refreshed server text", () => {
     const draftStore = new CommentDraftStore();
     draftStore.open("thread", "edit-comment", "Unsent comment edit");

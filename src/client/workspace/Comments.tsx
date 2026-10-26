@@ -226,7 +226,7 @@ export function CommentThread({
     {!replyDraft?.open && <button type="button" className="reply-action" disabled={submittingForm || toggling} onClick={(event) => {
         event.stopPropagation();
         openDraft("reply");
-      }}>{t(replyDraft?.content ? "editor.resumeReply" : "editor.replyPrompt")}</button>}
+      }}>{t("editor.replyPrompt")}</button>}
     {draftForm("reply", t("editor.reply"), onReply)}
   </article><ConfirmDialog open={deleteCommentOpen} title={t("editor.deleteCommentTitle")} description={t("editor.deleteCommentDescription")} confirmLabel={t("common.delete")} danger busy={deleting} error={deleteError} onCancel={() => setDeleteCommentOpen(false)} onConfirm={() => void confirmDelete(null)} /><ConfirmDialog open={Boolean(deleteReplyId)} title={t("editor.deleteReplyTitle")} description={t("editor.deleteReplyDescription")} confirmLabel={t("common.delete")} danger busy={deleting} error={deleteError} onCancel={() => setDeleteReplyId(null)} onConfirm={() => { if (deleteReplyId) void confirmDelete(deleteReplyId); }} /></>;
 }

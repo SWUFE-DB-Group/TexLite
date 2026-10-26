@@ -228,7 +228,6 @@
     "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "format": "格式化", "formatFile": "文件", "formatFileHint": "格式化当前文件", "formatFileComplete": "当前文件已格式化。", "formatFileFailed": "无法格式化当前文件：{{message}}", "formatSelected": "选区", "commentsAll": "查看", "formatSelection": "格式化选区", "formatting": "正在格式化…", "formatSelectionHint": "选择一段 LaTeX 源码后格式化", "formatSelectionRequired": "请先选择 LaTeX 源码，再进行格式化。", "formatSelectionComplete": "所选 LaTeX 源码已格式化。", "formatFailedContinue": "格式化失败，仍将继续编译：{{message}}", "formatFailed": "无法格式化选区：{{message}}", "formatSourceChanged": "格式化期间源码已发生变化，已跳过本次格式化。", "formatSelectionChanged": "格式化期间所选源码已发生变化，请重新选择后再试。", "writingSuggestions": "写作建议", "noWritingSuggestions": "没有可用的修改建议", "removeText": "删除文本", "replaceWith": "替换为 {{word}}", "spellCheckReadOnly": "当前为只读，需要编辑权限才能替换。", "spellCheckSourceChanged": "源码在应用写作修正前发生了变化。", "mathPreview": "公式预览", "mathPreviewLoading": "正在渲染公式…", "mathPreviewUnavailable": "该公式暂时无法预览。", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
     "replyPlaceholder": "输入回复内容…（⌘/Ctrl+Enter 发送）", "sendReply": "发送回复", "editComment": "编辑批注", "deleteComment": "删除批注",
     "commentPlaceholder": "输入批注内容…（⌘/Ctrl+Enter 发送）",
-    "resumeReply": "继续回复",
     "replyPrompt": "回复…",
     "showEarlierReplies_one": "之前的 {{count}} 条回复", "showEarlierReplies_other": "之前的 {{count}} 条回复",
     "hideEarlierReplies": "收起较早的回复",
