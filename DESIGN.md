@@ -1224,6 +1224,12 @@ are optional and default to six uniformly sampled characters from `A–Z`, `a–
 `0–9` and `-`, independently of the task UUID.
 Creation is accepted into the UI before launching, so a launch failure retains
 the task and name for retry instead of creating duplicate conversations.
+The terminal heading can maximize the panel to the editor column's full height
+and restore its previous split. The source panel is also collapsible through
+the separator. Editor tabs/source and the live terminal stay mounted during
+maximization, preserving editor state, terminal output and the PTY connection;
+the collapsed editor is inert. Closing a maximized terminal resets the split
+so reopening does not leave the editor collapsed.
 
 `AgentAdapter` in `src/server/agents/adapters/types.ts` defines feature discovery,
 native preparation, start, exact-context resume, native-session identification,

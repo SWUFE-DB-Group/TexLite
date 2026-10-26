@@ -412,6 +412,12 @@ disconnecting a browser, or archiving a project does not stop executions.
 Agent tasks have no archive state: end an execution to free its process, or
 delete a task to remove its saved conversation.
 
+Use the terminal heading's maximize/restore button to fill the editor column's
+height and return to the previous split. Dragging the separator can also collapse
+the source editor. Maximizing keeps the editor and terminal mounted; it does not
+restart the task or clear terminal output. Closing and reopening returns to a
+split view.
+
 Agents execute directly in the project's source directory. Only one task may
 execute per project, across all users and agents (including different tasks of
 the same user). Other projects are independent. An execution retains the claim

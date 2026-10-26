@@ -1440,7 +1440,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       />}
       {showEditor && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel
-        terminal={terminalOpen ? <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} /></Suspense> : null}
+        terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized} /></Suspense> : null}
         project={project} activeFile={activeFile} openTabs={openTabs}
         content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
         focusComment={focusComment} editorPreferences={editorPreferences} completionIndex={completionIndex}

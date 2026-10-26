@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import "../agents/agents.css";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, ChevronRight, LoaderCircle, Pencil, Play, Plus, Square, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, LoaderCircle, Pencil, Play, Plus, Square, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
 import { api } from "../api";
 import { Modal } from "../Dialog";
 import { useAgentTasks } from "../agents/useAgentTasks";
@@ -11,7 +11,9 @@ import { AgentIcon } from "../agents/AgentIcon";
 
 const AgentTerminalSurface = lazy(() => import("../agents/AgentTerminalSurface").then((module) => ({ default: module.AgentTerminalSurface })));
 
-export function AgentTerminal({ projectId, readOnly, onHide }: { projectId: string; readOnly: boolean; onHide: () => void }) {
+export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, onToggleMaximized }: {
+  projectId: string; readOnly: boolean; onHide: () => void; maximized?: boolean; onToggleMaximized?: () => void;
+}) {
   const { t } = useTranslation();
   const tasks = useAgentTasks(projectId);
   const task = tasks.selected;
@@ -43,6 +45,7 @@ export function AgentTerminal({ projectId, readOnly, onHide }: { projectId: stri
         </button>)}
       </div>
       <button className="agent-icon-button" disabled={readOnly || tasks.busy || !enabledAgents.length} title={t("agents.newTask")} aria-label={t("agents.newTask")} onClick={() => setCreating((value) => !value)}><Plus size={15} /></button>
+      {onToggleMaximized && <button type="button" className="agent-icon-button" title={t(maximized ? "agents.restoreTerminal" : "agents.maximizeTerminal")} aria-label={t(maximized ? "agents.restoreTerminal" : "agents.maximizeTerminal")} aria-pressed={maximized} onClick={onToggleMaximized}>{maximized ? <ChevronDown size={15} /> : <ChevronUp size={15} />}</button>}
       <button className="agent-icon-button" title={t("agents.hide")} aria-label={t("agents.hide")} onClick={onHide}><X size={15} /></button>
     </div>
     {(task || tasks.result.total > 20) && <div className="agent-task-toolbar">

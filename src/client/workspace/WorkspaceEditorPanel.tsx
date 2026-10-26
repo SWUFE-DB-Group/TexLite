@@ -1,7 +1,7 @@
-import { lazy, Suspense, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { BookOpen, FileText, LoaderCircle, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Group, Panel, Separator } from "react-resizable-panels";
+import { Panel } from "react-resizable-panels";
 import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
 import type { Comment, LatexCompletionIndex, Project } from "../types";
@@ -11,11 +11,12 @@ import type { SpellCheckJump } from "../LatexEditor";
 import type { LatexReference } from "../../shared/latexReferences";
 import { commentsForEditorFile, focusCommentForEditorFile } from "./commentNavigation";
 import type { SelectionLineAction } from "../selectionLineActions";
+import { EditorTerminalLayout, type TerminalPanelRenderer } from "./EditorTerminalLayout";
 
 const LatexEditor = lazy(() => import("../LatexEditor").then((module) => ({ default: module.LatexEditor })));
 
 export interface WorkspaceEditorPanelProps {
-  terminal?: ReactNode;
+  terminal?: TerminalPanelRenderer | null;
   project: Project;
   activeFile: string;
   openTabs: string[];
@@ -60,8 +61,7 @@ export function WorkspaceEditorPanel({
   const editorComments = commentsForEditorFile(comments, activeFile);
   const editorFocusComment = focusCommentForEditorFile(focusComment, activeFile, loadedFile);
   return <Panel id="source" minSize="22%">
-    <main className="source-panel">
-      {editorPreferences.openFilesInTabs && openTabs.length > 0 && (
+    <EditorTerminalLayout terminal={terminal} tabs={editorPreferences.openFilesInTabs && openTabs.length > 0 && (
         <div className="editor-tabs-bar" role="tablist" aria-label={t("editor.openFiles")}>
           <div className="editor-tabs-scroll">
             {openTabs.map((tabPath, index) => {
@@ -83,18 +83,13 @@ export function WorkspaceEditorPanel({
             })}
           </div>
         </div>
-      )}
-      <Group orientation="vertical" className="agent-editor-group">
-      <Panel id="source-editor" minSize="20%">
+      )}>
       <div id="editor-source-content" className="editor-content-container">
         <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
           <LatexEditor key={activeFile} value={content} filePath={activeFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaborationAwareness, undoManager: readOnly ? undefined : undoManager } : undefined} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor} />
         </Suspense>
         {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
       </div>
-      </Panel>
-      {terminal && <><Separator className="agent-terminal-resizer" /><Panel id="agent-terminal" defaultSize="35%" minSize="20%">{terminal}</Panel></>}
-      </Group>
-    </main>
+    </EditorTerminalLayout>
   </Panel>;
 }
