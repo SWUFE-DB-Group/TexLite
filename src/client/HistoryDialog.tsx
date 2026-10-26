@@ -387,6 +387,9 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const deleteTargetName = deleteTarget && deleteTarget !== "all"
     ? formatVersionTitle(deleteTarget, t(`history.reasons.${deleteTarget.reason}`), i18n.resolvedLanguage)
     : "";
+  const restoreProjectAction = canRestore && detail
+    ? <button type="button" className="history-restore-project" disabled={controlsBusy} title={t("history.restoreProjectTitle")} onClick={() => setRestoreTarget("project")}><RotateCcw size={14} />{t("history.restoreProject")}</button>
+    : null;
 
   return <><Modal open={open} extraWide draggable className="history-dialog-modal" title={t("history.projectSnapshots")} description={t("history.description")} onOpenChange={onOpenChange}
     footer={<>
@@ -450,10 +453,11 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                   <span className="history-snapshot-file-count"><FileText size={12} aria-hidden />{t("history.fileCount", { count: detail.version.fileCount })}</span>
                 </div>
               </div>
+              {!isOwner && restoreProjectAction}
             </header>
-            {(isOwner || canRestore) && <div className="history-snapshot-actions">
-              {isOwner && <button type="button" className="history-delete-action" disabled={controlsBusy} title={t("history.deleteVersionTitle")} onClick={() => setDeleteTarget(detail.version)}><Trash2 size={14} />{t("history.deleteVersion")}</button>}
-              {canRestore && <button type="button" className="history-restore-project" disabled={controlsBusy} title={t("history.restoreProjectTitle")} onClick={() => setRestoreTarget("project")}><RotateCcw size={14} />{t("history.restoreProject")}</button>}
+            {isOwner && <div className="history-snapshot-actions">
+              <button type="button" className="history-delete-action" disabled={controlsBusy} title={t("history.deleteVersionTitle")} onClick={() => setDeleteTarget(detail.version)}><Trash2 size={14} />{t("history.deleteVersion")}</button>
+              {restoreProjectAction}
             </div>}
             {canRestore && <div className="history-label">
               <label><Tag size={14} /><input value={label} maxLength={80} aria-label={t("history.labelPlaceholder")} placeholder={t("history.labelPlaceholder")} onChange={(event) => setLabel(event.target.value)} /></label>

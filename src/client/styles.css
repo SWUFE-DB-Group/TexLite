@@ -1735,8 +1735,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-load-more button:hover:not(:disabled) { border-color: var(--ui-border, #97b2a1); background: var(--ui-hover, #f7faf7); color: var(--ui-accent, #1d5838); }
 .history-load-more button:disabled { cursor: wait; opacity: .62; }
 .history-detail { min-width: 0; min-height: 0; height: 100%; overflow-y: auto; padding: 14px; }
-.history-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
-.history-detail-header > div { display: grid; gap: 4px; }
+.history-detail-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 7px; }
+.history-detail-header > div { display: grid; flex: 1 1 260px; min-width: 0; gap: 4px; }
 .history-detail-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .history-detail-title-row strong { font-size: 15px; color: var(--ui-text, #1d2b22); word-break: break-word; }
 .history-snapshot-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 14px; margin-top: 3px; color: var(--ui-muted, #68736b); font-size: 11px; line-height: 1.65; }
@@ -1748,13 +1748,13 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-snapshot-attribution strong { color: var(--ui-text, #35443b); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
 .history-snapshot-file-count { padding-left: 12px; border-left: 1px solid var(--ui-border, #dce4de); font-size: 10px; }
 .history-snapshot-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 14px; padding: 8px 0 13px; border-bottom: 1px solid var(--ui-border, #e2e7e3); }
-.history-snapshot-actions button, .history-file-list button, .history-file-actions button { -webkit-appearance: none; appearance: none; }
-.history-snapshot-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; white-space: nowrap; }
+.history-snapshot-actions button, .history-restore-project, .history-file-list button, .history-file-actions button { -webkit-appearance: none; appearance: none; }
+.history-snapshot-actions button, .history-restore-project { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; white-space: nowrap; }
 .history-delete-action { border: 0; border-radius: 6px; padding: 6px 4px; background: transparent; color: var(--ui-danger, #a3342c); font-size: 11px; font-weight: 600; }
 .history-delete-action:hover:not(:disabled) { background: var(--ui-hover, #fff0ee); color: var(--ui-danger, #8d2720); }
-.history-restore-project { margin-left: auto; border: 1px solid var(--ui-accent-border, #176b44); border-radius: 7px; padding: 7px 11px; background: #176b44; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 1px 2px #123c2a26; }
+.history-restore-project { flex: none; margin-left: auto; border: 1px solid var(--ui-accent-border, #176b44); border-radius: 7px; padding: 7px 11px; background: #176b44; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 1px 2px #123c2a26; }
 .history-restore-project:hover:not(:disabled) { border-color: var(--ui-accent-border, #115736); background: #115f3b; box-shadow: 0 2px 5px #123c2a2b; }
-.history-snapshot-actions button:focus-visible, .history-file-actions button:focus-visible { outline: 2px solid var(--ui-accent-border, #70ad88); outline-offset: 2px; }
+.history-snapshot-actions button:focus-visible, .history-restore-project:focus-visible, .history-file-actions button:focus-visible { outline: 2px solid var(--ui-accent-border, #70ad88); outline-offset: 2px; }
 .history-label { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .history-label label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 9px; border: 1px solid var(--ui-border, #cdd6cf); border-radius: 6px; background: var(--ui-surface, #fff); color: var(--ui-muted, #778179); transition: border-color 150ms, box-shadow 150ms; }
 .history-label label > svg { flex: none; }
@@ -1781,7 +1781,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-file-actions button { display: inline-flex; align-items: center; gap: 5px; min-height: 31px; border: 1px solid var(--ui-border, #bdc9c0); border-radius: 6px; padding: 6px 9px; background: var(--ui-surface, #fff); color: var(--ui-accent, #31523e); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .history-file-actions button:hover:not(:disabled) { border-color: var(--ui-border, #8eaa98); background: var(--ui-hover, #edf4ef); color: var(--ui-accent, #176b44); }
 @supports not selector(:focus-visible) {
-  .history-snapshot-actions button:focus, .history-file-list button:focus, .history-file-actions button:focus { outline: 2px solid var(--ui-accent-border, #70ad88); outline-offset: 2px; }
+  .history-snapshot-actions button:focus, .history-restore-project:focus, .history-file-list button:focus, .history-file-actions button:focus { outline: 2px solid var(--ui-accent-border, #70ad88); outline-offset: 2px; }
 }
 .history-comparison { min-height: 360px; margin-top: 10px; border: 1px solid #d8dfda; border-radius: 7px; overflow: hidden; background: #202522; display: flex; flex-direction: column; }
 .history-attachment-change { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; padding: 11px 12px; border: 1px solid var(--ui-border, #d8dfda); border-radius: 7px; background: var(--ui-surface, #f5f8f6); color: var(--ui-text, #526258); font-size: 12px; overflow-wrap: anywhere; }

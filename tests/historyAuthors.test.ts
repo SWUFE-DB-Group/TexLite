@@ -11,7 +11,9 @@ import i18n from "../src/client/i18n";
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/Dialog", () => ({
   Modal: ({ open, children, footer }: { open: boolean; children: ReactNode; footer?: ReactNode }) => open ? createElement("div", null, children, createElement("div", { className: "dialog-footer" }, footer)) : null,
-  ConfirmDialog: () => null
+  ConfirmDialog: ({ open, title, onCancel }: { open: boolean; title: string; onCancel: () => void }) => open
+    ? createElement("div", { role: "alertdialog" }, createElement("strong", null, title), createElement("button", { onClick: onCancel }, "Cancel"))
+    : null
 }));
 
 const project: Project = {
@@ -42,6 +44,32 @@ afterEach(async () => {
 });
 
 describe("history author identities", () => {
+  it.each(["read", "edit", "owner"] as const)("groups snapshot actions without an empty operation row (%s)", async (permission) => {
+    vi.mocked(api)
+      .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
+      .mockResolvedValueOnce({ version, settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null }, files: [{ path: "main.tex", size: 3 }] })
+      .mockResolvedValueOnce({ path: "main.tex", historical: "New", comparison: "Old", against: "__previous__", previousVersion: null });
+    const onBeforeMutation = vi.fn(async () => true);
+    await act(async () => root.render(createElement(HistoryDialog, {
+      open: true, project: { ...project, permission }, onOpenChange: () => {}, onBeforeMutation
+    })));
+    const restore = host.querySelector<HTMLButtonElement>(".history-restore-project");
+    const actions = host.querySelector(".history-snapshot-actions");
+    expect(Boolean(host.querySelector(".history-delete-action"))).toBe(permission === "owner");
+    expect(Boolean(actions)).toBe(permission === "owner");
+    expect(Boolean(restore)).toBe(permission !== "read");
+    if (!restore) return;
+    expect(host.querySelectorAll(".history-restore-project")).toHaveLength(1);
+    expect(restore.disabled).toBe(false);
+    expect(restore.closest(permission === "owner" ? ".history-snapshot-actions" : ".history-detail-header")).not.toBeNull();
+    if (actions) expect(actions.firstElementChild?.className).toBe("history-delete-action");
+    const requests = vi.mocked(api).mock.calls.length;
+    await act(async () => restore.click());
+    expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain(i18n.t("history.restoreProjectTitle"));
+    expect(onBeforeMutation).not.toHaveBeenCalled();
+    expect(api).toHaveBeenCalledTimes(requests);
+  });
+
   it.each([0, 2])("keeps the compact edit-history clear action owner-only and disabled for an empty history (%i)", async (count) => {
     vi.mocked(api)
       .mockResolvedValueOnce({ segmentCount: count, payloadBytes: 1024, maxStorageBytes: 32 * 1048576 })
