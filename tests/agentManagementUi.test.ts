@@ -160,11 +160,9 @@ describe("coding agent management presentation", () => {
       expect(card.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false);
     });
     expect(container.querySelector('.agent-policy-heading input[type="checkbox"]')).toBeNull();
-    const help = container.querySelector<HTMLButtonElement>(".agent-policy-help");
-    expect(help?.getAttribute("data-tooltip")).toBe(agentUiMessages["zh-Hant"].isolation);
-    expect(help?.getAttribute("aria-label")).toBe(agentUiMessages["zh-Hant"].isolation);
-    expect(help?.hasAttribute("title")).toBe(false);
-    expect([...container.querySelectorAll(".agent-policy-note")].some((note) => note.textContent?.includes(agentUiMessages["zh-Hant"].isolation))).toBe(false);
+    expect(container.querySelector(".agent-policy-heading strong")?.textContent).toBe(agentUiMessages["zh-Hant"].allowedAgents);
+    expect(container.querySelector(".agent-policy-heading [data-tooltip]")).toBeNull();
+    expect(container.querySelector(".agent-policy-note")?.textContent).toBe(agentUiMessages["zh-Hant"].credentials);
     expect(cards.find((card) => card.textContent?.includes("Claude Code"))?.classList.contains("unavailable")).toBe(true);
     await act(async () => vi.advanceTimersByTime(150));
     expect(container.querySelector(".agent-task-empty p")?.textContent).toBe(agentUiMessages["zh-Hant"].noTasksHint);

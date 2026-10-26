@@ -11,8 +11,6 @@
 .agent-policy-heading, .agent-policy-actions { display: flex; align-items: center; gap: 10px; }
 .agent-policy-heading { justify-content: space-between; flex-wrap: wrap; }
 .agent-policy-heading strong { font-size: 14px; }
-.agent-policy-title { display: inline-flex; align-items: center; gap: 6px; }
-.agent-management button.agent-policy-help { width: 26px; height: 26px; flex: none; padding: 0; border-color: transparent; background: transparent; color: var(--ui-muted, #788178); }
 .agent-policy-note { font-size: 12px; line-height: 1.6; max-width: 880px; margin: 13px 0; }
 .agent-catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 12px; margin-top: 18px; }
 .agent-catalog-item { display: flex; align-items: flex-start; min-width: 0; gap: 10px; padding: 14px; border: 1px solid var(--ui-border, #d8e1db); border-radius: 8px; cursor: pointer; }
