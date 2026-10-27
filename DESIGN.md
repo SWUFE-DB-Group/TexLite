@@ -1296,6 +1296,11 @@ For the default home, `CLAUDE_CONFIG_DIR` stays unset to preserve native
 passed through. Each task durably binds that location and its UUID in
 `state/claude-session.json` before its CLI can launch. Native discovery and
 continuation target only that UUID; existing host conversations are not adopted.
+Claude-specific model/context, provider-authentication, timeout and client-certificate
+variables supplement the shared gateway/proxy environment on each start/resume.
+The source is only the current service process, not a port-specific lookup or a
+shell-profile loader. Runtime session markers and transcript controls stay excluded;
+the durable ownership binding stores no inherited credentials.
 Deletion removes only that session's transcript, subagent directory, transcript
 sidecars and UUID-scoped checkpoint/task/debug data. Shared prompt history,
 settings, credentials, plugins, project memory and caches are left untouched.

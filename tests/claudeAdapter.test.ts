@@ -33,6 +33,106 @@ afterEach(() => {
 });
 
 describe("Claude host configuration and owned conversations", () => {
+  it("inherits gateway, model, cloud authentication and network settings on start and resume without persisting credentials", async () => {
+    const environment: Record<string, string> = {
+      ANTHROPIC_BASE_URL: "https://gateway.example.invalid/anthropic",
+      ANTHROPIC_AUTH_TOKEN: "fixture gateway token",
+      ANTHROPIC_API_KEY: "fixture api key",
+      ANTHROPIC_CUSTOM_HEADERS: "X-Gateway: fixture\nX-Team: writers",
+      ANTHROPIC_MODEL: "gateway-model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "gateway-opus",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "gateway-sonnet",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "gateway-haiku",
+      CLAUDE_CODE_OAUTH_TOKEN: "fixture oauth token",
+      CLAUDE_CODE_SUBAGENT_MODEL: "gateway-subagent",
+      CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
+      CLAUDE_CODE_EFFORT_LEVEL: "high",
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000",
+      CLAUDE_CODE_AUTOCOMPACT_PCT_OVERRIDE: "80",
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS: "16000",
+      CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1",
+      CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1",
+      CLAUDE_CODE_DISABLE_1M_CONTEXT: "1",
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      CLAUDE_CODE_USE_BEDROCK: "0",
+      CLAUDE_CODE_USE_VERTEX: "0",
+      CLAUDE_CODE_USE_FOUNDRY: "0",
+      CLAUDE_CODE_USE_ANTHROPIC_AWS: "0",
+      CLAUDE_CODE_SKIP_BEDROCK_AUTH: "1",
+      CLAUDE_CODE_SKIP_VERTEX_AUTH: "1",
+      CLAUDE_CODE_SKIP_FOUNDRY_AUTH: "1",
+      CLAUDE_CODE_SKIP_ANTHROPIC_AWS_AUTH: "1",
+      CLAUDE_CODE_SKIP_MANTLE_AUTH: "1",
+      AWS_PROFILE: "writers",
+      AWS_REGION: "us-east-1",
+      AWS_ACCESS_KEY_ID: "fixture access key",
+      AWS_SECRET_ACCESS_KEY: "fixture secret key",
+      AWS_SESSION_TOKEN: "fixture aws token",
+      AWS_BEARER_TOKEN_BEDROCK: "fixture bedrock token",
+      AWS_SHARED_CREDENTIALS_FILE: path.join(root, "aws-credentials"),
+      AZURE_TENANT_ID: "fixture tenant",
+      AZURE_CLIENT_ID: "fixture client",
+      AZURE_CLIENT_SECRET: "fixture azure secret",
+      GOOGLE_APPLICATION_CREDENTIALS: path.join(root, "google-credentials.json"),
+      CLOUD_ML_REGION: "us-central1",
+      GCLOUD_PROJECT: "writers-project",
+      VERTEX_REGION_CLAUDE_3_5_HAIKU: "us-east5",
+      API_TIMEOUT_MS: "1200000",
+      MAX_THINKING_TOKENS: "8000",
+      CLAUDE_CODE_API_KEY_HELPER_TTL_MS: "300000",
+      CLAUDE_CODE_AWS_CHAIN_RESOLVE_TIMEOUT_MS: "90000",
+      CLAUDE_CODE_CERT_STORE: "system",
+      CLAUDE_CODE_CLIENT_CERT: path.join(root, "client.crt"),
+      CLAUDE_CODE_CLIENT_KEY: path.join(root, "client.key"),
+      CLAUDE_CODE_CLIENT_KEY_PASSPHRASE: "fixture certificate passphrase",
+      HTTPS_PROXY: "http://proxy.example.invalid:8080",
+      NO_PROXY: "localhost,127.0.0.1",
+      NODE_EXTRA_CA_CERTS: path.join(root, "ca.crt")
+    };
+    for (const [name, value] of Object.entries(environment)) vi.stubEnv(name, value);
+    await claudeAdapter.prepare(context);
+    transcript();
+    const resumed = { ...context, nativeSessionId: context.taskId };
+    await claudeAdapter.prepare(resumed);
+    expect(claudeAdapter.start(context).env).toMatchObject(environment);
+    expect(claudeAdapter.resume(resumed).env).toMatchObject(environment);
+    expect(JSON.parse(fs.readFileSync(path.join(context.stateDirectory, "claude-session.json"), "utf8")))
+      .toEqual({ configDirectory: host, defaultHome: null, sessionId: context.taskId });
+  });
+
+  it("reads the current service environment for each launch, preserving empty values without caching old settings", async () => {
+    vi.stubEnv("ANTHROPIC_BASE_URL", "https://first.example.invalid");
+    vi.stubEnv("CLAUDE_CODE_EFFORT_LEVEL", "high");
+    vi.stubEnv("CLAUDE_CODE_SUBAGENT_MODEL", "first-model");
+    await claudeAdapter.prepare(context);
+    const first = claudeAdapter.start(context);
+    vi.stubEnv("ANTHROPIC_BASE_URL", "https://second.example.invalid");
+    vi.stubEnv("CLAUDE_CODE_EFFORT_LEVEL", "");
+    vi.stubEnv("CLAUDE_CODE_SUBAGENT_MODEL", undefined);
+    const next = claudeAdapter.resume({ ...context, nativeSessionId: context.taskId });
+    expect(first.env).toMatchObject({ ANTHROPIC_BASE_URL: "https://first.example.invalid",
+      CLAUDE_CODE_EFFORT_LEVEL: "high", CLAUDE_CODE_SUBAGENT_MODEL: "first-model" });
+    expect(next.env).toMatchObject({ ANTHROPIC_BASE_URL: "https://second.example.invalid", CLAUDE_CODE_EFFORT_LEVEL: "" });
+    expect(next.env).not.toHaveProperty("CLAUDE_CODE_SUBAGENT_MODEL");
+  });
+
+  it("does not inherit unrelated service secrets or another Claude session's runtime and history controls", async () => {
+    const excluded = ["TEXLITE_SECRET", "DATABASE_URL", "NODE_OPTIONS", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID",
+      "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_REMOTE_SESSION_ID", "CLAUDE_CODE_BRIDGE_SESSION_ID",
+      "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CODE_SKIP_PROMPT_HISTORY"];
+    for (const name of excluded) vi.stubEnv(name, "unrelated-host-value");
+    await claudeAdapter.prepare(context);
+    const start = claudeAdapter.start(context);
+    const resume = claudeAdapter.resume({ ...context, nativeSessionId: context.taskId });
+    for (const name of excluded) {
+      expect(start.env).not.toHaveProperty(name);
+      expect(resume.env).not.toHaveProperty(name);
+    }
+    expect(start.args).toEqual(["--session-id", context.taskId]);
+    expect(resume.args).toEqual(["--resume", context.taskId]);
+  });
+
   it("uses host onboarding, credentials, settings and plugins without copying them", async () => {
     const state = write(".claude.json", JSON.stringify({ hasCompletedOnboarding: true }));
     const settings = write("settings.json", JSON.stringify({ theme: "dark", model: "host-model" }));

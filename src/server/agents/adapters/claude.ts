@@ -12,6 +12,26 @@ interface HostSession {
   sessionId: string;
 }
 
+// Claude-specific settings supplement the shared proxy/certificate and
+// ANTHROPIC_* environment. Do not inherit session identity, nested-launch
+// markers or transcript controls: TexLite owns conversation continuation.
+// https://code.claude.com/docs/en/env-vars
+const hostEnvironmentNames = [
+  /^CLAUDE_CODE_(?:OAUTH_TOKEN|USE_(?:BEDROCK|VERTEX|FOUNDRY|ANTHROPIC_AWS)|SKIP_(?:BEDROCK|VERTEX|FOUNDRY|ANTHROPIC_AWS|MANTLE)_AUTH)$/,
+  /^CLAUDE_CODE_(?:SUBAGENT_MODEL(?:_FORCE)?|EFFORT_LEVEL|AUTO_COMPACT_WINDOW|AUTOCOMPACT_PCT_OVERRIDE|MAX_OUTPUT_TOKENS|ALWAYS_ENABLE_EFFORT|DISABLE_(?:ADAPTIVE_THINKING|1M_CONTEXT|EXPERIMENTAL_BETAS|NONESSENTIAL_TRAFFIC))$/,
+  /^CLAUDE_CODE_(?:API_KEY_HELPER_TTL_MS|AWS_CHAIN_RESOLVE_TIMEOUT_MS|CERT_STORE|CLIENT_(?:CERT|KEY|KEY_PASSPHRASE))$/,
+  /^(?:AWS_|AZURE_|VERTEX_REGION_)/,
+  /^(?:CLOUD_ML_REGION|GCLOUD_PROJECT|API_TIMEOUT_MS|MAX_THINKING_TOKENS)$/
+];
+
+function hostClaudeEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && hostEnvironmentNames.some((pattern) => pattern.test(name))) env[name] = value;
+  }
+  return env;
+}
+
 const bindingFile = (context: AgentAdapterContext) => path.join(context.stateDirectory, "claude-session.json");
 
 function binding(context: AgentAdapterContext): HostSession | null {
@@ -109,7 +129,7 @@ export const claudeAdapter: AgentAdapter = {
     const session = binding(context) ?? hostSession(context);
     const env: Record<string, string> = session.defaultHome === null ? { CLAUDE_CONFIG_DIR: session.configDirectory }
       : { HOME: session.defaultHome, ...(process.platform === "win32" ? { USERPROFILE: session.defaultHome } : {}) };
-    return agentLaunch(context, ["--session-id", session.sessionId], env);
+    return agentLaunch(context, ["--session-id", session.sessionId], { ...hostClaudeEnvironment(), ...env });
   },
   resume(context) {
     const session = binding(context);

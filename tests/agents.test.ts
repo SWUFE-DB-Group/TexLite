@@ -145,13 +145,18 @@ describe("external agent tasks", () => {
     const unrelated = path.join(transcripts, `${randomUUID()}.jsonl`);
     fs.writeFileSync(unrelated, "native host conversation");
     vi.stubEnv("CLAUDE_CONFIG_DIR", host);
+    vi.stubEnv("ANTHROPIC_BASE_URL", "https://gateway.example.invalid");
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "fixture gateway token");
+    vi.stubEnv("CLAUDE_CODE_SUBAGENT_MODEL", "gateway-subagent");
+    vi.stubEnv("CLAUDE_CODE_EFFORT_LEVEL", "high");
     vi.spyOn(registry, "adapter").mockImplementation((id) => id === "claude" ? claudeAdapter : adapters.find((entry) => entry.id === id)!);
     const task = await create("claude");
     const binding = path.join(agentTaskRoot(config, task.id), "state", "claude-session.json");
     const transcript = path.join(transcripts, `${task.id}.jsonl`);
     spawn.mockImplementation((_executable, _args, options) => {
       expect(JSON.parse(fs.readFileSync(binding, "utf8"))).toMatchObject({ configDirectory: host, sessionId: task.id });
-      expect(options.env.CLAUDE_CONFIG_DIR).toBe(host);
+      expect(options.env).toMatchObject({ CLAUDE_CONFIG_DIR: host, ANTHROPIC_BASE_URL: "https://gateway.example.invalid",
+        ANTHROPIC_AUTH_TOKEN: "fixture gateway token", CLAUDE_CODE_SUBAGENT_MODEL: "gateway-subagent", CLAUDE_CODE_EFFORT_LEVEL: "high" });
       options.beforeStart?.();
       fs.writeFileSync(transcript, "{}");
       const process = new FakePty(); processes.push(process); return process;

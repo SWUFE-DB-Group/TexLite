@@ -542,6 +542,22 @@ caches, and never uses project-wide `claude purge`.
 Old isolated Claude tasks are not migrated; remove them before upgrading and
 create new tasks to use the shared configuration.
 
+Claude starts and resumes also inherit the current TexLite process's exported
+gateway credentials and models (`ANTHROPIC_*`), supported Claude model/context
+settings, cloud-provider authentication (AWS, Azure and Google), request timeout,
+proxy and certificate settings. Only configuration variables are forwarded;
+another Claude session's identity, nested-session markers and transcript controls
+are not. Credentials are not saved in TexLite's session binding.
+Each TexLite instance uses its own process environment, regardless of its port;
+it never reads another instance's environment or sources shell startup files.
+Export variables **before** starting TexLite. After changing a shell profile,
+restart the relevant instance from a shell with those variables loaded
+(`texlite restart --config /path/to/texlite.config.json`, or restart `npm run dev`
+for development); refreshing the browser or restarting only the agent cannot
+update its parent service's environment. Alternatively, put persistent Claude
+variables in the host's `~/.claude/settings.json` under `env`, as described in
+the [Claude environment-variable reference](https://code.claude.com/docs/en/env-vars).
+
 On the first start, Codex and legacy isolated OpenCode tasks copy selected host credential/configuration
 files if available; they do not copy host conversation history. Credentials
 subsequently refreshed within a task are preserved. Keychain/credential formats

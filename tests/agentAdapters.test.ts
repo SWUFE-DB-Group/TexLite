@@ -103,6 +103,17 @@ describe("native agent adapters", () => {
     expect(opencodeAdapter.resume({ ...context, nativeSessionId: "ses_test" }).args).toEqual(["--session", "ses_test"]);
   });
 
+  it.each([codexAdapter, opencodeAdapter])("does not expand $id environment access to Claude-only provider settings", (adapter) => {
+    const names = ["CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_EFFORT_LEVEL", "AWS_SECRET_ACCESS_KEY", "AZURE_CLIENT_SECRET"];
+    for (const name of names) vi.stubEnv(name, "fixture Claude-only setting");
+    const start = adapter.start(context);
+    const resume = adapter.resume({ ...context, nativeSessionId: "ses_saved" });
+    for (const name of names) {
+      expect(start.env).not.toHaveProperty(name);
+      expect(resume.env).not.toHaveProperty(name);
+    }
+  });
+
   it.each([
     { adapter: codexAdapter, privateKeys: ["CODEX_HOME"] },
     { adapter: opencodeAdapter, privateKeys: ["OPENCODE_DB", "XDG_DATA_HOME", "XDG_STATE_HOME"] }
