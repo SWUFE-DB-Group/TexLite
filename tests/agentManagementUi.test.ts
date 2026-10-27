@@ -53,9 +53,10 @@ afterEach(async () => {
 });
 
 describe("coding agent management presentation", () => {
-  it("centralizes session guidance for every agent, including while the terminal is running", async () => {
+  it("shows shared new-session guidance with an information icon across agents and locales, even while running", async () => {
     container.dataset.texliteTooltips = "off";
-    for (const agentId of AGENT_IDS) {
+    for (const [index, agentId] of AGENT_IDS.entries()) {
+      language = (["en", "zh", "zh-Hant"] as const)[index];
       const task: AgentTask = { id: `task-${agentId}`, projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
         agentId, title: "Revise abstract", state: "running", cleanupState: "none", errorCode: null,
         createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt: "2026-10-25", endedAt: null, exitCode: null,
@@ -69,14 +70,18 @@ describe("coding agent management presentation", () => {
       expect(hints).toHaveLength(1);
       const hint = hints[0];
       expect(hint.disabled).toBe(false);
+      expect(hint.querySelector(".lucide-info")?.getAttribute("aria-hidden")).toBe("true");
+      expect(hint.querySelector(".lucide-triangle-alert")).toBeNull();
       expect(hint.hasAttribute("title")).toBe(false);
-      expect(hint.getAttribute("aria-label")).toBe(agentUiMessages["zh-Hant"].sessionManagementHint);
+      expect(hint.getAttribute("aria-label")).toBe(agentUiMessages[language].sessionManagementHint);
+      expect(hint.getAttribute("data-tooltip")).toContain("/new");
+      expect(hint.getAttribute("data-tooltip")).toContain("/clear");
       await act(async () => hint.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
-      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages["zh-Hant"].sessionManagementHint);
+      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages[language].sessionManagementHint);
       await act(async () => hint.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
       expect(container.querySelector('[role="tooltip"]')).toBeNull();
       await act(async () => hint.focus());
-      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages["zh-Hant"].sessionManagementHint);
+      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages[language].sessionManagementHint);
       await act(async () => hint.blur());
     }
   });

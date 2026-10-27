@@ -405,11 +405,12 @@ Select an allowed installed agent and click **Start task** to create and launch
 it in one action. The task name is optional; an omitted name receives six random
 characters from uppercase/lowercase ASCII letters, digits and `-`. If launch
 fails, the same task stays selected for retry.
-Multiple tasks may use the same agent in the same project. A shared hint in the
-terminal heading explains: use TexLite to create, switch and rename tasks,
-not the agent's internal session controls. Native renaming does not change a
-session ID, but its title is independent of the TexLite task name. Creating or
-switching native conversations can bypass the task's registered session binding.
+Multiple tasks may use the same agent in the same project. A shared information
+hint in the terminal heading asks users not to create new sessions inside agents,
+for example with `/new` or `/clear`: commands that start a new conversation with
+an empty context can bypass the task's registered session binding.
+Native renaming does not change a session ID, but its title is independent of
+the TexLite task name.
 The resizable terminal sits below the editor. Browser tabs attach to the same running task; one tab
 controls input, and another can take control. Hiding the panel, leaving a project,
 disconnecting a browser, or archiving a project does not stop executions.
