@@ -2,6 +2,7 @@
 export const AGENT_IDS = ["codex", "opencode", "claude"] as const;
 export type AgentId = typeof AGENT_IDS[number];
 export const AGENT_LABELS: Record<AgentId, string> = { codex: "Codex", opencode: "OpenCode", claude: "Claude Code" };
+export const AGENT_TASK_PAGE_SIZE = 50;
 export const isAgentId = (value: unknown): value is AgentId => AGENT_IDS.includes(value as AgentId);
 
 export interface AgentPolicy { allowed: AgentId[] }

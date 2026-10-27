@@ -679,10 +679,17 @@ describe("external agent tasks", () => {
   it("paginates task metadata without enforcing a task-count limit", async () => {
     const task = await create();
     const insert = db.prepare("INSERT INTO agent_tasks (id, project_id, user_id, project_name, user_name, agent_id, title, created_at, updated_at) VALUES (?, ?, ?, 'Paper', 'Owner', 'codex', 'Another task', ?, ?)");
-    for (let i = 0; i < 24; i++) insert.run(randomUUID(), projectId, owner.id, task.createdAt, task.updatedAt);
-    expect(service.list(admin, true, {}).tasks).toHaveLength(20);
-    expect(service.list(owner, false, { page: "2" })).toMatchObject({ total: 25, page: 2, pageSize: 20 });
-    expect(service.list(owner, false, { page: "2" }).tasks).toHaveLength(5);
+    for (let i = 0; i < 50; i++) insert.run(randomUUID(), projectId, owner.id, task.createdAt, task.updatedAt);
+    const first = service.list(admin, true, {});
+    const second = service.list(owner, false, { page: "2" });
+    expect(first).toMatchObject({ total: 51, page: 1, pageSize: 50 });
+    expect(first.tasks).toHaveLength(50);
+    expect(second).toMatchObject({ total: 51, page: 2, pageSize: 50 });
+    expect(second.tasks).toHaveLength(1);
+    expect(new Set([...first.tasks, ...second.tasks].map((entry) => entry.id)).size).toBe(51);
+    expect(service.list(owner, false, { page: "99" })).toEqual(second);
+    expect(service.list(owner, false, { page: "invalid" }).page).toBe(1);
+    expect(service.list(editor, false, {})).toMatchObject({ tasks: [], total: 0, page: 1, pageSize: 50 });
   });
 });
 
@@ -1026,10 +1033,10 @@ describe("agent HTTP and WebSocket permissions", () => {
     const insert = db.prepare(`INSERT INTO agent_tasks (id, project_id, user_id, project_name, user_name,
       agent_id, title, state, created_at, updated_at) VALUES (?, ?, ?, 'Paper', 'Owner', 'codex', 'Old task', ?, ?, ?)`);
     const inactiveStates = ["ready", "stopped", "exited", "interrupted", "failed"];
-    for (let index = 0; index < 25; index++) insert.run(randomUUID(), projectId, owner.id,
+    for (let index = 0; index < 50; index++) insert.run(randomUUID(), projectId, owner.id,
       inactiveStates[index % inactiveStates.length], "2099-01-01T00:00:00Z", "2099-01-01T00:00:00Z");
     const firstPage = (await app!.inject({ url: "/api/agent-tasks", headers: { cookie: cookies.ownerCookie } })).json();
-    expect(firstPage.tasks).toHaveLength(20);
+    expect(firstPage.tasks).toHaveLength(50);
     expect(firstPage.tasks.some((task: AgentTask) => task.id === own.id)).toBe(false);
     expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 1 });
     expect(await access(cookies.adminCookie)).toEqual({ visible: true, activeCount: 1 });

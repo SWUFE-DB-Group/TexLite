@@ -41,7 +41,7 @@ beforeEach(() => {
       enabled: false, version: "1.0.0" })) };
   vi.mocked(api).mockReset();
   vi.mocked(api).mockImplementation(async (url) => url === "/api/admin/agents" ? catalog
-    : { tasks: [], page: 1, pageSize: 20, total: 0 } as never);
+    : { tasks: [], page: 1, pageSize: 50, total: 0 } as never);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => {
@@ -56,7 +56,7 @@ describe("coding agent management presentation", () => {
       createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt: null, endedAt: null, exitCode,
       nativeSessionId: exitCode === null ? null : "native-conversation", canResume: exitCode !== null };
     catalog.agents[0].enabled = true;
-    vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 20, total: 1 },
+    vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1 },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
       refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() });
     await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
@@ -89,7 +89,7 @@ describe("coding agent management presentation", () => {
     const onHide = vi.fn();
     const acceptTask = vi.fn();
     catalog.agents[0].enabled = true;
-    vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 20, total: 1, activeTaskId: task.id },
+    vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1, activeTaskId: task.id },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
       refreshTasks: vi.fn(), acceptTask, mutate: async (operation) => operation() });
     const render = () => act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide })));
@@ -135,7 +135,7 @@ describe("coding agent management presentation", () => {
       agentId: "codex", title: "Check citations", state: "stopped", cleanupState: "none", errorCode: null, createdAt: "2026-10-25T00:00:00Z",
       updatedAt: "2026-10-25T12:30:00Z", startedAt: null, endedAt: null, exitCode: 0, nativeSessionId: null, canResume: false };
     vi.mocked(api).mockImplementation(async (url) => url === "/api/admin/agents" ? catalog
-      : { tasks: [task], page: 1, pageSize: 20, total: 1 } as never);
+      : { tasks: [task], page: 1, pageSize: 50, total: 1 } as never);
     await act(async () => root.render(createElement(Fragment, null,
       createElement(AgentManagement, { user, onBack() {} }), createElement(GlobalTooltip))));
     await act(async () => vi.advanceTimersByTime(150));
@@ -159,7 +159,7 @@ describe("coding agent management presentation", () => {
     expect(time?.hasAttribute("title")).toBe(false);
     expect(time?.tabIndex).toBe(0);
     expect(time?.textContent).toBe(formatDateTime(task.updatedAt, "zh-Hant", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }));
-    vi.mocked(api).mockResolvedValue({ tasks: [{ ...task, userUsername: null }], page: 1, pageSize: 20, total: 1 });
+    vi.mocked(api).mockResolvedValue({ tasks: [{ ...task, userUsername: null }], page: 1, pageSize: 50, total: 1 });
     await act(async () => vi.advanceTimersByTime(5_000));
     const deletedOwner = container.querySelector<HTMLElement>(".agent-table-user")!;
     expect(deletedOwner.textContent).toBe(task.userName);
@@ -209,9 +209,73 @@ describe("coding agent management presentation", () => {
     expect(container.querySelector(".agent-list-reminder")?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
   });
 
+  it.each(["admin", "user"] as const)("paginates %s task management at 50 tasks per page", async (role) => {
+    let total = 50;
+    const prefix = role === "admin" ? "/api/admin/agent-tasks" : "/api/agent-tasks";
+    vi.mocked(api).mockImplementation(async (url) => {
+      if (url === "/api/admin/agents" || url === "/api/agents") return catalog as never;
+      const page = Number(new URL(url, "http://localhost").searchParams.get("page"));
+      return { tasks: [], page, pageSize: 50, total } as never;
+    });
+    await act(async () => root.render(createElement(AgentManagement, { user: { ...user, role }, onBack() {} })));
+    await act(async () => vi.advanceTimersByTime(150));
+    const buttons = () => container.querySelectorAll<HTMLButtonElement>(".agent-pagination > button");
+    const label = () => container.querySelector(".agent-pagination > span")?.textContent;
+    expect(label()).toBe("1 / 1");
+    expect(buttons()[0].disabled).toBe(true);
+    expect(buttons()[1].disabled).toBe(true);
+
+    total = 51;
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(label()).toBe("1 / 2");
+    expect(buttons()[1].disabled).toBe(false);
+    await act(async () => buttons()[1].click());
+    await act(async () => vi.advanceTimersByTime(150));
+    expect(api).toHaveBeenCalledWith(`${prefix}?page=2`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(label()).toBe("2 / 2");
+    expect(buttons()[0].disabled).toBe(false);
+    expect(buttons()[1].disabled).toBe(true);
+    await act(async () => buttons()[0].click());
+    await act(async () => vi.advanceTimersByTime(150));
+    expect(label()).toBe("1 / 2");
+  });
+
+  it("shows terminal pagination only beyond 50 tasks and navigates using the returned page", async () => {
+    const task: AgentTask = { id: "task", projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
+      agentId: "codex", title: "Check citations", state: "ready", cleanupState: "none", errorCode: null,
+      createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt: null, endedAt: null, exitCode: null,
+      nativeSessionId: null, canResume: false };
+    const state: ReturnType<typeof useAgentTasks> = { catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 50 },
+      selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
+      refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() };
+    const render = () => act(async () => {
+      vi.mocked(useAgentTasks).mockReturnValue(state);
+      root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} }));
+    });
+    const previous = () => container.querySelector<HTMLButtonElement>(`[aria-label="${agentUiMessages["zh-Hant"].previous}"]`);
+    const next = () => container.querySelector<HTMLButtonElement>(`[aria-label="${agentUiMessages["zh-Hant"].next}"]`);
+    await render();
+    expect(previous()).toBeNull();
+    expect(next()).toBeNull();
+    state.result.total = 51;
+    await render();
+    expect(container.querySelector(".agent-task-toolbar > small")?.textContent).toBe("1 / 2");
+    expect(previous()?.disabled).toBe(true);
+    expect(next()?.disabled).toBe(false);
+    await act(async () => next()!.click());
+    expect(state.setPage).toHaveBeenCalledWith(2);
+    state.result.page = 2;
+    await render();
+    expect(container.querySelector(".agent-task-toolbar > small")?.textContent).toBe("2 / 2");
+    expect(previous()?.disabled).toBe(false);
+    expect(next()?.disabled).toBe(true);
+    await act(async () => previous()!.click());
+    expect(state.setPage).toHaveBeenLastCalledWith(1);
+  });
+
   it("presents project execution contention as a warning with an accessible decorative icon", async () => {
     vi.mocked(useAgentTasks).mockReturnValue({ catalog,
-      result: { tasks: [], page: 1, pageSize: 20, total: 0, activeTaskId: "another-task" }, selected: null,
+      result: { tasks: [], page: 1, pageSize: 50, total: 0, activeTaskId: "another-task" }, selected: null,
       selectedId: "", page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
       refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() });
     await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));

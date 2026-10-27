@@ -41,7 +41,7 @@ beforeEach(() => {
       const created = { ...task("generated", "ready"), agentId }; tasks.push(created); return { task: created } as never;
     }
     if (url.endsWith("/start")) return start.promise as Promise<never>;
-    return { tasks: [...tasks], page: 1, total: tasks.length, pageSize: 20,
+    return { tasks: [...tasks], page: 1, total: tasks.length, pageSize: 50,
       activeTaskId: tasks.find((value) => value.state === "running")?.id ?? null } as never;
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);

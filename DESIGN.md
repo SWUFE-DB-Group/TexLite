@@ -1297,7 +1297,9 @@ These locations organize tasks; they do not sandbox agents running as the same
 service account.
 
 The administrative screen is a separate lazy page, with agent settings and a
-paginated cross-project task catalog. Administrators can stop/delete tasks but
+paginated cross-project task catalog. Task listings use server-side pagination
+with 50 tasks per page across management pages and project terminals.
+Administrators can stop/delete tasks but
 cannot attach to another user's terminal. This metadata-specific authority does
 not change ordinary project visibility. Users can manage their own tasks, and
 execution/attachment additionally requires current project write

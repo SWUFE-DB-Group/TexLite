@@ -7,7 +7,7 @@ import { Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import type { User } from "../types";
 import type { AgentCatalog, AgentPolicy, AgentTask, AgentTaskPage } from "../../shared/agentProtocol";
-import { AGENT_LABELS } from "../../shared/agentProtocol";
+import { AGENT_LABELS, AGENT_TASK_PAGE_SIZE } from "../../shared/agentProtocol";
 import { formatDateTime } from "../dateTime";
 import { AgentIcon } from "../agents/AgentIcon";
 import { notifyAgentTasksChanged } from "../agents/useAgentAccess";
@@ -20,7 +20,7 @@ export function AgentManagement({ user, onBack }: {
   const prefix = admin ? "/api/admin/agent-tasks" : "/api/agent-tasks";
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [policy, setPolicy] = useState<AgentPolicy>({ allowed: [] });
-  const [result, setResult] = useState<AgentTaskPage>({ tasks: [], page: 1, pageSize: 20, total: 0 });
+  const [result, setResult] = useState<AgentTaskPage>({ tasks: [], page: 1, pageSize: AGENT_TASK_PAGE_SIZE, total: 0 });
   const [page, setPage] = useState(1);
   const [state, setState] = useState("");
   const [agent, setAgent] = useState("");
@@ -149,7 +149,7 @@ export function AgentManagement({ user, onBack }: {
       </tr>)}</tbody></table>
       {!result.tasks.length && <div className="agent-task-empty">{loading ? <LoaderCircle size={24} className="spin" /> : <TerminalSquare size={28} />}<strong>{t(loading ? "common.loading" : "agents.noTasks")}</strong>{!loading && <p>{t("agents.noTasksHint")}</p>}</div>}
     </div>
-    <nav className="project-pagination agent-pagination" aria-label={t("agents.tasks")}><button type="button" disabled={busy || result.page <= 1} onClick={() => { setPage(result.page - 1); setSelected(new Set()); }}><ChevronLeft size={14} aria-hidden="true" />{t("agents.previous")}</button><span>{result.page} / {Math.max(1, Math.ceil(result.total / 20))}</span><button type="button" disabled={busy || result.page * 20 >= result.total} onClick={() => { setPage(result.page + 1); setSelected(new Set()); }}>{t("agents.next")}<ChevronRight size={14} aria-hidden="true" /></button></nav>
+    <nav className="project-pagination agent-pagination" aria-label={t("agents.tasks")}><button type="button" disabled={busy || result.page <= 1} onClick={() => { setPage(result.page - 1); setSelected(new Set()); }}><ChevronLeft size={14} aria-hidden="true" />{t("agents.previous")}</button><span>{result.page} / {Math.max(1, Math.ceil(result.total / result.pageSize))}</span><button type="button" disabled={busy || result.page * result.pageSize >= result.total} onClick={() => { setPage(result.page + 1); setSelected(new Set()); }}>{t("agents.next")}<ChevronRight size={14} aria-hidden="true" /></button></nav>
     <Modal open={deleting.length > 0} title={t("agents.delete")} description={t("agents.bulkDeleteDescription")} onOpenChange={(open) => { if (!open && !busy) setDeleting([]); }} footer={<><button disabled={busy} onClick={() => setDeleting([])}>{t("common.cancel")}</button><button className="danger" disabled={busy} onClick={() => void mutate(() => operate(deleting, "delete"))}>{busy && <LoaderCircle size={14} className="spin" />}{t("agents.delete")}</button></>}>
       {deleting.map((task) => <div className="agent-delete-item" key={task.id}><strong>{task.title}</strong><small>{task.projectName} · {task.userName} · {AGENT_LABELS[task.agentId]}</small>{failures[task.id] && <p className="error" role="alert">{failures[task.id]}</p>}</div>)}
     </Modal>

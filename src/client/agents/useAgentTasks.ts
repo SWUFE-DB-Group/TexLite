@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { AgentCatalog, AgentTask, AgentTaskPage } from "../../shared/agentProtocol";
+import { AGENT_TASK_PAGE_SIZE } from "../../shared/agentProtocol";
 import { errorMessage } from "../errors";
 import { notifyAgentTasksChanged } from "./useAgentAccess";
 
 export function useAgentTasks(projectId: string) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
-  const [result, setResult] = useState<AgentTaskPage>({ tasks: [], page: 1, pageSize: 20, total: 0 });
+  const [result, setResult] = useState<AgentTaskPage>({ tasks: [], page: 1, pageSize: AGENT_TASK_PAGE_SIZE, total: 0 });
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");

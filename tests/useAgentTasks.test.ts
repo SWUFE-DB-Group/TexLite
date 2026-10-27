@@ -17,7 +17,7 @@ function deferred<T>() {
   const promise = new Promise<T>((yes) => { resolve = yes; });
   return { promise, resolve };
 }
-const page = (...tasks: AgentTask[]): AgentTaskPage => ({ tasks, page: 1, pageSize: 20, total: tasks.length });
+const page = (...tasks: AgentTask[]): AgentTaskPage => ({ tasks, page: 1, pageSize: 50, total: tasks.length });
 let root: Root;
 let container: HTMLDivElement;
 let current: ReturnType<typeof useAgentTasks>;

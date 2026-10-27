@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomInt, randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import type { AgentAccess, AgentCatalog, AgentId, AgentPolicy, AgentTask, AgentTaskPage, AgentServerMessage } from "../../shared/agentProtocol.js";
-import { parseAgentClientMessage } from "../../shared/agentProtocol.js";
+import { AGENT_TASK_PAGE_SIZE, parseAgentClientMessage } from "../../shared/agentProtocol.js";
 import type { DatabaseConnection, UserRow } from "../db.js";
 import { httpError } from "../http.js";
 import { accessibleProject, canEdit } from "../projects.js";
@@ -116,12 +116,12 @@ export class AgentService {
     const from = "FROM agent_tasks t LEFT JOIN projects p ON p.id = t.project_id LEFT JOIN users u ON u.id = t.user_id";
     const { total } = this.db.prepare(`SELECT count(*) AS total ${from} ${where}`).get(...values) as { total: number };
     const requested = Number(query.page ?? 1);
-    const page = Math.min(Math.max(1, Number.isSafeInteger(requested) ? requested : 1), Math.max(1, Math.ceil(total / 20)));
+    const page = Math.min(Math.max(1, Number.isSafeInteger(requested) ? requested : 1), Math.max(1, Math.ceil(total / AGENT_TASK_PAGE_SIZE)));
     const rows = this.db.prepare(`SELECT t.*, COALESCE(p.name, t.project_name) AS project_name,
       COALESCE(u.display_name, t.user_name) AS user_name, u.username AS user_username
-      ${from} ${where} ORDER BY t.updated_at DESC, t.id LIMIT 20 OFFSET ?`).all(...values, (page - 1) * 20) as Array<TaskRow & { user_username: string | null }>;
+      ${from} ${where} ORDER BY t.updated_at DESC, t.id LIMIT ? OFFSET ?`).all(...values, AGENT_TASK_PAGE_SIZE, (page - 1) * AGENT_TASK_PAGE_SIZE) as Array<TaskRow & { user_username: string | null }>;
     const project = query.project ? accessibleProject(this.db, query.project, user) : null;
-    return { tasks: rows.map((row) => ({ ...this.json(row), userUsername: row.user_username })), total, page, pageSize: 20,
+    return { tasks: rows.map((row) => ({ ...this.json(row), userUsername: row.user_username })), total, page, pageSize: AGENT_TASK_PAGE_SIZE,
       activeTaskId: project && canEdit(project) ? this.activeProjects.get(project.id) ?? null : null };
   }
 
