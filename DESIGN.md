@@ -1289,10 +1289,21 @@ trusted writers, not additional tasks imported into TexLite.
 All adapters inherit the service account's `XDG_CACHE_HOME`; when it is unset,
 the CLI chooses its own default. Shared caches can reuse model catalogs and
 installed dependencies across projects, tasks and native terminals.
-Codex and Claude keep task-specific `CODEX_HOME` and `CLAUDE_CONFIG_DIR` because
-these directories also contain conversations and other persistent state.
-TexLite does not selectively share undocumented files inside those native homes.
-Filesystem cleanup removes only the task's UUID directory, not the inherited host cache.
+Codex keeps a task-specific `CODEX_HOME`. Claude directly shares the service
+account's native configuration and login instead of copying selected files.
+For the default home, `CLAUDE_CONFIG_DIR` stays unset to preserve native
+`~/.claude.json` onboarding discovery. An explicit configuration directory is
+passed through. Each task durably binds that location and its UUID in
+`state/claude-session.json` before its CLI can launch. Native discovery and
+continuation target only that UUID; existing host conversations are not adopted.
+Deletion removes only that session's transcript, subagent directory, transcript
+sidecars and UUID-scoped checkpoint/task/debug data. Shared prompt history,
+settings, credentials, plugins, project memory and caches are left untouched.
+A missing or invalid ownership binding keeps cleanup failed and retryable,
+rather than dropping the task and leaving an unmanaged conversation.
+Old private Claude conversations are not migrated and should be removed before
+upgrading. Task deletion also removes its private TexLite UUID directory,
+never the inherited host cache or the host configuration directory.
 These locations organize tasks; they do not sandbox agents running as the same
 service account.
 
@@ -1394,7 +1405,7 @@ terminal data over authenticated, origin-checked WebSockets with base-path and
 HTTPS support. One attachment owns input/resize; takeover is explicit. Server
 display replay is bounded, slow sockets disconnect without stopping the task,
 and full transcripts are not persisted by TexLite. Native CLI history can still
-exist in its task state. Raw terminal replay is a bounded recent stream, not a
+exist in task-local or shared host state. Raw terminal replay is a bounded recent stream, not a
 complete saved terminal screen; very long full-screen sessions may need a redraw.
 
 Terminal appearance is separate from editor appearance. Its font, size and theme

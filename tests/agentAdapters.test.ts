@@ -46,6 +46,7 @@ beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-agent-adapters-"));
   vi.stubEnv("XDG_DATA_HOME", path.join(root, "host-data"));
   vi.stubEnv("XDG_STATE_HOME", path.join(root, "host-state"));
+  vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(root, "host-claude"));
   context = { taskId: "11111111-2222-4333-8444-555555555555", nativeSessionId: null,
     executable: "agent", stateDirectory: path.join(root, "state"), workingDirectory: path.join(root, "work"), features: new Set() };
 });
@@ -104,8 +105,7 @@ describe("native agent adapters", () => {
 
   it.each([
     { adapter: codexAdapter, privateKeys: ["CODEX_HOME"] },
-    { adapter: opencodeAdapter, privateKeys: ["OPENCODE_DB", "XDG_DATA_HOME", "XDG_STATE_HOME"] },
-    { adapter: claudeAdapter, privateKeys: ["CLAUDE_CONFIG_DIR"] }
+    { adapter: opencodeAdapter, privateKeys: ["OPENCODE_DB", "XDG_DATA_HOME", "XDG_STATE_HOME"] }
   ])("inherits the host cache across $adapter.id tasks without sharing conversation state", ({ adapter, privateKeys }) => {
     const cache = path.join(root, "host-cache");
     vi.stubEnv("XDG_CACHE_HOME", cache);
@@ -122,10 +122,11 @@ describe("native agent adapters", () => {
     }
   });
 
-  it.each([codexAdapter, opencodeAdapter, claudeAdapter])("leaves $id cache defaults to the CLI when XDG_CACHE_HOME is unset", (adapter) => {
+  it.each([codexAdapter, opencodeAdapter, claudeAdapter])("leaves $id cache defaults to the CLI when XDG_CACHE_HOME is unset", async (adapter) => {
     vi.stubEnv("XDG_CACHE_HOME", undefined);
+    if (adapter.id === "claude") await adapter.prepare(context);
     expect(adapter.start(context).env).not.toHaveProperty("XDG_CACHE_HOME");
-    expect(adapter.resume({ ...context, nativeSessionId: "ses_saved" }).env).not.toHaveProperty("XDG_CACHE_HOME");
+    expect(adapter.resume({ ...context, nativeSessionId: adapter.id === "claude" ? context.taskId : "ses_saved" }).env).not.toHaveProperty("XDG_CACHE_HOME");
   });
 
   it("discovers an OpenCode session in the project's cwd, not the TexLite server's cwd", async () => {
@@ -150,11 +151,15 @@ describe("native agent adapters", () => {
 
   it("uses a deterministic Claude conversation ID and requires its actual transcript before restoring it", async () => {
     expect(claudeAdapter.start(context).args).toEqual(["--session-id", context.taskId]);
-    expect(claudeAdapter.resume({ ...context, nativeSessionId: context.taskId }).args).toEqual(["--resume", context.taskId]);
     expect(await claudeAdapter.findNativeSession(context)).toEqual({ status: "unknown" });
-    const dir = path.join(context.stateDirectory, "claude", "projects", "task-workspace"); fs.mkdirSync(dir, { recursive: true });
+    await claudeAdapter.prepare(context);
+    expect(await claudeAdapter.findNativeSession(context)).toEqual({ status: "empty" });
+    await expect(claudeAdapter.prepare({ ...context, nativeSessionId: context.taskId })).rejects.toMatchObject({ code: "AGENT_NO_CONTEXT" });
+    const dir = path.join(root, "host-claude", "projects", "task-workspace"); fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${context.taskId}.jsonl`), "{}");
     expect(await claudeAdapter.findNativeSession(context)).toEqual({ status: "found", id: context.taskId });
+    await claudeAdapter.prepare({ ...context, nativeSessionId: context.taskId });
+    expect(claudeAdapter.resume({ ...context, nativeSessionId: context.taskId }).args).toEqual(["--resume", context.taskId]);
   });
 
   it("distinguishes a verified empty OpenCode session list from a missing database", async () => {
@@ -170,15 +175,15 @@ describe("native agent adapters", () => {
     expect(await opencodeAdapter.findNativeSession(context)).toEqual({ status: "unknown" });
   });
 
-  it.each([codexAdapter, claudeAdapter])("distinguishes unused and missing transcript stores for $id", async (adapter) => {
-    const directory = path.join(context.stateDirectory, adapter.id === "codex" ? "codex" : "claude");
-    expect(await adapter.findNativeSession(context)).toEqual({ status: "unknown" });
+  it("distinguishes unused and missing transcript stores for Codex", async () => {
+    const directory = path.join(context.stateDirectory, "codex");
+    expect(await codexAdapter.findNativeSession(context)).toEqual({ status: "unknown" });
     fs.mkdirSync(directory, { recursive: true });
-    expect(await adapter.findNativeSession(context)).toEqual({ status: "empty" });
-    const transcripts = path.join(directory, adapter.id === "codex" ? "sessions" : "projects");
+    expect(await codexAdapter.findNativeSession(context)).toEqual({ status: "empty" });
+    const transcripts = path.join(directory, "sessions");
     fs.mkdirSync(transcripts);
     fs.writeFileSync(path.join(transcripts, `rollout-${context.taskId}.jsonl`), "{}");
-    expect(await adapter.findNativeSession(context)).toEqual({ status: "found", id: context.taskId });
+    expect(await codexAdapter.findNativeSession(context)).toEqual({ status: "found", id: context.taskId });
   });
 
   it("recognizes archived transcript evidence instead of treating the Codex home as unused", async () => {

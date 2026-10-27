@@ -396,7 +396,7 @@ authentication or provider quota. A PM2/systemd service may have a different
 
 The management screen is a normal page. Administrators can filter all projects'
 tasks by project, user, agent, execution state, or failed cleanup,
-with 20 entries per page. They can end/delete individual or selected tasks;
+with 50 entries per page. They can end/delete individual or selected tasks;
 administrative access does not grant access to other users' terminal streams or
 private project files. Other users get a personal task list from **Agent tasks**.
 
@@ -504,7 +504,7 @@ identified retrospectively.
 | --- | --- | --- |
 | Codex | Task-specific `CODEX_HOME`; resume an identified transcript UUID. Use `--no-daemon` when advertised by the installed CLI. | Prefer detected native `delete --force`; remove the task-owned state directory afterward. |
 | OpenCode | New V2 tasks share the host database, sign-ins and native history. Bind a separate session ID per task and use `--standalone` to own the execution process tree. Existing private conversations keep their original state. | Delete only the task's registered native session, verify deletion, then remove its task directory. Never remove the shared database or host credentials. |
-| Claude Code | Task-specific `CLAUDE_CONFIG_DIR`; start with a task UUID and resume its matching saved transcript. | Remove task-owned state without touching the host's other conversations. |
+| Claude Code | Share the service account's native configuration, credentials and initialization state; start with a task UUID and resume that exact ID. | Remove only the registered session's transcripts and session-scoped files; keep host settings and unrelated conversations. |
 
 All agents inherit the TexLite service account's `XDG_CACHE_HOME`. If unset,
 the CLI uses its own default cache location. This lets model catalogs and
@@ -525,7 +525,20 @@ task to use shared host authentication. TexLite's task pages/API show and manage
 only its own registered tasks. OpenCode's native history picker inside the
 terminal can also show host conversations; those are not imported into TexLite.
 
-On the first start, Codex, Claude and legacy isolated OpenCode tasks copy selected host credential/configuration
+Claude tasks directly reuse the service account's configuration and sign-in,
+including model settings, plugins and completed onboarding. Without a custom
+`CLAUDE_CONFIG_DIR`, TexLite leaves that variable unset so Claude still finds its
+native `~/.claude.json`; an explicitly configured directory is reused as-is.
+The configuration location and task UUID are registered in
+`agent-tasks/<task-id>/state/claude-session.json` before launching, so later
+environment changes cannot redirect a saved conversation or its cleanup.
+TexLite never imports the host's other conversations into its task list.
+Deletion does not rewrite shared prompt history, settings, plugins or global
+caches, and never uses project-wide `claude purge`.
+Old isolated Claude tasks are not migrated; remove them before upgrading and
+create new tasks to use the shared configuration.
+
+On the first start, Codex and legacy isolated OpenCode tasks copy selected host credential/configuration
 files if available; they do not copy host conversation history. Credentials
 subsequently refreshed within a task are preserved. Keychain/credential formats
 vary by CLI version, so an individual task may require login. Provider environment

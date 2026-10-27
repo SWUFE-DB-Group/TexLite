@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentService } from "../src/server/agents/sessions.js";
 import { AgentRegistry } from "../src/server/agents/registry.js";
 import { opencodeAdapter } from "../src/server/agents/adapters/opencode.js";
+import { claudeAdapter } from "../src/server/agents/adapters/claude.js";
 import type { AgentAdapter } from "../src/server/agents/adapters/types.js";
 import { AGENT_IDS, AGENT_LABELS, agentInputChunks, parseAgentClientMessage, type AgentId, type AgentTask, type AgentServerMessage } from "../src/shared/agentProtocol.js";
 import { agentMessages } from "../src/shared/agentMessages.js";
@@ -134,6 +135,48 @@ async function liveRoom(): Promise<{ doc: Y.Doc }> {
 const workingFile = (task: AgentTask, file = "main.tex") => path.join(sourceRoot(config, task.projectId), file);
 
 describe("external agent tasks", () => {
+  it("starts and resumes an owned Claude host session and keeps failed cleanup retryable", async () => {
+    const host = path.join(root, "claude-host");
+    const transcripts = path.join(host, "projects", "paper");
+    fs.mkdirSync(transcripts, { recursive: true });
+    const settings = path.join(host, "settings.json");
+    fs.writeFileSync(settings, JSON.stringify({ model: "host-model", theme: "dark" }));
+    fs.writeFileSync(path.join(host, ".claude.json"), JSON.stringify({ hasCompletedOnboarding: true }));
+    const unrelated = path.join(transcripts, `${randomUUID()}.jsonl`);
+    fs.writeFileSync(unrelated, "native host conversation");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", host);
+    vi.spyOn(registry, "adapter").mockImplementation((id) => id === "claude" ? claudeAdapter : adapters.find((entry) => entry.id === id)!);
+    const task = await create("claude");
+    const binding = path.join(agentTaskRoot(config, task.id), "state", "claude-session.json");
+    const transcript = path.join(transcripts, `${task.id}.jsonl`);
+    spawn.mockImplementation((_executable, _args, options) => {
+      expect(JSON.parse(fs.readFileSync(binding, "utf8"))).toMatchObject({ configDirectory: host, sessionId: task.id });
+      expect(options.env.CLAUDE_CONFIG_DIR).toBe(host);
+      options.beforeStart?.();
+      fs.writeFileSync(transcript, "{}");
+      const process = new FakePty(); processes.push(process); return process;
+    });
+    await service.start(task.id, owner);
+    expect(spawn.mock.calls.at(-1)?.[1]).toEqual(["--session-id", task.id]);
+    await service.stop(task.id, owner);
+    expect(service.task(task.id, owner)).toMatchObject({ state: "stopped", nativeSessionId: task.id, canResume: true });
+    await service.start(task.id, owner);
+    expect(spawn.mock.calls.at(-1)?.[1]).toEqual(["--resume", task.id]);
+    await service.stop(task.id, owner);
+
+    const savedBinding = fs.readFileSync(binding);
+    fs.unlinkSync(binding);
+    await expect(service.remove(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
+    expect(service.task(task.id, owner).cleanupState).toBe("failed");
+    expect(fs.existsSync(transcript)).toBe(true);
+    fs.writeFileSync(binding, savedBinding);
+    await service.remove(task.id, owner);
+    expect(fs.existsSync(transcript)).toBe(false);
+    expect(fs.existsSync(agentTaskRoot(config, task.id))).toBe(false);
+    expect(fs.readFileSync(unrelated, "utf8")).toBe("native host conversation");
+    expect(JSON.parse(fs.readFileSync(settings, "utf8"))).toEqual({ model: "host-model", theme: "dark" });
+  });
+
   it("lists tasks by last update descending for administration", async () => {
     const oldest = await create(); const newest = await create("claude", editor); const middle = await create("opencode");
     const update = db.prepare("UPDATE agent_tasks SET updated_at = ? WHERE id = ?");
