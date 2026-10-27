@@ -510,6 +510,14 @@ identified retrospectively.
 | OpenCode | New V2 tasks share the host database, sign-ins and native history. Bind a separate session ID per task and use `--standalone` to own the execution process tree. Existing private conversations keep their original state. | Delete only the task's registered native session, verify deletion, then remove its task directory. Never remove the shared database or host credentials. |
 | Claude Code | Share the service account's native configuration, credentials and initialization state; start with a task UUID and resume that exact ID. | Remove only the registered session's transcripts and session-scoped files; keep host settings and unrelated conversations. |
 
+Task deletion records native-cleanup completion in the database before removing
+the task's local files. If local removal fails or the service restarts, retrying
+deletion finishes that step without needing a removed session binding or an
+installed CLI. Failed native cleanup keeps its ownership information for retry.
+If an OpenCode task's project directory has been deleted, management commands
+use its task-state directory while still targeting only its registered database
+and session ID; the deleted project is not recreated.
+
 All agents inherit the TexLite service account's `XDG_CACHE_HOME`. If unset,
 the CLI uses its own default cache location. This lets model catalogs and
 downloaded dependencies be reused without merging task conversations. It does

@@ -22,7 +22,7 @@ import { CollaborationService } from "../src/server/collaboration.js";
 import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
 import { openDatabase, type DatabaseConnection, type UserRow } from "../src/server/db.js";
 import { loadConfig, type Config } from "../src/server/config.js";
-import { createProjectFiles, sourceRoot } from "../src/server/files.js";
+import { createProjectFiles, removeProjectDirectory, sourceRoot } from "../src/server/files.js";
 import { ProjectEditHistoryService, type EditHistoryStep } from "../src/server/editHistory.js";
 import { buildApp } from "../src/server/app.js";
 import { hashPassword } from "../src/server/security.js";
@@ -592,6 +592,33 @@ describe("external agent tasks", () => {
     expect(fs.existsSync(agentTaskRoot(config, task.id))).toBe(false);
   });
 
+  it("cleans a shared OpenCode session after the project directory and database row have been deleted", async () => {
+    const filename = path.join(root, "host-opencode.db");
+    vi.stubEnv("OPENCODE_DB", filename);
+    const native = new Database(filename);
+    try {
+      native.exec("CREATE TABLE session_v2 (id TEXT PRIMARY KEY); INSERT INTO session_v2 VALUES ('ses_native')");
+      vi.spyOn(registry, "adapter").mockImplementation((id) => id === "opencode" ? opencodeAdapter : adapters.find((adapter) => adapter.id === id)!);
+      vi.mocked(registry.detect).mockResolvedValue({ executable: process.execPath, version: "2.1.4", features: new Set(["standalone"]) });
+      const task = await create("opencode");
+      const fixture = new URL("./fixtures/opencode-session.cjs", import.meta.url);
+      fs.copyFileSync(fixture, workingFile(task, "debug"));
+      // Simulate an installed CLI independently of the removed source tree.
+      fs.copyFileSync(fixture, path.join(agentTaskRoot(config, task.id), "state", "session"));
+      await service.start(task.id, owner);
+      const nativeId = spawn.mock.calls.at(-1)![1].at(-1)!;
+      native.prepare("INSERT INTO session_v2 VALUES (?)").run(nativeId);
+      await service.stop(task.id, owner);
+      removeProjectDirectory(config, projectId);
+      db.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
+      await service.reconcilePermissions(true);
+      expect(service.list(admin, true, {}).total).toBe(0);
+      expect(native.prepare("SELECT id FROM session_v2").all()).toEqual([{ id: "ses_native" }]);
+      expect(fs.existsSync(agentTaskRoot(config, task.id))).toBe(false);
+      expect(fs.existsSync(sourceRoot(config, projectId))).toBe(false);
+    } finally { native.close(); }
+  });
+
   it("preserves orphan records when native cleanup fails", async () => {
     const task = await create(); await service.start(task.id, owner);
     vi.mocked(adapters[0].cleanup).mockRejectedValueOnce(new Error("cleanup unavailable"));
@@ -608,7 +635,65 @@ describe("external agent tasks", () => {
     vi.mocked(adapters[0].cleanup).mockRejectedValueOnce(new Error("unavailable"));
     await expect(service.remove(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
     expect(service.task(task.id, owner).cleanupState).toBe("failed");
+    expect(db.prepare("SELECT native_cleanup_done FROM agent_tasks WHERE id = ?").get(task.id)).toEqual({ native_cleanup_done: 0 });
     await service.remove(task.id, owner);
+    expect(service.list(owner, false, {}).total).toBe(0);
+  });
+
+  it("continues local cleanup after partial removal destroys the Claude binding and the service restarts", async () => {
+    const host = path.join(root, "host-claude");
+    const transcripts = path.join(host, "projects", "paper");
+    fs.mkdirSync(transcripts, { recursive: true });
+    const unrelated = path.join(transcripts, `${randomUUID()}.jsonl`);
+    fs.writeFileSync(unrelated, "other conversation");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", host);
+    vi.spyOn(registry, "adapter").mockImplementation((id) => id === "claude" ? claudeAdapter : adapters.find((adapter) => adapter.id === id)!);
+    const task = await create("claude");
+    await service.start(task.id, owner);
+    const transcript = path.join(transcripts, `${task.id}.jsonl`);
+    fs.writeFileSync(transcript, "{}");
+    await service.stop(task.id, owner);
+    const taskRoot = agentTaskRoot(config, task.id);
+    const binding = path.join(taskRoot, "state", "claude-session.json");
+    const originalRm = fs.promises.rm.bind(fs.promises);
+    const remove = vi.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+      if (target === taskRoot) {
+        fs.unlinkSync(binding);
+        throw Object.assign(new Error("Partial task directory removal"), { code: "EACCES" });
+      }
+      return originalRm(target, options);
+    });
+    try { await expect(service.remove(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" }); }
+    finally { remove.mockRestore(); }
+    expect(fs.existsSync(binding)).toBe(false);
+    expect(fs.existsSync(transcript)).toBe(false);
+    expect(db.prepare("SELECT native_cleanup_done FROM agent_tasks WHERE id = ?").get(task.id)).toEqual({ native_cleanup_done: 1 });
+    expect(service.task(task.id, owner)).toMatchObject({ cleanupState: "failed", canResume: false });
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_SESSION_BUSY" });
+    await service.stop(task.id, owner);
+    await service.dispose();
+    service = new AgentService({ config, db, collaboration, projectMutations: coordinator, recordHistory, recordEdits: () => undefined },
+      { registry, loadPty: async () => spawn, stopPty: async (process) => (process as FakePty).end() });
+    // Finishing local cleanup needs neither a binding nor an installed CLI.
+    vi.mocked(registry.detect).mockRejectedValue(new Error("CLI no longer installed"));
+    await service.remove(task.id, admin, true);
+    expect(service.list(admin, true, {}).total).toBe(0);
+    expect(fs.existsSync(taskRoot)).toBe(false);
+    expect(fs.readFileSync(unrelated, "utf8")).toBe("other conversation");
+    expect(fs.existsSync(workingFile(task))).toBe(true);
+  });
+
+  it("retries deletion after local files are gone but the final database transaction failed", async () => {
+    const task = await create(); await service.start(task.id, owner);
+    db.exec("CREATE TRIGGER fail_agent_delete BEFORE DELETE ON agent_tasks BEGIN SELECT RAISE(ABORT, 'Injected deletion failure'); END");
+    await expect(service.remove(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
+    expect(fs.existsSync(agentTaskRoot(config, task.id))).toBe(false);
+    expect(db.prepare("SELECT native_cleanup_done FROM agent_tasks WHERE id = ?").get(task.id)).toEqual({ native_cleanup_done: 1 });
+    expect(db.prepare("SELECT result FROM agent_cleanup_events WHERE task_id = ? AND action = 'delete'").all(task.id)).toEqual([{ result: "failed" }]);
+    expect(adapters[0].cleanup).toHaveBeenCalledOnce();
+    db.exec("DROP TRIGGER fail_agent_delete");
+    await service.remove(task.id, owner);
+    expect(adapters[0].cleanup).toHaveBeenCalledOnce();
     expect(service.list(owner, false, {}).total).toBe(0);
   });
 

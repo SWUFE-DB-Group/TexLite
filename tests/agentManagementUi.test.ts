@@ -14,15 +14,17 @@ import { GlobalTooltip } from "../src/client/GlobalTooltip";
 import { AGENT_IDS, AGENT_LABELS, type AgentCatalog, type AgentTask } from "../src/shared/agentProtocol";
 import type { User } from "../src/client/types";
 
+let language: keyof typeof agentUiMessages = "zh-Hant";
+
 vi.mock("../src/client/api", () => ({ api: vi.fn() }));
 vi.mock("../src/client/agents/useAgentTasks", () => ({ useAgentTasks: vi.fn() }));
 vi.mock("../src/client/agents/AgentTerminalSurface", () => ({ AgentTerminalSurface: () => createElement("div", { "data-live-terminal": true }) }));
 vi.mock("react-i18next", async (importOriginal) => ({ ...await importOriginal<typeof import("react-i18next")>(), useTranslation: () => ({
   t: (key: string, options?: Record<string, unknown>) => {
-    const text = key.startsWith("agents.") ? agentUiMessages["zh-Hant"][key.slice(7) as keyof typeof agentUiMessages.en] ?? key : key;
+    const text = key.startsWith("agents.") ? agentUiMessages[language][key.slice(7) as keyof typeof agentUiMessages.en] ?? key : key;
     return text.replace(/{{(\w+)}}/g, (match, name: string) => options?.[name] === undefined ? match : String(options[name]));
   },
-  i18n: { resolvedLanguage: "zh-Hant" }
+  i18n: { resolvedLanguage: language }
 }) }));
 
 const user: User = {
@@ -34,6 +36,7 @@ let container: HTMLDivElement;
 let catalog: AgentCatalog;
 
 beforeEach(() => {
+  language = "zh-Hant";
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   catalog = { policy: { allowed: [] }, ptyAvailable: true,
@@ -100,6 +103,40 @@ describe("coding agent management presentation", () => {
     vi.mocked(api).mockResolvedValueOnce({ task });
     await act(async () => launchButtons[0].click());
     expect(api).toHaveBeenCalledWith("/api/agent-tasks/task/start", { method: "POST" });
+  });
+
+  it("labels first launches Start and stopped executions Resume, even before a native conversation exists", async () => {
+    language = "en";
+    catalog.agents[0].enabled = true;
+    const cases: Array<{ state: AgentTask["state"]; startedAt: string | null; canResume: boolean; label: string }> = [
+      { state: "ready", startedAt: null, canResume: false, label: "Start" },
+      { state: "stopped", startedAt: "2026-10-25", canResume: false, label: "Resume" },
+      { state: "stopped", startedAt: "2026-10-25", canResume: true, label: "Resume" },
+      { state: "exited", startedAt: "2026-10-25", canResume: false, label: "Resume" },
+      { state: "interrupted", startedAt: null, canResume: false, label: "Resume" },
+      { state: "failed", startedAt: null, canResume: false, label: "Start" },
+      { state: "failed", startedAt: "2026-10-25", canResume: false, label: "Resume" }
+    ];
+    for (const { state, startedAt, canResume, label } of cases) {
+      const task: AgentTask = { id: "task", projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
+        agentId: "codex", title: "Revise abstract", state, cleanupState: "none", errorCode: null,
+        createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt, endedAt: null, exitCode: null,
+        nativeSessionId: canResume ? "native-conversation" : null, canResume };
+      const acceptTask = vi.fn();
+      vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1 },
+        selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
+        refreshTasks: vi.fn(), acceptTask, mutate: async (operation) => operation() });
+      await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
+      const launch = container.querySelector<HTMLButtonElement>(".agent-task-toolbar button")!;
+      expect(launch.textContent).toBe(label);
+      expect(launch.disabled).toBe(false);
+      const running = { ...task, state: "running" as const };
+      vi.mocked(api).mockResolvedValueOnce({ task: running });
+      vi.mocked(api).mockClear();
+      await act(async () => launch.click());
+      expect(api).toHaveBeenCalledExactlyOnceWith("/api/agent-tasks/task/start", { method: "POST" });
+      expect(acceptTask).toHaveBeenCalledWith(running);
+    }
   });
 
   it("identifies the feature as a CLI in every locale", () => {

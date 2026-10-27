@@ -312,14 +312,19 @@ describe("native agent adapters", () => {
     await expect(opencodeAdapter.prepare(saved)).rejects.toMatchObject({ code: "AGENT_NO_CONTEXT" });
   });
 
-  it("deletes only the registered V2 session and leaves host authentication and native history untouched", async () => {
+  it.each([true, false])("deletes only the registered V2 session and preserves host data (project exists=%s)", async (projectExists) => {
     const filename = fakeSharedOpenCode();
     await opencodeAdapter.prepare(context);
     const db = new Database(filename);
     db.prepare("INSERT INTO session_v2 VALUES (?)").run(sharedSessionId()); db.close();
+    if (!projectExists) {
+      fs.copyFileSync(path.join(context.workingDirectory, "session"), path.join(context.stateDirectory, "session"));
+      fs.rmSync(context.workingDirectory, { recursive: true });
+    }
     const saved = { ...context, nativeSessionId: sharedSessionId() };
     await opencodeAdapter.cleanup(saved);
     await opencodeAdapter.cleanup(saved); // Retrying an already completed deletion is safe.
+    expect(fs.existsSync(context.workingDirectory)).toBe(projectExists);
     const check = new Database(filename, { readonly: true });
     try {
       expect(check.prepare("SELECT id FROM session_v2").all()).toEqual([{ id: "ses_native" }]);

@@ -19,7 +19,8 @@ interface TaskRow {
   id: string; project_id: string; user_id: string; project_name: string; user_name: string;
   agent_id: AgentId; title: string; state: AgentTask["state"];
   cleanup_state: AgentTask["cleanupState"]; error_code: string | null; native_session_id: string | null;
-  ever_started: number; created_at: string; updated_at: string; started_at: string | null; ended_at: string | null; exit_code: number | null;
+  ever_started: number; native_cleanup_done: number;
+  created_at: string; updated_at: string; started_at: string | null; ended_at: string | null; exit_code: number | null;
 }
 interface Attachment { socket: WebSocket; authorized: () => boolean }
 type TaskActor = Pick<UserRow, "id" | "role">;
@@ -267,15 +268,24 @@ export class AgentService {
       this.db.prepare("UPDATE agent_tasks SET cleanup_state = 'deleting', error_code = NULL, updated_at = ? WHERE id = ?").run(now(), id);
       try {
         await this.stopExecution(id);
-        await this.captureContext(id);
-        const current = this.row(id)!;
         const root = agentTaskRoot(this.context.config, id);
-        const context = await this.registry.context(row.agent_id, id, root, current.native_session_id, sourceRoot(this.context.config, row.project_id));
-        if (row.ever_started) await this.registry.adapter(row.agent_id).cleanup(context);
+        if (!row.native_cleanup_done) {
+          await this.captureContext(id);
+          const current = this.row(id)!;
+          if (current.ever_started) {
+            const context = await this.registry.context(row.agent_id, id, root, current.native_session_id, sourceRoot(this.context.config, row.project_id));
+            await this.registry.adapter(row.agent_id).cleanup(context);
+          }
+          // Commit before removing bindings in the task directory. A failed rm
+          // or a restart must not require the already-deleted native context.
+          this.db.prepare("UPDATE agent_tasks SET native_cleanup_done = 1 WHERE id = ?").run(id);
+        }
         // Only the task's generated UUID directory is ever removed.
         await fs.promises.rm(root, { recursive: true, force: true });
-        this.audit(id, user.id, "delete", "ok");
-        this.db.prepare("DELETE FROM agent_tasks WHERE id = ?").run(id);
+        this.db.transaction(() => {
+          this.audit(id, user.id, "delete", "ok");
+          this.db.prepare("DELETE FROM agent_tasks WHERE id = ?").run(id);
+        })();
       } catch (error) {
         this.db.prepare("UPDATE agent_tasks SET cleanup_state = 'failed', error_code = ?, updated_at = ? WHERE id = ?")
           .run("AGENT_CLEANUP_FAILED", now(), id);
@@ -351,6 +361,7 @@ export class AgentService {
 
   private async captureContext(id: string, afterExit = false): Promise<NativeSessionInspection> {
     const row = this.row(id);
+    if (row?.native_cleanup_done) return { status: "empty" };
     if (row?.native_session_id) return { status: "found", id: row.native_session_id };
     if (!row || !row.ever_started || (!afterExit && this.executions.has(id))) return { status: "unknown" };
     const context = await this.registry.context(row.agent_id, id, agentTaskRoot(this.context.config, id), null, sourceRoot(this.context.config, row.project_id));
@@ -448,7 +459,7 @@ export class AgentService {
       agentId: row.agent_id, title: row.title, state: row.state, cleanupState: row.cleanup_state,
       errorCode: row.error_code, createdAt: row.created_at, updatedAt: row.updated_at, startedAt: row.started_at,
       endedAt: row.ended_at, exitCode: row.exit_code, nativeSessionId: row.native_session_id,
-      canResume: Boolean(row.native_session_id && this.registry.adapter(row.agent_id).supportsResume) };
+      canResume: !row.native_cleanup_done && Boolean(row.native_session_id && this.registry.adapter(row.agent_id).supportsResume) };
   }
   private executionFile(id: string): string { return path.join(agentTaskRoot(this.context.config, id), "execution.json"); }
 

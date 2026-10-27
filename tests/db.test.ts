@@ -21,6 +21,29 @@ function migrationConfig(root: string, databasePath: string): Config {
 }
 
 describe("database migrations", () => {
+  it("upgrades existing agent tasks with a durable native-cleanup checkpoint without resetting completed work", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-agent-cleanup-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`ALTER TABLE agent_tasks DROP COLUMN native_cleanup_done;
+        DELETE FROM texlite_schema_migrations WHERE version = 11;
+        INSERT INTO agent_tasks (id, project_id, user_id, project_name, user_name, agent_id, title,
+          state, cleanup_state, ever_started, created_at, updated_at)
+        VALUES ('task', 'project', 'writer', 'Paper', 'Writer', 'claude', 'Revise',
+          'stopped', 'failed', 1, '2026-10-28', '2026-10-28');`);
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT native_cleanup_done, ever_started, cleanup_state FROM agent_tasks WHERE id = 'task'").get())
+        .toEqual({ native_cleanup_done: 0, ever_started: 1, cleanup_state: "failed" });
+      const migration = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 11").get();
+      expect(migration).toMatchObject({ name: "track_agent_native_cleanup_completion" });
+      database.prepare("UPDATE agent_tasks SET native_cleanup_done = 1 WHERE id = 'task'").run();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT native_cleanup_done FROM agent_tasks WHERE id = 'task'").get()).toEqual({ native_cleanup_done: 1 });
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 11").get()).toEqual(migration);
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("automatically adds shared snapshot file choices and preserves them across restarts", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-history-files-migration-"));
     const config = migrationConfig(root, path.join(root, "texlite.db"));
@@ -208,7 +231,8 @@ describe("database migrations", () => {
           { version: 7, name: "add_user_avatar_svg" },
           { version: 8, name: "use_username_avatar_seed" },
           { version: 9, name: "add_snapshot_file_tracking" },
-          { version: 10, name: "add_external_agent_tasks" }
+          { version: 10, name: "add_external_agent_tasks" },
+          { version: 11, name: "track_agent_native_cleanup_completion" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -229,7 +253,8 @@ describe("database migrations", () => {
           { version: 7, name: "add_user_avatar_svg" },
           { version: 8, name: "use_username_avatar_seed" },
           { version: 9, name: "add_snapshot_file_tracking" },
-          { version: 10, name: "add_external_agent_tasks" }
+          { version: 10, name: "add_external_agent_tasks" },
+          { version: 11, name: "track_agent_native_cleanup_completion" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -269,7 +294,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -357,7 +382,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }]);
       } finally {
         migrated.close();
       }
@@ -374,13 +399,13 @@ describe("database migrations", () => {
       CREATE TABLE texlite_schema_migrations (
         version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL
       );
-      INSERT INTO texlite_schema_migrations VALUES (11, 'future_schema', '2026-01-01T00:00:00.000Z');
+      INSERT INTO texlite_schema_migrations VALUES (999, 'future_schema', '2026-01-01T00:00:00.000Z');
     `);
     database.close();
 
     try {
       expect(() => openDatabase(migrationConfig(root, databasePath)))
-        .toThrow(/version 11 is newer than this TexLite release/);
+        .toThrow(/version 999 is newer than this TexLite release/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

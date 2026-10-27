@@ -60,6 +60,13 @@ function inspectDatabase(filename: string, expectedId: string | null): NativeSes
   finally { db.close(); }
 }
 
+/** Project deletion must not prevent exact-ID cleanup in the bound database. */
+async function managementDirectory(context: AgentAdapterContext): Promise<string> {
+  try { if ((await fs.promises.stat(context.workingDirectory)).isDirectory()) return context.workingDirectory; }
+  catch (error) { if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
+  return context.stateDirectory;
+}
+
 export const opencodeAdapter: AgentAdapter = {
   id: "opencode", label: "OpenCode", supportsResume: true,
   async discoverFeatures(executable) {
@@ -130,7 +137,7 @@ export const opencodeAdapter: AgentAdapter = {
       const launch = this.start(context);
       const { stdout } = await executeAgentCommand(context.executable, ["session", "list", "--format", "json"], {
         // OpenCode resolves project sessions from cwd as well as its state DB.
-        cwd: context.workingDirectory, env: launch.env, timeout: 5_000, maxBuffer: 1024 * 1024, windowsHide: true });
+        cwd: await managementDirectory(context), env: launch.env, timeout: 5_000, maxBuffer: 1024 * 1024, windowsHide: true });
       const records: unknown = JSON.parse(stdout);
       if (Array.isArray(records) && records.length === 0) return { status: "empty" };
       if (Array.isArray(records) && records.length === 1 && validSessionId(records[0]?.id)) return { status: "found", id: records[0].id };
@@ -145,7 +152,7 @@ export const opencodeAdapter: AgentAdapter = {
       if (native.status === "unknown") throw httpError(409, "AGENT_CLEANUP_FAILED");
       if (native.status === "empty") return; // An exact-ID deletion already succeeded.
       await executeAgentCommand(context.executable, ["session", "delete", state.sessionId, "--standalone"], {
-        cwd: context.workingDirectory, env: this.start(context).env, timeout: 15_000, maxBuffer: 64 * 1024, windowsHide: true });
+        cwd: await managementDirectory(context), env: this.start(context).env, timeout: 15_000, maxBuffer: 64 * 1024, windowsHide: true });
       if ((await this.findNativeSession(context)).status !== "empty") throw httpError(409, "AGENT_CLEANUP_FAILED");
       return;
     }
@@ -153,6 +160,6 @@ export const opencodeAdapter: AgentAdapter = {
     if (context.features.has("standalone")) return;
     const native = context.nativeSessionId && context.executable ? await this.findNativeSession(context) : null;
     if (native?.status === "found" && native.id === context.nativeSessionId) await executeAgentCommand(context.executable, ["session", "delete", native.id], {
-      cwd: context.workingDirectory, env: this.start(context).env, timeout: 15_000, maxBuffer: 64 * 1024, windowsHide: true });
+      cwd: await managementDirectory(context), env: this.start(context).env, timeout: 15_000, maxBuffer: 64 * 1024, windowsHide: true });
   }
 };

@@ -1304,8 +1304,13 @@ the durable ownership binding stores no inherited credentials.
 Deletion removes only that session's transcript, subagent directory, transcript
 sidecars and UUID-scoped checkpoint/task/debug data. Shared prompt history,
 settings, credentials, plugins, project memory and caches are left untouched.
-A missing or invalid ownership binding keeps cleanup failed and retryable,
-rather than dropping the task and leaving an unmanaged conversation.
+A missing or invalid ownership binding blocks native cleanup rather than
+dropping the task and leaving an unmanaged conversation. After successful native
+cleanup, `agent_tasks.native_cleanup_done` is committed before local file removal;
+retries (including after restart) then need neither the binding nor CLI discovery.
+The successful deletion audit and final task-row deletion commit together.
+OpenCode management falls back to the task-state directory when a project's
+source directory is gone, retaining the registered database and exact session ID.
 Old private Claude conversations are not migrated and should be removed before
 upgrading. Task deletion also removes its private TexLite UUID directory,
 never the inherited host cache or the host configuration directory.

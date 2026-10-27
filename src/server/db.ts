@@ -142,6 +142,11 @@ const databaseMigrations: readonly DatabaseMigration[] = [
         action TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL
       );
     `);
+  } },
+  { version: 11, name: "track_agent_native_cleanup_completion", apply: (db) => {
+    if (missingColumn(db, "agent_tasks", "native_cleanup_done")) {
+      db.exec("ALTER TABLE agent_tasks ADD COLUMN native_cleanup_done INTEGER NOT NULL DEFAULT 0 CHECK (native_cleanup_done IN (0, 1))");
+    }
   } }
 ];
 
