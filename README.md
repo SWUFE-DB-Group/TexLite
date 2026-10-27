@@ -17,9 +17,7 @@ teams. Use your existing LaTeX distribution, with no heavyweight service stack.
 
 </div>
 
-<p align="center">
-  <a href="https://github.com/SWUFE-DB-Group/TexLite/blob/main/demo.mp4">▶ Watch the TexLite demo</a>
-</p>
+https://github.com/user-attachments/assets/c2b277ab-7cab-4f2b-8684-358fd9fefe8f
 
 ## Why TexLite
 
