@@ -11,6 +11,9 @@
 .agent-policy-heading, .agent-policy-actions { display: flex; align-items: center; gap: 10px; }
 .agent-policy-heading { justify-content: space-between; flex-wrap: wrap; }
 .agent-policy-heading strong { font-size: 14px; }
+.agent-policy-title { display: inline-flex; align-items: center; gap: 5px; }
+.agent-management .agent-policy-help { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ui-muted, #788178); }
+.agent-policy-help:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 2px; }
 .agent-catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 12px; margin-top: 18px; }
 .agent-catalog-item { display: flex; align-items: flex-start; min-width: 0; gap: 10px; padding: 14px; border: 1px solid var(--ui-border, #d8e1db); border-radius: 8px; cursor: pointer; }
 .agent-catalog-item input { flex: none; margin: 3px 0 0; accent-color: #23704c; }
@@ -22,7 +25,7 @@
 .agent-catalog-item.unavailable { opacity: .6; }
 .agent-list-controls { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .agent-list-reminder { display: flex; align-items: flex-start; gap: 7px; margin: 0; padding: 10px 12px; border: 1px solid var(--ui-border, #d8e1db); border-radius: 8px; background: var(--ui-subtle, #f3f6f3); color: var(--ui-muted, #65756b); font-size: 12px; line-height: 1.5; }
-.agent-list-reminder > svg { flex: none; margin-top: 2px; }
+.agent-list-reminder > svg, .agent-execution-reminder > svg { flex: none; margin-top: 2px; }
 .agent-list-controls > input { flex: 1 1 130px; max-width: 220px; }
 .agent-list-controls small { color: var(--ui-muted, #788178); }
 .agent-toolbar-spacer { flex: 1; }
@@ -82,7 +85,7 @@
 .agent-xterm { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 7px 5px; background: var(--terminal-bg); }
 .agent-xterm .xterm { height: 100%; }
 .agent-terminal-status { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 10px; background: var(--ui-surface, #fafbf9); color: var(--ui-muted, #788178); font-size: 11px; }
-.agent-execution-reminder { flex: none; margin: 0; padding: 5px 10px; border-top: 1px solid var(--ui-border, #d8e1db); color: var(--ui-muted, #788178); font-size: 11px; line-height: 1.5; }
+.agent-execution-reminder { display: flex; align-items: flex-start; gap: 6px; flex: none; margin: 0; padding: 5px 10px; border-top: 1px solid var(--ui-border, #d8e1db); color: var(--ui-muted, #788178); font-size: 11px; line-height: 1.5; }
 .agent-task-empty { display: flex; min-height: 90px; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 28px 20px 36px; text-align: center; color: var(--ui-muted, #788178); }
 .agent-terminal-body .agent-task-empty { height: 100%; color: var(--terminal-muted); }
 .agent-task-empty strong { color: var(--ui-text, #273a2f); font-size: 13px; }

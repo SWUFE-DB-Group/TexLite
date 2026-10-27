@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "../agents/agents.css";
-import { ArrowDown, ArrowLeft, Check, ChevronLeft, ChevronRight, Info, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, Check, ChevronLeft, ChevronRight, Info, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Modal } from "../Dialog";
@@ -105,7 +105,9 @@ export function AgentManagement({ user, onBack }: {
     {error && !deleting.length && <p className="error" role="alert">{error}</p>}
     {notice && <p className="agent-inline-notice" role="status">{notice}</p>}
     {admin && <section className="agent-policy-card">
-      <div className="agent-policy-heading"><strong>{t("agents.allowedAgents")}</strong>
+      <div className="agent-policy-heading"><div className="agent-policy-title"><strong>{t("agents.allowedAgents")}</strong>
+        <button type="button" className="agent-policy-help" aria-label={t("agents.usageHint")} data-tooltip={t("agents.usageHint")}><Info size={15} aria-hidden="true" /></button>
+      </div>
         <div className="agent-policy-actions"><button disabled={busy} onClick={() => void mutate(async () => {
           const value = await api<AgentCatalog>("/api/admin/agents/refresh", { method: "POST" }); setCatalog(value);
         })}><RefreshCw size={14} />{t("agents.detection")}</button><button className="primary" disabled={busy || !catalog} onClick={() => void mutate(async () => {
@@ -119,7 +121,7 @@ export function AgentManagement({ user, onBack }: {
       </label>)}</div>
       {catalog && !catalog.ptyAvailable && <p className="error">{t("agents.ptyUnavailable")}</p>}
     </section>}
-    <p className="agent-list-reminder"><Info size={14} aria-hidden="true" /><span>{t("agents.endReminder")}</span></p>
+    <p className="agent-list-reminder"><TriangleAlert size={14} aria-hidden="true" /><span>{t("agents.endReminder")}</span></p>
     <div className="agent-list-controls">
       <select aria-label={t("agents.state")} value={state} onChange={(event) => changeFilter(setState, event.target.value)}>
         <option value="">{t("agents.all")}</option><option value="running">{t("agents.running")}</option><option value="cleanup">{t("agents.cleanup")}</option>

@@ -96,6 +96,7 @@ describe("coding agent management presentation", () => {
     await render();
     const reminder = container.querySelector(".agent-execution-reminder");
     expect(reminder?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
+    expect(reminder?.querySelector(".lucide-triangle-alert")?.getAttribute("aria-hidden")).toBe("true");
     expect(reminder?.closest(".agent-terminal-body")).toBeNull();
     expect(reminder?.hasAttribute("title")).toBe(false);
 
@@ -167,7 +168,8 @@ describe("coding agent management presentation", () => {
   });
 
   it("renders all agent cards with icons and allow controls, without a master switch", async () => {
-    await act(async () => root.render(createElement(AgentManagement, { user, onBack() {} })));
+    await act(async () => root.render(createElement(Fragment, null,
+      createElement(AgentManagement, { user, onBack() {} }), createElement(GlobalTooltip))));
     const cards = [...container.querySelectorAll<HTMLLabelElement>(".agent-catalog-item")];
     expect(container.querySelector("h1")?.textContent).toBe("Coding Agent CLI");
     expect(cards).toHaveLength(AGENT_IDS.length);
@@ -179,8 +181,18 @@ describe("coding agent management presentation", () => {
     });
     expect(container.querySelector('.agent-policy-heading input[type="checkbox"]')).toBeNull();
     expect(container.querySelector(".agent-policy-heading strong")?.textContent).toBe(agentUiMessages["zh-Hant"].allowedAgents);
-    expect(container.querySelector(".agent-policy-heading [data-tooltip]")).toBeNull();
+    const help = container.querySelector<HTMLButtonElement>(".agent-policy-heading .agent-policy-help")!;
+    expect(help.getAttribute("aria-label")).toBe(agentUiMessages["zh-Hant"].usageHint);
+    expect(help.hasAttribute("title")).toBe(false);
+    await act(async () => help.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages["zh-Hant"].usageHint);
+    await act(async () => help.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
+    expect(container.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => help.focus());
+    expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages["zh-Hant"].usageHint);
+    await act(async () => help.blur());
     expect(container.querySelector(".agent-list-reminder")?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
+    expect(container.querySelector(".agent-list-reminder .lucide-triangle-alert")?.getAttribute("aria-hidden")).toBe("true");
     expect(cards.find((card) => card.textContent?.includes("Claude Code"))?.classList.contains("unavailable")).toBe(true);
     await act(async () => vi.advanceTimersByTime(150));
     expect(container.querySelector(".agent-task-empty p")?.textContent).toBe(agentUiMessages["zh-Hant"].noTasksHint);
@@ -193,6 +205,7 @@ describe("coding agent management presentation", () => {
 
   it("reminds ordinary task owners to end execution when done", async () => {
     await act(async () => root.render(createElement(AgentManagement, { user: { ...user, role: "user" }, onBack() {} })));
+    expect(container.querySelector(".agent-policy-help")).toBeNull();
     expect(container.querySelector(".agent-list-reminder")?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
   });
 
