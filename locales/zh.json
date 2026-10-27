@@ -116,6 +116,7 @@
     "kicker": "另一种选择：Docker 部署",
     "title": "不维护本机依赖，也能快速开始。",
     "lead": "不想维护 Node.js、TeX Live、Git 和 Harper？使用 TexLite-Docker 的已发布镜像；配置和项目数据仍保存在宿主机。",
+    "agentsNote": "当前 Docker 镜像未预装 Coding Agent CLI。如需使用此功能，推荐通过 npm 直接部署 TexLite，并在宿主机安装、配置所需 CLI。",
     "hub": "查看 Docker Hub",
     "repository": "打开 TexLite-Docker",
     "terminalTitle": "Docker 快速启动",
