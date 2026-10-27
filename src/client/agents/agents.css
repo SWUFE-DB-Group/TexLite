@@ -55,6 +55,8 @@
 .agent-terminal-panel { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow: hidden; background: var(--ui-surface, #fafbf9); color: var(--ui-text, #273a2f); }
 .agent-terminal-heading { display: flex; align-items: center; flex: none; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--ui-border, #d8e1db); }
 .agent-terminal-heading > strong { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; }
+.agent-terminal-panel .agent-session-help { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ui-warning, #91640f); }
+.agent-session-help:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 2px; }
 .agent-task-tabs { display: flex; flex: 1; gap: 4px; min-width: 0; overflow-x: auto; }
 .agent-task-tabs button { flex: none; max-width: 210px; border-color: transparent; background: transparent; padding: 5px 7px; font-size: 11px; }
 .agent-task-tabs button > span:not(.agent-state-dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -78,7 +80,6 @@
 .agent-select-option[data-disabled] { opacity: .5; cursor: default; }
 .agent-select-label { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
 .agent-select-label small { color: var(--ui-muted, #788178); font-size: 10px; }
-.agent-select-warning { flex: none; color: var(--ui-warning, #91640f); }
 .agent-select-check { display: flex; flex: none; margin-left: auto; color: var(--ui-accent, #176b44); }
 .agent-terminal-body { flex: 1; min-height: 0; overflow: hidden; background: var(--terminal-bg); color: var(--terminal-fg); }
 .agent-terminal-surface { height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--terminal-bg); color: var(--terminal-fg); }

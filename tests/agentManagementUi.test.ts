@@ -50,6 +50,34 @@ afterEach(async () => {
 });
 
 describe("coding agent management presentation", () => {
+  it("centralizes session guidance for every agent, including while the terminal is running", async () => {
+    container.dataset.texliteTooltips = "off";
+    for (const agentId of AGENT_IDS) {
+      const task: AgentTask = { id: `task-${agentId}`, projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
+        agentId, title: "Revise abstract", state: "running", cleanupState: "none", errorCode: null,
+        createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt: "2026-10-25", endedAt: null, exitCode: null,
+        nativeSessionId: "native-conversation", canResume: true };
+      vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1, activeTaskId: task.id },
+        selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
+        refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() });
+      await act(async () => root.render(createElement(Fragment, null,
+        createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} }), createElement(GlobalTooltip))));
+      const hints = container.querySelectorAll<HTMLButtonElement>(".agent-terminal-heading .agent-session-help");
+      expect(hints).toHaveLength(1);
+      const hint = hints[0];
+      expect(hint.disabled).toBe(false);
+      expect(hint.hasAttribute("title")).toBe(false);
+      expect(hint.getAttribute("aria-label")).toBe(agentUiMessages["zh-Hant"].sessionManagementHint);
+      await act(async () => hint.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages["zh-Hant"].sessionManagementHint);
+      await act(async () => hint.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
+      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      await act(async () => hint.focus());
+      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages["zh-Hant"].sessionManagementHint);
+      await act(async () => hint.blur());
+    }
+  });
+
   it.each([null, 0, 7])("keeps terminal hints concise and shows only abnormal exit codes: %s", async (exitCode) => {
     const task: AgentTask = { id: "task", projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
       agentId: "codex", title: "Revise abstract", state: exitCode === null ? "ready" : "exited", cleanupState: "none", errorCode: null,

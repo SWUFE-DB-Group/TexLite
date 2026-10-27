@@ -43,6 +43,8 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
   return <section className="agent-terminal-panel" data-agent-terminal="true" aria-label={t("agents.terminal")}>
     <div className="agent-terminal-heading">
       <strong><TerminalSquare size={14} />{t("agents.terminal")}</strong>
+      <button type="button" className="agent-session-help" aria-label={t("agents.sessionManagementHint")}
+        data-tooltip={t("agents.sessionManagementHint")} data-texlite-tooltip-always><TriangleAlert size={13} aria-hidden="true" /></button>
       <div className="agent-task-tabs" role="tablist" aria-label={t("agents.tasks")}>
         {tasks.result.tasks.map((entry) => <button role="tab" type="button" key={entry.id} aria-selected={entry.id === task?.id} title={entry.title} className={entry.id === task?.id ? "active" : ""} onClick={() => choose(entry.id)}>
           <span className={`agent-state-dot ${entry.state}`} /><AgentIcon agent={entry.agentId} size={13} /><span>{entry.title}</span><small>{AGENT_LABELS[entry.agentId]}</small>
