@@ -135,6 +135,10 @@ Git, and Harper locally, use the heavier
 [TexLite-Docker](https://github.com/SWUFE-DB-Group/TexLite-Docker) deployment.
 Its published image bundles those runtime dependencies for you.
 
+The Docker image currently does not include Coding Agent CLIs. For agent
+integration, we recommend deploying TexLite directly via npm and installing and
+configuring the CLIs on the host.
+
 ```bash
 git clone https://github.com/SWUFE-DB-Group/TexLite-Docker.git
 cd texlite-docker

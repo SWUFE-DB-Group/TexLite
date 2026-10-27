@@ -119,6 +119,9 @@ TeX 更新、数据位置与协作工作流的掌控。
 [TexLite-Docker](https://github.com/SWUFE-DB-Group/TexLite-Docker) 部署。其已发布镜像会
 一并提供这些运行时依赖。
 
+当前 Docker 镜像未预装 Coding Agent CLI。如需使用此功能，推荐通过 npm 直接部署
+TexLite，并在宿主机安装、配置所需 CLI。
+
 ```bash
 git clone https://github.com/SWUFE-DB-Group/TexLite-Docker.git
 cd texlite-docker
