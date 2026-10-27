@@ -25,7 +25,7 @@
     "items": [
       { "anchor": "features", "title": "真实 LaTeX", "body": "使用你实际的 TeX 环境、宏包、字体与工具链。" },
       { "anchor": "why", "title": "私有协作", "body": "将源码、PDF、批注与历史记录保留在你完全掌控的基础设施上。" },
-      { "anchor": "workflow", "title": "设计上不内置 AI", "body": "TexLite 让编辑器专注写作本身。如果你需要 AI 辅助，可以使用你偏好的模型与工作流。" }
+      { "anchor": "workflow", "title": "你的 Agent，你来掌控", "body": "在项目终端中使用 Codex、Claude Code 或 OpenCode。模型与工作流，由你的团队决定。" }
     ],
     "table": {
       "headers": {
@@ -84,8 +84,8 @@
           "prism": "△ 功能受限"
         },
         "ai": {
-          "capability": "编辑界面内置 AI",
-          "texlite": "无，设计上不内置",
+          "capability": "AI 使用方式",
+          "texlite": "自选 Coding Agent CLI",
           "overleafHosted": "提供可选 AI",
           "overleafCe": "非 AI 导向",
           "texlyre": "非 AI 导向",
@@ -94,7 +94,7 @@
         }
       }
     },
-    "note": "使用 TexLite，你的团队可以完全掌控 TeX 环境、编译资源、用户、权限以及数据。同时提供实时协作编辑、源码级批注、选区级编辑历史、SyncTeX、项目快照以及可选的 Git 备份 —— 没有外部强加的编译超时限制，设计上也坚决不内置 AI。"
+    "note": "使用 TexLite，你的团队可以完全掌控 TeX 环境、编译资源、用户、权限以及数据。同时提供实时协作编辑、源码级批注、选区级编辑历史、SyncTeX、项目快照以及可选的 Git 备份 —— 没有外部强加的编译超时限制。Coding Agent CLI 默认关闭，由管理员按需启用；工具与工作流的选择权留在团队手中。"
   },
   "feedback": {
     "close": "关闭反馈",

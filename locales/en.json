@@ -25,7 +25,7 @@
     "items": [
       { "anchor": "features", "title": "Real LaTeX", "body": "Use your actual TeX environment, packages, fonts, and toolchain." },
       { "anchor": "why", "title": "Private collaboration", "body": "Keep sources, PDFs, comments, and history on infrastructure you control." },
-      { "anchor": "workflow", "title": "No AI by design", "body": "TexLite keeps the editor focused on writing. If you want AI assistance, use the model and workflow you already prefer." }
+      { "anchor": "workflow", "title": "Your agent. Your rules.", "body": "Use Codex, Claude Code, or OpenCode in the project terminal. Your team chooses the models and workflow." }
     ],
     "table": {
       "headers": {
@@ -84,8 +84,8 @@
           "prism": "△ Limited"
         },
         "ai": {
-          "capability": "AI in the writing surface",
-          "texlite": "None, by design",
+          "capability": "AI approach",
+          "texlite": "Bring your own Coding Agent CLI",
           "overleafHosted": "AI available",
           "overleafCe": "Not AI-centered",
           "texlyre": "Not AI-centered",
@@ -94,7 +94,7 @@
         }
       }
     },
-    "note": "With TexLite, your team controls the TeX environment, compile resources, users, permissions, and data. It also includes real-time editing, source-anchored comments, selection-level edit history, SyncTeX, project snapshots, and optional Git backup — with no externally imposed compile timeout and no built-in AI."
+    "note": "With TexLite, your team controls the TeX environment, compile resources, users, permissions, and data. It also includes real-time editing, source-anchored comments, selection-level edit history, SyncTeX, project snapshots, and optional Git backup — with no externally imposed compile timeout. Coding Agent CLIs are off by default and enabled by administrators; your team stays in control of the tools and workflow."
   },
   "feedback": {
     "close": "Close feedback",
