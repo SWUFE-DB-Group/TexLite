@@ -775,7 +775,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .cm-bibtex-tooltip-example-inline { margin-top: 7px; color: var(--tl-tooltip-detail); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .cm-bibtex-tooltip-note { margin-top: 7px; color: var(--tl-tooltip-muted); font-size: 11px; }
 .cm-source-comment { background: var(--tl-comment-bg); border-bottom: 2px solid var(--tl-comment-border); cursor: text; }
-.editor-host .cm-comment-pin { display: inline-block; min-width: 14px; margin: 0; padding: 0 2px; border: 0; border-radius: 3px; background: transparent; color: var(--tl-comment-border); font: inherit; font-size: 11px; line-height: inherit; vertical-align: baseline; cursor: pointer; }
+.editor-host .cm-comment-pin { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 18px; margin: 0 2px; padding: 1px 2px; border: 0; border-radius: 4px; background: transparent; color: var(--tl-comment-border); line-height: 1; vertical-align: text-bottom; cursor: pointer; }
+.editor-host .cm-comment-pin svg { width: 12px; height: 12px; pointer-events: none; }
 .editor-host .cm-comment-pin:hover { background: var(--tl-comment-hover-bg); color: var(--tl-comment-hover-fg); }
 .editor-host .cm-comment-pin:focus-visible { outline: 2px solid var(--tl-comment-border); outline-offset: 1px; }
 .editor-host .cm-lineNumbers { min-width: calc(3.16em + 11px); }
@@ -907,6 +908,18 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .compile-warning .compile-diagnostic-row > svg { color: var(--ui-warning, #e8c46d); }
 .compile-error .compile-diagnostic-row > svg { color: var(--ui-danger, #e99b94); }
 .context-panel { border-right: 0; overflow: auto; }
+.workspace-preview-region { height: 100%; min-width: 0; min-height: 0; container: workspace-preview / inline-size; }
+.workspace-output-layout { position: relative; height: 100%; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+.workspace-output-layout > .preview-panel { min-width: 0; grid-column: -2 / -1; grid-row: 1; }
+.workspace-comments-slot { position: absolute; z-index: 25; inset: 0 auto 0 0; width: min(360px, 100%); min-width: 0; background: var(--ui-surface, #fff); border-right: 1px solid var(--ui-border, #dfe2de); box-shadow: 8px 0 24px #10251b26; }
+.workspace-comments-slot[hidden] { display: none; }
+.workspace-comments-slot > .context-panel { background: var(--ui-surface, #fff); overscroll-behavior: contain; }
+.workspace-comments-slot .drawer-title > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-comments-slot .drawer-title-actions { flex-shrink: 0; }
+@container workspace-preview (min-width: 760px) {
+  .workspace-output-layout.has-comments { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
+  .workspace-output-layout.has-comments > .workspace-comments-slot { position: relative; inset: auto; width: auto; grid-column: 1; grid-row: 1; box-shadow: none; }
+}
 .drawer-title { position: sticky; top: 0; z-index: 2; height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--ui-border, #e3e6e3); background: var(--ui-surface, white); font-size: 13px; }
 .drawer-title button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #737a75); }
 .drawer-title button:hover { background: var(--ui-hover, #edf1ee); }

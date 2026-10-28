@@ -6,6 +6,10 @@ import i18n from "../src/client/i18n";
 
 vi.mock("react-resizable-panels", () => ({ Panel: ({ children }: { children: ReactNode }) => createElement("section", null, children) }));
 vi.mock("../src/client/workspacePreload", () => ({ loadPdfPreview: vi.fn() }));
+vi.mock("../src/client/workspace/WorkspaceSyncSeparator", () => ({
+  WorkspaceSyncSeparator: ({ children, showControls = true }: { children: ReactNode; showControls?: boolean }) =>
+    createElement("div", { className: "sync-separator" }, showControls ? children : null)
+}));
 
 function render(overrides: Partial<WorkspacePreviewPanelProps> = {}): string {
   const noop = () => {};
@@ -25,6 +29,24 @@ function render(overrides: Partial<WorkspacePreviewPanelProps> = {}): string {
 }
 
 describe("uncompiled PDF preview", () => {
+  it("hides SyncTeX arrows while comments are open without removing the resize separator", () => {
+    for (const commentsOpen of [false, true, false]) {
+      const html = render({ commentsOpen, showSyncResize: true });
+      expect(html).toContain('class="sync-separator"');
+      for (const label of [i18n.t("editor.showInSource"), i18n.t("editor.showInPdf")]) {
+        expect(html.includes(`aria-label="${label}"`)).toBe(!commentsOpen);
+      }
+    }
+  });
+  it("keeps the PDF mounted with a comments slot before it and hides that slot when closed", () => {
+    const opened = render({ commentsOpen: true });
+    expect(opened).toContain('class="workspace-output-layout has-comments"');
+    expect(opened).toContain('class="workspace-comments-slot"');
+    expect(opened.indexOf('class="workspace-comments-slot"')).toBeLessThan(opened.indexOf('class="preview-panel"'));
+    const closed = render();
+    expect(closed).toContain('class="workspace-comments-slot" hidden=""');
+    expect(closed).toContain('class="preview-panel"');
+  });
   it.each(["en", "zh"])("shows a localized empty state without a download action (%s)", async (language) => {
     await i18n.changeLanguage(language);
     const html = render();

@@ -1,4 +1,5 @@
 import { lazy, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { Panel, Separator } from "react-resizable-panels";
 import { ArrowDown, ArrowUp, AtSign, ChevronLeft, ChevronRight, MessagesSquare, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -26,6 +27,8 @@ import {
 const ProjectSettings = lazy(() => import("./ProjectSettings").then((module) => ({ default: module.ProjectSettings })));
 
 export interface WorkspaceContextPanelProps {
+  /** Undefined: standalone pane; null: preview host has not mounted yet. */
+  commentsHost?: HTMLElement | null;
   sidePanel: "comments" | "settings" | null;
   onClose: () => void;
   project: Project;
@@ -71,6 +74,7 @@ export interface WorkspaceContextPanelProps {
 }
 
 export function WorkspaceContextPanel({
+  commentsHost,
   sidePanel, onClose, project, projectId, site, files, currentUserId, comments, commentDraftStore, commentsLoading, commentsError, onRetryComments, unreadMentions,
   activeFile, singleCommentId, onShowAllComments, hasProjectCommentsScope, commentScope, onCommentScopeChange, focusedCommentId, commentFocusNonce, onMarkMentionRead, onMarkAllMentionsRead,
   onClearFocusComment,
@@ -226,10 +230,7 @@ export function WorkspaceContextPanel({
     });
   };
   if (!sidePanel) return null;
-  return <>
-    <Separator className="resize-handle" />
-    <Panel id="context" defaultSize="20%" minSize="15%" maxSize="38%">
-      <aside className="context-panel">
+  const content = <aside className="context-panel" aria-label={t(sidePanel === "comments" ? "editor.sourceComments" : "editor.projectSettings")}>
         {sidePanel === "comments" && <>
           <div className="drawer-title">
             <strong>{t(singleCommentMode ? "editor.currentComment" : "editor.sourceComments")}</strong>
@@ -308,7 +309,12 @@ export function WorkspaceContextPanel({
           </div>
         </>}
         {sidePanel === "settings" && <LazyPanel onClose={onClose}><ProjectSettings key={projectId} onClose={onClose} project={project} projectId={projectId} site={site} files={files} dictionaryWords={dictionaryWords} onDictionaryChange={onDictionaryChange} editorPreferences={editorPreferences} onEditorPreferences={onEditorPreferences} spellCheckCount={spellCheckCount} spellCheckUniqueCount={spellCheckUniqueCount} spellCheckIndex={spellCheckIndex} onSpellCheckNavigate={onSpellCheckNavigate} onProject={onProject} /></LazyPanel>}
-      </aside>
-    </Panel>
+      </aside>;
+  // A stable portal target lets responsive CSS switch inline/drawer layout
+  // without remounting threads, losing reply forms or resetting review filters.
+  if (sidePanel === "comments" && commentsHost !== undefined) return commentsHost ? createPortal(content, commentsHost) : null;
+  return <>
+    <Separator className="resize-handle" />
+    <Panel id="context" defaultSize="20%" minSize="15%" maxSize="38%">{content}</Panel>
   </>;
 }

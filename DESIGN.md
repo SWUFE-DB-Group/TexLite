@@ -733,6 +733,15 @@ deployment base path. The adapter validates current v4 per-combination records
 and does not convert v2 layout arrays. Missing, unsupported or corrupt records
 use default sizes; older browser records are left untouched. Blocked browser
 storage also falls back to usable defaults. File-panel collapse state follows `onResize`.
+Source comments sit at the left edge of the preview region, immediately beside
+the editor. They do not add an outer resizable panel or change the editor/file
+widths. A 760 px preview-container breakpoint switches between a 300–360 px
+inline review column and a drawer over the PDF; closing it restores the preview.
+The PDF stays mounted, and a stable portal host preserves review filters and
+reply forms across responsive changes. Editor-only mode falls back to an
+adjacent resizable context pane; settings keep their existing right-hand pane.
+Source annotations use small outlined comment icons with the same toggle,
+keyboard activation and tooltip behavior as the former pins.
 SyncTeX arrows are portalled outside the group and anchored to the separator,
 so v4's document-level drag capture does not consume their pointer/keyboard
 actions. Observers and window listeners are removed when the separator unmounts.

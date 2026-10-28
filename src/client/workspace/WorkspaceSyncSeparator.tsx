@@ -4,11 +4,11 @@ import { GripVertical } from "lucide-react";
 import { Separator } from "react-resizable-panels";
 
 /** Keep SyncTeX controls visually on the separator, outside its drag target. */
-export function WorkspaceSyncSeparator({ children }: { children: ReactNode }) {
+export function WorkspaceSyncSeparator({ children, showControls = true }: { children: ReactNode; showControls?: boolean }) {
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
-    if (!anchor) return;
+    if (!anchor || !showControls) return;
     const update = () => {
       const rect = anchor.getBoundingClientRect();
       const left = rect.left + rect.width / 2;
@@ -32,10 +32,10 @@ export function WorkspaceSyncSeparator({ children }: { children: ReactNode }) {
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [anchor]);
+  }, [anchor, showControls]);
 
   return <>
     <Separator className="resize-handle sync-resize-handle" elementRef={setAnchor}><GripVertical className="resize-grip" size={12} /></Separator>
-    {position && createPortal(<span className="sync-direction-buttons" style={{ position: "fixed", ...position }}>{children}</span>, document.body)}
+    {showControls && position && createPortal(<span className="sync-direction-buttons" style={{ position: "fixed", ...position }}>{children}</span>, document.body)}
   </>;
 }

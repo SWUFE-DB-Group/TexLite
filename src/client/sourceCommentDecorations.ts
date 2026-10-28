@@ -48,7 +48,18 @@ class CommentPin extends WidgetType {
     pin.dataset.sourceCommentId = this.id;
     pin.title = this.options.label;
     pin.setAttribute("aria-label", this.options.label);
-    pin.textContent = "●";
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z M8 8h8 M8 12h5");
+    svg.append(path);
+    pin.append(svg);
     // Widget events are ignored by CodeMirror. Handle activation here so
     // mouse, touch, and native Enter/Space all work without selecting source.
     pin.addEventListener("mousedown", (event) => { event.preventDefault(); event.stopPropagation(); });

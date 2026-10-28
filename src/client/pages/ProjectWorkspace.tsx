@@ -150,6 +150,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setSelectionState(next);
   };
   const [sidePanel, setSidePanel] = useState<"comments" | "settings" | null>(null);
+  const [commentsHost, setCommentsHost] = useState<HTMLDivElement | null>(null);
   const [singleCommentId, setSingleCommentId] = useState<string | null>(null);
   const [targetMention, setTargetMention] = useState<CommentMention | null>(null);
   const [pendingCommentFocus, setPendingCommentFocus] = useState<Comment | null>(null);
@@ -1260,7 +1261,9 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const compileMessages = useMemo(() => classifyCompileLog(compileLog, compileOutcome), [compileLog, compileOutcome]);
   const showEditor = workspaceLayout !== "pdf-only";
   const showPreview = workspaceLayout !== "editor-only";
-  const panelLayout = useWorkspacePanelLayout(showEditor, showPreview, Boolean(sidePanel));
+  // Comments occupy only the preview region, leaving source/file widths intact.
+  // Editor-only mode has no preview to overlay, so it retains an adjacent pane.
+  const panelLayout = useWorkspacePanelLayout(showEditor, showPreview, sidePanel === "settings" || sidePanel === "comments" && !showPreview);
   const changeWorkspaceLayout = (next: WorkspaceLayout) => {
     setWorkspaceLayout(next);
     if (next === "pdf-only") selectPreviewTab("pdf");
@@ -1458,6 +1461,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         onSpellCheckReplace={replaceSpellCheckIssue} onReferenceNavigate={navigateToReference} onCursor={updateSourceCursor}
       />}
       {showPreview && <WorkspacePreviewPanel
+        commentsOpen={sidePanel === "comments"} onCommentsHost={setCommentsHost}
         projectId={projectId} activeMainFile={activeMainFile} previewTab={previewTab} diagnosticTab={diagnosticTab}
         pdfUrl={pdfUrl} pdfLoadingMode={pdfLoadingMode} pdfLoading={pdfLoading} pdfCompiledAt={pdfCompiledAt}
         pdfSizeBytes={pdfSizeBytes} pdfCompiledLabel={pdfCompiledLabel} pdfTargetLabel={pdfTargetLabel} pdfDownloadUrl={pdfDownloadUrl}
@@ -1480,6 +1484,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         viewArtifact={viewArtifact}
       />}
       <WorkspaceContextPanel key={projectId}
+        commentsHost={showPreview ? commentsHost : undefined}
         sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
         site={site} files={files} currentUserId={user.id} comments={singleCommentId ? comments : reviewComments} commentDraftStore={commentDraftStore} commentsLoading={singleCommentId ? fileCommentsLoading : reviewCommentsLoading}
         commentsError={(singleCommentId ? fileCommentsError : reviewCommentsError) || mentionsError} onRetryComments={singleCommentId ? retryFileComments : retryReviewComments} activeFile={activeFile}

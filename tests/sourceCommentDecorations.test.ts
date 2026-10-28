@@ -41,12 +41,14 @@ function ranges(state: EditorState) {
 class PinElement {
   dataset: Record<string, string> = {};
   attributes: Record<string, string> = {};
+  children: PinElement[] = [];
   handlers: Record<string, (event: Event) => void> = {};
   title = "";
   type = "";
   className = "";
   textContent = "";
   setAttribute(name: string, value: string) { this.attributes[name] = value; }
+  append(child: PinElement) { this.children.push(child); }
   addEventListener(name: string, handler: (event: Event) => void) { this.handlers[name] = handler; }
   closest() { return this; }
 }
@@ -261,11 +263,14 @@ describe("source comment navigation", () => {
 
   it("requests a toggle from labelled pin buttons despite CodeMirror ignoring widget events", () => {
     const { state, onOpen } = fixture([comment("collapsed", 3, 3)]);
-    vi.stubGlobal("document", { createElement: () => new PinElement() });
+    vi.stubGlobal("document", { createElement: () => new PinElement(), createElementNS: () => new PinElement() });
     const widget = ranges(state)[0]!.value.spec.widget!;
     const pin = widget.toDOM({ state } as EditorView) as unknown as PinElement;
     expect(pin.type).toBe("button");
     expect(pin.attributes["aria-label"]).toBe("View this source comment");
+    expect(pin.textContent).toBe("");
+    expect(pin.children[0]?.attributes["aria-hidden"]).toBe("true");
+    expect(pin.children[0]?.children).toHaveLength(1);
     const down = new Event("mousedown", { cancelable: true });
     pin.handlers.mousedown!(down);
     expect(down.defaultPrevented).toBe(true);

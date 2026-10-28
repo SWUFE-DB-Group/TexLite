@@ -18,6 +18,8 @@ import { CompileArtifacts, CompileCleanup, CompileDiagnosticOutput, CompileOutpu
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
 
 export interface WorkspacePreviewPanelProps {
+  commentsOpen?: boolean;
+  onCommentsHost?: (element: HTMLDivElement | null) => void;
   projectId: string;
   activeMainFile: string;
   previewTab: PreviewSurface;
@@ -63,6 +65,7 @@ export interface WorkspacePreviewPanelProps {
 }
 
 export function WorkspacePreviewPanel({
+  commentsOpen = false, onCommentsHost,
   projectId, activeMainFile, previewTab, diagnosticTab, pdfUrl, pdfLoadingMode, pdfLoading, pdfCompiledAt, pdfSizeBytes,
   pdfCompiledLabel, pdfTargetLabel, pdfDownloadUrl, pdfTarget, pdfViewport, activeFile, compileBusy, compileLog,
   compileDiagnostics, compileMessages, artifacts, artifactPreview, artifactLoading, cleaning, readOnly,
@@ -87,8 +90,11 @@ export function WorkspacePreviewPanel({
     pdfCompiledLabel ? t("editor.pdfUpdatedAt", { time: pdfCompiledLabel }) : ""
   ].filter(Boolean).join(" · ");
   return <>
-    {showSyncResize && <WorkspaceSyncSeparator><button disabled={!pdfUrl || !pdfViewport || !canSyncWithDisplayedPdf} title={!canSyncPdfToSource ? t("editor.syncTexOnlyForMain") : !canSyncWithDisplayedPdf ? t("editor.syncTexWaitingForPdf") : t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={(event) => { event.stopPropagation(); if (!canSyncWithDisplayedPdf) return; syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={!canSyncWithPdf ? t("editor.syncTexOnlyForTex") : t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={(event) => { event.stopPropagation(); if (!activeFile || !pdfUrl || !canSyncWithPdf) return; void syncCurrentSourceToPdf(); }}><span aria-hidden>→</span></button></WorkspaceSyncSeparator>}
+    {showSyncResize && <WorkspaceSyncSeparator showControls={!commentsOpen}><button disabled={!pdfUrl || !pdfViewport || !canSyncWithDisplayedPdf} title={!canSyncPdfToSource ? t("editor.syncTexOnlyForMain") : !canSyncWithDisplayedPdf ? t("editor.syncTexWaitingForPdf") : t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={(event) => { event.stopPropagation(); if (!canSyncWithDisplayedPdf) return; syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={!canSyncWithPdf ? t("editor.syncTexOnlyForTex") : t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={(event) => { event.stopPropagation(); if (!activeFile || !pdfUrl || !canSyncWithPdf) return; void syncCurrentSourceToPdf(); }}><span aria-hidden>→</span></button></WorkspaceSyncSeparator>}
     <Panel id="preview" minSize="22%">
+      <div className="workspace-preview-region">
+      <div className={`workspace-output-layout${commentsOpen ? " has-comments" : ""}`}>
+        <div ref={onCommentsHost} className="workspace-comments-slot" hidden={!commentsOpen} />
       <section className="preview-panel">
         <div className="preview-tabs">
           <div className="preview-tab-list" role="tablist" aria-label={t("editor.outputTabs")}>
@@ -119,6 +125,8 @@ export function WorkspacePreviewPanel({
           {previewTab === "diagnostics" && diagnosticTab === "clean" && <CompileCleanup mainFile={activeMainFile} disabled={readOnly || !collaborationSynced || compileBusy} cleaning={cleaning} onCleanCache={() => onSetCleanMode("cache")} onCleanArtifacts={() => onSetCleanMode("artifacts")} />}
         </div>
       </section>
+      </div>
+      </div>
     </Panel>
   </>;
 }

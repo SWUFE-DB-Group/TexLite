@@ -64,6 +64,26 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("resolved comment Load more", () => {
+  it("hosts comments beside the editor without resetting review state when the preview width changes", async () => {
+    const outputHost = document.createElement("div");
+    outputHost.className = "workspace-comments-slot";
+    document.body.append(outputHost);
+    props.commentsHost = outputHost;
+    props.comments = [comment(1, false), comment(2)];
+    try {
+      await render();
+      expect(outputHost.querySelector(".context-panel")).not.toBeNull();
+      await act(async () => [...outputHost.querySelectorAll<HTMLButtonElement>(".comment-review-group button")]
+        .find((button) => button.textContent?.startsWith("Resolved"))!.click());
+      const thread = outputHost.querySelector('[data-comment-id="comment-2"]');
+      expect(thread).not.toBeNull();
+      // Responsive presentation uses CSS on the same slot, not a new React tree.
+      outputHost.style.width = "300px";
+      await render();
+      expect(outputHost.querySelector('[data-comment-id="comment-2"]')).toBe(thread);
+      expect(outputHost.textContent).not.toContain("Comment 1");
+    } finally { outputHost.remove(); }
+  });
   it("keeps status totals scoped to file/project while unread only narrows the active status queue", async () => {
     props.commentScope = "file";
     props.comments = [comment(1, false), comment(2, false), { ...comment(3, false), filePath: "other.tex" },
