@@ -2,6 +2,7 @@
   "common": {
     "saveSuccess": "儲存成功。",
     "noChangesToSave": "沒有需要儲存的變更。",
+    "done": "已完成",
     "cancel": "取消",
     "create": "建立",
     "add": "新增",
@@ -1097,6 +1098,7 @@
     "next": "下一頁"
   },
   "navigation": {
+    "backToProjects": "返回專案",
     "quickOpen": "快速開啟",
     "quickOpenDescription": "按名稱開啟專案檔案（Ctrl/Cmd+P）。",
     "filePlaceholder": "輸入檔名…",

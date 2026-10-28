@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, AlertTriangle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Save, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
@@ -12,6 +12,7 @@ import { CompilerVersions } from "./CompilerVersions";
 import { saveTerminalPreferences, useTerminalPreferences } from "../terminalPreferences";
 import { TerminalAppearanceSettings } from "./TerminalAppearanceSettings";
 import { useSuccessNotice } from "../SuccessNotice";
+import { SaveButton } from "../SaveButton";
 
 function BrowserToolStatus({ name, state, label, reloadLabel, onReload, compact = false }: {
   name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void; compact?: boolean;
@@ -195,7 +196,6 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     if (settingsTab === "terminal") return saveTerminalSettings();
     if (canManage) void saveCompilerSettings();
   };
-  const headerSaveLabel = saveFeedback || t("common.save");
   const canSaveCurrentTab = settingsTab !== "compiler" || canManage;
   const addDictionaryWord = async () => {
     const word = dictionaryValue.trim();
@@ -216,7 +216,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       setDictionaryError("");
     } catch (requestError) { setDictionaryError(errorMessage(requestError)); }
   };
-  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <button type="button" className="drawer-settings-save" data-save-feedback={saveFeedback ? "true" : undefined} disabled={settingsTab === "compiler" && savingCompiler} aria-busy={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{settingsTab === "compiler" && savingCompiler ? <LoaderCircle className="spin" size={14} /> : saveFeedback ? <CheckCircle2 size={14} /> : <Save size={14} />}<span role="status" aria-live="polite">{headerSaveLabel}</span></button>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div>
+  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <SaveButton className="drawer-settings-save" feedback={saveFeedback} saving={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{t("common.save")}</SaveButton>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div>
     <div className="settings padded">
     {error && <p className="error">{error}</p>}
     <div className="settings-tabs" role="tablist" aria-label={t("common.settings")}>
@@ -272,7 +272,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       {dictionaryError && <p className="error dictionary-error">{dictionaryError}</p>}
       {canManageDictionary && <div className="dictionary-add"><input value={dictionaryValue} placeholder={t("projectSettings.dictionaryPlaceholder")} onChange={(event) => setDictionaryValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addDictionaryWord(); } }} /><button type="button" disabled={!dictionaryValue.trim()} onClick={() => void addDictionaryWord()}>{t("projectSettings.addWord")}</button></div>}
       <div className="dictionary-words">{dictionaryWords.map((word) => <span className="dictionary-word" key={word}><code>{word}</code>{canManageDictionary && <button type="button" title={t("common.delete")} aria-label={`${t("common.delete")} ${word}`} onClick={() => void removeDictionaryWord(word)}><X size={13} /></button>}</span>)}{dictionaryWords.length === 0 && <span className="dictionary-empty">{t("projectSettings.dictionaryEmpty")}</span>}</div>
-      <div className="settings-actions"><button className="settings-save" data-save-feedback={saveFeedback ? "true" : undefined} onClick={saveAppearanceSettings}>{saveFeedback ? <CheckCircle2 size={15} /> : <Save size={15} />}{saveFeedback || t("projectSettings.saveAppearance")}</button></div>
+      <div className="settings-actions"><SaveButton className="settings-save" feedback={saveFeedback} onClick={saveAppearanceSettings}>{t("projectSettings.saveAppearance")}</SaveButton></div>
     </section> : settingsTab === "terminal"
       ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={setTerminalDraft} onSave={saveTerminalSettings} saveFeedback={saveFeedback} />
       : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
@@ -287,7 +287,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         <p className="field-hint">{t("projectSettings.latexmkrcSource", { path: selectedRcPath })}</p>
         {site.allowProjectLatexmkrc === false ? <p className="field-hint">{t("projectSettings.latexmkrcUnavailable")}</p> : <p className="field-hint latexmkrc-warning"><AlertTriangle size={14} aria-hidden="true" /><span>{t("projectSettings.latexmkrcWarning")}</span></p>}
       </div>}
-      <div className="settings-actions">{canManage && <button className="settings-save" data-save-feedback={saveFeedback ? "true" : undefined} disabled={savingCompiler} aria-busy={savingCompiler} onClick={() => void saveCompilerSettings()}>{savingCompiler ? <LoaderCircle className="spin" size={15} /> : saveFeedback ? <CheckCircle2 size={15} /> : <Save size={15} />}{saveFeedback || t("projectSettings.saveCompiler")}</button>}</div>
+      <div className="settings-actions">{canManage && <SaveButton className="settings-save" feedback={saveFeedback} saving={savingCompiler} onClick={() => void saveCompilerSettings()}>{t("projectSettings.saveCompiler")}</SaveButton>}</div>
       <CompilerVersions />
     </section>}
   </div></>;

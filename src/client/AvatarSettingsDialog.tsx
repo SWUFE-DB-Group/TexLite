@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
-import { LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AvatarStylePicker } from "./AvatarStylePicker";
 import { api } from "./api";
 import { Modal } from "./Dialog";
 import { errorMessage } from "./errors";
 import { UserAvatar } from "./UserAvatar";
+import { SaveButton } from "./SaveButton";
 import type { User } from "./types";
 
 export function AvatarSettingsDialog({ user, onClose, onSaved }: {
@@ -29,9 +29,7 @@ export function AvatarSettingsDialog({ user, onClose, onSaved }: {
   return <Modal open className="avatar-settings-modal" title={t("account.avatarTitle")} description={t("account.avatarDescription")}
     onOpenChange={(open) => { if (!open && !pending.current) onClose(); }}
     footer={<><button type="button" disabled={saving} onClick={onClose}>{t("common.cancel")}</button>
-      <button type="button" className="primary icon-button" disabled={saving || style === (user.avatarStyle ?? null)} aria-busy={saving} onClick={() => void save()}>
-        {saving && <LoaderCircle className="spin" size={14} aria-hidden />}{t("common.save")}
-      </button></>}>
+      <SaveButton saving={saving} disabled={style === (user.avatarStyle ?? null)} onClick={() => void save()}>{t("common.save")}</SaveButton></>}>
     <div className="avatar-settings">
       {error && <p className="error dialog-error" role="alert">{error}</p>}
       <div className="avatar-settings-choice">

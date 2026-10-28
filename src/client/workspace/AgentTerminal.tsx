@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info, LoaderCircle, Pencil, Play, Plus, Square, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
 import { api } from "../api";
 import { Modal } from "../Dialog";
+import { SaveButton } from "../SaveButton";
 import { useAgentTasks } from "../agents/useAgentTasks";
 import type { AgentTask } from "../../shared/agentProtocol";
 import { AGENT_LABELS } from "../../shared/agentProtocol";
@@ -85,7 +86,7 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
     </form>}
     {renaming && task && <form className="agent-task-create" onSubmit={(event) => { event.preventDefault(); void tasks.mutate(async () => {
       const result = await api<{ task: AgentTask }>(`/api/agent-tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ title: renameTitle }) }); tasks.acceptTask(result.task); setRenaming(false);
-    }); }}><input value={renameTitle} onChange={(event) => setRenameTitle(event.target.value)} required maxLength={160} aria-label={t("agents.task")} /><button disabled={tasks.busy}>{t("common.save")}</button></form>}
+    }); }}><input value={renameTitle} onChange={(event) => setRenameTitle(event.target.value)} required maxLength={160} aria-label={t("agents.task")} /><SaveButton type="submit" saving={tasks.busy}>{t("common.save")}</SaveButton></form>}
     {tasks.error && !deleteOpen && <p className="error agent-inline-error" role="alert">{tasks.error}<button onClick={() => tasks.setError("")} aria-label={t("common.close")}><X size={13} /></button></p>}
     {task?.errorCode && !tasks.error && !deleteOpen && <p className="error agent-inline-error" role="alert">{t(`errors.codes.${task.errorCode}`, { defaultValue: t("agents.taskUnavailable") })}</p>}
     {(projectBusy || (creating && tasks.result.activeTaskId)) && <p className="agent-inline-warning" role="status"><TriangleAlert size={14} aria-hidden="true" /><span>{t("errors.codes.AGENT_PROJECT_BUSY")}</span></p>}

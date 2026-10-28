@@ -1,6 +1,6 @@
 {
   "common": {
-    "saveSuccess": "Saved successfully.", "noChangesToSave": "No changes to save.",
+    "saveSuccess": "Saved successfully.", "noChangesToSave": "No changes to save.", "done": "Done",
     "cancel": "Cancel", "create": "Create", "add": "Add", "remove": "Remove", "delete": "Delete", "close": "Close",
     "user": "User", "permission": "Permission", "readOnly": "Read only", "readWrite": "Read & write", "settings": "Settings",
     "comments": "Comments", "files": "Files", "outline": "Outline", "version": "Version", "loading": "Loading…", "enabled": "Enabled",
@@ -334,6 +334,7 @@
     "addEntry": "Add entry", "addEntryTitle": "Add a BibTeX entry", "addEntryDescription": "Paste one complete BibTeX entry. It will be validated before it is saved.", "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}", "added": "Citation added to your library." },
   "citationLibraryPagination": { "pageOf_one": "Page {{page}} of {{totalPages}} · {{count}} entry", "pageOf_other": "Page {{page}} of {{totalPages}} · {{count}} entries", "previous": "Previous", "next": "Next" },
   "navigation": {
+    "backToProjects": "Back to projects",
     "quickOpen": "Quick open", "quickOpenDescription": "Open a project file by name (Ctrl/Cmd+P).", "filePlaceholder": "Type a file name…", "noFiles": "No matching files."
   },
   "history": {

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Check, LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
+import { LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import { TagColorSelect } from "../TagColorSelect";
-import { SuccessNotice, useSuccessNotice } from "../SuccessNotice";
+import { useSuccessNotice } from "../SuccessNotice";
+import { SaveButton } from "../SaveButton";
 import type { ProjectTag, TagColor } from "../types";
 
 export interface ManagedProjectTag extends ProjectTag {
@@ -77,6 +78,7 @@ export function TagManagementDialog({
       onTagCreated(result.tag);
       setNewName("");
       setNewColor("blue");
+      savedNotice.show("create");
     } catch (requestError) { setError(errorMessage(requestError)); }
     finally { setCreating(false); }
   };
@@ -102,8 +104,7 @@ export function TagManagementDialog({
       const updated: ManagedProjectTag = { ...result.tag, projectCount: tag.projectCount };
       setTags((current) => sortTags(current.map((item) => item.id === tag.id ? updated : item)));
       onTagUpdated(result.tag);
-      setEditingId(null);
-      savedNotice.show(t("common.saveSuccess"));
+      savedNotice.show(`edit:${tag.id}`);
     } catch (requestError) { setError(errorMessage(requestError)); }
     finally { setSavingId(null); }
   };
@@ -139,12 +140,11 @@ export function TagManagementDialog({
     title={t("tags.manage")}
     description={t("tags.manageDescription")}
     wide
-    className="tag-management-modal"
+    className="tag-management-modal management-dialog"
     onOpenChange={close}
     footer={<button onClick={() => close(false)} disabled={busy}>{t("common.close")}</button>}
   >
     <div className="tag-management">
-      <SuccessNotice message={savedNotice.message} onDismiss={savedNotice.clear} />
       {error && <p className="error dialog-error" role="alert">{error}</p>}
       <div className="tag-management-create">
         <label className="tag-management-field">
@@ -164,7 +164,7 @@ export function TagManagementDialog({
         </label>
         <button type="button" className="primary" disabled={!newName.trim() || creating} aria-busy={creating} onClick={() => void createTag()}>
           {creating ? <LoaderCircle className="spin" size={14} /> : <Plus aria-hidden size={14} />}
-          {t("tags.createInManager")}
+          <span role="status">{t(savedNotice.message === "create" ? "common.done" : "tags.createInManager")}</span>
         </button>
       </div>
 
@@ -183,13 +183,14 @@ export function TagManagementDialog({
                   </div>
                 </div>
                 <div className="tag-management-item-actions">
-                  <button type="button" title={t("tags.edit")} aria-label={t("tags.edit")} disabled={busy && !editing} onClick={() => beginEdit(tag)}><Pencil aria-hidden size={14} /></button>
+                  <button type="button" title={t("tags.edit")} aria-label={t("tags.edit")} disabled={busy} onClick={() => beginEdit(tag)}><Pencil aria-hidden size={14} /></button>
                   <button type="button" className="danger-text" title={t("common.delete")} aria-label={t("common.delete")} disabled={busy} onClick={() => { setDeleteTarget(tag); setDeleteError(""); }}><Trash2 aria-hidden size={14} /></button>
                 </div>
                 {editing && <div className="tag-management-edit">
                   <label className="tag-management-field">
                     <span>{t("tags.rename")}</span>
                     <input
+                      disabled={saving}
                       value={editingName}
                       maxLength={32}
                       onChange={(event) => { setEditingName(event.target.value); setError(""); }}
@@ -202,9 +203,7 @@ export function TagManagementDialog({
                   </label>
                   <div className="tag-management-edit-actions">
                     <button type="button" disabled={saving} onClick={() => { setEditingId(null); setError(""); }}><X aria-hidden size={14} />{t("common.cancel")}</button>
-                    <button type="button" className="primary" disabled={!editingName.trim() || saving} aria-busy={saving} onClick={() => void saveEdit(tag)}>
-                      {saving ? <LoaderCircle className="spin" size={14} /> : <Check aria-hidden size={14} />}{t("common.save")}
-                    </button>
+                    <SaveButton saving={saving} feedback={savedNotice.message === `edit:${tag.id}` ? t("editor.saved") : ""} disabled={!editingName.trim()} onClick={() => void saveEdit(tag)}>{t("common.save")}</SaveButton>
                   </div>
                 </div>}
               </article>;

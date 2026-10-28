@@ -1,7 +1,8 @@
 import { useId, type FormEvent } from "react";
-import { LoaderCircle, Save, Send } from "lucide-react";
+import { LoaderCircle, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MentionTextarea } from "./MentionTextarea";
+import { SaveButton } from "../SaveButton";
 
 /** Presentation only: workspace drafts own contents and in-flight requests. */
 export function CommentForm({
@@ -44,10 +45,11 @@ export function CommentForm({
     {error && <p id={errorId} className="comment-form-error" role="alert">{error}</p>}
     <div>
       <button type="button" disabled={busy} onClick={onCancel}>{t("common.cancel")}</button>
-      <button className="primary" type="submit" disabled={busy || !value.trim()}>
-        {pending ? <LoaderCircle className="spin" aria-hidden size={13} /> : editing ? <Save aria-hidden size={13} /> : <Send aria-hidden size={13} />}
-        {t(pending ? editing ? "editor.commentSaving" : "editor.commentSending" : editing ? "editor.saveChanges" : "editor.sendReply")}
-      </button>
+      {editing ? <SaveButton type="submit" saving={pending} disabled={disabled || !value.trim()} iconSize={13}>{t(pending ? "editor.commentSaving" : "editor.saveChanges")}</SaveButton>
+        : <button className="primary" type="submit" disabled={busy || !value.trim()}>
+          {pending ? <LoaderCircle className="spin" aria-hidden size={13} /> : <Send aria-hidden size={13} />}
+          {t(pending ? "editor.commentSending" : "editor.sendReply")}
+        </button>}
     </div>
   </form>;
 }

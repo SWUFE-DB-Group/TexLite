@@ -119,7 +119,7 @@ describe("avatar selection", () => {
     const input = searchInput();
     await searchStyles("not-a-style");
     expect(styleOptions()).toHaveLength(0);
-    expect(document.querySelector('[role="status"]')?.textContent).toBe(i18n.t("account.avatarNoMatches"));
+    expect(document.querySelector('.avatar-style-empty[role="status"]')?.textContent).toBe(i18n.t("account.avatarNoMatches"));
     expect(input.hasAttribute("aria-activedescendant")).toBe(false);
     await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(styleTrigger().textContent).toBe("Lorelei");

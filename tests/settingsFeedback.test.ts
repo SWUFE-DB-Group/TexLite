@@ -154,8 +154,9 @@ describe("settings save feedback", () => {
     await click('[aria-label="tags.edit"]');
     await act(async () => changeText(host.querySelector<HTMLInputElement>(".tag-management-edit input")!, "Renamed"));
     vi.mocked(api).mockResolvedValueOnce({ tag: { ...tag, name: "Renamed" } });
-    await click(".tag-management-edit-actions .primary");
-    expect(status()).toContain("common.saveSuccess");
+    await click(".tag-management-edit-actions .save-button");
+    expect(status()).toBeUndefined();
+    expect(host.querySelector(".tag-management-edit-actions .save-button")?.textContent).toBe("editor.saved");
   });
 
   it("confirms a saved snapshot name inside the snapshot dialog", async () => {
@@ -167,6 +168,10 @@ describe("settings save feedback", () => {
     await act(async () => changeText(host.querySelector<HTMLInputElement>(".history-label input")!, "Before review"));
     vi.mocked(api).mockResolvedValueOnce({ version: { ...version, label: "Before review" }, stats: null, retentionScheduled: false });
     await click(".history-label-save");
-    expect(status()).toContain("common.saveSuccess");
+    expect(status()).toBeUndefined();
+    expect(host.querySelector(".history-label-save")?.textContent).toBe("editor.saved");
+    expect(host.querySelector(".history-label-save .save-button-confirmation")).not.toBeNull();
+    await act(async () => vi.advanceTimersByTime(2000));
+    expect(host.querySelector(".history-label-save")?.textContent).toBe("history.saveLabel");
   });
 });

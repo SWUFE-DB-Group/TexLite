@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import "../agents/agents.css";
-import { ArrowDown, ArrowLeft, Check, ChevronLeft, ChevronRight, Info, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowLeft, ChevronLeft, ChevronRight, Info, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useTerminalPreferences } from "../terminalPreferences";
+import { useSuccessNotice } from "../SuccessNotice";
+import { SaveButton } from "../SaveButton";
 import { api } from "../api";
 import { Modal } from "../Dialog";
 import { errorMessage } from "../errors";
@@ -34,7 +36,7 @@ export function AgentManagement({ user, onBack }: {
   const pending = useRef(false);
   const mounted = useRef(true);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const completedAction = useSuccessNotice();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<AgentTask[]>([]);
   const [failures, setFailures] = useState<Record<string, string>>({});
@@ -46,11 +48,6 @@ export function AgentManagement({ user, onBack }: {
     }).catch((failure) => { if (!controller.signal.aborted) setError(errorMessage(failure)); });
     return () => controller.abort();
   }, [admin]);
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 2000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
   useEffect(() => {
     let controller: AbortController | undefined;
     let disposed = false;
@@ -73,7 +70,7 @@ export function AgentManagement({ user, onBack }: {
   }, [prefix, page, state, agent, project, owner, refresh]);
   const mutate = async (action: () => Promise<void>) => {
     if (pending.current) return;
-    pending.current = true; setBusy(true); setError("");
+    pending.current = true; setBusy(true); setError(""); completedAction.clear();
     try { await action(); }
     catch (failure) { if (mounted.current) setError(errorMessage(failure)); }
     finally { pending.current = false; notifyAgentTasksChanged(); if (mounted.current) { setBusy(false); setRefresh((value) => value + 1); } }
@@ -94,28 +91,27 @@ export function AgentManagement({ user, onBack }: {
     setSelected(new Set(remaining.map((task) => task.id)));
     if (action === "delete") setDeleting(remaining);
     if (remaining.length) setError(t("agents.operationFailed"));
-    else setNotice(t("agents.saved"));
+    else if (action === "stop" && tasks.length === 1) completedAction.show(`stop:${tasks[0].id}`);
   };
   const beginDelete = (tasks: AgentTask[]) => {
     setError(""); setFailures({}); setDeleting(tasks);
   };
   const changeFilter = (setter: (value: string) => void, value: string) => { setter(value); setPage(1); setSelected(new Set()); };
   const selectedTasks = result.tasks.filter((task) => selected.has(task.id));
-  return <section className="agent-management">
+  return <section className="agent-management management-page">
     <div className="section-title"><div><h1><TerminalSquare size={25} />{t(admin ? "agents.title" : "agents.tasks")}</h1><p>{t(admin ? "agents.description" : "agents.personalDescription")}</p></div>
-      <button onClick={onBack}><ArrowLeft size={14} />{t("agents.back")}</button></div>
+      <button type="button" className="dashboard-back-button" onClick={onBack}><ArrowLeft size={14} />{t("navigation.backToProjects")}</button></div>
     {error && !deleting.length && <p className="error" role="alert">{error}</p>}
-    {notice && <p className="agent-inline-notice" role="status">{notice}</p>}
     {admin && <section className="agent-policy-card">
       <div className="agent-policy-heading"><div className="agent-policy-title"><strong>{t("agents.allowedAgents")}</strong>
         <button type="button" className="agent-policy-help" aria-label={t("agents.usageHint")} data-tooltip={t("agents.usageHint")}><Info size={15} aria-hidden="true" /></button>
       </div>
         <div className="agent-policy-actions"><button disabled={busy} onClick={() => void mutate(async () => {
-          const value = await api<AgentCatalog>("/api/admin/agents/refresh", { method: "POST" }); setCatalog(value);
-        })}><RefreshCw size={14} />{t("agents.detection")}</button><button className="primary" disabled={busy || !catalog} onClick={() => void mutate(async () => {
+          const value = await api<AgentCatalog>("/api/admin/agents/refresh", { method: "POST" }); setCatalog(value); completedAction.show("detect");
+        })}><RefreshCw size={14} /><span role="status">{t(completedAction.message === "detect" ? "common.done" : "agents.detection")}</span></button><SaveButton saving={busy} feedback={completedAction.message === "policy" ? t("editor.saved") : ""} disabled={!catalog} onClick={() => void mutate(async () => {
           const value = await api<AgentCatalog>("/api/admin/agents", { method: "PATCH", body: JSON.stringify(policy) });
-          setCatalog(value); setPolicy(value.policy); setNotice(t("agents.policySaved")); window.dispatchEvent(new Event("texlite:agents-policy"));
-        })}>{busy ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />}{t("common.save")}</button></div>
+          setCatalog(value); setPolicy(value.policy); completedAction.show("policy"); window.dispatchEvent(new Event("texlite:agents-policy"));
+        })}>{t("common.save")}</SaveButton></div>
       </div>
       <div className="agent-catalog">{catalog?.agents.map((entry) => <label key={entry.id} className={`agent-catalog-item${entry.installed ? "" : " unavailable"}`}>
         <input type="checkbox" aria-label={`${t("agents.allowed")} ${entry.label}`} disabled={busy} checked={policy.allowed.includes(entry.id)} onChange={(event) => setPolicy((value) => ({ ...value, allowed: event.target.checked ? [...value.allowed, entry.id] : value.allowed.filter((id) => id !== entry.id) }))} />
@@ -147,12 +143,12 @@ export function AgentManagement({ user, onBack }: {
         <td className="agent-table-time"><time dateTime={task.updatedAt} tabIndex={0}
           data-tooltip={t("agents.createdTooltip", { created: formatDateTime(task.createdAt, i18n.resolvedLanguage) })}
         >{formatDateTime(task.updatedAt, i18n.resolvedLanguage, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></td>
-        <td className="agent-row-actions"><button disabled={busy || !["running", "starting", "stopping"].includes(task.state)} onClick={() => void mutate(() => operate([task], "stop"))}><Square size={12} />{t("agents.end")}</button><button className="agent-icon-button agent-danger" title={t("agents.delete")} aria-label={t("agents.delete")} disabled={busy} onClick={() => beginDelete([task])}><Trash2 size={14} /></button></td>
+        <td className="agent-row-actions"><button disabled={busy || !["running", "starting", "stopping"].includes(task.state)} onClick={() => void mutate(() => operate([task], "stop"))}><Square size={12} /><span role="status">{t(completedAction.message === `stop:${task.id}` ? "common.done" : "agents.end")}</span></button><button className="agent-icon-button agent-danger" title={t("agents.delete")} aria-label={t("agents.delete")} disabled={busy} onClick={() => beginDelete([task])}><Trash2 size={14} /></button></td>
       </tr>)}</tbody></table>
       {!result.tasks.length && <div className="agent-task-empty">{loading ? <LoaderCircle size={24} className="spin" /> : <TerminalSquare size={28} />}<strong>{t(loading ? "common.loading" : "agents.noTasks")}</strong>{!loading && <p>{t("agents.noTasksHint")}</p>}</div>}
     </div>
     <nav className="project-pagination agent-pagination" aria-label={t("agents.tasks")}><button type="button" disabled={busy || result.page <= 1} onClick={() => { setPage(result.page - 1); setSelected(new Set()); }}><ChevronLeft size={14} aria-hidden="true" />{t("agents.previous")}</button><span>{result.page} / {Math.max(1, Math.ceil(result.total / result.pageSize))}</span><button type="button" disabled={busy || result.page * result.pageSize >= result.total} onClick={() => { setPage(result.page + 1); setSelected(new Set()); }}>{t("agents.next")}<ChevronRight size={14} aria-hidden="true" /></button></nav>
-    <Modal open={deleting.length > 0} title={t("agents.delete")} description={t("agents.bulkDeleteDescription")} onOpenChange={(open) => { if (!open && !busy) setDeleting([]); }} footer={<><button disabled={busy} onClick={() => setDeleting([])}>{t("common.cancel")}</button><button className="danger" disabled={busy} onClick={() => void mutate(() => operate(deleting, "delete"))}>{busy && <LoaderCircle size={14} className="spin" />}{t("agents.delete")}</button></>}>
+    <Modal className="management-dialog" open={deleting.length > 0} title={t("agents.delete")} description={t("agents.bulkDeleteDescription")} onOpenChange={(open) => { if (!open && !busy) setDeleting([]); }} footer={<><button disabled={busy} onClick={() => setDeleting([])}>{t("common.cancel")}</button><button className="danger" disabled={busy} onClick={() => void mutate(() => operate(deleting, "delete"))}>{busy && <LoaderCircle size={14} className="spin" />}{t("agents.delete")}</button></>}>
       {deleting.map((task) => <div className="agent-delete-item" key={task.id}><strong>{task.title}</strong><small>{task.projectName} · {task.userName} · {AGENT_LABELS[task.agentId]}</small>{failures[task.id] && <p className="error" role="alert">{failures[task.id]}</p>}</div>)}
     </Modal>
   </section>;

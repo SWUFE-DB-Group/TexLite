@@ -1,6 +1,6 @@
 {
   "common": {
-    "saveSuccess": "保存成功。", "noChangesToSave": "没有需要保存的更改。",
+    "saveSuccess": "保存成功。", "noChangesToSave": "没有需要保存的更改。", "done": "已完成",
     "cancel": "取消", "create": "创建", "add": "添加", "remove": "移除", "delete": "删除", "close": "关闭", "user": "用户",
     "permission": "权限", "readOnly": "只读", "readWrite": "读写", "settings": "设置", "comments": "批注", "files": "文件",
     "outline": "大纲", "version": "版本", "loading": "正在载入…", "enabled": "允许", "disabled": "禁止", "normal": "正常", "admin": "管理员", "language": "语言", "save": "保存", "edit": "编辑", "retry": "重试", "reload": "刷新页面",
@@ -324,6 +324,7 @@
     "addEntry": "添加条目", "addEntryTitle": "添加 BibTeX 条目", "addEntryDescription": "粘贴一个完整的 BibTeX 文献条目，保存前会进行校验。", "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}", "added": "引用已添加到你的引用库。" },
   "citationLibraryPagination": { "pageOf_one": "第 {{page}} / {{totalPages}} 页 · {{count}} 条引用", "pageOf_other": "第 {{page}} / {{totalPages}} 页 · {{count}} 条引用", "previous": "上一页", "next": "下一页" },
   "navigation": {
+    "backToProjects": "返回项目",
     "quickOpen": "快速打开", "quickOpenDescription": "按名称打开项目文件（Ctrl/Cmd+P）。", "filePlaceholder": "输入文件名…", "noFiles": "没有匹配的文件。"
   },
   "history": {

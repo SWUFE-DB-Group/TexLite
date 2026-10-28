@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Modal } from "../Dialog";
+import { SaveButton } from "../SaveButton";
 import { errorMessage } from "../errors";
 import { ProjectIconGlyph, projectIconEntries, projectInitial } from "../projectIcons";
 import { isProjectIconName, normalizeLucideIconName } from "../../shared/projectIcons.js";
@@ -82,7 +83,7 @@ export function ProjectIconPickerDialog({
     onOpenChange={(next) => { if (!saving) onOpenChange(next); }}
     footer={<>
       <button type="button" disabled={saving} onClick={() => onOpenChange(false)}>{t("common.cancel")}</button>
-      <button type="button" className="primary" disabled={saving || !changed} aria-busy={saving} onClick={() => void save()}>{t("projectIcons.save")}</button>
+      <SaveButton saving={saving} disabled={!changed} onClick={() => void save()}>{t("projectIcons.save")}</SaveButton>
     </>}
   >
     <div className="project-icon-picker">

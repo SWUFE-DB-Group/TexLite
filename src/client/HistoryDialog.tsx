@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CheckCircle2, Clock3, FileClock, FileCode2, FileText, HardDrive, ListChecks,
-  LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Save, Tag, Trash2
+  LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Tag, Trash2
 } from "lucide-react";
 import { ApiError, api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
@@ -11,7 +11,8 @@ import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, P
 import { historyTextCandidate } from "../shared/historyTracking";
 import { HistoryFilesManager } from "./HistoryFilesManager";
 import { formatDateTime } from "./dateTime";
-import { SuccessNotice, useSuccessNotice } from "./SuccessNotice";
+import { useSuccessNotice } from "./SuccessNotice";
+import { SaveButton } from "./SaveButton";
 
 interface HistoryComparison {
   path: string;
@@ -263,10 +264,10 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       const result = await api<{ version: HistoryVersion; retentionScheduled: boolean; retentionRefreshAfterMs: number; stats: HistoryStats | null }>(`/api/projects/${project.id}/history/${detail.version.id}`, {
         method: "PATCH", body: JSON.stringify({ label: label.trim() || null, snapshotHash: detail.version.snapshotHash })
       });
-      setDetail((current) => current ? { ...current, version: result.version } : current);
+      setDetail((current) => current?.version.id === result.version.id ? { ...current, version: result.version } : current);
       setVersions((current) => current.map((version) => version.id === result.version.id ? result.version : version));
       setStats(result.stats);
-      savedNotice.show(t("common.saveSuccess"));
+      savedNotice.show(result.version.id);
       if (result.retentionScheduled) {
         if (retentionRefreshRef.current !== null) window.clearTimeout(retentionRefreshRef.current);
         retentionRefreshRef.current = window.setTimeout(() => {
@@ -397,7 +398,6 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       <button type="button" className="history-close" onClick={() => onOpenChange(false)}>{t("common.close")}</button>
     </>}>
     <div className="history-dialog">
-      <SuccessNotice message={savedNotice.message} onDismiss={savedNotice.clear} />
       {error && <p className="error history-message">{error}</p>}
       {busy === "load" && versions.length === 0 ? <div className="history-loading"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div> : <div className="history-dialog-layout">
         <aside className="history-timeline">
@@ -461,7 +461,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
             </div>}
             {canRestore && <div className="history-label">
               <label><Tag size={14} /><input value={label} maxLength={80} aria-label={t("history.labelPlaceholder")} placeholder={t("history.labelPlaceholder")} onChange={(event) => setLabel(event.target.value)} /></label>
-              <button type="button" className="history-label-save" disabled={controlsBusy || label.trim() === (detail.version.label ?? "")} aria-busy={busy === "label"} onClick={() => void saveLabel()}>{busy === "label" ? <LoaderCircle className="spin" size={13} /> : <Save size={13} />}<span>{t("history.saveLabel")}</span></button>
+              <SaveButton className="history-label-save" iconSize={13} feedback={savedNotice.message === detail.version.id ? t("editor.saved") : ""} saving={busy === "label"} disabled={controlsBusy || label.trim() === (detail.version.label ?? "")} onClick={() => void saveLabel()}>{t("history.saveLabel")}</SaveButton>
             </div>}
             <div className="history-files">
               <div className="history-files-toolbar">

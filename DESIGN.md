@@ -1483,13 +1483,30 @@ before measuring the selected font, with stale
 loads and unmounted terminals ignored; failed web fonts use the fallback stack.
 Previously stored terminal line-spacing choices are ignored and omitted on the
 next save; the editor's independent line-spacing setting is unchanged.
-Manual saves for editor/terminal/compiler settings show a check and “Saved” on
+Manual saves for editor/terminal/compiler settings show a blue check and “Saved” on
 the header and footer save buttons for two seconds, without a success banner.
 Feedback is scoped to the saved tab, including delayed compiler responses;
 idle buttons retain their existing labels. Unchanged compiler settings are
 reported on the buttons instead. Failures remain visible as errors rather than
-claiming success. Snapshot names and project tag edits keep their dismissible
-inline confirmations.
+claiming success. User, citation, tag and Coding Agent management actions follow
+the same button-only success-feedback convention. Deletions and permission
+changes are reflected by their resulting list/control state without success
+banners; failures keep their contextual errors. Citation/tag edit forms remain
+open after saving, retaining the updated revision for subsequent writes.
+Snapshot naming and GitHub token saves use the same button-only confirmation.
+All explicit save buttons share `SaveButton`: a neutral surface and text,
+a save icon at rest, a disabled spinner while saving, and a blue check for
+confirmed feedback. The owning workflow still controls persistence, errors and
+the two-second feedback timer. Dialogs that close after saving retain that
+behavior; create, send and destructive actions keep their distinct semantics.
+
+Management pages use the Coding Agent page's compact control scale: 12 px
+controls and table text, 32 px main actions, and matching themed primary buttons.
+User, citation and Coding Agent management share the localized “Back to projects”
+navigation label and fixed 32 px button height, including when the Agent page's
+stylesheet loads later. Citation list actions use the same compact height,
+line height and icon scale, including Copy BibTeX and the overflow trigger.
+Project-list controls and editor content are not rescaled.
 
 `node-pty` loads dynamically and is an optional production dependency. xterm.js
 and its fit addon are build dependencies behind a lazy terminal boundary. Missing

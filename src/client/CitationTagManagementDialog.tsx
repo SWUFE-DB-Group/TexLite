@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
+import { LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { errorMessage } from "./errors";
 import { TagColorSelect } from "./TagColorSelect";
+import { useSuccessNotice } from "./SuccessNotice";
+import { SaveButton } from "./SaveButton";
 import type { CitationLibraryTag, TagColor } from "./types";
 
 export function CitationTagManagementDialog({ tags, onClose, onUpdated, onDeleted }: {
@@ -21,54 +23,47 @@ export function CitationTagManagementDialog({ tags, onClose, onUpdated, onDelete
   const [editColor, setEditColor] = useState<TagColor>("green");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const completedAction = useSuccessNotice();
   const [deleteTarget, setDeleteTarget] = useState<CitationLibraryTag | null>(null);
   const [deleteError, setDeleteError] = useState("");
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 2000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
 
   const save = async (tag?: CitationLibraryTag) => {
     const nextName = (tag ? editName : name).trim();
     if (busy || !nextName) return;
-    setBusy(true); setError(""); setNotice("");
+    setBusy(true); setError(""); completedAction.clear();
     try {
       const result = await api<{ tag: CitationLibraryTag; created?: boolean }>(tag ? `/api/citations/tags/${encodeURIComponent(tag.id)}` : "/api/citations/tags", {
         method: tag ? "PATCH" : "POST",
         body: JSON.stringify({ name: nextName, color: tag ? editColor : color })
       });
       onUpdated(result.tag);
-      if (tag) setEditing(null);
+      if (tag) setEditing(result.tag);
       else setName("");
-      setNotice(t(tag ? "citationLibrary.tagsUpdated" : result.created === false ? "citationTagManagement.exists" : "citationLibrary.tagCreated"));
+      completedAction.show(tag ? `edit:${tag.id}` : result.created === false ? "exists" : "create");
     } catch (requestError) { setError(errorMessage(requestError)); }
     finally { setBusy(false); }
   };
 
   const remove = async () => {
     if (!deleteTarget || busy) return;
-    setBusy(true); setDeleteError(""); setNotice("");
+    setBusy(true); setDeleteError(""); completedAction.clear();
     try {
       await api(`/api/citations/tags/${encodeURIComponent(deleteTarget.id)}`, { method: "DELETE" });
       onDeleted(deleteTarget.id);
       if (editing?.id === deleteTarget.id) setEditing(null);
       setDeleteTarget(null);
-      setNotice(t("citationTagManagement.deleted"));
     } catch (requestError) { setDeleteError(errorMessage(requestError)); }
     finally { setBusy(false); }
   };
 
-  return <><Modal open wide className="tag-management-modal" title={t("citationTagManagement.title")} description={t("citationTagManagement.description")} onOpenChange={(open) => { if (!open && !busy) onClose(); }} footer={<button disabled={busy} onClick={onClose}>{t("common.close")}</button>}>
+  return <><Modal open wide className="tag-management-modal management-dialog" title={t("citationTagManagement.title")} description={t("citationTagManagement.description")} onOpenChange={(open) => { if (!open && !busy) onClose(); }} footer={<button disabled={busy} onClick={onClose}>{t("common.close")}</button>}>
     <div className="tag-management">
       {error && <p className="error dialog-error" role="alert">{error}</p>}
-      {notice && <p className="citation-library-notice" role="status"><Check size={14} />{notice}<button aria-label={t("common.close")} onClick={() => setNotice("")}><X size={13} /></button></p>}
       <fieldset disabled={busy} className="citation-tag-management-fields">
         <form className="tag-management-create" onSubmit={(event) => { event.preventDefault(); void save(); }}>
           <label className="tag-management-field"><span>{t("tags.name")}</span><input autoFocus maxLength={32} value={name} placeholder={t("citationLibrary.newTagPlaceholder")} onChange={(event) => setName(event.target.value)} /></label>
           <label className="tag-management-field tag-management-color"><span>{t("tags.color")}</span><TagColorSelect value={color} onChange={setColor} disabled={busy} /></label>
-          <button type="submit" className="primary" disabled={!name.trim()}>{busy ? <LoaderCircle className="spin" size={14} /> : <Plus size={14} />}{t("citationLibrary.createTag")}</button>
+          <button type="submit" className="primary" disabled={!name.trim()}>{busy ? <LoaderCircle className="spin" size={14} /> : <Plus size={14} />}<span role="status">{t(completedAction.message === "create" ? "common.done" : completedAction.message === "exists" ? "citationTagManagement.exists" : "citationLibrary.createTag")}</span></button>
         </form>
         {tags.length === 0 ? <p className="tag-management-empty">{t("citationLibrary.noTags")}</p> : <div className="tag-management-list">{tags.map((tag) => <article key={tag.id} className={`tag-management-item${editing?.id === tag.id ? " editing" : ""}`}>
           <div className="tag-management-item-main"><span className={`tag-dot tag-${tag.color}`} aria-hidden /><strong title={tag.name}>{tag.name}</strong></div>
@@ -79,7 +74,7 @@ export function CitationTagManagementDialog({ tags, onClose, onUpdated, onDelete
           {editing?.id === tag.id && <form className="tag-management-edit" onSubmit={(event) => { event.preventDefault(); void save(tag); }}>
             <label className="tag-management-field"><span>{t("tags.rename")}</span><input maxLength={32} value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
             <label className="tag-management-field tag-management-color"><span>{t("tags.color")}</span><TagColorSelect value={editColor} onChange={setEditColor} disabled={busy} /></label>
-            <div className="tag-management-edit-actions"><button type="button" onClick={() => { setEditing(null); setError(""); }}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={!editName.trim()}><Check size={14} />{t("common.save")}</button></div>
+            <div className="tag-management-edit-actions"><button type="button" onClick={() => { setEditing(null); setError(""); }}>{t("common.cancel")}</button><SaveButton type="submit" saving={busy} feedback={completedAction.message === `edit:${tag.id}` ? t("editor.saved") : ""} disabled={!editName.trim()}>{t("common.save")}</SaveButton></div>
           </form>}
         </article>)}</div>}
       </fieldset>

@@ -53,6 +53,29 @@ afterEach(async () => {
 });
 
 describe("coding agent management presentation", () => {
+  it("confirms policy saves on the button only after success and preserves failure messages", async () => {
+    await act(async () => root.render(createElement(AgentManagement, { user, onBack() {} })));
+    const save = container.querySelector<HTMLButtonElement>(".agent-policy-actions .save-button")!;
+    expect(save.querySelector(".lucide-save")).not.toBeNull();
+    expect(save.classList.contains("primary")).toBe(false);
+    expect(container.querySelector(".dashboard-back-button")?.textContent).toBe("navigation.backToProjects");
+    let finish!: (value: AgentCatalog) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => save.click());
+    expect(save.disabled).toBe(true);
+    expect(save.textContent).toBe("common.save");
+    await act(async () => finish(catalog));
+    expect(save.textContent).toBe("editor.saved");
+    expect(save.querySelector(".save-button-confirmation")).not.toBeNull();
+    expect(container.querySelector(".agent-inline-notice")).toBeNull();
+    await act(async () => vi.advanceTimersByTime(2000));
+    expect(save.textContent).toBe("common.save");
+    expect(save.querySelector(".lucide-save")).not.toBeNull();
+    vi.mocked(api).mockRejectedValueOnce(new Error("Policy save failed"));
+    await act(async () => save.click());
+    expect(save.textContent).toBe("common.save");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Policy save failed");
+  });
   it("shows shared new-session guidance with an information icon across agents and locales, even while running", async () => {
     container.dataset.texliteTooltips = "off";
     for (const [index, agentId] of AGENT_IDS.entries()) {
