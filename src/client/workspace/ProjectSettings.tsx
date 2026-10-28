@@ -11,7 +11,7 @@ import { projectLatexmkrcCandidates } from "./projectLatexmkrc";
 import { CompilerVersions } from "./CompilerVersions";
 import { saveTerminalPreferences, useTerminalPreferences } from "../terminalPreferences";
 import { TerminalAppearanceSettings } from "./TerminalAppearanceSettings";
-import { SuccessNotice, useSuccessNotice } from "../SuccessNotice";
+import { useSuccessNotice } from "../SuccessNotice";
 
 function BrowserToolStatus({ name, state, label, reloadLabel, onReload, compact = false }: {
   name: string; state: ClientToolRuntimeState; label: string; reloadLabel: string; onReload: () => void; compact?: boolean;
@@ -64,6 +64,12 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const [harperCliStatus, setHarperCliStatus] = useState<"checking" | "available" | "unavailable" | "error">("checking");
   const [harperProbeToken, setHarperProbeToken] = useState(0);
   const [settingsTab, setSettingsTab] = useState<"appearance" | "terminal" | "compiler">("appearance");
+  const [savedTab, setSavedTab] = useState<typeof settingsTab | null>(null);
+  const saveFeedback = savedTab === settingsTab ? savedNotice.message : "";
+  const confirmSave = (tab: typeof settingsTab, message = t("editor.saved")) => {
+    setSavedTab(tab);
+    savedNotice.show(message);
+  };
   const [appearancePreferences, setAppearancePreferences] = useState(editorPreferences);
   const terminalPreferences = useTerminalPreferences();
   const [terminalDraft, setTerminalDraft] = useState(terminalPreferences);
@@ -120,6 +126,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const saveCompilerSettings = async () => {
     if (compilerSaveRef.current) return;
     savedNotice.clear();
+    setError("");
     const latexmkrc = files.length === 0 && project.latexmkrc && site.allowProjectLatexmkrc !== false
       ? project.latexmkrc
       : rcEnabled && site.allowProjectLatexmkrc !== false ? selectedRcPath || null : null;
@@ -131,7 +138,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     if (latexmkrc !== previous.latexmkrc) changes.latexmkrc = latexmkrc;
     if (chktexEnabled !== previous.chktexEnabled) changes.chktexEnabled = chktexEnabled;
     if (Object.keys(changes).length === 0) {
-      savedNotice.show(t("common.noChangesToSave"));
+      confirmSave("compiler", t("common.noChangesToSave"));
       return;
     }
     const expectedSettings = Object.fromEntries(
@@ -161,7 +168,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       setChktexEnabled(result.project.chktexEnabled);
       setRcEnabled(Boolean(result.project.latexmkrc));
       onProject(result.project);
-      savedNotice.show(t("common.saveSuccess"));
+      confirmSave("compiler");
     } catch (requestError) {
       if (mountedRef.current) setError(errorMessage(requestError));
     } finally {
@@ -175,12 +182,12 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     savedNotice.clear(); setError("");
     try {
       onEditorPreferences(appearancePreferences);
-      savedNotice.show(t("common.saveSuccess"));
+      confirmSave("appearance");
     } catch { setError(t("projectSettings.appearanceSaveFailed")); }
   };
   const saveTerminalSettings = () => {
     savedNotice.clear(); setError("");
-    if (saveTerminalPreferences(terminalDraft)) savedNotice.show(t("common.saveSuccess"));
+    if (saveTerminalPreferences(terminalDraft)) confirmSave("terminal");
     else setError(t("projectSettings.appearanceSaveFailed"));
   };
   const saveCurrentSettings = () => {
@@ -188,7 +195,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     if (settingsTab === "terminal") return saveTerminalSettings();
     if (canManage) void saveCompilerSettings();
   };
-  const headerSaveLabel = t("common.save");
+  const headerSaveLabel = saveFeedback || t("common.save");
   const canSaveCurrentTab = settingsTab !== "compiler" || canManage;
   const addDictionaryWord = async () => {
     const word = dictionaryValue.trim();
@@ -209,8 +216,8 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       setDictionaryError("");
     } catch (requestError) { setDictionaryError(errorMessage(requestError)); }
   };
-  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <button type="button" className="drawer-settings-save" disabled={settingsTab === "compiler" && savingCompiler} aria-busy={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{settingsTab === "compiler" && savingCompiler ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}<span>{headerSaveLabel}</span></button>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div>
-    <SuccessNotice message={savedNotice.message} onDismiss={savedNotice.clear} /><div className="settings padded">
+  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <button type="button" className="drawer-settings-save" data-save-feedback={saveFeedback ? "true" : undefined} disabled={settingsTab === "compiler" && savingCompiler} aria-busy={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{settingsTab === "compiler" && savingCompiler ? <LoaderCircle className="spin" size={14} /> : saveFeedback ? <CheckCircle2 size={14} /> : <Save size={14} />}<span role="status" aria-live="polite">{headerSaveLabel}</span></button>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div>
+    <div className="settings padded">
     {error && <p className="error">{error}</p>}
     <div className="settings-tabs" role="tablist" aria-label={t("common.settings")}>
       <button id="settings-tab-appearance" type="button" role="tab" aria-selected={settingsTab === "appearance"} aria-controls="settings-panel-appearance" className={`settings-tab${settingsTab === "appearance" ? " active" : ""}`} onClick={() => setSettingsTab("appearance")}>
@@ -265,9 +272,9 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       {dictionaryError && <p className="error dictionary-error">{dictionaryError}</p>}
       {canManageDictionary && <div className="dictionary-add"><input value={dictionaryValue} placeholder={t("projectSettings.dictionaryPlaceholder")} onChange={(event) => setDictionaryValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addDictionaryWord(); } }} /><button type="button" disabled={!dictionaryValue.trim()} onClick={() => void addDictionaryWord()}>{t("projectSettings.addWord")}</button></div>}
       <div className="dictionary-words">{dictionaryWords.map((word) => <span className="dictionary-word" key={word}><code>{word}</code>{canManageDictionary && <button type="button" title={t("common.delete")} aria-label={`${t("common.delete")} ${word}`} onClick={() => void removeDictionaryWord(word)}><X size={13} /></button>}</span>)}{dictionaryWords.length === 0 && <span className="dictionary-empty">{t("projectSettings.dictionaryEmpty")}</span>}</div>
-      <div className="settings-actions"><button className="settings-save" onClick={saveAppearanceSettings}><Save size={15} />{t("projectSettings.saveAppearance")}</button></div>
+      <div className="settings-actions"><button className="settings-save" data-save-feedback={saveFeedback ? "true" : undefined} onClick={saveAppearanceSettings}>{saveFeedback ? <CheckCircle2 size={15} /> : <Save size={15} />}{saveFeedback || t("projectSettings.saveAppearance")}</button></div>
     </section> : settingsTab === "terminal"
-      ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={setTerminalDraft} onSave={saveTerminalSettings} />
+      ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={setTerminalDraft} onSave={saveTerminalSettings} saveFeedback={saveFeedback} />
       : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
       <div className="settings-section-title"><Settings size={15} /><strong>{t("projectSettings.compilerTab")}</strong></div>
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>
@@ -280,7 +287,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         <p className="field-hint">{t("projectSettings.latexmkrcSource", { path: selectedRcPath })}</p>
         {site.allowProjectLatexmkrc === false ? <p className="field-hint">{t("projectSettings.latexmkrcUnavailable")}</p> : <p className="field-hint latexmkrc-warning"><AlertTriangle size={14} aria-hidden="true" /><span>{t("projectSettings.latexmkrcWarning")}</span></p>}
       </div>}
-      <div className="settings-actions">{canManage && <button className="settings-save" disabled={savingCompiler} aria-busy={savingCompiler} onClick={() => void saveCompilerSettings()}>{savingCompiler ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}{t("projectSettings.saveCompiler")}</button>}</div>
+      <div className="settings-actions">{canManage && <button className="settings-save" data-save-feedback={saveFeedback ? "true" : undefined} disabled={savingCompiler} aria-busy={savingCompiler} onClick={() => void saveCompilerSettings()}>{savingCompiler ? <LoaderCircle className="spin" size={15} /> : saveFeedback ? <CheckCircle2 size={15} /> : <Save size={15} />}{saveFeedback || t("projectSettings.saveCompiler")}</button>}</div>
       <CompilerVersions />
     </section>}
   </div></>;

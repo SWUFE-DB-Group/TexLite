@@ -35,6 +35,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 const status = () => host.querySelector(".operation-success")?.textContent;
+const saveFeedback = () => host.querySelector(".drawer-settings-save span")?.textContent;
 const click = (selector: string) => act(async () => host.querySelector<HTMLButtonElement>(selector)!.click());
 function changeText(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
@@ -58,13 +59,16 @@ describe("settings save feedback", () => {
     }
   });
   it.each(["appearance", "terminal"].flatMap((tab) => [".drawer-settings-save", ".settings-save"].map((button) => ({ tab, button }))))(
-    "confirms $tab saved through $button and disappears after two seconds", async ({ tab, button }) => {
+    "confirms $tab on both save buttons through $button and restores their labels after two seconds", async ({ tab, button }) => {
       await settings();
       await click(`#settings-tab-${tab}`);
       await click(button);
-      expect(status()).toContain("common.saveSuccess");
-      await act(async () => vi.advanceTimersByTime(2000));
+      expect(saveFeedback()).toBe("editor.saved");
+      expect(host.querySelector(".settings-save")?.textContent).toBe("editor.saved");
       expect(status()).toBeUndefined();
+      await act(async () => vi.advanceTimersByTime(2000));
+      expect(saveFeedback()).toBe("common.save");
+      expect(host.querySelector(".settings-save")?.textContent).toBe(`projectSettings.${tab === "terminal" ? "saveTerminal" : "saveAppearance"}`);
     }
   );
 
@@ -72,16 +76,17 @@ describe("settings save feedback", () => {
     await settings(); await click("#settings-tab-terminal");
     vi.spyOn(window.localStorage, "setItem").mockImplementation(() => { throw new Error("Quota exceeded"); });
     await click(".drawer-settings-save");
+    expect(saveFeedback()).toBe("common.save");
     expect(status()).toBeUndefined();
     expect(host.querySelector(".error")?.textContent).toBe("projectSettings.appearanceSaveFailed");
   });
 
   it("clears stale success when saving editor preferences fails", async () => {
     const save = vi.fn(); await settings(save);
-    await click(".drawer-settings-save"); expect(status()).toContain("common.saveSuccess");
+    await click(".drawer-settings-save"); expect(saveFeedback()).toBe("editor.saved");
     save.mockImplementationOnce(() => { throw new Error("Storage disabled"); });
     await click(".drawer-settings-save");
-    expect(status()).toBeUndefined(); expect(host.querySelector(".error")?.textContent).toBe("projectSettings.appearanceSaveFailed");
+    expect(saveFeedback()).toBe("common.save"); expect(host.querySelector(".error")?.textContent).toBe("projectSettings.appearanceSaveFailed");
   });
 
   it("confirms compiler settings only after the server accepts them and blocks duplicate saves", async () => {
@@ -91,20 +96,54 @@ describe("settings save feedback", () => {
     let resolve!: (value: { project: Project }) => void;
     vi.mocked(api).mockImplementationOnce(() => new Promise((yes) => { resolve = yes; }));
     await click(".drawer-settings-save");
-    expect(status()).toBeUndefined(); expect(host.querySelector<HTMLButtonElement>(".drawer-settings-save")!.disabled).toBe(true);
+    expect(saveFeedback()).toBe("common.save"); expect(host.querySelector<HTMLButtonElement>(".drawer-settings-save")!.disabled).toBe(true);
     await click(".drawer-settings-save");
     expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "PATCH")).toHaveLength(1);
     await act(async () => resolve({ project: { ...project, name: "Updated paper" } }));
-    expect(onProject).toHaveBeenCalledOnce(); expect(status()).toContain("common.saveSuccess");
+    expect(onProject).toHaveBeenCalledOnce(); expect(saveFeedback()).toBe("editor.saved");
+    expect(host.querySelector(".settings-save")?.textContent).toBe("editor.saved");
+    expect(status()).toBeUndefined();
   });
 
   it("distinguishes unchanged settings from an unsuccessful server save", async () => {
     await settings(); await click("#settings-tab-compiler");
-    await click(".drawer-settings-save"); expect(status()).toContain("common.noChangesToSave");
+    await click(".drawer-settings-save"); expect(saveFeedback()).toBe("common.noChangesToSave");
+    expect(status()).toBeUndefined();
     await act(async () => changeText(host.querySelector<HTMLInputElement>('#settings-panel-compiler input:not([type="checkbox"])')!, "Updated"));
     vi.mocked(api).mockRejectedValueOnce(new Error("Server rejected save"));
     await click(".drawer-settings-save");
-    expect(status()).toBeUndefined(); expect(host.querySelector(".error")).not.toBeNull();
+    expect(saveFeedback()).toBe("common.save"); expect(host.querySelector(".error")).not.toBeNull();
+  });
+
+  it("does not show another tab's success, including a compiler response arriving after switching tabs", async () => {
+    await settings();
+    await click(".drawer-settings-save");
+    await click("#settings-tab-terminal");
+    expect(saveFeedback()).toBe("common.save");
+    expect(host.querySelector(".settings-save")?.textContent).toBe("projectSettings.saveTerminal");
+    await click("#settings-tab-compiler");
+    await act(async () => changeText(host.querySelector<HTMLInputElement>('#settings-panel-compiler input:not([type="checkbox"])')!, "Updated paper"));
+    let resolve!: (value: { project: Project }) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((yes) => { resolve = yes; }));
+    await click(".drawer-settings-save");
+    await click("#settings-tab-terminal");
+    await act(async () => resolve({ project: { ...project, name: "Updated paper" } }));
+    expect(saveFeedback()).toBe("common.save");
+    await click("#settings-tab-compiler");
+    expect(saveFeedback()).toBe("editor.saved");
+    await act(async () => vi.advanceTimersByTime(2000));
+    expect(saveFeedback()).toBe("common.save");
+    expect(host.querySelector(".settings-save")?.textContent).toBe("projectSettings.saveCompiler");
+  });
+
+  it("restarts button feedback for consecutive saves instead of clearing at the first save's deadline", async () => {
+    await settings(); await click(".drawer-settings-save");
+    await act(async () => vi.advanceTimersByTime(1500));
+    await click(".drawer-settings-save");
+    await act(async () => vi.advanceTimersByTime(500));
+    expect(saveFeedback()).toBe("editor.saved");
+    await act(async () => vi.advanceTimersByTime(1500));
+    expect(saveFeedback()).toBe("common.save");
   });
 
   it("confirms a project tag edit inside its management dialog", async () => {

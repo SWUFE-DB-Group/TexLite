@@ -1,12 +1,13 @@
 import { useTranslation } from "react-i18next";
-import { Save, Terminal } from "lucide-react";
+import { CheckCircle2, Save, Terminal } from "lucide-react";
 import { terminalFonts, terminalFontSizes, terminalLineHeight, terminalFontStack, type TerminalPreferences } from "../terminalPreferences";
 import { terminalThemes, terminalThemeStyle } from "../terminalTheme";
 
-export function TerminalAppearanceSettings({ preferences, onChange, onSave }: {
+export function TerminalAppearanceSettings({ preferences, onChange, onSave, saveFeedback = "" }: {
   preferences: TerminalPreferences;
   onChange: (preferences: TerminalPreferences) => void;
   onSave: () => void;
+  saveFeedback?: string;
 }) {
   const { t } = useTranslation();
   return <section id="settings-panel-terminal" role="tabpanel" aria-labelledby="settings-tab-terminal">
@@ -26,6 +27,6 @@ export function TerminalAppearanceSettings({ preferences, onChange, onSave }: {
       <span className="terminal-preview-directory">~/paper</span><span className="terminal-preview-muted"> on </span><span className="terminal-preview-branch">main</span>{"\n"}
       <span className="terminal-preview-prompt">❯</span>{" codex\nAa Bb  0 O  1 l I\n→ main.tex  [1/2]  ✓"}
     </pre>
-    <div className="settings-actions"><button className="settings-save" onClick={onSave}><Save size={15} />{t("projectSettings.saveTerminal")}</button></div>
+    <div className="settings-actions"><button className="settings-save" data-save-feedback={saveFeedback ? "true" : undefined} onClick={onSave}>{saveFeedback ? <CheckCircle2 size={15} /> : <Save size={15} />}{saveFeedback || t("projectSettings.saveTerminal")}</button></div>
   </section>;
 }

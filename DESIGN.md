@@ -1483,10 +1483,13 @@ before measuring the selected font, with stale
 loads and unmounted terminals ignored; failed web fonts use the fallback stack.
 Previously stored terminal line-spacing choices are ignored and omitted on the
 next save; the editor's independent line-spacing setting is unchanged.
-Manual saves for editor/terminal/compiler settings, snapshot names and project
-tag edits show dismissible inline confirmation for two seconds. Unchanged
-compiler settings are reported separately; browser-storage failures show an
-error instead of claiming that local preferences were saved.
+Manual saves for editor/terminal/compiler settings show a check and “Saved” on
+the header and footer save buttons for two seconds, without a success banner.
+Feedback is scoped to the saved tab, including delayed compiler responses;
+idle buttons retain their existing labels. Unchanged compiler settings are
+reported on the buttons instead. Failures remain visible as errors rather than
+claiming success. Snapshot names and project tag edits keep their dismissible
+inline confirmations.
 
 `node-pty` loads dynamically and is an optional production dependency. xterm.js
 and its fit addon are build dependencies behind a lazy terminal boundary. Missing

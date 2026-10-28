@@ -1192,6 +1192,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .password-generator button { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border: 1px solid var(--ui-border, #c9d0ca); border-radius: 6px; background: var(--ui-surface, #f6f8f6); color: var(--ui-accent, #31523e); font-size: 11px; white-space: nowrap; }
 .password-generator button:hover { border-color: var(--ui-border, #8eaa98); background: var(--ui-hover, #edf3ef); }
 .settings-save { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+:is(.settings-save, .drawer-settings-save)[data-save-feedback="true"] > svg { color: var(--ui-accent, #176b44); }
 .tex-fmt-options-editor { resize: vertical; font: 12px/1.5 "SFMono-Regular", Consolas, monospace !important; }
 .settings .latexmkrc-warning { display: flex; align-items: flex-start; gap: 6px; color: var(--ui-warning, #805a24); }
 .latexmkrc-warning svg { flex: none; margin-top: 1px; }
