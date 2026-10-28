@@ -313,8 +313,14 @@ can be resolved, edited, deleted, and replied to. If an author is removed,
 the record remains visible as “Deleted User”.
 
 Live anchor updates replay the actual Yjs text deltas against their saved
-source baseline. HTTP replacements, recovered state without a delta chain,
-and chains that do not reconstruct the final source use a before/after diff.
+source baseline. Agent disk imports retain an inferred-diff flag even when
+their changes are transported as Yjs operations. HTTP replacements, recovered
+state without a delta chain, and chains that do not reconstruct the final
+source also use a before/after diff. Unlike actual edits, inferred partial
+matches require contiguous meaningful text, sufficient retention relative to
+both ranges, and matching context (or a substantially intact quote). Exact
+quotes and whitespace-only formatting remain recognizable; scattered shared
+letters must not stretch a discussion across unrelated replacement prose.
 Partial edits retain the discussion; fully erased selections preserve their
 last attached quote and surrounding context for recovery. Recovery requires
 the original quote to be formed by the current insertion, replacement or an
@@ -511,9 +517,19 @@ because they do not carry editor operations. These existing
 database fields remain durable across restarts, without a schema change.
 The server and editor share the range/context rules. Live editor anchors retain
 detached state through undo and supply current offsets for thread-to-source
-navigation, even before a save. Unchanged or stale saved anchors cannot replace
-a valid live mapping. Browser recovery searches are bounded around the hint
-and newly inserted fragments; ordinary edits never flatten the entire document.
+navigation, even before a save. Comment responses include a response-only
+SHA-256 source revision, computed once per file. An authoritative server anchor
+can correct a misleading live mapping only at that exact revision, including
+when its HTTP response arrives before the Yjs source update. Stale saved
+anchors cannot replace a live mapping, reactivate a deleted selection at a
+duplicate occurrence, or overwrite undo recovery. Results for a different
+revision remain pending; a view-owned 200 ms trailing check retries after
+document updates, coalesces typing, and is cancelled on editor destruction.
+Failed checks do not poll or reschedule themselves. Browser recovery searches
+are bounded around the hint and newly inserted fragments; document-change
+mapping never flattens/hashes the file for revision reconciliation. Incoming
+comment responses may hash the current source once to apply matching results
+immediately.
 
 The collaboration service uses a versioned handshake and a versioned epoch
 marker. When a browser from an incompatible release connects, it is forced to

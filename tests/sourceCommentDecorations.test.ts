@@ -5,6 +5,7 @@ import {
   openSourceCommentOnClick, setSourceComments, sourceCommentAnchorForId, sourceCommentDecorations, sourceCommentMarksForFile
 } from "../src/client/sourceCommentDecorations";
 import type { Comment } from "../src/client/types";
+import { sourceHash } from "../src/client/sourceHash";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -172,6 +173,62 @@ describe("source comment navigation", () => {
     state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([{ ...saved, endOffset: 5, orphaned: true }], "main.tex")) }).state;
     expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ startOffset: 5, endOffset: 9, orphaned: false });
     expect(ranges(state)).toHaveLength(2);
+  });
+
+  it("accepts authoritative external deletion without mistaking it for a stale save", () => {
+    const source = "Before abcdefghij after.";
+    const selected = "abcdefghij";
+    const from = source.indexOf(selected);
+    const saved = { ...comment("thread"), selectedText: selected, startOffset: from, endOffset: from + selected.length,
+      contextBefore: "Before ", contextAfter: " after.", anchorSourceHash: sourceHash(source) };
+    let state = EditorState.create({ doc: source, extensions: [sourceCommentDecorations({ label: "View", onOpen: vi.fn() })] })
+      .update({ effects: setSourceComments.of(sourceCommentMarksForFile([saved], "main.tex")) }).state;
+    const changes = Array.from({ length: 9 }, (_, index) => ({ from: from + index + 1, insert: String(index + 1) }));
+    const changed = state.update({ changes }).state.doc.toString();
+    const persisted = { ...saved, endOffset: from + 19, orphaned: true, anchorSourceHash: sourceHash(changed) };
+    state = state.update({ changes }).state;
+    // A raw remote Yjs update carries the same small operations as typing.
+    expect(sourceCommentAnchorForId(state, "thread")?.orphaned).toBe(false);
+    state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([persisted], "main.tex")) }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ selectedText: selected, orphaned: true });
+    expect(ranges(state)).toEqual([]);
+  });
+
+  it.each([false, true])("does not let a late partial-save response attach a deleted quote to another occurrence (revision supplied: %s)", (revision) => {
+    const source = "Before text after.\nBefore te!xt after.";
+    const saved = { ...comment("thread", 7, 11), selectedText: "text", contextBefore: "Before ", contextAfter: " after.\nBefore te!xt after.",
+      anchorSourceHash: revision ? sourceHash(source) : undefined };
+    let state = EditorState.create({ doc: source, extensions: sourceCommentDecorations({ label: "View", onOpen: vi.fn() }) })
+      .update({ effects: setSourceComments.of(sourceCommentMarksForFile([saved], "main.tex")) }).state;
+    state = state.update({ changes: { from: 9, insert: "!" } }).state;
+    const partialSave = { ...saved, selectedText: "te!xt", endOffset: 12,
+      anchorSourceHash: revision ? sourceHash(state.doc.toString()) : undefined };
+    const length = state.doc.line(1).length + 1;
+    state = state.update({ changes: { from: 0, to: length } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")?.orphaned).toBe(true);
+    // The surviving duplicate now occupies exactly the saved range.
+    expect(state.doc.sliceString(partialSave.startOffset, partialSave.endOffset)).toBe("te!xt");
+    state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([partialSave], "main.tex")) }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ orphaned: true, selectedText: "te!xt" });
+    expect(ranges(state)).toEqual([]);
+    state = state.update({ changes: { from: 0, insert: "Before te!xt after.\n" } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ orphaned: false, startOffset: 7, endOffset: 12 });
+  });
+
+  it("preserves local undo and subsequent typing when a revision-bound deletion response is behind", () => {
+    const saved = { ...comment("thread", 5, 9), contextBefore: "some ", contextAfter: " here", anchorSourceHash: sourceHash("some text here") };
+    let { state } = fixture([saved]);
+    state = state.update({ changes: { from: 5, to: 9 } }).state;
+    const deletedHash = sourceHash(state.doc.toString());
+    state = state.update({ changes: { from: 5, insert: "text" } }).state;
+    state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([
+      { ...saved, endOffset: 5, orphaned: true, anchorSourceHash: deletedHash }
+    ], "main.tex")) }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ selectedText: "text", orphaned: false });
+    state = state.update({ changes: { from: 7, insert: "new " } }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ selectedText: "tenew xt", orphaned: false });
+    state = state.update({ effects: setSourceComments.of(sourceCommentMarksForFile([saved], "main.tex")) }).state;
+    expect(sourceCommentAnchorForId(state, "thread")).toMatchObject({ selectedText: "tenew xt", orphaned: false });
   });
 
   it("recovers a distant quote on whole-document undo without flattening on ordinary edits", () => {

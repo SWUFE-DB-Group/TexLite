@@ -2,9 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { makeDiff } from "@sanity/diff-match-patch";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
-import { createSourceAnchor, reanchorFileComments } from "../src/server/anchors.js";
+import { createSourceAnchor, reanchorFileComments, type SourceCommentEdit } from "../src/server/anchors.js";
 
 describe("source comment anchors", () => {
   const fixtures: Array<{ root: string; db: DatabaseConnection }> = [];
@@ -191,6 +192,56 @@ describe("source comment anchors", () => {
     expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 0, start_offset: from, end_offset: from + 12 });
   });
 
+  it.each(["$x^", "  \\item Second one"])("does not stretch %j across an unrelated externally rewritten document", (selected) => {
+    const fixture = createFixture();
+    const source = "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\nStart writing here.\n\\begin{itemize}\n  \\item First item $x^10$\n  \\item Second one\n\\end{itemize}\nask me anything\n\\end{document}\n";
+    const changed = "\\documentclass{article}\n\\begin{document}\n\\section{Features}\nProjects support folders, ZIP import/export, sharing and a private citation library. Editing is based on CodeMirror, with LaTeX and BibTeX highlighting, completion, SyncTeX navigation and optional Vim mode. Real-time collaboration is built on Yjs, with comments, replies and reviewer permissions.\n\\end{document}\n";
+    const id = insertComment(fixture.db, source, selected);
+    const original = anchorRow(fixture.db, id);
+    reanchorFileComments(fixture.db, "project-1", "main.tex", source, changed, [inferredEdits(source, changed)]);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 1, selected_text: selected,
+      context_before: original.context_before, context_after: original.context_after });
+    const partial = source.replace(selected, selected.slice(0, -1));
+    reanchorFileComments(fixture.db, "project-1", "main.tex", changed, partial, [inferredEdits(changed, partial)]);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 1, selected_text: selected });
+    reanchorFileComments(fixture.db, "project-1", "main.tex", partial, source, [inferredEdits(partial, source)]);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 0, selected_text: selected,
+      start_offset: source.indexOf(selected), end_offset: source.indexOf(selected) + selected.length });
+  });
+
+  it.each([false, true])("rejects scattered retained letters, not just low total retention (inferred batch: %s)", (batch) => {
+    const fixture = createFixture();
+    const source = "Before abcdefghij after.";
+    const changed = "Before a1b2c3d4e5f6g7h8i9j0 after.";
+    const id = insertComment(fixture.db, source, "abcdefghij");
+    reanchorFileComments(fixture.db, "project-1", "main.tex", source, changed, batch ? [inferredEdits(source, changed)] : undefined);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 1, selected_text: "abcdefghij" });
+  });
+
+  it.each([
+    ["We use large models.", "We use large language models."],
+    ["We use large models.", "We use small models."],
+    ["我们使用大型语言模型。", "我们使用较大的语言模型。"],
+    ["alpha target", "alpha\n    target"]
+  ])("keeps recognizable agent edits and whitespace-only formatting: %s", (selected, replacement) => {
+    const fixture = createFixture();
+    const source = `Before\n${selected}\nAfter`;
+    const changed = `Before\n${replacement}\nAfter`;
+    const id = insertComment(fixture.db, source, selected);
+    reanchorFileComments(fixture.db, "project-1", "main.tex", source, changed, [inferredEdits(source, changed)]);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: 0, selected_text: replacement });
+  });
+
+  it.each([false, true])("distinguishes a real partial edit from a guessed short-word replacement (inferred: %s)", (inferred) => {
+    const fixture = createFixture();
+    const source = "Before cat after.";
+    const id = insertComment(fixture.db, source, "cat");
+    const from = source.indexOf("cat") + 1;
+    reanchorFileComments(fixture.db, "project-1", "main.tex", source, source.replace("cat", "cut"),
+      [[{ from, to: from + 1, insert: "u", insertLength: 1, inferred }]]);
+    expect(anchorRow(fixture.db, id)).toMatchObject({ orphaned: inferred ? 1 : 0, selected_text: inferred ? "cat" : "cut" });
+  });
+
   it("replays partial edits before a full replacement in the same save window", () => {
     const fixture = createFixture();
     const source = "before\nlarge models\nafter\n";
@@ -225,6 +276,20 @@ describe("source comment anchors", () => {
       .run(id, anchor.selectedText, anchor.startOffset, anchor.endOffset, anchor.contextBefore, anchor.contextAfter,
         new Date().toISOString(), new Date().toISOString());
     return id;
+  }
+
+  // Deliberately uncleaned, matching external imports' Yjs operation stream.
+  function inferredEdits(before: string, after: string): SourceCommentEdit[] {
+    const edits: SourceCommentEdit[] = [];
+    let offset = 0;
+    for (const [kind, value] of makeDiff(before, after, { checkLines: true, timeout: 1 })) {
+      if (kind === 0) offset += value.length;
+      else if (kind === -1) {
+        edits.push({ from: offset, to: offset + value.length, insert: "", insertLength: 0, inferred: true });
+        offset += value.length;
+      } else edits.push({ from: offset, to: offset, insert: value, insertLength: value.length, inferred: true });
+    }
+    return edits;
   }
 
   function anchorRow(db: DatabaseConnection, id: string) {

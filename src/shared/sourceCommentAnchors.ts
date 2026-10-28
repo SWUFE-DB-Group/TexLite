@@ -86,10 +86,10 @@ export function mapSourceAnchor(
     if (!anchor.selectedText && oldStart === oldEnd) return sourceAnchorAt(newSource, start, start);
     const deletedLength = deletions.reduce((sum, change) => sum + Math.min(oldEnd, change.to) - Math.max(oldStart, change.from), 0);
     const retainedLength = oldEnd - oldStart - deletedLength;
-    // Exact editor operations can retain even one original character.
-    // A guessed text diff needs stronger evidence for word replacements.
-    const minimumRetained = changes.some((change) => change.inferred) ? Math.min(2, oldEnd - oldStart) : 1;
-    if (end > start && retainedLength >= minimumRetained) {
+    // Real operations preserve identity even when only one character remains.
+    // Inferred equalities are only textual coincidences, not CRDT identity.
+    if (end > start && retainedLength > 0 && (!changes.some((change) => change.inferred)
+      || recognizableInferredRange(anchor, oldSource, newSource, changes, start, end, retainedLength))) {
       return sourceAnchorAt(newSource, start, end);
     }
   }
@@ -100,6 +100,53 @@ export function mapSourceAnchor(
   if (!anchor.orphaned && !oldMatches) return detached;
   const restored = contextualMatch(newSource, anchor, start, changedSourceRanges(changes), recoveryWindow);
   return restored === null ? detached : sourceAnchorAt(newSource, restored, restored + anchor.selectedText.length);
+}
+
+/** Conservative evidence for a disk/HTTP diff, not a semantic similarity test. */
+function recognizableInferredRange(
+  anchor: SourceAnchor, oldSource: AnchorSource, newSource: AnchorSource,
+  changes: readonly AnchorChange[], start: number, end: number, retainedLength: number
+): boolean {
+  const selected = anchor.selectedText;
+  const candidate = newSource.sliceString(start, end);
+  if (candidate === selected) return true;
+  // Formatting can replace every space/line break without changing the quote.
+  const compact = (text: string) => text.replace(/\s+/gu, "");
+  if (compact(selected) && compact(selected) === compact(candidate)) return true;
+  // A changed, very short quote provides no reliable partial textual identity.
+  if (Array.from(selected).length < 5) return false;
+
+  const smaller = Math.min(selected.length, candidate.length);
+  const larger = Math.max(selected.length, candidate.length);
+  if (retainedLength < smaller * 0.5 || retainedLength < larger * 0.25) return false;
+
+  // Count contiguous equal runs, split even by insertions. Scattered matching
+  // letters must not stretch a short quote across an unrelated new paragraph.
+  let cursor = anchor.startOffset;
+  let longest = 0;
+  let meaningful = 0;
+  const retain = (to: number) => {
+    if (to <= cursor) return;
+    const run = oldSource.sliceString(cursor, to);
+    longest = Math.max(longest, run.length);
+    meaningful = Math.max(meaningful, (run.match(/[\p{L}\p{N}]/gu) ?? []).length);
+  };
+  for (const change of changes) {
+    if (change.to < anchor.startOffset) continue;
+    if (change.from > anchor.endOffset) break;
+    retain(Math.min(change.from, anchor.endOffset));
+    cursor = Math.max(cursor, change.to);
+  }
+  retain(anchor.endOffset);
+  if (!meaningful || longest < Math.min(8, Math.ceil(smaller * 0.4))
+    || meaningful < Math.min(4, Math.ceil((selected.match(/[\p{L}\p{N}]/gu) ?? []).length * 0.5))) return false;
+
+  const before = newSource.sliceString(Math.max(0, start - anchor.contextBefore.length), start);
+  const after = newSource.sliceString(end, Math.min(newSource.length, end + anchor.contextAfter.length));
+  const context = commonSuffixLength(before, anchor.contextBefore) + commonPrefixLength(after, anchor.contextAfter);
+  const available = anchor.contextBefore.length + anchor.contextAfter.length;
+  // With little/no surrounding context, require a substantially intact quote.
+  return (context >= Math.min(8, available) && available > 0) || (retainedLength >= larger * 0.75 && longest >= 8);
 }
 
 /** New-document coordinates, including deletion points that can rejoin a quote. */

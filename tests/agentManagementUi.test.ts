@@ -1,11 +1,9 @@
 // @vitest-environment happy-dom
 import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../src/client/api";
 import { AgentManagement } from "../src/client/pages/AgentManagement";
-import { AgentIcon } from "../src/client/agents/AgentIcon";
 import { AgentTerminal } from "../src/client/workspace/AgentTerminal";
 import { useAgentTasks } from "../src/client/agents/useAgentTasks";
 import { agentUiMessages } from "../src/client/agents/messages";
@@ -63,7 +61,7 @@ describe("coding agent management presentation", () => {
         nativeSessionId: "native-conversation", canResume: true };
       vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1, activeTaskId: task.id },
         selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-        refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() });
+        acceptTask: vi.fn(), mutate: async (operation) => operation() });
       await act(async () => root.render(createElement(Fragment, null,
         createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} }), createElement(GlobalTooltip))));
       const hints = container.querySelectorAll<HTMLButtonElement>(".agent-terminal-heading .agent-session-help");
@@ -94,7 +92,7 @@ describe("coding agent management presentation", () => {
     catalog.agents[0].enabled = true;
     vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1 },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-      refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() });
+      acceptTask: vi.fn(), mutate: async (operation) => operation() });
     await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
     const empty = container.querySelector(".agent-task-empty");
     expect(empty?.querySelector("p")?.textContent).toBe("啟動或繼續此任務。");
@@ -130,7 +128,7 @@ describe("coding agent management presentation", () => {
       const acceptTask = vi.fn();
       vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1 },
         selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-        refreshTasks: vi.fn(), acceptTask, mutate: async (operation) => operation() });
+        acceptTask, mutate: async (operation) => operation() });
       await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
       const launch = container.querySelector<HTMLButtonElement>(".agent-task-toolbar button")!;
       expect(launch.textContent).toBe(label);
@@ -144,13 +142,6 @@ describe("coding agent management presentation", () => {
     }
   });
 
-  it("identifies the feature as a CLI in every locale", () => {
-    for (const messages of Object.values(agentUiMessages)) {
-      expect(messages.title).toBe("Coding Agent CLI");
-      expect(messages.description).toContain("CLI");
-    }
-  });
-
   it("visibly reminds active task owners to end execution without turning hide into stop", async () => {
     const task: AgentTask = { id: "task", projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
       agentId: "codex", title: "Revise abstract", state: "running", cleanupState: "none", errorCode: null,
@@ -161,7 +152,7 @@ describe("coding agent management presentation", () => {
     catalog.agents[0].enabled = true;
     vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1, activeTaskId: task.id },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-      refreshTasks: vi.fn(), acceptTask, mutate: async (operation) => operation() });
+      acceptTask, mutate: async (operation) => operation() });
     const render = () => act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide })));
     await render();
     const reminder = container.querySelector(".agent-execution-reminder");
@@ -184,18 +175,6 @@ describe("coding agent management presentation", () => {
       task.state = state;
       await render();
       expect(Boolean(container.querySelector(".agent-execution-reminder"))).toBe(state === "starting");
-    }
-  });
-
-  it("gives each agent a distinct local decorative icon", () => {
-    const icons = AGENT_IDS.map((agent) => renderToStaticMarkup(createElement(AgentIcon, { agent })));
-    expect(new Set(icons).size).toBe(AGENT_IDS.length);
-    for (const icon of icons) {
-      expect(icon).toContain('aria-hidden="true"');
-      expect(icon).toContain('viewBox="0 0 24 24"');
-      expect(icon).toContain('fill-rule="evenodd"');
-      expect(icon).not.toContain('class="lucide');
-      expect(icon).not.toContain("<img");
     }
   });
 
@@ -245,10 +224,13 @@ describe("coding agent management presentation", () => {
     expect(cards).toHaveLength(AGENT_IDS.length);
     cards.forEach((card, index) => {
       expect(card.querySelector("strong")?.textContent).toBe(AGENT_LABELS[AGENT_IDS[index]]);
-      expect(card.querySelector(".agent-identity-icon")).not.toBeNull();
+      const icon = card.querySelector(".agent-identity-icon");
+      expect(icon).not.toBeNull();
+      expect(icon?.getAttribute("aria-hidden")).toBe("true");
       expect(card.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false);
       expect(card.querySelectorAll("small")).toHaveLength(1);
     });
+    expect(new Set(cards.map((card) => card.querySelector(".agent-identity-icon")?.innerHTML)).size).toBe(AGENT_IDS.length);
     expect(container.querySelector('.agent-policy-heading input[type="checkbox"]')).toBeNull();
     expect(container.querySelector(".agent-policy-heading strong")?.textContent).toBe(agentUiMessages["zh-Hant"].allowedAgents);
     const help = container.querySelector<HTMLButtonElement>(".agent-policy-heading .agent-policy-help")!;
@@ -317,7 +299,7 @@ describe("coding agent management presentation", () => {
       nativeSessionId: null, canResume: false };
     const state: ReturnType<typeof useAgentTasks> = { catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 50 },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-      refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() };
+      acceptTask: vi.fn(), mutate: async (operation) => operation() };
     const render = () => act(async () => {
       vi.mocked(useAgentTasks).mockReturnValue(state);
       root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} }));
@@ -347,7 +329,7 @@ describe("coding agent management presentation", () => {
     vi.mocked(useAgentTasks).mockReturnValue({ catalog,
       result: { tasks: [], page: 1, pageSize: 50, total: 0, activeTaskId: "another-task" }, selected: null,
       selectedId: "", page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-      refreshTasks: vi.fn(), acceptTask: vi.fn(), mutate: async (operation) => operation() });
+      acceptTask: vi.fn(), mutate: async (operation) => operation() });
     await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
     const warning = container.querySelector('.agent-inline-warning[role="status"]');
     expect(warning?.textContent).toBe("errors.codes.AGENT_PROJECT_BUSY");

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import type { Config } from "../config.js";
 import type { DatabaseConnection, ProjectRow, UserRow } from "../db.js";
 import { reanchorFileComments, offsetToLine } from "../anchors.js";
@@ -274,11 +275,14 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     WHERE c.project_id = ?${fileClause} ORDER BY ${commentOrder}`)
     .all(projectId, ...(hasFileScope ? [filePath] : [])) as unknown as CommentRow[];
   const sourceByPath = new Map<string, string>();
+  const hashByPath = new Map<string, string>();
   if (!rows.length) return { comments: [], sourceByPath };
   for (const row of rows) {
     if (sourceByPath.has(row.file_path)) continue;
     const absolute = resolveSourcePath(config, projectId, row.file_path);
-    sourceByPath.set(row.file_path, fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : "");
+    const source = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : "";
+    sourceByPath.set(row.file_path, source);
+    hashByPath.set(row.file_path, createHash("sha256").update(source, "utf8").digest("hex"));
   }
 
   const replies = db.prepare(`SELECT reply.*, user.username AS author_username, user.display_name AS author_display_name, user.avatar_style AS author_avatar_style
@@ -327,6 +331,7 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     selectedText: comment.selected_text,
     contextBefore: comment.context_before,
     contextAfter: comment.context_after,
+    anchorSourceHash: hashByPath.get(comment.file_path),
     startOffset: comment.start_offset,
     endOffset: comment.end_offset,
     startLine: offsetToLine(sourceByPath.get(comment.file_path) ?? "", comment.start_offset),

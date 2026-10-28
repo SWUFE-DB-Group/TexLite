@@ -1069,7 +1069,8 @@ export class CollaborationService {
             pending = null;
             offset += delta.retain;
           } else if (delta.delete || typeof delta.insert === "string") {
-            pending ??= { from: offset, to: offset, insert: "", insertLength: 0 };
+            pending ??= { from: offset, to: offset, insert: "", insertLength: 0,
+              inferred: isExternalOrigin(transaction.origin) };
             if (delta.delete) { offset += delta.delete; pending.to = offset; }
             if (typeof delta.insert === "string") {
               pending.insert += delta.insert;

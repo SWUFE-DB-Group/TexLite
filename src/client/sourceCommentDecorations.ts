@@ -1,10 +1,11 @@
 import { Facet, StateEffect, StateField, type EditorState } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import type { Comment } from "./types";
 import { mapSourceAnchor, sourceAnchorAt, type AnchorChange, type SourceAnchor } from "../shared/sourceCommentAnchors";
+import { sourceHash } from "./sourceHash";
 
-type CommentMark = Pick<Comment, "id" | "resolved" | "orphaned" | "selectedText" | "contextBefore" | "contextAfter"> & { from: number; to: number };
-type AnchoredComment = Pick<Comment, "id" | "resolved"> & SourceAnchor & { serverMark: CommentMark };
+type CommentMark = Pick<Comment, "id" | "resolved" | "orphaned" | "selectedText" | "contextBefore" | "contextAfter" | "anchorSourceHash"> & { from: number; to: number };
+type AnchoredComment = Pick<Comment, "id" | "resolved"> & SourceAnchor & { serverMark: CommentMark; revisionPending?: boolean };
 const commentAnchors = Facet.define<readonly AnchoredComment[], readonly AnchoredComment[]>({ combine: (values) => values.flat() });
 export const setSourceComments = StateEffect.define<CommentMark[]>();
 
@@ -12,7 +13,7 @@ export function sourceCommentMarksForFile(comments: readonly Comment[], filePath
   return comments.filter((comment) => comment.filePath === filePath).map((comment) => ({
     id: comment.id, from: comment.startOffset, to: comment.endOffset,
     resolved: comment.resolved, orphaned: comment.orphaned, selectedText: comment.selectedText,
-    contextBefore: comment.contextBefore, contextAfter: comment.contextAfter
+    contextBefore: comment.contextBefore, contextAfter: comment.contextAfter, anchorSourceHash: comment.anchorSourceHash
   }));
 }
 
@@ -71,11 +72,26 @@ function buildCommentDecorations(marks: readonly AnchoredComment[], documentLeng
 }
 
 export function sourceCommentDecorations(options: SourceCommentOptions) {
+  const checkedRevision = StateEffect.define<{ doc: EditorState["doc"]; hash: string }>();
   const marks = StateField.define<{ anchors: readonly AnchoredComment[]; decorations: DecorationSet }>({
     create: () => ({ anchors: [], decorations: Decoration.none }),
     update(value, transaction) {
-      if (!transaction.docChanged && !transaction.effects.some((effect) => effect.is(setSourceComments))) return value;
+      if (!transaction.docChanged && !transaction.effects.some((effect) => effect.is(setSourceComments) || effect.is(checkedRevision))) return value;
       let anchors = value.anchors;
+      let currentHash: string | undefined;
+      const matchesRevision = (mark: CommentMark) => mark.anchorSourceHash !== undefined
+        && mark.anchorSourceHash === (currentHash ??= sourceHash(transaction.state.doc.toString()));
+      const fromServer = (mark: CommentMark, unverified = false): AnchoredComment => {
+        const fallback = sourceAnchorAt(transaction.state.doc, mark.from, mark.to);
+        const anchor: SourceAnchor = {
+          startOffset: mark.from, endOffset: mark.to, selectedText: mark.selectedText,
+          contextBefore: mark.contextBefore ?? fallback.contextBefore,
+          contextAfter: mark.contextAfter ?? fallback.contextAfter, orphaned: mark.orphaned
+        };
+        return { id: mark.id, resolved: mark.resolved, serverMark: mark,
+          ...(unverified ? { ...anchor, orphaned: true } : mapSourceAnchor(anchor, transaction.state.doc, transaction.state.doc, [], 512))
+        };
+      };
       if (transaction.docChanged && anchors.length) {
         const changes: AnchorChange[] = [];
         transaction.changes.iterChangedRanges((from, to, fromB, toB) => {
@@ -86,11 +102,32 @@ export function sourceCommentDecorations(options: SourceCommentOptions) {
         }));
       }
       for (const effect of transaction.effects) {
+        if (effect.is(checkedRevision)) {
+          if (effect.value.doc === transaction.state.doc) {
+            anchors = anchors.map((comment) => comment.revisionPending && comment.serverMark.anchorSourceHash === effect.value.hash
+              ? fromServer(comment.serverMark) : comment);
+          }
+          continue;
+        }
         if (!effect.is(setSourceComments)) continue;
         const current = new Map(anchors.map((comment) => [comment.id, comment]));
         anchors = effect.value.map((mark) => {
           const existing = current.get(mark.id);
           const previous = existing?.serverMark;
+          // The server can reject an inferred external mapping which looked
+          // like real edits locally. Only override live/undo state when the
+          // response belongs to this exact source revision.
+          if (matchesRevision(mark)) return fromServer(mark);
+          if (mark.anchorSourceHash !== undefined) {
+            // A mismatched revision is not evidence about the current range,
+            // even when a duplicate happens to occupy the saved offsets. Keep
+            // the live quote/context (including detached state) until verified.
+            return existing
+              ? { ...existing, resolved: mark.resolved, serverMark: mark, revisionPending: true }
+              : { ...fromServer(mark, true), revisionPending: true };
+          }
+          // Older responses cannot reactivate an erased selection either.
+          if (existing?.orphaned && !mark.orphaned) return { ...existing, resolved: mark.resolved, serverMark: mark };
           // Replies/resolution notifications can return unchanged persisted
           // offsets while typing. Preserve the local mapping in that case.
           if (existing && previous && previous.from === mark.from && previous.to === mark.to
@@ -107,22 +144,37 @@ export function sourceCommentDecorations(options: SourceCommentOptions) {
             && (mark.orphaned || doc.sliceString(mark.from, mark.to) !== mark.selectedText)) {
             return { ...existing, resolved: mark.resolved, serverMark: mark };
           }
-          const fallback = sourceAnchorAt(transaction.state.doc, mark.from, mark.to);
-          const anchor: SourceAnchor = {
-            startOffset: mark.from, endOffset: mark.to, selectedText: mark.selectedText,
-            contextBefore: mark.contextBefore ?? fallback.contextBefore,
-            contextAfter: mark.contextAfter ?? fallback.contextAfter, orphaned: mark.orphaned
-          };
-          return { id: mark.id, resolved: mark.resolved, serverMark: mark,
-            ...mapSourceAnchor(anchor, transaction.state.doc, transaction.state.doc, [], 512)
-          };
+          return fromServer(mark);
         });
       }
       return { anchors, decorations: buildCommentDecorations(anchors, transaction.state.doc.length, options) };
     },
     provide: (field) => [EditorView.decorations.from(field, (value) => value.decorations), commentAnchors.from(field, (value) => value.anchors)]
   });
-  return [marks, EditorView.domEventHandlers({
+  const revisionChecks = ViewPlugin.fromClass(class {
+    private timer: ReturnType<typeof setTimeout> | undefined;
+    constructor(private readonly view: EditorView) { this.schedule(); }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.transactions.some((transaction) => transaction.effects.some((effect) => effect.is(setSourceComments)))) {
+        this.schedule();
+      }
+    }
+    private schedule() {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+      if (!this.view.state.field(marks).anchors.some((comment) => comment.revisionPending)) return;
+      // An HTTP result can precede its Yjs source update. Recheck only pending
+      // results after an editing pause, never hash from a docChanged transaction.
+      this.timer = setTimeout(() => {
+        this.timer = undefined;
+        const doc = this.view.state.doc;
+        const hash = sourceHash(doc.toString());
+        this.view.dispatch({ effects: checkedRevision.of({ doc, hash }) });
+      }, 200);
+    }
+    destroy() { clearTimeout(this.timer); }
+  });
+  return [marks, revisionChecks, EditorView.domEventHandlers({
     click: (event, view) => openSourceCommentOnClick(event, view, options.onOpen)
   })];
 }

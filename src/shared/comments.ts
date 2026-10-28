@@ -30,6 +30,8 @@ export interface Comment {
   /** Last attached context survives deletion so undo can recover the anchor. */
   contextBefore?: string;
   contextAfter?: string;
+  /** Response-only revision against which the persisted anchor was read. */
+  anchorSourceHash?: string;
   startOffset: number;
   endOffset: number;
   startLine: number;

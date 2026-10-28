@@ -931,6 +931,48 @@ describe("agent direct project editing", () => {
     await service.stop(task.id, editor);
   });
 
+  it.each([false, true])("detaches comments after an unrelated agent rewrite and recovers the original on undo (live room: %s)", async (live) => {
+    const before = "\\documentclass{article}\n\\begin{document}\n\\begin{itemize}\n  \\item First item $x^10$\n  \\item Second one\n\\end{itemize}\n\\end{document}\n";
+    const after = "\\documentclass{article}\n\\begin{document}\n\\section{Features}\nProjects support folders, ZIP import/export, sharing and a private citation library. Editing is based on CodeMirror, with LaTeX and BibTeX highlighting, completion, SyncTeX navigation and optional Vim mode. Real-time collaboration is built on Yjs, with comments, replies and reviewer permissions.\n\\end{document}\n";
+    fs.writeFileSync(path.join(sourceRoot(config, projectId), "main.tex"), before);
+    const room = live ? await liveRoom() : null;
+    const selected = "  \\item Second one";
+    const anchor = createSourceAnchor(before, before.indexOf(selected), before.indexOf(selected) + selected.length);
+    const commentId = randomUUID();
+    db.prepare("INSERT INTO comments (id, project_id, file_path, author_id, content, selected_text, start_offset, end_offset, context_before, context_after, created_at, updated_at) VALUES (?, ?, 'main.tex', ?, 'Review', ?, ?, ?, ?, ?, ?, ?)")
+      .run(commentId, projectId, owner.id, anchor.selectedText, anchor.startOffset, anchor.endOffset, anchor.contextBefore, anchor.contextAfter, new Date().toISOString(), new Date().toISOString());
+    const task = await create("codex", editor);
+    await service.start(task.id, editor);
+    fs.writeFileSync(workingFile(task), after);
+    await service.stop(task.id, editor);
+    const read = () => db.prepare("SELECT selected_text, orphaned, start_offset FROM comments WHERE id = ?").get(commentId);
+    expect(read()).toMatchObject({ selected_text: selected, orphaned: 1 });
+    if (room) expect(room.doc.getText("source:main.tex").toString()).toBe(after);
+    await service.start(task.id, editor);
+    fs.writeFileSync(workingFile(task), before);
+    await service.stop(task.id, editor);
+    expect(read()).toMatchObject({ selected_text: selected, orphaned: 0, start_offset: anchor.startOffset });
+    if (room) expect(room.doc.getText("source:main.tex").toString()).toBe(before);
+  });
+
+  it("keeps actual human edits distinct from inferred agent edits in the same flush", async () => {
+    const before = "Before\nWe use large models.\nAfter";
+    fs.writeFileSync(path.join(sourceRoot(config, projectId), "main.tex"), before);
+    const room = await liveRoom();
+    const selected = "We use large models.";
+    const anchor = createSourceAnchor(before, before.indexOf(selected), before.indexOf(selected) + selected.length);
+    const commentId = randomUUID();
+    db.prepare("INSERT INTO comments (id, project_id, file_path, author_id, content, selected_text, start_offset, end_offset, context_before, context_after, created_at, updated_at) VALUES (?, ?, 'main.tex', ?, 'Review', ?, ?, ?, ?, ?, ?, ?)")
+      .run(commentId, projectId, owner.id, anchor.selectedText, anchor.startOffset, anchor.endOffset, anchor.contextBefore, anchor.contextAfter, new Date().toISOString(), new Date().toISOString());
+    const text = room.doc.getText("source:main.tex");
+    room.doc.transact(() => text.insert(before.indexOf("large") + 5, " language"), { socket: {}, user: editor });
+    const after = text.toString().replace("large", "small");
+    expect(collaboration.importExternalText(projectId, "main.tex", after, editor.id)).toBe(true);
+    expect(collaboration.flushProject(projectId)?.ok).toBe(true);
+    expect(db.prepare("SELECT selected_text, orphaned FROM comments WHERE id = ?").get(commentId))
+      .toEqual({ selected_text: "We use small language models.", orphaned: 0 });
+  });
+
   it.each(["browser", "agent-live", "agent-cold", "agent-hydrated"] as const)(
     "retains reversible large replacements from %s without per-span truncation", async (mode) => {
       const filePath = path.join(sourceRoot(config, projectId), "main.tex");

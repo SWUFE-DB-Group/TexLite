@@ -8,7 +8,7 @@ export interface ClientToolRuntimeState {
 type Listener = () => void;
 
 /** Small external store shared by optional writing tools and the settings UI. */
-export function createClientToolStatusStore() {
+function createClientToolStatusStore() {
   let state: ClientToolRuntimeState = { status: "loading", error: "" };
   const listeners = new Set<Listener>();
 

@@ -14,12 +14,12 @@ export const entryTypes: readonly string[] = Array.from(validEntryTypes);
 
 export const fieldNames: readonly string[] = Array.from(validFieldNames);
 
-export const monthAbbreviations: readonly string[] = [
+const monthAbbreviations: readonly string[] = [
   'jan', 'feb', 'mar', 'apr', 'may', 'jun',
   'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
 ];
 
-export const journalAbbreviations: readonly string[] = [
+const journalAbbreviations: readonly string[] = [
   'Nature', 'Science', 'Cell', 'PNAS', 'J. Am. Chem. Soc.',
   'Phys. Rev. Lett.', 'IEEE Trans.', 'ACM Trans.', 'Commun. ACM'
 ];

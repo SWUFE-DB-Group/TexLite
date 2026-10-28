@@ -196,6 +196,8 @@ describe("project collaboration", () => {
     const loadComment = async () => {
       const response = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?path=main.tex`, headers: { cookie: editorCookie } });
       expect(response.statusCode).toBe(200);
+      const persisted = fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8");
+      expect(response.json().comments[0].anchorSourceHash).toBe(createHash("sha256").update(persisted, "utf8").digest("hex"));
       return response.json().comments[0];
     };
     try {

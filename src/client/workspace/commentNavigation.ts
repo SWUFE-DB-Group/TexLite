@@ -73,7 +73,7 @@ export function commentMatchesReviewFilter(
 }
 
 /** Notifications, not textual @ tokens or all past mentions. */
-export function commentHasUnreadMention(comment: Comment, unreadMentions: readonly CommentMention[]): boolean {
+function commentHasUnreadMention(comment: Comment, unreadMentions: readonly CommentMention[]): boolean {
   return unreadMentions.some((mention) => mention.commentId === comment.id && mention.readAt === null);
 }
 

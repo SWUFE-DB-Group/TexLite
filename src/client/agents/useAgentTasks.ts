@@ -64,5 +64,5 @@ export function useAgentTasks(projectId: string) {
   };
   return { catalog, result, page, setPage, selectedId, setSelectedId,
     selected: result.tasks.find((task) => task.id === selectedId) ?? null,
-    error, setError, busy, mutate, refreshTasks, acceptTask };
+    error, setError, busy, mutate, acceptTask };
 }
