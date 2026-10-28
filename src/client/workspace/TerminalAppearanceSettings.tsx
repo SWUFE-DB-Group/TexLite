@@ -12,6 +12,7 @@ export function TerminalAppearanceSettings({ preferences, onChange, onSave }: {
   return <section id="settings-panel-terminal" role="tabpanel" aria-labelledby="settings-tab-terminal">
     <div className="settings-section-title"><Terminal size={15} /><strong>{t("projectSettings.terminalTab")}</strong></div>
     <p className="settings-description appearance-description">{t("projectSettings.terminalDescription")}</p>
+    <label className="editor-checkbox"><input type="checkbox" checked={preferences.showExecutionReminder} onChange={(event) => onChange({ ...preferences, showExecutionReminder: event.target.checked })} /><span>{t("projectSettings.terminalExecutionReminder")}</span></label>
     <label>{t("projectSettings.terminalTheme")}<select value={preferences.theme} onChange={(event) => onChange({ ...preferences, theme: event.target.value as TerminalPreferences["theme"] })}>
       {Object.entries(terminalThemes).map(([id, theme]) => <option value={id} key={id}>{t(theme.labelKey)}</option>)}
     </select></label>

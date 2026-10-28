@@ -9,6 +9,7 @@ import { useAgentTasks } from "../src/client/agents/useAgentTasks";
 import { agentUiMessages } from "../src/client/agents/messages";
 import { formatDateTime } from "../src/client/dateTime";
 import { GlobalTooltip } from "../src/client/GlobalTooltip";
+import { defaultTerminalPreferences, saveTerminalPreferences } from "../src/client/terminalPreferences";
 import { AGENT_IDS, AGENT_LABELS, type AgentCatalog, type AgentTask } from "../src/shared/agentProtocol";
 import type { User } from "../src/client/types";
 
@@ -34,6 +35,7 @@ let container: HTMLDivElement;
 let catalog: AgentCatalog;
 
 beforeEach(() => {
+  saveTerminalPreferences(defaultTerminalPreferences);
   language = "zh-Hant";
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -161,6 +163,14 @@ describe("coding agent management presentation", () => {
     expect(reminder?.closest(".agent-terminal-body")).toBeNull();
     expect(reminder?.hasAttribute("title")).toBe(false);
 
+    const liveTerminal = container.querySelector("[data-live-terminal]");
+    await act(async () => saveTerminalPreferences({ ...defaultTerminalPreferences, showExecutionReminder: false }));
+    expect(container.querySelector(".agent-execution-reminder")).toBeNull();
+    expect(container.querySelector("[data-live-terminal]")).toBe(liveTerminal);
+    expect(api).not.toHaveBeenCalled();
+    await act(async () => saveTerminalPreferences(defaultTerminalPreferences));
+    expect(container.querySelector(".agent-execution-reminder")).not.toBeNull();
+
     await act(async () => container.querySelector<HTMLButtonElement>(`[aria-label="${agentUiMessages["zh-Hant"].hide}"]`)!.click());
     expect(onHide).toHaveBeenCalledOnce();
     expect(api).not.toHaveBeenCalled();
@@ -255,10 +265,14 @@ describe("coding agent management presentation", () => {
     expect(container.querySelector('option[value="archived"]')).toBeNull();
   });
 
-  it("reminds ordinary task owners to end execution when done", async () => {
-    await act(async () => root.render(createElement(AgentManagement, { user: { ...user, role: "user" }, onBack() {} })));
-    expect(container.querySelector(".agent-policy-help")).toBeNull();
+  it.each(["user", "admin"] as const)("lets the %s hide task-list reminders through Terminal preferences", async (role) => {
+    await act(async () => root.render(createElement(AgentManagement, { user: { ...user, role }, onBack() {} })));
+    if (role === "user") expect(container.querySelector(".agent-policy-help")).toBeNull();
     expect(container.querySelector(".agent-list-reminder")?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
+    await act(async () => saveTerminalPreferences({ ...defaultTerminalPreferences, showExecutionReminder: false }));
+    expect(container.querySelector(".agent-list-reminder")).toBeNull();
+    await act(async () => saveTerminalPreferences(defaultTerminalPreferences));
+    expect(container.querySelector(".agent-list-reminder")).not.toBeNull();
   });
 
   it.each(["admin", "user"] as const)("paginates %s task management at 50 tasks per page", async (role) => {

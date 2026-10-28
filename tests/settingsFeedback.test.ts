@@ -49,6 +49,14 @@ async function settings(onEditorPreferences = vi.fn()) {
 }
 
 describe("settings save feedback", () => {
+  it("uses a compact shared header label while keeping each tab's bottom save label", async () => {
+    await settings();
+    for (const [tab, bottomKey] of [["appearance", "saveAppearance"], ["terminal", "saveTerminal"], ["compiler", "saveCompiler"]]) {
+      await click(`#settings-tab-${tab}`);
+      expect(host.querySelector(".drawer-settings-save")?.textContent).toBe("common.save");
+      expect(host.querySelector(`#settings-panel-${tab} .settings-save`)?.textContent).toBe(`projectSettings.${bottomKey}`);
+    }
+  });
   it.each(["appearance", "terminal"].flatMap((tab) => [".drawer-settings-save", ".settings-save"].map((button) => ({ tab, button }))))(
     "confirms $tab saved through $button and disappears after two seconds", async ({ tab, button }) => {
       await settings();

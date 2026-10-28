@@ -171,6 +171,10 @@ describe("terminal appearance", () => {
     await act(async () => container.querySelector<HTMLButtonElement>("#settings-tab-terminal")!.click());
     const panel = container.querySelector("#settings-panel-terminal")!;
     expect(panel).not.toBeNull();
+    const reminder = panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(reminder.checked).toBe(true);
+    await act(async () => reminder.click());
+    expect(currentTerminalPreferences().showExecutionReminder).toBe(true);
     const [theme, font, size] = panel.querySelectorAll("select");
     expect([...theme.options].map((option) => option.value)).toEqual(["default", "catppuccin-latte", "gruvbox-dark"]);
     expect(font.options).toHaveLength(6);
@@ -185,6 +189,7 @@ describe("terminal appearance", () => {
     await act(async () => container.querySelector<HTMLButtonElement>(".drawer-settings-save")!.click());
     expect(currentTerminalPreferences().fontSize).toBe(18);
     expect(currentTerminalPreferences().theme).toBe("gruvbox-dark");
+    expect(currentTerminalPreferences().showExecutionReminder).toBe(false);
     expect(onEditorPreferences).not.toHaveBeenCalled(); expect(onProject).not.toHaveBeenCalled();
     await act(async () => container.querySelector<HTMLButtonElement>("#settings-tab-appearance")!.click());
     expect(container.querySelector("#settings-panel-appearance")).not.toBeNull();

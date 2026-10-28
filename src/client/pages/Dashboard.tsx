@@ -18,6 +18,7 @@ import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
 import { formatDateTime } from "../dateTime";
 import { captureDeletionHeight, PROJECT_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
 import { useAgentAccess } from "../agents/useAgentAccess";
+import { useTerminalPreferences } from "../terminalPreferences";
 
 const projectKey = (project: Project) => project.id;
 
@@ -56,6 +57,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [adminOpen, setAdminOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const agentAccess = useAgentAccess(user.id);
+  const { showExecutionReminder } = useTerminalPreferences();
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [githubAccountOpen, setGitHubAccountOpen] = useState(false);
@@ -383,7 +385,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
         {user.role === "admin" && <><button className="ghost" onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} />{t("metrics.title")}</button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen((current) => !current); setAgentsOpen(false); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}{adminOpen ? t("users.back") : t("users.manage")}</button></>}
         <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} onClick={() => { setAdminOpen(false); setAgentsOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</button>
         {(user.role === "admin" || agentAccess.visible) && <button className={`ghost${agentsOpen ? " top-return-action" : ""}`} onClick={() => { setAgentsOpen((value) => !value); setAdminOpen(false); setCitationLibraryOpen(false); }}>{agentsOpen ? <ArrowLeft size={14} /> : <TerminalSquare size={14} />}{t(agentsOpen ? "agents.back" : user.role === "admin" ? "agents.title" : "agents.tasks")}
-          {!agentsOpen && agentAccess.activeCount > 0 && <sup className="agent-active-count" aria-label={t("agents.activeCount", { count: agentAccess.activeCount })}>{agentAccess.activeCount}</sup>}
+          {showExecutionReminder && !agentsOpen && agentAccess.activeCount > 0 && <sup className="agent-active-count" aria-label={t("agents.activeCount", { count: agentAccess.activeCount })}>{agentAccess.activeCount}</sup>}
         </button>}
         <UserMenu user={user} onGitHub={() => setGitHubAccountOpen(true)} onSignOut={logout} onUserChange={onUser} />
       </div>

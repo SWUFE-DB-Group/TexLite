@@ -7,6 +7,7 @@ import type { WorkspaceLayout } from "./types";
 import { CollaborationPresence, WorkspaceLayoutMenu } from "./WorkspaceChrome";
 import { SiteLogo } from "../pages/SiteChrome";
 import { appPath } from "../basePath";
+import { useTerminalPreferences } from "../terminalPreferences";
 
 export interface WorkspaceTopbarProps {
   agentTerminal?: { open: boolean; activeCount: number; toggle: () => void };
@@ -57,6 +58,7 @@ export function WorkspaceTopbar({
   settingsOpen, compileBusy, sharedCompiling, localCompiling, cancelling, onCompile, onCancelCompile, agentTerminal
 }: WorkspaceTopbarProps) {
   const { t } = useTranslation();
+  const { showExecutionReminder } = useTerminalPreferences();
   return <header className="editor-topbar">
     <button className="back" title={t("editor.backToProjects")} aria-label={t("editor.backToProjects")} onClick={onBack}><ArrowLeft size={18} /></button>
     <a className="brand-link compact-brand-link" href={appPath("/")} aria-label={site.siteName} onClick={(event) => { event.preventDefault(); onBack(); }}><SiteLogo siteName={site.siteName} compact /></a>
@@ -83,9 +85,9 @@ export function WorkspaceTopbar({
       </button>
       <button className="git-action" title={canManageGit ? t("git.title") : t("git.ownerOnly")} disabled={!canManageGit} onClick={onGit}><GitBranch size={15} />Git</button>
       {agentTerminal && <button type="button" className={agentTerminal.open ? "active" : ""} aria-expanded={agentTerminal.open}
-        aria-label={agentTerminal.activeCount > 0 ? `${t("agents.terminal")}: ${t("agents.activeCount", { count: agentTerminal.activeCount })}` : t("agents.terminal")}
+        aria-label={showExecutionReminder && agentTerminal.activeCount > 0 ? `${t("agents.terminal")}: ${t("agents.activeCount", { count: agentTerminal.activeCount })}` : t("agents.terminal")}
         onClick={agentTerminal.toggle}><TerminalSquare size={15} /><span>{t("agents.terminal")}</span>
-        {agentTerminal.activeCount > 0 && <sup className="agent-active-count" aria-label={t("agents.activeCount", { count: agentTerminal.activeCount })}>{agentTerminal.activeCount}</sup>}
+        {showExecutionReminder && agentTerminal.activeCount > 0 && <sup className="agent-active-count" aria-label={t("agents.activeCount", { count: agentTerminal.activeCount })}>{agentTerminal.activeCount}</sup>}
       </button>}
       <button className={settingsOpen ? "active" : ""} onClick={onToggleSettings}><Settings size={15} />{t("common.settings")}</button>
       {sharedCompiling || localCompiling

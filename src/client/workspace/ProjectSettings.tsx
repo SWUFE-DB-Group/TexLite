@@ -188,8 +188,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     if (settingsTab === "terminal") return saveTerminalSettings();
     if (canManage) void saveCompilerSettings();
   };
-  const headerSaveLabel = settingsTab === "appearance" ? t("projectSettings.saveAppearance")
-    : settingsTab === "terminal" ? t("projectSettings.saveTerminal") : t("projectSettings.saveCompiler");
+  const headerSaveLabel = t("common.save");
   const canSaveCurrentTab = settingsTab !== "compiler" || canManage;
   const addDictionaryWord = async () => {
     const word = dictionaryValue.trim();

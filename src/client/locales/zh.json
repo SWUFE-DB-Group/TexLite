@@ -364,6 +364,7 @@
     "editorTab": "编辑器", "compilerTab": "LaTeX", "compilerDescription": "选择本项目所有成员共享的主文档和 LaTeX 编译选项。",
     "terminalTab": "终端", "terminalDescription": "字体和主题设置保存在当前浏览器中，所有项目共用，不跟随应用主题。", "terminalFont": "终端字体", "fontSystem": "系统等宽字体", "terminalPreview": "终端外观预览", "saveTerminal": "保存终端外观",
     "terminalTheme": "终端主题", "terminalThemeDefault": "TexLite（默认）", "terminalThemeCatppuccin": "Catppuccin Latte", "terminalThemeGruvbox": "Gruvbox Dark",
+    "terminalExecutionReminder": "显示任务提醒和数量上标",
     "appearanceSaveFailed": "无法在当前浏览器中保存设置，请检查浏览器存储权限或可用空间后重试。",
     "editorAppearance": "编辑器外观", "editorAppearanceDescription": "这些偏好仅作用于当前浏览器中的当前用户和项目；项目词典是共享的。",
     "toolStatus": { "loading": "加载中", "working": "运行正常", "error": "错误" }, "reloadTool": "重新加载",

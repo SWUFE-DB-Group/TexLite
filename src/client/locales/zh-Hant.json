@@ -1221,6 +1221,7 @@
     "terminalTab": "終端機",
     "terminalDescription": "字型與佈景主題設定儲存於目前瀏覽器，所有專案共用，不隨應用程式佈景主題變更。",
     "terminalTheme": "終端機佈景主題",
+    "terminalExecutionReminder": "顯示任務提醒與數量上標",
     "terminalThemeDefault": "TexLite（預設）",
     "terminalThemeCatppuccin": "Catppuccin Latte",
     "terminalThemeGruvbox": "Gruvbox Dark",

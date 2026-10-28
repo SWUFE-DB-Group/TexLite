@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import "../agents/agents.css";
 import { ArrowDown, ArrowLeft, Check, ChevronLeft, ChevronRight, Info, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useTerminalPreferences } from "../terminalPreferences";
 import { api } from "../api";
 import { Modal } from "../Dialog";
 import { errorMessage } from "../errors";
@@ -16,6 +17,7 @@ export function AgentManagement({ user, onBack }: {
   user: User; onBack: () => void;
 }) {
   const { t, i18n } = useTranslation();
+  const { showExecutionReminder } = useTerminalPreferences();
   const admin = user.role === "admin";
   const prefix = admin ? "/api/admin/agent-tasks" : "/api/agent-tasks";
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
@@ -121,7 +123,7 @@ export function AgentManagement({ user, onBack }: {
       </label>)}</div>
       {catalog && !catalog.ptyAvailable && <p className="error">{t("agents.ptyUnavailable")}</p>}
     </section>}
-    <p className="agent-list-reminder"><TriangleAlert size={14} aria-hidden="true" /><span>{t("agents.endReminder")}</span></p>
+    {showExecutionReminder && <p className="agent-list-reminder"><TriangleAlert size={14} aria-hidden="true" /><span>{t("agents.endReminder")}</span></p>}
     <div className="agent-list-controls">
       <select aria-label={t("agents.state")} value={state} onChange={(event) => changeFilter(setState, event.target.value)}>
         <option value="">{t("agents.all")}</option><option value="running">{t("agents.running")}</option><option value="cleanup">{t("agents.cleanup")}</option>

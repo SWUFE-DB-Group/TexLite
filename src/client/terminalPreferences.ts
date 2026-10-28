@@ -7,6 +7,7 @@ export interface TerminalPreferences {
   font: EditorFont | "system";
   fontSize: number;
   theme: TerminalThemeId;
+  showExecutionReminder: boolean;
 }
 
 export const terminalFonts = [
@@ -15,7 +16,7 @@ export const terminalFonts = [
 ];
 export const terminalFontSizes = [11, 12, 13, 14, 15, 16, 18, 20];
 export const terminalLineHeight = 1.2;
-export const defaultTerminalPreferences: TerminalPreferences = { font: "jetbrains", fontSize: 13, theme: "default" };
+export const defaultTerminalPreferences: TerminalPreferences = { font: "jetbrains", fontSize: 13, theme: "default", showExecutionReminder: true };
 export const terminalPreferencesStorageKey = scopedStorageKey("texlite-terminal-preferences");
 
 export function terminalFontStack(font: TerminalPreferences["font"]): string {
@@ -27,7 +28,8 @@ function normalize(value: unknown): TerminalPreferences {
   return {
     font: terminalFonts.some((option) => option.id === stored.font) ? stored.font! : defaultTerminalPreferences.font,
     fontSize: terminalFontSizes.includes(stored.fontSize!) ? stored.fontSize! : defaultTerminalPreferences.fontSize,
-    theme: typeof stored.theme === "string" && Object.hasOwn(terminalThemes, stored.theme) ? stored.theme : defaultTerminalPreferences.theme
+    theme: typeof stored.theme === "string" && Object.hasOwn(terminalThemes, stored.theme) ? stored.theme : defaultTerminalPreferences.theme,
+    showExecutionReminder: typeof stored.showExecutionReminder === "boolean" ? stored.showExecutionReminder : defaultTerminalPreferences.showExecutionReminder
   };
 }
 

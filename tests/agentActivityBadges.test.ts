@@ -8,6 +8,7 @@ import { Dashboard } from "../src/client/pages/Dashboard";
 import { WorkspaceTopbar, type WorkspaceTopbarProps } from "../src/client/workspace/WorkspaceTopbar";
 import { defaultEditorPreferences } from "../src/client/editorPreferences";
 import i18n from "../src/client/i18n";
+import { defaultTerminalPreferences, saveTerminalPreferences } from "../src/client/terminalPreferences";
 import type { Project, SiteConfig, User } from "../src/client/types";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
@@ -25,6 +26,7 @@ let host: HTMLDivElement;
 let root: Root;
 
 beforeEach(async () => {
+  saveTerminalPreferences(defaultTerminalPreferences);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
   vi.mocked(api).mockReset().mockImplementation(async (url) => (url === "/api/tags" ? { tags: [] }
@@ -49,6 +51,12 @@ describe("active task entry badges", () => {
     expect(badge?.textContent).toBe("2");
     expect(badge?.getAttribute("aria-label")).toBe("Your active tasks: 2");
     expect(badge?.parentElement?.textContent).toContain(i18n.t(role === "admin" ? "agents.title" : "agents.tasks"));
+    const entry = badge!.parentElement;
+    await act(async () => saveTerminalPreferences({ ...defaultTerminalPreferences, showExecutionReminder: false }));
+    expect(host.querySelector(".top-actions sup")).toBeNull();
+    expect(entry?.isConnected).toBe(true);
+    await act(async () => saveTerminalPreferences(defaultTerminalPreferences));
+    expect(host.querySelector(".top-actions sup")?.textContent).toBe("2");
     vi.mocked(useAgentAccess).mockReturnValue({ visible: true, activeCount: 0 });
     await render();
     expect(host.querySelector(".top-actions sup")).toBeNull();
@@ -69,6 +77,12 @@ describe("active task entry badges", () => {
       { ...props, agentTerminal: { open, activeCount, toggle } })));
     await render(false, 1);
     const entry = host.querySelector<HTMLButtonElement>('button[aria-label^="Terminal"]')!;
+    expect(entry.querySelector("sup")?.textContent).toBe("1");
+    await act(async () => saveTerminalPreferences({ ...defaultTerminalPreferences, showExecutionReminder: false }));
+    expect(entry.querySelector("sup")).toBeNull();
+    expect(entry.getAttribute("aria-label")).toBe("Terminal");
+    expect(entry.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => saveTerminalPreferences(defaultTerminalPreferences));
     expect(entry.querySelector("sup")?.textContent).toBe("1");
     expect(entry.getAttribute("aria-expanded")).toBe("false");
     expect(entry.getAttribute("aria-label")).toBe("Terminal: Your active task: 1");

@@ -1446,6 +1446,12 @@ complete saved terminal screen; very long full-screen sessions may need a redraw
 Terminal appearance is separate from editor appearance. Its font, size and theme
 are browser-local preferences shared across projects and scoped to the
 deployment base path, without user/database or CLI configuration changes. The
+Terminal tab also saves a default-on execution-reminder toggle in this browser
+store. It controls the terminal/task-list reminder text and active-task count
+badges on Terminal and Agent tasks entries, including their accessible labels.
+It does not stop or reconnect tasks, alter actual counts/access, or hide
+project-busy warnings and other operational guidance.
+Older preferences without the toggle keep the reminder enabled. The
 default is JetBrains Mono at 13 px with fixed 1.2 line spacing; existing web fonts and
 a system-monospace fallback are available. The original Catppuccin-inspired
 TexLite dark palette remains the default; Catppuccin Latte (light) and Gruvbox
