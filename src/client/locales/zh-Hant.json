@@ -1079,6 +1079,11 @@
   },
   "citationLibraryHomeDescription": "管理私有 BibTeX 文獻和標籤。開啟 .bib 檔案即可儲存或匯入項目。",
   "citationLibraryActions": {
+    "entryActions": "{{key}} 的操作",
+    "copyBibtex": "複製 BibTeX",
+    "copying": "正在複製…",
+    "copied": "已複製",
+    "copyFailed": "複製失敗，請重試。",
     "addEntry": "新增項目",
     "addEntryTitle": "新增 BibTeX 項目",
     "addEntryDescription": "貼上一筆完整的 BibTeX 文獻項目，儲存前會檢查格式。",

@@ -77,6 +77,14 @@ citation library as a separate management page beside the other management
 controls; the project workspace keeps a smaller `.bib` import dialog for
 in-context writing. Library results are server-filtered and paginated with 60
 entries per page by default (the API accepts a bounded page-size override).
+Entry management actions live in an accessible, portalled overflow menu, with
+deletion separated from ordinary actions and still requiring confirmation.
+Copy BibTeX remains a direct button, preserves the full entry text and shows a
+two-second result on the button. It falls back to selection-based copying for
+HTTP/LAN browsers without usable
+Clipboard API access. Save/import remain direct actions in project dialogs.
+Library rows use compact spacing and a single-line title with the full title
+available on hover.
 Library entries are checked in the browser with the `bibtex-tidy` JavaScript
 parser and formatter before a mutation request is sent. Citation keys are unique
 per user without regard to letter case. Creating an existing key is rejected;

@@ -325,7 +325,13 @@
   },
   "citationErrors": { "invalid": "Enter one valid BibTeX entry.", "tooLarge": "This BibTeX entry is too large.", "notFound": "The citation does not exist.", "keyExists": "That citation key already exists. Review the existing entry before replacing it.", "tagNotFound": "The citation tag does not exist.", "conflict": "This citation changed elsewhere. Refresh the library and try again.", "alreadyInFile": "{{key}} is already present in this BibTeX file." },
   "citationLibraryHomeDescription": "Manage your private BibTeX references and tags. Open a .bib file to save or import entries.",
-  "citationLibraryActions": { "addEntry": "Add entry", "addEntryTitle": "Add a BibTeX entry", "addEntryDescription": "Paste one complete BibTeX entry. It will be validated before it is saved.", "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}", "added": "Citation added to your library." },
+  "citationLibraryActions": {
+    "entryActions": "Actions for {{key}}",
+    "copyBibtex": "Copy BibTeX",
+    "copying": "Copying…",
+    "copied": "Copied",
+    "copyFailed": "Copy failed. Try again.",
+    "addEntry": "Add entry", "addEntryTitle": "Add a BibTeX entry", "addEntryDescription": "Paste one complete BibTeX entry. It will be validated before it is saved.", "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}", "added": "Citation added to your library." },
   "citationLibraryPagination": { "pageOf_one": "Page {{page}} of {{totalPages}} · {{count}} entry", "pageOf_other": "Page {{page}} of {{totalPages}} · {{count}} entries", "previous": "Previous", "next": "Next" },
   "navigation": {
     "quickOpen": "Quick open", "quickOpenDescription": "Open a project file by name (Ctrl/Cmd+P).", "filePlaceholder": "Type a file name…", "noFiles": "No matching files."
