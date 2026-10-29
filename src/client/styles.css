@@ -571,7 +571,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-actions .comments-action.active:hover:not(:disabled) { background: var(--ui-accent-bg, #c6e2cf); color: var(--ui-accent, #164c33); }
 .editor-actions .comments-action.active:hover:not(:disabled) svg,
 .editor-actions .comments-action.active:hover:not(:disabled) span { color: inherit; }
-.comments-action-count { align-self: flex-start; margin: -4px 0 0 -3px; font-size: 9px; font-weight: 750; line-height: 1; opacity: .82; }
+.comments-action-count, .share-action-count { align-self: flex-start; margin: -4px 0 0 -3px; font-size: 9px; font-weight: 750; line-height: 1; opacity: .82; }
 .agent-active-count { align-self: flex-start; margin: -3px 0 0 -2px; font-size: 10px; font-weight: 750; line-height: 1; font-variant-numeric: tabular-nums; }
 .editor-actions .comments-action.active .comments-action-count { opacity: .72; }
 .editor-actions .git-action:disabled { cursor: not-allowed; opacity: .45; }

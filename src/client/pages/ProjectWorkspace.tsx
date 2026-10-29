@@ -98,6 +98,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const [terminalOpen, setTerminalOpen] = useState(false);
   currentProjectId.current = projectId;
   const [project, setProject] = useState<Project | null>(null);
+  const updateSharedMemberCount = useCallback((projectId: string, count: number) => {
+    setProject((current) => current?.id === projectId && current.sharedMemberCount !== count
+      ? { ...current, sharedMemberCount: count } : current);
+  }, []);
   useEffect(() => {
     document.title = project?.name ? `${site.siteName} | ${project.name}` : site.siteName;
     return () => {
@@ -1527,7 +1531,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       cancelComment={cancelComment} commentDraftRestored={commentDraftRestored} commentDraftCanRetarget={commentDraftCanRetarget}
       useCurrentCommentSelection={useCurrentCommentSelection}
       commentError={commentError} addComment={addComment}
-      shareOpen={shareOpen} setShareOpen={setShareOpen} citationLibraryOpen={citationLibraryOpen}
+      shareOpen={shareOpen} setShareOpen={setShareOpen} onSharedMemberCountChange={updateSharedMemberCount} citationLibraryOpen={citationLibraryOpen}
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
       quickOpen={quickOpen} setQuickOpen={setQuickOpen} openFile={openFile}
       selectionHistoryTarget={selectionHistoryTarget} closeSelectionHistory={() => setSelectionHistoryTarget(null)}

@@ -44,6 +44,8 @@ export interface Project {
   /** Shared project setting: run the optional host ChkTeX checker after edits. */
   chktexEnabled: boolean;
   permission: "read" | "edit" | "owner";
+  /** Shared read/write members, excluding the owner; independent of online sessions. */
+  sharedMemberCount?: number;
   tags: ProjectTag[];
   unresolvedCommentCount?: number;
   commentCount?: number;

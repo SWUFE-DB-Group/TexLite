@@ -9,6 +9,7 @@ export interface ProjectAccess {
 }
 
 export interface AccessibleProject extends ProjectRow, ProjectAccess {
+  shared_member_count: number;
   owner_username?: string;
   owner_display_name?: string;
   last_modified_username?: string | null;
@@ -36,7 +37,8 @@ const ACCESSIBLE_PROJECT_SQL = `
   SELECT p.*,
     CASE WHEN p.owner_id = ? THEN 'owner' ELSE pm.permission END AS permission,
     owner.username AS owner_username, owner.display_name AS owner_display_name,
-    modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name
+    modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name,
+    (SELECT COUNT(*) FROM project_members members WHERE members.project_id = p.id AND members.user_id <> p.owner_id) AS shared_member_count
   FROM projects p
   JOIN users owner ON owner.id = p.owner_id
   LEFT JOIN users modifier ON modifier.id = p.last_modified_by

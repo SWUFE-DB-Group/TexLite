@@ -70,7 +70,10 @@ export function WorkspaceTopbar({
     <div className="editor-actions">
       {showEditor && <button className={!filesCollapsed ? "active" : ""} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}
       <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} />
-      <button onClick={onShare}><Users size={15} />{t("projectSettings.share")}</button>
+      <button type="button" className="share-action" aria-label={project.sharedMemberCount ? `${t("projectSettings.share")} (${project.sharedMemberCount})` : t("projectSettings.share")} onClick={onShare}>
+        <Users size={15} /><span>{t("projectSettings.share")}</span>
+        {(project.sharedMemberCount ?? 0) > 0 && <sup className="share-action-count">{project.sharedMemberCount}</sup>}
+      </button>
       {showCitationLibrary && <button className={citationLibraryOpen ? "active" : ""} onClick={onCitationLibrary}><BookMarked size={15} />{t("citationLibrary.title")}</button>}
       <button type="button" className="snapshots-action" title={t("history.projectSnapshots")} onClick={onHistory}><FileClock size={15} />{t("history.projectSnapshotsButton")}</button>
       <button

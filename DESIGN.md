@@ -336,6 +336,11 @@ to source comments. Comments are anchored to source offsets and selected text,
 can be resolved, edited, deleted, and replied to. If an author is removed,
 the record remains visible as “Deleted User”.
 
+The workspace Share button shows a superscript count of explicitly shared
+read/edit members, excluding the owner and hiding zero. This is unrelated to
+online presence. Initial counts come with project metadata; successful share
+form loads and member changes update the badge without reloading the workspace.
+
 The owner-only share form uses one editable user combobox: opening it lists
 available users, and typing filters by display name or username. Candidates
 exclude the owner and existing members. The popup is at most 240 px tall,

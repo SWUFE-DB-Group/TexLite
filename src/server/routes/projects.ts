@@ -210,7 +210,8 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const select = `SELECT DISTINCT p.*,
       CASE WHEN p.owner_id = :userId THEN 'owner' ELSE pm.permission END AS permission,
       owner.username AS owner_username, owner.display_name AS owner_display_name,
-      modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name`;
+      modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name,
+      (SELECT COUNT(*) FROM project_members members WHERE members.project_id = p.id AND members.user_id <> p.owner_id) AS shared_member_count`;
     const rows = db.prepare(`${select} ${from} ${scopedWhere}
       ORDER BY ${sortColumn} DESC, p.name COLLATE NOCASE ASC
       LIMIT :limit OFFSET :offset`).all(rowsParams);

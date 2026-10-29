@@ -80,6 +80,7 @@ export interface WorkspaceDialogsProps {
   addComment: () => Promise<void>;
   shareOpen: boolean;
   setShareOpen: (open: boolean) => void;
+  onSharedMemberCountChange: (projectId: string, count: number) => void;
   citationLibraryOpen: boolean;
   setCitationLibraryOpen: (open: boolean) => void;
   insertCitationAtCursor: (entry: CitationLibraryEntry) => boolean | Promise<boolean>;
@@ -107,7 +108,7 @@ export function WorkspaceDialogs({
   setNewFolderName, selectedFolder, fileDialogError, setFileDialogError, createFile, createFolder, moveEntry,
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
   setDeleteEntry, deleteActiveSessions, removePath, commentOpen, closeComment, commentSelection, commentText,
-  setCommentText, commentSubmitting, commentError, addComment, cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection, shareOpen, setShareOpen, citationLibraryOpen, setCitationLibraryOpen,
+  setCommentText, commentSubmitting, commentError, addComment, cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection, shareOpen, setShareOpen, onSharedMemberCountChange, citationLibraryOpen, setCitationLibraryOpen,
   insertCitationAtCursor, quickOpen, setQuickOpen, openFile,
   selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
   permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
@@ -178,7 +179,7 @@ export function WorkspaceDialogs({
       </label>
       {commentSelection.selectedText && <blockquote className="selection-preview">{commentSelection.selectedText}</blockquote>}
     </Modal>
-    <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} />
+    <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} onMemberCountChange={onSharedMemberCountChange} />
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
     {selectionHistoryTarget && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={(open) => { if (!open) closeSelectionHistory(); }} project={project} filePath={selectionHistoryTarget.filePath} selection={selectionHistoryTarget.selection} currentSource={selectionHistoryTarget.source} /></Suspense>}

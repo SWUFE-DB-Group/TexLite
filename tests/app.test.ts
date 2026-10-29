@@ -2474,7 +2474,7 @@ Second version.
     });
     expect(transferred.statusCode).toBe(200);
     expect(transferred.json().project.ownerId).toBe(recipient.id);
-    expect(transferred.json().project).toMatchObject({ commentCount: 1, unresolvedCommentCount: 1 });
+    expect(transferred.json().project).toMatchObject({ commentCount: 1, unresolvedCommentCount: 1, sharedMemberCount: 1 });
     const recipientProject = await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie: recipientCookie } });
     expect(recipientProject.json().project).toMatchObject({ ownerId: recipient.id, permission: "owner" });
     expect(db.prepare("SELECT permission FROM project_members WHERE project_id = ? AND user_id = ?").get(project.id, formerOwnerId)).toEqual({ permission: "edit" });
@@ -2516,6 +2516,38 @@ Second version.
     expect(db.prepare("SELECT id FROM projects WHERE id = ?").get(projectId)).toBeUndefined();
     expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(projectId) as { count: number }).count).toBe(0);
     expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_state WHERE project_id = ?").get(projectId) as { count: number }).count).toBe(0);
+  });
+
+  it("returns shared member counts for readers and editors without including the owner", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: `Member count ${randomUUID()}` } });
+    const project = created.json().project;
+    expect(project.sharedMemberCount).toBe(0);
+    const timestamp = new Date().toISOString();
+    const ids = [randomUUID(), randomUUID()];
+    for (const id of ids) db.prepare("INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES (?, ?, 'Member', 'hash', 'user', ?)").run(id, id, timestamp);
+    const details = async () => (await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } })).json().project;
+    try {
+      for (const [index, id] of ids.entries()) {
+        expect((await app.inject({ method: "PUT", url: `/api/projects/${project.id}/members/${id}`, headers: { cookie }, payload: { permission: index ? "edit" : "read" } })).statusCode).toBe(200);
+        expect((await details()).sharedMemberCount).toBe(index + 1);
+      }
+      // An owner membership from older data must not inflate the displayed count.
+      db.prepare("INSERT INTO project_members (project_id, user_id, permission, created_at) VALUES (?, ?, 'edit', ?)").run(project.id, project.ownerId, timestamp);
+      expect((await details()).sharedMemberCount).toBe(2);
+      const listed = await app.inject({ method: "GET", url: `/api/projects?search=${encodeURIComponent(project.name)}`, headers: { cookie } });
+      expect(listed.json().projects[0].sharedMemberCount).toBe(2);
+      const updated = await app.inject({ method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie }, payload: { engine: "xelatex" } });
+      expect(updated.json().project.sharedMemberCount).toBe(2);
+      await app.inject({ method: "PUT", url: `/api/projects/${project.id}/members/${ids[0]}`, headers: { cookie }, payload: { permission: "edit" } });
+      expect((await details()).sharedMemberCount).toBe(2);
+      for (const [index, id] of ids.entries()) {
+        await app.inject({ method: "DELETE", url: `/api/projects/${project.id}/members/${id}`, headers: { cookie } });
+        expect((await details()).sharedMemberCount).toBe(1 - index);
+      }
+    } finally {
+      await app.inject({ method: "DELETE", url: `/api/projects/${project.id}`, headers: { cookie } });
+      for (const id of ids) db.prepare("DELETE FROM users WHERE id = ?").run(id);
+    }
   });
 
   it("records the shared user who last changed project source", async () => {

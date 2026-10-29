@@ -107,6 +107,7 @@ export function projectJson(project: ProjectRow & {
   owner_display_name?: string;
   last_modified_username?: string | null;
   last_modified_display_name?: string | null;
+  shared_member_count?: number;
   archived?: boolean | number;
 }, tags: ProjectTag[] = [], commentsSummary?: { totalCount: number; unresolvedCount: number }, unreadMentionCount = 0) {
   return {
@@ -124,6 +125,7 @@ export function projectJson(project: ProjectRow & {
     icon: project.icon,
     chktexEnabled: Boolean(project.chktex_enabled),
     permission: project.permission,
+    sharedMemberCount: project.shared_member_count ?? 0,
     tags,
     unresolvedCommentCount: commentsSummary?.unresolvedCount ?? 0,
     commentCount: commentsSummary?.totalCount ?? 0,

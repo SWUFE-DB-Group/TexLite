@@ -23,6 +23,7 @@ const users: ShareUser[] = [
 let directory: ShareUser[], members: Array<ShareUser & { permission: "read" | "edit" }>;
 let root: Root, host: HTMLDivElement;
 const onOpenChange = vi.fn();
+const onMemberCountChange = vi.fn();
 const scope = () => document.querySelector<HTMLElement>(".share-dialog")!;
 const search = () => scope().querySelector<HTMLInputElement>('[role="combobox"]')!;
 const options = () => [...document.querySelectorAll<HTMLButtonElement>('.share-user-popover [role="option"]')];
@@ -43,12 +44,12 @@ const chooseUser = async (id: string) => {
   await click(search()); await click(options().find((option) => option.id.endsWith(`-user-${id}`))!);
 };
 const render = (current = project, open = true) => act(async () => root.render(createElement(ShareDialog, {
-  project: current, projectId: current.id, open, onOpenChange
+  project: current, projectId: current.id, open, onOpenChange, onMemberCountChange
 })));
 
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  await i18n.changeLanguage("en"); onOpenChange.mockReset(); directory = [...users];
+  await i18n.changeLanguage("en"); onOpenChange.mockReset(); onMemberCountChange.mockReset(); directory = [...users];
   members = [{ ...users[1], permission: "read" }];
   vi.mocked(api).mockReset().mockImplementation(async (url, options) => {
     if (url === "/api/users") return { users: directory } as never;
@@ -62,6 +63,13 @@ afterEach(async () => {
 });
 
 describe("project share user combobox", () => {
+  it("reports the shared member count without including an owner membership", async () => {
+    members.push({ ...users[0], permission: "edit" });
+    await render();
+    expect(scope().querySelectorAll(".shared-member")).toHaveLength(1);
+    expect(onMemberCountChange).toHaveBeenLastCalledWith(project.id, 1);
+  });
+
   it("opens the available-user list directly and distinguishes duplicate names without including owners or members", async () => {
     await render();
     expect(scope().querySelector(".share-user-modes")).toBeNull();
@@ -138,6 +146,7 @@ describe("project share user combobox", () => {
     members.push({ ...users[2], permission: "edit" });
     await act(async () => finish({ ok: true }));
     expect(scope().querySelectorAll(".shared-member")).toHaveLength(2);
+    expect(onMemberCountChange).toHaveBeenLastCalledWith(project.id, 2);
     expect(search().value).toBe(""); expect(add().disabled).toBe(true); expect(permission().value).toBe("read");
     await click(search()); expect(options().map((option) => option.textContent)).toEqual(["同名用户@bob", "同名用户@carol"]);
   });
@@ -171,10 +180,12 @@ describe("project share user combobox", () => {
     await click(document.querySelector<HTMLButtonElement>(".dialog-footer button.danger")!);
     expect(document.querySelector(".dialog-error")?.textContent).toBe("Removal failed");
     expect(scope().querySelectorAll(".shared-member")).toHaveLength(1);
+    expect(onMemberCountChange).toHaveBeenLastCalledWith(project.id, 1);
     members = []; vi.mocked(api).mockResolvedValueOnce({ ok: true });
     await click(document.querySelector<HTMLButtonElement>(".dialog-footer button.danger")!);
     expect(document.querySelector(".dialog-error")).toBeNull();
     expect(scope().querySelectorAll(".shared-member")).toHaveLength(0);
+    expect(onMemberCountChange).toHaveBeenLastCalledWith(project.id, 0);
     await click(search()); expect(options().some((option) => option.textContent === "Current Member@existing")).toBe(true);
   });
 
@@ -191,7 +202,9 @@ describe("project share user combobox", () => {
       .mockImplementationOnce(() => new Promise((resolve) => { finishUsers = resolve; }));
     await render(); const oldSignal = vi.mocked(api).mock.calls[0][1]!.signal!; expect(add().disabled).toBe(true);
     await render({ ...project, id: "second" }); expect(oldSignal.aborted).toBe(true); await chooseUser("carol");
+    onMemberCountChange.mockClear();
     await act(async () => finishUsers({ users: [{ id: "stale", username: "stale" }] }));
+    expect(onMemberCountChange).not.toHaveBeenCalled();
     expect(search().value).toBe("同名用户 (@carol)");
     await click(search()); expect(options().some((option) => option.textContent?.includes("stale"))).toBe(false);
     await render({ ...project, id: "second" }, false); await render({ ...project, id: "second" }); expect(search().value).toBe("");

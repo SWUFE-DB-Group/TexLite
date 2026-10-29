@@ -24,6 +24,15 @@ const pagination = { page: 1, pageSize: 20, total: 0, totalPages: 0 };
 const counts = { all: 0, owned: 0, shared: 0 };
 const filters = { ownership: "all", archived: false, search: "", tag: "", sort: "updated" } as const;
 const noop = () => {};
+const topbarProps: WorkspaceTopbarProps = {
+  site, project, activeFile: "main.tex", saveStateLabel: "Saved", editorPreferences: defaultEditorPreferences,
+  activeSessions: [], collaborationStatus: "connected", reconnectCollaboration: noop, protocolUpgradeRequired: false,
+  showEditor: true, filesCollapsed: false, toggleFilesPanel: noop, workspaceLayout: "editor-pdf", changeWorkspaceLayout: noop,
+  onBack: noop, onShare: noop, showCitationLibrary: false, citationLibraryOpen: false, onCitationLibrary: noop,
+  onHistory: noop, onGit: noop, canManageGit: true, formatting: false, readOnly: false, collaborationSynced: true,
+  onToggleComments: noop, commentsOpen: false, unresolvedCommentCount: 0, onToggleSettings: noop, settingsOpen: false,
+  compileBusy: false, sharedCompiling: false, localCompiling: false, cancelling: false, onCompile: noop, onCancelCompile: noop
+};
 let host: HTMLDivElement;
 let root: Root;
 
@@ -66,17 +75,8 @@ describe("active task entry badges", () => {
 
   it("keeps the project's terminal count visible when closed or open and omits zero", async () => {
     const toggle = vi.fn();
-    const props: WorkspaceTopbarProps = {
-      site, project, activeFile: "main.tex", saveStateLabel: "Saved", editorPreferences: defaultEditorPreferences,
-      activeSessions: [], collaborationStatus: "connected", reconnectCollaboration: noop, protocolUpgradeRequired: false,
-      showEditor: true, filesCollapsed: false, toggleFilesPanel: noop, workspaceLayout: "editor-pdf", changeWorkspaceLayout: noop,
-      onBack: noop, onShare: noop, showCitationLibrary: false, citationLibraryOpen: false, onCitationLibrary: noop,
-      onHistory: noop, onGit: noop, canManageGit: true, formatting: false, readOnly: false, collaborationSynced: true,
-      onToggleComments: noop, commentsOpen: false, unresolvedCommentCount: 0, onToggleSettings: noop, settingsOpen: false,
-      compileBusy: false, sharedCompiling: false, localCompiling: false, cancelling: false, onCompile: noop, onCancelCompile: noop
-    };
     const render = (open: boolean, activeCount: number) => act(async () => root.render(createElement(WorkspaceTopbar,
-      { ...props, agentTerminal: { open, activeCount, toggle } })));
+      { ...topbarProps, agentTerminal: { open, activeCount, toggle } })));
     await render(false, 1);
     const entry = host.querySelector<HTMLButtonElement>('button[aria-label^="Terminal"]')!;
     expect(entry.querySelector("sup")?.textContent).toBe("1");
@@ -97,4 +97,17 @@ describe("active task entry badges", () => {
     expect(entry.querySelector("sup")).toBeNull();
     expect(entry.getAttribute("aria-label")).toBe("Terminal");
   });
+});
+
+it("shows the shared member count even when nobody is online, updates it and hides zero", async () => {
+  const onShare = vi.fn();
+  for (const count of [undefined, 0, 3, 1, 0]) {
+    await act(async () => root.render(createElement(WorkspaceTopbar,
+      { ...topbarProps, onShare, project: { ...project, sharedMemberCount: count } })));
+    const button = host.querySelector<HTMLButtonElement>('.share-action')!;
+    expect(button.querySelector('sup')?.textContent).toBe(count ? String(count) : undefined);
+    expect(button.getAttribute('aria-label')).toBe(count ? `Share (${count})` : 'Share');
+  }
+  await act(async () => host.querySelector<HTMLButtonElement>('.share-action')!.click());
+  expect(onShare).toHaveBeenCalledOnce();
 });

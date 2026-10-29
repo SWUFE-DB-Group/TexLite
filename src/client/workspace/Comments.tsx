@@ -234,8 +234,9 @@ export function CommentThread({
 
 interface ShareMember { id: string; username: string; displayName?: string; avatarStyle?: string | null; permission: "read" | "edit" }
 
-export function ShareDialog({ open, onOpenChange, project, projectId }: {
+export function ShareDialog({ open, onOpenChange, project, projectId, onMemberCountChange }: {
   open: boolean; onOpenChange: (open: boolean) => void; project: Project; projectId: string;
+  onMemberCountChange?: (projectId: string, count: number) => void;
 }) {
   const { t } = useTranslation();
   const [members, setMembers] = useState<ShareMember[]>([]);
@@ -256,9 +257,11 @@ export function ShareDialog({ open, onOpenChange, project, projectId }: {
       canManage ? api<{ users: ShareUser[] }>("/api/users", { signal }) : Promise.resolve({ users: [] })
     ]);
     if (signal.aborted) return;
-    setMembers(memberResult.members);
+    const sharedMembers = memberResult.members.filter((member) => member.id !== project.ownerId);
+    setMembers(sharedMembers);
+    onMemberCountChange?.(projectId, sharedMembers.length);
     setUsers(userResult.users.filter((candidate) => candidate.id !== project.ownerId));
-  }, [projectId, project.ownerId, canManage]);
+  }, [projectId, project.ownerId, canManage, onMemberCountChange]);
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController(); view.current = controller;
