@@ -381,7 +381,7 @@
     "searchUsersPlaceholder": "Display name or username", "noMatchingUsers": "No matching users.", "noAvailableUsers": "No users available to add.",
     "addMember": "Add member", "noMembers": "This project has not been shared with anyone.", "removeTitle": "Remove shared member",
     "removeDescription": "Remove {{username}}? Their account and other projects are unaffected.",
-    "editorTab": "Editor", "compilerTab": "LaTeX", "compilerDescription": "Choose the main document and compiler options shared by everyone in this project.",
+    "editorTab": "Editor", "compilerTab": "LaTeX", "compilerDescription": "The main document and LaTeX compiler options apply to everyone in this project. Only the project owner can change these settings.",
     "terminalTab": "Terminal", "terminalDescription": "Font and theme settings are stored in this browser and shared across projects, independent of the app theme.", "terminalFont": "Terminal font", "fontSystem": "System monospace", "terminalPreview": "Terminal appearance preview", "saveTerminal": "Save terminal appearance",
     "terminalTheme": "Terminal theme", "terminalThemeDefault": "TexLite (default)", "terminalThemeCatppuccin": "Catppuccin Latte", "terminalThemeGruvbox": "Gruvbox Dark",
     "terminalExecutionReminder": "Show task reminders and count badges",

@@ -369,7 +369,7 @@
     "share": "共享", "shareDescription": "仅可共享给管理员已创建的用户。", "chooseUser": "请选择用户",
     "searchUsersPlaceholder": "显示名称或用户名", "noMatchingUsers": "没有匹配的用户。", "noAvailableUsers": "暂无可添加的用户。",
     "addMember": "添加成员", "noMembers": "该项目尚未分享给其他成员。", "removeTitle": "移除共享成员", "removeDescription": "确认移除 {{username}}？其账号和其他项目不会受到影响。",
-    "editorTab": "编辑器", "compilerTab": "LaTeX", "compilerDescription": "选择本项目所有成员共享的主文档和 LaTeX 编译选项。",
+    "editorTab": "编辑器", "compilerTab": "LaTeX", "compilerDescription": "主文档和 LaTeX 编译选项对本项目所有成员生效，仅项目所有者可修改这些设置。",
     "terminalTab": "终端", "terminalDescription": "字体和主题设置保存在当前浏览器中，所有项目共用，不跟随应用主题。", "terminalFont": "终端字体", "fontSystem": "系统等宽字体", "terminalPreview": "终端外观预览", "saveTerminal": "保存终端外观",
     "terminalTheme": "终端主题", "terminalThemeDefault": "TexLite（默认）", "terminalThemeCatppuccin": "Catppuccin Latte", "terminalThemeGruvbox": "Gruvbox Dark",
     "terminalExecutionReminder": "显示任务提醒和数量上标",
