@@ -8,6 +8,7 @@ import { CollaborationPresence, WorkspaceLayoutMenu } from "./WorkspaceChrome";
 import { SiteLogo } from "../pages/SiteChrome";
 import { appPath } from "../basePath";
 import { useTerminalPreferences } from "../terminalPreferences";
+import { WorkspaceProjectTitle } from "./WorkspaceProjectTitle";
 
 export interface WorkspaceTopbarProps {
   agentTerminal?: { open: boolean; activeCount: number; toggle: () => void };
@@ -62,7 +63,7 @@ export function WorkspaceTopbar({
   return <header className="editor-topbar">
     <button className="back" title={t("editor.backToProjects")} aria-label={t("editor.backToProjects")} onClick={onBack}><ArrowLeft size={18} /></button>
     <a className="brand-link compact-brand-link" href={appPath("/")} aria-label={site.siteName} onClick={(event) => { event.preventDefault(); onBack(); }}><SiteLogo siteName={site.siteName} compact /></a>
-    <div className="project-heading"><strong>{project.name}</strong><small>{activeFile} · {saveStateLabel}</small></div>
+    <div className="project-heading"><WorkspaceProjectTitle name={project.name} /><small>{activeFile} · {saveStateLabel}</small></div>
     {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
     <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
     {collaborationStatus === "disconnected" && !protocolUpgradeRequired && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}

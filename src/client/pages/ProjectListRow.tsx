@@ -84,8 +84,8 @@ export function ProjectListRow({
               <span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span>
             </span>
           )}
-          {project.tags?.length > 0 && <span className="project-list-tags">{project.tags.map((tag) => <span className={`tag tag-${tag.color} project-list-tag`} key={tag.id} title={tag.name}>{tag.name}</span>)}</span>}
         </span>
+        {project.tags?.length > 0 && <span className="project-list-tags">{project.tags.map((tag) => <span className={`tag tag-${tag.color} project-list-tag`} key={tag.id} title={tag.name}>{tag.name}</span>)}</span>}
       </button>
     </span>
     <button type="button" className="project-list-cell-open project-list-owner" onClick={onOpenProject} title={ownerName} aria-label={t("projects.openProject", { project: project.name })}>

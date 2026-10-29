@@ -311,6 +311,10 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-list-summary-open {
   min-width: 0;
   flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 5px;
 }
 .project-list-title-line {
   width: 100%;
@@ -321,9 +325,12 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 }
 .project-list-title-line .project-comments-badge {
   flex: none;
+  white-space: nowrap;
 }
 .project-list-title {
   min-width: 0;
+  max-width: 340px;
+  flex: 0 1 auto;
   overflow: hidden;
   color: var(--ui-text, #17211a);
   font-size: 15px;
@@ -335,7 +342,7 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-list-tags {
   min-width: 0;
   display: flex;
-  flex: 0 1 auto;
+  flex: none;
   gap: 5px;
   overflow: hidden;
 }
@@ -487,11 +494,26 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .back { color: inherit; border: 0; background: #ffffff08; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; }
 .back:hover { background: #ffffff12; }
 .back:focus-visible { outline: 2px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; }
-.project-heading { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
-.project-heading small { color: var(--ui-header-muted, #bac4bd); font-size: 11px; margin-top: 2px; }
+.project-heading { display: flex; flex: 0 1 200px; flex-direction: column; min-width: 0; max-width: 200px; margin-right: auto; }
+.project-heading small { overflow: hidden; color: var(--ui-header-muted, #bac4bd); font-size: 11px; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-project-title { display: block; min-width: 0; overflow: hidden; white-space: nowrap; }
+.workspace-project-title > span { display: inline-block; max-width: 100%; overflow: hidden; vertical-align: top; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-project-title:focus-visible { outline: 1px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; border-radius: 3px; }
+.workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) > span { max-width: none; overflow: visible; }
+@media (prefers-reduced-motion: no-preference) {
+  .workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) > span { animation: project-title-pan var(--project-title-duration) linear infinite alternate; }
+}
+@keyframes project-title-pan {
+  0%, 15% { transform: translateX(0); }
+  85%, 100% { transform: translateX(var(--project-title-offset)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) { overflow-x: auto; scrollbar-width: none; }
+  .workspace-project-title::-webkit-scrollbar { display: none; }
+}
 .vim-status-badge { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; border: 1px solid #7fd39e80; border-radius: 999px; padding: 5px 9px; background: #1d6b4638; color: #d7ffe3; font-size: 10px; font-weight: 750; letter-spacing: .04em; white-space: nowrap; }
 .vim-status-badge svg { color: #9df0b5; }
-.collaboration-presence { min-width: 0; display: flex; align-items: center; gap: 7px; padding-left: 8px; }
+.collaboration-presence { min-width: 0; display: flex; flex: none; align-items: center; gap: 7px; padding-left: 8px; }
 .collaboration-status-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #efb84b; box-shadow: 0 0 0 2px #efb84b2e; }
 .collaboration-connected .collaboration-status-dot { background: #69d391; box-shadow: 0 0 0 2px #69d3912e; }
 .collaboration-disconnected .collaboration-status-dot { background: #e07167; box-shadow: 0 0 0 2px #e071672e; }
@@ -1967,7 +1989,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
     gap: 8px;
   }
   .project-list-avatar { width: 36px; height: 36px; font-size: 15px; }
-  .project-list-tags { display: none; }
   .project-list-modified small { display: none; }
   .project-tag-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .project-icon-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
