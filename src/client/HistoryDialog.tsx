@@ -1,3 +1,4 @@
+import { formatBytes } from "./formatBytes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -403,9 +404,9 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         <aside className="history-timeline">
           {isOwner && stats && <div className={`history-stats${stats.storageLimitExceeded ? " exceeded" : ""}`}>
             <header><span><HardDrive size={14} />{t("history.storage")}</span><button type="button" disabled={controlsBusy || versions.length === 0} title={t("history.clearAll")} aria-label={t("history.clearAll")} onClick={() => setDeleteTarget("all")}><Trash2 size={13} /></button></header>
-            <strong>{t("history.storageUsage", { used: formatBytes(stats.totalBytes), limit: formatBytes(stats.maxStorageBytes) })}</strong>
+            <strong>{t("history.storageUsage", { used: formatBytes(stats.totalBytes, { trimTrailingZero: true }), limit: formatBytes(stats.maxStorageBytes, { trimTrailingZero: true }) })}</strong>
             <progress max={stats.maxStorageBytes} value={Math.min(stats.totalBytes, stats.maxStorageBytes)} />
-            <small>{t("history.storageBreakdown", { objects: formatBytes(stats.objectBytes), metadata: formatBytes(stats.metadataBytes), protected: formatBytes(stats.protectedBytes) })}</small>
+            <small>{t("history.storageBreakdown", { objects: formatBytes(stats.objectBytes, { trimTrailingZero: true }), metadata: formatBytes(stats.metadataBytes, { trimTrailingZero: true }), protected: formatBytes(stats.protectedBytes, { trimTrailingZero: true }) })}</small>
             <small>{t("history.versionUsage", { count: stats.maxVersions, versions: stats.ordinaryVersionCount, limit: stats.maxVersions > 0 ? stats.maxVersions : "∞" })}{stats.labeledVersionCount > 0 ? ` · ${t("history.protectedVersions", { count: stats.labeledVersionCount })}` : ""}</small>
             {stats.storageLimitExceeded && <small className="history-storage-warning">{t("history.storageExceeded")}</small>}
           </div>}
@@ -561,13 +562,6 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     <ConfirmDialog open={Boolean(deleteTarget)} title={deleteTarget === "all" ? t("history.clearAllTitle") : t("history.deleteVersionTitle")}
       description={deleteTarget === "all" ? t("history.clearAllDescription") : t("history.deleteVersionDescription", { name: deleteTargetName })}
       confirmLabel={deleteTarget === "all" ? t("history.clearAll") : t("history.deleteVersion")} danger onCancel={() => setDeleteTarget(null)} onConfirm={() => void removeHistory()} /></>;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 102.4) / 10} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${Math.round(bytes / (1024 * 1024) * 10) / 10} MB`;
-  return `${Math.round(bytes / (1024 * 1024 * 1024) * 10) / 10} GB`;
 }
 
 function message(reason: unknown): string {

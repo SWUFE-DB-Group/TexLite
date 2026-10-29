@@ -1,3 +1,4 @@
+import { formatBytes } from "../formatBytes";
 import { lazy, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, apiUpload } from "../api";
@@ -38,11 +39,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProject }: {
   site: SiteConfig;
   user: User;
@@ -558,7 +554,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
           <div className={`upload-picker${importFile ? " has-file" : ""}${importing ? " is-disabled" : ""}`} onDragOver={(event) => { event.preventDefault(); if (!importing) event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); if (!importing) selectImportFile(event.dataTransfer.files[0] ?? null); }}>
             <input ref={importInput} className="sr-only" type="file" accept=".zip,application/zip" disabled={importing} onChange={(event) => selectImportFile(event.target.files?.[0] ?? null)} />
             <FileArchive size={34} />
-            <div className="upload-picker-copy"><strong>{importFile?.name ?? t("projects.chooseZip")}</strong><span>{importFile ? t("projects.selectedFileSize", { size: formatFileSize(importFile.size) }) : t("projects.dropZip")}</span></div>
+            <div className="upload-picker-copy"><strong>{importFile?.name ?? t("projects.chooseZip")}</strong><span>{importFile ? t("projects.selectedFileSize", { size: formatBytes(importFile.size, { maximumUnit: "MB" }) }) : t("projects.dropZip")}</span></div>
             <button type="button" disabled={importing} onClick={() => importInput.current?.click()}><Upload size={15} />{t("projects.browse")}</button>
             {importFile && <button className="upload-clear" type="button" disabled={importing} title={t("projects.clearFile")} aria-label={t("projects.clearFile")} onClick={() => { selectImportFile(null); if (importInput.current) importInput.current.value = ""; }}><X size={14} /></button>}
           </div>

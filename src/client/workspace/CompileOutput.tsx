@@ -1,3 +1,4 @@
+import { formatBytes } from "../formatBytes";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, CircleHelp, Download, Eraser, FileText, LoaderCircle, PackageOpen, ScrollText, Trash2, XCircle } from "lucide-react";
 import type { CompileDiagnostic } from "../compileDiagnostics";
@@ -48,7 +49,7 @@ export function CompileArtifacts({ projectId, mainFile, artifacts, preview, load
     <div className="artifact-list">
       {artifacts.map((artifact) => <div className={`artifact-row${preview?.path === artifact.path ? " active" : ""}`} key={artifact.path}>
         <button type="button" disabled={!artifact.viewable} title={artifact.viewable ? t("editor.viewArtifact") : t("editor.downloadToView")} onClick={() => onView(artifact)}>
-          <FileTypeIcon path={artifact.path} size={14} /><span><strong>{artifact.path}</strong><small>{formatFileSize(artifact.size)}</small></span>
+          <FileTypeIcon path={artifact.path} size={14} /><span><strong>{artifact.path}</strong><small>{formatBytes(artifact.size, { maximumUnit: "MB" })}</small></span>
         </button>
         <a href={downloadUrl(artifact.path)} title={t("editor.downloadArtifact")} aria-label={t("editor.downloadArtifact")}><Download size={14} /></a>
       </div>)}
@@ -94,10 +95,4 @@ function resolveDiagnosticPath(input: string | undefined, files: FileEntry[]): s
   const basename = normalized.split("/").at(-1);
   const basenameMatches = filePaths.filter((filePath) => filePath.split("/").at(-1) === basename);
   return basenameMatches.length === 1 ? basenameMatches[0] : null;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

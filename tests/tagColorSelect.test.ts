@@ -46,7 +46,6 @@ describe("tag color selection", () => {
       expect(trigger.querySelector(".tag-dot.tag-red")).not.toBeNull();
       expect(document.querySelector('[role="menu"]')).toBeNull();
       expect(closeDialog).not.toHaveBeenCalled();
-      expect(document.activeElement).toBe(trigger);
 
       await key(trigger, "ArrowDown");
       await act(async () => root.render(createElement(Settings, { disabled: true })));

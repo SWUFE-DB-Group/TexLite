@@ -1,6 +1,5 @@
 {
   "common": {
-    "saveSuccess": "儲存成功。",
     "noChangesToSave": "沒有需要儲存的變更。",
     "done": "已完成",
     "cancel": "取消",
@@ -80,8 +79,6 @@
     "openGithubSettings": "開啟帳號設定和 GitHub 整合",
     "githubTitle": "GitHub 整合",
     "githubDescription": "連結 GitHub 帳號，以便為專案建立遠端儲存庫。認證資訊儲存於你的 TexLite 帳號中，由你擁有的專案共用。",
-    "githubSaved": "GitHub 帳號已連線。",
-    "githubRemoved": "GitHub 帳號已斷開。",
     "githubEncryption": "TexLite 會透過 GitHub 驗證 token，並以加密形式儲存；儲存後不會再次顯示 token 明文。"
   },
   "projects": {
@@ -1066,12 +1063,10 @@
     "newTagPlaceholder": "新標籤名稱",
     "tagColor": "標籤顏色",
     "createTag": "建立標籤",
-    "tagCreated": "標籤已建立。",
     "tags": "標籤",
     "tagsTitle": "{{key}} 的標籤",
     "noTagsToAssign": "請先建立標籤。",
     "saveTags": "儲存標籤",
-    "tagsUpdated": "標籤已更新。",
     "editTitle": "編輯 {{key}}"
   },
   "citationErrors": {

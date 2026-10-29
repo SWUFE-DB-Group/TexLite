@@ -1,3 +1,4 @@
+import { formatBytes } from "../formatBytes";
 import { lazy, Suspense, useRef, useState } from "react";
 import { AlertTriangle, Download, Eraser, LoaderCircle, Logs, PackageOpen, ScrollText, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -84,7 +85,7 @@ export function WorkspacePreviewPanel({
     onPdfDisplayed(loadedUrl);
   };
   const canSyncWithDisplayedPdf = canSyncPdfToSource && Boolean(pdfUrl) && displayedPdfUrl === pdfUrl;
-  const pdfSizeLabel = pdfSizeBytes == null ? "" : formatPdfSize(pdfSizeBytes);
+  const pdfSizeLabel = pdfSizeBytes == null ? "" : formatBytes(pdfSizeBytes);
   const pdfMetaLabel = [
     pdfSizeLabel,
     pdfCompiledLabel ? t("editor.pdfUpdatedAt", { time: pdfCompiledLabel }) : ""
@@ -129,12 +130,4 @@ export function WorkspacePreviewPanel({
       </div>
     </Panel>
   </>;
-}
-
-function formatPdfSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return "";
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }

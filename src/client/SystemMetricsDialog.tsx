@@ -1,3 +1,4 @@
+import { formatBytes } from "./formatBytes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, Clock3, Cpu, Info, Layers3, MemoryStick, RefreshCw, Timer, Users, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -117,13 +118,13 @@ function MemoryOverview({ metrics }: { metrics: SystemMetrics }) {
     { key: "tex", bytes: tex, plotted: (tex ?? 0) * scale, label: t("metrics.texMemory") },
     { key: "other", bytes: other, plotted: used === null ? 0 : Math.max(0, used - tracked * scale), label: t("metrics.otherMemory") },
     ...(total === null ? [] : [{ key: "free", bytes: free, plotted: free ?? 0, label: t("metrics.freeMemory") }])
-  ].map((segment) => ({ ...segment, tooltip: `${segment.label}: ${segment.bytes === null ? t("metrics.unavailable") : formatBytes(segment.bytes)}` }));
+  ].map((segment) => ({ ...segment, tooltip: `${segment.label}: ${segment.bytes === null ? t("metrics.unavailable") : formatMemoryBytes(segment.bytes)}` }));
   const barTooltip = segments.map((segment) => segment.tooltip).join(" · ");
 
   return <div className="metric-resource-overview">
     <div className="metric-resource-heading">
       <div><strong><MemoryValue bytes={used} unavailable={t("metrics.unavailable")} /></strong>{used !== null && <span>{t("metrics.usedMemory")}</span>}</div>
-      <span>{total === null ? t("metrics.noReportedLimit") : t(scope === "container" ? "metrics.memoryLimit" : "metrics.memoryCapacity", { total: formatBytes(total) })}</span>
+      <span>{total === null ? t("metrics.noReportedLimit") : t(scope === "container" ? "metrics.memoryLimit" : "metrics.memoryCapacity", { total: formatMemoryBytes(total) })}</span>
     </div>
     {used !== null && denominator !== null && denominator > 0 && <div className="metric-resource-bar" role="img" tabIndex={0} aria-label={barTooltip} data-tooltip={barTooltip} data-texlite-tooltip-always>
       {segments.map((segment) => <span key={segment.key} className={`resource-segment-${segment.key}`} style={{ width: `${Math.max(0, Math.min(100, segment.plotted / denominator * 100))}%` }} data-tooltip={segment.tooltip} data-texlite-tooltip-always aria-hidden="true" />)}
@@ -131,7 +132,7 @@ function MemoryOverview({ metrics }: { metrics: SystemMetrics }) {
     <dl className="metric-resource-legend">
       {segments.filter((segment) => segment.key === "service" || segment.key === "tex").map((segment) => <div key={segment.key}>
         <dt><span className={`metric-resource-dot resource-segment-${segment.key}`} aria-hidden="true" />{segment.label}</dt>
-        <dd>{segment.bytes === null ? t("metrics.unavailable") : formatBytes(segment.bytes)}</dd>
+        <dd>{segment.bytes === null ? t("metrics.unavailable") : formatMemoryBytes(segment.bytes)}</dd>
       </div>)}
     </dl>
   </div>;
@@ -167,7 +168,7 @@ function CpuOverview({ cpu }: { cpu: CpuUsageSample }) {
 
 function MemoryValue({ bytes, unavailable }: { bytes: number | null; unavailable?: string }) {
   if (bytes === null) return <span className="metric-unavailable">{unavailable}</span>;
-  const [number, unit] = formatBytes(bytes).split(" ");
+  const [number, unit] = formatMemoryBytes(bytes).split(" ");
   return <>{number}<span className="metric-value-unit">{unit}</span></>;
 }
 
@@ -176,11 +177,6 @@ function RuntimeMetric({ icon: Icon, label, value, detail }: { icon: LucideIcon;
     <span className="metric-runtime-label"><Icon aria-hidden="true" size={14} />{label}{detail && <button type="button" className="metric-runtime-detail" data-tooltip={detail} aria-label={`${label}: ${detail}`} data-texlite-tooltip-always><Info aria-hidden="true" size={13} /></button>}</span>
     <strong>{value}</strong>
   </div>;
-}
-
-function formatBytes(value: number): string {
-  const unit = value >= 1024 ** 3 ? "GB" : "MB";
-  return `${Math.round(value / 1024 ** (unit === "GB" ? 3 : 2) * 10) / 10} ${unit}`;
 }
 
 function formatDuration(seconds: number): string {
@@ -197,4 +193,8 @@ function formatMs(value: number | null): string {
 
 function operationLabel(name: string, t: (key: string, options?: Record<string, unknown>) => string): string {
   return t(`metrics.operations.${name}`, { defaultValue: name });
+}
+
+function formatMemoryBytes(bytes: number): string {
+  return formatBytes(bytes, { minimumUnit: "MB", trimTrailingZero: true });
 }
