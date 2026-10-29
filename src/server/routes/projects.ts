@@ -29,6 +29,7 @@ import { HarperLintSupersededError, HarperUnavailableError, type HarperService }
 import { ChktexLintSupersededError, ChktexUnavailableError, type ChktexService } from "../chktex.js";
 import { supportsChktexChecks, supportsWritingChecks } from "../../shared/writingChecks.js";
 import { unreadMentionCountsForProjects } from "../commentMentions.js";
+import type { ProjectCatalogCounts, ProjectOwnershipScope } from "../../shared/projectCatalog.js";
 import {
   commentsSummaryForProject,
   commentsSummaryForProjects,
@@ -163,7 +164,8 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
   app.get("/api/projects", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const query = request.query as { archived?: string; page?: string; pageSize?: string; search?: string; tag?: string; sort?: string };
+    const query = request.query as { archived?: string; page?: string; pageSize?: string; search?: string; tag?: string; sort?: string; scope?: string };
+    const scope: ProjectOwnershipScope = query.scope === "owned" || query.scope === "shared" ? query.scope : "all";
     const archivedOnly = query.archived === "1" || query.archived === "true";
     const requestedPage = Number.parseInt(query.page ?? "1", 10);
     const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
@@ -196,8 +198,12 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       params.tagId = tagId;
     }
     const where = `WHERE ${conditions.join(" AND ")}`;
-    const countRow = db.prepare(`SELECT COUNT(DISTINCT p.id) AS total ${from} ${where}`).get(params) as { total: number };
-    const total = Number(countRow.total);
+    const counts = db.prepare(`SELECT COUNT(DISTINCT p.id) AS "all",
+      COUNT(DISTINCT CASE WHEN p.owner_id = :userId THEN p.id END) AS owned,
+      COUNT(DISTINCT CASE WHEN p.owner_id <> :userId THEN p.id END) AS shared
+      ${from} ${where}`).get(params) as ProjectCatalogCounts;
+    const total = counts[scope];
+    const scopedWhere = scope === "all" ? where : `${where} AND p.owner_id ${scope === "owned" ? "=" : "<>"} :userId`;
     const totalPages = Math.ceil(total / pageSize);
     const currentPage = totalPages === 0 ? 1 : Math.min(page, totalPages);
     const rowsParams = { ...params, limit: pageSize, offset: (currentPage - 1) * pageSize };
@@ -205,7 +211,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       CASE WHEN p.owner_id = :userId THEN 'owner' ELSE pm.permission END AS permission,
       owner.username AS owner_username, owner.display_name AS owner_display_name,
       modifier.username AS last_modified_username, modifier.display_name AS last_modified_display_name`;
-    const rows = db.prepare(`${select} ${from} ${where}
+    const rows = db.prepare(`${select} ${from} ${scopedWhere}
       ORDER BY ${sortColumn} DESC, p.name COLLATE NOCASE ASC
       LIMIT :limit OFFSET :offset`).all(rowsParams);
     const projects = rows as unknown as Array<ProjectRow & { permission: string }>;
@@ -220,7 +226,8 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
         commentsSummaries.get(project.id),
         unreadMentionCounts.get(project.id) ?? 0
       )),
-      pagination: { page: currentPage, pageSize, total, totalPages }
+      pagination: { page: currentPage, pageSize, total, totalPages },
+      counts
     };
   });
 

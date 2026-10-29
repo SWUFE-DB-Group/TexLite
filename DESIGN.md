@@ -64,6 +64,22 @@ conversion. Use consistent terminology such as 專案, 檔案, 原始碼, 儲存
 and 批註 (collaborative comments). Tests check catalog keys, interpolation
 variables, rich-text tags, language detection, persistence, and API headers.
 
+### Project catalog
+
+The homepage places All projects, Owned by me and Shared with me tabs below the
+page title. Ownership is filtered on the server before pagination (20 projects
+per page), preserving the existing list/grid views, search, private tags,
+sorting and per-user archive filter. Each response includes counts for all three
+categories under the current search, tag and archive conditions, independently
+of the selected category and page; zero counts are not displayed. Administrators
+only see and count projects they own or that were explicitly shared with them.
+
+Changing category resets pagination. The browser caches rows together with the
+category, filters, counts and page, so returning from a workspace restores the
+same view before revalidation. Obsolete requests are aborted and ignored, and
+rows from a previous category are not shown while its replacement is loading.
+Successful catalog mutations revalidate the currently selected view.
+
 ### Citation library
 
 The citation library is stored in SQLite and is independent of project source

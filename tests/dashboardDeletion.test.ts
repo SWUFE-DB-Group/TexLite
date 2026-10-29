@@ -16,6 +16,7 @@ const site: SiteConfig = { siteName: "TexLite", adminEmail: "", basePath: "", mi
 const project = (id: string): Project => ({ id, ownerId: "owner", ownerDisplayName: "Alice", name: id,
   mainFile: "main.tex", lastModifiedBy: "owner", latexmkrc: null, engine: "pdflatex", icon: null,
   chktexEnabled: false, permission: "owner", tags: [], createdAt: "2026-01-01", updatedAt: "2026-01-01" });
+const filters = { ownership: "all", archived: false, search: "", tag: "", sort: "updated" } as const;
 
 let host: HTMLDivElement;
 let root: Root;
@@ -41,6 +42,7 @@ describe("project deletion feedback", () => {
   it.each(["grid", "list"])("updates live data immediately but retains a noninteractive %s card briefly", async (view) => {
     let projects = [project("first"), project("second")];
     const pagination = () => ({ page: 1, pageSize: 20, total: projects.length, totalPages: 1 });
+    const counts = () => ({ all: projects.length, owned: projects.length, shared: 0 });
     let finish!: () => void;
     apiMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") {
@@ -48,12 +50,12 @@ describe("project deletion feedback", () => {
         projects = projects.filter((item) => item.id !== "first");
         return {};
       }
-      return url === "/api/tags" ? { tags: [] } : { projects, pagination: pagination() };
+      return url === "/api/tags" ? { tags: [] } : { projects, pagination: pagination(), counts: counts() };
     });
     localStorage.setItem(scopedStorageKey("texlite-project-view"), view);
     const onDataChange = vi.fn();
     await act(async () => root.render(createElement(Dashboard, { site, user,
-      initialData: { projects, tags: [], pagination: pagination() }, onDataChange, onUser: vi.fn(), onOpenProject: vi.fn() })));
+      initialData: { projects, tags: [], pagination: pagination(), counts: counts(), filters }, onDataChange, onUser: vi.fn(), onOpenProject: vi.fn() })));
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu-trigger")!.click());
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu .danger")!.click());
     const confirm = document.querySelector<HTMLButtonElement>(".dialog-footer .danger")!;
@@ -66,7 +68,9 @@ describe("project deletion feedback", () => {
     expect(exit.inert).toBe(true);
     expect(exit.getAttribute("aria-hidden")).toBe("true");
     expect(document.querySelector(".dialog-content")).toBeNull();
-    expect(onDataChange.mock.lastCall?.[0].map((item: Project) => item.id)).toEqual(["second"]);
+    expect(onDataChange.mock.lastCall?.[0].projects.map((item: Project) => item.id)).toEqual(["second"]);
+    expect(host.querySelector('#project-tab-all sup')?.textContent).toBe("1");
+    expect(host.querySelector('#project-tab-owned sup')?.textContent).toBe("1");
     await act(async () => vi.advanceTimersByTime(300));
     expect(host.querySelector(".deletion-exit")).toBeNull();
     expect(host.querySelectorAll(".project-card")).toHaveLength(1);
@@ -75,12 +79,13 @@ describe("project deletion feedback", () => {
   it("does not animate or hide a project when deletion fails", async () => {
     const projects = [project("first")];
     const pagination = { page: 1, pageSize: 20, total: 1, totalPages: 1 };
+    const counts = { all: 1, owned: 1, shared: 0 };
     apiMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") throw new Error("Unable to delete");
-      return url === "/api/tags" ? { tags: [] } : { projects, pagination };
+      return url === "/api/tags" ? { tags: [] } : { projects, pagination, counts };
     });
     await act(async () => root.render(createElement(Dashboard, { site, user,
-      initialData: { projects, tags: [], pagination }, onDataChange: vi.fn(), onUser: vi.fn(), onOpenProject: vi.fn() })));
+      initialData: { projects, tags: [], pagination, counts, filters }, onDataChange: vi.fn(), onUser: vi.fn(), onOpenProject: vi.fn() })));
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu-trigger")!.click());
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu .danger")!.click());
     await act(async () => document.querySelector<HTMLButtonElement>(".dialog-footer .danger")!.click());

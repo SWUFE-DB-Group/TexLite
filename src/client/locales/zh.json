@@ -45,6 +45,7 @@
   },
   "projects": {
     "title": "项目", "subtitle": "创建、编辑和分享 LaTeX 文档", "restricted": "你可以访问别人共享给你的项目；创建权限由管理员授予",
+    "ownership": "项目归属", "allProjects": "全部项目", "ownedByMe": "我拥有的", "sharedWithMe": "共享给我的", "noShared": "暂无共享给你的项目",
     "new": "新建项目", "newDescription": "项目会使用配置文件中的默认 LaTeX 引擎。", "name": "项目名称",
     "emptyTitle": "一起创造出色的作品", "emptyDescription": "创建新项目，或上传已有的 LaTeX 压缩包开始写作。",
     "emptyRestricted": "共享给你的项目会显示在这里。", "noMatches": "没有符合当前搜索或标签筛选条件的项目。",

@@ -85,6 +85,11 @@
     "githubEncryption": "TexLite 會透過 GitHub 驗證 token，並以加密形式儲存；儲存後不會再次顯示 token 明文。"
   },
   "projects": {
+    "ownership": "專案歸屬",
+    "allProjects": "全部專案",
+    "ownedByMe": "我擁有的",
+    "sharedWithMe": "共用給我的",
+    "noShared": "尚無共用給你的專案",
     "title": "專案",
     "subtitle": "建立、編輯和分享 LaTeX 文件",
     "restricted": "你可以存取別人共用給你的專案；建立權限由管理員授予",

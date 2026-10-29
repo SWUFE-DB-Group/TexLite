@@ -1,7 +1,7 @@
 import { lazy, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
-import type { Project, ProjectListPagination, ProjectTag, SiteConfig, User } from "./types";
+import type { DashboardData, SiteConfig, User } from "./types";
 import {
   isProjectHistoryState, mentionIdFromReturn, mentionIdFromSearch, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath,
   type TexLiteHistoryState
@@ -30,7 +30,7 @@ export function App() {
   // Do not start project or PDF runtime work before /api/me confirms that the
   // current browser session may access the requested project.
   const [workspacePreload, setWorkspacePreload] = useState<WorkspacePreload | null>(null);
-  const [dashboardCache, setDashboardCache] = useState<{ userId: string; projects: Project[]; tags: ProjectTag[]; pagination: ProjectListPagination } | null>(null);
+  const [dashboardCache, setDashboardCache] = useState<(DashboardData & { userId: string }) | null>(null);
   const routeCurrentProjectToLogin = () => {
     const returnProjectId = projectIdFromPath(window.location.pathname);
     if (!returnProjectId) return;
@@ -189,8 +189,8 @@ export function App() {
   }
   const cachedDashboard = dashboardCache?.userId === user.id ? dashboardCache : null;
   return <LazyPage key="dashboard"><Dashboard site={site} user={user}
-    initialData={cachedDashboard ? { projects: cachedDashboard.projects, tags: cachedDashboard.tags, pagination: cachedDashboard.pagination } : null}
-    onDataChange={(projects, tags, pagination) => setDashboardCache({ userId: user.id, projects, tags, pagination })}
+    initialData={cachedDashboard}
+    onDataChange={(data) => setDashboardCache({ userId: user.id, ...data })}
     onUser={(next) => { if (!next || next.id !== user.id) setDashboardCache(null); setUser(next); if (!next) leaveProject(); }}
     onOpenProject={openProject} /></LazyPage>;
 }

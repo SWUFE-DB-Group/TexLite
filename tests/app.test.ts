@@ -1100,6 +1100,61 @@ Standalone document.
     expect(smallerPage.json().pagination).toMatchObject({ page: 2, pageSize: 5, total: 21, totalPages: 5 });
   });
 
+  it("filters ownership before pagination and counts only accessible projects across all matching pages", async () => {
+    const suffix = randomUUID();
+    const prefix = `Ownership ${suffix}`;
+    const ownerId = (db.prepare("SELECT id FROM users WHERE username = 'admin'").get() as { id: string }).id;
+    const otherId = randomUUID();
+    const tagId = randomUUID();
+    const timestamp = new Date().toISOString();
+    db.prepare("INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES (?, ?, ?, 'hash', 'user', ?)")
+      .run(otherId, `owner-${suffix}`, `Collaborator ${suffix}`, timestamp);
+    const owned: string[] = [];
+    const insert = db.prepare("INSERT INTO projects (id, owner_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)");
+    for (let index = 0; index < 21; index++) {
+      const id = randomUUID(); owned.push(id); insert.run(id, ownerId, `${prefix} owned ${index}`, timestamp, timestamp);
+    }
+    const shared = [randomUUID(), randomUUID()];
+    const hidden = randomUUID();
+    for (const [index, id] of [...shared, hidden].entries()) insert.run(id, otherId, `${prefix} other ${index}`, timestamp, timestamp);
+    const member = db.prepare("INSERT INTO project_members (project_id, user_id, permission, created_at) VALUES (?, ?, ?, ?)");
+    member.run(shared[0], ownerId, "read", timestamp); member.run(shared[1], ownerId, "edit", timestamp);
+    // Redundant membership must not double-count an owned project or make it shared.
+    member.run(owned[0], ownerId, "edit", timestamp);
+    const list = async (extra = "") => {
+      const params = new URLSearchParams({ search: prefix });
+      for (const [key, value] of new URLSearchParams(extra)) params.set(key, value);
+      const response = await app.inject({ method: "GET", url: `/api/projects?${params}`, headers: { cookie } });
+      expect(response.statusCode).toBe(200); return response.json();
+    };
+    try {
+      for (const scope of ["all", "owned", "shared", "unknown"]) {
+        const result = await list(`&scope=${scope}&page=2`);
+        expect(result.counts).toEqual({ all: 23, owned: 21, shared: 2 });
+        expect(result.projects.some((project: { id: string }) => project.id === hidden)).toBe(false);
+        expect(result.pagination).toMatchObject({ total: scope === "owned" ? 21 : scope === "shared" ? 2 : 23,
+          page: scope === "shared" ? 1 : 2 });
+        if (scope === "owned") expect(result.projects.every((project: { ownerId: string }) => project.ownerId === ownerId)).toBe(true);
+        if (scope === "shared") expect(result.projects.map((project: { id: string }) => project.id).sort()).toEqual([...shared].sort());
+      }
+      expect((await list("&search=no-such-project")).counts).toEqual({ all: 0, owned: 0, shared: 0 });
+      const archive = db.prepare("INSERT INTO user_project_archives (project_id, user_id, archived_at) VALUES (?, ?, ?)");
+      archive.run(owned[0], ownerId, timestamp); archive.run(shared[0], ownerId, timestamp);
+      expect((await list()).counts).toEqual({ all: 21, owned: 20, shared: 1 });
+      expect((await list("&archived=1&scope=shared")).counts).toEqual({ all: 2, owned: 1, shared: 1 });
+      db.prepare("INSERT INTO user_tags (id, user_id, name, color, created_at, updated_at) VALUES (?, ?, ?, 'blue', ?, ?)")
+        .run(tagId, ownerId, suffix, timestamp, timestamp);
+      const tagLink = db.prepare("INSERT INTO user_project_tag_links (project_id, tag_id, created_at) VALUES (?, ?, ?)");
+      for (const id of [owned[0], shared[1], hidden]) tagLink.run(id, tagId, timestamp);
+      expect((await list(`&tag=${tagId}&scope=owned`))).toMatchObject({ counts: { all: 1, owned: 0, shared: 1 }, projects: [], pagination: { total: 0 } });
+      expect((await list(`&tag=${tagId}&archived=1`)).counts).toEqual({ all: 1, owned: 1, shared: 0 });
+    } finally {
+      for (const id of [...owned, ...shared, hidden]) db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+      db.prepare("DELETE FROM user_tags WHERE id = ?").run(tagId);
+      db.prepare("DELETE FROM users WHERE id = ?").run(otherId);
+    }
+  });
+
   it("stores a validated shared project icon and restricts changes to its owner", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Icon catalog" } });
     const projectId = created.json().project.id as string;

@@ -21,6 +21,8 @@ const project: Project = { id: "paper", ownerId: "writer", ownerDisplayName: "Wr
   mainFile: "main.tex", lastModifiedBy: "writer", latexmkrc: null, engine: "pdflatex", icon: null,
   chktexEnabled: false, permission: "owner", tags: [], createdAt: "2026-10-26", updatedAt: "2026-10-26" };
 const pagination = { page: 1, pageSize: 20, total: 0, totalPages: 0 };
+const counts = { all: 0, owned: 0, shared: 0 };
+const filters = { ownership: "all", archived: false, search: "", tag: "", sort: "updated" } as const;
 const noop = () => {};
 let host: HTMLDivElement;
 let root: Root;
@@ -30,7 +32,7 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
   vi.mocked(api).mockReset().mockImplementation(async (url) => (url === "/api/tags" ? { tags: [] }
-    : { projects: [], pagination }) as never);
+    : { projects: [], pagination, counts }) as never);
   vi.mocked(useAgentAccess).mockReset().mockReturnValue({ visible: true, activeCount: 2 });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
@@ -44,7 +46,7 @@ describe("active task entry badges", () => {
     const user: User = { id: `viewer-${role}`, username: role, displayName: role, role,
       disabled: false, mustChangePassword: false, canCreateProjects: true, createdAt: "2026-10-26" };
     const render = () => act(async () => root.render(createElement(Dashboard, { site, user,
-      initialData: { projects: [], tags: [], pagination }, onDataChange: noop, onUser: noop, onOpenProject: noop })));
+      initialData: { projects: [], tags: [], pagination, counts, filters }, onDataChange: noop, onUser: noop, onOpenProject: noop })));
     await render();
     expect(useAgentAccess).toHaveBeenCalledWith(user.id);
     const badge = host.querySelector(".top-actions sup");

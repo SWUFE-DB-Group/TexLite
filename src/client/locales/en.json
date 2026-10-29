@@ -47,6 +47,7 @@
   },
   "projects": {
     "title": "Projects", "subtitle": "Create, edit and share LaTeX documents",
+    "ownership": "Project ownership", "allProjects": "All projects", "ownedByMe": "Owned by me", "sharedWithMe": "Shared with me", "noShared": "No projects shared with you yet",
     "restricted": "You can access projects shared with you. Project creation requires administrator permission.",
     "new": "New project", "newDescription": "The project will use the configured default LaTeX engine.", "name": "Project name",
     "emptyTitle": "Let’s build something great", "emptyDescription": "Create a project or upload an existing LaTeX archive to get started.",

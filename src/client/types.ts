@@ -1,3 +1,5 @@
+import type { ProjectCatalogCounts, ProjectOwnershipScope } from "../shared/projectCatalog";
+
 export interface SiteConfig {
   siteName: string;
   adminEmail: string;
@@ -65,6 +67,25 @@ export interface ProjectListPagination {
   pageSize: number;
   total: number;
   totalPages: number;
+}
+
+export type { ProjectOwnershipScope, ProjectCatalogCounts } from "../shared/projectCatalog";
+
+export interface ProjectCatalogFilters {
+  ownership: ProjectOwnershipScope;
+  archived: boolean;
+  search: string;
+  tag: string;
+  sort: "updated" | "created";
+}
+
+/** Keep the cached rows and the filters that produced them together. */
+export interface DashboardData {
+  projects: Project[];
+  tags: ProjectTag[];
+  pagination: ProjectListPagination;
+  counts: ProjectCatalogCounts;
+  filters: ProjectCatalogFilters;
 }
 
 export type { Comment, CommentReply, CommentMention, MentionableUser, ProjectCommentSummary } from "../shared/comments";
