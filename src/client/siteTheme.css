@@ -1,9 +1,17 @@
 /* Light uses the existing colors in styles.css as fallbacks. Keep these semantic
    roles separate from syntax tokens so controls never inherit syntax colors. */
-:root { color-scheme: light; --muted: #737a75; }
+:root {
+  color-scheme: light;
+  --muted: #737a75;
+  --ui-header-bg: #263a33;
+  --ui-header-text: #f0f2ee;
+  --ui-header-muted: #bac4bd;
+  --ui-header-focus: #bed2c5;
+}
 :root[data-theme="dark"] {
   color-scheme: dark;
   --ui-page: #1e222a;
+  --ui-header-bg: #222d29;
   --ui-surface: #282c34;
   --ui-raised: #303640;
   --ui-subtle: #242831;
