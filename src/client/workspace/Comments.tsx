@@ -13,6 +13,7 @@ import { CommentDraftStore, type CommentDraftKey } from "./commentDrafts";
 import { commentReplyVisibility } from "./commentReplyVisibility";
 import { prepareCommentDeletionEffect } from "./commentDeletionEffect";
 import { UserAvatar } from "../UserAvatar";
+import { ShareUserPicker, type ShareUser } from "./ShareUserPicker";
 
 /**
  * Comment display intentionally treats a whitespace-delimited `@username`
@@ -238,51 +239,82 @@ export function ShareDialog({ open, onOpenChange, project, projectId }: {
 }) {
   const { t } = useTranslation();
   const [members, setMembers] = useState<ShareMember[]>([]);
-  const [users, setUsers] = useState<Array<{ id: string; username: string; displayName?: string }>>([]);
+  const [users, setUsers] = useState<ShareUser[]>([]);
   const [userId, setUserId] = useState("");
   const [permission, setPermission] = useState<"read" | "edit">("read");
   const [removeTarget, setRemoveTarget] = useState<ShareMember | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const view = useRef<AbortController | null>(null);
+  const pending = useRef<AbortController | null>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
   const canManage = project.permission === "owner";
-  const load = async () => {
+  const load = useCallback(async (signal: AbortSignal) => {
+    const [memberResult, userResult] = await Promise.all([
+      api<{ members: ShareMember[] }>(`/api/projects/${projectId}/members`, { signal }),
+      canManage ? api<{ users: ShareUser[] }>("/api/users", { signal }) : Promise.resolve({ users: [] })
+    ]);
+    if (signal.aborted) return;
+    setMembers(memberResult.members);
+    setUsers(userResult.users.filter((candidate) => candidate.id !== project.ownerId));
+  }, [projectId, project.ownerId, canManage]);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController(); view.current = controller;
+    setUserId(""); setPermission("read"); setRemoveTarget(null); setError("");
+    setUsers([]); setMembers([]); setBusy(false); setLoading(true);
+    void load(controller.signal).catch((reason) => {
+      if (!controller.signal.aborted) setError(errorMessage(reason));
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => { controller.abort(); if (view.current === controller) view.current = null; };
+  }, [open, load]);
+  const mutate = async (action: (signal: AbortSignal) => Promise<unknown>) => {
+    const controller = view.current;
+    if (!canManage || !controller || controller.signal.aborted || pending.current === controller) return;
+    pending.current = controller; setBusy(true); setError("");
     try {
-      const [memberResult, userResult] = await Promise.all([
-        api<{ members: ShareMember[] }>(`/api/projects/${projectId}/members`),
-        api<{ users: Array<{ id: string; username: string; displayName?: string }> }>("/api/users")
-      ]);
-      setMembers(memberResult.members);
-      setUsers(userResult.users.filter((candidate) => candidate.id !== project.ownerId));
-    } catch (error) { setError(errorMessage(error)); }
+      await action(controller.signal);
+      if (!controller.signal.aborted) await load(controller.signal);
+    } catch (reason) { if (!controller.signal.aborted) setError(errorMessage(reason)); }
+    finally {
+      if (pending.current === controller) pending.current = null;
+      if (!controller.signal.aborted) setBusy(false);
+    }
   };
-  useEffect(() => { if (open) void load(); }, [open, projectId]);
+  const availableUsers = users.filter((candidate) => !members.some((member) => member.id === candidate.id));
   const addMember = async () => {
-    if (!userId) return;
-    try {
-      await api(`/api/projects/${projectId}/members/${userId}`, { method: "PUT", body: JSON.stringify({ permission }) });
-      setUserId(""); setPermission("read"); await load();
-    } catch (error) { setError(errorMessage(error)); }
+    if (!availableUsers.some((candidate) => candidate.id === userId)) return;
+    await mutate(async (signal) => {
+      await api(`/api/projects/${projectId}/members/${userId}`, { method: "PUT", body: JSON.stringify({ permission }), signal });
+      if (!signal.aborted) { setUserId(""); setPermission("read"); }
+    });
   };
   const changePermission = async (member: ShareMember, next: "read" | "edit") => {
-    try {
-      await api(`/api/projects/${projectId}/members/${member.id}`, { method: "PUT", body: JSON.stringify({ permission: next }) });
-      await load();
-    } catch (error) { setError(errorMessage(error)); }
+    await mutate((signal) => api(`/api/projects/${projectId}/members/${member.id}`, { method: "PUT", body: JSON.stringify({ permission: next }), signal }));
   };
   const removeMember = async () => {
     if (!removeTarget) return;
-    try {
-      await api(`/api/projects/${projectId}/members/${removeTarget.id}`, { method: "DELETE" });
-      setRemoveTarget(null); await load();
-    } catch (error) { setError(errorMessage(error)); }
+    await mutate(async (signal) => {
+      await api(`/api/projects/${projectId}/members/${removeTarget.id}`, { method: "DELETE", signal });
+      if (!signal.aborted) setRemoveTarget(null);
+    });
   };
-  const availableUsers = users.filter((candidate) => !members.some((member) => member.id === candidate.id));
-  return <><Modal open={open} wide title={t("projectSettings.share")} description={t("projectSettings.shareDescription")} onOpenChange={onOpenChange} footer={<button onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
-    <div className="share-dialog">
-      {error && <p className="error">{error}</p>}
+  return <><Modal open={open} wide className="share-dialog-modal" title={t("projectSettings.share")} description={t("projectSettings.shareDescription")} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}
+    onEscapeKeyDown={(event) => {
+      // The first Escape dismisses the user list, not the owning share dialog.
+      if (shareRef.current?.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
+    }} footer={<button disabled={busy} onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
+    <div className="share-dialog" ref={shareRef} aria-busy={loading || busy}>
+      {error && !removeTarget && <p className="error" role="alert">{error}</p>}
       <div className="share-owner"><Users size={17} /><span><small>{t("projects.owner")}</small><strong>{project.ownerDisplayName ?? project.ownerUsername}</strong></span></div>
-      {canManage && <div className="share-add"><label className="form-field">{t("common.user")}<select value={userId} onChange={(event) => setUserId(event.target.value)}><option value="">{t("projectSettings.chooseUser")}</option>{availableUsers.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.displayName ?? candidate.username}</option>)}</select></label><label className="form-field">{t("common.permission")}<select value={permission} onChange={(event) => setPermission(event.target.value as "read" | "edit")}><option value="read">{t("common.readOnly")}</option><option value="edit">{t("common.readWrite")}</option></select></label><button className="primary icon-button" disabled={!userId} onClick={() => void addMember()}><UserPlus size={15} />{t("projectSettings.addMember")}</button></div>}
+      {canManage && <div className="share-add">
+        <ShareUserPicker key={projectId} users={availableUsers} value={userId} onChange={setUserId} disabled={loading || busy} />
+        <label className="form-field">{t("common.permission")}<select disabled={loading || busy} value={permission} onChange={(event) => setPermission(event.target.value as "read" | "edit")}><option value="read">{t("common.readOnly")}</option><option value="edit">{t("common.readWrite")}</option></select></label>
+        <button className="primary icon-button" disabled={loading || busy || !availableUsers.some((candidate) => candidate.id === userId)} onClick={() => void addMember()}>{busy ? <LoaderCircle className="spin" size={15} /> : <UserPlus size={15} />}{t("projectSettings.addMember")}</button>
+      </div>}
       <div className="shared-members-heading"><strong>{t("projectSettings.members")}</strong><span>{members.length}</span></div>
-      <div className="shared-members">{members.map((member) => <div className="shared-member" key={member.id}><span className="member-identity"><UserAvatar userId={member.id} name={member.displayName} username={member.username} avatarStyle={member.avatarStyle} className="member-avatar" /><span><strong>{member.displayName ?? member.username}</strong><small>@{member.username}</small></span></span><span className="member-controls"><select aria-label={t("common.permission")} disabled={!canManage} value={member.permission} onChange={(event) => void changePermission(member, event.target.value as "read" | "edit")}><option value="read">{t("common.readOnly")}</option><option value="edit">{t("common.readWrite")}</option></select>{canManage && <button className="icon-only danger-text" title={t("common.remove")} aria-label={t("common.remove")} onClick={() => setRemoveTarget(member)}><Trash2 size={15} /></button>}</span></div>)}{members.length === 0 && <div className="share-empty"><Users size={24} /><span>{t("projectSettings.noMembers")}</span></div>}</div>
+      <div className="shared-members">{members.map((member) => <div className="shared-member" key={member.id}><span className="member-identity"><UserAvatar userId={member.id} name={member.displayName} username={member.username} avatarStyle={member.avatarStyle} className="member-avatar" /><span><strong>{member.displayName ?? member.username}</strong><small>@{member.username}</small></span></span><span className="member-controls"><select aria-label={t("common.permission")} disabled={!canManage || busy} value={member.permission} onChange={(event) => void changePermission(member, event.target.value as "read" | "edit")}><option value="read">{t("common.readOnly")}</option><option value="edit">{t("common.readWrite")}</option></select>{canManage && <button disabled={busy} className="icon-only danger-text" title={t("common.remove")} aria-label={t("common.remove")} onClick={() => { setError(""); setRemoveTarget(member); }}><Trash2 size={15} /></button>}</span></div>)}{loading ? <div className="share-empty" role="status"><LoaderCircle className="spin" size={20} /><span>{t("common.loading")}</span></div> : members.length === 0 && <div className="share-empty"><Users size={24} /><span>{t("projectSettings.noMembers")}</span></div>}</div>
     </div>
-  </Modal><ConfirmDialog open={Boolean(removeTarget)} title={t("projectSettings.removeTitle")} description={t("projectSettings.removeDescription", { username: removeTarget?.username ?? "" })} confirmLabel={t("common.remove")} danger onCancel={() => setRemoveTarget(null)} onConfirm={() => void removeMember()} /></>;
+  </Modal><ConfirmDialog open={Boolean(removeTarget)} title={t("projectSettings.removeTitle")} description={t("projectSettings.removeDescription", { username: removeTarget?.username ?? "" })} confirmLabel={t("common.remove")} danger busy={busy} error={error} onCancel={() => { if (!busy) { setRemoveTarget(null); setError(""); } }} onConfirm={() => void removeMember()} /></>;
 }

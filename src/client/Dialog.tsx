@@ -8,6 +8,7 @@ interface ModalProps {
   title: string;
   description?: string;
   onOpenChange: (open: boolean) => void;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
@@ -20,7 +21,7 @@ interface ModalProps {
 interface DragOffset { x: number; y: number }
 interface DragState extends DragOffset { pointerId: number; clientX: number; clientY: number }
 
-export function Modal({ open, title, description, onOpenChange, children, footer, wide, extraWide, className, draggable = false }: ModalProps) {
+export function Modal({ open, title, description, onOpenChange, onEscapeKeyDown, children, footer, wide, extraWide, className, draggable = false }: ModalProps) {
   const { t } = useTranslation();
   const contentRef = useRef<HTMLDivElement>(null);
   const dragState = useRef<DragState | null>(null);
@@ -71,7 +72,7 @@ export function Modal({ open, title, description, onOpenChange, children, footer
   return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="dialog-overlay" />
-      <DialogPrimitive.Content ref={contentRef} style={contentStyle} data-dragging={dragging || undefined} className={`dialog-content${wide ? " dialog-wide" : ""}${extraWide ? " dialog-extra-wide" : ""}${draggable ? " dialog-draggable" : ""}${className ? ` ${className}` : ""}`}>
+      <DialogPrimitive.Content ref={contentRef} style={contentStyle} onEscapeKeyDown={onEscapeKeyDown} data-dragging={dragging || undefined} className={`dialog-content${wide ? " dialog-wide" : ""}${extraWide ? " dialog-extra-wide" : ""}${draggable ? " dialog-draggable" : ""}${className ? ` ${className}` : ""}`}>
         <div className={`dialog-header${draggable ? " dialog-drag-handle" : ""}`} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
           <div><DialogPrimitive.Title>{title}</DialogPrimitive.Title>
             {description && <DialogPrimitive.Description>{description}</DialogPrimitive.Description>}

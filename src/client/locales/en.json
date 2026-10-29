@@ -378,6 +378,7 @@
     "mainFile": "Main document", "invalidMainFileOption": "{{path}} (not a root document)", "engine": "Compiler", "defaultEngine": "Default compiler", "enableLatexmkrc": "Use project latexmkrc", "latexmkrcSource": "When enabled, TexLite uses {{path}}. Edit this file in the file list.", "latexmkrcWarning": "A latexmkrc is executable Perl configuration. It may override the selected compiler and other options; anyone who can edit this file can change subsequent builds. Check the compile log for the actual commands.", "latexmkrcUnavailable": "Project latexmkrc files are disabled by the server administrator.", "save": "Save project settings",
     "members": "Shared members", "share": "Share",
     "shareDescription": "Projects can only be shared with users created by an administrator.", "chooseUser": "Choose a user",
+    "searchUsersPlaceholder": "Display name or username", "noMatchingUsers": "No matching users.", "noAvailableUsers": "No users available to add.",
     "addMember": "Add member", "noMembers": "This project has not been shared with anyone.", "removeTitle": "Remove shared member",
     "removeDescription": "Remove {{username}}? Their account and other projects are unaffected.",
     "editorTab": "Editor", "compilerTab": "LaTeX", "compilerDescription": "Choose the main document and compiler options shared by everyone in this project.",

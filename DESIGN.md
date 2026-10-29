@@ -320,6 +320,15 @@ to source comments. Comments are anchored to source offsets and selected text,
 can be resolved, edited, deleted, and replied to. If an author is removed,
 the record remains visible as “Deleted User”.
 
+The owner-only share form uses one editable user combobox: opening it lists
+available users, and typing filters by display name or username. Candidates
+exclude the owner and existing members. The popup is at most 240 px tall,
+bounded by the dialog's available space, with internal scrolling and keyboard
+navigation. Filtering uses the loaded active-user directory without per-keypress
+requests. Typing clears an old selection but retains the permission draft;
+only Add member grants access. Loads are aborted when the dialog closes or
+changes project, and member mutations are guarded against duplicate submissions.
+
 Live anchor updates replay the actual Yjs text deltas against their saved
 source baseline. Agent disk imports retain an inferred-diff flag even when
 their changes are transported as Yjs operations. HTTP replacements, recovered

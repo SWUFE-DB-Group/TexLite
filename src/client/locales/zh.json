@@ -367,6 +367,7 @@
   "projectSettings": {
     "mainFile": "主文档", "invalidMainFileOption": "{{path}}（不是主文档）", "engine": "编译引擎", "defaultEngine": "默认编译引擎", "enableLatexmkrc": "使用项目 latexmkrc", "latexmkrcSource": "启用后将使用 {{path}}。请在文件列表中编辑该文件。", "latexmkrcWarning": "latexmkrc 是可执行的 Perl 配置，可能覆盖所选编译引擎及其他选项；能编辑此文件的协作者也能影响后续编译。实际执行命令以编译日志为准。", "latexmkrcUnavailable": "服务器管理员已禁用项目 latexmkrc。", "save": "保存项目设置", "members": "共享成员",
     "share": "共享", "shareDescription": "仅可共享给管理员已创建的用户。", "chooseUser": "请选择用户",
+    "searchUsersPlaceholder": "显示名称或用户名", "noMatchingUsers": "没有匹配的用户。", "noAvailableUsers": "暂无可添加的用户。",
     "addMember": "添加成员", "noMembers": "该项目尚未分享给其他成员。", "removeTitle": "移除共享成员", "removeDescription": "确认移除 {{username}}？其账号和其他项目不会受到影响。",
     "editorTab": "编辑器", "compilerTab": "LaTeX", "compilerDescription": "选择本项目所有成员共享的主文档和 LaTeX 编译选项。",
     "terminalTab": "终端", "terminalDescription": "字体和主题设置保存在当前浏览器中，所有项目共用，不跟随应用主题。", "terminalFont": "终端字体", "fontSystem": "系统等宽字体", "terminalPreview": "终端外观预览", "saveTerminal": "保存终端外观",
