@@ -261,7 +261,6 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       </div>
       <div className="editor-preference">
         <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
-        <p className="field-hint">{t("projectSettings.texFmtOptionsDescription")}</p>
       </div>
       <div className="settings-section-title dictionary-heading"><BookOpen size={15} /><strong>{t("projectSettings.dictionary")}</strong><span className={`harper-cli-status ${harperCliStatus}`} role="status" aria-live="polite">
         {harperCliStatus === "checking" ? <LoaderCircle className="spin" size={12} aria-hidden="true" /> : harperCliStatus === "available" ? <CheckCircle2 size={12} aria-hidden="true" /> : <AlertCircle size={12} aria-hidden="true" />}

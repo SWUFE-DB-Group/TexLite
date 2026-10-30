@@ -78,7 +78,7 @@
     "menu": "{{name}} 的使用者選單",
     "openGithubSettings": "開啟帳號設定和 GitHub 整合",
     "githubTitle": "GitHub 整合",
-    "githubDescription": "連結 GitHub 帳號，以便為專案建立遠端儲存庫。認證資訊儲存於你的 TexLite 帳號中，由你擁有的專案共用。",
+    "githubDescription": "連結 GitHub，為你擁有的專案建立儲存庫及備份。",
     "githubEncryption": "TexLite 會透過 GitHub 驗證 token，並以加密形式儲存；儲存後不會再次顯示 token 明文。"
   },
   "projects": {
@@ -649,7 +649,7 @@
     "recoveryHint": " 請確認伺服器已安裝 ChkTeX，然後再試一次；如果暫時無法安裝，也可以關閉此設定。",
     "unavailable": "伺服器未安裝 ChkTeX，或 ChkTeX 目前無法執行。請在伺服器安裝 TeX Live 的 chktex 套件後再試一次。",
     "enabled": "啟用 ChkTeX 寫作檢查",
-    "description": "停止編輯 2 秒後，TexLite 會呼叫主機上可選的 ChkTeX 命令。結果使用藍灰色點線標示；整個伺服器同時最多執行 8 個檢查。",
+    "description": "停止輸入 2 秒後檢查，以藍灰色底線標示建議。",
     "noIssues": "未發現寫作問題。"
   },
   "editor": {
@@ -818,7 +818,7 @@
     "downloadArtifact": "下載產出",
     "downloadToView": "該產出需要下載後檢視",
     "cleanTitle": "編譯故障排除",
-    "cleanDescription": "這裡提供進階故障排除操作，僅在編譯卡住、先前的錯誤狀態殘留或輸出檔案異常時使用。不會修改原始碼、專案設定、批註、歷史或 Git 資料。",
+    "cleanDescription": "用於排除編譯問題，不會修改原始碼。",
     "cleanCache": "清除編譯快取",
     "cleanCacheDescription": "僅在編譯失敗或 latexmk 快取狀態異常時使用。刪除增量快取，但保留目前成功的 PDF。",
     "cleanArtifacts": "移除編譯輸出",
@@ -1189,7 +1189,7 @@
   "selectionHistory": {
     "storageUsage_one": "選取範圍歷史：{{used}} / {{limit}} MiB · {{count}} 個片段",
     "storageUsage_other": "選取範圍歷史：{{used}} / {{limit}} MiB · {{count}} 個片段",
-    "storageDescription": "整個專案的編輯記錄資料，與專案快照分開計算；不含共用資料庫的額外開銷。",
+    "storageDescription": "編輯記錄與專案快照的儲存空間上限分開計算。",
     "clearAll": "清空專案選取範圍歷史",
     "clearDescription": "刪除本專案所有檔案的修改記錄？原始碼和專案快照將保留，後續修改仍會繼續記錄。此操作無法復原。",
     "limited_one": "僅顯示最近 {{count}} 個編輯時段，更早的記錄未顯示。",
@@ -1267,7 +1267,7 @@
     "fontSize": "字型大小",
     "lineHeight": "行間距",
     "dictionary": "專案字典",
-    "dictionaryDescription": "Harper 回傳此專案的拼字檢查結果後，系統會忽略字典中的單字。",
+    "dictionaryDescription": "Harper 會忽略這些單字的拼字問題。專案成員共用此字典。",
     "dictionaryPlaceholder": "新增自訂單字",
     "addWord": "新增單字",
     "dictionaryEmpty": "尚未新增自訂單字。",
@@ -1287,12 +1287,11 @@
     "vimHelp": "檢視說明",
     "formatOnCompile": "編譯前自動格式化 LaTeX",
     "formatRequiresWrite": "需要專案編輯權限才能使用格式化。",
-    "formatterDescription": "tex、cls、sty 使用內建的瀏覽器 tex-fmt WASM 格式化器；BibTeX 使用瀏覽器中的 bibtex-tidy。",
+    "formatterDescription": "LaTeX 使用 tex-fmt，BibTeX 使用 bibtex-tidy。",
     "formatterInstall": "檢視 tex-fmt",
     "bibtexTidyInstall": "檢視 bibtex-tidy",
     "texFmtOptions": "tex-fmt 參數（TOML）",
     "texFmtOptionsPlaceholder": "wrap = false",
-    "texFmtOptionsDescription": "這些參數只儲存在目前瀏覽器中，並依使用者及專案分別儲存；參數會直接傳遞給 tex-fmt。",
     "openFilesInTabs": "以編輯器分頁開啟檔案",
     "writingIssues_one": "發現 {{count}} 個寫作問題（{{uniqueCount}} 個不重複問題）",
     "writingIssues_other": "發現 {{count}} 個寫作問題（{{uniqueCount}} 個不重複問題）",

@@ -94,7 +94,7 @@
         }
       }
     },
-    "note": "With TexLite, your team controls the TeX environment, compile resources, users, permissions, and data. It also includes real-time editing, source-anchored comments, selection-level edit history, SyncTeX, project snapshots, and optional Git backup — with no externally imposed compile timeout. Coding Agent CLIs are off by default and enabled by administrators; your team stays in control of the tools and workflow."
+    "note": "Your team chooses the TeX environment, tools, and workflow — and keeps control of its data."
   },
   "feedback": {
     "close": "Close feedback",
