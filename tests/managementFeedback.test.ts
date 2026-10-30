@@ -77,25 +77,53 @@ describe("management action feedback", () => {
     expect(save.textContent).toBe("Save and verify token");
   });
 
-  it("shows password-reset success on the originating user's button, retaining errors on failure", async () => {
+  it("toggles inline user actions, opens only one row and protects self-deletion", async () => {
+    await render(createElement(AdminUsers, { currentUser: admin, minPasswordLength: 8, onBack: vi.fn() }));
+    const rows = [...host.querySelectorAll("tbody tr")];
+    const toggle = (row: Element) => row.querySelector<HTMLButtonElement>(".admin-user-action-toggle")!;
+    const items = (row: Element) => row.querySelector<HTMLElement>(".admin-user-action-items")!;
+    expect(rows.every((row) => items(row).hidden)).toBe(true);
+    await click(toggle(rows[1]));
+    expect(toggle(rows[1]).getAttribute("aria-expanded")).toBe("true");
+    expect(toggle(rows[1]).getAttribute("aria-controls")).toBe(items(rows[1]).id);
+    expect(items(rows[1]).hidden).toBe(false);
+    expect(items(rows[1]).querySelector('[aria-label="Reset password"]')).not.toBeNull();
+    expect(items(rows[1]).querySelector('[aria-label="Delete user"]')).not.toBeNull();
+    await click(toggle(rows[1]));
+    expect(items(rows[1]).hidden).toBe(true);
+    expect(toggle(rows[1]).getAttribute("aria-expanded")).toBe("false");
+    await click(toggle(rows[1]));
+    await click(toggle(rows[0]));
+    expect(items(rows[1]).hidden).toBe(true);
+    expect(items(rows[0]).hidden).toBe(false);
+    expect(items(rows[0]).querySelector('[aria-label="Delete user"]')).toBeNull();
+    await click(items(rows[0]).querySelector<HTMLElement>('[aria-label="Reset password"]')!);
+    expect(host.querySelector('[data-test-modal] input')).not.toBeNull();
+    expect(vi.mocked(api).mock.calls.every(([, options]) => !options?.method)).toBe(true);
+  });
+
+  it("shows password-reset success on the originating user's icon, retaining errors on failure", async () => {
     await render(createElement(AdminUsers, { currentUser: admin, minPasswordLength: 8, onBack: vi.fn() }));
     expect(host.querySelector(".dashboard-back-button")?.textContent).toBe("Back to projects");
     const row = [...host.querySelectorAll("tbody tr")].find((element) => element.textContent?.includes("@reader"))!;
-    const reset = row.querySelector<HTMLButtonElement>(".admin-user-actions button")!;
+    await click(row.querySelector<HTMLElement>(".admin-user-action-toggle")!);
+    const reset = row.querySelector<HTMLButtonElement>('[aria-label="Reset password"]')!;
     await click(reset);
     await act(async () => changeText(host.querySelector<HTMLInputElement>(".password-generator input")!, "new-password"));
     vi.mocked(api).mockRejectedValueOnce(new Error("Reset rejected"));
     await click(host.querySelector<HTMLElement>('[data-test-modal] button.primary')!);
     expect(host.querySelector('[role="alert"]')?.textContent).toBe("Reset rejected");
-    expect(reset.textContent).toBe("Reset password");
+    expect(reset.querySelector(".admin-user-action-confirmation")).toBeNull();
     vi.mocked(api).mockResolvedValueOnce({ ok: true } as never);
     await click(host.querySelector<HTMLElement>('[data-test-modal] button.primary')!);
     expect(host.querySelector("[data-test-modal]")).toBeNull();
     expect(reset.textContent).toBe("Done");
-    expect(host.querySelector("tbody tr .admin-user-actions button")?.textContent).toBe("Reset password");
+    expect(reset.querySelector(".admin-user-action-confirmation")).not.toBeNull();
+    expect(host.querySelector("tbody tr:first-child .admin-user-action-confirmation")).toBeNull();
     assertNoBanner();
     await act(async () => vi.advanceTimersByTime(2000));
-    expect(reset.textContent).toBe("Reset password");
+    expect(reset.querySelector(".admin-user-action-confirmation")).toBeNull();
+    expect(reset.title).toBe("Reset password");
   });
 
   it.each([true, false])("keeps a citation edit open and uses the new revision for the next save (page=%s)", async (page) => {

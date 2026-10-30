@@ -479,7 +479,11 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .admin-user-table td button { margin-right: 0; }
 .admin-user-identity { max-width: 240px; overflow-wrap: anywhere; }
 .admin-user-role { width: 140px; padding: 6px 9px; font-size: 12px; border: 1px solid var(--ui-border, #dce3de); border-radius: 7px; background: var(--ui-surface, #fff); }
-.admin-user-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.admin-user-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+.admin-user-table th:last-child, .admin-user-table td:last-child { width: 130px; }
+.admin-user-action-items:not([hidden]) { display: flex; align-items: center; gap: 6px; }
+.admin-user-action-toggle[aria-expanded="true"] { background: var(--ui-hover, #edf3ef); border-color: var(--ui-accent-border, #a8c3b2); }
+.admin-user-action-confirmation { color: var(--ui-info, #2563b4); }
 .admin-user-actions { min-height: 32px; }
 .admin-user-actions button { min-height: 32px; }
 .admin-user-badge, .admin-user-locked { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; }

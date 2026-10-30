@@ -181,7 +181,7 @@
     "manage": "User management", "back": "Back to projects", "onlyAdmin": "Accounts are created by administrators; self-registration is unavailable.", "add": "Add user",
     "role": "Role", "createProjects": "Project creation", "ownedProjects": "Projects", "actions": "Actions", "adminRequired": "Administrator permission is required.",
     "allow": "Allow", "deny": "Deny", "promote": "Make administrator", "demote": "Make user",
-    "allowCreate": "Allow creation", "resetPassword": "Reset password", "initialPassword": "Login password",
+    "allowCreate": "Allow this user to create projects", "resetPassword": "Reset password", "initialPassword": "Login password",
     "displayName": "Display name", "addDescription": "Set a login password or generate a secure random one.", "createUser": "Create user",
     "randomPassword": "Random password", "generatePassword": "Generate a random password",
     "resetDescription": "Set a temporary password for {{username}}. Existing sessions will be signed out.", "reset": "Reset",

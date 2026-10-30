@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import { useSuccessNotice } from "../SuccessNotice";
 import type { ProjectListPagination, SiteConfig, User } from "../types";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Dices, KeyRound, LoaderCircle, LockKeyhole, MoreHorizontal, Search, Trash2,
+  ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Dices, KeyRound, LoaderCircle, LockKeyhole, MoreHorizontal, Search, Trash2,
   UserPlus, Users, X
 } from "lucide-react";
 
@@ -41,6 +40,7 @@ export function AdminUsers({ currentUser, minPasswordLength, onBack }: { current
   const [createForm, setCreateForm] = useState({ username: "", displayName: "", password: "", role: "user" as "user" | "admin", canCreateProjects: false });
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [resetValue, setResetValue] = useState("");
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleteProjects, setDeleteProjects] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -52,6 +52,7 @@ export function AdminUsers({ currentUser, minPasswordLength, onBack }: { current
   const refreshUsers = () => setRefreshNonce((current) => current + 1);
   useEffect(() => {
     const controller = new AbortController();
+    setExpandedUserId(null);
     setLoading(true);
     setListFailed(false);
     setError("");
@@ -151,14 +152,19 @@ export function AdminUsers({ currentUser, minPasswordLength, onBack }: { current
       <tbody>{loading ? <tr><td colSpan={5} className="admin-user-list-state"><span role="status"><LoaderCircle className="spin" size={16} />{t("common.loading")}</span></td></tr> : listFailed ? <tr><td colSpan={5} className="admin-user-list-state"><span>{t("users.loadFailed")}</span><button type="button" onClick={refreshUsers}>{t("common.retry")}</button></td></tr> : users.length === 0 ? <tr><td colSpan={5} className="admin-user-list-state">{t(search ? "users.noMatches" : "users.empty")}</td></tr> : users.map((target) => {
         const self = target.id === currentUser.id;
         const busy = mutationBusy || pendingSettingBusy;
+        const expanded = expandedUserId === target.id;
+        const resetDone = completedAction.message === `reset:${target.id}`;
         return <tr key={target.id}>
           <td className="admin-user-identity"><strong>{target.displayName}</strong><small>@{target.username}</small></td>
           <td>{self ? <span className="admin-user-badge" title={t("users.selfProtected")}><LockKeyhole size={12} aria-hidden />{t("common.admin")}</span> : <select className="admin-user-role" aria-label={t("users.roleFor", { username: target.username })} value={target.role} disabled={busy} onChange={() => void toggleRole(target)}><option value="user">{t("common.user")}</option><option value="admin">{t("common.admin")}</option></select>}</td>
           <td>{target.role === "admin" ? <span className="admin-user-locked" title={t("users.adminCreation")}><LockKeyhole size={12} aria-hidden />{t("users.allow")}</span> : <button type="button" className="admin-user-switch" role="switch" aria-checked={target.canCreateProjects} aria-label={t("users.creationFor", { username: target.username })} disabled={busy} onClick={() => void toggleProjectCreation(target)}><span /></button>}</td>
           <td>{target.ownedProjects ?? 0}</td>
           <td><div className="admin-user-actions">
-            <button className="icon-button" disabled={busy} onClick={() => { completedAction.clear(); setResetTarget(target); setResetValue(""); setFormError(""); }}><KeyRound aria-hidden size={13} /><span role="status">{t(completedAction.message === `reset:${target.id}` ? "common.done" : "users.resetPassword")}</span></button>
-            {!self && <DropdownMenu.Root modal={false}><DropdownMenu.Trigger asChild><button className="icon-button" disabled={busy} aria-label={t("users.actionsFor", { username: target.username })}><MoreHorizontal size={17} aria-hidden /></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="comment-actions-menu-content" align="end" sideOffset={5}><DropdownMenu.Item className="danger-text" onSelect={() => { setDeleteTarget(target); setDeleteProjects(false); setDeleteError(""); }}><Trash2 size={14} aria-hidden />{t("users.deleteTitle")}</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>}
+            <div className="admin-user-action-items" id={`user-actions-${target.id}`} hidden={!expanded}>
+              <button type="button" className="icon-button" disabled={busy} title={t(resetDone ? "common.done" : "users.resetPassword")} aria-label={t("users.resetPassword")} onClick={() => { completedAction.clear(); setResetTarget(target); setResetValue(""); setFormError(""); }}>{resetDone ? <CheckCircle2 className="admin-user-action-confirmation" aria-hidden size={15} /> : <KeyRound aria-hidden size={15} />}<span className="sr-only" role="status">{resetDone ? t("common.done") : ""}</span></button>
+              {!self && <button type="button" className="icon-button danger-text" disabled={busy} title={t("users.deleteTitle")} aria-label={t("users.deleteTitle")} onClick={() => { setDeleteTarget(target); setDeleteProjects(false); setDeleteError(""); }}><Trash2 size={15} aria-hidden /></button>}
+            </div>
+            <button type="button" className="icon-button admin-user-action-toggle" disabled={busy} aria-label={t("users.actionsFor", { username: target.username })} aria-expanded={expanded} aria-controls={`user-actions-${target.id}`} onClick={() => setExpandedUserId(expanded ? null : target.id)}><MoreHorizontal size={17} aria-hidden /></button>
           </div></td>
         </tr>;
       })}</tbody></table></div>

@@ -620,7 +620,7 @@
     "deny": "禁止",
     "promote": "設為管理員",
     "demote": "降為使用者",
-    "allowCreate": "允許建立",
+    "allowCreate": "允許此使用者建立專案",
     "resetPassword": "重設密碼",
     "initialPassword": "登入密碼",
     "displayName": "顯示名稱",
