@@ -308,7 +308,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       await api(`/api/projects/${deleteProject.id}`, { method: "DELETE" });
       if (sequence === requestSequence.current) {
         setDeletedProjectId(deleteProject.id);
-        removeFromCatalog(deleteProject);
+        removeFromCatalog(deleteProject, "delete");
       }
       setDeleteProject(null);
       refresh();
@@ -344,9 +344,9 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     finally { setTransferBusy(false); }
   };
 
-  const removeFromCatalog = (project: Project) => {
+  const removeFromCatalog = (project: Project, action: "delete" | "archive") => {
     setProjects((current) => current.filter((item) => item.id !== project.id));
-    setCounts((current) => ({ ...current, all: Math.max(0, current.all - 1),
+    if (action === "delete") setCounts((current) => ({ ...current, all: Math.max(0, current.all - 1),
       [project.ownerId === user.id ? "owned" : "shared"]: Math.max(0, current[project.ownerId === user.id ? "owned" : "shared"] - 1) }));
     const nextTotal = Math.max(0, pagination.total - 1);
     const totalPages = Math.ceil(nextTotal / pagination.pageSize);
@@ -361,7 +361,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     const sequence = requestSequence.current;
     try {
       await api(`/api/projects/${project.id}/archive`, { method: archive ? "PUT" : "DELETE" });
-      if (sequence === requestSequence.current) removeFromCatalog(project);
+      if (sequence === requestSequence.current) removeFromCatalog(project, "archive");
       refresh();
     } catch (e) { setError(errorMessage(e)); }
     finally { setArchiveBusy(""); }

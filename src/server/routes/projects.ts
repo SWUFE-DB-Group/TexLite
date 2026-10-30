@@ -180,10 +180,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const from = `FROM projects p JOIN users owner ON owner.id = p.owner_id
       LEFT JOIN users modifier ON modifier.id = p.last_modified_by
       LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = :userId`;
-    const conditions = [
-      "(p.owner_id = :userId OR pm.user_id = :userId)",
-      archiveCondition
-    ];
+    const conditions = ["(p.owner_id = :userId OR pm.user_id = :userId)"];
     const params: Record<string, string | number> = { userId: user.id };
     if (search) {
       conditions.push("(p.name LIKE :search ESCAPE '\\' OR owner.username LIKE :search ESCAPE '\\' OR owner.display_name LIKE :search ESCAPE '\\')");
@@ -198,12 +195,14 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       params.tagId = tagId;
     }
     const where = `WHERE ${conditions.join(" AND ")}`;
-    const counts = db.prepare(`SELECT COUNT(DISTINCT p.id) AS "all",
+    const ownershipCondition = scope === "all" ? "" : ` AND p.owner_id ${scope === "owned" ? "=" : "<>"} :userId`;
+    // Tab badges span both archive states; pagination counts only visible rows.
+    const { total, ...counts } = db.prepare(`SELECT COUNT(DISTINCT p.id) AS "all",
       COUNT(DISTINCT CASE WHEN p.owner_id = :userId THEN p.id END) AS owned,
-      COUNT(DISTINCT CASE WHEN p.owner_id <> :userId THEN p.id END) AS shared
-      ${from} ${where}`).get(params) as ProjectCatalogCounts;
-    const total = counts[scope];
-    const scopedWhere = scope === "all" ? where : `${where} AND p.owner_id ${scope === "owned" ? "=" : "<>"} :userId`;
+      COUNT(DISTINCT CASE WHEN p.owner_id <> :userId THEN p.id END) AS shared,
+      COUNT(DISTINCT CASE WHEN ${archiveCondition}${ownershipCondition} THEN p.id END) AS total
+      ${from} ${where}`).get(params) as ProjectCatalogCounts & { total: number };
+    const scopedWhere = `${where} AND ${archiveCondition}${ownershipCondition}`;
     const totalPages = Math.ceil(total / pageSize);
     const currentPage = totalPages === 0 ? 1 : Math.min(page, totalPages);
     const rowsParams = { ...params, limit: pageSize, offset: (currentPage - 1) * pageSize };

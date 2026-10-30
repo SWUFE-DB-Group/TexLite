@@ -1140,14 +1140,22 @@ Standalone document.
       expect((await list("&search=no-such-project")).counts).toEqual({ all: 0, owned: 0, shared: 0 });
       const archive = db.prepare("INSERT INTO user_project_archives (project_id, user_id, archived_at) VALUES (?, ?, ?)");
       archive.run(owned[0], ownerId, timestamp); archive.run(shared[0], ownerId, timestamp);
-      expect((await list()).counts).toEqual({ all: 21, owned: 20, shared: 1 });
-      expect((await list("&archived=1&scope=shared")).counts).toEqual({ all: 2, owned: 1, shared: 1 });
+      for (const scope of ["all", "owned", "shared"]) {
+        for (const archived of [false, true]) {
+          const result = await list(`&scope=${scope}&archived=${archived ? "1" : "0"}&page=99`);
+          expect(result.counts).toEqual({ all: 23, owned: 21, shared: 2 });
+          const total = archived ? scope === "all" ? 2 : 1 : scope === "all" ? 21 : scope === "owned" ? 20 : 1;
+          const lastPage = Math.ceil(total / 20);
+          expect(result.pagination).toMatchObject({ total, page: lastPage, totalPages: lastPage });
+          expect(result.projects).toHaveLength(total - (lastPage - 1) * 20);
+        }
+      }
       db.prepare("INSERT INTO user_tags (id, user_id, name, color, created_at, updated_at) VALUES (?, ?, ?, 'blue', ?, ?)")
         .run(tagId, ownerId, suffix, timestamp, timestamp);
       const tagLink = db.prepare("INSERT INTO user_project_tag_links (project_id, tag_id, created_at) VALUES (?, ?, ?)");
       for (const id of [owned[0], shared[1], hidden]) tagLink.run(id, tagId, timestamp);
-      expect((await list(`&tag=${tagId}&scope=owned`))).toMatchObject({ counts: { all: 1, owned: 0, shared: 1 }, projects: [], pagination: { total: 0 } });
-      expect((await list(`&tag=${tagId}&archived=1`)).counts).toEqual({ all: 1, owned: 1, shared: 0 });
+      expect((await list(`&tag=${tagId}&scope=owned`))).toMatchObject({ counts: { all: 2, owned: 1, shared: 1 }, projects: [], pagination: { total: 0 } });
+      expect((await list(`&tag=${tagId}&archived=1`))).toMatchObject({ counts: { all: 2, owned: 1, shared: 1 }, pagination: { total: 1 } });
     } finally {
       for (const id of [...owned, ...shared, hidden]) db.prepare("DELETE FROM projects WHERE id = ?").run(id);
       db.prepare("DELETE FROM user_tags WHERE id = ?").run(tagId);

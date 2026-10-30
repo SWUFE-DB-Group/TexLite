@@ -70,9 +70,12 @@ The homepage places All projects, Owned by me and Shared with me tabs below the
 page title. Ownership is filtered on the server before pagination (20 projects
 per page), preserving the existing list/grid views, search, private tags,
 sorting and per-user archive filter. Each response includes counts for all three
-categories under the current search, tag and archive conditions, independently
-of the selected category and page; zero counts are not displayed. Administrators
-only see and count projects they own or that were explicitly shared with them.
+categories under the current search and tag conditions, including both active
+and archived projects, independently of the selected category, archive filter
+and page; zero counts are not displayed. Pagination totals still follow the
+archive filter. Archiving/unarchiving preserves tab counts; deletion reduces
+them. Administrators only see and count projects they own or that were explicitly
+shared with them.
 
 Changing category resets pagination. The browser caches rows together with the
 category, filters, counts and page, so returning from a workspace restores the

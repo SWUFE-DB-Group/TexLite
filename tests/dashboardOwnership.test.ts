@@ -29,12 +29,13 @@ const onDataChange = vi.fn<(data: DashboardData) => void>();
 function response(url: string) {
   const params = new URL(url, "http://localhost").searchParams;
   const search = (params.get("search") ?? "").toLowerCase();
-  const matching = projects.filter((project) => archived.has(project.id) === (params.get("archived") === "1")
-    && project.name.toLowerCase().includes(search) && (!params.get("tag") || project.tags.some((tag) => tag.id === params.get("tag"))));
+  const matching = projects.filter((project) => project.name.toLowerCase().includes(search)
+    && (!params.get("tag") || project.tags.some((tag) => tag.id === params.get("tag"))));
   const counts = { all: matching.length, owned: matching.filter((project) => project.ownerId === user.id).length,
     shared: matching.filter((project) => project.ownerId !== user.id).length };
-  const scoped = matching.filter((project) => params.get("scope") === "owned" ? project.ownerId === user.id
-    : params.get("scope") === "shared" ? project.ownerId !== user.id : true);
+  const scoped = matching.filter((project) => archived.has(project.id) === (params.get("archived") === "1"))
+    .filter((project) => params.get("scope") === "owned" ? project.ownerId === user.id
+      : params.get("scope") === "shared" ? project.ownerId !== user.id : true);
   const totalPages = Math.ceil(scoped.length / 20);
   const page = Math.max(1, Math.min(Number(params.get("page") ?? 1), totalPages));
   return { projects: scoped.slice((page - 1) * 20, page * 20), counts,
@@ -89,12 +90,13 @@ describe("project ownership tabs", () => {
     await click('.project-tag-toggle'); await click('.project-tag-filters button:last-child');
     expect(lastParams().get("tag")).toBe(tag.id); expect(lastParams().get("scope")).toBe("shared");
     expect(names()).toHaveLength(11); expect(tab("owned").querySelector("sup")).toBeNull();
+    expect(tab("all").querySelector("sup")?.textContent).toBe("12");
     await click('#project-tab-owned');
     expect(lastParams().get("search")).toBe("Shared"); expect(lastParams().get("tag")).toBe(tag.id);
     expect(names()).toEqual([]); expect(host.textContent).toContain(i18n.t("projects.noMatches"));
     await click('#project-tab-shared'); await click('.project-scope button:last-child');
     expect(lastParams().get("archived")).toBe("1"); expect(names()).toEqual(["Shared Paper 0"]);
-    expect(tab("all").querySelector("sup")?.textContent).toBe("1");
+    expect(tab("all").querySelector("sup")?.textContent).toBe("12");
     await changeSearch("Not found");
     expect(host.querySelectorAll('.project-ownership-tabs sup')).toHaveLength(0);
     expect(host.querySelector('.project-empty-archived')).toBeNull();
@@ -133,7 +135,7 @@ describe("project ownership tabs", () => {
     expect(names()).toHaveLength(4); expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
   });
 
-  it("supports arrow-key category changes and refreshes counts after archiving", async () => {
+  it("supports arrow-key category changes and preserves counts when archiving or unarchiving", async () => {
     await render();
     await act(async () => {
       tab("all").focus(); tab("all").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
@@ -142,13 +144,40 @@ describe("project ownership tabs", () => {
     const normal = apiMock.getMockImplementation()!;
     apiMock.mockImplementation(async (url: string, options?: RequestInit) => {
       if (options?.method === "PUT") { archived.add(url.split("/")[3]); return { ok: true }; }
+      if (options?.method === "DELETE") { archived.delete(url.split("/")[3]); return { ok: true }; }
       return normal(url, options);
     });
     await click('.project-action-menu-trigger');
     const archiveButton = Array.from(host.querySelectorAll<HTMLButtonElement>('.project-action-menu button')).find((button) => button.textContent?.trim() === i18n.t("projects.archive"))!;
     await act(async () => archiveButton.click());
-    expect(tab("all").querySelector("sup")?.textContent).toBe("46");
-    expect(tab("owned").querySelector("sup")?.textContent).toBe("22");
+    expect(tab("all").querySelector("sup")?.textContent).toBe("47");
+    expect(tab("owned").querySelector("sup")?.textContent).toBe("23");
     expect(tab("shared").querySelector("sup")?.textContent).toBe("24");
+    expect(onDataChange.mock.lastCall![0].pagination.total).toBe(22);
+    await click('.project-scope button:last-child');
+    expect(names()).toHaveLength(1);
+    await click('.project-action-menu-trigger');
+    const unarchiveButton = Array.from(host.querySelectorAll<HTMLButtonElement>('.project-action-menu button')).find((button) => button.textContent?.trim() === i18n.t("projects.unarchive"))!;
+    await act(async () => unarchiveButton.click());
+    expect(names()).toHaveLength(0);
+    expect(onDataChange.mock.lastCall![0].pagination.total).toBe(0);
+    // Includes optimistic updates, not just the final server response.
+    expect(onDataChange.mock.calls.every(([data]) => data.counts.all === 47 && data.counts.owned === 23 && data.counts.shared === 24)).toBe(true);
+  });
+
+  it("shows all-project counts even when the current archive state has no results", async () => {
+    projects = [makeProject(true, 0), makeProject(false, 0)];
+    projects.forEach((project) => archived.add(project.id));
+    await render();
+    expect(names()).toEqual([]);
+    const badges = () => [tab("all"), tab("owned"), tab("shared")].map((button) => button.querySelector("sup")?.textContent);
+    expect(badges()).toEqual(["2", "1", "1"]);
+    expect(onDataChange.mock.lastCall![0].pagination.total).toBe(0);
+    await click('.project-scope button:last-child');
+    expect(names()).toHaveLength(2);
+    expect(badges()).toEqual(["2", "1", "1"]);
+    await click('.project-scope button:first-child');
+    expect(names()).toEqual([]);
+    expect(badges()).toEqual(["2", "1", "1"]);
   });
 });
