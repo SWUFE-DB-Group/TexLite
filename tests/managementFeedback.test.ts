@@ -20,6 +20,7 @@ const admin: User = { id: "admin", username: "admin", displayName: "Administrato
   mustChangePassword: false, canCreateProjects: true, createdAt: "2026-10-28" };
 const reader: User = { ...admin, id: "reader", username: "reader", displayName: "Reader", role: "user" };
 const pagination = { page: 1, pageSize: 20, total: 2, totalPages: 1 };
+const summary = { totalUsers: 25, administrators: 2, projectCreators: 8, totalProjects: 14, projectOwners: 7 };
 let entry: CitationLibraryEntry;
 let root: Root, host: HTMLDivElement;
 beforeEach(async () => {
@@ -29,7 +30,7 @@ beforeEach(async () => {
   entry = { id: "entry", ownerId: admin.id, ownerUsername: admin.username, ownerDisplayName: admin.displayName, citationKey: "sample", entryType: "article", title: "Paper", authors: "Ada", year: "2026",
     bibtex: "@article{sample, title={Paper}, author={Ada}, year={2026}}", tags: [], revision: 1, createdAt: "2026-10-28", updatedAt: "2026-10-28" };
   vi.mocked(api).mockReset().mockImplementation(async (url) => {
-    if (url.startsWith("/api/admin/users?")) return { users: [admin, reader], pagination } as never;
+    if (url.startsWith("/api/admin/users?")) return { users: [admin, reader], pagination, summary } as never;
     if (url.startsWith("/api/citations?")) return { entries: [entry], pagination: { ...pagination, total: 1 } } as never;
     if (url === "/api/citations/tags") return { tags: [] } as never;
     throw new Error(`Unexpected request: ${url}`);
@@ -53,6 +54,33 @@ const click = (element: HTMLElement) => act(async () => element.click());
 const assertNoBanner = () => expect(document.querySelector(".operation-success, .citation-library-notice, .admin-user-notice, .agent-inline-notice")).toBeNull();
 
 describe("management action feedback", () => {
+  it("shows global summary values, shared avatars, explicit administrator permission and muted zero project counts", async () => {
+    vi.mocked(api).mockResolvedValueOnce({ users: [admin, { ...reader, avatarStyle: "bottts", ownedProjects: 0 }], pagination, summary });
+    await render(createElement(AdminUsers, { currentUser: admin, minPasswordLength: 8, onBack: vi.fn() }));
+    expect([...host.querySelectorAll(".admin-user-summary dd strong")].map((node) => node.textContent)).toEqual(["25", "8", "14"]);
+    expect([...host.querySelectorAll(".admin-user-summary dd span")].map((node) => node.textContent)).toEqual(["2 admins", "of 25 users", "owned by 7 users"]);
+    expect(host.querySelector(".admin-user-locked")?.textContent).toBe("Always allowed");
+    expect(host.querySelectorAll(".admin-user-avatar")).toHaveLength(2);
+    expect(host.querySelector('.admin-user-avatar img')?.getAttribute("src")).toContain("/api/users/reader/avatar.svg");
+    expect(host.querySelector("tbody tr:last-child td.admin-user-zero")?.textContent).toBe("0");
+    await act(async () => changeText(host.querySelector<HTMLInputElement>('[role="searchbox"]')!, "nobody"));
+    vi.mocked(api).mockResolvedValueOnce({ users: [], pagination: { ...pagination, total: 0, totalPages: 0 }, summary });
+    await act(async () => vi.advanceTimersByTime(200));
+    expect(host.querySelector("tbody")?.textContent).toContain("No users match your search.");
+    expect([...host.querySelectorAll(".admin-user-summary dd strong")].map((node) => node.textContent)).toEqual(["25", "8", "14"]);
+  });
+
+  it.each([0, 1, 2])("uses correct plural forms and keeps zero values visible in the compact summary (count=%s)", async (count) => {
+    const singular = count === 1;
+    vi.mocked(api).mockResolvedValueOnce({ users: [], pagination: { ...pagination, total: 0, totalPages: 0 },
+      summary: { totalUsers: count, administrators: count, projectCreators: count, totalProjects: count, projectOwners: count } });
+    await render(createElement(AdminUsers, { currentUser: admin, minPasswordLength: 8, onBack: vi.fn() }));
+    expect([...host.querySelectorAll(".admin-user-summary dd span")].map((node) => node.textContent)).toEqual([
+      `${count} ${singular ? "admin" : "admins"}`, `of ${count} ${singular ? "user" : "users"}`, `owned by ${count} ${singular ? "user" : "users"}`
+    ]);
+    expect(host.querySelectorAll(".admin-user-summary .admin-user-zero")).toHaveLength(count === 0 ? 3 : 0);
+  });
+
   it("confirms a validated GitHub token on its save button and keeps validation failures visible", async () => {
     vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: false, githubLogin: null } });
     await render(createElement(GitHubAccountDialog, { open: true, onOpenChange: vi.fn() }));

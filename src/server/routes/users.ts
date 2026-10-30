@@ -10,6 +10,7 @@ import type { LatexCompletionService } from "../latexCompletion.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
 import { hashPassword } from "../security.js";
+import type { UserManagementSummary } from "../../shared/userManagement.js";
 
 interface UserManagementRouteContext {
   config: Config;
@@ -55,9 +56,15 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
       ORDER BY u.created_at, u.username COLLATE NOCASE
       LIMIT ? OFFSET ?
     `).all(...params, pageSize, (page - 1) * pageSize) as unknown as Array<UserRow & { owned_projects: number }>;
+    const summary = db.prepare(`SELECT COUNT(*) AS totalUsers,
+      COUNT(CASE WHEN role = 'admin' THEN 1 END) AS administrators,
+      COUNT(CASE WHEN role = 'admin' OR can_create_projects = 1 THEN 1 END) AS projectCreators,
+      (SELECT COUNT(*) FROM projects) AS totalProjects,
+      (SELECT COUNT(DISTINCT owner_id) FROM projects) AS projectOwners FROM users`).get() as UserManagementSummary;
     return {
       users: users.map((user) => ({ ...publicUser(user), ownedProjects: user.owned_projects })),
-      pagination: { page, pageSize, total, totalPages }
+      pagination: { page, pageSize, total, totalPages },
+      summary
     };
   });
 

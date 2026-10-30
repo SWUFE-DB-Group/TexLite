@@ -4,6 +4,8 @@ import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import { useSuccessNotice } from "../SuccessNotice";
+import { UserAvatar } from "../UserAvatar";
+import type { UserManagementSummary } from "../../shared/userManagement";
 import type { ProjectListPagination, SiteConfig, User } from "../types";
 import {
   ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Dices, KeyRound, LoaderCircle, LockKeyhole, MoreHorizontal, Search, Trash2,
@@ -26,6 +28,7 @@ interface PendingUserSetting {
 export function AdminUsers({ currentUser, minPasswordLength, onBack }: { currentUser: User; minPasswordLength: SiteConfig["minPasswordLength"]; onBack: () => void }) {
   const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
+  const [summary, setSummary] = useState<UserManagementSummary | null>(null);
   const [query, setQuery] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [pagination, setPagination] = useState<ProjectListPagination>({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
@@ -59,10 +62,11 @@ export function AdminUsers({ currentUser, minPasswordLength, onBack }: { current
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams({ page: String(pageNumber) });
       if (search) params.set("q", search);
-      void api<{ users: User[]; pagination: ProjectListPagination }>(`/api/admin/users?${params}`, { signal: controller.signal })
+      void api<{ users: User[]; pagination: ProjectListPagination; summary: UserManagementSummary }>(`/api/admin/users?${params}`, { signal: controller.signal })
         .then((result) => {
           if (controller.signal.aborted) return;
           setUsers(result.users);
+          setSummary(result.summary);
           setPagination(result.pagination);
           setPageNumber(result.pagination.page);
         })
@@ -138,12 +142,21 @@ export function AdminUsers({ currentUser, minPasswordLength, onBack }: { current
     } catch (e) { setDeleteError(errorMessage(e)); }
     finally { setDeleting(false); }
   };
+  const summaryItems = [
+    { key: "totalUsers" as const, detail: summary ? t("users.summary.administrators", { count: summary.administrators }) : "" },
+    { key: "projectCreators" as const, detail: summary ? t("users.summary.ofUsers", { count: summary.totalUsers }) : "" },
+    { key: "totalProjects" as const, detail: summary ? t("users.summary.projectOwners", { count: summary.projectOwners }) : "" }
+  ];
   return <section className="admin-users-page management-page">
     <div className="section-title"><div><h1><Users aria-hidden size={25} />{t("users.manage")}</h1><p className="muted">{t("users.onlyAdmin")}</p></div><button type="button" className="dashboard-back-button" onClick={onBack}><ArrowLeft size={14} />{t("navigation.backToProjects")}</button></div>
+    <dl className="admin-user-summary" aria-label={t("users.overview")}>
+      {summaryItems.map(({ key, detail }) =>
+        <div key={key}><dt>{t(`users.summary.${key}`)}</dt><dd className={summary?.[key] === 0 ? "admin-user-zero" : undefined}><strong>{summary?.[key] ?? "—"}</strong>{detail && <span>{detail}</span>}</dd></div>)}
+    </dl>
     <div className="admin-user-toolbar">
       <div className="admin-user-filters">
       <div className="admin-user-search" role="search"><Search aria-hidden size={16} /><input role="searchbox" aria-label={t("users.searchPlaceholder")} placeholder={t("users.searchPlaceholder")} value={query} onChange={(event) => { setQuery(event.target.value); setPageNumber(1); }} />{query && <button type="button" aria-label={t("users.clearSearch")} title={t("users.clearSearch")} onClick={() => { setQuery(""); setPageNumber(1); }}><X aria-hidden size={14} /></button>}</div>
-      {!loading && !listFailed && <span className="admin-user-count" role="status">{t("users.total", { count: pagination.total })}</span>}
+      {search && !loading && !listFailed && <span className="admin-user-count" role="status">{t("users.total", { count: pagination.total })}</span>}
       </div>
       <button className="primary icon-button admin-user-add" onClick={() => { completedAction.clear(); setFormError(""); setCreateOpen(true); }}><UserPlus aria-hidden size={15} /><span role="status">{t(completedAction.message === "create" ? "common.done" : "users.add")}</span></button>
     </div>
@@ -155,10 +168,10 @@ export function AdminUsers({ currentUser, minPasswordLength, onBack }: { current
         const expanded = expandedUserId === target.id;
         const resetDone = completedAction.message === `reset:${target.id}`;
         return <tr key={target.id}>
-          <td className="admin-user-identity"><strong>{target.displayName}</strong><small>@{target.username}</small></td>
+          <td><div className="admin-user-identity"><UserAvatar userId={target.id} name={target.displayName} username={target.username} avatarStyle={target.avatarStyle} className="admin-user-avatar" /><div><strong>{target.displayName}</strong><small>@{target.username}</small></div></div></td>
           <td>{self ? <span className="admin-user-badge" title={t("users.selfProtected")}><LockKeyhole size={12} aria-hidden />{t("common.admin")}</span> : <select className="admin-user-role" aria-label={t("users.roleFor", { username: target.username })} value={target.role} disabled={busy} onChange={() => void toggleRole(target)}><option value="user">{t("common.user")}</option><option value="admin">{t("common.admin")}</option></select>}</td>
-          <td>{target.role === "admin" ? <span className="admin-user-locked" title={t("users.adminCreation")}><LockKeyhole size={12} aria-hidden />{t("users.allow")}</span> : <button type="button" className="admin-user-switch" role="switch" aria-checked={target.canCreateProjects} aria-label={t("users.creationFor", { username: target.username })} disabled={busy} onClick={() => void toggleProjectCreation(target)}><span /></button>}</td>
-          <td>{target.ownedProjects ?? 0}</td>
+          <td>{target.role === "admin" ? <span className="admin-user-locked" title={t("users.adminCreation")}><LockKeyhole size={12} aria-hidden />{t("users.alwaysAllowed")}</span> : <button type="button" className="admin-user-switch" role="switch" aria-checked={target.canCreateProjects} aria-label={t("users.creationFor", { username: target.username })} disabled={busy} onClick={() => void toggleProjectCreation(target)}><span /></button>}</td>
+          <td className={!target.ownedProjects ? "admin-user-zero" : undefined}>{target.ownedProjects ?? 0}</td>
           <td><div className="admin-user-actions">
             <div className="admin-user-action-items" id={`user-actions-${target.id}`} hidden={!expanded}>
               <button type="button" className="icon-button" disabled={busy} title={t(resetDone ? "common.done" : "users.resetPassword")} aria-label={t("users.resetPassword")} onClick={() => { completedAction.clear(); setResetTarget(target); setResetValue(""); setFormError(""); }}>{resetDone ? <CheckCircle2 className="admin-user-action-confirmation" aria-hidden size={15} /> : <KeyRound aria-hidden size={15} />}<span className="sr-only" role="status">{resetDone ? t("common.done") : ""}</span></button>

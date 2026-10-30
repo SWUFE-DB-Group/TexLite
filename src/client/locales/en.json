@@ -169,6 +169,14 @@
     }
   },
   "users": {
+    "overview": "User overview",
+    "summary": {
+      "totalUsers": "Users", "projectCreators": "Can create projects", "totalProjects": "Projects",
+      "administrators_one": "{{count}} admin", "administrators_other": "{{count}} admins",
+      "ofUsers_one": "of {{count}} user", "ofUsers_other": "of {{count}} users",
+      "projectOwners_one": "owned by {{count}} user", "projectOwners_other": "owned by {{count}} users"
+    },
+    "alwaysAllowed": "Always allowed",
     "saved": "User settings saved.",
     "selfProtected": "Your current administrator account is protected.",
     "adminCreation": "Administrators can always create projects.",
@@ -179,8 +187,8 @@
     "pagination": "User pages", "pageOf": "Page {{page}} of {{totalPages}}", "previousPage": "Previous", "nextPage": "Next",
     "noMatches": "No users match your search.", "empty": "No users yet.", "loadFailed": "Unable to load users.",
     "manage": "User management", "back": "Back to projects", "onlyAdmin": "Accounts are created by administrators; self-registration is unavailable.", "add": "Add user",
-    "role": "Role", "createProjects": "Project creation", "ownedProjects": "Projects", "actions": "Actions", "adminRequired": "Administrator permission is required.",
-    "allow": "Allow", "deny": "Deny", "promote": "Make administrator", "demote": "Make user",
+    "role": "Role", "createProjects": "Create projects", "ownedProjects": "Projects", "actions": "Actions", "adminRequired": "Administrator permission is required.",
+    "deny": "Deny", "promote": "Make administrator", "demote": "Make user",
     "allowCreate": "Allow this user to create projects", "resetPassword": "Reset password", "initialPassword": "Login password",
     "displayName": "Display name", "addDescription": "Set a login password or generate a secure random one.", "createUser": "Create user",
     "randomPassword": "Random password", "generatePassword": "Generate a random password",

@@ -591,6 +591,14 @@
     }
   },
   "users": {
+    "overview": "使用者概覽",
+    "summary": {
+      "totalUsers": "使用者", "projectCreators": "可建立專案", "totalProjects": "專案",
+      "administrators_one": "{{count}} 位管理員", "administrators_other": "{{count}} 位管理員",
+      "ofUsers_one": "共 {{count}} 位使用者", "ofUsers_other": "共 {{count}} 位使用者",
+      "projectOwners_one": "由 {{count}} 位使用者擁有", "projectOwners_other": "由 {{count}} 位使用者擁有"
+    },
+    "alwaysAllowed": "一律允許",
     "saved": "使用者設定已儲存。",
     "selfProtected": "目前登入的管理員帳號受到保護。",
     "adminCreation": "管理員始終可以建立專案。",
@@ -612,11 +620,10 @@
     "onlyAdmin": "帳號由管理員建立，使用者無法自行註冊。",
     "add": "新增使用者",
     "role": "角色",
-    "createProjects": "建立專案權限",
+    "createProjects": "建立專案",
     "ownedProjects": "專案數",
     "actions": "操作",
     "adminRequired": "需要管理員權限。",
-    "allow": "允許",
     "deny": "禁止",
     "promote": "設為管理員",
     "demote": "降為使用者",

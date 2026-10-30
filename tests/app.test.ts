@@ -182,7 +182,7 @@ describe("texLite application", () => {
         expect(invalidPage.json().users).toHaveLength(20);
       }
       const missing = await app.inject({ method: "GET", url: url(`${prefix}-missing`, "10"), headers: { cookie } });
-      expect(missing.json()).toEqual({ users: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } });
+      expect(missing.json()).toEqual({ users: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 }, summary: unfiltered.json().summary });
 
       const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: records[0].username, password: "administrator password" } });
       expect(login.statusCode).toBe(200);
@@ -194,9 +194,45 @@ describe("texLite application", () => {
       const afterDelete = await app.inject({ method: "GET", url: url(prefix, "2"), headers: { cookie } });
       expect(afterDelete.json().pagination).toEqual({ page: 1, pageSize: 20, total: 20, totalPages: 1 });
       expect(afterDelete.json().users).toHaveLength(20);
+      expect(afterDelete.json().summary.totalUsers).toBe(unfiltered.json().summary.totalUsers - 1);
     } finally {
       const remove = db.prepare("DELETE FROM users WHERE id = ?");
       db.transaction(() => { for (const record of records) remove.run(record.id); })();
+    }
+  });
+
+  it("reports global management counts independently of search and pagination, including administrators as project creators", async () => {
+    const suffix = randomUUID();
+    const baseline = (await app.inject({ method: "GET", url: "/api/admin/users", headers: { cookie } })).json().summary;
+    const ids = [randomUUID(), randomUUID(), randomUUID()];
+    const projectIds = [randomUUID(), randomUUID()];
+    const timestamp = new Date().toISOString();
+    const insert = db.prepare("INSERT INTO users (id, username, display_name, password_hash, role, can_create_projects, created_at) VALUES (?, ?, ?, 'hash', ?, ?, ?)");
+    try {
+      insert.run(ids[0], `stats-admin-${suffix}`, "Stats administrator", "admin", 0, timestamp);
+      insert.run(ids[1], `stats-writer-${suffix}`, "Stats writer", "user", 1, timestamp);
+      insert.run(ids[2], `stats-reader-${suffix}`, "Stats reader", "user", 0, timestamp);
+      // Count projects outside the requesting administrator's accessible catalog too.
+      for (const id of projectIds) db.prepare("INSERT INTO projects (id, owner_id, name, created_at, updated_at) VALUES (?, ?, 'Stats project', ?, ?)").run(id, ids[2], timestamp, timestamp);
+      const expected = { totalUsers: baseline.totalUsers + 3, administrators: baseline.administrators + 1,
+        projectCreators: baseline.projectCreators + 2, totalProjects: baseline.totalProjects + 2, projectOwners: baseline.projectOwners + 1 };
+      for (const query of ["", `?q=stats-writer-${suffix}`, "?q=nonexistent-statistics-user&page=99"]) {
+        const result = await app.inject({ method: "GET", url: `/api/admin/users${query}`, headers: { cookie } });
+        expect(result.statusCode).toBe(200);
+        expect(result.json().summary).toEqual(expected);
+      }
+      db.prepare("UPDATE users SET can_create_projects = 0 WHERE id = ?").run(ids[1]);
+      const refreshed = await app.inject({ method: "GET", url: "/api/admin/users", headers: { cookie } });
+      expect(refreshed.json().summary.projectCreators).toBe(expected.projectCreators - 1);
+      db.prepare("DELETE FROM projects WHERE id = ?").run(projectIds[0]);
+      const afterDelete = (await app.inject({ method: "GET", url: "/api/admin/users", headers: { cookie } })).json().summary;
+      expect(afterDelete.totalProjects).toBe(expected.totalProjects - 1);
+      expect(afterDelete.projectOwners).toBe(expected.projectOwners);
+      db.prepare("DELETE FROM projects WHERE id = ?").run(projectIds[1]);
+      expect((await app.inject({ method: "GET", url: "/api/admin/users", headers: { cookie } })).json().summary.projectOwners).toBe(baseline.projectOwners);
+    } finally {
+      for (const id of projectIds) db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+      for (const id of ids) db.prepare("DELETE FROM users WHERE id = ?").run(id);
     }
   });
 
