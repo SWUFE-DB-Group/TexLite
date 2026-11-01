@@ -4,6 +4,7 @@ import type { CommentMention, MentionableUser } from "../shared/comments.js";
 export type { CommentMention, MentionableUser } from "../shared/comments.js";
 
 interface MentionRow {
+  kind: "mention" | "review";
   id: string;
   project_id: string;
   comment_id: string;
@@ -85,6 +86,10 @@ export function createCommentMentions(db: DatabaseConnection, input: {
     ON CONFLICT DO UPDATE SET
       mentioned_by_user_id = excluded.mentioned_by_user_id,
       created_at = excluded.created_at,
+      kind = CASE WHEN excluded.reply_id IS NULL AND EXISTS (
+        SELECT 1 FROM comment_suggestions suggestion WHERE suggestion.comment_id = excluded.comment_id
+          AND suggestion.status = 'pending' AND suggestion.reviewer_id = excluded.mentioned_user_id
+      ) THEN 'review' ELSE 'mention' END,
       read_at = NULL,
       read_reason = NULL`);
   for (const recipient of recipients) {
@@ -109,6 +114,7 @@ export function unreadMentionCountsForProjects(db: DatabaseConnection, projectId
 
 function mentionFromRow(row: MentionRow): CommentMention {
   return {
+    kind: row.kind,
     id: row.id,
     projectId: row.project_id,
     commentId: row.comment_id,
@@ -122,7 +128,7 @@ function mentionFromRow(row: MentionRow): CommentMention {
   };
 }
 
-const mentionSelect = `SELECT mention.id, mention.project_id, mention.comment_id, mention.reply_id,
+const mentionSelect = `SELECT mention.kind, mention.id, mention.project_id, mention.comment_id, mention.reply_id,
   comment.file_path, comment.content AS comment_content, reply.content AS reply_content,
   comment.resolved, mention.created_at, mention.read_at, mention.read_reason
   FROM comment_mentions mention

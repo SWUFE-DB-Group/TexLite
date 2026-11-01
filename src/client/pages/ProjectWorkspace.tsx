@@ -1061,7 +1061,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   }, [files, editorPreferences.openFilesInTabs]);
   const {
     comments, projectCommentSummary, commentsFilePath, commentsReady, fileCommentsLoading, fileCommentsError, retryFileComments, reviewComments, reviewCommentsLoading, reviewCommentsError, retryReviewComments, commentScope, setCommentScope, focusComment, setFocusComment, commentOpen, openComment, closeComment, commentText, setCommentText,
-    commentSelection, commentSubmitting, commentError, addComment, toggleComment, replyToComment, editComment,
+    commentSelection, commentSuggestion, setCommentSuggestion, commentSubmitting, commentError, addComment, toggleComment, replyToComment, editComment,
     deleteComment, editCommentReply, deleteCommentReply, commentDraftStore,
     cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection
   } = useProjectComments({
@@ -1527,7 +1527,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       moveDestination={moveDestination} setMoveDestination={setMoveDestination} movePath={movePath}
       deleteEntry={deleteEntry} setDeleteEntry={setDeleteEntry} deleteActiveSessions={deleteActiveSessions}
       removePath={removePath} commentOpen={commentOpen} closeComment={closeComment}
-      commentSelection={commentSelection} commentText={commentText} setCommentText={setCommentText} commentSubmitting={commentSubmitting}
+      commentSelection={commentSelection} commentSuggestion={commentSuggestion} setCommentSuggestion={setCommentSuggestion} commentText={commentText} setCommentText={setCommentText} commentSubmitting={commentSubmitting}
       cancelComment={cancelComment} commentDraftRestored={commentDraftRestored} commentDraftCanRetarget={commentDraftCanRetarget}
       useCurrentCommentSelection={useCurrentCommentSelection}
       commentError={commentError} addComment={addComment}

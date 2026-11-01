@@ -1,12 +1,13 @@
 import { useRef } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { FilePenLine, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export function CommentActionsMenu({ kind, onEdit, onDelete, disabled = false }: {
+export function CommentActionsMenu({ kind, onEdit, onDelete, onSuggest, disabled = false }: {
   kind: "comment" | "reply";
   onEdit: () => void;
   onDelete: () => void;
+  onSuggest?: () => void;
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
@@ -24,6 +25,7 @@ export function CommentActionsMenu({ kind, onEdit, onDelete, disabled = false }:
             selecting.current = false;
           }}>
           <DropdownMenu.Item onSelect={() => { selecting.current = true; onEdit(); }}><Pencil size={13} aria-hidden />{t(kind === "comment" ? "editor.editComment" : "editor.editReply")}</DropdownMenu.Item>
+          {kind === "comment" && onSuggest && <DropdownMenu.Item onSelect={() => { selecting.current = true; onSuggest(); }}><FilePenLine size={13} aria-hidden />{t("suggestions.attach")}</DropdownMenu.Item>}
           <DropdownMenu.Item className="danger-text" onSelect={() => { selecting.current = true; onDelete(); }}><Trash2 size={13} aria-hidden />{t(kind === "comment" ? "editor.deleteComment" : "editor.deleteReply")}</DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

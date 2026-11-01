@@ -10,6 +10,11 @@ import { resolveSourcePath, safeRelativePath } from "../files.js";
 import { apiError, httpError } from "../http.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import { accessibleProject } from "../projects.js";
+import { isCollaborativeTextFile } from "../collaboration.js";
+import { attachSuggestion, suggestionRow } from "../commentSuggestions.js";
+import { registerSuggestionRoutes } from "./commentSuggestions.js";
+import { defaultSuggestionComments } from "../../shared/suggestionMessages.js";
+import { serverLocale } from "../i18n.js";
 import {
   commentMentionForUser,
   createCommentMentions,
@@ -22,7 +27,7 @@ import {
 import { commentsForFile, commentsForProject, commentsSummaryForProject, now, repliesForComment, text } from "./projectShared.js";
 import type { CommentMutationResult } from "../../shared/comments.js";
 
-interface CommentRouteContext {
+export interface CommentRouteContext {
   config: Config;
   db: DatabaseConnection;
   collaboration: CollaborationService;
@@ -32,6 +37,7 @@ interface CommentRouteContext {
 /** Register source-anchored comments and reply routes. */
 export function registerCommentRoutes(app: FastifyInstance, context: CommentRouteContext): void {
   const { config, db, collaboration, projectMutations } = context;
+  registerSuggestionRoutes(app, context);
 
   app.get("/api/projects/:id/mention-candidates", async (request, reply) => {
     const user = requireUser(request, reply, db);
@@ -138,9 +144,12 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
         if (currentHash !== body.sourceHash) return apiError(reply, 409, "COMMENT_SOURCE_CHANGED");
       }
       const anchor = createSourceAnchor(source, Number(body.startOffset), Number(body.endOffset));
+      if (body.suggestion !== undefined && (!isCollaborativeTextFile(filePath) || body.sourceHash === undefined
+        || Number(body.startOffset) < 0 || Number(body.endOffset) > source.length || Number(body.endOffset) <= Number(body.startOffset))) throw httpError(400, "SUGGESTION_INVALID");
       const comment = {
         id: randomUUID(), filePath,
-        content: text(body.content, 5000)
+        content: text(body.suggestion !== undefined && (body.content === undefined || typeof body.content === "string" && !body.content.trim())
+          ? defaultSuggestionComments[serverLocale(request.headers)] : body.content, 5000)
       };
       db.transaction(() => {
         db.prepare(`INSERT INTO comments
@@ -156,6 +165,7 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
           projectId: id, commentId: comment.id, authorId: user.id,
           content: comment.content, createdAt
         });
+        if (body.suggestion !== undefined) attachSuggestion(db, id, comment.id, user.id, anchor.selectedText, body.suggestion);
       })();
       const created = commentsForFile(db, config, id, filePath).find((item) => item.id === comment.id);
       collaboration.signalComments(id);
@@ -210,6 +220,7 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       changed = true;
     }
     if (typeof body.resolved === "boolean") {
+      if (body.resolved && suggestionRow(db, id, commentId)?.status === "pending") return apiError(reply, 409, "SUGGESTION_PENDING");
       changed = true;
     }
     if (!changed) return apiError(reply, 400, "COMMENT_UPDATE_EMPTY");
@@ -260,6 +271,7 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       .get(commentId, id) as { author_id: string | null; file_path: string } | undefined;
     if (!comment) return apiError(reply, 404, "COMMENT_NOT_FOUND");
     if (comment.author_id !== user.id) return apiError(reply, 403, "COMMENT_DELETE_FORBIDDEN");
+    if (suggestionRow(db, id, commentId)?.apply_update) return apiError(reply, 409, "SUGGESTION_APPLYING");
     db.prepare("DELETE FROM comments WHERE id = ?").run(commentId);
     collaboration.signalComments(id);
     const result: CommentMutationResult = { change: { kind: "deleted", commentId, filePath: comment.file_path }, summary: commentsSummaryForProject(db, id) };

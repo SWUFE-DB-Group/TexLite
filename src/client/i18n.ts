@@ -6,6 +6,7 @@ import zh from "./locales/zh.json";
 import zhHant from "./locales/zh-Hant.json";
 import { documentLocale, supportedLocale, supportedLocales } from "../shared/locales";
 import { agentMessages } from "../shared/agentMessages";
+import { suggestionMessages } from "../shared/suggestionMessages";
 import { agentUiMessages } from "./agents/messages";
 
 // Register before initialization so detected/saved languages and later switches
@@ -18,9 +19,9 @@ i18n.on("languageChanged", () => {
 
 void i18n.use(LanguageDetector).use(initReactI18next).init({
   resources: {
-    en: { translation: { ...en, agents: agentUiMessages.en, errors: { ...en.errors, codes: { ...en.errors.codes, ...agentMessages.en } } } },
-    zh: { translation: { ...zh, agents: agentUiMessages.zh, errors: { ...zh.errors, codes: { ...zh.errors.codes, ...agentMessages.zh } } } },
-    "zh-Hant": { translation: { ...zhHant, agents: agentUiMessages["zh-Hant"], errors: { ...zhHant.errors, codes: { ...zhHant.errors.codes, ...agentMessages["zh-Hant"] } } } }
+    en: { translation: { ...en, agents: agentUiMessages.en, errors: { ...en.errors, codes: { ...en.errors.codes, ...agentMessages.en, ...suggestionMessages.en } } } },
+    zh: { translation: { ...zh, agents: agentUiMessages.zh, errors: { ...zh.errors, codes: { ...zh.errors.codes, ...agentMessages.zh, ...suggestionMessages.zh } } } },
+    "zh-Hant": { translation: { ...zhHant, agents: agentUiMessages["zh-Hant"], errors: { ...zhHant.errors, codes: { ...zhHant.errors.codes, ...agentMessages["zh-Hant"], ...suggestionMessages["zh-Hant"] } } } }
   },
   fallbackLng: "en",
   supportedLngs: [...supportedLocales],

@@ -6,6 +6,8 @@ import type { CommentReviewScope } from "./commentNavigation";
 import { CommentDraftStore, type SourceSelection } from "./commentDrafts";
 import { useDiscussionQueries } from "./useDiscussionQueries";
 import { useCommentMutations } from "./useCommentMutations";
+import type { SuggestionDraft } from "../../shared/comments";
+import i18n from "../i18n";
 export type { SourceSelection } from "./commentDrafts";
 
 interface UseProjectCommentsOptions {
@@ -44,6 +46,9 @@ export function useProjectComments({
   const [focusComment, setFocusComment] = useState<Comment | null>(null);
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentText, setCommentTextState] = useState("");
+  const [commentSuggestion, setCommentSuggestionState] = useState<SuggestionDraft | null>(null);
+  const suggestionRef = useRef(commentSuggestion);
+  suggestionRef.current = commentSuggestion;
   const [commentDraft, setCommentDraft] = useState<CommentDraft | null>(null);
   const [commentCandidate, setCommentCandidate] = useState<CommentDraft | null>(null);
   const [commentDraftRestored, setCommentDraftRestored] = useState(false);
@@ -70,6 +75,7 @@ export function useProjectComments({
     setCommentDraft(null);
     setCommentCandidate(null);
     setCommentTextState("");
+    setCommentSuggestionState(null);
     setCommentDraftRestored(false);
     setCommentError("");
   }, [projectId]);
@@ -82,6 +88,7 @@ export function useProjectComments({
     setCommentDraft(null);
     setCommentCandidate(null);
     setCommentTextState("");
+    setCommentSuggestionState(null);
     setCommentDraftRestored(false);
     setCommentError("");
   }, [activeFile]);
@@ -101,6 +108,7 @@ export function useProjectComments({
     // silently reuse a note on the newly selected (possibly unrelated) text.
     setCommentDraft(saved ?? candidate);
     setCommentTextState(saved?.content ?? "");
+    setCommentSuggestionState(saved?.suggestion ?? null);
     setCommentCandidate(candidate);
     setCommentDraftRestored(Boolean(saved));
     setCommentOpen(true);
@@ -109,7 +117,14 @@ export function useProjectComments({
   const setCommentText = (value: string) => {
     setCommentTextState(value);
     if (!commentDraft) return;
-    if (value) commentDraftStore.setNew({ ...commentDraft, content: value });
+    if (value || commentSuggestion) commentDraftStore.setNew({ ...commentDraft, content: value, suggestion: commentSuggestion });
+    else commentDraftStore.discardNew(commentDraft.filePath);
+  };
+
+  const setCommentSuggestion = (value: SuggestionDraft | null) => {
+    setCommentSuggestionState(value);
+    if (!commentDraft) return;
+    if (commentText || value) commentDraftStore.setNew({ ...commentDraft, content: commentText, suggestion: value });
     else commentDraftStore.discardNew(commentDraft.filePath);
   };
 
@@ -123,6 +138,7 @@ export function useProjectComments({
     if (submittingComment.current) return;
     if (commentDraft) commentDraftStore.discardNew(commentDraft.filePath);
     setCommentTextState("");
+    setCommentSuggestionState(null);
     setCommentDraft(null);
     setCommentCandidate(null);
     setCommentDraftRestored(false);
@@ -132,7 +148,7 @@ export function useProjectComments({
   const useCurrentCommentSelection = () => {
     if (submittingComment.current || !commentCandidate || commentCandidate.filePath !== activeFileRef.current) return;
     setCommentDraft(commentCandidate);
-    if (commentText) commentDraftStore.setNew({ ...commentCandidate, content: commentText });
+    if (commentText || commentSuggestion) commentDraftStore.setNew({ ...commentCandidate, content: commentText, suggestion: commentSuggestion });
     setCommentDraftRestored(false);
     setCommentError("");
   };
@@ -140,12 +156,14 @@ export function useProjectComments({
   const addComment = async () => {
     const draft = commentDraft;
     const submittedText = commentText;
-    if (!commentText.trim() || !draft || submittingComment.current) return;
+    const submittedSuggestion = commentSuggestion;
+    if ((!commentText.trim() && !submittedSuggestion) || !draft || submittingComment.current) return;
+    if (submittedSuggestion && (!submittedSuggestion.reviewerId || submittedSuggestion.replacementText === draft.selection.selectedText || !draft.selection.selectedText)) return;
     const isCurrentDraft = () => {
       const current = commentDraftRef.current;
       return current?.filePath === draft.filePath && current.sourceHash === draft.sourceHash
         && current.selection.startOffset === draft.selection.startOffset && current.selection.endOffset === draft.selection.endOffset
-        && commentTextRef.current === submittedText;
+        && commentTextRef.current === submittedText && suggestionRef.current === submittedSuggestion;
     };
     submittingComment.current = true;
     setCommentSubmitting(true);
@@ -157,10 +175,11 @@ export function useProjectComments({
       }
       await write("", {
         method: "POST",
-        body: JSON.stringify({ path: draft.filePath, content: submittedText, ...draft.selection, sourceHash: draft.sourceHash })
+        body: JSON.stringify({ path: draft.filePath, content: submittedText.trim() || (submittedSuggestion ? i18n.t("suggestions.defaultComment") : submittedText),
+          ...draft.selection, sourceHash: draft.sourceHash, ...(submittedSuggestion ? { suggestion: submittedSuggestion } : {}) })
       });
       const saved = commentDraftStore.getNew(draft.filePath);
-      if (saved?.content === submittedText && saved.sourceHash === draft.sourceHash
+      if (saved?.content === submittedText && JSON.stringify(saved.suggestion ?? null) === JSON.stringify(submittedSuggestion) && saved.sourceHash === draft.sourceHash
         && saved.selection.startOffset === draft.selection.startOffset && saved.selection.endOffset === draft.selection.endOffset) {
         commentDraftStore.discardNew(draft.filePath);
       }
@@ -169,6 +188,7 @@ export function useProjectComments({
         setCommentOpen(false);
         setCommentDraft(null);
         setCommentTextState("");
+        setCommentSuggestionState(null);
         setCommentDraftRestored(false);
       }
       onAddedRef.current();
@@ -245,6 +265,8 @@ export function useProjectComments({
       || commentDraft.selection.startOffset !== commentCandidate.selection.startOffset || commentDraft.selection.endOffset !== commentCandidate.selection.endOffset)),
     useCurrentCommentSelection,
     commentText,
+    commentSuggestion,
+    setCommentSuggestion,
     setCommentText,
     commentSelection: commentDraft?.selection ?? selection,
     commentSubmitting,

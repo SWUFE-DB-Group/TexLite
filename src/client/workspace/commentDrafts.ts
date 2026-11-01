@@ -1,4 +1,5 @@
 import { errorMessage } from "../errors";
+import type { SuggestionDraft } from "../../shared/comments";
 
 export interface SourceSelection {
   selectedText: string;
@@ -7,6 +8,7 @@ export interface SourceSelection {
 }
 
 export interface NewCommentDraft {
+  suggestion?: SuggestionDraft | null;
   filePath: string;
   selection: SourceSelection;
   sourceHash: string;
@@ -98,7 +100,7 @@ export class CommentDraftStore {
 
   getNew(filePath: string): NewCommentDraft | undefined { return this.newComments.get(filePath); }
   setNew(draft: NewCommentDraft): void {
-    this.newComments.set(draft.filePath, { ...draft, selection: { ...draft.selection } });
+    this.newComments.set(draft.filePath, { ...draft, selection: { ...draft.selection }, suggestion: draft.suggestion ? { ...draft.suggestion } : draft.suggestion });
   }
   discardNew(filePath: string): void { this.newComments.delete(filePath); }
 }

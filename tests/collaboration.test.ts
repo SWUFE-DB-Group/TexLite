@@ -1054,6 +1054,46 @@ describe("project collaboration", () => {
       expect(peer.connected).toBe(true);
     } finally { peer.destroy(); }
   });
+  it("applies suggestions as a range delta to two live peers without disconnecting or replacing surrounding CRDT items", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Live suggestion" } });
+    const projectId = created.json().project.id as string;
+    const author = await createUser(app, adminCookie, "suggestion-author", "Suggestion author");
+    const authorCookie = await login(app, "suggestion-author", "reader-password");
+    const shared = await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${author.id}`, headers: { cookie: adminCookie }, payload: { permission: "edit" } });
+    expect(shared.statusCode).toBe(200);
+    const content = "Before.\nWe prove something.\nAfter.";
+    await app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie: adminCookie }, payload: { path: "main.tex", content } });
+    const start = content.indexOf("prove");
+    const proposed = await app.inject({ method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie: authorCookie }, payload: {
+      path: "main.tex", content: "Be cautious", startOffset: start, endOffset: start + 5,
+      sourceHash: createHash("sha256").update(content).digest("hex"), suggestion: { replacementText: "suggest", reviewerId: adminId }
+    } });
+    expect(proposed.statusCode, proposed.body).toBe(201);
+    const id = proposed.json().comment.id;
+    const first = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
+    const second = await TestPeer.connect(app, projectId, authorCookie, { id: author.id, username: "suggestion-author", name: "Suggestion author" });
+    try {
+      second.doc.getText("source:main.tex").insert(0, "A new paragraph.\n");
+      await second.flush();
+      await waitFor(() => first.doc.getText("source:main.tex").toString().startsWith("A new paragraph."));
+      const endpoint = `/api/projects/${projectId}/comments/${id}/suggestion/review`;
+      const lease = await first.acquireFormatLease("main.tex");
+      expect((await app.inject({ method: "POST", url: endpoint, headers: { cookie: adminCookie }, payload: { action: "accept" } })).statusCode).toBe(409);
+      await first.releaseFormatLease("main.tex", lease.token);
+      const text = first.doc.getText("source:main.tex");
+      const relativeFooter = Y.createRelativePositionFromTypeIndex(text, text.length - 6);
+      const deltas: Array<Y.YTextEvent["delta"]> = [];
+      text.observe((event) => deltas.push(event.delta));
+      const applied = await app.inject({ method: "POST", url: endpoint, headers: { cookie: adminCookie }, payload: { action: "accept" } });
+      expect(applied.statusCode, applied.body).toBe(200);
+      const expected = "A new paragraph.\n" + content.replace("prove", "suggest");
+      await waitFor(() => text.toString() === expected && second.doc.getText("source:main.tex").toString() === expected);
+      expect(deltas.flat().reduce((total, part) => total + (part.delete ?? 0), 0)).toBe(5);
+      const footer = Y.createAbsolutePositionFromRelativePosition(relativeFooter, first.doc)!;
+      expect(text.toString().slice(footer.index)).toBe("After.");
+      expect(first.connected && second.connected).toBe(true);
+    } finally { first.destroy(); second.destroy(); }
+  });
 });
 
 interface PeerUser { id: string; username: string; name: string }

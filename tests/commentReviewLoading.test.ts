@@ -6,6 +6,7 @@ import { api, ApiError } from "../src/client/api";
 import type { Comment } from "../src/client/types";
 import { useProjectComments } from "../src/client/workspace/useProjectComments";
 import { discussionTestClient, withDiscussionQueries } from "./discussionTestUtils";
+import i18n from "../src/client/i18n";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 
@@ -210,6 +211,50 @@ describe("confirmed comment cache updates", () => {
     expect(comments.commentText).toBe("");
     expect(comments.commentDraftStore.getNew("child.tex")).toBeUndefined();
     expect(comments.projectCommentSummary?.totalCount).toBe(2);
+  });
+
+  it("retains a suggestion-only draft with its original selection across closing and file switching", async () => {
+    const selection = { selectedText: "prove", startOffset: 0, endOffset: 5 };
+    await act(async () => comments.openComment(selection, "prove"));
+    await act(async () => comments.addComment());
+    expect(api).not.toHaveBeenCalled(); // A normal blank comment still cannot be sent.
+    await act(async () => comments.setCommentSuggestion({ replacementText: "suggest", reviewerId: "owner" }));
+    await act(async () => comments.closeComment());
+    activeFile = "other.tex"; await render();
+    await act(async () => comments.openComment(selection, "other"));
+    expect(comments.commentSuggestion).toBeNull();
+    activeFile = "main.tex"; await render();
+    await act(async () => comments.openComment({ ...selection, selectedText: "other" }, "other"));
+    expect(comments.commentDraftRestored).toBe(true);
+    expect(comments.commentSelection).toEqual(selection);
+    expect(comments.commentText).toBe("");
+    expect(comments.commentSuggestion).toEqual({ replacementText: "suggest", reviewerId: "owner" });
+    await act(async () => comments.cancelComment());
+    expect(comments.commentDraftStore.getNew("main.tex")).toBeUndefined();
+  });
+
+  it("sends the localized default note with an attachment, retains a failed draft and prevents duplicate submissions", async () => {
+    await i18n.changeLanguage("en");
+    await act(async () => comments.openComment({ selectedText: "prove", startOffset: 0, endOffset: 5 }, "prove"));
+    await act(async () => comments.setCommentSuggestion({ replacementText: "suggest", reviewerId: "owner" }));
+    vi.mocked(api).mockRejectedValueOnce(new Error("Source changed"));
+    await act(async () => comments.addComment());
+    expect(comments.commentError).toBe("Source changed");
+    expect(comments.commentSuggestion?.replacementText).toBe("suggest");
+    expect(comments.commentOpen).toBe(true);
+    let finish!: (value: unknown) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    let submission!: Promise<void>;
+    await act(async () => { submission = comments.addComment(); void comments.addComment(); });
+    const calls = vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST");
+    expect(calls).toHaveLength(2);
+    expect(JSON.parse(calls[1][1]!.body as string)).toMatchObject({ content: "Suggested change", startOffset: 0, endOffset: 5,
+      suggestion: { replacementText: "suggest", reviewerId: "owner" } });
+    vi.mocked(api).mockResolvedValue({ comments: [] });
+    await act(async () => { finish({ change: { kind: "created", comment: note("new", 0) }, summary }); await submission; });
+    expect(comments.commentOpen).toBe(false);
+    expect(comments.commentSuggestion).toBeNull();
+    expect(comments.commentDraftStore.getNew("main.tex")).toBeUndefined();
   });
 
   it("edits and deletes confirmed records in both lists despite failed reconciliation", async () => {

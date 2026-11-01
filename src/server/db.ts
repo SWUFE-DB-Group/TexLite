@@ -147,6 +147,21 @@ const databaseMigrations: readonly DatabaseMigration[] = [
     if (missingColumn(db, "agent_tasks", "native_cleanup_done")) {
       db.exec("ALTER TABLE agent_tasks ADD COLUMN native_cleanup_done INTEGER NOT NULL DEFAULT 0 CHECK (native_cleanup_done IN (0, 1))");
     }
+  } },
+  { version: 12, name: "add_comment_suggestions", apply: (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS comment_suggestions (
+      comment_id TEXT PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE,
+      original_text TEXT NOT NULL,
+      replacement_text TEXT NOT NULL,
+      reviewer_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+      decided_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      decided_at TEXT,
+      apply_update BLOB,
+      apply_range TEXT
+    );
+    `);
+    if (missingColumn(db, "comment_mentions", "kind")) db.exec("ALTER TABLE comment_mentions ADD COLUMN kind TEXT NOT NULL DEFAULT 'mention' CHECK (kind IN ('mention', 'review'))");
   } }
 ];
 

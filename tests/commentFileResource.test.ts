@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../src/client/api";
-import type { Comment, CommentChange } from "../src/shared/comments";
+import type { Comment, CommentChange, CommentSuggestion } from "../src/shared/comments";
 import { accessRejected, applyCommentAcknowledgement, applyCommentChange, applyDiscussionSummary, createDiscussionQueryClient, discussionKeys, nextDiscussionRead } from "../src/client/workspace/discussionCache";
 import { discussionTestClient } from "./discussionTestUtils";
 
@@ -83,6 +83,24 @@ describe("discussion cache acknowledgements", () => {
     client.setQueryData(discussionKeys.mentions("p"), { mentions: [{ id: "root", commentId: comment.id, replyId: null }, { id: "reply-notice", commentId: comment.id, replyId: "reply" }] });
     await applyCommentAcknowledgement(client, "p", { change: { kind: "reply-deleted", commentId: comment.id, filePath: comment.filePath, replyId: "reply" }, summary });
     expect(client.getQueryData(discussionKeys.mentions("p"))).toEqual({ mentions: [{ id: "root", commentId: comment.id, replyId: null }] });
+    client.clear();
+  });
+
+  it("applies suggestion decisions to every loaded scope without overwriting anchors, replies or ordinary mentions", async () => {
+    const client = discussionTestClient();
+    const original = { ...comment, replies: [reply] };
+    for (const key of [discussionKeys.file("p", "main.tex"), discussionKeys.all("p")]) client.setQueryData(key, { comments: [original] });
+    client.setQueryData(discussionKeys.mentions("p"), { mentions: [
+      { id: "review", kind: "review", commentId: comment.id, replyId: null, readAt: null },
+      { id: "mention", kind: "mention", commentId: comment.id, replyId: reply.id, readAt: null }
+    ] });
+    const suggestion: CommentSuggestion = { originalText: "Source", replacementText: "New", reviewerId: "reader", reviewerDisplayName: "Reader", reviewerUsername: "reader",
+      reviewerAvailable: true, applicable: false, applying: false, status: "accepted", decidedById: "reader", decidedByDisplayName: "Reader", decidedByUsername: "reader", decidedAt: "2026-11-01" };
+    await applyCommentAcknowledgement(client, "p", { change: { kind: "suggestion", commentId: comment.id, filePath: comment.filePath, suggestion }, summary });
+    for (const key of [discussionKeys.file("p", "main.tex"), discussionKeys.all("p")]) {
+      expect(client.getQueryData(key)).toMatchObject({ comments: [{ ...original, suggestion }] });
+    }
+    expect(client.getQueryData(discussionKeys.mentions("p"))).toEqual({ mentions: [{ id: "mention", kind: "mention", commentId: comment.id, replyId: reply.id, readAt: null }] });
     client.clear();
   });
 

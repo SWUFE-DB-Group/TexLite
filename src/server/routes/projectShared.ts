@@ -9,6 +9,7 @@ import { httpError, ValidationError } from "../http.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { isTextContent } from "../../shared/fileTypes.js";
 import { sortProjectCommentsBySource } from "../commentSourceOrder.js";
+import { suggestionsForProject } from "../commentSuggestions.js";
 
 export const now = (): string => new Date().toISOString();
 export function escapeLikePattern(value: string): string {
@@ -323,7 +324,9 @@ function commentsForScope(db: DatabaseConnection, config: Config, projectId: str
     replyMap.set(reply.comment_id, list);
   }
 
+  const suggestions = suggestionsForProject(db, projectId, sourceByPath);
   const comments = rows.map((comment) => ({
+    suggestion: suggestions.get(comment.id) ?? null,
     id: comment.id,
     filePath: comment.file_path,
     authorId: comment.author_id,

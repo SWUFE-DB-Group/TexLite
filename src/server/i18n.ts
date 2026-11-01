@@ -6,12 +6,14 @@
 import { supportedLocale, type AppLocale } from "../shared/locales.js";
 import { zhHantMessages } from "./locales/zh-Hant.js";
 import { agentMessages } from "../shared/agentMessages.js";
+import { suggestionMessages } from "../shared/suggestionMessages.js";
 
 export type ServerLocale = AppLocale;
 
 type MessageParams = Record<string, unknown>;
 
 const enMessages = {
+    ...suggestionMessages.en,
     ...agentMessages.en,
     AVATAR_STYLE_INVALID: "Choose a supported avatar style.",
     AVATAR_NOT_FOUND: "No custom avatar is configured for this user.",
@@ -158,6 +160,7 @@ const enMessages = {
 export type ServerErrorCode = keyof typeof enMessages;
 
 const zhMessages: Record<ServerErrorCode, string> = {
+    ...suggestionMessages.zh,
     ...agentMessages.zh,
     AVATAR_STYLE_INVALID: "请选择支持的头像风格。",
     AVATAR_NOT_FOUND: "该用户尚未设置自定义头像。",

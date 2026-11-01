@@ -288,6 +288,8 @@ export function WorkspaceContextPanel({
                 style={{ "--comment-exit-duration": `${COMMENT_EXIT_DURATION_MS}ms` } as CSSProperties}
                 onAnimationEnd={(event) => { if (event.target === event.currentTarget && exitAt !== null) finishExit(comment.id); }}>
                 <div className="comment-thread-slot-content"><CommentThread projectId={projectId} comment={comment} draftStore={commentDraftStore} currentUserId={currentUserId}
+                projectOwnerId={project.ownerId} canEditSource={project.permission !== "read"}
+                unreadCommentMentionKind={unreadMentions.find((mention) => mention.id === unreadCommentMentionId)?.kind}
                 unreadCommentMentionId={unreadCommentMentionId} unreadReplyMentionIds={unreadReplyMentionIds}
                 highlightedComment={targetCommentId === comment.id && !targetReplyId} highlightedReplyId={targetCommentId === comment.id ? targetReplyId : null}
                 currentComment={currentCommentId === comment.id} showFilePath={!singleCommentMode && commentScope === "project" && hasProjectCommentsScope}

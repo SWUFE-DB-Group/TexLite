@@ -52,6 +52,7 @@ export function applyCommentChange(comments: Comment[], change: CommentChange): 
   if (change.kind === "deleted") return comments.filter((item) => item.id !== id);
   return comments.map((item) => {
     if (item.id !== id) return item;
+    if (change.kind === "suggestion") return { ...item, suggestion: change.suggestion };
     if (change.kind === "edited") return { ...item, ...change.comment };
     if (change.kind === "resolved") return { ...item, ...change.resolution };
     if (change.kind === "reply-deleted") return { ...item, replies: item.replies.filter((reply) => reply.id !== change.replyId) };
@@ -86,6 +87,9 @@ export async function applyCommentAcknowledgement(client: QueryClient, projectId
     return { mentions: current.mentions.filter((mention) => {
       if (change.kind === "deleted") return mention.commentId !== change.commentId;
       if (change.kind === "resolved" && change.resolution.resolved) return mention.commentId !== change.resolution.id;
+      if (change.kind === "suggestion" && mention.kind === "review" && mention.commentId === change.commentId) {
+        return change.suggestion.status === "pending" && mention.readAt === null;
+      }
       if (change.kind === "reply-deleted") return mention.replyId !== change.replyId;
       return true;
     }) };

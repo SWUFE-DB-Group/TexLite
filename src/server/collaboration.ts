@@ -25,6 +25,8 @@ import {
   type CollaborationProjectAccess
 } from "./projects.js";
 import { reanchorFileComments, type SourceCommentEdit } from "./anchors.js";
+import { finishSuggestionApplications, hasPendingSuggestionApplication, prepareSuggestionApplication, recoverSuggestionApplications } from "./commentSuggestions.js";
+import { httpError, SourceFlushError } from "./http.js";
 import { createEditHistorySpan, hashText, type EditHistorySegmentInput, type EditHistorySpan, type EditHistoryStep } from "./editHistory.js";
 import { isEditableTextFile, isTextContent, MAX_TEXT_EDITOR_BYTES } from "../shared/fileTypes.js";
 import {
@@ -145,6 +147,7 @@ interface Room {
 }
 
 interface RoomBootstrap {
+  suggestionsRecovered: boolean;
   doc: Y.Doc;
   recoveredState: boolean;
   epoch: string;
@@ -244,9 +247,41 @@ export class CollaborationService {
 
   /** Wait for an in-flight cold-room load before reading or replacing sources. */
   async waitForReady(projectId: string): Promise<void> {
-    const initialization = this.roomInitializations.get(projectId);
+    let initialization = this.roomInitializations.get(projectId);
+    // After a crash the filesystem alone is not authoritative while an
+    // accepted source update is journaled. Recover it before a cold HTTP
+    // write/restore can replace the source tree or discard its CRDT base.
+    if (!initialization && !this.rooms.has(projectId) && hasPendingSuggestionApplication(this.db, projectId)) {
+      initialization = this.initializeRoom(projectId, this.projectGeneration(projectId));
+    }
     if (!initialization) return;
-    try { await initialization; } catch { /* Source files remain authoritative if recovery fails. */ }
+    try { this.scheduleRoomCleanup(await initialization); }
+    catch (error) {
+      if (hasPendingSuggestionApplication(this.db, projectId)) throw error;
+      // Without a pending application, source files remain authoritative.
+    }
+  }
+
+  async prepareSuggestionRoom(projectId: string): Promise<void> {
+    if (this.closed || this.isMaintaining(projectId)) throw httpError(409, "PROJECT_BUSY");
+    const room = await this.initializeRoom(projectId, this.projectGeneration(projectId));
+    // Revalidation may reject the HTTP request after hydration. Such a room
+    // still needs idle eviction even if no browser ever connects to it.
+    this.scheduleRoomCleanup(room);
+  }
+
+  /** A source-range operation, not an HTTP whole-file replacement. Called inside runWrite. */
+  applyCommentSuggestion(projectId: string, filePath: string, commentId: string, userId: string): void {
+    const room = this.rooms.get(projectId);
+    if (!room || room.maintenanceReason || this.activeFormatLease(room, filePath)) throw httpError(409, "PROJECT_BUSY");
+    try {
+      // The journal update refers to this durable CRDT base, including a cold room's item IDs.
+      this.persistRoomState(room);
+      const update = prepareSuggestionApplication(this.db, projectId, commentId, room.doc, userId, maxCollaborativeFileBytes(this.config));
+      Y.applyUpdate(room.doc, update, { externalUserId: userId, exact: true });
+      const receipt = this.flushRoom(room);
+      if (!receipt.ok) throw new SourceFlushError(receipt.failedPaths);
+    } finally { this.scheduleRoomCleanup(room); }
   }
 
   flushProject(projectId: string): CollaborationSaveReceipt | null {
@@ -803,9 +838,10 @@ export class CollaborationService {
           doc = new Y.Doc();
         }
       }
+      const suggestionsRecovered = recoverSuggestionApplications(this.db, projectId, doc, recoveredState);
       const epoch = await collaborationEpochAsync(this.config, projectId, recoveredState);
       const files = await this.readCollaborativeFiles(projectId);
-      return { doc, recoveredState, epoch, files };
+      return { doc, recoveredState, epoch, files, suggestionsRecovered };
     } catch (error) {
       doc.destroy();
       throw error;
@@ -976,7 +1012,7 @@ export class CollaborationService {
     try {
       // Persist a corrected state even when an oversized recovered document was
       // reverted to the source file and no source write remains dirty.
-      if (recoveredDirty || rejectedRecoveredPaths.length > 0) this.flushRoom(room);
+      if (recoveredDirty || rejectedRecoveredPaths.length > 0 || bootstrap.suggestionsRecovered) this.flushRoom(room);
       else if (recoveredMetadataChanged) this.scheduleStateSave(room);
     } catch (error) {
       this.disposeRoom(room);
@@ -1070,7 +1106,7 @@ export class CollaborationService {
             offset += delta.retain;
           } else if (delta.delete || typeof delta.insert === "string") {
             pending ??= { from: offset, to: offset, insert: "", insertLength: 0,
-              inferred: isExternalOrigin(transaction.origin) };
+              inferred: isExternalOrigin(transaction.origin) && transaction.origin.exact !== true };
             if (delta.delete) { offset += delta.delete; pending.to = offset; }
             if (typeof delta.insert === "string") {
               pending.insert += delta.insert;
@@ -1640,6 +1676,7 @@ export class CollaborationService {
       catch { /* Source durability must not depend on optional history bookkeeping. */ }
     }
     const ok = failedPaths.length === 0 && !roomHasPendingChanges(room);
+    if (ok && finishSuggestionApplications(this.db, room.projectId, room.doc)) this.signalComments(room.projectId);
     if (changed) room.persistedRevision += 1;
     if (ok) {
       room.persistedAt = new Date().toISOString();
@@ -1931,7 +1968,7 @@ function isConnectionOrigin(origin: unknown): origin is Connection {
   return Boolean(origin && typeof origin === "object" && "socket" in origin);
 }
 
-function isExternalOrigin(origin: unknown): origin is { externalUserId: string } {
+function isExternalOrigin(origin: unknown): origin is { externalUserId: string; exact?: boolean } {
   return Boolean(origin && typeof origin === "object" && "externalUserId" in origin);
 }
 

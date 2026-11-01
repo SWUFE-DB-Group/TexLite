@@ -4,6 +4,7 @@ import { AlertTriangle, Download, Eraser, LoaderCircle, Logs, PackageOpen, Scrol
 import { useTranslation } from "react-i18next";
 import { Panel } from "react-resizable-panels";
 import { WorkspaceSyncSeparator } from "./WorkspaceSyncSeparator";
+import { WorkspaceCommentsSlot } from "./WorkspaceCommentsSlot";
 import type { CompileDiagnostics } from "../compileDiagnostics";
 import type { CompileMessages } from "../compileLog";
 import type { FileEntry } from "../types";
@@ -95,7 +96,7 @@ export function WorkspacePreviewPanel({
     <Panel id="preview" minSize="22%">
       <div className="workspace-preview-region">
       <div className={`workspace-output-layout${commentsOpen ? " has-comments" : ""}`}>
-        <div ref={onCommentsHost} className="workspace-comments-slot" hidden={!commentsOpen} />
+        <WorkspaceCommentsSlot open={commentsOpen} onHost={onCommentsHost} />
       <section className="preview-panel">
         <div className="preview-tabs">
           <div className="preview-tab-list" role="tablist" aria-label={t("editor.outputTabs")}>

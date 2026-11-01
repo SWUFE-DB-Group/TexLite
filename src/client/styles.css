@@ -972,14 +972,19 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .workspace-preview-region { height: 100%; min-width: 0; min-height: 0; container: workspace-preview / inline-size; }
 .workspace-output-layout { position: relative; height: 100%; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
 .workspace-output-layout > .preview-panel { min-width: 0; grid-column: -2 / -1; grid-row: 1; }
-.workspace-comments-slot { position: absolute; z-index: 25; inset: 0 auto 0 0; width: min(360px, 100%); min-width: 0; background: var(--ui-surface, #fff); border-right: 1px solid var(--ui-border, #dfe2de); box-shadow: 8px 0 24px #10251b26; }
+.workspace-comments-slot { --comments-preview-reserve: 0px; position: absolute; z-index: 25; inset: 0 auto 0 0; width: min(max(280px, var(--workspace-comments-width, 360px)), 100%); min-width: 0; background: var(--ui-surface, #fff); border-right: 1px solid var(--ui-border, #dfe2de); box-shadow: 8px 0 24px #10251b26; }
 .workspace-comments-slot[hidden] { display: none; }
 .workspace-comments-slot > .context-panel { background: var(--ui-surface, #fff); overscroll-behavior: contain; }
 .workspace-comments-slot .drawer-title > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-comments-slot .drawer-title-actions { flex-shrink: 0; }
+.comments-resize-handle { position: absolute; z-index: 5; top: 0; right: -4px; bottom: 0; width: 9px; cursor: col-resize; touch-action: none; outline: none; }
+.comments-resize-handle::before { content: ""; position: absolute; top: calc(50% - 14px); left: 3px; width: 3px; height: 28px; border-radius: 3px; background: var(--ui-border, #bdc9c1); }
+.comments-resize-handle::after { content: ""; position: absolute; inset: 0 3px; border-radius: 2px; background: transparent; }
+.comments-resize-handle:hover::after, .comments-resize-handle:focus-visible::after, .workspace-comments-slot[data-resizing] > .comments-resize-handle::after { background: var(--ui-accent-border, #75a68a); }
+.workspace-comments-slot[data-resizing], .workspace-comments-slot[data-resizing] * { cursor: col-resize !important; user-select: none !important; -webkit-user-select: none !important; }
 @container workspace-preview (min-width: 760px) {
-  .workspace-output-layout.has-comments { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
-  .workspace-output-layout.has-comments > .workspace-comments-slot { position: relative; inset: auto; width: auto; grid-column: 1; grid-row: 1; box-shadow: none; }
+  .workspace-output-layout.has-comments { grid-template-columns: auto minmax(0, 1fr); }
+  .workspace-output-layout.has-comments > .workspace-comments-slot { --comments-preview-reserve: 320px; position: relative; inset: auto; width: clamp(280px, var(--workspace-comments-width, 360px), calc(100cqw - var(--comments-preview-reserve))); grid-column: 1; grid-row: 1; box-shadow: none; }
 }
 .drawer-title { position: sticky; top: 0; z-index: 2; height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--ui-border, #e3e6e3); background: var(--ui-surface, white); font-size: 13px; }
 .drawer-title button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #737a75); }
@@ -1137,6 +1142,40 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-actions-menu-content [role="menuitem"][data-highlighted] { background: var(--ui-hover, #edf3ef); }
 .comment-actions-menu-content .danger-text { color: var(--ui-danger, #a7312a); }
 .comment-actions-menu-content .danger-text[data-highlighted] { background: var(--ui-hover, #fff1ef); }
+.suggestion-add, .suggestion-text-action { display: inline-flex; align-items: center; gap: 5px; padding: 4px 0; border: 0; background: transparent; color: var(--ui-muted, #68776e); font-size: 11px; }
+.suggestion-add:hover, .suggestion-text-action:hover { color: var(--ui-accent, #176b44); }
+.suggestion-add-composer { max-width: 100%; min-height: 34px; margin-top: 12px; gap: 7px; padding: 7px 11px; border: 1px solid var(--ui-accent-border, #bed5c5); border-radius: 7px; background: var(--ui-accent-bg, #edf5ef); color: var(--ui-accent, #246545); font-size: 12px; font-weight: 600; line-height: 1.4; text-align: left; }
+.suggestion-add-composer > svg { flex: none; }
+.suggestion-add-composer:hover:not(:disabled) { border-color: var(--ui-accent, #538b6b); background: color-mix(in srgb, var(--ui-accent, #246545) 12%, var(--ui-surface, #fff)); }
+.suggestion-add-composer:focus-visible { outline: 2px solid var(--ui-accent, #246545); outline-offset: 3px; }
+.suggestion-editor { display: grid; gap: 10px; margin-top: 8px; padding: 12px; border: 1px solid var(--ui-border, #d9e1dc); border-radius: 8px; background: var(--ui-subtle, #f5f8f5); }
+.suggestion-editor > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.suggestion-editor > header strong { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.suggestion-editor > header button { display: inline-flex; padding: 3px; border: 0; background: transparent; color: var(--ui-muted, #68776e); }
+.suggestion-editor textarea { width: 100%; min-width: 0; max-height: 240px; resize: vertical; font-family: monospace; font-size: 12px; font-weight: 400; line-height: 1.6; }
+.suggestion-editor .form-field, .suggestion-reviewer-picker .form-field { font-size: 11px; }
+.suggestion-reviewer-picker select { width: 100%; max-width: 100%; font-size: 11px; font-weight: 400; padding: 6px 8px; }
+.suggestion-submit { margin-top: 8px; font-size: 11px; }
+.comment-suggestion { margin: 10px 0; border: 1px solid var(--ui-border, #d9e1dc); border-radius: 7px; overflow: hidden; }
+.suggestion-toggle { display: flex; align-items: center; flex-wrap: wrap; width: 100%; gap: 5px; padding: 8px; border: 0; border-radius: 0; background: var(--ui-subtle, #f5f8f5); color: var(--ui-text, #34483d); text-align: left; font-size: 11px; }
+.suggestion-toggle svg { flex: none; }
+.suggestion-toggle strong { font-weight: 600; }
+.suggestion-toggle span { margin-left: auto; color: var(--ui-muted, #68776e); font-size: 10px; }
+.suggestion-details { padding: 9px; }
+.suggestion-diff { max-height: 280px; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: monospace; font-size: 11px; line-height: 1.7; color: var(--ui-text, #28352d); }
+.suggestion-diff del { color: var(--ui-danger, #a63430); background: color-mix(in srgb, var(--ui-danger, #a63430) 12%, transparent); }
+.suggestion-diff ins { text-decoration: none; color: var(--ui-accent, #176b44); background: color-mix(in srgb, var(--ui-accent, #176b44) 12%, transparent); }
+.suggestion-preview > summary { width: fit-content; color: var(--ui-muted, #68776e); cursor: pointer; font-size: 11px; }
+.suggestion-preview[open] > summary { margin-bottom: 8px; }
+.suggestion-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.suggestion-actions button, .suggestion-submit { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 5px 8px; border: 1px solid var(--ui-border, #cbd2cc); border-radius: 5px; background: var(--ui-surface, #fff); color: var(--ui-text, #34483d); font-size: 11px; }
+.suggestion-actions button:hover:not(:disabled), .suggestion-submit:hover:not(:disabled) { background: var(--ui-hover, #edf3ef); }
+.suggestion-actions button.primary { border-color: transparent; background: var(--ui-accent, #176b44); color: var(--ui-surface, #fff); }
+.suggestion-actions button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-accent, #176b44) 90%, var(--ui-text, #203c2c)); }
+.suggestion-warning, .suggestion-decision { margin: 9px 0 0; color: var(--ui-muted, #68776e); font-size: 11px; line-height: 1.5; }
+.suggestion-warning { color: var(--ui-danger, #a63430); }
+.suggestion-decision { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
+.suggestion-assignment { margin-top: 8px; }
 .comment-identity { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .comment-avatar { flex: none; display: grid; place-items: center; width: 26px; height: 26px; margin-top: 1px; border-radius: 50%; background: var(--ui-accent-bg, #eaf2ec); color: var(--ui-accent, #3b6950); font-size: 11px; font-weight: 600; }
 .comment-author-details { min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }

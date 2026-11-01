@@ -12,6 +12,8 @@ import { MAX_DIRECT_RESOURCE_PREVIEW_BYTES, type PendingUpload, type ResourcePre
 import type { CompileCleanMode } from "./useProjectCompilation";
 import { ShareDialog } from "./Comments";
 import { MentionTextarea } from "./MentionTextarea";
+import { SuggestionEditor } from "./SuggestionEditor";
+import type { SuggestionDraft } from "../../shared/comments";
 import { LazyModal } from "../LazyLoadBoundary";
 import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
@@ -22,6 +24,8 @@ const SelectionHistoryDialog = lazy(() => import("../SelectionHistoryDialog").th
 const QuickOpenDialog = lazy(() => import("../QuickOpenDialog").then((module) => ({ default: module.QuickOpenDialog })));
 
 export interface WorkspaceDialogsProps {
+  commentSuggestion?: SuggestionDraft | null;
+  setCommentSuggestion?: (suggestion: SuggestionDraft | null) => void;
   user: User;
   project: Project;
   projectId: string;
@@ -102,6 +106,7 @@ export interface WorkspaceDialogsProps {
 }
 
 export function WorkspaceDialogs({
+  commentSuggestion = null, setCommentSuggestion,
   user, project, projectId, activeFile, content, maxCitationBibtexBytes, files, directoryEntries, readOnly,
   resourcePreview, resourcePreviewLoading, setResourcePreview, setResourcePreviewLoading,
   uploadConflict, setUploadConflict, dismissUploadFeedback, uploadFiles, cleanMode, setCleanMode, cleanCompile, newFileOpen,
@@ -148,9 +153,10 @@ export function WorkspaceDialogs({
       onOpenChange={(open) => { if (!open) closeComment(); }}
       footer={<>
         <button type="button" disabled={commentSubmitting} onClick={cancelComment}>{t("common.cancel")}</button>
-        <button type="button" className="primary" aria-busy={commentSubmitting} disabled={commentSubmitting || !commentText.trim()} onClick={() => void addComment()}>
+        <button type="button" className="primary" aria-busy={commentSubmitting} disabled={commentSubmitting || (!commentSuggestion && !commentText.trim())
+          || Boolean(commentSuggestion && (!commentSuggestion.reviewerId || commentSuggestion.reviewerId === user.id || commentSuggestion.replacementText === commentSelection.selectedText))} onClick={() => void addComment()}>
           {commentSubmitting && <LoaderCircle className="spin" size={14} />}
-          {t(commentSubmitting ? "editor.commentSending" : "editor.addComment")}
+          {t(commentSubmitting ? "editor.commentSending" : commentSuggestion?.replacementText === "" ? "suggestions.submitDeletion" : "editor.addComment")}
         </button>
       </>}
     >
@@ -167,7 +173,7 @@ export function WorkspaceDialogs({
           rows={5}
           disabled={commentSubmitting}
           value={commentText}
-          placeholder={t("editor.commentPlaceholder")}
+          placeholder={t(commentSuggestion ? "suggestions.defaultComment" : "editor.commentPlaceholder")}
           onChange={setCommentText}
           onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.nativeEvent.isComposing) {
@@ -178,6 +184,8 @@ export function WorkspaceDialogs({
           }}
         />
       </label>
+      {setCommentSuggestion && <SuggestionEditor projectId={projectId} ownerId={project.ownerId} authorId={user.id} original={commentSelection.selectedText}
+        value={commentSuggestion} onChange={setCommentSuggestion} disabled={commentSubmitting} variant="composer" />}
       {commentSelection.selectedText && <blockquote className="selection-preview">{commentSelection.selectedText}</blockquote>}
     </Modal>
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} onMemberCountChange={onSharedMemberCountChange} />

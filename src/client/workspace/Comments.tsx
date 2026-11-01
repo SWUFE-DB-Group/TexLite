@@ -9,6 +9,7 @@ import { formatDateTime } from "../dateTime";
 import type { Comment, Project } from "../types";
 import { CommentActionsMenu } from "./CommentActionsMenu";
 import { CommentForm } from "./CommentForm";
+import { canAttachCommentSuggestion, SuggestionAttachment, type SuggestionSourceTarget } from "./SuggestionAttachment";
 import { CommentDraftStore, type CommentDraftKey } from "./commentDrafts";
 import { commentReplyVisibility } from "./commentReplyVisibility";
 import { prepareCommentDeletionEffect } from "./commentDeletionEffect";
@@ -54,11 +55,15 @@ function CommentIdentity({ userId, avatarStyle, name, username, highlighted, chi
 }
 
 export function CommentThread({
+  projectOwnerId = "", canEditSource = false, unreadCommentMentionKind,
   projectId, comment, draftStore, currentUserId, unreadCommentMentionId, unreadReplyMentionIds,
   highlightedComment, highlightedReplyId, currentComment, showFilePath, onMarkMentionRead, onFocus, onActivate, onToggle,
   onReply, onEdit, onDelete, onEditReply, onDeleteReply, selectedParticipantIds, highlightReplyParticipants,
   replyExpansion, onReplyExpansionChange
 }: {
+  projectOwnerId?: string;
+  canEditSource?: boolean;
+  unreadCommentMentionKind?: "mention" | "review";
   projectId: string;
   comment: Comment;
   draftStore: CommentDraftStore;
@@ -87,6 +92,7 @@ export function CommentThread({
   const { t, i18n } = useTranslation();
   const now = useRelativeTimeNow();
   const [toggling, setToggling] = useState(false);
+  const [suggestionTarget, setSuggestionTarget] = useState<SuggestionSourceTarget | null>(null);
   const subscribe = useCallback((listener: () => void) => draftStore.subscribe(comment.id, listener), [draftStore, comment.id]);
   const getDrafts = useCallback(() => draftStore.getThread(comment.id), [draftStore, comment.id]);
   const drafts = useSyncExternalStore(subscribe, getDrafts, getDrafts);
@@ -166,9 +172,9 @@ export function CommentThread({
         {times(comment.createdAt, comment.editedAt)}
       </CommentIdentity>
       <span className="comment-header-actions">
-        <button type="button" className="resolve" disabled={toggling || submittingForm} aria-busy={toggling}
+        <button type="button" className="resolve" disabled={toggling || submittingForm || comment.suggestion?.status === "pending"} aria-busy={toggling}
           aria-label={t(comment.resolved ? "editor.reopen" : "editor.resolve")}
-          data-tooltip={t(comment.resolved ? "editor.reopen" : "editor.resolve")} data-texlite-tooltip-always
+          data-tooltip={t(comment.suggestion?.status === "pending" ? "suggestions.reviewBeforeResolve" : comment.resolved ? "editor.reopen" : "editor.resolve")} data-texlite-tooltip-always
           onClick={(event) => {
             event.stopPropagation();
             if (toggling) return;
@@ -179,6 +185,10 @@ export function CommentThread({
         </button>
         {comment.authorId === currentUserId && !commentEditDraft?.open && <CommentActionsMenu kind="comment"
           disabled={submittingForm || toggling}
+          onSuggest={projectOwnerId && !suggestionTarget && canAttachCommentSuggestion(comment, currentUserId) ? () => {
+            onActivate();
+            setSuggestionTarget({ original: comment.selectedText, sourceHash: comment.anchorSourceHash! });
+          } : undefined}
           onEdit={() => openDraft("edit-comment", comment.content)}
           onDelete={() => { setDeleteError(""); setDeleteCommentOpen(true); }} />}
       </span>
@@ -187,7 +197,9 @@ export function CommentThread({
     {comment.selectedText && <blockquote className="comment-selected-text">{comment.selectedText}</blockquote>}
     {commentEditDraft?.open && comment.authorId === currentUserId ? draftForm("edit-comment", t("editor.editComment"), onEdit)
       : <p className="comment-content">{renderCommentContent(comment.content)}</p>}
-    {unreadCommentMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t("editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadCommentMentionId, event)}>{t("editor.markMentionRead")}</button></div>}
+    {projectOwnerId && (comment.suggestion || suggestionTarget) && <SuggestionAttachment projectId={projectId} ownerId={projectOwnerId} currentUserId={currentUserId} canEdit={canEditSource} comment={comment}
+      draftTarget={suggestionTarget} onCloseComposer={() => setSuggestionTarget(null)} />}
+    {unreadCommentMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t(unreadCommentMentionKind === "review" ? "suggestions.reviewRequested" : "editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadCommentMentionId, event)}>{t("editor.markMentionRead")}</button></div>}
     {comment.replies.length > 0 && <div className="comment-replies">
       {visibleReplies.canToggle && <button type="button" className="comment-replies-toggle"
         aria-expanded={visibleReplies.expanded} aria-controls={repliesId}

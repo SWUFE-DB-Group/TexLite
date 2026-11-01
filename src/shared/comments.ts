@@ -1,4 +1,5 @@
 /** Transport types shared by comment routes and the workspace cache. */
+export const MAX_SUGGESTION_LENGTH = 50_000;
 export interface ProjectCommentSummary {
   totalCount: number;
   unresolvedCount: number;
@@ -18,6 +19,7 @@ export interface CommentReply {
 }
 
 export interface Comment {
+  suggestion?: CommentSuggestion | null;
   id: string;
   filePath: string;
   /** Response-only manuscript reading order; never inferred from a mutation. */
@@ -51,7 +53,25 @@ export interface Comment {
 
 export interface MentionableUser { id: string; username: string; displayName: string }
 
+export interface SuggestionDraft { replacementText: string; reviewerId: string }
+export interface CommentSuggestion {
+  replacementText: string;
+  reviewerId: string | null;
+  originalText: string;
+  status: "pending" | "accepted" | "rejected";
+  reviewerDisplayName: string | null;
+  reviewerUsername: string | null;
+  reviewerAvailable: boolean;
+  applicable: boolean;
+  applying: boolean;
+  decidedById: string | null;
+  decidedByDisplayName: string | null;
+  decidedByUsername: string | null;
+  decidedAt: string | null;
+}
+
 export interface CommentMention {
+  kind?: "mention" | "review";
   id: string;
   projectId: string;
   commentId: string;
@@ -69,6 +89,7 @@ export type CommentEdit = Pick<Comment, "id" | "filePath" | "content" | "updated
 
 /** Field-specific acknowledgements must not replace live anchors or replies. */
 export type CommentChange =
+  | { kind: "suggestion"; commentId: string; filePath: string; suggestion: CommentSuggestion }
   | { kind: "created"; comment: Comment }
   | { kind: "edited"; comment: CommentEdit }
   | { kind: "resolved"; resolution: CommentResolution }

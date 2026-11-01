@@ -385,6 +385,48 @@ and time; deleting that user retains the timestamp and displays “Deleted User�
 Schema migration 4 adds nullable columns without guessing metadata for existing
 resolved comments. This stores the current resolution, not an activity log.
 
+### Suggested changes
+
+A source comment can optionally carry one replacement suggestion. The note
+remains the discussion's primary content; an empty note becomes “Suggested
+change” in the author's language. Read-only members may propose changes, but
+only the assigned reviewer with current write access may accept or reject them.
+The comment author cannot review their own suggestion, even if they own the
+project. The reviewer defaults to the project owner when they are not the
+author; otherwise the author must choose another writable member. The owner
+can reassign a pending review, still excluding the comment author. Replacement
+text is immutable after posting, and an empty replacement means deleting the
+selected passage.
+
+Suggestions are collapsed attachments, not a separate discussion list. Opening
+one shows an inline source diff, compacting unchanged context without hiding
+edits. The composer offers the same optional preview. Existing comment authors
+attach suggestions through the comment's more-actions menu; the new-comment
+dialog keeps its explicit attachment button. Review requests reuse
+personal unread notifications with a distinct `review` kind; an explicit mention
+of the same reviewer does not create a duplicate notification. Reading a review
+request does not decide it. Accepting or rejecting clears that review request,
+but leaves the discussion open and preserves other mention notifications.
+A discussion with a pending suggestion cannot be resolved.
+
+Creation binds the selection to a source hash. Acceptance runs in the project
+write queue, flushes preceding edits, checks current reviewer permissions and
+requires the anchored source to match the saved original exactly. Edits outside
+the passage can move its anchor; changed or lost source cannot be patched
+fuzzily. Acceptance applies a targeted Yjs delete/insert, leaving unrelated
+content and connected collaborators intact. The accepting reviewer is the
+source-edit author. Rejection does not change source. Deleting a discussion
+after acceptance does not undo the applied change.
+
+Schema migration 12 adds a suggestion table and the notification kind without
+changing existing comments. Before applying a change, the service persists its
+Yjs base and journals the exact CRDT update and replacement-range positions in
+SQLite. An interrupted application can replay that same update idempotently;
+it becomes accepted only after source/state/anchor persistence succeeds. A
+missing recovery base fails explicitly rather than guessing and duplicating
+the replacement. This recovery receipt is separate from ordinary anchor-save
+bookkeeping and from the comment's resolution attribution.
+
 The source-pin button opens an independent current-comment view: only that Open
 thread in the active source file is shown and highlighted, without status,
 scope, participant, unread or sorting controls. Saved review filters do not
@@ -776,8 +818,12 @@ use default sizes; older browser records are left untouched. Blocked browser
 storage also falls back to usable defaults. File-panel collapse state follows `onResize`.
 Source comments sit at the left edge of the preview region, immediately beside
 the editor. They do not add an outer resizable panel or change the editor/file
-widths. A 760 px preview-container breakpoint switches between a 300–360 px
-inline review column and a drawer over the PDF; closing it restores the preview.
+widths. A 760 px preview-container breakpoint switches between an inline review
+column and a drawer over the PDF; closing it restores the preview. A right-edge
+separator resizes either presentation from 280 to 640 px (360 px by default),
+capped by the container and reserving at least 320 px for an inline PDF. Its
+browser-local preference is scoped to the deployment, not stored in the project.
+Arrow/Home/End keys resize it too; double-click restores the default width.
 The PDF stays mounted, and a stable portal host preserves review filters and
 reply forms across responsive changes. Editor-only mode falls back to an
 adjacent resizable context pane; settings keep their existing right-hand pane.

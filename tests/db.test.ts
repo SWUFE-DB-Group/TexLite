@@ -21,13 +21,35 @@ function migrationConfig(root: string, databasePath: string): Config {
 }
 
 describe("database migrations", () => {
+  it("automatically upgrades existing comments and mentions without changing their content or read status", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-suggestion-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`DROP TABLE comment_suggestions;
+        ALTER TABLE comment_mentions DROP COLUMN kind;
+        DELETE FROM texlite_schema_migrations WHERE version = 12;
+        INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES ('u', 'owner', 'Owner', 'hash', 'admin', '2026-11-01');
+        INSERT INTO projects (id, owner_id, name, created_at, updated_at) VALUES ('p', 'u', 'Paper', '2026-11-01', '2026-11-01');
+        INSERT INTO comments (id, project_id, file_path, author_id, content, created_at, updated_at) VALUES ('c', 'p', 'main.tex', 'u', 'Keep this discussion', '2026-11-01', '2026-11-01');
+        INSERT INTO comment_mentions (id, project_id, comment_id, mentioned_user_id, created_at, read_at, read_reason) VALUES ('m', 'p', 'c', 'u', '2026-11-01', '2026-11-02', 'manual');`);
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT content, resolved FROM comments WHERE id = 'c'").get()).toEqual({ content: "Keep this discussion", resolved: 0 });
+      expect(database.prepare("SELECT kind, read_at, read_reason FROM comment_mentions WHERE id = 'm'").get()).toEqual({ kind: "mention", read_at: "2026-11-02", read_reason: "manual" });
+      database.exec("INSERT INTO comment_suggestions (comment_id, original_text, replacement_text, reviewer_id) VALUES ('c', 'old', 'new', 'u')");
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT original_text, status FROM comment_suggestions WHERE comment_id = 'c'").get()).toEqual({ original_text: "old", status: "pending" });
+      expect(database.prepare("SELECT COUNT(*) AS count FROM texlite_schema_migrations WHERE version = 12").get()).toEqual({ count: 1 });
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("upgrades existing agent tasks with a durable native-cleanup checkpoint without resetting completed work", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-agent-cleanup-migration-"));
     const config = migrationConfig(root, path.join(root, "texlite.db"));
     let database = openDatabase(config);
     try {
       database.exec(`ALTER TABLE agent_tasks DROP COLUMN native_cleanup_done;
-        DELETE FROM texlite_schema_migrations WHERE version = 11;
+        DELETE FROM texlite_schema_migrations WHERE version >= 11;
         INSERT INTO agent_tasks (id, project_id, user_id, project_name, user_name, agent_id, title,
           state, cleanup_state, ever_started, created_at, updated_at)
         VALUES ('task', 'project', 'writer', 'Paper', 'Writer', 'claude', 'Revise',
@@ -232,7 +254,8 @@ describe("database migrations", () => {
           { version: 8, name: "use_username_avatar_seed" },
           { version: 9, name: "add_snapshot_file_tracking" },
           { version: 10, name: "add_external_agent_tasks" },
-          { version: 11, name: "track_agent_native_cleanup_completion" }
+          { version: 11, name: "track_agent_native_cleanup_completion" },
+          { version: 12, name: "add_comment_suggestions" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -254,7 +277,8 @@ describe("database migrations", () => {
           { version: 8, name: "use_username_avatar_seed" },
           { version: 9, name: "add_snapshot_file_tracking" },
           { version: 10, name: "add_external_agent_tasks" },
-          { version: 11, name: "track_agent_native_cleanup_completion" }
+          { version: 11, name: "track_agent_native_cleanup_completion" },
+          { version: 12, name: "add_comment_suggestions" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -294,7 +318,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -382,7 +406,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }]);
       } finally {
         migrated.close();
       }

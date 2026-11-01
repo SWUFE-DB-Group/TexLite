@@ -1,4 +1,34 @@
 {
+  "suggestions": {
+    "title": "修改建議",
+    "preview": "預覽修改",
+    "defaultComment": "修改意見",
+    "attach": "附加修改建議",
+    "removeAttachment": "移除修改建議",
+    "replacement": "替換內容",
+    "reviewer": "審核人",
+    "chooseReviewer": "選擇審核人",
+    "noReviewers": "目前沒有其他具寫入權限的專案成員可審核此建議。",
+    "deletionHint": "此建議將刪除選取的原始碼。",
+    "submit": "提交建議",
+    "submitDeletion": "提交刪除建議",
+    "diff": "原始碼修改建議",
+    "showFull": "展開全文",
+    "collapse": "收合",
+    "awaitingYou": "待你審核",
+    "awaiting": "待 {{name}} 審核",
+    "accepted": "已接受",
+    "rejected": "已拒絕",
+    "accept": "接受修改",
+    "reject": "拒絕",
+    "sourceChanged": "原文已修改，無法直接套用此建議。",
+    "reviewerUnavailable": "審核人已無寫入權限，專案擁有者可重新指定審核人。",
+    "saving": "正在儲存已接受的修改，必要時請重試接受。",
+    "decidedBy": "由 {{name}} 審核",
+    "changeReviewer": "更換審核人",
+    "reviewBeforeResolve": "請先審核修改建議，再解決此討論。",
+    "reviewRequested": "邀請你審核修改建議"
+  },
   "common": {
     "noChangesToSave": "沒有需要儲存的變更。",
     "done": "已完成",
@@ -653,6 +683,7 @@
     "noIssues": "未發現寫作問題。"
   },
   "editor": {
+    "resizeComments": "調整批註面板寬度",
     "vimLoading": "正在載入 Vim…",
     "vimLoadFailed": "Vim 載入失敗，仍可使用一般編輯模式。",
     "languageLoadFailed": "語法上色載入失敗，仍可正常編輯和儲存此檔案。",
