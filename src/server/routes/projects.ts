@@ -23,6 +23,7 @@ import type { LatexCompletionService } from "../latexCompletion.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
 import { accessibleProject, canEdit } from "../projects.js";
+import { ProjectPreviewService } from "../projectPreview.js";
 import { writeProjectArchive } from "../archive.js";
 import { extractProjectZip, ZipValidationError } from "../zip.js";
 import { HarperLintSupersededError, HarperUnavailableError, type HarperService } from "../harper.js";
@@ -62,6 +63,7 @@ const clientIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 /** Register project catalog, metadata, archive, dictionary, tag, export, and deletion routes. */
 export function registerProjectCatalogRoutes(app: FastifyInstance, context: ProjectCatalogRouteContext): void {
   const { config, db, collaboration, projectMutations, latexCompletions, projectOutlines, harper, chktex, recordHistory } = context;
+  const projectPreviews = new ProjectPreviewService(config);
 
   // Advanced project icons are served as cacheable SVG masks. The browser
   // therefore does not have to bundle Lucide's entire icon catalogue merely
@@ -164,7 +166,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
   app.get("/api/projects", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const query = request.query as { archived?: string; page?: string; pageSize?: string; search?: string; tag?: string; sort?: string; scope?: string };
+    const query = request.query as { archived?: string; page?: string; pageSize?: string; search?: string; tag?: string; sort?: string; scope?: string; previews?: string };
     const scope: ProjectOwnershipScope = query.scope === "owned" || query.scope === "shared" ? query.scope : "all";
     const archivedOnly = query.archived === "1" || query.archived === "true";
     const requestedPage = Number.parseInt(query.page ?? "1", 10);
@@ -219,13 +221,17 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const projectTags = tagsForProjects(db, projectIds, user.id);
     const commentsSummaries = commentsSummaryForProjects(db, projectIds);
     const unreadMentionCounts = unreadMentionCountsForProjects(db, projectIds, user.id);
+    const previews = new Map<string, string | null>();
+    if (query.previews === "1") await Promise.all(projects.map(async (project) => {
+      if (!projectTags.get(project.id)?.length) previews.set(project.id, await projectPreviews.read(project.id, project.main_file));
+    }));
     return {
-      projects: projects.map((project) => projectJson(
+      projects: projects.map((project) => ({ ...projectJson(
         { ...project, archived: archivedOnly },
         projectTags.get(project.id) ?? [],
         commentsSummaries.get(project.id),
         unreadMentionCounts.get(project.id) ?? 0
-      )),
+      ), ...(previews.has(project.id) ? { preview: previews.get(project.id) } : {}) })),
       pagination: { page: currentPage, pageSize, total, totalPages },
       counts
     };

@@ -112,6 +112,40 @@ describe("texLite application", () => {
     });
   });
 
+  it("provides opt-in main-document previews only for tagless catalog entries and refreshes them after source changes", async () => {
+    const prefix = `preview-${randomUUID().slice(0, 6)}`;
+    const ids: string[] = [];
+    let tagId: string | undefined;
+    try {
+      for (const suffix of ["summary", "empty", "tagged"]) {
+        const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: `${prefix} ${suffix}` } });
+        expect(created.statusCode, created.body).toBe(201); ids.push(created.json().project.id);
+      }
+      const write = (id: string, content: string) => app.inject({ method: "PUT", url: `/api/projects/${id}/file`, headers: { cookie }, payload: { path: "main.tex", content } });
+      expect((await write(ids[0], String.raw`\title{Paper title}\begin{abstract}A research summary. More detail.\end{abstract}`)).statusCode).toBe(200);
+      expect((await write(ids[1], String.raw`\begin{document}\end{document}`)).statusCode).toBe(200);
+      const tag = await app.inject({ method: "POST", url: "/api/tags", headers: { cookie }, payload: { name: prefix, color: "blue" } });
+      expect(tag.statusCode).toBe(201); tagId = tag.json().tag.id;
+      expect((await app.inject({ method: "POST", url: `/api/projects/${ids[2]}/tags`, headers: { cookie }, payload: { tagId } })).statusCode).toBe(201);
+      const ordinary = await app.inject({ method: "GET", url: `/api/projects?search=${prefix}`, headers: { cookie } });
+      expect(ordinary.json().projects.every((project: object) => !("preview" in project))).toBe(true);
+      const read = async () => {
+        const response = await app.inject({ method: "GET", url: `/api/projects?search=${prefix}&previews=1`, headers: { cookie } });
+        expect(response.statusCode, response.body).toBe(200);
+        return response.json().projects as Array<{ id: string; preview?: string | null }>;
+      };
+      const previews = await read();
+      expect(previews.find((project) => project.id === ids[0])?.preview).toBe("A research summary.");
+      expect(previews.find((project) => project.id === ids[1])?.preview).toBe("");
+      expect(previews.find((project) => project.id === ids[2])).not.toHaveProperty("preview");
+      expect((await write(ids[0], String.raw`\title{Updated title}`)).statusCode).toBe(200);
+      expect((await read()).find((project) => project.id === ids[0])?.preview).toBe("Updated title");
+    } finally {
+      for (const id of ids) await app.inject({ method: "DELETE", url: `/api/projects/${id}`, headers: { cookie } });
+      if (tagId) await app.inject({ method: "DELETE", url: `/api/tags/${tagId}`, headers: { cookie } });
+    }
+  });
+
   it("restricts update notices and dismissal to administrators", async () => {
     for (const method of ["GET", "POST"] as const) {
       const url = `/api/admin/updates${method === "POST" ? "/dismiss" : ""}`;

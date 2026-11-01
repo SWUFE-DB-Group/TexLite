@@ -83,6 +83,18 @@ same view before revalidation. Obsolete requests are aborted and ignored, and
 rows from a previous category are not shown while its replacement is loading.
 Successful catalog mutations revalidate the currently selected view.
 
+Grid cards keep unread mentions and unresolved-comment counts in the owner
+header, using icon-and-number badges with full tooltip labels. Titles clamp to
+two lines without reserving a fixed title height; timestamp groups align at
+the bottom of equal-height cards. Private tags take precedence over a two-line
+source preview. Grid catalog requests opt into previews only for tagless rows:
+the server reads at most the first 64 KiB of the selected main document,
+preferring an abstract sentence, then the document title, then body prose.
+Reads are asynchronous, coalesced and cached by file metadata, with at most 128
+entries; includes are not traversed and no TeX is executed. Empty source and
+unavailable previews have distinct placeholders. List layout and its labels
+remain unchanged.
+
 ### Citation library
 
 The citation library is stored in SQLite and is independent of project source

@@ -121,6 +121,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   });
   const load = (scope: ProjectOwnershipScope, archived: boolean, pageNumber: number, search: string, tag: string, order: "updated" | "created") => {
     const params = new URLSearchParams({ page: String(pageNumber), pageSize: "20", sort: order, scope });
+    if (view === "grid") params.set("previews", "1");
     if (archived) params.set("archived", "1");
     if (search.trim()) params.set("search", search.trim());
     if (tag) params.set("tag", tag);
@@ -143,7 +144,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   useEffect(() => {
     void load(ownership, showArchived, page, query, tagFilter, sort);
     return () => loadController.current?.abort();
-  }, [ownership, showArchived, page, query, tagFilter, sort, refreshVersion]);
+  }, [ownership, showArchived, page, query, tagFilter, sort, refreshVersion, view]);
   useEffect(() => {
     if (resultsCurrent) onDataChange({ projects, tags, pagination, counts,
       filters: { ownership, archived: showArchived, search: query, tag: tagFilter, sort } });
@@ -490,6 +491,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
               <div className="project-card-badges">
                 <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}>{project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}</span>
                 {Boolean(project.unreadMentionCount && project.unreadMentionCount > 0) && <button className="project-mentions-badge" type="button" title={t("projects.unreadMentionsTooltip", { count: project.unreadMentionCount })} aria-label={t("projects.unreadMentionsTooltip", { count: project.unreadMentionCount })} onClick={(event) => { event.stopPropagation(); void openUnreadMention(project); }}><AtSign aria-hidden size={11} /><span>{project.unreadMentionCount}</span></button>}
+                {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && <span className="project-comments-badge unresolved" data-tooltip={t("projects.unresolvedCount", { count: project.unresolvedCommentCount })} aria-label={t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}><MessageSquare aria-hidden size={11} /><span>{project.unresolvedCommentCount}</span></span>}
               </div>
               <ProjectActionMenu
                 variant="grid"
@@ -523,11 +525,11 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
               </span>
               <strong className="project-card-title" title={project.name}>{project.name}</strong>
             </div>
-            <div className="project-card-tags" aria-label={t("tags.assignTitle", { project: project.name })} title={project.tags?.map((tag) => tag.name).join(", ") || undefined}>
+            {project.tags?.length ? <div className="project-card-tags" aria-label={t("tags.assignTitle", { project: project.name })} title={project.tags.map((tag) => tag.name).join(", ")}>
               {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id} title={tag.name}>{tag.name}</span>)}
-            </div>
+            </div> : <p className={`project-card-preview${project.preview ? "" : " is-empty"}`}>{project.preview || t(project.preview === "" ? "projects.noContentYet" : "projects.previewUnavailable")}</p>}
             <dl className="project-meta">
-              <div><dt className="project-meta-created-label"><span><CalendarDays aria-hidden size={13} />{t("projects.created")}</span>{Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { count: project.commentCount ?? project.unresolvedCommentCount, unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}><MessageSquare aria-hidden size={11} /><span>{t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}</span></span>}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
+              <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
               <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={formatTime(project.updatedAt)}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
             </dl>
           </article>)}

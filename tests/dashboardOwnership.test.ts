@@ -65,6 +65,35 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.clear(); vi.unstubAllGlobals(); });
 
 describe("project ownership tabs", () => {
+  it("groups compact statuses in grid headers, substitutes real previews for missing tags and preserves list mode", async () => {
+    projects = [
+      { ...makeProject(true, 0), ownerDisplayName: "Administrator", unresolvedCommentCount: 5, unreadMentionCount: 1 },
+      { ...makeProject(true, 1), preview: "A readable research summary." },
+      { ...makeProject(true, 2), tags: [], preview: "" },
+      { ...makeProject(true, 3), preview: null }
+    ];
+    await render();
+    expect(lastParams().get("previews")).toBe("1");
+    const cards = [...host.querySelectorAll<HTMLElement>(".project-grid-card")];
+    expect(cards).toHaveLength(4);
+    const badges = cards[0].querySelector(".project-card-badges")!;
+    expect(badges.querySelector(".project-mentions-badge")?.textContent).toBe("1");
+    expect(badges.querySelector(".project-comments-badge")?.textContent).toBe("5");
+    expect(badges.querySelector<HTMLElement>(".project-comments-badge")?.dataset.tooltip).toBe("5 unresolved");
+    expect(cards[0].querySelector(".project-card-preview")).toBeNull();
+    expect(cards[1].querySelector(".project-card-preview")?.textContent).toBe("A readable research summary.");
+    expect(cards[2].querySelector(".project-card-preview")?.textContent).toBe("No content yet");
+    expect(cards[3].querySelector(".project-card-preview")?.textContent).toBe("No preview available");
+    for (const card of cards) {
+      expect(card.querySelector(".project-meta .project-comments-badge")).toBeNull();
+      expect(card.querySelector(".project-meta dt")?.textContent).toBe("Created");
+    }
+    await click(".view-toggle button:last-child");
+    expect(lastParams().has("previews")).toBe(false);
+    expect(host.querySelector(".project-card-preview")).toBeNull();
+    expect(host.querySelector(".project-list-title-line .project-comments-badge")?.textContent).toBe("5 unresolved");
+  });
+
   it.each(["grid", "list"])("keeps the %s UI, counts all pages and resets pagination when changing ownership", async (view) => {
     localStorage.setItem(scopedStorageKey("texlite-project-view"), view);
     await render();

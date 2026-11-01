@@ -36,6 +36,8 @@ export interface Project {
   lastModifiedUsername?: string | null;
   lastModifiedDisplayName?: string | null;
   name: string;
+  /** Optional catalog-only source excerpt; empty means no content, null means unavailable. */
+  preview?: string | null;
   mainFile: string;
   latexmkrc: string | null;
   engine: "pdflatex" | "xelatex" | "lualatex";
