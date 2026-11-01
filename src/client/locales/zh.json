@@ -1,4 +1,16 @@
 {
+  "commentComposer": {
+    "original": "原文",
+    "suggestEdit": "提出修改建议",
+    "placeholder": "写下评论或说明修改原因… ⌘/Ctrl+Enter 发送",
+    "empty": "添加评论或修改原文",
+    "emptyComment": "添加评论",
+    "chooseReviewer": "请为本次修改选择审核人",
+    "commentOnly": "评论",
+    "editOnly": "修改建议",
+    "commentAndEdit": "评论及修改建议",
+    "reviewRequested": "请求审核"
+  },
   "suggestions": {
     "title": "修改建议",
     "preview": "预览修改",

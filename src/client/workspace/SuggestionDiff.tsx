@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { makeDiff } from "@sanity/diff-match-patch";
-import { cleanupTextDiff } from "../../shared/textDiff";
+import { makeSuggestionDiff } from "./suggestionDiff";
 
 /** Inline source diff; compact only unchanged context, never the actual edits. */
 export function SuggestionDiff({ original, replacement }: { original: string; replacement: string }) {
   const { t } = useTranslation();
   const [full, setFull] = useState(false);
-  const diff = useMemo(() => cleanupTextDiff(makeDiff(original, replacement, { checkLines: false, timeout: 1 }), "semantic"), [original, replacement]);
+  const diff = useMemo(() => makeSuggestionDiff(original, replacement), [original, replacement]);
   const compact = !full && diff.some(([kind, text]) => kind === 0 && text.length > 192);
   return <div className="suggestion-diff-view">
     <pre className="suggestion-diff" aria-label={t("suggestions.diff")}>

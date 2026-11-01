@@ -34,21 +34,28 @@ export function SuggestionReviewerPicker({ projectId, authorId, commentId, value
   </div>;
 }
 
-export function SuggestionEditor({ projectId, ownerId, authorId, commentId, original, value, onChange, disabled = false, autoFocus = false, variant = "compact" }: {
-  projectId: string; ownerId: string; authorId: string; commentId?: string; original: string; value: SuggestionDraft | null;
-  onChange: (value: SuggestionDraft | null) => void; disabled?: boolean; autoFocus?: boolean; variant?: "compact" | "composer";
+export function SuggestionEditor({ projectId, authorId, commentId, original, value, onChange, disabled = false, autoFocus = false }: {
+  projectId: string; authorId: string; commentId?: string; original: string; value: SuggestionDraft;
+  onChange: (value: SuggestionDraft | null) => void; disabled?: boolean; autoFocus?: boolean;
 }) {
   const { t } = useTranslation();
-  if (!value) return original && original.length <= MAX_SUGGESTION_LENGTH ? <button type="button" className={`suggestion-add${variant === "composer" ? " suggestion-add-composer" : ""}`} disabled={disabled}
-    onClick={() => onChange({ replacementText: original, reviewerId: ownerId === authorId ? "" : ownerId })}><FilePenLine size={variant === "composer" ? 16 : 14} aria-hidden />{t("suggestions.attach")}</button> : null;
   return <section className="suggestion-editor" aria-label={t("suggestions.title")}>
     <header><strong><FilePenLine size={14} />{t("suggestions.title")}</strong><button type="button" disabled={disabled} aria-label={t("suggestions.removeAttachment")} onClick={() => onChange(null)}><X size={14} /></button></header>
-    <label className="form-field">{t("suggestions.replacement")}<textarea autoFocus={autoFocus} rows={4} maxLength={MAX_SUGGESTION_LENGTH} spellCheck={false} disabled={disabled}
-      value={value.replacementText} onChange={(event) => onChange({ ...value, replacementText: event.target.value })} /></label>
-    {value.replacementText === "" && <p className="field-hint">{t("suggestions.deletionHint")}</p>}
-    {value.replacementText !== original && <details className="suggestion-preview"><summary>{t("suggestions.preview")}</summary>
-      <SuggestionDiff original={original} replacement={value.replacementText} />
-    </details>}
+    <SuggestionTextEditor original={original} replacement={value.replacementText} onChange={(replacementText) => onChange({ ...value, replacementText })} disabled={disabled} autoFocus={autoFocus} />
     <SuggestionReviewerPicker projectId={projectId} authorId={authorId} commentId={commentId} value={value.reviewerId} disabled={disabled} onChange={(reviewerId) => onChange({ ...value, reviewerId })} />
   </section>;
+}
+
+export function SuggestionTextEditor({ original, replacement, onChange, disabled = false, autoFocus = false }: {
+  original: string; replacement: string; onChange: (text: string) => void; disabled?: boolean; autoFocus?: boolean;
+}) {
+  const { t } = useTranslation();
+  return <>
+    <label className="form-field">{t("suggestions.replacement")}<textarea autoFocus={autoFocus} rows={4} maxLength={MAX_SUGGESTION_LENGTH} spellCheck={false} disabled={disabled}
+      value={replacement} onChange={(event) => onChange(event.target.value)} /></label>
+    {replacement === "" && <p className="field-hint">{t("suggestions.deletionHint")}</p>}
+    {replacement !== original && <details className="suggestion-preview"><summary>{t("suggestions.preview")}</summary>
+      <SuggestionDiff original={original} replacement={replacement} />
+    </details>}
+  </>;
 }

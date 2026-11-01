@@ -11,8 +11,7 @@ import type { PermissionDowngradeNotice } from "./useProjectCollaboration";
 import { MAX_DIRECT_RESOURCE_PREVIEW_BYTES, type PendingUpload, type ResourcePreview } from "./useProjectFiles";
 import type { CompileCleanMode } from "./useProjectCompilation";
 import { ShareDialog } from "./Comments";
-import { MentionTextarea } from "./MentionTextarea";
-import { SuggestionEditor } from "./SuggestionEditor";
+import { CommentComposerDialog } from "./CommentComposerDialog";
 import type { SuggestionDraft } from "../../shared/comments";
 import { LazyModal } from "../LazyLoadBoundary";
 import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
@@ -24,8 +23,8 @@ const SelectionHistoryDialog = lazy(() => import("../SelectionHistoryDialog").th
 const QuickOpenDialog = lazy(() => import("../QuickOpenDialog").then((module) => ({ default: module.QuickOpenDialog })));
 
 export interface WorkspaceDialogsProps {
-  commentSuggestion?: SuggestionDraft | null;
-  setCommentSuggestion?: (suggestion: SuggestionDraft | null) => void;
+  commentSuggestion: SuggestionDraft | null;
+  setCommentSuggestion: (suggestion: SuggestionDraft | null) => void;
   user: User;
   project: Project;
   projectId: string;
@@ -106,7 +105,7 @@ export interface WorkspaceDialogsProps {
 }
 
 export function WorkspaceDialogs({
-  commentSuggestion = null, setCommentSuggestion,
+  commentSuggestion, setCommentSuggestion,
   user, project, projectId, activeFile, content, maxCitationBibtexBytes, files, directoryEntries, readOnly,
   resourcePreview, resourcePreviewLoading, setResourcePreview, setResourcePreviewLoading,
   uploadConflict, setUploadConflict, dismissUploadFeedback, uploadFiles, cleanMode, setCleanMode, cleanCompile, newFileOpen,
@@ -141,53 +140,10 @@ export function WorkspaceDialogs({
     <Modal open={newFolderOpen} title={t("editor.newFolder")} description={t("editor.folderDestination", { folder: selectedFolder || t("editor.projectRoot") })} onOpenChange={(open) => { setNewFolderOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFolderOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFolder()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.folderName")}<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></label></></Modal>
     <Modal open={Boolean(moveEntry)} title={t("editor.moveTitle", { name: moveEntry?.path.split("/").at(-1) ?? "" })} description={t("editor.moveDescription")} onOpenChange={(open) => { if (!open) { setMoveEntry(null); setMoveName(""); setFileDialogError(""); } }} footer={<><button onClick={() => setMoveEntry(null)}>{t("common.cancel")}</button><button className="primary" disabled={!moveName.trim()} onClick={() => void movePath()}>{t("editor.moveApply")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.pathName")}<input autoFocus value={moveName} onChange={(event) => setMoveName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void movePath(); }} /></label><label className="form-field">{t("editor.destinationFolder")}<select value={moveDestination} onChange={(event) => setMoveDestination(event.target.value)}><option value="">{t("editor.projectRoot")}</option>{directoryEntries.filter((directory) => moveEntry?.type !== "directory" || (directory.path !== moveEntry.path && !directory.path.startsWith(`${moveEntry.path}/`))).map((directory) => <option value={directory.path} key={directory.path}>{directory.path}</option>)}</select></label></></Modal>
     <Modal open={Boolean(deleteEntry)} title={t("editor.deletePathTitle", { name: deleteEntry?.path.split("/").at(-1) ?? "" })} description={deleteActiveSessions.length ? t("editor.deletePathActiveDescription", { count: deleteActiveSessions.length, path: deleteEntry?.path ?? "", users: [...new Set(deleteActiveSessions.map((session) => session.name))].join(", ") }) : t("editor.deletePathDescription", { path: deleteEntry?.path ?? "" })} onOpenChange={(open) => { if (!open) { setDeleteEntry(null); setFileDialogError(""); } }} footer={<><button onClick={() => setDeleteEntry(null)}>{t("common.cancel")}</button><button className="danger" onClick={() => void removePath()}>{t("common.delete")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}{deleteActiveSessions.length > 0 && <p className="warning"><AlertTriangle size={15} />{t("editor.deletePathWillClose")}</p>}</></Modal>
-    <Modal
-      open={commentOpen}
-      draggable
-      wide
-      className="comment-compose-modal"
-      title={t("editor.addComment")}
-      description={commentSelection.selectedText
-        ? t("editor.commentDescription", { count: commentSelection.endOffset - commentSelection.startOffset })
-        : t("editor.pointComment")}
-      onOpenChange={(open) => { if (!open) closeComment(); }}
-      footer={<>
-        <button type="button" disabled={commentSubmitting} onClick={cancelComment}>{t("common.cancel")}</button>
-        <button type="button" className="primary" aria-busy={commentSubmitting} disabled={commentSubmitting || (!commentSuggestion && !commentText.trim())
-          || Boolean(commentSuggestion && (!commentSuggestion.reviewerId || commentSuggestion.reviewerId === user.id || commentSuggestion.replacementText === commentSelection.selectedText))} onClick={() => void addComment()}>
-          {commentSubmitting && <LoaderCircle className="spin" size={14} />}
-          {t(commentSubmitting ? "editor.commentSending" : commentSuggestion?.replacementText === "" ? "suggestions.submitDeletion" : "editor.addComment")}
-        </button>
-      </>}
-    >
-      {commentError && <p className="error dialog-error">{commentError}</p>}
-      {commentDraftRestored && <p className="comment-draft-restored">
-        <span>{t("editor.commentDraftRestored")}</span>
-        {commentDraftCanRetarget && <button type="button" disabled={commentSubmitting} onClick={useCurrentCommentSelection}>{t("editor.commentDraftUseSelection")}</button>}
-      </p>}
-      <label className="form-field">
-        {t("editor.commentContent")}
-        <MentionTextarea
-          projectId={projectId}
-          autoFocus
-          rows={5}
-          disabled={commentSubmitting}
-          value={commentText}
-          placeholder={t(commentSuggestion ? "suggestions.defaultComment" : "editor.commentPlaceholder")}
-          onChange={setCommentText}
-          onKeyDown={(event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              event.stopPropagation();
-              void addComment();
-            }
-          }}
-        />
-      </label>
-      {setCommentSuggestion && <SuggestionEditor projectId={projectId} ownerId={project.ownerId} authorId={user.id} original={commentSelection.selectedText}
-        value={commentSuggestion} onChange={setCommentSuggestion} disabled={commentSubmitting} variant="composer" />}
-      {commentSelection.selectedText && <blockquote className="selection-preview">{commentSelection.selectedText}</blockquote>}
-    </Modal>
+    <CommentComposerDialog open={commentOpen} projectId={projectId} ownerId={project.ownerId} authorId={user.id}
+      selection={commentSelection} text={commentText} onText={setCommentText} suggestion={commentSuggestion} onSuggestion={setCommentSuggestion}
+      submitting={commentSubmitting} error={commentError} onSubmit={addComment}
+      onClose={closeComment} onCancel={cancelComment} draftRestored={commentDraftRestored} canRetarget={commentDraftCanRetarget} onRetarget={useCurrentCommentSelection} />
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} onMemberCountChange={onSharedMemberCountChange} />
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}

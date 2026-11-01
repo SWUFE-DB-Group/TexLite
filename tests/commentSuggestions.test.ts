@@ -55,6 +55,20 @@ beforeEach(async () => {
 afterEach(async () => { vi.restoreAllMocks(); await app?.close(); db?.close(); fs.rmSync(root, { recursive: true, force: true }); });
 
 describe("comment suggestion workflow", () => {
+  it("keeps ordinary comments free of reviewer metadata and review notifications", async () => {
+    const response = await request("reader", "POST", "/api/projects/:project/comments", {
+      path: "main.tex", content: "@owner please check this claim.", startOffset: 0, endOffset: 6, sourceHash: hash(initial)
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    const comment = response.json().comment as Comment;
+    expect(comment.suggestion).toBeNull();
+    expect(comment).not.toHaveProperty("reviewer");
+    expect(db.prepare("SELECT COUNT(*) AS count FROM comment_suggestions").get()).toEqual({ count: 0 });
+    const notifications = (await request("owner", "GET", "/api/projects/:project/mentions?unread=1")).json().mentions;
+    expect(notifications).toHaveLength(1);
+    expect(notifications).toMatchObject([{ kind: "mention", commentId: comment.id }]);
+  });
+
   it("excludes the author from reviewer candidates and refuses self-assignment, including for project owners", async () => {
     const start = initial.indexOf("prove");
     for (const author of ["owner", "writer"]) {

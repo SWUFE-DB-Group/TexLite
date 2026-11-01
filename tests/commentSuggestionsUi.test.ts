@@ -1,13 +1,12 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState, type ComponentProps } from "react";
+import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SuggestionAttachment, type SuggestionSourceTarget } from "../src/client/workspace/SuggestionAttachment";
-import { SuggestionEditor } from "../src/client/workspace/SuggestionEditor";
 import { CommentThread } from "../src/client/workspace/Comments";
 import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
 import { api } from "../src/client/api";
-import type { Comment, SuggestionDraft } from "../src/shared/comments";
+import type { Comment } from "../src/shared/comments";
 import { discussionTestClient, withDiscussionQueries } from "./discussionTestUtils";
 import i18n from "../src/client/i18n";
 
@@ -38,11 +37,6 @@ const click = (selector: string) => act(async () => host.querySelector<HTMLButto
 function change(input: HTMLTextAreaElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function EditorProbe({ authorId = "owner" }: { authorId?: string }) {
-  const [value, setValue] = useState<SuggestionDraft | null>(null);
-  return createElement(SuggestionEditor, { projectId: "project", ownerId: "owner", authorId, original: "prove", value, onChange: setValue, variant: "composer" });
 }
 
 const renderThread = (overrides: Partial<ComponentProps<typeof CommentThread>> = {}) => act(async () => root.render(withDiscussionQueries(createElement(CommentThread, {
@@ -85,8 +79,8 @@ describe("suggestions as comment attachments", () => {
     expect(actions).toEqual(["Edit comment", "Delete comment"]);
   });
   it("does not default an owner's own suggestion to themselves and only offers other writers", async () => {
-    await act(async () => root.render(createElement(EditorProbe)));
-    await click(".suggestion-add");
+    comment.authorId = "owner"; comment.suggestion = null;
+    await render("owner", true, { original: comment.selectedText, sourceHash: comment.anchorSourceHash! });
     const select = host.querySelector<HTMLSelectElement>("select")!;
     expect(select.value).toBe("");
     expect([...select.options].map((option) => option.value)).toEqual(["", "writer"]);
@@ -98,8 +92,8 @@ describe("suggestions as comment attachments", () => {
 
   it("explains when no other writable reviewer exists without offering self-review", async () => {
     vi.mocked(api).mockResolvedValueOnce({ users: [users[0]], ownerId: "owner" });
-    await act(async () => root.render(createElement(EditorProbe)));
-    await click(".suggestion-add");
+    comment.authorId = "owner"; comment.suggestion = null;
+    await render("owner", true, { original: comment.selectedText, sourceHash: comment.anchorSourceHash! });
     const select = host.querySelector<HTMLSelectElement>("select")!;
     expect(select.disabled).toBe(true); expect(select.value).toBe("");
     expect([...select.options].map((option) => option.value)).toEqual([""]);
@@ -193,8 +187,8 @@ describe("suggestions as comment attachments", () => {
   });
 
   it("labels an empty replacement as deletion and can remove an unsubmitted attachment", async () => {
-    await act(async () => root.render(createElement(EditorProbe, { authorId: "reader" })));
-    await click(".suggestion-add");
+    comment.suggestion = null;
+    await render("reader", false, { original: comment.selectedText, sourceHash: comment.anchorSourceHash! });
     await act(async () => change(host.querySelector("textarea")!, ""));
     expect(host.textContent).toContain("This suggestion deletes the selected text.");
     await click('[aria-label="Remove suggested change"]');

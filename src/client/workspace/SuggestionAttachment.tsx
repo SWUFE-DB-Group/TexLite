@@ -46,7 +46,7 @@ export function SuggestionAttachment({ projectId, ownerId, currentUserId, canEdi
   if (!suggestion) {
     if (!draftTarget || !draft || comment.authorId !== currentUserId || comment.resolved) return null;
     return <div className="suggestion-new" onClick={(event) => event.stopPropagation()}>
-      <SuggestionEditor projectId={projectId} ownerId={ownerId} authorId={currentUserId} commentId={comment.id} original={draftTarget.original} value={draft} disabled={busy} autoFocus
+      <SuggestionEditor projectId={projectId} authorId={currentUserId} commentId={comment.id} original={draftTarget.original} value={draft} disabled={busy} autoFocus
         onChange={(next) => { setDraft(next); if (!next) onCloseComposer?.(); }} />
       {error && <p className="comment-form-error" role="alert">{error}</p>}
       <button type="button" className="suggestion-submit" disabled={busy || !draft.reviewerId || draft.reviewerId === comment.authorId || draft.replacementText === draftTarget.original}

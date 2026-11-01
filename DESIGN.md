@@ -389,20 +389,28 @@ resolved comments. This stores the current resolution, not an activity log.
 
 A source comment can optionally carry one replacement suggestion. The note
 remains the discussion's primary content; an empty note becomes “Suggested
-change” in the author's language. Read-only members may propose changes, but
-only the assigned reviewer with current write access may accept or reject them.
-The comment author cannot review their own suggestion, even if they own the
-project. The reviewer defaults to the project owner when they are not the
-author; otherwise the author must choose another writable member. The owner
+change” in the author's language. Ordinary comments have no reviewer. Only
+replacement suggestions require a reviewer. Read-only members may
+propose changes, but only the assigned reviewer with current write access may
+accept or reject them. The comment author cannot be their own reviewer, even
+if they own the project. Enabling an edit defaults its reviewer to the project
+owner when they are not the author; otherwise the author must choose another
+writable member. The owner
 can reassign a pending review, still excluding the comment author. Replacement
 text is immutable after posting, and an empty replacement means deleting the
 selected passage.
 
 Suggestions are collapsed attachments, not a separate discussion list. Opening
 one shows an inline source diff, compacting unchanged context without hiding
-edits. The composer offers the same optional preview. Existing comment authors
-attach suggestions through the comment's more-actions menu; the new-comment
-dialog keeps its explicit attachment button. Review requests reuse
+edits. Preview differences are word-oriented and never supply source offsets
+or patches to the acceptance endpoint. Existing comment authors attach
+suggestions through the comment's more-actions menu. The new-comment modal
+places read-only original source first, keeps the optional edit switch off by
+default, and presents the reviewer at the bottom only while the edit switch is
+enabled. Turning it off submits an ordinary comment without reviewer metadata
+or a review request. Its live status
+describes the actual payload: comment, edit, or both. Opening unchanged edit
+controls does not create a suggestion. Review requests reuse
 personal unread notifications with a distinct `review` kind; an explicit mention
 of the same reviewer does not create a duplicate notification. Reading a review
 request does not decide it. Accepting or rejecting clears that review request,
@@ -419,7 +427,11 @@ source-edit author. Rejection does not change source. Deleting a discussion
 after acceptance does not undo the applied change.
 
 Schema migration 12 adds a suggestion table and the notification kind without
-changing existing comments. Before applying a change, the service persists its
+changing existing comments. Migration 14 reverses the comment-level reviewer
+layout introduced by development migration 13: it preserves suggestion
+assignments, decisions, recovery receipts and notifications while removing
+plain-comment reviewer assignments and their review requests.
+Before applying a change, the service persists its
 Yjs base and journals the exact CRDT update and replacement-range positions in
 SQLite. An interrupted application can replay that same update idempotently;
 it becomes accepted only after source/state/anchor persistence succeeds. A

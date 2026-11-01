@@ -1,4 +1,16 @@
 {
+  "commentComposer": {
+    "original": "原文",
+    "suggestEdit": "提出修改建議",
+    "placeholder": "輸入批註或說明修改原因… ⌘/Ctrl+Enter 傳送",
+    "empty": "新增批註或修改原文",
+    "emptyComment": "新增批註",
+    "chooseReviewer": "請為本次修改選擇審核人",
+    "commentOnly": "批註",
+    "editOnly": "修改建議",
+    "commentAndEdit": "批註與修改建議",
+    "reviewRequested": "請求審核"
+  },
   "suggestions": {
     "title": "修改建議",
     "preview": "預覽修改",

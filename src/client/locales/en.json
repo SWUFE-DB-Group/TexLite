@@ -1,4 +1,16 @@
 {
+  "commentComposer": {
+    "original": "Original text",
+    "suggestEdit": "Suggest an edit",
+    "placeholder": "Add a comment or explain your edit… ⌘/Ctrl+Enter to send",
+    "empty": "Add a comment or edit the text",
+    "emptyComment": "Add a comment",
+    "chooseReviewer": "Choose a reviewer for this edit",
+    "commentOnly": "Comment",
+    "editOnly": "Suggested edit",
+    "commentAndEdit": "Comment + suggested edit",
+    "reviewRequested": "Review requested"
+  },
   "suggestions": {
     "title": "Suggested change",
     "preview": "Preview change",

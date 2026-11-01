@@ -8,6 +8,7 @@ import { useDiscussionQueries } from "./useDiscussionQueries";
 import { useCommentMutations } from "./useCommentMutations";
 import type { SuggestionDraft } from "../../shared/comments";
 import i18n from "../i18n";
+import { commentSubmission } from "./commentSubmission";
 export type { SourceSelection } from "./commentDrafts";
 
 interface UseProjectCommentsOptions {
@@ -156,14 +157,16 @@ export function useProjectComments({
   const addComment = async () => {
     const draft = commentDraft;
     const submittedText = commentText;
-    const submittedSuggestion = commentSuggestion;
-    if ((!commentText.trim() && !submittedSuggestion) || !draft || submittingComment.current) return;
-    if (submittedSuggestion && (!submittedSuggestion.reviewerId || submittedSuggestion.replacementText === draft.selection.selectedText || !draft.selection.selectedText)) return;
+    const submittedDraftSuggestion = commentSuggestion;
+    if (!draft || submittingComment.current) return;
+    const prepared = commentSubmission(submittedText, draft.selection.selectedText, submittedDraftSuggestion);
+    if (prepared.issue) return;
+    const submittedSuggestion = prepared.edit;
     const isCurrentDraft = () => {
       const current = commentDraftRef.current;
       return current?.filePath === draft.filePath && current.sourceHash === draft.sourceHash
         && current.selection.startOffset === draft.selection.startOffset && current.selection.endOffset === draft.selection.endOffset
-        && commentTextRef.current === submittedText && suggestionRef.current === submittedSuggestion;
+        && commentTextRef.current === submittedText && suggestionRef.current === submittedDraftSuggestion;
     };
     submittingComment.current = true;
     setCommentSubmitting(true);
@@ -179,7 +182,7 @@ export function useProjectComments({
           ...draft.selection, sourceHash: draft.sourceHash, ...(submittedSuggestion ? { suggestion: submittedSuggestion } : {}) })
       });
       const saved = commentDraftStore.getNew(draft.filePath);
-      if (saved?.content === submittedText && JSON.stringify(saved.suggestion ?? null) === JSON.stringify(submittedSuggestion) && saved.sourceHash === draft.sourceHash
+      if (saved?.content === submittedText && JSON.stringify(saved.suggestion ?? null) === JSON.stringify(submittedDraftSuggestion) && saved.sourceHash === draft.sourceHash
         && saved.selection.startOffset === draft.selection.startOffset && saved.selection.endOffset === draft.selection.endOffset) {
         commentDraftStore.discardNew(draft.filePath);
       }

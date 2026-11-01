@@ -257,6 +257,22 @@ describe("confirmed comment cache updates", () => {
     expect(comments.commentDraftStore.getNew("main.tex")).toBeUndefined();
   });
 
+  it.each(["disabled", "unchanged"])("sends an ordinary comment without reviewer metadata when the edit is %s", async (mode) => {
+    await act(async () => comments.openComment({ selectedText: "prove", startOffset: 0, endOffset: 5 }, "prove"));
+    await act(async () => comments.setCommentText("Please check this claim."));
+    await act(async () => comments.setCommentSuggestion({ replacementText: mode === "unchanged" ? "prove" : "suggest", reviewerId: "owner" }));
+    if (mode === "disabled") await act(async () => comments.setCommentSuggestion(null));
+    vi.mocked(api).mockImplementation(async (_url, options) => options?.method === "POST"
+      ? { change: { kind: "created", comment: note("new", 0) }, summary } : { comments: [] });
+    await act(async () => comments.addComment());
+    const post = vi.mocked(api).mock.calls.find(([, options]) => options?.method === "POST")!;
+    const payload = JSON.parse(post[1]!.body as string);
+    expect(payload.content).toBe("Please check this claim.");
+    expect(payload).not.toHaveProperty("reviewerId");
+    expect(payload).not.toHaveProperty("suggestion");
+    expect(comments.commentDraftStore.getNew("main.tex")).toBeUndefined();
+  });
+
   it("edits and deletes confirmed records in both lists despite failed reconciliation", async () => {
     await seed();
     vi.mocked(api).mockImplementation(async (_url, options) => {

@@ -162,6 +162,25 @@ const databaseMigrations: readonly DatabaseMigration[] = [
     );
     `);
     if (missingColumn(db, "comment_mentions", "kind")) db.exec("ALTER TABLE comment_mentions ADD COLUMN kind TEXT NOT NULL DEFAULT 'mention' CHECK (kind IN ('mention', 'review'))");
+  } },
+  { version: 13, name: "move_reviewer_to_comments", apply: (db) => {
+    if (missingColumn(db, "comments", "reviewer_id")) db.exec("ALTER TABLE comments ADD COLUMN reviewer_id TEXT REFERENCES users(id) ON DELETE SET NULL");
+    if (!missingColumn(db, "comment_suggestions", "reviewer_id")) {
+      db.exec(`UPDATE comments SET reviewer_id = (
+        SELECT reviewer_id FROM comment_suggestions WHERE comment_id = comments.id
+      ) WHERE id IN (SELECT comment_id FROM comment_suggestions);
+      ALTER TABLE comment_suggestions DROP COLUMN reviewer_id;`);
+    }
+  } },
+  { version: 14, name: "keep_reviewers_on_suggestions", apply: (db) => {
+    if (missingColumn(db, "comment_suggestions", "reviewer_id")) db.exec("ALTER TABLE comment_suggestions ADD COLUMN reviewer_id TEXT REFERENCES users(id) ON DELETE SET NULL");
+    if (!missingColumn(db, "comments", "reviewer_id")) {
+      db.exec(`UPDATE comment_suggestions SET reviewer_id = (
+        SELECT reviewer_id FROM comments WHERE id = comment_suggestions.comment_id
+      );
+      DELETE FROM comment_mentions WHERE kind = 'review' AND comment_id NOT IN (SELECT comment_id FROM comment_suggestions);
+      ALTER TABLE comments DROP COLUMN reviewer_id;`);
+    }
   } }
 ];
 
