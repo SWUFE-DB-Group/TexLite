@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Check, LoaderCircle, Pencil, X } from "lucide-react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import type { Comment, SuggestionDraft } from "../../shared/comments";
 import { MAX_SUGGESTION_LENGTH } from "../../shared/comments";
 import { useCommentMutations } from "./useCommentMutations";
@@ -62,7 +62,10 @@ export function SuggestionAttachment({ projectId, ownerId, currentUserId, canEdi
   const canRevise = pending && !suggestion.applying && comment.authorId === currentUserId;
   const editConflict = Boolean(revisionDraft && revisionDraft.expectedReplacementText !== suggestion.replacementText
     && revisionDraft.replacementText !== suggestion.replacementText);
-  const reviewerLabel = pending ? canReview ? t("suggestions.awaitingYou") : t("suggestions.awaiting", { name: reviewer }) : t(`suggestions.${suggestion.status}`);
+  const reviewerLabel = pending ? canReview ? t("suggestions.awaitingYou")
+    : <Trans i18nKey="suggestions.awaiting" values={{ name: reviewer }} components={{ reviewer: <strong className="suggestion-reviewer-name"
+      data-tooltip={suggestion.reviewerUsername ? `@${suggestion.reviewerUsername}` : undefined} data-texlite-tooltip-always /> }} />
+    : t(`suggestions.${suggestion.status}`);
   return <section className={`comment-suggestion ${suggestion.status}`} onClick={(event) => event.stopPropagation()}>
     <button type="button" className="suggestion-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
       {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<strong>{t("suggestions.title")}</strong><span>{reviewerLabel}</span>
@@ -81,7 +84,10 @@ export function SuggestionAttachment({ projectId, ownerId, currentUserId, canEdi
       {pending && !suggestion.applicable && !suggestion.applying && <p className="suggestion-warning">{t("suggestions.sourceChanged")}</p>}
       {pending && (selfReview || !suggestion.reviewerAvailable) && <p className="suggestion-warning">{t(selfReview ? "errors.codes.SUGGESTION_SELF_REVIEW" : "suggestions.reviewerUnavailable")}</p>}
       {suggestion.applying && <p className="suggestion-warning">{t("suggestions.saving")}</p>}
-      {!pending && <p className="suggestion-decision"><span data-tooltip={suggestion.decidedByUsername ? `@${suggestion.decidedByUsername}` : undefined} data-texlite-tooltip-always>{t("suggestions.decidedBy", { name: suggestion.decidedByDisplayName ?? suggestion.decidedByUsername ?? t("editor.deletedUser") })}</span>{suggestion.decidedAt && <time dateTime={suggestion.decidedAt}>{formatDateTime(suggestion.decidedAt, i18n.resolvedLanguage)}</time>}</p>}
+      {!pending && <p className="suggestion-decision"><span><Trans i18nKey="suggestions.decidedBy"
+        values={{ name: suggestion.decidedByDisplayName ?? suggestion.decidedByUsername ?? t("editor.deletedUser") }}
+        components={{ reviewer: <strong className="suggestion-reviewer-name" data-tooltip={suggestion.decidedByUsername ? `@${suggestion.decidedByUsername}` : undefined} data-texlite-tooltip-always /> }}
+      /></span>{suggestion.decidedAt && <time dateTime={suggestion.decidedAt}>{formatDateTime(suggestion.decidedAt, i18n.resolvedLanguage)}</time>}</p>}
       {error && <p className="comment-form-error" role="alert">{error}</p>}
       {pending && canReview && <div className="suggestion-actions">
         <button type="button" className="primary" disabled={busy || !suggestion.applicable && !suggestion.applying} onClick={() => void operation("/review", "POST", { action: "accept", expectedReplacementText: suggestion.replacementText })}>{busy ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}{t("suggestions.accept")}</button>

@@ -1154,7 +1154,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .suggestion-toggle { display: flex; align-items: center; flex-wrap: wrap; width: 100%; gap: 5px; padding: 8px; border: 0; border-radius: 0; background: var(--ui-subtle, #f5f8f5); color: var(--ui-text, #34483d); text-align: left; font-size: 11px; }
 .suggestion-toggle svg { flex: none; }
 .suggestion-toggle strong { font-weight: 600; }
-.suggestion-toggle span { margin-left: auto; color: var(--ui-muted, #68776e); font-size: 10px; }
+.suggestion-toggle > span { min-width: 0; max-width: 100%; margin-left: auto; color: var(--ui-muted, #68776e); font-size: 10px; overflow-wrap: anywhere; }
+.comment-suggestion .suggestion-reviewer-name { color: var(--ui-text, #34483d); font-weight: 650; }
 .suggestion-details { padding: 9px; }
 .suggestion-diff { max-height: 280px; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: monospace; font-size: 11px; line-height: 1.7; color: var(--ui-text, #28352d); }
 .suggestion-diff del { color: var(--ui-danger, #a63430); background: color-mix(in srgb, var(--ui-danger, #a63430) 12%, transparent); }

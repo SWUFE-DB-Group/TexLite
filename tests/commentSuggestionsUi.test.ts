@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { act, createElement, type ComponentProps } from "react";
+import { act, createElement, Fragment, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SuggestionAttachment, type SuggestionSourceTarget } from "../src/client/workspace/SuggestionAttachment";
 import { CommentThread } from "../src/client/workspace/Comments";
 import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
+import { GlobalTooltip } from "../src/client/GlobalTooltip";
 import { api, ApiError } from "../src/client/api";
 import { discussionKeys } from "../src/client/workspace/discussionCache";
 import type { Comment } from "../src/shared/comments";
@@ -50,6 +51,46 @@ const openThreadMenu = () => act(async () => {
 });
 
 describe("suggestions as comment attachments", () => {
+  it.each([["en", "Awaiting Owner"], ["zh", "待 Owner 审核"], ["zh-Hant", "待 Owner 審核"]])("emphasizes only the waiting reviewer and shows their username with interface tooltips off (%s)", async (language, label) => {
+    await i18n.changeLanguage(language);
+    host.dataset.texliteTooltips = "off";
+    await act(async () => root.render(withDiscussionQueries(createElement(Fragment, null,
+      createElement(SuggestionAttachment, { projectId: "project", ownerId: "owner", currentUserId: "reader", canEdit: false, comment }),
+      createElement(GlobalTooltip)
+    ), client)));
+    const name = host.querySelector<HTMLElement>(".suggestion-reviewer-name")!;
+    expect(name.tagName).toBe("STRONG"); expect(name.textContent).toBe("Owner");
+    expect(name.parentElement?.textContent).toBe(label);
+    expect(name.dataset.tooltip).toBe("@owner"); expect(name.hasAttribute("title")).toBe(false);
+    await act(async () => name.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    expect(host.querySelector('[role="tooltip"]')?.textContent).toBe("@owner");
+    expect(host.querySelector(".suggestion-toggle")?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it.each(["accepted", "rejected"] as const)("emphasizes the deciding user's name with a username tooltip after %s", async (status) => {
+    comment.suggestion = { ...comment.suggestion!, status, decidedById: "owner", decidedByDisplayName: "Owner", decidedByUsername: "owner", decidedAt: "2026-11-01T12:00:00Z" };
+    for (const [language, label] of [["en", "Reviewed by Owner"], ["zh", "由 Owner 审核"], ["zh-Hant", "由 Owner 審核"]]) {
+      await i18n.changeLanguage(language);
+      await render("reader", false);
+      if (!host.querySelector(".suggestion-details")) await click(".suggestion-toggle");
+      const name = host.querySelector<HTMLElement>(".suggestion-decision .suggestion-reviewer-name")!;
+      expect(name.tagName).toBe("STRONG"); expect(name.textContent).toBe("Owner");
+      expect(name.parentElement?.textContent).toBe(label);
+      expect(name.dataset.tooltip).toBe("@owner"); expect(name.hasAttribute("data-texlite-tooltip-always")).toBe(true);
+      expect(name.hasAttribute("title")).toBe(false);
+      expect(host.querySelector(".suggestion-decision time")?.getAttribute("datetime")).toBe("2026-11-01T12:00:00Z");
+    }
+  });
+
+  it("does not invent a username for a deleted reviewer or render display-name markup as HTML", async () => {
+    comment.suggestion!.reviewerDisplayName = "Owner <team>";
+    comment.suggestion!.reviewerUsername = null;
+    await render("reader", false);
+    const name = host.querySelector<HTMLElement>(".suggestion-reviewer-name")!;
+    expect(name.textContent).toBe("Owner <team>");
+    expect(name.hasAttribute("data-tooltip")).toBe(false); expect(name.querySelector("team")).toBeNull();
+  });
+
   it("opens the later-suggestion composer from the author menu without a separate inline action or source jump", async () => {
     comment.suggestion = null;
     const onFocus = vi.fn(), onActivate = vi.fn();
