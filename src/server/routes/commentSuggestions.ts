@@ -6,7 +6,7 @@ import { accessibleProject, canEdit } from "../projects.js";
 import { apiError, httpError } from "../http.js";
 import { resolveSourcePath } from "../files.js";
 import { isCollaborativeTextFile } from "../collaboration.js";
-import { attachSuggestion, clearSuggestionReview, requestSuggestionReview, suggestionReviewers, suggestionRow } from "../commentSuggestions.js";
+import { attachSuggestion, clearSuggestionReview, requestSuggestionReview, suggestionReviewers, suggestionRow, validateSuggestionReplacement } from "../commentSuggestions.js";
 import { commentsForFile, commentsSummaryForProject, now } from "./projectShared.js";
 import type { CommentRouteContext } from "./comments.js";
 import type { CommentMutationResult } from "../../shared/comments.js";
@@ -57,7 +57,7 @@ export function registerSuggestionRoutes(app: FastifyInstance, context: CommentR
   app.post("/api/projects/:id/comments/:commentId/suggestion/review", async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
     const { id, commentId } = request.params as { id: string; commentId: string };
-    const action = (request.body as { action?: unknown })?.action;
+    const { action, expectedReplacementText } = (request.body ?? {}) as { action?: unknown; expectedReplacementText?: unknown };
     if (action !== "accept" && action !== "reject") return apiError(reply, 400, "REQUEST_INVALID");
     const validate = () => {
       const project = accessibleProject(db, id, user);
@@ -66,6 +66,9 @@ export function registerSuggestionRoutes(app: FastifyInstance, context: CommentR
         throw httpError(403, "SUGGESTION_REVIEW_FORBIDDEN");
       }
       if (row.author_id === user.id) throw httpError(403, "SUGGESTION_SELF_REVIEW");
+      // Bind the decision to the replacement actually displayed by the reviewer.
+      // Repeat inside the project write queue after room preparation and flushing.
+      if (typeof expectedReplacementText !== "string" || row.replacement_text !== expectedReplacementText) throw httpError(409, "SUGGESTION_UPDATED");
       return row;
     };
     validate();
@@ -94,22 +97,34 @@ export function registerSuggestionRoutes(app: FastifyInstance, context: CommentR
   app.patch("/api/projects/:id/comments/:commentId/suggestion", async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
     const { id, commentId } = request.params as { id: string; commentId: string };
-    const reviewerId = (request.body as { reviewerId?: unknown })?.reviewerId;
-    return projectMutations.runWrite(id, () => {
+    if (!request.body || typeof request.body !== "object" || Array.isArray(request.body)) return apiError(reply, 400, "REQUEST_INVALID");
+    const body = request.body as { replacementText?: unknown; expectedReplacementText?: unknown; reviewerId?: unknown };
+    // Assignment is fixed when a suggestion is created; this endpoint only edits its text.
+    if (body.reviewerId !== undefined || typeof body.expectedReplacementText !== "string") return apiError(reply, 400, "REQUEST_INVALID");
+    const validate = () => {
+      if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
       const row = suggestionRow(db, id, commentId);
       if (!row) throw httpError(404, "COMMENT_NOT_FOUND");
+      if (row.author_id !== user.id) throw httpError(403, "COMMENT_EDIT_FORBIDDEN");
       if (row.status !== "pending") throw httpError(409, "SUGGESTION_DECIDED");
       if (row.apply_update) throw httpError(409, "SUGGESTION_APPLYING");
-      if (reviewerId === row.author_id) throw httpError(400, "SUGGESTION_SELF_REVIEW");
-      if (typeof reviewerId !== "string" || !suggestionReviewers(db, id, row.author_id).some((candidate) => candidate.id === reviewerId)) throw httpError(400, "SUGGESTION_REVIEWER_INVALID");
-      if (row.reviewer_id !== reviewerId) db.transaction(() => {
-        clearSuggestionReview(db, commentId, now());
-        db.prepare("UPDATE comment_suggestions SET reviewer_id = ? WHERE comment_id = ?").run(reviewerId, commentId);
-        requestSuggestionReview(db, id, commentId, reviewerId, user.id, now());
+      return row;
+    };
+    return projectMutations.runWrite(id, () => {
+      const row = validate();
+      validateSuggestionReplacement(row.original_text, body.replacementText);
+      // A retried save with identical text is a no-op, not another review request.
+      if (row.replacement_text === body.replacementText) return result(id, commentId, row.file_path);
+      if (row.replacement_text !== body.expectedReplacementText) throw httpError(409, "SUGGESTION_UPDATED");
+      db.transaction(() => {
+        const at = now();
+        db.prepare("UPDATE comment_suggestions SET replacement_text = ? WHERE comment_id = ?").run(body.replacementText, commentId);
+        clearSuggestionReview(db, commentId, at);
+        if (row.reviewer_id && suggestionReviewers(db, id, row.author_id).some((candidate) => candidate.id === row.reviewer_id)) {
+          requestSuggestionReview(db, id, commentId, row.reviewer_id, user.id, at);
+        }
       })();
       return result(id, commentId, row.file_path);
-    }, { preflight: () => {
-      if (accessibleProject(db, id, user)?.permission !== "owner") throw httpError(403, "MEMBERS_MANAGE_FORBIDDEN");
-    } });
+    }, { preflight: () => { validate(); } });
   });
 }

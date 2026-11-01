@@ -1073,20 +1073,30 @@ describe("project collaboration", () => {
     const first = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
     const second = await TestPeer.connect(app, projectId, authorCookie, { id: author.id, username: "suggestion-author", name: "Suggestion author" });
     try {
+      const firstMeta = first.doc.getMap("texlite:meta"), secondMeta = second.doc.getMap("texlite:meta");
+      const firstRevision = firstMeta.get("commentsRevision"), secondRevision = secondMeta.get("commentsRevision");
+      const revised = await app.inject({ method: "PATCH", url: `/api/projects/${projectId}/comments/${id}/suggestion`, headers: { cookie: authorCookie },
+        payload: { replacementText: "indicate", expectedReplacementText: "suggest" } });
+      expect(revised.statusCode, revised.body).toBe(200);
+      await waitFor(() => firstMeta.get("commentsRevision") !== firstRevision && secondMeta.get("commentsRevision") !== secondRevision);
+      expect(first.doc.getText("source:main.tex").toString()).toBe(content);
+      expect(second.doc.getText("source:main.tex").toString()).toBe(content);
       second.doc.getText("source:main.tex").insert(0, "A new paragraph.\n");
       await second.flush();
       await waitFor(() => first.doc.getText("source:main.tex").toString().startsWith("A new paragraph."));
       const endpoint = `/api/projects/${projectId}/comments/${id}/suggestion/review`;
+      const stale = await app.inject({ method: "POST", url: endpoint, headers: { cookie: adminCookie }, payload: { action: "accept", expectedReplacementText: "suggest" } });
+      expect(stale.statusCode).toBe(409); expect(stale.json().code).toBe("SUGGESTION_UPDATED");
       const lease = await first.acquireFormatLease("main.tex");
-      expect((await app.inject({ method: "POST", url: endpoint, headers: { cookie: adminCookie }, payload: { action: "accept" } })).statusCode).toBe(409);
+      expect((await app.inject({ method: "POST", url: endpoint, headers: { cookie: adminCookie }, payload: { action: "accept", expectedReplacementText: "indicate" } })).statusCode).toBe(409);
       await first.releaseFormatLease("main.tex", lease.token);
       const text = first.doc.getText("source:main.tex");
       const relativeFooter = Y.createRelativePositionFromTypeIndex(text, text.length - 6);
       const deltas: Array<Y.YTextEvent["delta"]> = [];
       text.observe((event) => deltas.push(event.delta));
-      const applied = await app.inject({ method: "POST", url: endpoint, headers: { cookie: adminCookie }, payload: { action: "accept" } });
+      const applied = await app.inject({ method: "POST", url: endpoint, headers: { cookie: adminCookie }, payload: { action: "accept", expectedReplacementText: "indicate" } });
       expect(applied.statusCode, applied.body).toBe(200);
-      const expected = "A new paragraph.\n" + content.replace("prove", "suggest");
+      const expected = "A new paragraph.\n" + content.replace("prove", "indicate");
       await waitFor(() => text.toString() === expected && second.doc.getText("source:main.tex").toString() === expected);
       expect(deltas.flat().reduce((total, part) => total + (part.delete ?? 0), 0)).toBe(5);
       const footer = Y.createAbsolutePositionFromRelativePosition(relativeFooter, first.doc)!;

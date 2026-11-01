@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SuggestionAttachment, type SuggestionSourceTarget } from "../src/client/workspace/SuggestionAttachment";
 import { CommentThread } from "../src/client/workspace/Comments";
 import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
-import { api } from "../src/client/api";
+import { api, ApiError } from "../src/client/api";
+import { discussionKeys } from "../src/client/workspace/discussionCache";
 import type { Comment } from "../src/shared/comments";
 import { discussionTestClient, withDiscussionQueries } from "./discussionTestUtils";
 import i18n from "../src/client/i18n";
@@ -100,23 +101,21 @@ describe("suggestions as comment attachments", () => {
     expect(host.textContent).toContain("No other project members have write access");
   });
 
-  it("blocks self-review from stale data and excludes the original author when the owner reassigns", async () => {
+  it("blocks self-review from stale data without exposing a change-reviewer control", async () => {
     comment.authorId = "owner";
     await render(); await click(".suggestion-toggle");
     expect(host.querySelector(".suggestion-actions")).toBeNull();
     expect(host.textContent).toContain("The comment author cannot review their own suggestion.");
-    await click(".suggestion-assignment .suggestion-text-action");
-    expect([...host.querySelectorAll("option")].map((option) => option.value)).toEqual(["", "writer"]);
-    expect(host.querySelector<HTMLButtonElement>(".suggestion-assignment .suggestion-actions button")?.disabled).toBe(true);
-    expect(api).toHaveBeenCalledWith("/api/projects/project/suggestion-reviewers?commentId=c", expect.any(Object));
+    expect(host.querySelector("select")).toBeNull();
+    expect(host.textContent).not.toContain("Change reviewer");
+    expect(api).not.toHaveBeenCalled();
   });
 
-  it("still offers the owner as reviewer when they reassign someone else's suggestion", async () => {
-    comment.authorId = "writer";
-    await render(); await click(".suggestion-toggle");
-    await click(".suggestion-assignment .suggestion-text-action");
-    expect([...host.querySelectorAll("option")].map((option) => option.value)).toEqual(["", "owner"]);
-    expect(host.querySelector<HTMLSelectElement>("select")?.value).toBe("owner");
+  it("does not let an owner or another collaborator edit someone else's suggestion", async () => {
+    for (const user of ["owner", "writer"]) {
+      await render(user);
+      expect(host.querySelector(".suggestion-revision-action")).toBeNull();
+    }
   });
   it("keeps the diff collapsed, lets everyone read it and limits decisions to the assigned writable reviewer", async () => {
     await render("reader", false);
@@ -141,12 +140,103 @@ describe("suggestions as comment attachments", () => {
       button.click(); button.click();
     });
     expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(2);
+    for (const [, options] of vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST")) {
+      expect(JSON.parse(options!.body as string)).toEqual({ action: "accept", expectedReplacementText: "suggest" });
+    }
     expect(host.querySelector<HTMLButtonElement>(".suggestion-actions button:last-child")!.disabled).toBe(true);
     comment = { ...comment, suggestion: { ...comment.suggestion!, status: "accepted", decidedById: "owner", decidedByDisplayName: "Owner", decidedAt: "2026-11-01" } };
     await act(async () => finish({ change: { kind: "suggestion", commentId: "c", filePath: "main.tex", suggestion: comment.suggestion }, summary }));
     await render();
     expect(host.textContent).toContain("Accepted"); expect(host.textContent).toContain("Reviewed by Owner");
     expect(comment.resolved).toBe(false); expect(host.querySelector(".suggestion-actions")).toBeNull();
+  });
+
+  it("lets the author revise without selecting a reviewer, preserves failed drafts and prevents duplicate saves", async () => {
+    await render("reader", false); await click(".suggestion-toggle");
+    await click(".suggestion-revision-action button");
+    expect(host.querySelector("textarea")?.value).toBe("suggest");
+    expect(host.querySelector("select")).toBeNull();
+    expect(host.querySelector<HTMLButtonElement>(".save-button")!.disabled).toBe(true);
+    expect([...host.querySelectorAll(".suggestion-revision-editor .comment-form-actions > button")].map((button) => button.textContent)).toEqual(["Cancel", "Save"]);
+    await act(async () => change(host.querySelector("textarea")!, "indicate"));
+    expect(host.querySelector(".suggestion-diff ins")?.textContent).toBe("indicate");
+    vi.mocked(api).mockRejectedValueOnce(new Error("Save failed"));
+    await click(".save-button");
+    expect(host.querySelector("textarea")?.value).toBe("indicate");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Save failed");
+    let finish!: (result: unknown) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => {
+      const button = host.querySelector<HTMLButtonElement>(".save-button")!;
+      button.click(); button.click();
+    });
+    const calls = vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "PATCH");
+    expect(calls).toHaveLength(2);
+    expect(calls[1][0]).toBe("/api/projects/project/comments/c/suggestion");
+    expect(JSON.parse(calls[1][1]!.body as string)).toEqual({ replacementText: "indicate", expectedReplacementText: "suggest" });
+    expect(host.querySelector<HTMLTextAreaElement>("textarea")!.disabled).toBe(true);
+    comment = { ...comment, suggestion: { ...comment.suggestion!, replacementText: "indicate" } };
+    await act(async () => finish({ change: { kind: "suggestion", commentId: "c", filePath: "main.tex", suggestion: comment.suggestion }, summary }));
+    await render("reader", false);
+    expect(host.querySelector("textarea")).toBeNull();
+    expect(host.querySelector(".suggestion-diff ins")?.textContent).toBe("indicate");
+    expect(host.querySelector('[role="status"]')?.textContent).toBe("Saved");
+    expect(comment.content).toBe("Please be cautious.");
+    expect(comment.suggestion?.reviewerId).toBe("owner");
+  });
+
+  it("keeps a local revision during remote refreshes, blocks overwriting it and can cancel to the latest version", async () => {
+    await render("reader", false); await click(".suggestion-toggle");
+    await click(".suggestion-revision-action button");
+    await act(async () => change(host.querySelector("textarea")!, "my local draft"));
+    comment = { ...comment, suggestion: { ...comment.suggestion!, replacementText: "from another tab" } };
+    await render("reader", false);
+    expect(host.querySelector("textarea")?.value).toBe("my local draft");
+    expect(host.querySelector<HTMLButtonElement>(".save-button")!.disabled).toBe(true);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("changed elsewhere");
+    await click(".suggestion-revision-editor .comment-form-actions button:first-child");
+    expect(host.querySelector("textarea")).toBeNull();
+    expect(host.querySelector(".suggestion-diff")?.textContent).toContain("from another tab");
+    await click(".suggestion-revision-action button");
+    expect(host.querySelector("textarea")?.value).toBe("from another tab");
+    expect(api).not.toHaveBeenCalled();
+  });
+
+  it("refreshes stale suggestion data after a rejected save but retains the typed replacement", async () => {
+    client.setQueryData(discussionKeys.file("project", "main.tex"), { comments: [comment] });
+    client.setQueryData(discussionKeys.all("project"), { comments: [comment] });
+    await render("reader", false); await click(".suggestion-toggle");
+    await click(".suggestion-revision-action button");
+    await act(async () => change(host.querySelector("textarea")!, "my draft"));
+    vi.mocked(api).mockRejectedValueOnce(new ApiError("Check the latest suggestion", 409, "SUGGESTION_UPDATED"));
+    await click(".save-button");
+    expect(host.querySelector("textarea")?.value).toBe("my draft");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Check the latest suggestion");
+    expect(client.getQueryState(discussionKeys.file("project", "main.tex"))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(discussionKeys.all("project"))?.isInvalidated).toBe(true);
+    expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "PATCH")).toHaveLength(1);
+  });
+
+  it.each(["accepted", "rejected", "applying"])("removes the editing controls when the suggestion becomes %s", async (state) => {
+    await render("reader", false); await click(".suggestion-toggle");
+    await click(".suggestion-revision-action button");
+    await act(async () => change(host.querySelector("textarea")!, "unsaved text"));
+    comment = { ...comment, suggestion: { ...comment.suggestion!, ...(state === "applying" ? { applying: true } : { status: state as "accepted" | "rejected" }) } };
+    await render("reader", false);
+    expect(host.querySelector("textarea")).toBeNull();
+    expect(host.querySelector(".suggestion-revision-action")).toBeNull();
+    expect(host.querySelector(".save-button")).toBeNull();
+    expect(api).not.toHaveBeenCalled();
+  });
+
+  it("shows deletion intent in the revision editor and prevents saving the unchanged original", async () => {
+    await render("reader", false); await click(".suggestion-toggle");
+    await click(".suggestion-revision-action button");
+    await act(async () => change(host.querySelector("textarea")!, "prove"));
+    expect(host.querySelector<HTMLButtonElement>(".save-button")!.disabled).toBe(true);
+    await act(async () => change(host.querySelector("textarea")!, ""));
+    expect(host.textContent).toContain("This suggestion deletes the selected text.");
+    expect(host.querySelector<HTMLButtonElement>(".save-button")!.disabled).toBe(false);
   });
 
   it("disables accepting stale source but still allows rejection", async () => {

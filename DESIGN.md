@@ -395,10 +395,12 @@ propose changes, but only the assigned reviewer with current write access may
 accept or reject them. The comment author cannot be their own reviewer, even
 if they own the project. Enabling an edit defaults its reviewer to the project
 owner when they are not the author; otherwise the author must choose another
-writable member. The owner
-can reassign a pending review, still excluding the comment author. Replacement
-text is immutable after posting, and an empty replacement means deleting the
-selected passage.
+writable member. The reviewer stays fixed after submission; there is no
+change-reviewer control. The author may edit the replacement while it is still
+pending and no accepted update is being persisted. An empty replacement means
+deleting the selected passage. Saving a changed replacement renews the review
+notification without changing the original source, reviewer or discussion.
+Identical-save retries do not renew it again.
 
 Suggestions are collapsed attachments, not a separate discussion list. Opening
 one shows an inline source diff, compacting unchanged context without hiding
@@ -416,6 +418,15 @@ of the same reviewer does not create a duplicate notification. Reading a review
 request does not decide it. Accepting or rejecting clears that review request,
 but leaves the discussion open and preserves other mention notifications.
 A discussion with a pending suggestion cannot be resolved.
+
+Edits and review decisions include the replacement text the user actually saw
+as a compare-and-swap precondition. The server compares it under the project
+write lock; acceptance checks again after cold-room preparation. A stale save
+cannot overwrite a newer draft, and a stale decision cannot accept or reject
+an unseen replacement. Conflicts trigger a discussion refresh without retrying
+the write or discarding typed edits. Decided suggestions and journaled pending
+applications cannot be edited. This content-based precondition needs no schema
+version or extra database field.
 
 Creation binds the selection to a source hash. Acceptance runs in the project
 write queue, flushes preceding edits, checks current reviewer permissions and

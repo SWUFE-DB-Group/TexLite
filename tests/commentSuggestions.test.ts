@@ -10,7 +10,7 @@ import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { createSessionToken } from "../src/server/security.js";
 import { resolveSourcePath } from "../src/server/files.js";
 import type { Comment } from "../src/shared/comments.js";
-import { collaborationStatePath } from "../src/server/collaboration.js";
+import { CollaborationService, collaborationStatePath } from "../src/server/collaboration.js";
 
 let root: string, config: Config, db: DatabaseConnection, app: FastifyInstance, projectId: string;
 const cookies = new Map<string, string>();
@@ -30,7 +30,10 @@ async function suggest(reviewerId = "owner", replacementText = "suggest", author
   expect(result.statusCode, result.body).toBe(201);
   return result.json().comment as Comment;
 }
-const review = (comment: Comment, action = "accept", user = "owner") => request(user, "POST", `/api/projects/:project/comments/${comment.id}/suggestion/review`, { action });
+const review = (comment: Comment, action = "accept", user = "owner") => request(user, "POST", `/api/projects/:project/comments/${comment.id}/suggestion/review`, { action, expectedReplacementText: comment.suggestion!.replacementText });
+const revise = (comment: Comment, replacementText: string, user = "reader") => request(user, "PATCH", `/api/projects/:project/comments/${comment.id}/suggestion`, {
+  replacementText, expectedReplacementText: comment.suggestion!.replacementText
+});
 
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-suggestions-"));
@@ -86,7 +89,7 @@ describe("comment suggestion workflow", () => {
     const comment = await suggest("writer", "suggest", "owner");
     const reassigned = await request("owner", "PATCH", `/api/projects/:project/comments/${comment.id}/suggestion`, { reviewerId: "owner" });
     expect(reassigned.statusCode).toBe(400);
-    expect(reassigned.json().code).toBe("SUGGESTION_SELF_REVIEW");
+    expect(reassigned.json().code).toBe("REQUEST_INVALID");
     expect((await review(comment, "accept", "writer")).statusCode).toBe(200);
   });
 
@@ -105,7 +108,7 @@ describe("comment suggestion workflow", () => {
     expect((await request("writer", "POST", endpoint, { replacementText: "suggest", reviewerId: "owner", sourceHash: hash(initial) })).statusCode).toBe(200);
   });
 
-  it("blocks decisions on previously self-assigned suggestions until the owner chooses another reviewer", async () => {
+  it("blocks decisions on invalid self-assigned suggestions without exposing reassignment", async () => {
     const comment = await suggest("owner", "suggest", "writer");
     // An existing pending record must not bypass the new rule.
     db.prepare("UPDATE comment_suggestions SET reviewer_id = 'writer' WHERE comment_id = ?").run(comment.id);
@@ -116,9 +119,8 @@ describe("comment suggestion workflow", () => {
     }
     const endpoint = `/api/projects/:project/comments/${comment.id}/suggestion`;
     expect((await request("owner", "PATCH", endpoint, { reviewerId: "writer" })).statusCode).toBe(400);
-    expect((await request("owner", "PATCH", endpoint, { reviewerId: "owner" })).statusCode).toBe(200);
-    expect((await review(comment)).statusCode).toBe(200);
-    expect(source()).toBe(initial.replace("prove", "suggest"));
+    expect((await request("owner", "PATCH", endpoint, { reviewerId: "owner" })).statusCode).toBe(400);
+    expect(source()).toBe(initial);
   });
 
   it("keeps source unchanged, adds the default comment and sends a distinct review request only to writers", async () => {
@@ -199,17 +201,108 @@ describe("comment suggestion workflow", () => {
     expect((await comments())[1].resolved).toBe(false);
   });
 
-  it("reassigns through the owner and rechecks current write access", async () => {
+  it("rechecks current write access and does not let the owner or another user reassign", async () => {
     const comment = await suggest("writer");
     db.prepare("UPDATE project_members SET permission = 'read' WHERE project_id = ? AND user_id = 'writer'").run(projectId);
     expect((await comments())[0].suggestion?.reviewerAvailable).toBe(false);
     expect((await review(comment, "accept", "writer")).statusCode).toBe(403);
     expect((await review(comment)).statusCode).toBe(403);
     const endpoint = `/api/projects/:project/comments/${comment.id}/suggestion`;
-    expect((await request("other", "PATCH", endpoint, { reviewerId: "other" })).statusCode).toBe(403);
+    expect((await request("other", "PATCH", endpoint, { reviewerId: "other" })).statusCode).toBe(400);
     expect((await request("owner", "PATCH", endpoint, { reviewerId: "reader" })).statusCode).toBe(400);
-    expect((await request("owner", "PATCH", endpoint, { reviewerId: "owner" })).statusCode).toBe(200);
-    expect((await review(comment)).statusCode).toBe(200);
+    expect((await request("owner", "PATCH", endpoint, { reviewerId: "owner" })).statusCode).toBe(400);
+    expect((await comments())[0].suggestion?.reviewerId).toBe("writer");
+  });
+
+  it("lets a read-only author revise pending text and renews only the review request, without changing the source or reviewer", async () => {
+    const comment = await suggest();
+    const reply = await request("writer", "POST", `/api/projects/:project/comments/${comment.id}/replies`, { content: "Please use indicate." });
+    expect(reply.statusCode).toBe(201);
+    const unread = async () => (await request("owner", "GET", "/api/projects/:project/mentions?unread=1")).json().mentions;
+    const notice = (await unread())[0];
+    await request("owner", "POST", `/api/projects/:project/mentions/${notice.id}/read`);
+    expect(await unread()).toEqual([]);
+    const edited = await revise(comment, "indicate @writer");
+    expect(edited.statusCode, edited.body).toBe(200);
+    expect(edited.json().change.suggestion).toMatchObject({ originalText: "prove", replacementText: "indicate @writer", reviewerId: "owner", status: "pending" });
+    expect(source()).toBe(initial);
+    expect((await comments())[0]).toMatchObject({ content: "修改意见", replies: [{ content: "Please use indicate." }], suggestion: { replacementText: "indicate @writer" } });
+    expect(await unread()).toMatchObject([{ id: notice.id, kind: "review", readAt: null }]);
+    expect(await unread()).toHaveLength(1);
+    expect((await request("writer", "GET", "/api/projects/:project/mentions?unread=1")).json().mentions).toEqual([]);
+    // Lost-response retries acknowledge the save, without re-notifying a review already read.
+    await request("owner", "POST", `/api/projects/:project/mentions/${notice.id}/read`);
+    expect((await revise(comment, "indicate @writer")).statusCode).toBe(200);
+    expect(await unread()).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM project_edit_segments WHERE project_id = ?").get(projectId)).toEqual({ count: 0 });
+  });
+
+  it("limits edits to the accessible author and validates replacements without changing the bound original or reviewer", async () => {
+    const comment = await suggest();
+    for (const user of ["owner", "writer", "other"]) expect((await revise(comment, "indicate", user)).statusCode).toBe(403);
+    for (const value of ["prove", "x".repeat(50_001), "bad\0text", null]) {
+      const invalid = await request("reader", "PATCH", `/api/projects/:project/comments/${comment.id}/suggestion`, { replacementText: value, expectedReplacementText: "suggest" });
+      expect(invalid.statusCode, invalid.body).toBe(400);
+    }
+    const withAssignment = await request("reader", "PATCH", `/api/projects/:project/comments/${comment.id}/suggestion`, {
+      replacementText: "indicate", expectedReplacementText: "suggest", reviewerId: "writer"
+    });
+    expect(withAssignment.statusCode).toBe(400);
+    expect((await comments())[0].suggestion).toMatchObject({ originalText: "prove", replacementText: "suggest", reviewerId: "owner" });
+    db.prepare("DELETE FROM project_members WHERE project_id = ? AND user_id = 'reader'").run(projectId);
+    expect((await revise(comment, "indicate")).statusCode).toBe(404);
+    expect(source()).toBe(initial);
+  });
+
+  it("rejects stale author saves and keeps an empty replacement as a valid deletion suggestion", async () => {
+    const original = await suggest();
+    expect((await revise(original, "indicate")).statusCode).toBe(200);
+    const stale = await revise(original, "demonstrate");
+    expect(stale.statusCode).toBe(409); expect(stale.json().code).toBe("SUGGESTION_UPDATED");
+    const current = (await comments())[0];
+    expect(current.suggestion?.replacementText).toBe("indicate");
+    expect((await revise(current, "")).statusCode).toBe(200);
+    const deletion = (await comments())[0];
+    expect(deletion.suggestion?.replacementText).toBe("");
+    expect((await review(deletion)).statusCode).toBe(200);
+    expect(source()).toBe(initial.replace("prove", ""));
+  });
+
+  it.each(["accept", "reject"])("requires a reviewer to read the latest replacement before %s", async (action) => {
+    const old = await suggest();
+    expect((await revise(old, "indicate")).statusCode).toBe(200);
+    const stale = await review(old, action);
+    expect(stale.statusCode).toBe(409); expect(stale.json().code).toBe("SUGGESTION_UPDATED");
+    expect(source()).toBe(initial);
+    expect((await comments())[0].suggestion?.status).toBe("pending");
+    const missingVersion = await request("owner", "POST", `/api/projects/:project/comments/${old.id}/suggestion/review`, { action });
+    expect(missingVersion.statusCode).toBe(409);
+    const current = (await comments())[0];
+    expect((await review(current, action)).statusCode).toBe(200);
+    const final = source();
+    const lateEdit = await revise(current, "demonstrate");
+    expect(lateEdit.statusCode).toBe(409); expect(lateEdit.json().code).toBe("SUGGESTION_DECIDED");
+    expect(source()).toBe(final);
+  });
+
+  it("rechecks the reviewer snapshot after an author edits while the acceptance room is initializing", async () => {
+    const comment = await suggest();
+    const prepare = CollaborationService.prototype.prepareSuggestionRoom;
+    let entered!: () => void, release!: () => void;
+    const preparing = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(CollaborationService.prototype, "prepareSuggestionRoom").mockImplementationOnce(async function (this: CollaborationService, id) {
+      entered(); await gate; await prepare.call(this, id);
+    });
+    const accepting = review(comment).then((response) => response);
+    try {
+      await preparing;
+      expect((await revise(comment, "indicate")).statusCode).toBe(200);
+    } finally { release(); }
+    const result = await accepting;
+    expect(result.statusCode).toBe(409); expect(result.json().code).toBe("SUGGESTION_UPDATED");
+    expect(source()).toBe(initial);
+    expect((await comments())[0].suggestion).toMatchObject({ status: "pending", replacementText: "indicate" });
   });
 
   it("can apply again after exact source and anchor recovery, but not after complete deletion", async () => {
@@ -264,6 +357,9 @@ describe("comment suggestion workflow", () => {
     const failed = await review(comment);
     expect(failed.statusCode, failed.body).toBe(409); expect(source()).toBe(initial);
     expect(db.prepare("SELECT status, apply_update IS NOT NULL AS journal FROM comment_suggestions WHERE comment_id = ?").get(comment.id)).toEqual({ status: "pending", journal: 1 });
+    const editDuringApply = await revise(comment, "indicate");
+    expect(editDuringApply.statusCode).toBe(409); expect(editDuringApply.json().code).toBe("SUGGESTION_APPLYING");
+    expect(db.prepare("SELECT replacement_text FROM comment_suggestions WHERE comment_id = ?").get(comment.id)).toEqual({ replacement_text: "suggest" });
     spy.mockRestore();
     expect((await review(comment)).statusCode).toBe(200);
     expect(source()).toBe(initial.replace("prove", "suggest"));

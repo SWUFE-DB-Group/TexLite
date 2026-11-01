@@ -1171,7 +1171,11 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .suggestion-warning, .suggestion-decision { margin: 9px 0 0; color: var(--ui-muted, #68776e); font-size: 11px; line-height: 1.5; }
 .suggestion-warning { color: var(--ui-danger, #a63430); }
 .suggestion-decision { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
-.suggestion-assignment { margin-top: 8px; }
+.suggestion-revision-action { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; }
+.suggestion-revision-action .suggestion-text-action { gap: 5px; }
+.suggestion-edit-saved { display: inline-flex; align-items: center; gap: 4px; color: var(--ui-info, #2563a6); font-size: 11px; }
+.suggestion-revision-editor { margin-top: 0; }
+.suggestion-revision-editor textarea { width: 100%; min-width: 0; max-height: 220px; resize: vertical; font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .comment-identity { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .comment-avatar { flex: none; display: grid; place-items: center; width: 26px; height: 26px; margin-top: 1px; border-radius: 50%; background: var(--ui-accent-bg, #eaf2ec); color: var(--ui-accent, #3b6950); font-size: 11px; font-weight: 600; }
 .comment-author-details { min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }
@@ -1249,8 +1253,10 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .mention-menu button > span { min-width: 0; display: flex; align-items: baseline; gap: 4px; }
 .mention-menu strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mention-menu small { flex: none; color: var(--ui-muted, #7a847d); font-size: 10px; }
-.comment-reply-form > div { display: flex; justify-content: flex-end; gap: 5px; }
+.comment-form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .comment-reply-form button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ui-border, #cbd2cc); border-radius: 5px; padding: 5px 7px; background: var(--ui-surface, white); font-size: 10px; }
+:root .comment-form-actions > button { min-height: 32px; padding: 6px 10px; border-radius: 6px; font-size: 12px; line-height: 1.25; }
+:root .comment-form-actions > .save-button:disabled { color: var(--ui-muted, #778179); }
 .comment-reply-form button.primary { border-color: var(--ui-accent-border, #176b44); background: #176b44; color: white; }
 .settings { display: flex; flex-direction: column; gap: 14px; }
 .settings > section { display: flex; flex-direction: column; gap: 14px; }

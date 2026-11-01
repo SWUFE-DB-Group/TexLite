@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ApiRequestInit } from "../api";
+import { api, ApiError, type ApiRequestInit } from "../api";
 import type { CommentMutationResult } from "../../shared/comments";
 import { applyCommentAcknowledgement, refreshDiscussion } from "./discussionCache";
 
@@ -14,6 +14,11 @@ export function useCommentMutations(projectId: string) {
       await applyCommentAcknowledgement(client, id, result);
       void refreshDiscussion(client, id);
       return result;
+    },
+    onError: (error, { id }) => {
+      if (error instanceof ApiError && ["SUGGESTION_UPDATED", "SUGGESTION_DECIDED", "SUGGESTION_APPLYING"].includes(error.code ?? "")) {
+        void refreshDiscussion(client, id);
+      }
     }
   });
   return (path: string, options: ApiRequestInit) => mutation.mutateAsync({ id: projectId, path, options });

@@ -100,6 +100,33 @@ describe("comment reading and actions", () => {
     expect(host.querySelector(".reply-action")?.textContent).toBe(i18n.t("editor.replyPrompt"));
   });
 
+  it.each(["comment", "reply"] as const)("keeps %s edit saves disabled until the displayed text actually changes", async (kind) => {
+    const reply = kind === "reply";
+    props.currentUserId = reply ? "reader" : "author";
+    const key = reply ? "edit-reply:reply" : "edit-comment";
+    const original = reply ? comment.replies[0].content : comment.content;
+    const save = vi.fn(async () => true);
+    if (reply) props.onEditReply = save;
+    else props.onEdit = save;
+    props.draftStore.open(comment.id, key, original);
+    await render();
+    const editor = host.querySelector<HTMLTextAreaElement>(".comment-edit-form textarea")!;
+    const submit = () => host.querySelector<HTMLButtonElement>(".comment-edit-form .save-button")!;
+    const change = (value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(editor, value);
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(submit().disabled).toBe(true);
+    await change("Updated text"); expect(submit().disabled).toBe(false);
+    await change(original); expect(submit().disabled).toBe(true);
+    expect(save).not.toHaveBeenCalled();
+    await change("Updated text");
+    await act(async () => submit().click());
+    if (reply) expect(save).toHaveBeenCalledExactlyOnceWith("reply", "Updated text");
+    else expect(save).toHaveBeenCalledExactlyOnceWith("Updated text");
+    expect(host.querySelector(".comment-edit-form")).toBeNull();
+  });
+
   it("restores a typed reply after the thread unmounts without stealing focus", async () => {
     await render();
     await act(async () => host.querySelector<HTMLButtonElement>(".reply-action")!.click());

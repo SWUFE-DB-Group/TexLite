@@ -7,6 +7,7 @@ const en = {
   SUGGESTION_EXISTS: "This discussion already has a suggestion.",
   SUGGESTION_PENDING: "Review the pending suggestion before resolving this discussion.",
   SUGGESTION_DECIDED: "This suggestion has already been reviewed.",
+  SUGGESTION_UPDATED: "This suggestion was updated. Check the latest content and try again.",
   SUGGESTION_APPLYING: "This change is being saved. Retry accepting it to finish; do not apply it again manually.",
   SUGGESTION_RECOVERY_FAILED: "The saved suggestion could not be recovered. Check the server log before changing this project."
 };
@@ -19,6 +20,7 @@ const zh: Record<keyof typeof en, string> = {
   SUGGESTION_EXISTS: "此讨论已有修改建议。",
   SUGGESTION_PENDING: "请先审核待处理的修改建议，再解决此讨论。",
   SUGGESTION_DECIDED: "此建议已完成审核。",
+  SUGGESTION_UPDATED: "修改建议已更新，请查看最新内容后重试。",
   SUGGESTION_APPLYING: "修改正在保存，请重试接受以完成操作，不要手动重复应用。",
   SUGGESTION_RECOVERY_FAILED: "无法恢复已保存的修改建议，请先检查服务器日志，再修改此项目。"
 };
@@ -31,6 +33,7 @@ const zhHant: Record<keyof typeof en, string> = {
   SUGGESTION_EXISTS: "此討論已有修改建議。",
   SUGGESTION_PENDING: "請先審核待處理的修改建議，再解決此討論。",
   SUGGESTION_DECIDED: "此建議已完成審核。",
+  SUGGESTION_UPDATED: "修改建議已更新，請查看最新內容後再試。",
   SUGGESTION_APPLYING: "修改正在儲存，請重試接受以完成操作，不要手動重複套用。",
   SUGGESTION_RECOVERY_FAILED: "無法復原已儲存的修改建議，請先檢查伺服器日誌，再修改此專案。"
 };

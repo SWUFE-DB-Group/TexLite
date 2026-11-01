@@ -53,10 +53,28 @@ describe("comment submission forms", () => {
   });
 
   it("uses save controls for comment and reply edits", async () => {
-    const { editor, submit } = await render({ editing: true, label: "Edit comment" });
+    const { form, editor, submit } = await render({ editing: true, label: "Edit comment" });
     expect(editor.getAttribute("aria-label")).toBe("Edit comment");
     expect(editor.hasAttribute("placeholder")).toBe(false);
-    expect(submit.textContent).toBe(i18n.t("editor.saveChanges"));
+    expect(submit.textContent).toBe(i18n.t("common.save"));
+    expect([...form.querySelectorAll(".comment-form-actions > button")].map((button) => button.textContent)).toEqual([i18n.t("common.cancel"), i18n.t("common.save")]);
+  });
+
+  it.each(["Draft text", "  Draft text\n"])("disables unchanged edits, including submit events and keyboard shortcuts (%j)", async (value) => {
+    const onSubmit = vi.fn(async () => true);
+    const { form, editor, submit, cancel } = await render({ editing: true, originalValue: "Draft text", value, onSubmit });
+    expect(submit.disabled).toBe(true); expect(cancel.disabled).toBe(false);
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      for (const modifier of ["ctrlKey", "metaKey"]) editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", [modifier]: true, bubbles: true, cancelable: true }));
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    const changed = await render({ editing: true, originalValue: "Draft text", value: "Changed text", onSubmit });
+    expect(changed.submit.disabled).toBe(false);
+    await act(async () => changed.submit.click());
+    expect(onSubmit).toHaveBeenCalledOnce();
+    const reverted = await render({ editing: true, originalValue: "Draft text", value: "Draft text", onSubmit });
+    expect(reverted.submit.disabled).toBe(true);
   });
 
   it.each([false, true])("disables the editor, cancel and submit while a related request is pending (editing=%s)", async (editing) => {
@@ -79,6 +97,9 @@ describe("comment submission forms", () => {
     expect(pending.editor.disabled).toBe(true);
     expect(pending.cancel.disabled).toBe(true);
     expect(pending.submit.disabled).toBe(true);
+    const pendingEdit = await render({ editing: true, pending: true });
+    expect(pendingEdit.submit.textContent).toBe(i18n.t("common.save"));
+    expect(pendingEdit.submit.disabled).toBe(true);
     const failed = await render({ error: "Please retry" });
     const error = failed.form.querySelector<HTMLElement>('[role="alert"]')!;
     expect(error.textContent).toBe("Please retry");

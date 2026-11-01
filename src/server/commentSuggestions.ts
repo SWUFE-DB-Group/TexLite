@@ -9,14 +9,18 @@ import { randomUUID } from "node:crypto";
 export function attachSuggestion(db: DatabaseConnection, projectId: string, commentId: string, authorId: string, original: string, input: unknown): void {
   if (!input || typeof input !== "object") throw httpError(400, "SUGGESTION_INVALID");
   const { replacementText, reviewerId } = input as Record<string, unknown>;
-  if (!original || original.length > MAX_SUGGESTION_LENGTH || typeof replacementText !== "string"
-    || replacementText.length > MAX_SUGGESTION_LENGTH || replacementText === original || replacementText.includes("\0")) throw httpError(400, "SUGGESTION_INVALID");
+  validateSuggestionReplacement(original, replacementText);
   if (reviewerId === authorId) throw httpError(400, "SUGGESTION_SELF_REVIEW");
   if (typeof reviewerId !== "string" || !suggestionReviewers(db, projectId, authorId).some((user) => user.id === reviewerId)) throw httpError(400, "SUGGESTION_REVIEWER_INVALID");
   if (suggestionRow(db, projectId, commentId)) throw httpError(409, "SUGGESTION_EXISTS");
   db.prepare("INSERT INTO comment_suggestions (comment_id, original_text, replacement_text, reviewer_id) VALUES (?, ?, ?, ?)")
     .run(commentId, original, replacementText, reviewerId);
   requestSuggestionReview(db, projectId, commentId, reviewerId, authorId, new Date().toISOString());
+}
+
+export function validateSuggestionReplacement(original: string, replacement: unknown): asserts replacement is string {
+  if (!original || original.length > MAX_SUGGESTION_LENGTH || typeof replacement !== "string"
+    || replacement.length > MAX_SUGGESTION_LENGTH || replacement === original || replacement.includes("\0")) throw httpError(400, "SUGGESTION_INVALID");
 }
 
 export function suggestionReviewers(db: DatabaseConnection, projectId: string, authorId?: string | null): MentionableUser[] {

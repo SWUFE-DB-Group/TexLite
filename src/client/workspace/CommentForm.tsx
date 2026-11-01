@@ -7,7 +7,7 @@ import { SaveButton } from "../SaveButton";
 /** Presentation only: workspace drafts own contents and in-flight requests. */
 export function CommentForm({
   projectId, value, onChange, onSubmit, onCancel, pending = false, error = "",
-  label, editing = false, disabled = false, autoFocus = true
+  label, editing = false, originalValue, disabled = false, autoFocus = true
 }: {
   projectId: string;
   value: string;
@@ -18,15 +18,18 @@ export function CommentForm({
   error?: string;
   label: string;
   editing?: boolean;
+  originalValue?: string;
   disabled?: boolean;
   autoFocus?: boolean;
 }) {
   const { t } = useTranslation();
   const errorId = useId();
   const busy = pending || disabled;
+  // Comment text is trimmed by the server; whitespace-only edits are not changes.
+  const canSubmit = Boolean(value.trim()) && (!editing || originalValue === undefined || value.trim() !== originalValue.trim());
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
-    if (busy || !value.trim()) return;
+    if (busy || !canSubmit) return;
     // The store guards synchronously, including a submit from an old render
     // or a newly remounted thread while its original request is in flight.
     void onSubmit();
@@ -43,10 +46,10 @@ export function CommentForm({
         void submit();
       }} />
     {error && <p id={errorId} className="comment-form-error" role="alert">{error}</p>}
-    <div>
+    <div className="comment-form-actions">
       <button type="button" disabled={busy} onClick={onCancel}>{t("common.cancel")}</button>
-      {editing ? <SaveButton type="submit" saving={pending} disabled={disabled || !value.trim()} iconSize={13}>{t(pending ? "editor.commentSaving" : "editor.saveChanges")}</SaveButton>
-        : <button className="primary" type="submit" disabled={busy || !value.trim()}>
+      {editing ? <SaveButton type="submit" saving={pending} disabled={disabled || !canSubmit} iconSize={13}>{t("common.save")}</SaveButton>
+        : <button className="primary" type="submit" disabled={busy || !canSubmit}>
           {pending ? <LoaderCircle className="spin" aria-hidden size={13} /> : <Send aria-hidden size={13} />}
           {t(pending ? "editor.commentSending" : "editor.sendReply")}
         </button>}
