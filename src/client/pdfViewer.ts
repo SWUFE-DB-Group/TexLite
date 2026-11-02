@@ -57,6 +57,7 @@ export function sourceLocationToPdfPoint(viewport: PageViewport, x: number, y: n
 /** One viewer owns its DOM, queue and page cache, but never destroys the document. */
 export class PdfViewerSession {
   readonly container: HTMLDivElement;
+  private readonly interactionHost: HTMLElement;
   private readonly viewer: PDFViewer;
   private readonly linkService: PDFLinkService;
   private readonly events = new EventBus();
@@ -88,6 +89,7 @@ export class PdfViewerSession {
     this.callbacks = callbacks;
     this.zoom = options.zoom;
     this.target = options.target ?? null;
+    this.interactionHost = host.closest<HTMLElement>(".pdf-viewer") ?? host;
     this.container = window.document.createElement("div");
     this.container.className = "pdf-document pdf-viewer-pending";
     this.container.tabIndex = 0;
@@ -156,10 +158,14 @@ export class PdfViewerSession {
       });
     });
     this.container.addEventListener("dblclick", this.doubleClick, { signal: this.abort.signal });
-    this.container.addEventListener("wheel", this.wheel, { passive: false, signal: this.abort.signal });
-    this.container.addEventListener("gesturestart", this.gestureStart, { passive: false, signal: this.abort.signal });
-    this.container.addEventListener("gesturechange", this.gestureChange, { passive: false, signal: this.abort.signal });
-    this.container.addEventListener("gestureend", this.gestureEnd, { passive: false, signal: this.abort.signal });
+    this.interactionHost.addEventListener("pointerdown", this.focusPreview, { capture: true, signal: this.abort.signal });
+    // Capture cancelable zoom events before nested controls can stop propagation.
+    // Scope them explicitly so editor/page zoom outside this preview stays native.
+    const gestures = { capture: true, passive: false, signal: this.abort.signal };
+    window.addEventListener("wheel", this.wheel, gestures);
+    window.addEventListener("gesturestart", this.gestureStart, gestures);
+    window.addEventListener("gesturechange", this.gestureChange, gestures);
+    window.addEventListener("gestureend", this.gestureEnd, gestures);
     this.resize = new ResizeObserver(() => this.scheduleUpdate(true));
     this.resize.observe(this.container);
     this.linkService.setDocument(this.document);
@@ -171,8 +177,10 @@ export class PdfViewerSession {
   }
 
   show(): void {
+    const focusedViewer = window.document.activeElement?.closest(".pdf-document");
     this.container.classList.remove("pdf-viewer-pending");
     this.container.removeAttribute("aria-hidden");
+    if (focusedViewer && this.interactionHost.contains(focusedViewer)) this.container.focus({ preventScroll: true });
     this.scheduleUpdate();
   }
 
@@ -338,7 +346,8 @@ export class PdfViewerSession {
   };
 
   private wheel = (event: WheelEvent): void => {
-    if (event.ctrlKey && this.canGestureZoom()) {
+    if (event.defaultPrevented) return;
+    if (event.ctrlKey && this.ownsZoomEvent(event)) {
       // Trackpad pinch is a Ctrl+wheel gesture in Chromium/Firefox. Keep
       // browser zoom outside the PDF and ordinary scrolling untouched.
       event.preventDefault();
@@ -347,7 +356,8 @@ export class PdfViewerSession {
       this.queueGestureZoom((this.pendingZoom?.zoom ?? this.zoom) * Math.exp(-event.deltaY * units / 100), event.clientX, event.clientY);
       return;
     }
-    if (!event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    if (!(event.target instanceof Node) || !this.container.contains(event.target)
+      || !event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
     event.preventDefault();
     this.container.scrollLeft += event.deltaY;
     this.scheduleUpdate();
@@ -357,8 +367,23 @@ export class PdfViewerSession {
     return this.ready && !this.destroyed && !this.container.classList.contains("pdf-viewer-pending");
   }
 
+  private ownsZoomEvent(event: Event): boolean {
+    if (!this.canGestureZoom()) return false;
+    if (event.target instanceof Node && this.interactionHost.contains(event.target)) return true;
+    // Some browser gesture events target the page instead of the focused viewer.
+    const document = window.document;
+    return (event.target === window || event.target === document || event.target === document.body || event.target === document.documentElement)
+      && this.interactionHost.contains(document.activeElement);
+  }
+
+  private focusPreview = (event: PointerEvent): void => {
+    if (!this.canGestureZoom() || event.button !== 0 || !(event.target instanceof Element)
+      || event.target.closest("a, button, input, textarea, select, [contenteditable]")) return;
+    this.container.focus({ preventScroll: true });
+  };
+
   private gestureStart = (event: Event): void => {
-    if (!this.canGestureZoom()) return;
+    if (event.defaultPrevented || !this.ownsZoomEvent(event)) return;
     event.preventDefault();
     this.gestureStartZoom = this.pendingZoom?.zoom ?? this.zoom;
   };
@@ -383,8 +408,8 @@ export class PdfViewerSession {
     const bounds = this.container.getBoundingClientRect();
     this.pendingZoom = {
       zoom: Math.max(50, Math.min(200, value)),
-      origin: [Number.isFinite(x) ? x : bounds.left + bounds.width / 2,
-        Number.isFinite(y) ? y : bounds.top + bounds.height / 2]
+      origin: [Number.isFinite(x) && x >= bounds.left && x <= bounds.left + bounds.width ? x : bounds.left + bounds.width / 2,
+        Number.isFinite(y) && y >= bounds.top && y <= bounds.top + bounds.height ? y : bounds.top + bounds.height / 2]
     };
     if (this.zoomFrame !== null) return;
     this.zoomFrame = window.requestAnimationFrame(() => {

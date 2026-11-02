@@ -114,17 +114,17 @@ function showPdf() {
   create(); emit("pagesinit"); viewer().pages[0].renderingState = 3;
   emit("pagerendered", { pageNumber: 1 }); session!.show(); flushFrames();
 }
-function pinchWheel(deltaY: number, options: WheelEventInit = {}) {
+function pinchWheel(deltaY: number, options: WheelEventInit = {}, target: EventTarget = session!.container) {
   const event = new WheelEvent("wheel", { cancelable: true, ctrlKey: true, deltaY, clientX: 210, clientY: 320, ...options });
   // happy-dom's WheelEvent extends UIEvent rather than MouseEvent.
   Object.assign(event, { ctrlKey: options.ctrlKey ?? true, shiftKey: options.shiftKey ?? false,
     clientX: options.clientX ?? 210, clientY: options.clientY ?? 320 });
-  session!.container.dispatchEvent(event); return event;
+  target.dispatchEvent(event); return event;
 }
-function gesture(type: string, scale = 1) {
+function gesture(type: string, scale = 1, target: EventTarget = session!.container) {
   const event = new Event(type, { cancelable: true });
   Object.assign(event, { scale, clientX: 240, clientY: 350 });
-  session!.container.dispatchEvent(event); return event;
+  target.dispatchEvent(event); return event;
 }
 
 beforeEach(() => {
@@ -137,7 +137,7 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", (id: number) => state.frames.delete(id));
   callbacks = makeCallbacks();
   pdf = { numPages: 2, getPage: vi.fn(async () => ({ getViewport: () => viewport() })), cleanup: vi.fn() } as unknown as PDFDocumentProxy;
-  host = document.createElement("div"); document.body.append(host); session = null;
+  host = document.createElement("div"); host.className = "pdf-viewer"; document.body.append(host); session = null;
 });
 afterEach(() => { session?.destroy(); host.remove(); vi.unstubAllGlobals(); });
 
@@ -222,6 +222,77 @@ describe("PDFViewer adapter", () => {
     flushFrames();
     expect(viewer().updateScale).not.toHaveBeenCalled();
     expect(callbacks.onZoom).not.toHaveBeenCalled();
+  });
+
+  it("captures pinch across toolbar and overlay descendants without changing their normal scrolling", () => {
+    showPdf();
+    const toolbar = document.createElement("button");
+    const overlay = document.createElement("span");
+    host.append(toolbar, overlay);
+    for (const target of [toolbar, overlay]) {
+      target.addEventListener("wheel", event => event.stopPropagation());
+      expect(pinchWheel(-10, { bubbles: true }, target).defaultPrevented).toBe(true);
+      flushFrames();
+      expect(pinchWheel(30, { ctrlKey: false }, target).defaultPrevented).toBe(false);
+      expect(pinchWheel(30, { ctrlKey: false, shiftKey: true }, target).defaultPrevented).toBe(false);
+    }
+    expect(viewer().updateScale).toHaveBeenCalledTimes(2);
+    session!.destroy();
+    expect(pinchWheel(-10, {}, toolbar).defaultPrevented).toBe(false);
+  });
+
+  it("handles page-targeted gestures only while the preview has focus and leaves explicit outside targets alone", () => {
+    showPdf();
+    const outside = document.createElement("input");
+    document.body.append(outside);
+    try {
+      expect(pinchWheel(-10, {}, document).defaultPrevented).toBe(false);
+      viewer().pages[0].div.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      expect(document.activeElement).toBe(session!.container);
+      expect(pinchWheel(-10, {}, document).defaultPrevented).toBe(true);
+      flushFrames();
+      expect(callbacks.onZoom).toHaveBeenCalledOnce();
+      expect(pinchWheel(-10, {}, outside).defaultPrevented).toBe(false);
+      outside.focus();
+      expect(pinchWheel(-10, {}, document).defaultPrevented).toBe(false);
+      expect(gesture("gesturestart", 1, document.body).defaultPrevented).toBe(false);
+      session!.container.focus();
+      expect(gesture("gesturestart", 1, document.body).defaultPrevented).toBe(true);
+      expect(gesture("gesturechange", 1.2, document).defaultPrevented).toBe(true);
+      flushFrames();
+      expect(callbacks.onZoom).toHaveBeenCalledTimes(2);
+      expect(gesture("gestureend", 1, window).defaultPrevented).toBe(true);
+    } finally { outside.remove(); }
+  });
+
+  it("keeps annotation inputs and toolbar controls focused while retaining preview gesture handling", () => {
+    showPdf();
+    const annotation = document.createElement("input");
+    viewer().pages[0].div.append(annotation);
+    annotation.focus();
+    annotation.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    expect(document.activeElement).toBe(annotation);
+    expect(pinchWheel(-10, {}, document.body).defaultPrevented).toBe(true);
+    expect(pinchWheel(-10, {}, document.documentElement).defaultPrevented).toBe(true);
+    const toolbar = document.createElement("button");
+    host.append(toolbar); toolbar.focus();
+    session!.show();
+    expect(document.activeElement).toBe(toolbar);
+  });
+
+  it("retains PDF focus when a recompiled document replaces the displayed viewer", () => {
+    showPdf();
+    const previous = session!;
+    previous.container.focus();
+    try {
+      create(); emit("pagesinit"); viewer().pages[0].renderingState = 3;
+      emit("pagerendered", { pageNumber: 1 }); session!.show();
+      expect(document.activeElement).toBe(session!.container);
+      previous.destroy();
+      expect(pinchWheel(-10, {}, document).defaultPrevented).toBe(true);
+      flushFrames();
+      expect(callbacks.onZoom).toHaveBeenCalledOnce();
+    } finally { previous.destroy(); }
   });
 
   it("keeps pinch percentages relative to fit-width after resizing rather than native 96-DPI scale", () => {
