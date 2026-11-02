@@ -34,9 +34,9 @@ function excerpt(value: string): string {
   return characters.length > 240 ? `${characters.slice(0, 240).join("")}…` : first;
 }
 
-/** Abstract first sentence, then title, then the beginning of an explicit document body. */
+/** Abstract first sentence, then title. Never guess metadata from document-body commands. */
 export function extractProjectPreview(source: string): string | null {
-  let title = "", abstractStart = -1, abstractEnd = source.length, bodyStart = -1, bodyEnd = source.length;
+  let title = "", abstractStart = -1, abstractEnd = -1, bodyStart = -1, bodyEnd = source.length;
   forEachLatexCommand(source, (command) => {
     if (!["title", "begin", "end"].includes(command.name)) return;
     const argument = readLatexMandatoryArguments(source, command.to, 1)[0];
@@ -44,20 +44,20 @@ export function extractProjectPreview(source: string): string | null {
     const value = source.slice(argument.contentFrom, argument.contentTo);
     if (command.name === "title" && !title) title = previewText(value);
     if (command.name === "begin" && value.trim() === "abstract" && abstractStart < 0) abstractStart = argument.to;
-    if (command.name === "end" && value.trim() === "abstract" && abstractStart >= 0 && abstractEnd === source.length) abstractEnd = command.from;
+    if (command.name === "end" && value.trim() === "abstract" && abstractStart >= 0 && abstractEnd < 0) abstractEnd = command.from;
     if (command.name === "begin" && value.trim() === "document" && bodyStart < 0) bodyStart = argument.to;
     if (command.name === "end" && value.trim() === "document" && bodyStart >= 0) bodyEnd = command.from;
   });
-  const abstract = abstractStart >= 0 ? excerpt(previewText(source.slice(abstractStart, abstractEnd))) : "";
+  const abstract = abstractStart >= 0 && abstractEnd >= abstractStart ? excerpt(previewText(source.slice(abstractStart, abstractEnd))) : "";
   if (abstract) return abstract;
   if (title) return Array.from(title).slice(0, 240).join("");
   if (bodyStart >= 0) {
     const body = source.slice(bodyStart, bodyEnd);
-    const text = excerpt(previewText(body));
-    // Commands/includes/literal blocks with no extractable prose are not an empty document.
-    return text || (maskLatexComments(body).trim() ? null : "");
+    // Only inspect the body to distinguish genuinely empty documents from
+    // unavailable metadata. Formatting arguments and includes are not prose.
+    return maskLatexComments(body).trim() ? null : "";
   }
-  return previewText(source) ? null : "";
+  return maskLatexComments(source).trim() ? null : "";
 }
 
 /** Bounded main-file reads, coalesced across users and cached by file metadata. */

@@ -28,9 +28,8 @@ describe("project preview extraction", () => {
       \end{abstract}`)).toBe("Fallback");
   });
 
-  it("handles CJK sentences, body-only projects and long excerpts without breaking surrogate pairs", () => {
+  it("handles CJK sentences and long excerpts without breaking surrogate pairs", () => {
     expect(extractProjectPreview(String.raw`\begin{abstract}這是第一句。這是第二句。\end{abstract}`)).toBe("這是第一句。");
-    expect(extractProjectPreview(String.raw`\begin{document}Hello \textbf{world}. Another sentence.\end{document}`)).toBe("Hello world.");
     const long = extractProjectPreview(`\\begin{abstract}${"😀".repeat(300)}\\end{abstract}`)!;
     expect(Array.from(long)).toHaveLength(241); expect(long.endsWith("😀…")).toBe(true);
   });
@@ -40,6 +39,28 @@ describe("project preview extraction", () => {
     expect(extractProjectPreview("\\begin{document}\n% a comment\n\\end{document}")).toBe("");
     expect(extractProjectPreview(String.raw`\begin{document}\input{chapters/intro}\end{document}`)).toBeNull();
     expect(extractProjectPreview(String.raw`\documentclass{article}`)).toBeNull();
+  });
+
+  it("does not mistake body text, layout options or included metadata for a title or abstract", () => {
+    expect(extractProjectPreview(String.raw`\begin{document}Hello \textbf{world}. Another sentence.\end{document}`)).toBeNull();
+    const template = String.raw`\documentclass{sjtuthesis}
+      \input{setup}
+      \begin{document}
+      \input{contents/封面}
+      \pagenumbering{arabic}
+      \setcounter{page}{1}
+      \pagestyle{fancy}
+      \input{contents/abstract}
+      \tableofcontents[notintoc]
+      \end{document}`;
+    expect(extractProjectPreview(template)).toBeNull();
+    expect(extractProjectPreview(String.raw`\title{Real title}` + template)).toBe("Real title");
+  });
+
+  it("requires complete title arguments and abstract environments, falling back only to a valid title", () => {
+    expect(extractProjectPreview(String.raw`\title{Unclosed title`)).toBeNull();
+    expect(extractProjectPreview(String.raw`\begin{abstract}Unfinished abstract. \section{Body}`)).toBeNull();
+    expect(extractProjectPreview(String.raw`\title{Real title}\begin{abstract}Unfinished abstract.`)).toBe("Real title");
   });
 });
 
@@ -72,6 +93,15 @@ describe("bounded project preview reads", () => {
     await expect(service.read("project", "main.tex")).resolves.toBeNull();
     fs.writeFileSync(path.join(source, "main.tex"), String.raw`\title{Early title}` + "%" + "x".repeat(PROJECT_PREVIEW_BYTES * 2));
     await expect(service.read("project", "main.tex")).resolves.toBe("Early title");
+  });
+
+  it("does not publish a partial abstract when its closing delimiter lies beyond the bounded read", async () => {
+    const { service, source } = setup();
+    const abstract = String.raw`\begin{abstract}A complete first sentence. ` + "x".repeat(PROJECT_PREVIEW_BYTES) + String.raw`\end{abstract}`;
+    fs.writeFileSync(path.join(source, "main.tex"), abstract);
+    await expect(service.read("project", "main.tex")).resolves.toBeNull();
+    fs.writeFileSync(path.join(source, "main.tex"), String.raw`\title{Complete title}` + abstract);
+    await expect(service.read("project", "main.tex")).resolves.toBe("Complete title");
   });
 
   it("tolerates missing, binary, directory and unsafe main files, and retries after they are fixed", async () => {
