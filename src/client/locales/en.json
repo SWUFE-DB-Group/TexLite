@@ -437,7 +437,6 @@
     "myLibrary": "My library",
     "currentFile": "Current file",
     "searchPlaceholder": "Search citations…",
-    "searchHint": "Search key, title, author, or year",
     "emptyTitle": "Your library is empty",
     "emptyDescription": "Add a BibTeX entry to your library.",
     "noEntries": "No BibTeX entries found",

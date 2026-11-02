@@ -1595,7 +1595,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-add-entry-button { display: inline-flex; align-items: center; gap: 5px; flex: none; border: 1px solid var(--ui-accent-border, #176b44); border-radius: 7px; padding: 0 11px; background: #176b44; color: white; font-size: 11px; }
 .citation-add-entry-button:hover { background: #125937; }
 .citation-library-search input { min-width: 0; flex: 1; border: 0; padding: 9px 0; outline: 0; font-size: 12px; }
-.citation-library-search span { flex: none; color: var(--ui-muted, #8a958d); font-size: 10px; }
 .citation-tag-bar { display: flex; align-items: flex-start; gap: 12px; }
 .citation-tag-filter-catalog { flex: 1; min-width: 0; }
 .citation-tag-filter-clip { overflow: hidden; }
@@ -1659,7 +1658,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-library-page .citation-library-tabs button span { font-size: 12px; }
 .citation-library-page .citation-library-search { min-height: 32px; padding: 0 9px; }
 .citation-library-page .citation-library-search input { padding: 7px 0; font-size: 12px; }
-.citation-library-page .citation-library-search span { font-size: 11px; }
 .citation-library-page .citation-add-entry-button { min-height: 32px; gap: 5px; padding: 0 10px; font-size: 12px; }
 .citation-library-page .citation-tag-filters { gap: 6px; }
 .citation-library-page .citation-tag-filters button { height: 32px; padding: 6px 10px; font-size: 12px; }
@@ -2154,6 +2152,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 }
 
 @media (max-width: 860px) {
+  .project-toolbar { padding: 0; background: transparent; }
+  .project-toolbar > input { flex: 0 0 100%; width: 100%; min-width: 0; }
   .project-catalog-layout { display: block; }
   .project-tag-sidebar { position: static; width: 100%; margin-bottom: 10px; }
   .project-tag-toggle { width: 100%; justify-content: space-between; padding: 8px 10px; }
@@ -2191,9 +2191,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .project-action-menu-list .project-action-menu { right: 36px; width: min(208px, calc(100vw - 42px)); }
   .section-title > .dashboard-back-button { align-self: flex-start; }
   .citation-library-page .citation-library-dialog { padding: 12px; }
-  .citation-library-page .citation-library-search { flex-wrap: wrap; gap: 4px 8px; padding: 8px 12px; }
+  .citation-library-page .citation-library-search { padding: 8px 12px; }
   .citation-library-page .citation-library-search input { padding: 3px 0; }
-  .citation-library-page .citation-library-search span { flex-basis: 100%; padding-left: 23px; }
   .citation-library-search-row { flex-direction: column; }
   .citation-add-entry-button { min-height: 34px; justify-content: center; }
   .citation-entry-card { flex-direction: column; }

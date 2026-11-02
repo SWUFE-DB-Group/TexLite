@@ -113,6 +113,7 @@
   .agent-task-table .agent-task-selection input { width: 18px; height: 18px; margin: 0; }
   .agent-task-table .agent-table-task { grid-column: 1 / -1; padding-right: 28px; }
   .agent-task-table .agent-task-name { display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .agent-task-table .agent-project-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-height: 3em; overflow: hidden; line-height: 1.5; }
   .agent-task-table .agent-table-task strong { font-size: 13px; line-height: 1.5; }
   .agent-task-table .agent-table-time { grid-column: 1 / -1; white-space: normal; }
   .agent-task-table .agent-row-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; border-top: 1px solid var(--ui-border, #d8e1db); }

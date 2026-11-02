@@ -1139,7 +1139,6 @@
     "myLibrary": "我的文獻庫",
     "currentFile": "目前檔案",
     "searchPlaceholder": "搜尋文獻…",
-    "searchHint": "可搜尋 key、標題、作者或年份",
     "emptyTitle": "文獻庫還是空的",
     "emptyDescription": "在文獻庫中新增 BibTeX 項目。",
     "noEntries": "沒有找到 BibTeX 項目",

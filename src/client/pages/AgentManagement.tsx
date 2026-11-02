@@ -135,7 +135,7 @@ export function AgentManagement({ user, onBack }: {
       <tbody>{result.tasks.map((task) => <tr key={task.id} className={selected.has(task.id) ? "selected" : ""}>
         <td className="agent-task-selection"><input type="checkbox" aria-label={task.title} checked={selected.has(task.id)} onChange={(event) => setSelected((value) => { const next = new Set(value); if (event.target.checked) next.add(task.id); else next.delete(task.id); return next; })} /></td>
         <td className="agent-table-task"><strong className="agent-task-name" title={task.title}>{task.title}</strong></td>
-        <td data-label={t("agents.project")}><span className="agent-task-name" title={task.projectId}>{task.projectName}</span></td>
+        <td data-label={t("agents.project")}><span className="agent-task-name agent-project-name" title={task.projectId}>{task.projectName}</span></td>
         {admin && <td data-label={t("agents.user")}><span className="agent-table-user" tabIndex={task.userUsername ? 0 : undefined}
           data-tooltip={task.userUsername ? `@${task.userUsername}` : undefined}>{task.userName}</span></td>}
         <td data-label={t("agents.agent")}><span className="agent-identity"><AgentIcon agent={task.agentId} size={15} />{AGENT_LABELS[task.agentId]}</span></td>
