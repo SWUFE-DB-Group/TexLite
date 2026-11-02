@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   leases: [] as { url: string; release: ReturnType<typeof vi.fn>; resolve: (value: object) => void; reject: (error: Error) => void }[],
-  sessions: [] as { callbacks: Record<string, Function>; options: Record<string, unknown>; show: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; setZoom: ReturnType<typeof vi.fn>; showTarget: ReturnType<typeof vi.fn>; location: ReturnType<typeof vi.fn>; fitWidth: ReturnType<typeof vi.fn> }[],
+  sessions: [] as { callbacks: Record<string, Function>; options: Record<string, unknown>; show: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; setZoom: ReturnType<typeof vi.fn>; showTarget: ReturnType<typeof vi.fn>; location: ReturnType<typeof vi.fn>; fitWidth: ReturnType<typeof vi.fn>; pageState: ReturnType<typeof vi.fn>; goToPage: ReturnType<typeof vi.fn> }[],
   evict: vi.fn()
 }));
 vi.mock("../src/client/pdfDocuments", () => ({
@@ -22,6 +22,13 @@ vi.mock("../src/client/pdfViewer", () => ({
   PdfViewerSession: class {
     show = vi.fn(); destroy = vi.fn(); setZoom = vi.fn(); showTarget = vi.fn(); fitWidth = vi.fn();
     location = vi.fn(() => ({ page: 3, x: 10, y: 20 }));
+    pageState = vi.fn(() => ({ page: 1, totalPages: 10 }));
+    goToPage = vi.fn((page: number) => {
+      const totalPages = this.pageState().totalPages;
+      const next = { page: Math.max(1, Math.min(totalPages, page)), totalPages };
+      this.pageState.mockReturnValue(next);
+      this.callbacks.onPageChange(next.page, next.totalPages);
+    });
     constructor(_host: unknown, _document: unknown, public callbacks: Record<string, Function>, public options: Record<string, unknown>) {
       state.sessions.push(this);
     }
@@ -40,6 +47,19 @@ async function render(overrides: Partial<typeof current> = {}) {
 }
 async function loaded(index: number) { await act(async () => { state.leases[index].resolve({}); }); }
 async function painted(index: number) { await act(async () => { state.sessions[index].callbacks.onReady(); }); }
+async function pageChanged(index: number, page: number, totalPages: number) {
+  await act(async () => {
+    state.sessions[index].pageState.mockReturnValue({ page, totalPages });
+    state.sessions[index].callbacks.onPageChange(page, totalPages);
+  });
+}
+async function editPage(value: string) {
+  await act(async () => {
+    const input = container.querySelector<HTMLInputElement>(".pdf-page-input")!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -51,6 +71,68 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
 describe("PDFViewer document replacement", () => {
+  it("publishes page controls only for the displayed PDF, follows scrolls, and disables first/last boundaries", async () => {
+    await render();
+    const previous = () => container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfPreviousPage"]')!;
+    const next = () => container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfNextPage"]')!;
+    const input = () => container.querySelector<HTMLInputElement>(".pdf-page-input")!;
+    expect(previous().disabled).toBe(true); expect(next().disabled).toBe(true); expect(input().disabled).toBe(true);
+    await loaded(0); await pageChanged(0, 3, 10);
+    expect(input().disabled).toBe(true);
+    await painted(0);
+    expect(input().value).toBe("3"); expect(container.querySelector(".pdf-page-total")?.textContent).toBe("/ 10");
+    await act(async () => previous().click());
+    expect(state.sessions[0].goToPage).toHaveBeenLastCalledWith(2); expect(input().value).toBe("2");
+    await act(async () => { next().click(); next().click(); });
+    expect(state.sessions[0].goToPage).toHaveBeenLastCalledWith(4); expect(input().value).toBe("4");
+    await pageChanged(0, 10, 10);
+    expect(next().disabled).toBe(true); expect(previous().disabled).toBe(false);
+    await pageChanged(0, 1, 1);
+    expect(previous().disabled).toBe(true); expect(next().disabled).toBe(true);
+    expect(state.leases).toHaveLength(1);
+  });
+
+  it("commits page drafts on Enter or blur, preserves them during scrolling, and resets invalid or cancelled input", async () => {
+    await render(); await loaded(0); await painted(0);
+    const input = container.querySelector<HTMLInputElement>(".pdf-page-input")!;
+    const enter = () => act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+    await editPage("5"); await pageChanged(0, 2, 10);
+    expect(input.value).toBe("5");
+    await enter(); expect(input.value).toBe("5");
+    expect(state.sessions[0].goToPage).toHaveBeenLastCalledWith(5);
+    await editPage("999"); await enter(); expect(input.value).toBe("10");
+    await editPage("0"); await enter(); expect(input.value).toBe("1");
+    state.sessions[0].goToPage.mockClear();
+    for (const invalid of ["", "abc", "2.5", "-1"]) {
+      await editPage(invalid); await enter(); expect(input.value).toBe("1");
+    }
+    expect(state.sessions[0].goToPage).not.toHaveBeenCalled();
+    await editPage("7");
+    await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    expect(input.value).toBe("1"); expect(state.sessions[0].goToPage).not.toHaveBeenCalled();
+    await act(async () => input.focus());
+    await editPage("6");
+    await act(async () => input.blur());
+    expect(input.value).toBe("6"); expect(state.sessions[0].goToPage).toHaveBeenCalledExactlyOnceWith(6);
+  });
+
+  it("keeps navigation tied to the visible document until replacement and ignores stale page events afterwards", async () => {
+    await render(); await loaded(0); await painted(0);
+    await render({ url: "/two.pdf" }); await loaded(1);
+    await pageChanged(1, 1, 2);
+    expect(container.querySelector(".pdf-page-total")?.textContent).toBe("/ 10");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfNextPage"]')!.click());
+    expect(state.sessions[0].goToPage).toHaveBeenCalledExactlyOnceWith(2);
+    expect(state.sessions[1].goToPage).not.toHaveBeenCalled();
+    await pageChanged(1, 2, 2); await painted(1);
+    expect(container.querySelector<HTMLInputElement>(".pdf-page-input")?.value).toBe("2");
+    expect(container.querySelector(".pdf-page-total")?.textContent).toBe("/ 2");
+    await pageChanged(0, 8, 10);
+    expect(container.querySelector<HTMLInputElement>(".pdf-page-input")?.value).toBe("2");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfPreviousPage"]')!.click());
+    expect(state.sessions[1].goToPage).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
   it("does not publish a loaded PDF until a visible page has painted", async () => {
     await render(); await loaded(0);
     expect(current.onDisplayedUrlChange).not.toHaveBeenCalled();

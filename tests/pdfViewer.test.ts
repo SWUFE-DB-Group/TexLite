@@ -22,7 +22,13 @@ vi.mock("pdfjs-dist/web/pdf_viewer.mjs", () => ({
     addLinkAttributes(link: HTMLAnchorElement, url: string) { link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer"; }
   },
   PDFViewer: class {
-    currentPageNumber = 1; pagesCount = 2;
+    private pageNumber = 1; pagesCount = 2;
+    get currentPageNumber() { return this.pageNumber; }
+    set currentPageNumber(pageNumber: number) {
+      if (this.pageNumber === pageNumber) return;
+      this.pageNumber = pageNumber;
+      this.options.eventBus.dispatch("pagechanging", { pageNumber });
+    }
     private scale = 1;
     scaleChanges: number[] = [];
     scalePages: number[] = [];
@@ -93,6 +99,7 @@ import { isAllowedPdfLink, pdfPointToSourceLocation, PdfViewerSession, sourceLoc
 let host: HTMLDivElement, session: PdfViewerSession | null;
 const makeCallbacks = () => ({ onReady: vi.fn<() => void>(), onError: vi.fn<() => void>(),
   onZoom: vi.fn<(zoom: number) => void>(),
+  onPageChange: vi.fn<(page: number, totalPages: number) => void>(),
   onLocation: vi.fn<(location: { page: number; x: number; y: number }) => void>(),
   onDoubleClick: vi.fn<(location: { page: number; x: number; y: number }) => void>() });
 let callbacks: ReturnType<typeof makeCallbacks>;
@@ -142,6 +149,47 @@ beforeEach(() => {
 afterEach(() => { session?.destroy(); host.remove(); vi.unstubAllGlobals(); });
 
 describe("PDFViewer adapter", () => {
+  it("uses native paging with bounded integer page numbers, retaining zoom and reporting scroll changes", () => {
+    showPdf(); session!.setZoom(150);
+    const scale = viewer().currentScale;
+    expect(session!.pageState()).toEqual({ page: 1, totalPages: 2 });
+    session!.goToPage(2);
+    expect(session!.pageState()).toEqual({ page: 2, totalPages: 2 });
+    expect(callbacks.onPageChange).toHaveBeenLastCalledWith(2, 2);
+    expect(viewer().currentScale).toBe(scale);
+    session!.goToPage(999);
+    expect(viewer().currentPageNumber).toBe(2);
+    session!.goToPage(0);
+    expect(viewer().currentPageNumber).toBe(1);
+    for (const invalid of [NaN, Infinity, 1.5]) session!.goToPage(invalid);
+    expect(viewer().currentPageNumber).toBe(1);
+    viewer().currentPageNumber = 2; // Native pagechanging also fires on scroll/link navigation.
+    expect(callbacks.onPageChange).toHaveBeenLastCalledWith(2, 2);
+    callbacks.onPageChange.mockClear();
+    session!.destroy(); session!.goToPage(1); viewer().currentPageNumber = 1;
+    expect(callbacks.onPageChange).not.toHaveBeenCalled();
+  });
+
+  it("does not navigate a pending viewer before its first visible page is published", () => {
+    create(); emit("pagesinit");
+    session!.goToPage(2);
+    expect(viewer().currentPageNumber).toBe(1);
+    expect(callbacks.onPageChange).not.toHaveBeenCalled();
+  });
+
+  it("prevents a delayed SyncTeX destination from overwriting an explicit page jump", async () => {
+    showPdf();
+    let resolve!: (value: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>) => void;
+    vi.mocked(pdf.getPage).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    session!.showTarget({ page: 2, x: 10, y: 20, nonce: 1 });
+    session!.goToPage(1);
+    resolve({ getViewport: () => viewport() } as Awaited<ReturnType<PDFDocumentProxy["getPage"]>>);
+    await Promise.resolve();
+    expect(viewer().scrollPageIntoView).not.toHaveBeenCalled();
+    expect(viewer().currentPageNumber).toBe(1);
+    expect(callbacks.onError).not.toHaveBeenCalled();
+  });
+
   it.each([0, 90, 180, 270])("converts source/PDF coordinates at rotation %i, including scale and page-box offsets", (rotation) => {
     const view = viewport(2.5, rotation);
     const point = sourceLocationToPdfPoint(view, 120, 250);

@@ -888,14 +888,26 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .preview-subtabs button.active span { background: var(--ui-hover, #dfe8e2); }
 .preview-content { min-height: 0; flex: 1; }
 .preview-pdf { overflow: hidden; }
-.pdf-viewer { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.pdf-toolbar { height: 36px; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 3px; padding: 4px 8px; border-bottom: 1px solid var(--ui-border, #d4dcd6); background: var(--ui-surface, #f3f5f2); color: var(--ui-muted, #536259); font: 11px/1 Inter, ui-sans-serif, system-ui, sans-serif; }
+.pdf-viewer { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; container: pdf-controls / inline-size; }
+.pdf-toolbar { min-height: 36px; flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; padding: 4px 8px; border-bottom: 1px solid var(--ui-border, #d4dcd6); background: var(--ui-surface, #f3f5f2); color: var(--ui-muted, #536259); font: 11px/1 Inter, ui-sans-serif, system-ui, sans-serif; }
+.pdf-page-controls, .pdf-zoom-controls { flex: none; display: flex; align-items: center; gap: 3px; }
+.pdf-page-controls { padding-right: 8px; border-right: 1px solid var(--ui-border, #d4dcd6); }
+.pdf-toolbar .pdf-page-input { min-width: 32px; max-width: 80px; height: 27px; padding: 0 4px; border: 1px solid var(--ui-border, #d6dfd8); border-radius: 5px; background: var(--ui-surface, #fff); color: var(--ui-text, #33463a); font: inherit; text-align: center; font-variant-numeric: tabular-nums; }
+.pdf-page-input:focus-visible { outline: 2px solid var(--ui-accent, #18553c); outline-offset: 1px; }
+.pdf-page-input:disabled { opacity: .45; }
+.pdf-page-total { padding-inline: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pdf-toolbar button { height: 27px; min-width: 27px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--ui-border, #d6dfd8); border-radius: 5px; padding: 0 6px; background: var(--ui-surface, #fff); color: inherit; }
 .pdf-toolbar button:hover:not(:disabled) { border-color: var(--ui-accent-border, #b4cdbb); background: var(--ui-accent-bg, #e4eee6); color: var(--ui-accent, #18553c); }
 .pdf-toolbar button:focus-visible { outline: 2px solid var(--ui-accent, #18553c); outline-offset: 1px; }
 .pdf-toolbar button:disabled { opacity: .35; }
 .pdf-zoom-value { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
 .pdf-toolbar .pdf-fit-width { margin-left: 6px; padding: 0 8px; border-color: transparent; background: transparent; }
+@container pdf-controls (max-width: 440px) {
+  .pdf-toolbar { column-gap: 5px; }
+  .pdf-page-controls { padding-right: 5px; }
+  .pdf-toolbar .pdf-fit-width { margin-left: 0; padding-inline: 6px; }
+  .pdf-fit-width-label { display: none; }
+}
 .pdf-compiling-overlay, .pdf-loading-overlay, .pdf-load-error-overlay { position: absolute; z-index: 4; top: 47px; left: 50%; display: inline-flex; align-items: center; gap: 7px; transform: translateX(-50%); border: 1px solid #ffffff32; border-radius: 999px; padding: 6px 10px; background: #17231ce6; color: white; box-shadow: 0 3px 12px #0005; font-size: 12px; pointer-events: none; }
 .pdf-load-error-overlay { border-color: #e8a59c; background: #6d2d29ed; pointer-events: auto; }
 .pdf-load-error-overlay button, .preview-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; background: transparent; color: inherit; font-size: 12px; cursor: pointer; }
@@ -2291,6 +2303,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .preview-tabs .pdf-tab-label small { font-size: 10px; }
   .pdf-toolbar { min-height: 44px; gap: 5px; padding-inline: 8px; }
   .pdf-toolbar button { min-width: 36px; min-height: 36px; }
+  .pdf-toolbar .pdf-page-input { height: 36px; font-size: 16px; }
   .preview-subtabs { flex-wrap: nowrap; overflow-x: auto; }
   .preview-subtabs button { flex: none; white-space: nowrap; }
   .compile-status-strip { min-width: 0; font-size: 10px; padding: 5px 8px; }

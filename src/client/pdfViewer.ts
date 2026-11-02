@@ -21,6 +21,7 @@ interface PdfViewerCallbacks {
   onLocation: (location: PdfLocation) => void;
   onDoubleClick: (location: PdfLocation) => void;
   onZoom: (zoom: number) => void;
+  onPageChange: (page: number, totalPages: number) => void;
 }
 
 // Safari exposes cumulative pinch scale through non-standard gesture events.
@@ -152,6 +153,8 @@ export class PdfViewerSession {
     });
     listen("updateviewarea", () => { this.scheduleUpdate(); });
     listen("pagechanging", ({ pageNumber }: { pageNumber: number }) => {
+      if (this.destroyed) return;
+      this.callbacks.onPageChange(pageNumber, this.document.numPages);
       // Surface range/page-load failures as well as canvas render failures.
       void this.document.getPage(pageNumber).catch(() => {
         if (!this.destroyed) this.callbacks.onError();
@@ -196,6 +199,18 @@ export class PdfViewerSession {
     this.zoom = 100;
     if (this.initialized) this.applyZoom();
     this.container.scrollLeft = 0;
+  }
+
+  pageState(): { page: number; totalPages: number } {
+    return { page: this.viewer.currentPageNumber, totalPages: this.document.numPages };
+  }
+
+  goToPage(page: number): void {
+    if (!this.ready || this.destroyed || !Number.isInteger(page)) return;
+    // Explicit paging supersedes a pending asynchronous SyncTeX jump.
+    this.navigation += 1;
+    this.viewer.currentPageNumber = this.clampPageNumber(page);
+    this.viewer.update();
   }
 
   showTarget(target: PdfTarget | null): void {

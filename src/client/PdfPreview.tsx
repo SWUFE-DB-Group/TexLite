@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle, Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, LoaderCircle, Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
 import { acquirePdfDocument, evictPdfDocument, type PdfDocumentLease, type PdfLoadingMode } from "./pdfDocuments";
 import { PdfViewerSession, type PdfTarget } from "./pdfViewer";
 
@@ -37,6 +37,8 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [zoom, setZoom] = useState(100);
+  const [pagination, setPagination] = useState({ page: 0, totalPages: 0 });
+  const [pageInput, setPageInput] = useState<string | null>(null);
   const latest = useRef({ url, target, zoom, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange });
   latest.current = { url, target, zoom, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange };
 
@@ -61,6 +63,8 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
           pending.current = null;
           displayed.current = entry;
           entry.session?.show();
+          if (entry.session) setPagination(entry.session.pageState());
+          setPageInput(null);
           setDisplayedUrl(url);
           setLoading(false);
           setError(false);
@@ -68,6 +72,9 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
           dispose(previous);
         },
         onError: fail,
+        onPageChange: (page, totalPages) => {
+          if (displayed.current === entry) setPagination({ page, totalPages });
+        },
         onZoom: (value) => {
           // The old PDF remains interactive while its replacement paints.
           // Carry its zoom forward without accepting stale SyncTeX positions.
@@ -116,13 +123,38 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
     setRetry((value) => value + 1);
   };
   const changeZoom = (difference: number) => setZoom((value) => Math.max(50, Math.min(200, value + difference)));
+  const changePage = (difference: number) => {
+    const session = displayed.current?.session;
+    if (!session) return;
+    setPageInput(null);
+    session.goToPage(session.pageState().page + difference);
+  };
+  const commitPage = () => {
+    if (pageInput !== null && /^\d+$/.test(pageInput.trim())) displayed.current?.session?.goToPage(Number(pageInput.trim()));
+    setPageInput(null);
+  };
 
   return <div className="pdf-viewer">
-    <div className="pdf-toolbar" role="toolbar" aria-label={t("editor.pdfZoomControls")}>
-      <button disabled={zoom <= 50} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
-      <span className="pdf-zoom-value" aria-live="polite">{Math.round(zoom)}%</span>
-      <button disabled={zoom >= 200} title={t("editor.pdfZoomIn")} aria-label={t("editor.pdfZoomIn")} onClick={() => changeZoom(10)}><Plus size={14} /></button>
-      <button className="pdf-fit-width" title={t("editor.pdfFitWidth")} onClick={() => { setZoom(100); displayed.current?.session?.fitWidth(); pending.current?.session?.fitWidth(); }}><Maximize2 size={13} />{t("editor.pdfFitWidth")}</button>
+    <div className="pdf-toolbar" role="toolbar" aria-label={t("editor.pdfControls")}>
+      <div className="pdf-page-controls">
+        <button type="button" disabled={pagination.page <= 1} title={t("editor.pdfPreviousPage")} aria-label={t("editor.pdfPreviousPage")} onClick={() => changePage(-1)}><ChevronUp size={14} /></button>
+        <button type="button" disabled={!pagination.totalPages || pagination.page >= pagination.totalPages} title={t("editor.pdfNextPage")} aria-label={t("editor.pdfNextPage")} onClick={() => changePage(1)}><ChevronDown size={14} /></button>
+        <input className="pdf-page-input" type="text" inputMode="numeric" aria-label={t("editor.pdfPageNumber")} placeholder="—" disabled={!pagination.totalPages}
+          style={{ width: `${Math.max(2, String(pagination.totalPages).length) + 2}ch` }}
+          value={pageInput ?? (pagination.totalPages ? String(pagination.page) : "")}
+          onChange={(event) => setPageInput(event.target.value)} onBlur={commitPage}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") { event.preventDefault(); commitPage(); }
+            else if (event.key === "Escape") { event.preventDefault(); setPageInput(null); }
+          }} />
+        <span className="pdf-page-total">/ {pagination.totalPages || "—"}</span>
+      </div>
+      <div className="pdf-zoom-controls">
+        <button disabled={zoom <= 50} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
+        <span className="pdf-zoom-value" aria-live="polite">{Math.round(zoom)}%</span>
+        <button disabled={zoom >= 200} title={t("editor.pdfZoomIn")} aria-label={t("editor.pdfZoomIn")} onClick={() => changeZoom(10)}><Plus size={14} /></button>
+        <button className="pdf-fit-width" title={t("editor.pdfFitWidth")} onClick={() => { setZoom(100); displayed.current?.session?.fitWidth(); pending.current?.session?.fitWidth(); }}><Maximize2 size={13} /><span className="pdf-fit-width-label">{t("editor.pdfFitWidth")}</span></button>
+      </div>
     </div>
     {compiling && <div className="pdf-compiling-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.compiling")}</span></div>}
     {loading && displayedUrl && !compiling && <div className="pdf-loading-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.loadingPdf")}</span></div>}
