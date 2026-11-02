@@ -2089,6 +2089,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 @media (max-width: 1250px) {
   .editor-actions .compile-engine-label { display: none; }
   .file-tools .file-quick-open { display: none; }
+  .panel-title .file-tools { gap: 2px; }
+  .panel-title .file-tools button { padding: 0; }
   .preview-tabs .diagnostics-tab-label, .preview-tabs .diagnostic-count, .pdf-download-top .pdf-download-label { display: none; }
   .preview-tabs .diagnostics-tab, .pdf-download-top { min-width: 44px; min-height: 44px; justify-content: center; padding-inline: 10px; }
   .preview-tabs .diagnostics-tab > svg, .pdf-download-top > svg { width: 18px; height: 18px; flex: none; }
