@@ -2,10 +2,11 @@
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PdfFitMode, PdfZoomState } from "../src/client/pdfViewer";
 
 const state = vi.hoisted(() => ({
   leases: [] as { url: string; release: ReturnType<typeof vi.fn>; resolve: (value: object) => void; reject: (error: Error) => void }[],
-  sessions: [] as { callbacks: Record<string, Function>; options: Record<string, unknown>; show: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; setZoom: ReturnType<typeof vi.fn>; showTarget: ReturnType<typeof vi.fn>; location: ReturnType<typeof vi.fn>; fitWidth: ReturnType<typeof vi.fn>; pageState: ReturnType<typeof vi.fn>; goToPage: ReturnType<typeof vi.fn> }[],
+  sessions: [] as { callbacks: Record<string, Function>; options: Record<string, unknown>; show: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; setZoom: ReturnType<typeof vi.fn>; showTarget: ReturnType<typeof vi.fn>; location: ReturnType<typeof vi.fn>; zoomState: ReturnType<typeof vi.fn>; pageState: ReturnType<typeof vi.fn>; goToPage: ReturnType<typeof vi.fn> }[],
   evict: vi.fn()
 }));
 vi.mock("../src/client/pdfDocuments", () => ({
@@ -19,8 +20,17 @@ vi.mock("../src/client/pdfDocuments", () => ({
   evictPdfDocument: state.evict, preloadPdf: vi.fn(), preloadPdfRuntime: vi.fn()
 }));
 vi.mock("../src/client/pdfViewer", () => ({
+  PDF_MIN_ZOOM: 10, PDF_MAX_ZOOM: 200,
   PdfViewerSession: class {
-    show = vi.fn(); destroy = vi.fn(); setZoom = vi.fn(); showTarget = vi.fn(); fitWidth = vi.fn();
+    show = vi.fn(); destroy = vi.fn(); showTarget = vi.fn();
+    zoomState = vi.fn<() => PdfZoomState>(() => ({ zoom: 100, fitMode: "width" }));
+    setZoom = vi.fn((zoom: number, fitMode: PdfFitMode = null) => {
+      const current = this.zoomState();
+      if (current.fitMode === fitMode && (fitMode !== null || current.zoom === zoom)) return;
+      const next = { zoom: fitMode === "page" ? 60 : zoom, fitMode };
+      this.zoomState.mockReturnValue(next);
+      if (fitMode === "page") this.callbacks.onZoom(next.zoom, fitMode);
+    });
     location = vi.fn(() => ({ page: 3, x: 10, y: 20 }));
     pageState = vi.fn(() => ({ page: 1, totalPages: 10 }));
     goToPage = vi.fn((page: number) => {
@@ -30,6 +40,7 @@ vi.mock("../src/client/pdfViewer", () => ({
       this.callbacks.onPageChange(next.page, next.totalPages);
     });
     constructor(_host: unknown, _document: unknown, public callbacks: Record<string, Function>, public options: Record<string, unknown>) {
+      this.zoomState.mockReturnValue({ zoom: options.fitMode === "page" ? 60 : Number(options.zoom), fitMode: options.fitMode as PdfFitMode });
       state.sessions.push(this);
     }
   }
@@ -60,6 +71,15 @@ async function editPage(value: string) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
+async function chooseZoom(label: string) {
+  const trigger = container.querySelector<HTMLButtonElement>(".pdf-zoom-trigger")!;
+  if (trigger.getAttribute("aria-expanded") !== "true") await act(async () => trigger.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  const item = [...document.querySelectorAll<HTMLElement>('.pdf-zoom-menu [role="menuitemradio"]')].find(element => element.textContent === label)!;
+  expect(item).toBeDefined();
+  await act(async () => item.click());
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -71,6 +91,52 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
 describe("PDFViewer document replacement", () => {
+  it("selects fit modes and numeric zoom presets from a single menu and leaves fit mode on manual zoom", async () => {
+    await render(); await loaded(0); await painted(0);
+    expect(container.querySelector(".pdf-fit-width")).toBeNull();
+    await chooseZoom("75%");
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("75%");
+    expect(state.sessions[0].setZoom).toHaveBeenLastCalledWith(75, null);
+    expect(document.querySelector(".pdf-zoom-menu")).toBeNull();
+    await chooseZoom("editor.pdfFitPage");
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("60%");
+    expect(state.sessions[0].setZoom).toHaveBeenLastCalledWith(60, "page");
+    await act(async () => container.querySelector<HTMLButtonElement>(".pdf-zoom-trigger")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    expect(document.querySelector('.pdf-zoom-menu [aria-checked="true"]')?.textContent).toBe("editor.pdfFitPage");
+    await chooseZoom("editor.pdfFitWidth");
+    expect(state.sessions[0].setZoom).toHaveBeenLastCalledWith(100, "width");
+    await chooseZoom("100%");
+    expect(state.sessions[0].setZoom).toHaveBeenLastCalledWith(100, null);
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfZoomIn"]')!.click());
+    expect(state.sessions[0].setZoom).toHaveBeenLastCalledWith(110, null);
+    await chooseZoom("25%");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfZoomOut"]')!.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfZoomOut"]')!.click());
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("10%");
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfZoomOut"]')?.disabled).toBe(true);
+    await chooseZoom("200%");
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfZoomIn"]')?.disabled).toBe(true);
+  });
+
+  it("retains fit mode through loading/recompilation and reads the new PDF's fitted percentage only on publication", async () => {
+    await render(); await chooseZoom("editor.pdfFitPage"); await loaded(0);
+    expect(state.sessions[0].options.fitMode).toBe("page");
+    await painted(0);
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("60%");
+    await render({ url: "/two.pdf" }); await loaded(1);
+    expect(state.sessions[1].options).toMatchObject({ zoom: 60, fitMode: "page" });
+    state.sessions[1].zoomState.mockReturnValue({ zoom: 40, fitMode: "page" });
+    await act(async () => state.sessions[1].callbacks.onZoom(40, "page"));
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("60%");
+    await painted(1);
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("40%");
+    await act(async () => state.sessions[0].callbacks.onZoom(100));
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("40%");
+    await act(async () => state.sessions[1].callbacks.onZoom(65));
+    expect(state.sessions[1].setZoom).toHaveBeenLastCalledWith(65, null);
+    expect(state.leases).toHaveLength(2);
+  });
+
   it("publishes page controls only for the displayed PDF, follows scrolls, and disables first/last boundaries", async () => {
     await render();
     const previous = () => container.querySelector<HTMLButtonElement>('[aria-label="editor.pdfPreviousPage"]')!;
@@ -230,9 +296,9 @@ describe("PDFViewer document replacement", () => {
     expect(state.leases).toHaveLength(1);
     await render({ url: "/two.pdf" }); await loaded(1);
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="editor.pdfZoomIn"]')!.click());
-    for (const session of state.sessions) expect(session.setZoom).toHaveBeenLastCalledWith(110);
-    await act(async () => container.querySelector<HTMLButtonElement>(".pdf-fit-width")!.click());
-    for (const session of state.sessions) expect(session.fitWidth).toHaveBeenCalledOnce();
+    for (const session of state.sessions) expect(session.setZoom).toHaveBeenLastCalledWith(110, null);
+    await chooseZoom("editor.pdfFitWidth");
+    for (const session of state.sessions) expect(session.setZoom).toHaveBeenLastCalledWith(100, "width");
   });
 
   it("uses the latest jump target when loading finishes and forwards subsequent target changes", async () => {
@@ -258,7 +324,7 @@ describe("PDFViewer document replacement", () => {
     await act(async () => state.sessions[1].callbacks.onZoom(180));
     expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("123%");
     await act(async () => state.sessions[0].callbacks.onZoom(145));
-    expect(state.sessions[1].setZoom).toHaveBeenLastCalledWith(145);
+    expect(state.sessions[1].setZoom).toHaveBeenLastCalledWith(145, null);
     await painted(1);
     await act(async () => state.sessions[0].callbacks.onZoom(70));
     expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("145%");

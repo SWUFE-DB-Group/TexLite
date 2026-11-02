@@ -1020,6 +1020,8 @@
     "pdfPreviousPage": "上一頁",
     "pdfNextPage": "下一頁",
     "pdfPageNumber": "頁碼",
+    "pdfZoomOptions": "PDF 縮放",
+    "pdfFitPage": "適合頁面",
     "downloadPdf": "下載 PDF",
     "downloadResource": "下載檔案",
     "resourceTooLarge": "該檔案大小為 {{size}}，超過此類檔案 {{limit}} 的開啟上限。",

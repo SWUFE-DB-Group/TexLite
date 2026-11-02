@@ -61,7 +61,7 @@ vi.mock("pdfjs-dist/web/pdf_viewer.mjs", () => ({
         options.viewer.append(div);
         const owner = this;
         this.pages.push({ div, viewport: viewport(2), renderingState: 0,
-          get width() { return 560 * owner.currentScale; }, get scale() { return owner.currentScale; } });
+          get width() { return 560 * owner.currentScale; }, get height() { return 800 * owner.currentScale; }, get scale() { return owner.currentScale; } });
       }
     }
   }
@@ -94,11 +94,11 @@ function viewport(scale = 1, rotation = 0): PageViewport {
     convertToViewportPoint: toView, convertToPdfPoint: toPdf } as unknown as PageViewport;
 }
 
-import { isAllowedPdfLink, pdfPointToSourceLocation, PdfViewerSession, sourceLocationToPdfPoint } from "../src/client/pdfViewer";
+import { isAllowedPdfLink, pdfPointToSourceLocation, PdfViewerSession, sourceLocationToPdfPoint, type PdfFitMode } from "../src/client/pdfViewer";
 
 let host: HTMLDivElement, session: PdfViewerSession | null;
 const makeCallbacks = () => ({ onReady: vi.fn<() => void>(), onError: vi.fn<() => void>(),
-  onZoom: vi.fn<(zoom: number) => void>(),
+  onZoom: vi.fn<(zoom: number, fitMode?: PdfFitMode) => void>(),
   onPageChange: vi.fn<(page: number, totalPages: number) => void>(),
   onLocation: vi.fn<(location: { page: number; x: number; y: number }) => void>(),
   onDoubleClick: vi.fn<(location: { page: number; x: number; y: number }) => void>() });
@@ -110,11 +110,11 @@ function flushFrames() {
   const frames = [...state.frames.values()]; state.frames.clear();
   for (const callback of frames) callback(0);
 }
-function create(options: { zoom: number; location?: { page: number; x: number; y: number }; target?: { page: number; x: number; y: number; nonce: number } } = { zoom: 100 }) {
+function create(options: { zoom: number; fitMode?: PdfFitMode; location?: { page: number; x: number; y: number }; target?: { page: number; x: number; y: number; nonce: number } } = { zoom: 100 }) {
   session = new PdfViewerSession(host, pdf, callbacks, options);
   session.container.getBoundingClientRect = () => ({ left: 0, top: 0, right: 600, bottom: 700, width: 600, height: 700 } as DOMRect);
   Object.defineProperty(session.container, "clientWidth", { value: 600, configurable: true });
-  Object.defineProperty(session.container, "clientHeight", { value: 700 });
+  Object.defineProperty(session.container, "clientHeight", { value: 700, configurable: true });
   return session;
 }
 function showPdf() {
@@ -149,6 +149,52 @@ beforeEach(() => {
 afterEach(() => { session?.destroy(); host.remove(); vi.unstubAllGlobals(); });
 
 describe("PDFViewer adapter", () => {
+  it("fits the current page including preview padding and refits on both height and width changes", () => {
+    showPdf();
+    session!.container.style.padding = "14px 0 20px";
+    session!.setZoom(100, "page");
+    expect(viewer().currentScale).toBeCloseTo(666 / 800);
+    expect(session!.zoomState()).toEqual({ zoom: expect.closeTo(83.25), fitMode: "page" });
+    expect(callbacks.onZoom).toHaveBeenLastCalledWith(expect.closeTo(83.25), "page");
+    Object.defineProperty(session!.container, "clientHeight", { value: 500, configurable: true });
+    state.observers[0].callback(); flushFrames();
+    expect(viewer().currentScale).toBeCloseTo(466 / 800);
+    Object.defineProperty(session!.container, "clientWidth", { value: 880, configurable: true });
+    state.observers[0].callback(); flushFrames();
+    expect(session!.zoomState()).toEqual({ zoom: expect.closeTo(466 / 800 / 1.5 * 100), fitMode: "page" });
+    // Synchronizing the visible percentage must not reset a fitted pending PDF.
+    session!.setZoom(90, "page");
+    expect(viewer().currentScale).toBeCloseTo(466 / 800);
+    session!.setZoom(75, null);
+    expect(viewer().currentScale).toBeCloseTo(1.125);
+    expect(session!.zoomState()).toEqual({ zoom: 75, fitMode: null });
+    Object.defineProperty(session!.container, "clientHeight", { value: 400, configurable: true });
+    state.observers[0].callback(); flushFrames();
+    expect(viewer().currentScale).toBeCloseTo(1.125);
+  });
+
+  it("refits differently sized pages on navigation and leaves fit mode on a trackpad pinch", () => {
+    showPdf();
+    Object.defineProperty(viewer().pages[1], "height", { get: () => 1400 * viewer().currentScale });
+    session!.setZoom(100, "page");
+    expect(viewer().currentScale).toBeCloseTo(700 / 800);
+    session!.goToPage(2);
+    expect(viewer().currentScale).toBeCloseTo(700 / 1400);
+    session!.goToPage(1);
+    expect(viewer().currentScale).toBeCloseTo(700 / 800);
+    pinchWheel(-10); flushFrames();
+    expect(session!.zoomState().fitMode).toBeNull();
+    const scale = viewer().currentScale;
+    Object.defineProperty(session!.container, "clientHeight", { value: 400, configurable: true });
+    state.observers[0].callback(); flushFrames();
+    expect(viewer().currentScale).toBe(scale);
+    session!.setZoom(100, "width");
+    Object.defineProperty(viewer().pages[1], "width", { get: () => 1120 * viewer().currentScale });
+    session!.goToPage(2);
+    expect(viewer().currentScale).toBeCloseTo(.5);
+    expect(session!.zoomState()).toEqual({ zoom: 100, fitMode: "width" });
+  });
+
   it("uses native paging with bounded integer page numbers, retaining zoom and reporting scroll changes", () => {
     showPdf(); session!.setZoom(150);
     const scale = viewer().currentScale;
@@ -226,7 +272,7 @@ describe("PDFViewer adapter", () => {
     emit("updateviewarea"); emit("updateviewarea");
     expect(state.frames.size).toBe(1);
     flushFrames(); expect(callbacks.onLocation).toHaveBeenCalledOnce();
-    viewer().currentScale = 1; session!.fitWidth();
+    viewer().currentScale = 1; session!.setZoom(100, "width");
     expect(viewer().currentScale).toBe(1); expect(session!.container.scrollLeft).toBe(0);
   });
 
@@ -243,7 +289,7 @@ describe("PDFViewer adapter", () => {
     viewer().scaleChanges.length = 0;
     session!.setZoom(110);
     expect(viewer().scaleChanges).toEqual([1.65]);
-    session!.fitWidth();
+    session!.setZoom(100, "width");
     expect(viewer().scaleChanges).toHaveLength(2);
     expect(viewer().scaleChanges[1]).toBeCloseTo(1.5);
   });
@@ -351,7 +397,7 @@ describe("PDFViewer adapter", () => {
     pinchWheel(-10); flushFrames();
     expect(viewer().currentScale).toBe(1.66);
     expect(callbacks.onZoom).toHaveBeenLastCalledWith(expect.closeTo(1.66 / 1.5 * 100));
-    session!.fitWidth();
+    session!.setZoom(100, "width");
     expect(viewer().currentScale).toBeCloseTo(1.5);
   });
 
@@ -371,7 +417,7 @@ describe("PDFViewer adapter", () => {
     pinchWheel(-100, { deltaMode }); flushFrames();
     expect(viewer().updateScale).toHaveBeenCalledOnce();
     pinchWheel(100, { deltaMode }); flushFrames();
-    expect(callbacks.onZoom).toHaveBeenLastCalledWith(50);
+    expect(callbacks.onZoom).toHaveBeenLastCalledWith(10);
   });
 
   it("handles Safari's cumulative pinch scale without double-applying its Ctrl+wheel stream", () => {
@@ -393,7 +439,7 @@ describe("PDFViewer adapter", () => {
     expect(pinchWheel(-20).defaultPrevented).toBe(false);
     expect(gesture("gesturestart").defaultPrevented).toBe(false);
     viewer().pages[0].renderingState = 3; emit("pagerendered", { pageNumber: 1 }); session!.show(); flushFrames();
-    pinchWheel(-20); session!.fitWidth(); flushFrames();
+    pinchWheel(-20); session!.setZoom(100, "width"); flushFrames();
     expect(viewer().updateScale).not.toHaveBeenCalled();
     pinchWheel(-20); session!.destroy(); flushFrames();
     expect(viewer().updateScale).not.toHaveBeenCalled();

@@ -6,12 +6,17 @@ import "pdfjs-dist/web/pdf_viewer.css";
 
 export interface PdfLocation { page: number; x: number; y: number }
 export interface PdfTarget extends PdfLocation { nonce: number }
+export type PdfFitMode = "width" | "page" | null;
+export interface PdfZoomState { zoom: number; fitMode: PdfFitMode }
+export const PDF_MIN_ZOOM = 10;
+export const PDF_MAX_ZOOM = 200;
 
 interface PageView {
   div: HTMLDivElement;
   viewport: PageViewport;
   renderingState: number;
   width: number;
+  height: number;
   scale: number;
 }
 
@@ -20,7 +25,7 @@ interface PdfViewerCallbacks {
   onError: () => void;
   onLocation: (location: PdfLocation) => void;
   onDoubleClick: (location: PdfLocation) => void;
-  onZoom: (zoom: number) => void;
+  onZoom: (zoom: number, fitMode?: PdfFitMode) => void;
   onPageChange: (page: number, totalPages: number) => void;
 }
 
@@ -69,6 +74,7 @@ export class PdfViewerSession {
   private resize: ResizeObserver | null = null;
   private frame: number | null = null;
   private zoom = 100;
+  private fitMode: PdfFitMode = null;
   private initialized = false;
   private ready = false;
   private destroyed = false;
@@ -77,6 +83,7 @@ export class PdfViewerSession {
   private marker: HTMLSpanElement | null = null;
   private initialNavigationPending = false;
   private fittedWidth = 0;
+  private fittedHeight = 0;
   private zoomFrame: number | null = null;
   private pendingZoom: { zoom: number; origin: [number, number] } | null = null;
   private gestureStartZoom: number | null = null;
@@ -85,10 +92,11 @@ export class PdfViewerSession {
   private static readonly PAGE_WIDTH_PADDING = 40;
 
   constructor(host: HTMLDivElement, document: PDFDocumentProxy, callbacks: PdfViewerCallbacks,
-    options: { zoom: number; location?: PdfLocation | null; target?: PdfTarget | null }) {
+    options: { zoom: number; fitMode?: PdfFitMode; location?: PdfLocation | null; target?: PdfTarget | null }) {
     this.document = document;
     this.callbacks = callbacks;
-    this.zoom = options.zoom;
+    this.zoom = options.fitMode === "width" ? 100 : options.zoom;
+    this.fitMode = options.fitMode ?? null;
     this.target = options.target ?? null;
     this.interactionHost = host.closest<HTMLElement>(".pdf-viewer") ?? host;
     this.container = window.document.createElement("div");
@@ -154,6 +162,7 @@ export class PdfViewerSession {
     listen("updateviewarea", () => { this.scheduleUpdate(); });
     listen("pagechanging", ({ pageNumber }: { pageNumber: number }) => {
       if (this.destroyed) return;
+      if (this.initialized && this.fitMode && !this.initialNavigationPending) this.applyZoom();
       this.callbacks.onPageChange(pageNumber, this.document.numPages);
       // Surface range/page-load failures as well as canvas render failures.
       void this.document.getPage(pageNumber).catch(() => {
@@ -187,18 +196,18 @@ export class PdfViewerSession {
     this.scheduleUpdate();
   }
 
-  setZoom(zoom: number): void {
-    if (this.zoom === zoom) return;
+  setZoom(zoom: number, fitMode: PdfFitMode = null): void {
+    // Fit percentages are computed per document. Don't replace a pending PDF's
+    // fitted value with the old, still-visible PDF's React state.
+    if (this.fitMode === fitMode && (fitMode !== null || this.zoom === zoom)) return;
     this.cancelGestureZoom();
-    this.zoom = zoom;
+    this.fitMode = fitMode;
+    this.zoom = fitMode === "width" ? 100 : zoom;
     if (this.initialized) this.applyZoom();
   }
 
-  fitWidth(): void {
-    this.cancelGestureZoom();
-    this.zoom = 100;
-    if (this.initialized) this.applyZoom();
-    this.container.scrollLeft = 0;
+  zoomState(): PdfZoomState {
+    return { zoom: this.zoom, fitMode: this.fitMode };
   }
 
   pageState(): { page: number; totalPages: number } {
@@ -281,13 +290,23 @@ export class PdfViewerSession {
     const width = this.container.clientWidth;
     if (!page || width <= PdfViewerSession.PAGE_WIDTH_PADDING) return;
     const fitScale = (width - PdfViewerSession.PAGE_WIDTH_PADDING) / page.width * page.scale;
-    const scale = fitScale * this.zoom / 100;
+    let scale = fitScale * this.zoom / 100;
+    if (this.fitMode === "page") {
+      const style = window.getComputedStyle(this.container);
+      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+      const height = this.container.clientHeight - padding;
+      if (height <= 0) return;
+      scale = Math.min(fitScale, height / page.height * page.scale);
+      this.zoom = scale / fitScale * 100;
+    }
     this.fittedWidth = width;
+    this.fittedHeight = this.container.clientHeight;
     // Assign the final value once. Going through page-width first would cancel
     // and restart painting twice at every non-100% zoom or resize.
     if (Math.abs(this.viewer.currentScale - scale) > 1e-10) this.viewer.currentScale = scale;
     if (this.zoom <= 100) this.container.scrollLeft = 0;
     this.updateMarker();
+    if (this.fitMode === "page") this.callbacks.onZoom(this.zoom, "page");
   }
 
   private updatePageNumber(pageNumber: number): void {
@@ -310,7 +329,7 @@ export class PdfViewerSession {
       if (this.destroyed || !this.initialized) return;
       if (this.resizePending) {
         this.resizePending = false;
-        if (this.container.clientWidth !== this.fittedWidth) this.applyZoom();
+        if (this.container.clientWidth !== this.fittedWidth || this.fitMode === "page" && this.container.clientHeight !== this.fittedHeight) this.applyZoom();
         this.viewer.update();
       }
       const location = this.location();
@@ -422,7 +441,7 @@ export class PdfViewerSession {
     if (!Number.isFinite(value)) return;
     const bounds = this.container.getBoundingClientRect();
     this.pendingZoom = {
-      zoom: Math.max(50, Math.min(200, value)),
+      zoom: Math.max(Math.min(PDF_MIN_ZOOM, this.zoom), Math.min(PDF_MAX_ZOOM, value)),
       origin: [Number.isFinite(x) && x >= bounds.left && x <= bounds.left + bounds.width ? x : bounds.left + bounds.width / 2,
         Number.isFinite(y) && y >= bounds.top && y <= bounds.top + bounds.height ? y : bounds.top + bounds.height / 2]
     };
@@ -444,7 +463,8 @@ export class PdfViewerSession {
       // don't restart expensive canvas painting for every wheel event.
       this.viewer.updateScale({ scaleFactor: fitScale * pending.zoom / 100 / this.viewer.currentScale,
         drawingDelay: 150, origin });
-      this.zoom = Math.max(50, Math.min(200, this.viewer.currentScale / fitScale * 100));
+      this.zoom = this.viewer.currentScale / fitScale * 100;
+      this.fitMode = null;
       this.updateMarker();
       this.callbacks.onZoom(this.zoom);
     });

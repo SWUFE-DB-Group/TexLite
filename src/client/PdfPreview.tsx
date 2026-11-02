@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp, LoaderCircle, Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, LoaderCircle, Minus, Plus, RefreshCw } from "lucide-react";
 import { acquirePdfDocument, evictPdfDocument, type PdfDocumentLease, type PdfLoadingMode } from "./pdfDocuments";
-import { PdfViewerSession, type PdfTarget } from "./pdfViewer";
+import { PDF_MIN_ZOOM, PDF_MAX_ZOOM, PdfViewerSession, type PdfFitMode, type PdfTarget, type PdfZoomState } from "./pdfViewer";
+import { PdfZoomMenu } from "./PdfZoomMenu";
 
 export { preloadPdf, preloadPdfRuntime, type PdfLoadingMode } from "./pdfDocuments";
 export type { PdfTarget } from "./pdfViewer";
@@ -36,11 +37,12 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [zoom, setZoom] = useState(100);
+  const [scale, setScale] = useState<PdfZoomState>({ zoom: 100, fitMode: "width" });
+  const { zoom, fitMode } = scale;
   const [pagination, setPagination] = useState({ page: 0, totalPages: 0 });
   const [pageInput, setPageInput] = useState<string | null>(null);
-  const latest = useRef({ url, target, zoom, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange });
-  latest.current = { url, target, zoom, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange };
+  const latest = useRef({ url, target, scale, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange });
+  latest.current = { url, target, scale, onViewportLocation, onDoubleClickLocation, onDisplayedUrlChange };
 
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +65,11 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
           pending.current = null;
           displayed.current = entry;
           entry.session?.show();
-          if (entry.session) setPagination(entry.session.pageState());
+          if (entry.session) {
+            setPagination(entry.session.pageState());
+            latest.current.scale = entry.session.zoomState();
+            setScale(latest.current.scale);
+          }
           setPageInput(null);
           setDisplayedUrl(url);
           setLoading(false);
@@ -75,12 +81,13 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
         onPageChange: (page, totalPages) => {
           if (displayed.current === entry) setPagination({ page, totalPages });
         },
-        onZoom: (value) => {
+        onZoom: (value, mode = null) => {
           // The old PDF remains interactive while its replacement paints.
           // Carry its zoom forward without accepting stale SyncTeX positions.
           if (displayed.current !== entry) return;
-          latest.current.zoom = value;
-          setZoom(value);
+          const nextScale = { zoom: value, fitMode: mode };
+          latest.current.scale = nextScale;
+          setScale((current) => current.zoom === value && current.fitMode === mode ? current : nextScale);
         },
         onLocation: ({ page, x, y }) => {
           if (displayed.current === entry && latest.current.url === entry.url) {
@@ -92,7 +99,7 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
             latest.current.onDoubleClickLocation?.(page, x, y);
           }
         }
-      }, { zoom: latest.current.zoom, location: displayed.current?.session?.location(), target: latest.current.target });
+      }, { ...latest.current.scale, location: displayed.current?.session?.location(), target: latest.current.target });
     }).catch(fail);
     return () => {
       cancelled = true;
@@ -102,9 +109,9 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   }, [url, loadingMode, retry]);
 
   useEffect(() => {
-    displayed.current?.session?.setZoom(zoom);
-    pending.current?.session?.setZoom(zoom);
-  }, [zoom]);
+    displayed.current?.session?.setZoom(zoom, fitMode);
+    pending.current?.session?.setZoom(zoom, fitMode);
+  }, [zoom, fitMode]);
 
   useEffect(() => {
     if (displayed.current?.url === url) displayed.current.session?.showTarget(target);
@@ -122,7 +129,11 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
     evictPdfDocument(url, loadingMode);
     setRetry((value) => value + 1);
   };
-  const changeZoom = (difference: number) => setZoom((value) => Math.max(50, Math.min(200, value + difference)));
+  const selectZoom = (value: number, mode: PdfFitMode) => {
+    latest.current.scale = { zoom: value, fitMode: mode };
+    setScale(latest.current.scale);
+  };
+  const changeZoom = (difference: number) => selectZoom(Math.max(Math.min(PDF_MIN_ZOOM, zoom), Math.min(PDF_MAX_ZOOM, zoom + difference)), null);
   const changePage = (difference: number) => {
     const session = displayed.current?.session;
     if (!session) return;
@@ -140,7 +151,7 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
         <button type="button" disabled={pagination.page <= 1} title={t("editor.pdfPreviousPage")} aria-label={t("editor.pdfPreviousPage")} onClick={() => changePage(-1)}><ChevronUp size={14} /></button>
         <button type="button" disabled={!pagination.totalPages || pagination.page >= pagination.totalPages} title={t("editor.pdfNextPage")} aria-label={t("editor.pdfNextPage")} onClick={() => changePage(1)}><ChevronDown size={14} /></button>
         <input className="pdf-page-input" type="text" inputMode="numeric" aria-label={t("editor.pdfPageNumber")} placeholder="—" disabled={!pagination.totalPages}
-          style={{ width: `${Math.max(2, String(pagination.totalPages).length) + 2}ch` }}
+          style={{ width: `${Math.max(2, String(pagination.totalPages).length) + 1}ch` }}
           value={pageInput ?? (pagination.totalPages ? String(pagination.page) : "")}
           onChange={(event) => setPageInput(event.target.value)} onBlur={commitPage}
           onKeyDown={(event) => {
@@ -150,10 +161,9 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
         <span className="pdf-page-total">/ {pagination.totalPages || "—"}</span>
       </div>
       <div className="pdf-zoom-controls">
-        <button disabled={zoom <= 50} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
-        <span className="pdf-zoom-value" aria-live="polite">{Math.round(zoom)}%</span>
-        <button disabled={zoom >= 200} title={t("editor.pdfZoomIn")} aria-label={t("editor.pdfZoomIn")} onClick={() => changeZoom(10)}><Plus size={14} /></button>
-        <button className="pdf-fit-width" title={t("editor.pdfFitWidth")} onClick={() => { setZoom(100); displayed.current?.session?.fitWidth(); pending.current?.session?.fitWidth(); }}><Maximize2 size={13} /><span className="pdf-fit-width-label">{t("editor.pdfFitWidth")}</span></button>
+        <button disabled={zoom <= PDF_MIN_ZOOM} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
+        <PdfZoomMenu zoom={zoom} fitMode={fitMode} onChange={selectZoom} />
+        <button disabled={zoom >= PDF_MAX_ZOOM} title={t("editor.pdfZoomIn")} aria-label={t("editor.pdfZoomIn")} onClick={() => changeZoom(10)}><Plus size={14} /></button>
       </div>
     </div>
     {compiling && <div className="pdf-compiling-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /><span>{t("editor.compiling")}</span></div>}
