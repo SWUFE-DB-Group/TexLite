@@ -63,8 +63,8 @@ export function WorkspaceTopbar({
     <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
     {collaborationStatus === "disconnected" && !protocolUpgradeRequired && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
     </>}>
-      {showEditor && <button className={!filesCollapsed ? "active" : ""} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
-      <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} />
+      {showEditor && <button className={`files-action${!filesCollapsed ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
+      <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} workspacePrimary />
       <button type="button" className="share-action" title={t("projectSettings.share")} aria-label={project.sharedMemberCount ? `${t("projectSettings.share")} (${project.sharedMemberCount})` : t("projectSettings.share")} onClick={onShare}>
         <Users size={15} /><span className="workspace-action-label">{t("projectSettings.share")}</span>
         {(project.sharedMemberCount ?? 0) > 0 && <sup className="share-action-count">{project.sharedMemberCount}</sup>}

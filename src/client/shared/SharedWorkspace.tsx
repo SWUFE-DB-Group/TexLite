@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ChevronDown, ChevronRight, FileClock, FolderOpen, GitBranch, GripVertical, Languages, LoaderCircle, LockKeyhole, MessageSquare, Palette, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, Settings, TerminalSquare, Users } from "lucide-react";
-import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
+import { ChevronDown, ChevronRight, FileClock, FolderOpen, GitBranch, GripVertical, Languages, LoaderCircle, LockKeyhole, MessageSquare, Palette, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, Settings, TerminalSquare, Users, X } from "lucide-react";
+import { Group, Panel, Separator, usePanelRef, type PanelImperativeHandle } from "react-resizable-panels";
+import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { SharedProjectData } from "../../shared/projectViewLinks";
 import { appLocale } from "../../shared/locales";
@@ -17,6 +18,8 @@ import { WorkspacePreviewHeader } from "../workspace/WorkspacePreviewHeader";
 import { WorkspaceOutlinePanel } from "../workspace/WorkspaceFilePanel";
 import type { SourceCursorStore } from "../workspace/sourceCursorStore";
 import type { WorkspaceLayout } from "../workspace/types";
+import { usePhoneWorkspace } from "../workspace/usePhoneWorkspace";
+import { WorkspaceMobileDrawer } from "../workspace/WorkspaceMobileDrawer";
 
 const PdfPreview = lazy(() => import("../PdfPreview").then((module) => ({ default: module.PdfPreview })));
 const noop = () => undefined;
@@ -66,7 +69,11 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
   sourceCursorStore: SourceCursorStore; children: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
-  const [layout, setLayout] = useState<WorkspaceLayout>(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches ? "editor-only" : "editor-pdf");
+  const phone = usePhoneWorkspace();
+  const [preferredLayout, setPreferredLayout] = useState<WorkspaceLayout>(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches ? "editor-only" : "editor-pdf");
+  const layout = phone && preferredLayout === "editor-pdf" ? "editor-only" : preferredLayout;
+  const setLayout = (value: WorkspaceLayout) => { setPreferredLayout(phone && value === "editor-pdf" ? "editor-only" : value); setPhoneFilesOpen(false); };
+  const [phoneFilesOpen, setPhoneFilesOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [filesCollapsed, setFilesCollapsed] = useState(false);
@@ -98,15 +105,16 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
   const compiledLabel = compiledAt ? formatDateTime(compiledAt, i18n.resolvedLanguage, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
   return <>
     <SharedWorkspaceTopbar data={data} path={path} loading={loading} onRefresh={onRefresh}>
-      {showEditor && <button type="button" className={!filesCollapsed ? "active" : ""} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={() => {
+      {showEditor && <button type="button" className={`files-action${(phone ? phoneFilesOpen : !filesCollapsed) ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={phone ? phoneFilesOpen : !filesCollapsed} onClick={() => {
+        if (phone) { setPhoneFilesOpen((value) => !value); return; }
         if (filesPanel.current?.isCollapsed()) filesPanel.current.expand(); else filesPanel.current?.collapse();
       }}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
-      <WorkspaceLayoutMenu value={layout} onChange={setLayout} />
+      <WorkspaceLayoutMenu value={layout} onChange={setLayout} workspacePrimary />
     </SharedWorkspaceTopbar>
     {error && <div className="shared-reader-error error" role="alert">{error}</div>}
     <Group orientation="horizontal" className="work-grid shared-reader-workspace">
       {showEditor && <>
-        <Panel id="files" panelRef={filesPanel} defaultSize="16%" minSize="100px" maxSize="35%" collapsible collapsedSize="0%" onResize={(size) => setFilesCollapsed(size.asPercentage === 0)}>
+        <ReaderFiles phone={phone} open={phoneFilesOpen} onClose={() => setPhoneFilesOpen(false)} filesPanel={filesPanel} onCollapsed={setFilesCollapsed}>
           <aside className="left-panel"><section className="files-panel">
             <div className="panel-title"><button type="button" className="file-size-toggle" aria-pressed={showSizes} title={t(showSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowSizes((current) => !current)}>{t("common.files")}</button></div>
             <div className={`file-list shared-reader-files${selectedFolder !== null ? " folder-selected" : ""}`} style={{ fontSize: defaultEditorPreferences.fontSize }}>
@@ -115,15 +123,15 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
                 return <div key={file.path} className={`file-entry${directory ? ` folder-entry${selectedFolder === file.path ? " selected" : ""}` : selectedFolder === null && path === file.path ? " active" : ""}`} style={{ paddingLeft: depth * 13 + (directory ? 5 : 18) }}>
                   <button type="button" className="file-entry-main" aria-expanded={directory ? expanded.has(file.path) : undefined} onClick={() => {
                     if (directory) { setSelectedFolder(file.path); setExpanded((current) => { const next = new Set(current); if (next.has(file.path)) next.delete(file.path); else next.add(file.path); return next; }); }
-                    else { setSelectedFolder(null); onOpenFile(file.path); }
+                    else { setSelectedFolder(null); onOpenFile(file.path); if (phone) setPhoneFilesOpen(false); }
                   }}>{directory ? <>{expanded.has(file.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<FolderOpen size={14} /></> : <FileTypeIcon path={file.path} />}<span>{name}</span>{!directory && file.path === data.project.mainFile && <small>{t("editor.currentMainShort")}</small>}</button>
                   {showSizes && file.type === "file" && file.size != null && <span className="file-entry-size">{formatBytes(file.size)}</span>}
                 </div>;
               })}
             </div>
-          </section><WorkspaceOutlinePanel outline={data.outline} activeFile={path} activeMainFile={data.project.mainFile} sourceCursorStore={sourceCursorStore} jumpToSource={onJumpToSource} /></aside>
-        </Panel>
-        <Separator className="resize-handle" aria-label={t("common.files")}><GripVertical size={12} /></Separator>
+          </section><WorkspaceOutlinePanel outline={data.outline} activeFile={path} activeMainFile={data.project.mainFile} sourceCursorStore={sourceCursorStore} jumpToSource={(...args) => { onJumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} /></aside>
+        </ReaderFiles>
+        {!phone && <Separator className="resize-handle" aria-label={t("common.files")}><GripVertical size={12} /></Separator>}
         <Panel id="source" minSize="22%"><section className="source-panel"><div className="editor-content-container shared-reader-source">{children}</div></section></Panel>
       </>}
       {showEditor && showPreview && <Separator className="resize-handle" aria-label={t("viewLinks.pdf")}><GripVertical size={12} /></Separator>}
@@ -135,4 +143,15 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
       </section></Panel>}
     </Group>
   </>;
+}
+
+function ReaderFiles({ phone, open, onClose, filesPanel, onCollapsed, children }: {
+  phone: boolean; open: boolean; onClose: () => void; filesPanel: RefObject<PanelImperativeHandle | null>;
+  onCollapsed: (collapsed: boolean) => void; children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  if (phone) return <WorkspaceMobileDrawer files open={open} title={t("common.files")} onClose={onClose}>
+    <button className="workspace-mobile-files-close" type="button" aria-label={t("common.close")} onClick={onClose}><X size={18} /></button>{children}
+  </WorkspaceMobileDrawer>;
+  return <Panel id="files" panelRef={filesPanel} defaultSize="16%" minSize="100px" maxSize="35%" collapsible collapsedSize="0%" onResize={(size) => onCollapsed(size.asPercentage === 0)}>{children}</Panel>;
 }

@@ -799,6 +799,8 @@
     "citationTargetNotFound": "沒有找到「{{key}}」對應的參考文獻項目。",
     "labelTargetNotFound": "沒有找到「{{key}}」對應的標籤定義。",
     "compileShort": "編譯",
+    "mobileSource": "原始碼",
+    "moreActions": "更多操作",
     "compile": "編譯 · {{engine}}",
     "compiling": "編譯中…",
     "compileQueued": "編譯已排隊…",

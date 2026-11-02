@@ -140,7 +140,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setDiagnosticTab(next);
     setPreviewTab("diagnostics");
   };
-  const { workspaceLayout, setWorkspaceLayout } = useWorkspaceLayout(user.id, projectId);
+  const { workspaceLayout, setWorkspaceLayout, phone } = useWorkspaceLayout(user.id, projectId);
+  const [phoneFilesOpen, setPhoneFilesOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [selection, setSelectionState] = useState<SourceSelection>({ selectedText: "", startOffset: 0, endOffset: 0 });
@@ -1258,6 +1259,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     }
   };
   const toggleFilesPanel = () => {
+    if (phone) { setPhoneFilesOpen((value) => !value); return; }
     if (filesPanel.current?.isCollapsed()) filesPanel.current.expand();
     else filesPanel.current?.collapse();
   };
@@ -1267,7 +1269,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const showPreview = workspaceLayout !== "editor-only";
   // Comments occupy only the preview region, leaving source/file widths intact.
   // Editor-only mode has no preview to overlay, so it retains an adjacent pane.
-  const panelLayout = useWorkspacePanelLayout(showEditor, showPreview, sidePanel === "settings" || sidePanel === "comments" && !showPreview);
+  const panelLayout = useWorkspacePanelLayout(showEditor, showPreview, sidePanel === "settings" || sidePanel === "comments" && !showPreview, phone);
   const changeWorkspaceLayout = (next: WorkspaceLayout) => {
     setWorkspaceLayout(next);
     if (next === "pdf-only") selectPreviewTab("pdf");
@@ -1389,7 +1391,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       agentTerminal={showEditor && agentAccess.visible && project.permission !== "read" ? { open: terminalOpen, activeCount: agentAccess.activeCount, toggle: () => setTerminalOpen((value) => !value) } : undefined}
       site={site} project={project} activeFile={activeFile} saveStateLabel={saveStateLabel}
       editorPreferences={editorPreferences} activeSessions={activeSessions} collaborationStatus={collaborationStatus}
-      reconnectCollaboration={reconnectCollaboration} protocolUpgradeRequired={protocolUpgradeRequired} showEditor={showEditor} filesCollapsed={filesCollapsed}
+      reconnectCollaboration={reconnectCollaboration} protocolUpgradeRequired={protocolUpgradeRequired} showEditor={showEditor} filesCollapsed={phone ? !phoneFilesOpen : filesCollapsed}
       toggleFilesPanel={toggleFilesPanel} workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
       onBack={onBack} onShare={() => setShareOpen(true)} showCitationLibrary={showEditor && /\.bib$/i.test(activeFile)}
       citationLibraryOpen={citationLibraryOpen} onCitationLibrary={() => setCitationLibraryOpen(true)}
@@ -1423,6 +1425,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
     <Group orientation="horizontal" className="work-grid" {...panelLayout}>
       {showEditor && <WorkspaceFilePanel
+        phoneDrawer={phone ? { open: phoneFilesOpen, onClose: () => setPhoneFilesOpen(false) } : undefined}
         project={project} filesPanel={filesPanel} visibleEntries={visibleEntries}
         deletedPath={filesEvent?.kind === "delete" ? filesEvent.path : null}
         activeFile={activeFile} activeMainFile={activeMainFile} selectedFile={selectedFile}
@@ -1441,11 +1444,11 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         setQuickOpen={setQuickOpen}
         setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed}
         onError={setError}
-        uploadFiles={uploadFiles} upload={upload} openFile={openFile} movePathToFolder={movePathToFolder}
+        uploadFiles={uploadFiles} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder}
         onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
-        jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
+        jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} syncSourceToPdf={syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
       />}
-      {showEditor && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
+      {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel
         terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized} /></Suspense> : null}
         project={project} activeFile={activeFile} openTabs={openTabs}
@@ -1488,6 +1491,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         viewArtifact={viewArtifact}
       />}
       <WorkspaceContextPanel key={projectId}
+        phone={phone}
         commentsHost={showPreview ? commentsHost : undefined}
         sidePanel={sidePanel} onClose={() => setSidePanel(null)} project={project} projectId={projectId}
         site={site} files={files} currentUserId={user.id} comments={singleCommentId ? comments : reviewComments} commentDraftStore={commentDraftStore} commentsLoading={singleCommentId ? fileCommentsLoading : reviewCommentsLoading}

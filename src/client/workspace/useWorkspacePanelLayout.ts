@@ -35,15 +35,15 @@ export function createWorkspacePanelStorage(
   };
 }
 
-export function useWorkspacePanelLayout(showEditor: boolean, showPreview: boolean, showContext: boolean) {
+export function useWorkspacePanelLayout(showEditor: boolean, showPreview: boolean, showContext: boolean, phone = false) {
   // Sizes for each panel combination remain independent, including the drawer
   // and editor-only/PDF-only views. Keep ids in their actual visual order.
   const panelIds = useMemo(() => [
-    ...(showEditor ? ["files", "source"] : []),
+    ...(showEditor ? phone ? ["source"] : ["files", "source"] : []),
     ...(showPreview ? ["preview"] : []),
-    ...(showContext ? ["context"] : [])
-  ], [showEditor, showPreview, showContext]);
-  const id = scopedStorageKey("texlite-workspace-layout");
+    ...(showContext && !phone ? ["context"] : [])
+  ], [showEditor, showPreview, showContext, phone]);
+  const id = scopedStorageKey(`texlite-workspace-layout${phone ? ":phone" : ""}`);
   const storage = useMemo(() => createWorkspacePanelStorage(id, panelIds), [id, panelIds]);
   return useDefaultLayout({ id, panelIds, storage });
 }

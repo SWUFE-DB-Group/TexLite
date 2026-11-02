@@ -8,6 +8,7 @@ import type { EditorPreferences } from "../editorPreferences";
 import { CommentThread } from "./Comments";
 import { CommentParticipantFilter } from "./CommentParticipantFilter";
 import { LazyPanel } from "../LazyLoadBoundary";
+import { WorkspaceMobileDrawer } from "./WorkspaceMobileDrawer";
 import { COMMENT_EXIT_DURATION_MS, useCommentReviewTransitions } from "./useCommentReviewTransitions";
 import { useCommentReviewWindow } from "./useCommentReviewWindow";
 import type { CommentDraftStore } from "./commentDrafts";
@@ -27,6 +28,7 @@ import {
 const ProjectSettings = lazy(() => import("./ProjectSettings").then((module) => ({ default: module.ProjectSettings })));
 
 export interface WorkspaceContextPanelProps {
+  phone?: boolean;
   /** Undefined: standalone pane; null: preview host has not mounted yet. */
   commentsHost?: HTMLElement | null;
   sidePanel: "comments" | "settings" | null;
@@ -74,6 +76,7 @@ export interface WorkspaceContextPanelProps {
 }
 
 export function WorkspaceContextPanel({
+  phone = false,
   commentsHost,
   sidePanel, onClose, project, projectId, site, files, currentUserId, comments, commentDraftStore, commentsLoading, commentsError, onRetryComments, unreadMentions,
   activeFile, singleCommentId, onShowAllComments, hasProjectCommentsScope, commentScope, onCommentScopeChange, focusedCommentId, commentFocusNonce, onMarkMentionRead, onMarkAllMentionsRead,
@@ -314,6 +317,7 @@ export function WorkspaceContextPanel({
       </aside>;
   // A stable portal target lets responsive CSS switch inline/drawer layout
   // without remounting threads, losing reply forms or resetting review filters.
+  if (phone) return <WorkspaceMobileDrawer open title={t(sidePanel === "comments" ? "editor.sourceComments" : "editor.projectSettings")} onClose={onClose}>{content}</WorkspaceMobileDrawer>;
   if (sidePanel === "comments" && commentsHost !== undefined) return commentsHost ? createPortal(content, commentsHost) : null;
   return <>
     <Separator className="resize-handle" />

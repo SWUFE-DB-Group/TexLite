@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronDown, Columns2, PanelLeft, PanelRight } from "lucide-react";
+import { Check, ChevronDown, Code2, Columns2, FileText, PanelLeft, PanelRight } from "lucide-react";
 import { type ActiveSession, type CollaborationStatus } from "../collaboration";
 import { UserAvatar } from "../UserAvatar";
 import type { WorkspaceLayout } from "./types";
+import { usePhoneWorkspace } from "./usePhoneWorkspace";
 
 export function CollaborationPresence({ sessions, status }: { sessions: ActiveSession[]; status: CollaborationStatus }) {
   const { t } = useTranslation();
@@ -44,8 +45,9 @@ export function CollaborationPresence({ sessions, status }: { sessions: ActiveSe
   </div>;
 }
 
-export function WorkspaceLayoutMenu({ value, onChange }: { value: WorkspaceLayout; onChange: (value: WorkspaceLayout) => void }) {
+export function WorkspaceLayoutMenu({ value, onChange }: { value: WorkspaceLayout; onChange: (value: WorkspaceLayout) => void; workspacePrimary?: boolean }) {
   const { t } = useTranslation();
+  const phone = usePhoneWorkspace();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const layouts = [
@@ -70,6 +72,10 @@ export function WorkspaceLayoutMenu({ value, onChange }: { value: WorkspaceLayou
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
+  if (phone) return <div className="workspace-phone-views" role="group" aria-label={t("editor.layout.label")}>
+    <button type="button" aria-pressed={value !== "pdf-only"} onClick={() => onChange("editor-only")}><Code2 size={15} /><span>{t("editor.mobileSource")}</span></button>
+    <button type="button" aria-pressed={value === "pdf-only"} onClick={() => onChange("pdf-only")}><FileText size={15} /><span>PDF</span></button>
+  </div>;
   return <div className="layout-menu" ref={root}>
     <button type="button" className={`layout-trigger${open ? " active" : ""}`} aria-label={currentLabel} aria-haspopup="menu" aria-expanded={open} title={currentLabel} onClick={() => setOpen((current) => !current)}>
       <LayoutIcon size={15} /><span className="workspace-action-label"><small>{t("editor.layout.label")}</small><span className="layout-current-label">{t(`editor.layout.${value}.name`)}</span></span><ChevronDown className="layout-trigger-chevron" size={13} />

@@ -39,6 +39,28 @@ afterEach(async () => {
 });
 
 describe("isolated anonymous reader", () => {
+  it("uses a phone's full width for source/PDF and opens its file tree only on demand", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("max-width"), media: query,
+      addEventListener() {}, removeEventListener() {} }));
+    await render(); await settle(); await settle();
+    expect(host.querySelector(".test-read-only")).not.toBeNull();
+    expect(host.querySelector(".test-pdf")).toBeNull();
+    expect(document.querySelector(".workspace-mobile-files")).toBeNull();
+    const files = host.querySelector<HTMLButtonElement>(".files-action")!;
+    await click(files);
+    const drawer = document.querySelector(".workspace-mobile-files")!;
+    expect(drawer.querySelector(".file-list")?.textContent).toContain("refs.bib");
+    await click([...drawer.querySelectorAll<HTMLButtonElement>(".file-entry-main")].find((button) => button.textContent === "refs.bib")!);
+    await settle();
+    expect(document.querySelector(".workspace-mobile-files")).toBeNull();
+    expect(vi.mocked(api).mock.calls.some(([url]) => url.includes("path=refs.bib"))).toBe(true);
+    await click(host.querySelectorAll<HTMLButtonElement>(".workspace-phone-views button")[1]);
+    await settle();
+    expect(host.querySelector(".test-pdf")).not.toBeNull();
+    expect(host.querySelector(".test-read-only")).toBeNull();
+    expect(vi.mocked(api).mock.calls.every(([url]) => url.startsWith(endpoint))).toBe(true);
+  });
+
   it("opens from the public App route without authenticating, preloading the workspace or opening a WebSocket", async () => {
     const websocket = vi.fn(); vi.stubGlobal("WebSocket", websocket);
     await render(createElement(App)); await settle(); await settle();

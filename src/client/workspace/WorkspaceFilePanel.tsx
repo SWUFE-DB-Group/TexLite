@@ -10,6 +10,7 @@ import { buildOutlineTree, visibleOutlineTreeItems } from "./outlineTree";
 import { FileTypeIcon } from "../fileIcons";
 import type { UploadFeedback } from "./useProjectFiles";
 import { appPath } from "../basePath";
+import { WorkspaceMobileDrawer } from "./WorkspaceMobileDrawer";
 import { captureDeletionHeight, FILE_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
 
 const fileKey = (entry: FileEntry) => entry.path;
@@ -19,6 +20,7 @@ const INTERNAL_PATH_DRAG_MIME = "application/x-texlite-project-path";
 const INTERNAL_PATH_DRAG_PREFIX = "texlite-path:";
 
 export interface WorkspaceFilePanelProps {
+  phoneDrawer?: { open: boolean; onClose: () => void };
   project: Project;
   filesPanel: RefObject<PanelImperativeHandle | null>;
   visibleEntries: FileEntry[];
@@ -71,6 +73,7 @@ export interface WorkspaceFilePanelProps {
 }
 
 export function WorkspaceFilePanel({
+  phoneDrawer,
   project, filesPanel, visibleEntries, deletedPath = null, activeFile, activeMainFile, selectedFile, selectedFolder,
   expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
   editorFontSize, outline, sourceCursorStore, wordCountBusy, hasSelection, hasFormatSelection, uploadInput,
@@ -94,8 +97,7 @@ export function WorkspaceFilePanel({
     setDraggedEntry(null);
     setDropTargetFolder(null);
   };
-  return <Panel id="files" panelRef={filesPanel} defaultSize="16%" minSize="12%" maxSize="30%" collapsible collapsedSize="0%" onResize={(size) => setFilesCollapsed(size.asPercentage === 0)}>
-    <aside className="left-panel">
+  const content = <aside className="left-panel">
       <section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly && !uploadingFiles) setFileDragActive(true); }} onDragOver={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly || uploadingFiles ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.stopPropagation(); return; } event.preventDefault(); setFileDragActive(false); if (readOnly || uploadingFiles) return; const files = Array.from(event.dataTransfer.files); if (containsDroppedFolder(event.dataTransfer) || files.length === 0) { onError(t("editor.dropFoldersUnsupported")); return; } void uploadFiles(files); }}>
         <div className="panel-title"><button className="file-size-toggle" type="button" aria-pressed={showFileSizes} title={t(showFileSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowFileSizes((current) => !current)}>{t("common.files")}</button><span className="file-tools"><button type="button" className="file-quick-open" aria-label={t("navigation.quickOpen")} title={`${t("navigation.quickOpen")} (Ctrl/Cmd+P)`} onClick={() => setQuickOpen(true)}><FileSearch size={15} /></button>{!readOnly && <><button type="button" disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} /></button><button type="button" aria-label={t("editor.newFolder")} title={t("editor.newFolder")} onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}><FolderPlus size={15} /></button><button type="button" aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} /></button><input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} /></>}</span></div>
         {uploadFeedback && <div className={`file-upload-feedback ${uploadFeedback.kind}`} role={uploadFeedback.kind === "error" ? "alert" : "status"} aria-live={uploadFeedback.kind === "error" ? "assertive" : "polite"} aria-busy={uploadFeedback.kind === "uploading"}>
@@ -169,8 +171,11 @@ export function WorkspaceFilePanel({
         </div>}
       </section>
       <WorkspaceOutlinePanel outline={outline} activeFile={activeFile} activeMainFile={activeMainFile} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy} hasSelection={hasSelection} jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={onWordCount} />
-    </aside>
-  </Panel>;
+    </aside>;
+  if (phoneDrawer) return <WorkspaceMobileDrawer files open={phoneDrawer.open} title={t("common.files")} onClose={phoneDrawer.onClose}>
+    <button className="workspace-mobile-files-close" type="button" aria-label={t("common.close")} onClick={phoneDrawer.onClose}><X size={18} /></button>{content}
+  </WorkspaceMobileDrawer>;
+  return <Panel id="files" panelRef={filesPanel} defaultSize="16%" minSize="12%" maxSize="30%" collapsible collapsedSize="0%" onResize={(size) => setFilesCollapsed(size.asPercentage === 0)}>{content}</Panel>;
 }
 
 function containsDroppedFolder(dataTransfer: DataTransfer): boolean {
