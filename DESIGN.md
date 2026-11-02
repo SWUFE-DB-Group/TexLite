@@ -108,6 +108,32 @@ citation library as a separate management page beside the other management
 controls; the project workspace keeps a smaller `.bib` import dialog for
 in-context writing. Library results are server-filtered and paginated with 60
 entries per page by default (the API accepts a bounded page-size override).
+Migration 18 adds private, single-level citation folders and a many-to-many
+entry/folder relation. A folder represents a paper or research topic; the same
+entry can belong to several folders without copying its BibTeX. All references
+and Unfiled are built-in views. Folder counts are library-wide, independent of
+search, tag filters and pagination. Existing references remain unfiled on
+upgrade. Folder deletion removes only placements, not entries or their tags.
+The dashboard page and project import dialog share folder navigation. Project
+workflows use a separate controller and render only Import on library entries
+and Save/Update on current-file entries. These are compact icon-only actions
+with accessible names, action/state tooltips and the shared saved-check feedback.
+Tag filters combine with folders, search and pagination, but project dialogs do
+not expose tag or entry management controls. The workspace's compact entry is
+labelled Citation; the homepage keeps Citation library. New saves require a destination folder; updates preserve
+existing folder placements. A bounded, debounced comparison request returns
+only key/id/revision and content-equality metadata, never full library text.
+Equality ignores platform line endings and outer whitespace, not differences
+inside an entry. Unchanged entries cannot be updated; changed ones still need
+the last-read revision. Source/file switches abort stale comparisons and
+ignore late save feedback. This is an explicit copy into/out of a `.bib`, not
+automatic bidirectional sync.
+Folder assignment uses the entry revision to reject concurrent stale changes.
+Only the owning user can manage, filter or export a folder, including when
+another account is an administrator. Export streams every member's stored
+BibTeX in citation-key order, without the list's search or pagination limits,
+as a UTF-8 `.bib` download. Export is available only in each folder's overflow
+menu, not as a separate list-toolbar button. No external citation service is involved.
 Entry management actions live in an accessible, portalled overflow menu, with
 deletion separated from ordinary actions and still requiring confirmation.
 Copy BibTeX remains a direct button, preserves the full entry text and shows a

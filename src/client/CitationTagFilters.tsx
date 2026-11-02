@@ -8,7 +8,7 @@ export function CitationTagFilters({ tags, selectedId, onSelect, onManage }: {
   tags: CitationLibraryTag[];
   selectedId: string;
   onSelect: (id: string) => void;
-  onManage: () => void;
+  onManage?: () => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -49,6 +49,6 @@ export function CitationTagFilters({ tags, selectedId, onSelect, onManage }: {
       {tags.length === 0 && <span className="muted">{t("citationLibrary.noTags")}</span>}
       {overflow && <button type="button" className="citation-tag-expand" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>{expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}{t(expanded ? "citationTagManagement.collapse" : "citationTagManagement.expand")}</button>}
     </div>
-    <button type="button" className="citation-tag-manage" onClick={onManage}><Tags size={14} />{t("citationTagManagement.title")}</button>
+    {onManage && <button type="button" className="citation-tag-manage" onClick={onManage}><Tags size={14} />{t("citationTagManagement.title")}</button>}
   </div>;
 }

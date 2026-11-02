@@ -28,11 +28,12 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
   entry = { id: "entry", ownerId: admin.id, ownerUsername: admin.username, ownerDisplayName: admin.displayName, citationKey: "sample", entryType: "article", title: "Paper", authors: "Ada", year: "2026",
-    bibtex: "@article{sample, title={Paper}, author={Ada}, year={2026}}", tags: [], revision: 1, createdAt: "2026-10-28", updatedAt: "2026-10-28" };
+    bibtex: "@article{sample, title={Paper}, author={Ada}, year={2026}}", tags: [], collectionIds: [], revision: 1, createdAt: "2026-10-28", updatedAt: "2026-10-28" };
   vi.mocked(api).mockReset().mockImplementation(async (url) => {
     if (url.startsWith("/api/admin/users?")) return { users: [admin, reader], pagination, summary } as never;
     if (url.startsWith("/api/citations?")) return { entries: [entry], pagination: { ...pagination, total: 1 } } as never;
     if (url === "/api/citations/tags") return { tags: [] } as never;
+    if (url === "/api/citations/collections") return { collections: [], total: 1, unfiled: 1 } as never;
     throw new Error(`Unexpected request: ${url}`);
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);

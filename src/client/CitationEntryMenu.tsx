@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, Copy, Edit3, LoaderCircle, MoreHorizontal, Tags, Trash2 } from "lucide-react";
+import { Check, Copy, Edit3, Folder, LoaderCircle, MoreHorizontal, Tags, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { copyTextToClipboard } from "./clipboard";
 
-export function CitationEntryMenu({ citationKey, bibtex, onTags, onEdit, onDelete, deleting = false }: {
+export function CitationEntryMenu({ citationKey, bibtex, onTags, onCollections, onEdit, onDelete, deleting = false }: {
   citationKey: string;
   bibtex: string;
   onTags?: () => void;
+  onCollections?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
   deleting?: boolean;
@@ -42,7 +43,7 @@ export function CitationEntryMenu({ citationKey, bibtex, onTags, onEdit, onDelet
       {copyState === "copying" ? <LoaderCircle className="spin" size={13} aria-hidden /> : copyState === "copied" ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
       <span role="status" aria-live="polite">{t(`citationLibraryActions.${copyState === "idle" ? "copyBibtex" : copyState === "error" ? "copyFailed" : copyState}`)}</span>
     </button>
-    {(onTags || onEdit || onDelete) && <DropdownMenu.Root modal={false}>
+    {(onTags || onCollections || onEdit || onDelete) && <DropdownMenu.Root modal={false}>
     <DropdownMenu.Trigger asChild>
       <button type="button" className="citation-entry-menu-trigger" disabled={deleting}
         aria-label={t("citationLibraryActions.entryActions", { key: citationKey })}><MoreHorizontal size={17} aria-hidden /></button>
@@ -50,6 +51,7 @@ export function CitationEntryMenu({ citationKey, bibtex, onTags, onEdit, onDelet
     <DropdownMenu.Portal>
       <DropdownMenu.Content className="citation-entry-menu" align="end" sideOffset={5} collisionPadding={8}
         onCloseAutoFocus={(event) => { if (selecting.current) event.preventDefault(); selecting.current = false; }}>
+        {onCollections && <DropdownMenu.Item onSelect={() => { selecting.current = true; onCollections(); }}><Folder size={14} aria-hidden />{t("citationFolders.assign")}</DropdownMenu.Item>}
         {onTags && <DropdownMenu.Item onSelect={() => { selecting.current = true; onTags(); }}><Tags size={14} aria-hidden />{t("citationLibrary.tags")}</DropdownMenu.Item>}
         {onEdit && <DropdownMenu.Item onSelect={() => { selecting.current = true; onEdit(); }}><Edit3 size={14} aria-hidden />{t("common.edit")}</DropdownMenu.Item>}
         {onDelete && <><DropdownMenu.Separator className="citation-entry-menu-separator" />

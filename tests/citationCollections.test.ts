@@ -1,0 +1,169 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { FastifyInstance } from "fastify";
+import { buildApp } from "../src/server/app.js";
+import { loadConfig } from "../src/server/config.js";
+import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
+import { createSessionToken } from "../src/server/security.js";
+import type { CitationLibraryEntry } from "../src/client/types";
+import type { CitationCollection, CitationCollectionCatalog } from "../src/shared/citationCollections.js";
+
+let root: string, db: DatabaseConnection, app: FastifyInstance;
+const cookies = new Map<string, string>();
+const call = (method: "GET" | "HEAD" | "POST" | "PATCH" | "DELETE", url: string, payload?: object, user = "alice") => app.inject({ method, url, payload, headers: { cookie: cookies.get(user) ?? "" } });
+const list = (query = "") => call("GET", `/api/citations${query}`);
+const folders = async () => (await call("GET", "/api/citations/collections")).json<CitationCollectionCatalog>();
+async function folder(name: string, user = "alice"): Promise<CitationCollection> {
+  const response = await call("POST", "/api/citations/collections", { name }, user);
+  expect(response.statusCode, response.body).toBe(201);
+  return response.json().collection;
+}
+async function entry(key: string, collectionIds?: string[], extras: object = {}, user = "alice"): Promise<CitationLibraryEntry> {
+  const response = await call("POST", "/api/citations", { citationKey: key, entryType: "article", title: key, bibtex: `@article{${key}, title={${key}}}`, collectionIds, ...extras }, user);
+  expect(response.statusCode, response.body).toBe(201);
+  return response.json().entry;
+}
+beforeEach(async () => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-citation-folders-"));
+  const file = path.join(root, "config.json");
+  fs.writeFileSync(file, JSON.stringify({ storage: { dataDir: path.join(root, "data") }, updates: { enabled: false } }));
+  const config = loadConfig(file); db = openDatabase(config); cookies.clear();
+  for (const id of ["alice", "bob", "admin"]) {
+    db.prepare("INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES (?, ?, ?, 'hash', ?, ?)").run(id, id, id, id === "admin" ? "admin" : "user", new Date().toISOString());
+    const token = createSessionToken();
+    db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, '2099-01-01', ?)").run(token.digest, id, new Date().toISOString());
+    cookies.set(id, `texlite_session=${token.token}`);
+  }
+  app = await buildApp(config, db, { logger: false }); await app.ready();
+});
+afterEach(async () => { await app?.close(); db?.close(); fs.rmSync(root, { recursive: true, force: true }); });
+
+describe("private citation folders", () => {
+  it("compares project entries without returning library text, treating only line endings and outer whitespace as insignificant", async () => {
+    const stored = await entry("paper", undefined, { bibtex: "@article{paper,\n title={Original}\n}" });
+    const unchanged = await call("POST", "/api/citations/lookup", { entries: [{ citationKey: "PAPER", bibtex: ` \r\n${stored.bibtex.replaceAll("\n", "\r\n")}\r\n ` }] });
+    expect(unchanged.statusCode, unchanged.body).toBe(200);
+    expect(unchanged.json().matches).toEqual([{ id: stored.id, citationKey: "paper", revision: 1, sameContent: true }]);
+    const changed = await call("POST", "/api/citations/lookup", { entries: [{ citationKey: "paper", bibtex: stored.bibtex.replace("Original", "Edited") }, { citationKey: "missing", bibtex: "@article{missing, title={Missing}}" }] });
+    expect(changed.json().matches).toEqual([{ id: stored.id, citationKey: "paper", revision: 1, sameContent: false }]);
+    expect(changed.body).not.toContain("Original");
+    expect((await call("POST", "/api/citations/lookup", { entries: [{ citationKey: "paper", bibtex: stored.bibtex }] }, "bob")).json().matches).toEqual([]);
+    const before = (await list()).json().entries[0];
+    expect(before.revision).toBe(1);
+    for (const body of [{ entries: [null] }, { entries: [{ citationKey: "paper", bibtex: 123 }] }, { entries: [{ citationKey: "paper", bibtex: "" }] }, { keys: ["paper"], entries: [] }]) {
+      expect((await call("POST", "/api/citations/lookup", body)).statusCode).toBe(400);
+    }
+    const huge = await call("POST", "/api/citations/lookup", { entries: [{ citationKey: "paper", bibtex: "a".repeat(512 * 1024 + 1) }] });
+    expect(huge.statusCode).toBe(413);
+    expect((await list()).json().entries[0]).toEqual(before);
+  });
+  it("creates, renames and validates case-insensitive per-user names", async () => {
+    expect(await folders()).toEqual({ collections: [], total: 0, unfiled: 0 });
+    const a = await folder("  Paper A  "); expect(a.name).toBe("Paper A");
+    expect((await call("POST", "/api/citations/collections", { name: "paper a" })).statusCode).toBe(409);
+    const b = await folder("Paper B");
+    expect((await call("PATCH", `/api/citations/collections/${a.id}`, { name: "paper B" })).statusCode).toBe(409);
+    expect((await call("PATCH", `/api/citations/collections/${a.id}`, { name: "Revised" })).statusCode).toBe(200);
+    for (const name of ["", " ", 123, "x".repeat(81)]) expect((await call("POST", "/api/citations/collections", { name })).statusCode).toBe(400);
+    await folder("Paper B", "bob");
+    expect((await folders()).collections.map((item) => item.name)).toEqual([b.name, "Revised"]);
+  });
+
+  it("places one reference in multiple folders without duplicating it and combines folder, tag, search and pagination filters", async () => {
+    const a = await folder("A"), b = await folder("B");
+    const tag = (await call("POST", "/api/citations/tags", { name: "Method", color: "blue" })).json().tag;
+    const one = await entry("one", [a.id, b.id, a.id], { tagIds: [tag.id] });
+    await entry("two", [a.id], { tagIds: [tag.id] });
+    await entry("three", [a.id]); await entry("unfiled");
+    expect(one.collectionIds).toEqual([a.id, b.id]);
+    expect((await list()).json().pagination.total).toBe(4);
+    const filtered = (await list(`?collection=${a.id}&tag=${tag.id}&pageSize=1&page=2`)).json();
+    expect(filtered.entries).toHaveLength(1);
+    expect(filtered.pagination).toMatchObject({ total: 2, totalPages: 2, page: 2 });
+    expect((await list(`?collection=${a.id}&tag=${tag.id}&q=one`)).json().entries.map((item: CitationLibraryEntry) => item.id)).toEqual([one.id]);
+    expect((await list("?collection=unfiled")).json().entries.map((item: CitationLibraryEntry) => item.citationKey)).toEqual(["unfiled"]);
+    expect(await folders()).toEqual({ collections: [{ ...a, entryCount: 3 }, { ...b, entryCount: 1 }], total: 4, unfiled: 1 });
+  });
+
+  it("rejects stale or invalid assignments atomically and allows removing every placement", async () => {
+    const a = await folder("A"), b = await folder("B"), saved = await entry("one", [a.id]);
+    const target = `/api/citations/${saved.id}/collections`;
+    const changed = await call("PATCH", target, { collectionIds: [b.id], expectedRevision: saved.revision });
+    expect(changed.statusCode, changed.body).toBe(200);
+    expect(changed.json().entry).toMatchObject({ collectionIds: [b.id], revision: 2, bibtex: saved.bibtex });
+    expect((await call("PATCH", target, { collectionIds: [a.id], expectedRevision: 1 })).statusCode).toBe(409);
+    for (const ids of [undefined, "bad", [12], [""], Array(101).fill(a.id)]) expect((await call("PATCH", target, { collectionIds: ids, expectedRevision: 2 })).statusCode).toBe(400);
+    expect((await list()).json().entries[0].collectionIds).toEqual([b.id]);
+    const clear = await call("PATCH", target, { collectionIds: [], expectedRevision: 2 });
+    expect(clear.json().entry).toMatchObject({ collectionIds: [], revision: 3 });
+    expect((await list("?collection=unfiled")).json().pagination.total).toBe(1);
+  });
+
+  it("adds the destination folder when saving an existing project reference without removing other placements or tags", async () => {
+    const a = await folder("A"), b = await folder("B"), saved = await entry("one", [a.id]);
+    const response = await call("POST", "/api/citations", { ...saved, title: "Updated", collectionIds: [b.id], overwrite: true, expectedRevision: saved.revision });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().entry.collectionIds).toEqual([a.id, b.id]);
+    const updated = await call("PATCH", `/api/citations/${saved.id}`, { ...saved, title: "Edited again", expectedRevision: 2 });
+    expect(updated.json().entry).toMatchObject({ collectionIds: [a.id, b.id], revision: 3 });
+    const tagged = await call("PATCH", `/api/citations/${saved.id}/tags`, { tagIds: [], expectedRevision: 3 });
+    expect(tagged.json().entry.collectionIds).toEqual([a.id, b.id]);
+  });
+
+  it("deletes folders without deleting references and cascades membership when an entry or user is deleted", async () => {
+    const a = await folder("A"), b = await folder("B");
+    const kept = await entry("one", [a.id, b.id]), unfiled = await entry("two", [a.id]);
+    await call("DELETE", `/api/citations/collections/${a.id}`);
+    const all = (await list()).json().entries as CitationLibraryEntry[];
+    expect(all).toHaveLength(2);
+    expect(all.find((item) => item.id === kept.id)).toMatchObject({ bibtex: kept.bibtex, collectionIds: [b.id] });
+    expect(all.find((item) => item.id === unfiled.id)?.collectionIds).toEqual([]);
+    await call("DELETE", `/api/citations/${kept.id}`);
+    expect((await folders()).collections[0].entryCount).toBe(0);
+    db.prepare("DELETE FROM users WHERE id = 'alice'").run();
+    expect(db.prepare("SELECT * FROM citation_library_entry_collections").all()).toEqual([]);
+    expect(db.prepare("SELECT * FROM citation_library_collections").all()).toEqual([]);
+  });
+
+  it("exports every reference, not just the current page, with stable BibTeX and a safe Unicode filename", async () => {
+    const a = await folder("论文/主题"), b = await folder("Other");
+    for (let index = 0; index < 63; index++) await entry(`paper${String(index).padStart(2, "0")}`, [a.id]);
+    await entry("excluded", [b.id]);
+    const unicode = await entry("unicode", [a.id], { bibtex: "@article{unicode, title={{中文} \\LaTeX}, author={Bj{\\\"o}rn}}" });
+    const response = await call("GET", `/api/citations/collections/${a.id}/export?pageSize=1&page=2&q=excluded`);
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/x-bibtex");
+    expect(response.headers["content-disposition"]).toContain(encodeURIComponent("论文_主题.bib"));
+    expect(response.headers["cache-control"]).toBe("private, no-store");
+    expect(response.body.match(/@article\{/g)).toHaveLength(64);
+    expect(response.body).toContain(unicode.bibtex);
+    expect(response.body).not.toContain("excluded");
+    expect(response.body.indexOf("paper00")).toBeLessThan(response.body.indexOf("paper62"));
+    expect((await list(`?collection=${a.id}`)).json().entries).toHaveLength(60);
+    const head = await call("HEAD", `/api/citations/collections/${a.id}/export`);
+    expect(head.statusCode).toBe(200); expect(head.body).toBe("");
+    // HEAD must not leave a lazy export iterator holding the database busy.
+    const empty = await folder("Empty");
+    expect((await call("GET", `/api/citations/collections/${empty.id}/export`)).body).toBe("");
+  });
+
+  it("isolates collections and membership operations by user, including administrators and exports", async () => {
+    const a = await folder("Private"), own = await entry("private", [a.id]), foreign = await entry("other", undefined, {}, "bob");
+    for (const user of ["bob", "admin", "anonymous"]) {
+      const status = user === "anonymous" ? 401 : 404;
+      for (const [method, url, payload] of [
+        ["PATCH", `/api/citations/collections/${a.id}`, { name: "Hijacked" }],
+        ["DELETE", `/api/citations/collections/${a.id}`, undefined],
+        ["GET", `/api/citations/collections/${a.id}/export`, undefined],
+        ["GET", `/api/citations?collection=${a.id}`, undefined],
+        ["PATCH", `/api/citations/${own.id}/collections`, { collectionIds: [], expectedRevision: 1 }]
+      ] as const) expect((await call(method, url, payload, user)).statusCode).toBe(status);
+    }
+    expect((await call("PATCH", `/api/citations/${foreign.id}/collections`, { collectionIds: [a.id], expectedRevision: 1 }, "bob")).statusCode).toBe(404);
+    expect((await call("POST", "/api/citations", { citationKey: "wrong", entryType: "article", bibtex: "@article{wrong}", collectionIds: [a.id] }, "bob")).statusCode).toBe(404);
+    expect((await call("GET", "/api/citations/collections", undefined, "bob")).json()).toEqual({ collections: [], total: 1, unfiled: 1 });
+    expect((await list()).json().entries[0].collectionIds).toEqual([a.id]);
+  });
+});

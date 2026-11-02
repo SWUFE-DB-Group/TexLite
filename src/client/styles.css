@@ -1525,7 +1525,49 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-compose-modal .dialog-footer button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 7px 12px; font-size: 12px; font-weight: 500; line-height: 1.25; }
 .comment-compose-modal .dialog-footer .primary { font-weight: 600; }
 .dialog-footer .danger, button.danger { border-color: var(--ui-danger-border, #b3261e); background: #b3261e; color: white; }
-.citation-library-dialog { display: flex; flex-direction: column; gap: 12px; }
+.citation-library-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; align-items: start; min-width: 0; }
+.citation-library-dialog { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.citation-collections { min-width: 0; padding: 8px 0; }
+.citation-collections-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 9px; color: var(--ui-muted, #727b75); font-size: 11px; }
+.citation-collections-heading > button, .citation-collection-menu-trigger { display: grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #727b75); }
+.citation-collections :is(.citation-collections-heading > button, .citation-collection-menu-trigger):hover { background: var(--ui-hover, #eaf1eb); color: var(--ui-text, #26382d); }
+.citation-collections nav { display: flex; flex-direction: column; gap: 3px; }
+.citation-collection-select { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 34px; padding: 7px 8px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ui-text, #37473d); text-align: left; font-size: 12px; }
+.citation-collection-select > svg { flex: none; color: var(--ui-muted, #7b887f); }
+.citation-collection-select > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.citation-collection-select > small { flex: none; color: var(--ui-muted, #7b887f); font-size: 10px; font-variant-numeric: tabular-nums; }
+.citation-collection-select:hover { background: var(--ui-hover, #edf3ef); }
+.citation-collection-select.active { background: var(--ui-accent-bg, #e4f0e8); border-color: var(--ui-accent-border, #bdd4c5); color: var(--ui-accent, #176b44); font-weight: 600; }
+.citation-collection-select.active > svg { color: inherit; }
+.citation-collection-folders { display: flex; flex-direction: column; gap: 3px; max-height: 50vh; overflow: auto; padding-top: 8px; margin-top: 6px; border-top: 1px solid var(--ui-border, #dce3de); }
+.citation-collection-row { display: flex; align-items: center; gap: 1px; min-width: 0; }
+.citation-collection-row > .citation-collection-select { flex: 1; }
+.citation-collection-menu-trigger { width: 24px; }
+.citation-library-scope-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.citation-library-scope-heading > strong { display: flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; color: var(--ui-text, #293d30); font-size: 12px; font-weight: 600; }
+.citation-library-scope-heading svg { flex: none; }
+.citation-folder-form label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; }
+.citation-folder-form input { min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 6px; background: var(--ui-surface, white); color: var(--ui-text, #293d30); }
+.citation-collection-choices { display: flex; flex-direction: column; gap: 5px; max-height: 45vh; overflow: auto; }
+.citation-collection-choices > label { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 6px; font-size: 12px; }
+.citation-collection-choices > label:hover { background: var(--ui-hover, #edf3ef); }
+.citation-collection-choices > label span { min-width: 0; overflow-wrap: anywhere; }
+.citation-collection-choices :is(input, svg) { flex: none; }
+.citation-project-destination { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ui-muted, #727b75); font-size: 12px; }
+.citation-project-destination > svg { flex: none; }
+.citation-project-destination > select { flex: 1; min-width: 0; height: 32px; padding: 5px 8px; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 6px; background: var(--ui-surface, white); color: var(--ui-text, #293d30); font-size: 12px; }
+.dialog-content.citation-project-modal { display: flex; flex-direction: column; overflow: hidden; }
+.citation-project-modal > .dialog-header, .citation-project-modal > .dialog-footer { flex: none; }
+.citation-project-modal > .dialog-body { min-height: 0; overflow-y: auto; }
+.citation-entry-menu a[role="menuitem"] { color: inherit; text-decoration: none; }
+@media (max-width: 720px) {
+  .citation-library-layout { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .citation-collections { padding: 0; }
+  .citation-collections nav { max-height: 180px; overflow: auto; }
+  .citation-collection-folders { max-height: none; }
+  .citation-library-scope-heading { flex-wrap: wrap; }
+  .citation-entry-main { width: 100%; }
+}
 .citation-library-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--ui-border, #d7ded8); border-radius: 9px; background: var(--ui-surface, #f4f7f4); }
 .citation-library-tabs button { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ui-muted, #66716a); font-size: 12px; }
 .citation-library-tabs button:hover { background: var(--ui-hover, #eaf1eb); color: var(--ui-accent, #31523e); }
@@ -1578,11 +1620,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-library-empty { min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: var(--ui-muted, #7b887f); text-align: center; }
 .citation-library-empty strong { color: var(--ui-text, #526158); font-size: 13px; }
 .citation-library-empty span { max-width: 360px; font-size: 11px; line-height: 1.45; }
-.citation-current-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.citation-current-heading > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.citation-current-heading strong { color: var(--ui-accent, #31523e); font-size: 13px; }
-.citation-current-heading span { color: var(--ui-muted, #78857c); font-size: 10px; }
-.citation-current-heading button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--ui-accent, #176b44); font-size: 10px; white-space: nowrap; }
 .citation-edit-panel, .citation-tag-editor { display: flex; flex-direction: column; gap: 9px; padding: 10px 11px; border: 1px solid var(--ui-border, #cbd9ce); border-radius: 8px; background: var(--ui-surface, #f5f9f6); }
 .citation-edit-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ui-accent, #31523e); font-size: 11px; }
 .citation-edit-header > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -1625,6 +1662,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-library-page .citation-edit-actions button { min-height: 32px; gap: 5px; padding: 6px 10px; font-size: 12px; }
 .citation-library-page .citation-entry-actions button svg { width: 14px; height: 14px; }
 .citation-entry-actions .citation-entry-menu-trigger, .citation-library-page .citation-entry-actions .citation-entry-menu-trigger { width: 32px; height: 32px; min-height: 32px; justify-content: center; padding: 0; }
+.citation-entry-actions button.citation-icon-action { width: 32px; height: 32px; min-height: 32px; flex: none; justify-content: center; padding: 0; gap: 0; }
 .citation-entry-controls { display: inline-flex; align-items: center; gap: 5px; }
 .citation-entry-actions button.citation-copy-button { font-size: 11px; }
 .citation-entry-actions .citation-copy-button.is-copied > svg { color: var(--ui-info, #2563b4); }

@@ -131,6 +131,7 @@ export interface CitationLibraryEntry {
   year: string | null;
   revision: number;
   tags: CitationLibraryTag[];
+  collectionIds: string[];
   createdAt: string;
   updatedAt: string;
 }

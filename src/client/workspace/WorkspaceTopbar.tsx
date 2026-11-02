@@ -69,7 +69,7 @@ export function WorkspaceTopbar({
         <Users size={15} /><span>{t("projectSettings.share")}</span>
         {(project.sharedMemberCount ?? 0) > 0 && <sup className="share-action-count">{project.sharedMemberCount}</sup>}
       </button>
-      {showCitationLibrary && <button className={citationLibraryOpen ? "active" : ""} onClick={onCitationLibrary}><BookMarked size={15} />{t("citationLibrary.title")}</button>}
+      {showCitationLibrary && <button className={`citation-action${citationLibraryOpen ? " active" : ""}`} onClick={onCitationLibrary}><BookMarked size={15} />{t("citationProject.button")}</button>}
       <button type="button" className="snapshots-action" title={t("history.projectSnapshots")} onClick={onHistory}><FileClock size={15} />{t("history.projectSnapshotsButton")}</button>
       <button
         type="button"

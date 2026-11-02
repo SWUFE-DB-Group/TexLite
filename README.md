@@ -110,7 +110,8 @@ shared browser writing, not a replacement for a personal IDE.
 ## What the writing workflow includes
 
 - Projects with folders, ZIP import/export, tags, sharing, ownership transfer,
-  archiving, and a private per-user citation library.
+  archiving, and a private per-user citation library with topic folders, tags,
+  and folder-wide BibTeX export.
 - Owner-managed read-only links for anonymous readers, with expiry, rotation
   and revocation. Readers can view source and existing PDFs without joining collaboration.
 - CodeMirror editing with LaTeX/BibTeX highlighting, folding, completion,

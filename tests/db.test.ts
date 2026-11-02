@@ -21,13 +21,39 @@ function migrationConfig(root: string, databasePath: string): Config {
 }
 
 describe("database migrations", () => {
+  it("automatically adds citation folders without changing existing references and retains folders across restarts", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-citation-folders-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`DROP TABLE citation_library_entry_collections;
+        DROP TABLE citation_library_collections;
+        DELETE FROM texlite_schema_migrations WHERE version = 18;
+        INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES ('owner', 'owner', 'Owner', 'hash', 'user', '2026-11-02');
+        INSERT INTO citation_library_entries (id, user_id, citation_key, entry_type, bibtex, revision, created_at, updated_at)
+          VALUES ('entry', 'owner', 'old', 'article', '@article{old,title={Original}}', 3, '2026-11-02', '2026-11-02');`);
+      const before = database.prepare("SELECT * FROM citation_library_entries").all();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM citation_library_entries").all()).toEqual(before);
+      expect(database.prepare("SELECT * FROM citation_library_collections").all()).toEqual([]);
+      database.exec(`INSERT INTO citation_library_collections (id, user_id, name, created_at) VALUES ('folder', 'owner', 'Paper', '2026-11-02');
+        INSERT INTO citation_library_entry_collections (entry_id, collection_id) VALUES ('entry', 'folder');`);
+      const applied = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 18").get();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 18").get()).toEqual(applied);
+      expect(database.prepare("SELECT * FROM citation_library_entry_collections").all()).toEqual([{ entry_id: "entry", collection_id: "folder" }]);
+      database.prepare("DELETE FROM citation_library_collections WHERE id = 'folder'").run();
+      expect(database.prepare("SELECT * FROM citation_library_entry_collections").all()).toEqual([]);
+      expect(database.prepare("SELECT * FROM citation_library_entries").all()).toEqual(before);
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
   it("adds encrypted-link storage without rotating or deleting pre-existing hash-only links", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-view-copy-migration-"));
     const config = migrationConfig(root, path.join(root, "texlite.db"));
     let database = openDatabase(config);
     try {
       database.exec(`ALTER TABLE project_view_links DROP COLUMN token_ciphertext;
-        DELETE FROM texlite_schema_migrations WHERE version = 17;
+        DELETE FROM texlite_schema_migrations WHERE version >= 17;
         INSERT INTO users (id, username, display_name, password_hash, role, created_at)
           VALUES ('owner', 'owner', 'Owner', 'hash', 'admin', '2026-11-01');
         INSERT INTO projects (id, owner_id, name, created_at, updated_at)
@@ -364,7 +390,8 @@ describe("database migrations", () => {
           { version: 14, name: "keep_reviewers_on_suggestions" },
           { version: 15, name: "add_project_view_links" },
           { version: 16, name: "remove_revoked_project_view_links" },
-          { version: 17, name: "store_encrypted_view_link_tokens" }
+          { version: 17, name: "store_encrypted_view_link_tokens" },
+          { version: 18, name: "add_citation_collections" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -392,7 +419,8 @@ describe("database migrations", () => {
           { version: 14, name: "keep_reviewers_on_suggestions" },
           { version: 15, name: "add_project_view_links" },
           { version: 16, name: "remove_revoked_project_view_links" },
-          { version: 17, name: "store_encrypted_view_link_tokens" }
+          { version: 17, name: "store_encrypted_view_link_tokens" },
+          { version: 18, name: "add_citation_collections" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -432,7 +460,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -520,7 +548,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }]);
       } finally {
         migrated.close();
       }

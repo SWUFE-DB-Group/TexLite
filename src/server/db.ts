@@ -203,6 +203,22 @@ const databaseMigrations: readonly DatabaseMigration[] = [
     if (missingColumn(db, "project_view_links", "token_ciphertext")) {
       db.exec("ALTER TABLE project_view_links ADD COLUMN token_ciphertext TEXT");
     }
+  } },
+  { version: 18, name: "add_citation_collections", apply: (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS citation_library_collections (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL COLLATE NOCASE,
+      created_at TEXT NOT NULL,
+      UNIQUE (user_id, name)
+    );
+    CREATE TABLE IF NOT EXISTS citation_library_entry_collections (
+      entry_id TEXT NOT NULL REFERENCES citation_library_entries(id) ON DELETE CASCADE,
+      collection_id TEXT NOT NULL REFERENCES citation_library_collections(id) ON DELETE CASCADE,
+      PRIMARY KEY (entry_id, collection_id)
+    );
+    CREATE INDEX IF NOT EXISTS citation_library_entry_collections_collection
+      ON citation_library_entry_collections(collection_id, entry_id);`);
   } }
 ];
 

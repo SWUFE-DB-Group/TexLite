@@ -8,12 +8,14 @@ import { zhHantMessages } from "./locales/zh-Hant.js";
 import { agentMessages } from "../shared/agentMessages.js";
 import { suggestionMessages } from "../shared/suggestionMessages.js";
 import { viewLinkMessages } from "../shared/projectViewLinks.js";
+import { citationCollectionMessages } from "../shared/citationCollections.js";
 
 export type ServerLocale = AppLocale;
 
 type MessageParams = Record<string, unknown>;
 
 const enMessages = {
+    ...citationCollectionMessages.en,
     ...viewLinkMessages.en,
     ...suggestionMessages.en,
     ...agentMessages.en,
@@ -163,6 +165,7 @@ export type ServerErrorCode = keyof typeof enMessages;
 
 const zhMessages: Record<ServerErrorCode, string> = {
     ...viewLinkMessages.zh,
+    ...citationCollectionMessages.zh,
     ...suggestionMessages.zh,
     ...agentMessages.zh,
     AVATAR_STYLE_INVALID: "请选择支持的头像风格。",

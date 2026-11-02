@@ -50,6 +50,24 @@ describe("shared save controls", () => {
     expect(button().disabled).toBe(false);
   });
 
+  it("supports icon-only actions without losing accessible names or busy and saved feedback", async () => {
+    addCss(css);
+    const render = (saving = false, feedback = "") => act(async () => root.render(createElement("div", { className: "citation-entry-actions" },
+      createElement(SaveButton, { iconOnly: true, className: "citation-icon-action", "aria-label": "Update", saving, feedback,
+        icon: createElement("svg", { "data-test-update-icon": true }) }, "Update"))));
+    await render();
+    expect(button().getAttribute("aria-label")).toBe("Update");
+    expect(button().querySelector("[data-test-update-icon]")).not.toBeNull();
+    expect(getComputedStyle(button()).width).toBe("32px");
+    expect(getComputedStyle(button().querySelector<HTMLElement>(".sr-only")!).position).toBe("absolute");
+    await render(true);
+    expect(button().querySelector("[data-test-update-icon]")).toBeNull();
+    expect(button().querySelector(".lucide-loader-circle")).not.toBeNull();
+    await render(false, "Saved");
+    expect(button().querySelector(".save-button-confirmation")).not.toBeNull();
+    expect(button().querySelector('[role="status"]')?.textContent).toBe("Saved");
+  });
+
   it.each(["light", "dark"].flatMap((theme) => [false, true].map((agentLast) => ({ theme, agentLast }))))(
     "keeps management controls consistent in $theme mode (lazy agent CSS last=$agentLast)", async ({ theme, agentLast }) => {
       document.documentElement.dataset.theme = theme;
