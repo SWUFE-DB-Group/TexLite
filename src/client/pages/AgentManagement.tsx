@@ -150,7 +150,8 @@ export function AgentManagement({ user, onBack }: {
     </div>
     <nav className="project-pagination agent-pagination" aria-label={t("agents.tasks")}><button type="button" disabled={busy || result.page <= 1} onClick={() => { setPage(result.page - 1); setSelected(new Set()); }}><ChevronLeft size={14} aria-hidden="true" />{t("agents.previous")}</button><span>{result.page} / {Math.max(1, Math.ceil(result.total / result.pageSize))}</span><button type="button" disabled={busy || result.page * result.pageSize >= result.total} onClick={() => { setPage(result.page + 1); setSelected(new Set()); }}>{t("agents.next")}<ChevronRight size={14} aria-hidden="true" /></button></nav>
     <Modal className="management-dialog" open={deleting.length > 0} title={t("agents.delete")} description={t("agents.bulkDeleteDescription")} onOpenChange={(open) => { if (!open && !busy) setDeleting([]); }} footer={<><button disabled={busy} onClick={() => setDeleting([])}>{t("common.cancel")}</button><button className="danger" disabled={busy} onClick={() => void mutate(() => operate(deleting, "delete"))}>{busy && <LoaderCircle size={14} className="spin" />}{t("agents.delete")}</button></>}>
-      {deleting.map((task) => <div className="agent-delete-item" key={task.id}><strong>{task.title}</strong><small>{task.projectName} · {task.userName} · {AGENT_LABELS[task.agentId]}</small>{failures[task.id] && <p className="error" role="alert">{failures[task.id]}</p>}</div>)}
+      {deleting.length > 1 && <p>{t("agents.selected", { count: deleting.length })}</p>}
+      {deleting.filter((task) => deleting.length === 1 || failures[task.id]).map((task) => <div className="agent-delete-item" key={task.id}><strong>{task.title}</strong><small>{task.projectName} · {task.userName} · {AGENT_LABELS[task.agentId]}</small>{failures[task.id] && <p className="error" role="alert">{failures[task.id]}</p>}</div>)}
     </Modal>
   </section>;
 }

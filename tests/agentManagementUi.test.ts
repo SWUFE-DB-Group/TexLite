@@ -53,6 +53,53 @@ afterEach(async () => {
 });
 
 describe("coding agent management presentation", () => {
+  it.each(["admin", "user"] as const)("summarizes bulk deletion without listing task names and retains actionable failures (%s)", async (role) => {
+    language = "en";
+    const prefix = role === "admin" ? "/api/admin/agent-tasks" : "/api/agent-tasks";
+    const tasks: AgentTask[] = [1, 2, 3].map((number) => ({
+      id: `task-${number}`, title: `Private task ${number}`, projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
+      agentId: "codex", state: "stopped", cleanupState: "none", errorCode: null, createdAt: "2026-10-25", updatedAt: "2026-10-25",
+      startedAt: null, endedAt: null, exitCode: 0, nativeSessionId: null, canResume: false
+    }));
+    let rejectOnce = true;
+    vi.mocked(api).mockImplementation(async (url, options) => {
+      if (options?.method === "DELETE") {
+        if (url === `${prefix}/task-2` && rejectOnce) { rejectOnce = false; throw new Error("Cleanup failed"); }
+        return {} as never;
+      }
+      return url === "/api/admin/agents" || url === "/api/agents" ? catalog
+        : { tasks, page: 1, pageSize: 50, total: tasks.length } as never;
+    });
+    await act(async () => root.render(createElement(AgentManagement, { user: { ...user, role }, onBack() {} })));
+    await act(async () => vi.advanceTimersByTime(150));
+    await act(async () => container.querySelector<HTMLButtonElement>(".agent-row-actions .agent-danger")!.click());
+    expect(document.querySelector(".management-dialog .agent-delete-item strong")?.textContent).toBe(tasks[0].title);
+    await act(async () => document.querySelector<HTMLButtonElement>(".management-dialog .dialog-footer button")!.click());
+    await act(async () => container.querySelector<HTMLInputElement>('thead input[type="checkbox"]')!.click());
+    const deleteSelected = container.querySelector<HTMLButtonElement>(".agent-bulk-actions .agent-danger")!;
+    await act(async () => deleteSelected.click());
+    let dialog = document.querySelector<HTMLElement>(".management-dialog")!;
+    expect(dialog.textContent).toContain("Selected: 3");
+    expect(dialog.textContent).toContain(agentUiMessages.en.bulkDeleteDescription);
+    expect(dialog.querySelector(".agent-delete-item")).toBeNull();
+    for (const task of tasks) expect(dialog.textContent).not.toContain(task.title);
+    expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(0);
+    await act(async () => dialog.querySelector<HTMLButtonElement>(".dialog-footer button")!.click());
+    expect(document.querySelector(".management-dialog")).toBeNull();
+    await act(async () => deleteSelected.click());
+    await act(async () => document.querySelector<HTMLButtonElement>(".management-dialog .dialog-footer .danger")!.click());
+    dialog = document.querySelector<HTMLElement>(".management-dialog")!;
+    expect(dialog.querySelectorAll(".agent-delete-item")).toHaveLength(1);
+    expect(dialog.querySelector("strong")?.textContent).toBe(tasks[1].title);
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe("Cleanup failed");
+    expect(dialog.textContent).not.toContain(tasks[0].title);
+    expect(dialog.textContent).not.toContain(tasks[2].title);
+    await act(async () => dialog.querySelector<HTMLButtonElement>(".dialog-footer .danger")!.click());
+    expect(document.querySelector(".management-dialog")).toBeNull();
+    const deletedUrls = vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "DELETE").map(([url]) => url);
+    expect(deletedUrls).toEqual([`${prefix}/task-1`, `${prefix}/task-2`, `${prefix}/task-3`, `${prefix}/task-2`]);
+  });
+
   it("confirms policy saves on the button only after success and preserves failure messages", async () => {
     await act(async () => root.render(createElement(AgentManagement, { user, onBack() {} })));
     const save = container.querySelector<HTMLButtonElement>(".agent-policy-actions .save-button")!;
