@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import fs from "node:fs";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,6 +58,20 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("minimal project bibliography workflow", () => {
+  it("keeps the shared modal close control at its normal size despite compact management typography", async () => {
+    const sheet = document.createElement("style");
+    sheet.textContent = fs.readFileSync("src/client/styles.css", "utf8");
+    document.head.append(sheet);
+    try {
+      await render();
+      const close = document.querySelector<HTMLButtonElement>(".citation-project-modal .dialog-close")!;
+      expect(getComputedStyle(close).fontSize).toBe("22px");
+      expect(getComputedStyle(document.querySelector(".citation-project-modal .dialog-footer button")!).fontSize).toBe("12px");
+      await click(close);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    } finally { sheet.remove(); }
+  });
+
   it("renders icon-only Import with a tooltip and tag filters without management tools", async () => {
     await render();
     expect(rows()).toHaveLength(1);

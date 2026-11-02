@@ -1703,7 +1703,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .management-page .admin-user-add { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 6px 10px; border-radius: 6px; }
 .management-page .admin-user-pagination button { height: 32px; padding: 0 10px; }
 .management-page .admin-user-actions button { padding: 6px 10px; }
-.management-dialog :is(button, input, select, textarea, .form-field, .checkbox-field, .tag-management-item strong) { font-size: 12px; }
+.management-dialog :is(button:not(.dialog-close), input, select, textarea, .form-field, .checkbox-field, .tag-management-item strong) { font-size: 12px; }
 .management-dialog :is(input:not([type="checkbox"]):not([type="radio"]), select) { padding: 7px 9px; border-radius: 6px; }
 .management-dialog :is(.dialog-footer, .citation-edit-actions, .tag-management-edit-actions) button { min-height: 32px; padding: 6px 10px; border-radius: 6px; }
 .form-stack { display: flex; flex-direction: column; gap: 14px; }
