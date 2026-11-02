@@ -49,7 +49,12 @@ describe("system resource tooltips", () => {
     await act(async () => root.render(createElement(SystemMetricsDialog, { open: true, onOpenChange: () => {} })));
     const collaboration = host.querySelectorAll(".metric-runtime-item")[2];
     expect(collaboration.querySelector("strong")?.textContent).toBe(value);
-    expect(collaboration.querySelector(".metric-runtime-detail")?.getAttribute("data-tooltip")).toBe(detail);
+    const help = collaboration.querySelector<HTMLButtonElement>(".metric-runtime-detail")!;
+    expect(help.hasAttribute("data-tooltip")).toBe(false);
+    await act(async () => help.click());
+    expect(document.querySelector(".info-popover-content")?.textContent).toBe(detail);
+    await act(async () => help.click());
+    expect(document.querySelector(".info-popover-content")).toBeNull();
   });
 
   it.each([

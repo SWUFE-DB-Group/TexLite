@@ -1,9 +1,10 @@
 import { lazy, Suspense, useState } from "react";
 import "../agents/agents.css";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info, LoaderCircle, Pencil, Play, Plus, Square, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, LoaderCircle, Pencil, Play, Plus, Square, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
 import { api } from "../api";
 import { Modal } from "../Dialog";
+import { InfoPopover } from "../InfoPopover";
 import { SaveButton } from "../SaveButton";
 import { useAgentTasks } from "../agents/useAgentTasks";
 import type { AgentTask } from "../../shared/agentProtocol";
@@ -47,8 +48,7 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
   return <section className="agent-terminal-panel" data-agent-terminal="true" aria-label={t("agents.terminal")}>
     <div className="agent-terminal-heading">
       <strong><TerminalSquare size={14} />{t("agents.terminal")}</strong>
-      <button type="button" className="agent-session-help" aria-label={t("agents.sessionManagementHint")}
-        data-tooltip={t("agents.sessionManagementHint")} data-texlite-tooltip-always><Info size={13} aria-hidden="true" /></button>
+      <InfoPopover className="agent-session-help" content={t("agents.sessionManagementHint")} size={13} />
       <div className="agent-task-tabs" role="tablist" aria-label={t("agents.tasks")}>
         {tasks.result.tasks.map((entry) => <button role="tab" type="button" key={entry.id} aria-selected={entry.id === task?.id} title={entry.title} className={entry.id === task?.id ? "active" : ""} onClick={() => choose(entry.id)}>
           <span className={`agent-state-dot ${entry.state}`} /><AgentIcon agent={entry.agentId} size={13} /><span>{entry.title}</span><small>{AGENT_LABELS[entry.agentId]}</small>

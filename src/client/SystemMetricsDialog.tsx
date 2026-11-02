@@ -1,9 +1,10 @@
 import { formatBytes } from "./formatBytes";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, Clock3, Cpu, Info, Layers3, MemoryStick, RefreshCw, Timer, Users, type LucideIcon } from "lucide-react";
+import { Activity, Clock3, Cpu, Layers3, MemoryStick, RefreshCw, Timer, Users, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { Modal } from "./Dialog";
+import { InfoPopover } from "./InfoPopover";
 import { formatDateTime } from "./dateTime";
 import type { CpuUsageSample, ResourceSample } from "../shared/resourceMetrics";
 
@@ -174,7 +175,7 @@ function MemoryValue({ bytes, unavailable }: { bytes: number | null; unavailable
 
 function RuntimeMetric({ icon: Icon, label, value, detail }: { icon: LucideIcon; label: string; value: string; detail?: string }) {
   return <div className="metric-runtime-item">
-    <span className="metric-runtime-label"><Icon aria-hidden="true" size={14} />{label}{detail && <button type="button" className="metric-runtime-detail" data-tooltip={detail} aria-label={`${label}: ${detail}`} data-texlite-tooltip-always><Info aria-hidden="true" size={13} /></button>}</span>
+    <span className="metric-runtime-label"><Icon aria-hidden="true" size={14} />{label}{detail && <InfoPopover className="metric-runtime-detail" content={detail} label={`${label}: ${detail}`} size={13} />}</span>
     <strong>{value}</strong>
   </div>;
 }

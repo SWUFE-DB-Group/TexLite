@@ -97,15 +97,18 @@ describe("coding agent management presentation", () => {
       expect(hint.querySelector(".lucide-triangle-alert")).toBeNull();
       expect(hint.hasAttribute("title")).toBe(false);
       expect(hint.getAttribute("aria-label")).toBe(agentUiMessages[language].sessionManagementHint);
-      expect(hint.getAttribute("data-tooltip")).toContain("/new");
-      expect(hint.getAttribute("data-tooltip")).toContain("/clear");
+      expect(hint.hasAttribute("data-tooltip")).toBe(false);
       await act(async () => hint.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
-      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages[language].sessionManagementHint);
+      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      await act(async () => hint.click());
+      expect(document.querySelector(".info-popover-content")?.textContent).toBe(agentUiMessages[language].sessionManagementHint);
+      expect(document.querySelector(".info-popover-content")?.textContent).toContain("/new");
+      expect(document.querySelector(".info-popover-content")?.textContent).toContain("/clear");
       await act(async () => hint.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
       expect(container.querySelector('[role="tooltip"]')).toBeNull();
-      await act(async () => hint.focus());
-      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages[language].sessionManagementHint);
-      await act(async () => hint.blur());
+      expect(document.querySelector(".info-popover-content")).not.toBeNull();
+      await act(async () => hint.click());
+      expect(document.querySelector(".info-popover-content")).toBeNull();
     }
   });
 
@@ -273,12 +276,14 @@ describe("coding agent management presentation", () => {
     expect(help.getAttribute("aria-label")).toBe(agentUiMessages["zh-Hant"].usageHint);
     expect(help.hasAttribute("title")).toBe(false);
     await act(async () => help.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
-    expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages["zh-Hant"].usageHint);
+    expect(container.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => help.click());
+    expect(document.querySelector(".info-popover-content")?.textContent).toBe(agentUiMessages["zh-Hant"].usageHint);
     await act(async () => help.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
     expect(container.querySelector('[role="tooltip"]')).toBeNull();
-    await act(async () => help.focus());
-    expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(agentUiMessages["zh-Hant"].usageHint);
-    await act(async () => help.blur());
+    expect(document.querySelector(".info-popover-content")).not.toBeNull();
+    await act(async () => help.click());
+    expect(document.querySelector(".info-popover-content")).toBeNull();
     expect(container.querySelector(".agent-list-reminder")?.textContent).toBe(agentUiMessages["zh-Hant"].endReminder);
     expect(container.querySelector(".agent-list-reminder .lucide-triangle-alert")?.getAttribute("aria-hidden")).toBe("true");
     expect(cards.find((card) => card.textContent?.includes("Claude Code"))?.classList.contains("unavailable")).toBe(true);

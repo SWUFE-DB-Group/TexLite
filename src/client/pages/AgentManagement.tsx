@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "../agents/agents.css";
-import { ArrowDown, ArrowLeft, ChevronLeft, ChevronRight, Info, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useTerminalPreferences } from "../terminalPreferences";
 import { useSuccessNotice } from "../SuccessNotice";
@@ -13,6 +13,7 @@ import type { AgentCatalog, AgentPolicy, AgentTask, AgentTaskPage } from "../../
 import { AGENT_LABELS, AGENT_TASK_PAGE_SIZE } from "../../shared/agentProtocol";
 import { formatDateTime } from "../dateTime";
 import { AgentIcon } from "../agents/AgentIcon";
+import { InfoPopover } from "../InfoPopover";
 import { notifyAgentTasksChanged } from "../agents/useAgentAccess";
 
 export function AgentManagement({ user, onBack }: {
@@ -104,7 +105,7 @@ export function AgentManagement({ user, onBack }: {
     {error && !deleting.length && <p className="error" role="alert">{error}</p>}
     {admin && <section className="agent-policy-card">
       <div className="agent-policy-heading"><div className="agent-policy-title"><strong>{t("agents.allowedAgents")}</strong>
-        <button type="button" className="agent-policy-help" aria-label={t("agents.usageHint")} data-tooltip={t("agents.usageHint")}><Info size={15} aria-hidden="true" /></button>
+        <InfoPopover className="agent-policy-help" content={t("agents.usageHint")} size={15} />
       </div>
         <div className="agent-policy-actions"><button disabled={busy} onClick={() => void mutate(async () => {
           const value = await api<AgentCatalog>("/api/admin/agents/refresh", { method: "POST" }); setCatalog(value); completedAction.show("detect");

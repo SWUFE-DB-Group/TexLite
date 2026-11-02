@@ -6,6 +6,7 @@ import type { FileEntry } from "../types";
 import type { CompileArtifact } from "./types";
 import { appPath } from "../basePath";
 import { FileTypeIcon } from "../fileIcons";
+import { InfoPopover } from "../InfoPopover";
 
 export function CompileDiagnosticOutput({ diagnostics, files, empty, tone, onJump }: {
   diagnostics: CompileDiagnostic[];
@@ -74,11 +75,11 @@ export function CompileCleanup({ mainFile, disabled, cleaning, onCleanCache, onC
     <div className="compile-clean-intro"><AlertTriangle size={28} /><div><strong>{t("editor.cleanTitle")}</strong><p>{t("editor.cleanDescription", { file: mainFile })}</p></div></div>
     <div className="compile-clean-actions">
       <article><div className="compile-clean-action-icon"><Eraser size={19} /></div><div>
-        <div className="compile-clean-action-heading"><strong>{t("editor.cleanCache")}</strong><button type="button" className="compile-clean-help" aria-label={t("editor.cleanCacheDescription")} data-tooltip={t("editor.cleanCacheDescription")} data-texlite-tooltip-always><CircleHelp size={13} aria-hidden="true" /></button></div>
+        <div className="compile-clean-action-heading"><strong>{t("editor.cleanCache")}</strong><InfoPopover className="compile-clean-help" content={t("editor.cleanCacheDescription")} icon={CircleHelp} size={13} /></div>
         <button type="button" className="compile-clean-operation" disabled={disabled || cleaning} onClick={onCleanCache}>{cleaning ? <LoaderCircle className="spin" size={14} /> : <Eraser size={14} />}{t("editor.cleanCache")}</button>
       </div></article>
       <article className="danger"><div className="compile-clean-action-icon"><Trash2 size={19} /></div><div>
-        <div className="compile-clean-action-heading"><strong>{t("editor.cleanArtifacts")}</strong><button type="button" className="compile-clean-help" aria-label={t("editor.cleanArtifactsDescription")} data-tooltip={t("editor.cleanArtifactsDescription")} data-texlite-tooltip-always><CircleHelp size={13} aria-hidden="true" /></button></div>
+        <div className="compile-clean-action-heading"><strong>{t("editor.cleanArtifacts")}</strong><InfoPopover className="compile-clean-help" content={t("editor.cleanArtifactsDescription")} icon={CircleHelp} size={13} /></div>
         <button type="button" className="compile-clean-operation danger" disabled={disabled || cleaning} onClick={onCleanArtifacts}>{cleaning ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}{t("editor.cleanArtifacts")}</button>
       </div></article>
     </div>
