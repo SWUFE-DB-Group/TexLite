@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import type { DashboardData, SiteConfig, User } from "./types";
 import {
-  isProjectHistoryState, mentionIdFromReturn, mentionIdFromSearch, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath,
+  isProjectHistoryState, mentionIdFromReturn, mentionIdFromSearch, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath, sharedLinkIdFromPath,
   type TexLiteHistoryState
 } from "./routes";
 import { loadPdfPreview, loadProjectWorkspace, preloadWorkspace, type WorkspacePreload } from "./workspacePreload";
@@ -14,12 +14,24 @@ import { appPath } from "./basePath";
 const loadDashboard = () => import("./pages/Dashboard");
 const Dashboard = lazy(() => loadDashboard().then((module) => ({ default: module.Dashboard })));
 const ProjectWorkspace = lazy(() => loadProjectWorkspace().then((module) => ({ default: module.ProjectWorkspace })));
+const SharedProjectPage = lazy(() => import("./pages/SharedProjectPage").then((module) => ({ default: module.SharedProjectPage })));
 
 function preloadRoute(loader: () => Promise<unknown>): void {
   void loader().catch(() => undefined);
 }
 
 export function App() {
+  const [sharedId, setSharedId] = useState(() => typeof window === "undefined" ? null : sharedLinkIdFromPath(window.location.pathname));
+  useEffect(() => {
+    const update = () => setSharedId(sharedLinkIdFromPath(window.location.pathname));
+    window.addEventListener("popstate", update);
+    return () => window.removeEventListener("popstate", update);
+  }, []);
+  // No /api/me request, authenticated workspace or Yjs connection on this route.
+  return sharedId ? <LazyPage><SharedProjectPage key={sharedId} linkId={sharedId} /></LazyPage> : <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
   const { t } = useTranslation();
   const [site, setSite] = useState<SiteConfig | null>(null);
   const [user, setUser] = useState<User | null | undefined>();

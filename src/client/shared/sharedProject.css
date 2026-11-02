@@ -1,0 +1,27 @@
+/* The ordinary workspace owns chrome, panels, tree rows, editor and PDF styles.
+   Reader-specific CSS is limited to access state and responsive toolbar layout. */
+.shared-reader .project-heading { flex-basis: 280px; max-width: 280px; }
+.shared-reader-access { display: inline-flex; flex: none; align-items: center; gap: 5px; border: 1px solid #ffffff24; border-radius: 5px; padding: 4px 7px; color: var(--ui-header-muted, #bac4bd); font-size: 10px; }
+.shared-reader-access:focus-visible { outline: 2px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; }
+.shared-reader .shared-reader-files { min-height: 0; }
+.shared-reader-source { display: flex; flex-direction: column; }
+.shared-reader .source-panel { display: flex; flex-direction: column; }
+.shared-reader-source > .editor-shell { min-height: 0; flex: 1; }
+.shared-reader-empty { flex: 1; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 24px; font-size: 13px; color: var(--ui-muted, #727b75); }
+.shared-reader-unavailable h1 { margin: 0; color: var(--ui-text, #26382d); font-size: 20px; }
+.shared-reader-unavailable p { margin: 0; max-width: 430px; line-height: 1.7; }
+.shared-reader-error { padding: 8px 14px; font-size: 12px; border-bottom: 1px solid var(--ui-danger-border, #e9b6b0); background: var(--ui-danger-bg, #fff3f1); }
+.shared-reader-image { flex: 1; overflow: auto; padding: 20px; text-align: center; }
+.shared-reader-image img { max-width: 100%; height: auto; }
+.shared-reader-settings .user-menu-settings { gap: 14px; }
+.shared-reader .preview-tabs button:disabled { cursor: not-allowed; }
+.shared-reader .preview-tabs button:disabled:hover { background: transparent; color: var(--ui-muted, #57655d); }
+@media (max-width: 1250px) {
+  .shared-reader .editor-topbar { height: auto; min-height: 56px; flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
+  .shared-reader .editor-actions { flex-wrap: wrap; }
+}
+@media (max-width: 650px) {
+  .shared-reader .editor-actions { width: 100%; gap: 5px; }
+  .shared-reader .editor-actions button { padding: 6px 8px; font-size: 11px; }
+  .shared-reader .layout-trigger span small { display: none; }
+}

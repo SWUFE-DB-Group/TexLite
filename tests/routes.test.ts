@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  isProjectHistoryState, mentionIdFromReturn, mentionIdFromSearch, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath
+  isProjectHistoryState, mentionIdFromReturn, mentionIdFromSearch, projectIdFromPath, projectIdFromReturn, projectLoginPath, projectPath, sharedLinkIdFromPath
 } from "../src/client/routes";
 
 describe("client project routes", () => {
+  it("keeps the public reader route separate and honors the runtime base path", () => {
+    const id = "12345678-abcd-4321-abcd-123456789012";
+    expect(sharedLinkIdFromPath(`/tools/texlite/share/${id}`, "/tools/texlite")).toBe(id);
+    expect(sharedLinkIdFromPath(`/share/${id}`, "/tools/texlite")).toBeNull();
+    expect(sharedLinkIdFromPath(`/project/${id}`)).toBeNull();
+    expect(sharedLinkIdFromPath("/share/invalid")).toBeNull();
+    expect(projectIdFromPath(`/share/${id}`)).toBeNull();
+  });
   it("uses a stable URL and parses the singular and plural aliases", () => {
     expect(projectPath("project/with spaces")).toBe("/project/project%2Fwith%20spaces");
     expect(projectIdFromPath("/project/abc-123")).toBe("abc-123");

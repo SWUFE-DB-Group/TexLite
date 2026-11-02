@@ -111,6 +111,8 @@ shared browser writing, not a replacement for a personal IDE.
 
 - Projects with folders, ZIP import/export, tags, sharing, ownership transfer,
   archiving, and a private per-user citation library.
+- Owner-managed read-only links for anonymous readers, with expiry, rotation
+  and revocation. Readers can view source and existing PDFs without joining collaboration.
 - CodeMirror editing with LaTeX/BibTeX highlighting, folding, completion,
   optional Vim mode, formatting, spelling/grammar/ChkTeX assistance, search/replace,
   and source/PDF SyncTeX navigation.

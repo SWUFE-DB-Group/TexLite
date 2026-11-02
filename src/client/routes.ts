@@ -2,6 +2,12 @@ import { appPath, currentBasePath, stripAppBasePath } from "./basePath";
 
 const projectRoutePattern = /^\/projects?\/([^/]+)\/?$/;
 
+/** The independent public reader route never identifies a logged-in project. */
+export function sharedLinkIdFromPath(pathname: string, basePath = currentBasePath()): string | null {
+  const path = stripAppBasePath(pathname, basePath);
+  return path ? /^\/share\/([a-f0-9-]{36})\/?$/i.exec(path)?.[1] ?? null : null;
+}
+
 /** Return the canonical browser URL for a project. */
 export function projectPath(projectId: string, mentionId?: string | null, basePath = currentBasePath()): string {
   const path = appPath(`/project/${encodeURIComponent(projectId)}`, basePath);

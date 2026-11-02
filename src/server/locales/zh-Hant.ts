@@ -1,9 +1,11 @@
 import type { ServerErrorCode } from "../i18n.js";
 import { agentMessages } from "../../shared/agentMessages.js";
 import { suggestionMessages } from "../../shared/suggestionMessages.js";
+import { viewLinkMessages } from "../../shared/projectViewLinks.js";
 
 /** Traditional Chinese API messages, using the same stable error codes. */
 export const zhHantMessages: Record<ServerErrorCode, string> = {
+  ...viewLinkMessages["zh-Hant"],
   ...suggestionMessages["zh-Hant"],
   ...agentMessages["zh-Hant"],
   AVATAR_STYLE_INVALID: "請選擇支援的頭像風格。",

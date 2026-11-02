@@ -181,6 +181,28 @@ const databaseMigrations: readonly DatabaseMigration[] = [
       DELETE FROM comment_mentions WHERE kind = 'review' AND comment_id NOT IN (SELECT comment_id FROM comment_suggestions);
       ALTER TABLE comments DROP COLUMN reviewer_id;`);
     }
+  } },
+  { version: 15, name: "add_project_view_links", apply: (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS project_view_links (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      expires_at TEXT,
+      revoked_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS project_view_links_project ON project_view_links(project_id, created_at DESC);`);
+  } },
+  { version: 16, name: "remove_revoked_project_view_links", apply: (db) => {
+    if (missingColumn(db, "project_view_links", "revoked_at")) return;
+    db.exec(`DELETE FROM project_view_links WHERE revoked_at IS NOT NULL;
+      ALTER TABLE project_view_links DROP COLUMN revoked_at;`);
+  } },
+  { version: 17, name: "store_encrypted_view_link_tokens", apply: (db) => {
+    if (missingColumn(db, "project_view_links", "token_ciphertext")) {
+      db.exec("ALTER TABLE project_view_links ADD COLUMN token_ciphertext TEXT");
+    }
   } }
 ];
 

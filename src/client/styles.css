@@ -528,6 +528,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .back:focus-visible { outline: 2px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; }
 .project-heading { display: flex; flex: 0 1 200px; flex-direction: column; min-width: 0; max-width: 200px; margin-right: auto; }
 .project-heading small { overflow: hidden; color: var(--ui-header-muted, #bac4bd); font-size: 11px; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-project-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.workspace-project-title-row > .workspace-project-title { flex: 0 1 auto; }
 .workspace-project-title { display: block; min-width: 0; overflow: hidden; white-space: nowrap; }
 .workspace-project-title > span { display: inline-block; max-width: 100%; overflow: hidden; vertical-align: top; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-project-title:focus-visible { outline: 1px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; border-radius: 3px; }
@@ -1334,6 +1336,32 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .dictionary-empty { color: var(--ui-muted, #7b837e); font-size: 11px; }
 .dictionary-error { margin: -6px 0 0; font-size: 11px; }
 .share-dialog { display: flex; flex-direction: column; gap: 16px; }
+.share-scope-tabs { display: flex; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--ui-border, #dce3dd); }
+.share-scope-tabs button { border: 0; border-radius: 6px; padding: 7px 12px; color: var(--ui-muted, #727b75); background: transparent; font-size: 12px; }
+.share-scope-tabs button[aria-selected="true"] { background: var(--ui-accent-bg, #e6f1e9); color: var(--ui-accent, #216345); font-weight: 600; }
+.view-link-manager { display: flex; flex-direction: column; gap: 16px; }
+.view-link-description { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 12px; line-height: 1.6; color: var(--ui-muted, #727b75); }
+.view-link-description svg { flex: none; margin-top: 2px; color: var(--ui-accent, #216345); }
+.view-link-create { display: grid; grid-template-columns: minmax(100px, 1fr) 125px auto; gap: 10px; align-items: end; }
+.view-link-create :is(input, select) { width: 100%; min-width: 0; height: 34px; padding: 7px 9px; border: 1px solid var(--ui-border, #d1d9d3); border-radius: 6px; background: var(--ui-surface, #fff); color: inherit; font-size: 12px; }
+.view-link-create > button { height: 34px; font-size: 12px; padding: 7px 11px; }
+.view-link-create .form-field { font-size: 12px; }
+.view-link-list { border-top: 1px solid var(--ui-border, #dce3dd); }
+.view-link-item { display: flex; flex-direction: column; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--ui-border, #dce3dd); }
+.view-link-heading { display: flex; align-items: center; gap: 10px; }
+.view-link-heading > svg { flex: none; color: var(--ui-muted, #727b75); }
+.view-link-address { display: flex; align-items: center; gap: 8px; }
+.view-link-address input { flex: 1; min-width: 0; height: 34px; padding: 7px 9px; border: 1px solid var(--ui-border, #d1d9d3); border-radius: 6px; font-family: ui-monospace, monospace; font-size: 11px; background: var(--ui-subtle, #f7f9f7); color: var(--ui-text, #3b4940); }
+.view-link-address .view-link-copy { flex: none; height: 34px; }
+.view-link-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.view-link-identity strong { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.view-link-identity small, .view-link-status { color: var(--ui-muted, #727b75); font-size: 11px; }
+.view-link-item.active .view-link-status { color: var(--ui-accent, #216345); }
+.view-link-item:not(.active) .view-link-identity strong { color: var(--ui-muted, #727b75); }
+.view-link-actions { display: flex; gap: 5px; }
+.view-link-actions button { width: 28px; height: 28px; border: 0; border-radius: 5px; background: transparent; }
+.view-link-actions button:hover { background: var(--ui-hover, #f3f6f3); }
+@media (max-width: 550px) { .view-link-create { grid-template-columns: minmax(100px, 1fr) 110px; } .view-link-create > button { grid-column: 1 / -1; justify-content: center; } }
 .share-dialog-modal .dialog-footer button { min-height: 32px; padding: 6px 10px; font-size: 12px; }
 .share-owner { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 8px; background: var(--ui-subtle, #edf4ef); color: var(--ui-accent, #18583a); }
 .share-owner > span { display: flex; flex-direction: column; gap: 2px; }

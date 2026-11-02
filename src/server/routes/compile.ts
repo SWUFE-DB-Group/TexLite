@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { parseByteRange } from "../byteRange.js";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
@@ -822,23 +823,4 @@ function compileRequestGeneration(
 
 function pdfDownloadTimestamp(date = new Date()): string {
   return date.toISOString().slice(0, 19).replace("T", "-").replaceAll(":", "");
-}
-
-type ByteRange = { start: number; end: number };
-
-function parseByteRange(value: string | undefined, size: number): ByteRange | "invalid" | null {
-  if (!value) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
-  if (!match || (!match[1] && !match[2]) || size < 1) return "invalid";
-  if (!match[1]) {
-    const suffixLength = Number(match[2]);
-    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return "invalid";
-    return { start: Math.max(0, size - suffixLength), end: size - 1 };
-  }
-  const start = Number(match[1]);
-  const requestedEnd = match[2] ? Number(match[2]) : size - 1;
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd) || start >= size || requestedEnd < start) {
-    return "invalid";
-  }
-  return { start, end: Math.min(requestedEnd, size - 1) };
 }

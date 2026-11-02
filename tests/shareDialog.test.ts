@@ -66,6 +66,7 @@ describe("project share user combobox", () => {
   it("reports the shared member count without including an owner membership", async () => {
     members.push({ ...users[0], permission: "edit" });
     await render();
+    expect(document.querySelector(".share-dialog-modal .dialog-header p")).toBeNull();
     expect(scope().querySelectorAll(".shared-member")).toHaveLength(1);
     expect(onMemberCountChange).toHaveBeenLastCalledWith(project.id, 1);
   });

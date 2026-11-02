@@ -21,6 +21,76 @@ function migrationConfig(root: string, databasePath: string): Config {
 }
 
 describe("database migrations", () => {
+  it("adds encrypted-link storage without rotating or deleting pre-existing hash-only links", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-view-copy-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`ALTER TABLE project_view_links DROP COLUMN token_ciphertext;
+        DELETE FROM texlite_schema_migrations WHERE version = 17;
+        INSERT INTO users (id, username, display_name, password_hash, role, created_at)
+          VALUES ('owner', 'owner', 'Owner', 'hash', 'admin', '2026-11-01');
+        INSERT INTO projects (id, owner_id, name, created_at, updated_at)
+          VALUES ('paper', 'owner', 'Existing paper', '2026-11-01', '2026-11-01');
+        INSERT INTO project_view_links (id, project_id, token_hash, created_at, expires_at)
+          VALUES ('link', 'paper', 'existing-token-hash', '2026-11-01', '2099-01-01');`);
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT token_hash, token_ciphertext, expires_at FROM project_view_links WHERE id = 'link'").get())
+        .toEqual({ token_hash: "existing-token-hash", token_ciphertext: null, expires_at: "2099-01-01" });
+      const applied = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 17").get();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 17").get()).toEqual(applied);
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it("removes previously revoked view links while preserving active and expired links", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-view-revocation-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`ALTER TABLE project_view_links ADD COLUMN revoked_at TEXT;
+        DELETE FROM texlite_schema_migrations WHERE version >= 16;
+        INSERT INTO users (id, username, display_name, password_hash, role, created_at)
+          VALUES ('owner', 'owner', 'Owner', 'hash', 'admin', '2026-11-01');
+        INSERT INTO projects (id, owner_id, name, created_at, updated_at)
+          VALUES ('paper', 'owner', 'Existing paper', '2026-11-01', '2026-11-01');
+        INSERT INTO project_view_links (id, project_id, token_hash, label, created_at, expires_at, revoked_at) VALUES
+          ('active', 'paper', 'active-hash', 'Active reader', '2026-11-01', '2099-01-01', NULL),
+          ('expired', 'paper', 'expired-hash', 'Past review', '2026-11-01', '2000-01-01', NULL),
+          ('revoked', 'paper', 'revoked-hash', 'Revoked reader', '2026-11-01', NULL, '2026-11-02');`);
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT id, token_hash, label, expires_at FROM project_view_links ORDER BY id").all()).toEqual([
+        { id: "active", token_hash: "active-hash", label: "Active reader", expires_at: "2099-01-01" },
+        { id: "expired", token_hash: "expired-hash", label: "Past review", expires_at: "2000-01-01" }
+      ]);
+      expect(database.prepare("PRAGMA table_info(project_view_links)").all()).not.toEqual(expect.arrayContaining([expect.objectContaining({ name: "revoked_at" })]));
+      const applied = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 16").get();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 16").get()).toEqual(applied);
+      expect(database.prepare("SELECT COUNT(*) AS count FROM project_view_links").get()).toEqual({ count: 2 });
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it("automatically adds anonymous reader links to an existing database without changing accounts or memberships", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-view-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`DROP TABLE project_view_links;
+        DELETE FROM texlite_schema_migrations WHERE version >= 15;
+        INSERT INTO users (id, username, display_name, password_hash, role, created_at)
+          VALUES ('owner', 'owner', 'Owner', 'hash', 'admin', '2026-11-01');
+        INSERT INTO projects (id, owner_id, name, created_at, updated_at)
+          VALUES ('paper', 'owner', 'Existing paper', '2026-11-01', '2026-11-01');`);
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT name FROM projects").get()).toEqual({ name: "Existing paper" });
+      expect(database.prepare("SELECT COUNT(*) AS count FROM users").get()).toEqual({ count: 1 });
+      expect(database.prepare("SELECT * FROM project_members").all()).toEqual([]);
+      database.prepare("INSERT INTO project_view_links (id, project_id, token_hash, created_at) VALUES ('link', 'paper', 'hash', '2026-11-01')").run();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT id FROM project_view_links").all()).toEqual([{ id: "link" }]);
+      database.prepare("DELETE FROM projects WHERE id = 'paper'").run();
+      expect(database.prepare("SELECT * FROM project_view_links").all()).toEqual([]);
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
   it("restores suggestion-only reviewers from the development schema without losing review or recovery state", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-reviewer-migration-"));
     const config = migrationConfig(root, path.join(root, "texlite.db"));
@@ -28,7 +98,7 @@ describe("database migrations", () => {
     try {
       database.exec(`ALTER TABLE comments ADD COLUMN reviewer_id TEXT REFERENCES users(id) ON DELETE SET NULL;
         ALTER TABLE comment_suggestions DROP COLUMN reviewer_id;
-        DELETE FROM texlite_schema_migrations WHERE version = 14;
+        DELETE FROM texlite_schema_migrations WHERE version >= 14;
         INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES
           ('a', 'author', 'Author', 'hash', 'admin', '2026-11-01'), ('r', 'reviewer', 'Reviewer', 'hash', 'user', '2026-11-01');
         INSERT INTO projects (id, owner_id, name, created_at, updated_at) VALUES ('p', 'a', 'Paper', '2026-11-01', '2026-11-01');
@@ -291,7 +361,10 @@ describe("database migrations", () => {
           { version: 11, name: "track_agent_native_cleanup_completion" },
           { version: 12, name: "add_comment_suggestions" },
           { version: 13, name: "move_reviewer_to_comments" },
-          { version: 14, name: "keep_reviewers_on_suggestions" }
+          { version: 14, name: "keep_reviewers_on_suggestions" },
+          { version: 15, name: "add_project_view_links" },
+          { version: 16, name: "remove_revoked_project_view_links" },
+          { version: 17, name: "store_encrypted_view_link_tokens" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -316,7 +389,10 @@ describe("database migrations", () => {
           { version: 11, name: "track_agent_native_cleanup_completion" },
           { version: 12, name: "add_comment_suggestions" },
           { version: 13, name: "move_reviewer_to_comments" },
-          { version: 14, name: "keep_reviewers_on_suggestions" }
+          { version: 14, name: "keep_reviewers_on_suggestions" },
+          { version: 15, name: "add_project_view_links" },
+          { version: 16, name: "remove_revoked_project_view_links" },
+          { version: 17, name: "store_encrypted_view_link_tokens" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -356,7 +432,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -444,7 +520,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }]);
       } finally {
         migrated.close();
       }

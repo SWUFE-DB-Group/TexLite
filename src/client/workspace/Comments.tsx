@@ -15,6 +15,7 @@ import { commentReplyVisibility } from "./commentReplyVisibility";
 import { prepareCommentDeletionEffect } from "./commentDeletionEffect";
 import { UserAvatar } from "../UserAvatar";
 import { ShareUserPicker, type ShareUser } from "./ShareUserPicker";
+import { ViewLinkManager } from "./ViewLinkManager";
 
 /**
  * Comment display intentionally treats a whitespace-delimited `@username`
@@ -253,6 +254,8 @@ export function ShareDialog({ open, onOpenChange, project, projectId, onMemberCo
   const { t } = useTranslation();
   const [members, setMembers] = useState<ShareMember[]>([]);
   const [users, setUsers] = useState<ShareUser[]>([]);
+  const [shareTab, setShareTab] = useState<"members" | "links">("members");
+  const [linkBusy, setLinkBusy] = useState(false);
   const [userId, setUserId] = useState("");
   const [permission, setPermission] = useState<"read" | "edit">("read");
   const [removeTarget, setRemoveTarget] = useState<ShareMember | null>(null);
@@ -278,6 +281,7 @@ export function ShareDialog({ open, onOpenChange, project, projectId, onMemberCo
     if (!open) return;
     const controller = new AbortController(); view.current = controller;
     setUserId(""); setPermission("read"); setRemoveTarget(null); setError("");
+    setShareTab("members");
     setUsers([]); setMembers([]); setBusy(false); setLoading(true);
     void load(controller.signal).catch((reason) => {
       if (!controller.signal.aborted) setError(errorMessage(reason));
@@ -315,12 +319,17 @@ export function ShareDialog({ open, onOpenChange, project, projectId, onMemberCo
       if (!signal.aborted) setRemoveTarget(null);
     });
   };
-  return <><Modal open={open} wide className="share-dialog-modal" title={t("projectSettings.share")} description={t("projectSettings.shareDescription")} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}
+  return <><Modal open={open} wide className="share-dialog-modal" title={t("projectSettings.share")} onOpenChange={(next) => { if (!busy && !linkBusy) onOpenChange(next); }}
     onEscapeKeyDown={(event) => {
       // The first Escape dismisses the user list, not the owning share dialog.
       if (shareRef.current?.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
-    }} footer={<button disabled={busy} onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
+    }} footer={<button disabled={busy || linkBusy} onClick={() => onOpenChange(false)}>{t("common.close")}</button>}>
     <div className="share-dialog" ref={shareRef} aria-busy={loading || busy}>
+      {canManage && <div className="share-scope-tabs" role="tablist" aria-label={t("projectSettings.share")}>
+        <button role="tab" aria-selected={shareTab === "members"} disabled={busy || linkBusy} onClick={() => setShareTab("members")}>{t("projectSettings.members")}</button>
+        <button role="tab" aria-selected={shareTab === "links"} disabled={busy || linkBusy} onClick={() => setShareTab("links")}>{t("viewLinks.tab")}</button>
+      </div>}
+      {shareTab === "links" && canManage ? <ViewLinkManager key={projectId} projectId={projectId} onBusyChange={setLinkBusy} /> : <>
       {error && !removeTarget && <p className="error" role="alert">{error}</p>}
       <div className="share-owner"><Users size={17} /><span><small>{t("projects.owner")}</small><strong>{project.ownerDisplayName ?? project.ownerUsername}</strong></span></div>
       {canManage && <div className="share-add">
@@ -330,6 +339,7 @@ export function ShareDialog({ open, onOpenChange, project, projectId, onMemberCo
       </div>}
       <div className="shared-members-heading"><strong>{t("projectSettings.members")}</strong><span>{members.length}</span></div>
       <div className="shared-members">{members.map((member) => <div className="shared-member" key={member.id}><span className="member-identity"><UserAvatar userId={member.id} name={member.displayName} username={member.username} avatarStyle={member.avatarStyle} className="member-avatar" /><span><strong>{member.displayName ?? member.username}</strong><small>@{member.username}</small></span></span><span className="member-controls"><select aria-label={t("common.permission")} disabled={!canManage || busy} value={member.permission} onChange={(event) => void changePermission(member, event.target.value as "read" | "edit")}><option value="read">{t("common.readOnly")}</option><option value="edit">{t("common.readWrite")}</option></select>{canManage && <button disabled={busy} className="icon-only danger-text" title={t("common.remove")} aria-label={t("common.remove")} onClick={() => { setError(""); setRemoveTarget(member); }}><Trash2 size={15} /></button>}</span></div>)}{loading ? <div className="share-empty" role="status"><LoaderCircle className="spin" size={20} /><span>{t("common.loading")}</span></div> : members.length === 0 && <div className="share-empty"><Users size={24} /><span>{t("projectSettings.noMembers")}</span></div>}</div>
+      </>}
     </div>
   </Modal><ConfirmDialog open={Boolean(removeTarget)} title={t("projectSettings.removeTitle")} description={t("projectSettings.removeDescription", { username: removeTarget?.username ?? "" })} confirmLabel={t("common.remove")} danger busy={busy} error={error} onCancel={() => { if (!busy) { setRemoveTarget(null); setError(""); } }} onConfirm={() => void removeMember()} /></>;
 }

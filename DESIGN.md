@@ -356,6 +356,70 @@ read/edit members, excluding the owner and hiding zero. This is unrelated to
 online presence. Initial counts come with project metadata; successful share
 form loads and member changes update the badge without reloading the workspace.
 
+Owners can also create **read-only links** from a separate tab in Share. These
+are anonymous reading capabilities, not read-only members: visitors can browse
+source files, images and the current compiled PDF, but cannot comment, edit,
+compile, inspect history/Git or use agents. They do not join Yjs, consume a
+collaborator slot or appear in presence/member counts. The reader has no live
+editing subscription; Refresh fetches the latest saved files and published PDF.
+Its appearance uses the normal workspace's topbar frame, layout menu, outline,
+file-icon/tree styles, editor font defaults and PDF header. Files/source/PDF
+panels can be resized, the file tree can be collapsed, and the outline stays
+bound to the configured main document (including local inputs). Share, Git,
+Terminal, snapshots, comments and compile remain visible but disabled; none
+mount authenticated workflows. Reader settings change only browser language
+and theme. Narrow screens start with the editor-only layout.
+
+Migration 15 adds `project_view_links` with a project foreign key (cascade on
+deletion), label, SHA-256 token hash and creation/expiry timestamps. Revoking a
+link deletes its row and removes it from the owner's list. Migration 16 removes
+previously revoked records and the obsolete revocation column; active and
+expired links are preserved. Repeated owner revocation requests are idempotent. A
+link defaults to seven days; the owner can explicitly choose no expiry. Each
+project can have only one unexpired link, including a link with no expiry. An
+immediate database transaction checks for an active link before inserting, so
+concurrent creates cannot bypass this rule. Copying always returns the same
+address without changing the token or expiry. Create is hidden while an active
+link exists and becomes available after expiry or revocation. A
+256-bit independent random token travels in the `/share/:id#token` URL
+fragment, not the HTTP page URL. The browser exchanges it in a POST body
+for an HttpOnly, SameSite=Strict cookie scoped to that link's base-path-aware
+`/api/shared/:id` namespace, then removes the fragment. No login session or user
+record is created, and no token is persisted in browser storage.
+
+Migration 17 adds AES-256-GCM encrypted tokens for repeated owner copying, while
+the SHA-256 hash remains the guest authorization check. Ciphertexts are bound
+to the project/link ids using authenticated associated data; the independent
+`view-link-token.key` is generated with mode 0600 in the data directory. Only
+the actual owner's no-store management response returns recoverable link
+addresses. Guest responses never contain a token, hash or ciphertext. Each link
+row displays its address and a reusable Copy button with brief success feedback.
+The sharing dialog no longer displays the administrator-created-users notice.
+
+Link management offers Copy and Delete. To replace a link, delete it and create
+a new one. Existing hash-only links stay valid, but cannot be copied because the
+old secret cannot be reconstructed from its hash. Missing keys or corrupt
+ciphertext likewise leave deletion controls accessible; delete and recreate
+to regain copying. Back up the key with the database.
+
+Every guest metadata/source/image/PDF request, including HEAD and byte ranges,
+checks link existence, token hash and expiry in the database. Guest responses are
+private/no-store, no-referrer and noindex; uploaded SVGs have a sandbox CSP.
+PDF URLs are pinned to the current published run to avoid mixing Range bytes;
+older compile versions and output/log directories are not exposed. A changed
+published run requires Refresh. Existing authenticated project, compilation,
+Agent and WebSocket routes accept only normal account sessions, never view
+tokens. Anonymous Yjs updates are rejected before joining a room.
+
+Revocation takes effect on the next server request. The viewer also
+rechecks access every 30 seconds while visible and on returning to the tab,
+and clears source/PDF at expiry or on rejection. Revocation cannot erase content
+already copied or downloaded. Sharing deliberately exposes the source tree:
+owners should remove project-local secrets before giving a link to anyone.
+Only the current owner can list, create or revoke links; transfer keeps
+existing links under the new owner's control. Links never grant member-management
+or ownership rights.
+
 The owner-only share form uses one editable user combobox: opening it lists
 available users, and typing filters by display name or username. Candidates
 exclude the owner and existing members. The popup is at most 240 px tall,
@@ -1320,6 +1384,7 @@ The default data layout is:
 ├── texlite.db-wal
 ├── texlite.db-shm
 ├── git-token.key
+├── view-link-token.key
 ├── tmp/ and trash/
 └── projects/
     └── <project-id>/
@@ -1331,10 +1396,10 @@ The default data layout is:
                 └── history/
 ~~~
 
-Back up `texlite.db`, `git-token.key`, and `projects/` together. Include the
-SQLite WAL files in a live filesystem backup or use a SQLite-aware backup
-procedure. The token encryption key is required to recover saved GitHub
-credentials.
+Back up `texlite.db`, `git-token.key`, `view-link-token.key`, and `projects/`
+together. Include the SQLite WAL files in a live filesystem backup or use a SQLite-aware backup
+procedure. The encryption keys are required to recover saved GitHub credentials
+and copy existing read-only links, respectively.
 
 TexLite opens SQLite with WAL mode and `synchronous=NORMAL`. This avoids a
 full WAL fsync on most small metadata writes while preserving SQLite's atomic

@@ -1,6 +1,5 @@
-import { formatBytes } from "../formatBytes";
 import { lazy, Suspense, useRef, useState } from "react";
-import { AlertTriangle, Download, Eraser, LoaderCircle, Logs, PackageOpen, ScrollText, XCircle } from "lucide-react";
+import { AlertTriangle, Eraser, LoaderCircle, Logs, PackageOpen, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Panel } from "react-resizable-panels";
 import { WorkspaceSyncSeparator } from "./WorkspaceSyncSeparator";
@@ -10,8 +9,7 @@ import type { CompileMessages } from "../compileLog";
 import type { FileEntry } from "../types";
 import type { PdfTarget } from "../PdfPreview";
 import { PdfDocumentIcon } from "../PdfDocumentIcon";
-import i18n from "../i18n";
-import { formatDateTime } from "../dateTime";
+import { WorkspacePreviewHeader } from "./WorkspacePreviewHeader";
 import { loadPdfPreview } from "../workspacePreload";
 import type { CompileCleanMode } from "./useProjectCompilation";
 import type { CompileArtifact, DiagnosticTab, PreviewSurface, PreviewTab, WorkspaceLayout } from "./types";
@@ -86,11 +84,6 @@ export function WorkspacePreviewPanel({
     onPdfDisplayed(loadedUrl);
   };
   const canSyncWithDisplayedPdf = canSyncPdfToSource && Boolean(pdfUrl) && displayedPdfUrl === pdfUrl;
-  const pdfSizeLabel = pdfSizeBytes == null ? "" : formatBytes(pdfSizeBytes);
-  const pdfMetaLabel = [
-    pdfSizeLabel,
-    pdfCompiledLabel ? t("editor.pdfUpdatedAt", { time: pdfCompiledLabel }) : ""
-  ].filter(Boolean).join(" · ");
   return <>
     {showSyncResize && <WorkspaceSyncSeparator showControls={!commentsOpen}><button disabled={!pdfUrl || !pdfViewport || !canSyncWithDisplayedPdf} title={!canSyncPdfToSource ? t("editor.syncTexOnlyForMain") : !canSyncWithDisplayedPdf ? t("editor.syncTexWaitingForPdf") : t("editor.showInSource")} aria-label={t("editor.showInSource")} onClick={(event) => { event.stopPropagation(); if (!canSyncWithDisplayedPdf) return; syncVisiblePdfToSource(); }}><span aria-hidden>←</span></button><button disabled={!activeFile || !pdfUrl || !canSyncWithPdf} title={!canSyncWithPdf ? t("editor.syncTexOnlyForTex") : t("editor.showInPdf")} aria-label={t("editor.showInPdf")} onClick={(event) => { event.stopPropagation(); if (!activeFile || !pdfUrl || !canSyncWithPdf) return; void syncCurrentSourceToPdf(); }}><span aria-hidden>→</span></button></WorkspaceSyncSeparator>}
     <Panel id="preview" minSize="22%">
@@ -98,13 +91,8 @@ export function WorkspacePreviewPanel({
       <div className={`workspace-output-layout${commentsOpen ? " has-comments" : ""}`}>
         <WorkspaceCommentsSlot open={commentsOpen} onHost={onCommentsHost} />
       <section className="preview-panel">
-        <div className="preview-tabs">
-          <div className="preview-tab-list" role="tablist" aria-label={t("editor.outputTabs")}>
-            <button role="tab" aria-selected={previewTab === "pdf"} className={`pdf-tab${previewTab === "pdf" ? " active" : ""}`} onClick={() => selectPreviewTab("pdf")} title={pdfCompiledAt ? t("editor.pdfCompiledAtFor", { file: activeMainFile, time: formatDateTime(pdfCompiledAt, i18n.resolvedLanguage) }) : t("editor.currentMainDocument", { path: activeMainFile })}><PdfDocumentIcon className="pdf-tab-icon" /><span className="pdf-tab-label"><span className="pdf-tab-title">PDF · {pdfTargetLabel}</span>{pdfMetaLabel && <small>{pdfMetaLabel}</small>}</span></button>
-            <button role="tab" aria-selected={previewTab === "diagnostics"} className={`diagnostics-tab${previewTab === "diagnostics" ? " active" : ""}`} onClick={() => selectPreviewTab("diagnostics")}><ScrollText size={14} />{t("editor.outputTabs")}<span className="diagnostic-count">{diagnosticCount}</span></button>
-          </div>
-          {pdfDownloadUrl && <a className="pdf-download-top" href={pdfDownloadUrl} download title={t("editor.downloadPdf")} aria-label={t("editor.downloadPdf")}><Download size={15} /><span>{t("editor.downloadPdf")}</span></a>}
-        </div>
+        <WorkspacePreviewHeader mainFile={activeMainFile} targetLabel={pdfTargetLabel} compiledAt={pdfCompiledAt} compiledLabel={pdfCompiledLabel} sizeBytes={pdfSizeBytes}
+          downloadUrl={pdfDownloadUrl} activeSurface={previewTab} onSelect={selectPreviewTab} diagnosticCount={diagnosticCount} />
         {previewTab === "diagnostics" && <div className="preview-subtabs" role="tablist" aria-label={t("editor.outputTabs")}>
           <button role="tab" aria-selected={diagnosticTab === "log"} className={diagnosticTab === "log" ? "active" : ""} onClick={() => selectPreviewTab("log")}><Logs size={13} />{t("editor.log")}</button>
           <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{compileMessages.warnings.length}</span></button>

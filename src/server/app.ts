@@ -37,6 +37,7 @@ import { registerCollaborationRoutes } from "./routes/collaboration.js";
 import { registerCitationRoutes } from "./routes/citations.js";
 import { registerCommentRoutes } from "./routes/comments.js";
 import { registerProjectMemberRoutes } from "./routes/projectMembers.js";
+import { registerProjectViewLinkRoutes } from "./routes/projectViewLinks.js";
 import { registerProjectFileRoutes } from "./routes/projectFiles.js";
 import { registerProjectReferenceRoutes } from "./routes/projectReferences.js";
 import { registerProjectHistoryRoutes } from "./routes/projectHistory.js";
@@ -311,6 +312,7 @@ export async function buildApp(
     });
     registerCommentRoutes(routes, { config, db, collaboration, projectMutations });
     registerProjectMemberRoutes(routes, { db, collaboration, projectMutations });
+    registerProjectViewLinkRoutes(routes, { db, config, projectMutations, projectOutlines });
     registerProjectFileRoutes(routes, {
       config,
       db,
@@ -363,8 +365,12 @@ export async function buildApp(
           }
         }
       });
-      const sendIndex = async (_request: FastifyRequest, reply: FastifyReply) => {
+      const sendIndex = async (request: FastifyRequest, reply: FastifyReply) => {
         reply.header("Cache-Control", "no-store");
+        if ((withoutBasePath(config.basePath, request.url) ?? request.url).startsWith("/share/")) {
+          reply.header("Referrer-Policy", "no-referrer");
+          reply.header("X-Robots-Tag", "noindex, nofollow");
+        }
         return reply.type("text/html; charset=utf-8").send(renderedIndex);
       };
       routes.get("/", sendIndex);

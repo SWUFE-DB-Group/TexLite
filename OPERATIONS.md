@@ -219,7 +219,7 @@ Relative paths are resolved from the configuration file. The default data
 directory is `$XDG_DATA_HOME/texlite`, or `~/.local/share/texlite` when
 `XDG_DATA_HOME` is unset. Set `storage.dataDir` or `TEXLITE_DATA_DIR` to move
 it. The data directory contains the SQLite database, project sources, compiled
-output, history objects, and Git-token encryption key.
+output, history objects, and encryption keys for GitHub tokens and read-only links.
 
 Use [texlite.config.example.json](texlite.config.example.json) as a complete
 starting point. It omits `storage.dataDir`, so copied configurations retain the
@@ -591,9 +591,12 @@ calls; platform/native-agent login behavior should also be checked when deployin
 ## Backup and security
 
 Back up the entire configured data directory, including `texlite.db`, its WAL
-files, `git-token.key`, and `projects/`. Restoring saved GitHub tokens requires
-the same encryption key. For an online copy of SQLite, include WAL files or use
-a SQLite-aware backup method.
+files, `git-token.key`, `view-link-token.key`, and `projects/`. Saved GitHub tokens
+and copying existing read-only links require their corresponding encryption
+keys. Losing `view-link-token.key` does not invalidate distributed reader links,
+but the owner must delete the link and create a new one to regain copying.
+For an online copy of SQLite, include WAL files or use a SQLite-aware backup
+method.
 
 TexLite is designed for trusted users on localhost. Shell escape is disabled by
 default and compile jobs have timeouts and concurrency limits, but LaTeX itself

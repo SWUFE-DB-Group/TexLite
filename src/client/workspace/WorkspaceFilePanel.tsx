@@ -205,18 +205,18 @@ function startPathDrag(event: DragEvent<HTMLButtonElement>, entry: FileEntry, se
   setDraggedEntry(entry);
 }
 
-function WorkspaceOutlinePanel({
-  outline, activeFile, activeMainFile, sourceCursorStore, wordCountBusy, hasSelection, jumpToSource, syncSourceToPdf, onWordCount
+export function WorkspaceOutlinePanel({
+  outline, activeFile, activeMainFile, sourceCursorStore, wordCountBusy = false, hasSelection = false, jumpToSource, syncSourceToPdf, onWordCount
 }: {
   outline: ProjectOutlineItem[];
   activeFile: string;
   activeMainFile: string;
   sourceCursorStore: SourceCursorStore;
-  wordCountBusy: boolean;
-  hasSelection: boolean;
+  wordCountBusy?: boolean;
+  hasSelection?: boolean;
   jumpToSource: (path: string, line: number, column: number) => void;
-  syncSourceToPdf: (path: string, line: number, column: number) => Promise<void>;
-  onWordCount: (mode: WordCountMode) => void;
+  syncSourceToPdf?: (path: string, line: number, column: number) => Promise<void>;
+  onWordCount?: (mode: WordCountMode) => void;
 }) {
   const { t } = useTranslation();
   const sourceCursorLine = useSyncExternalStore(
@@ -248,7 +248,7 @@ function WorkspaceOutlinePanel({
     return next;
   });
 
-  return <section className="outline-panel"><div className="panel-title"><button className="outline-heading" type="button" aria-expanded={!allCollapsed} title={t(allCollapsed ? "editor.expandOutline" : "editor.collapseOutline")} onClick={toggleAll} disabled={collapsibleKeys.length === 0}><ListTree size={14} />{t("common.outline")}</button><span className="word-count-actions" role="group" aria-label={t("editor.wordCountTitle")}><button type="button" title={t("editor.wordCountFullHint")} onClick={() => onWordCount("full")} disabled={wordCountBusy || !activeMainFile}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountFull")}</button><button type="button" title={t("editor.wordCountSelectionHint")} onClick={() => onWordCount("selection")} disabled={wordCountBusy || !hasSelection}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountSelection")}</button></span></div><div className="outline">{visibleItems.map((entry) => {
+  return <section className="outline-panel"><div className="panel-title"><button className="outline-heading" type="button" aria-expanded={!allCollapsed} title={t(allCollapsed ? "editor.expandOutline" : "editor.collapseOutline")} onClick={toggleAll} disabled={collapsibleKeys.length === 0}><ListTree size={14} />{t("common.outline")}</button>{onWordCount && <span className="word-count-actions" role="group" aria-label={t("editor.wordCountTitle")}><button type="button" title={t("editor.wordCountFullHint")} onClick={() => onWordCount("full")} disabled={wordCountBusy || !activeMainFile}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountFull")}</button><button type="button" title={t("editor.wordCountSelectionHint")} onClick={() => onWordCount("selection")} disabled={wordCountBusy || !hasSelection}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountSelection")}</button></span>}</div><div className="outline">{visibleItems.map((entry) => {
     const { item } = entry;
     const collapsed = collapsedKeys.has(entry.key);
     const current = activeFile === item.path && sourceCursorLine === item.line;
@@ -259,7 +259,7 @@ function WorkspaceOutlinePanel({
     return <div className={`outline-row${current ? " current" : ""}`} key={entry.key}>
       <span className="outline-guides" aria-hidden style={{ width: `${item.level * 12}px` }} />
       {entry.hasChildren ? <button className="outline-toggle" type="button" aria-label={t(collapsed ? "editor.expandOutlineItem" : "editor.collapseOutlineItem", { title: item.title })} aria-expanded={!collapsed} onClick={() => toggleItem(entry.key)}>{collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}</button> : <span className="outline-toggle-spacer" aria-hidden />}
-      <button className="outline-item" type="button" onClick={() => { jumpToSource(item.path, item.line, 1); void syncSourceToPdf(item.path, item.line, 1); }}><small>{showLineNumber ? item.line : item.path.split("/").at(-1)}</small><span className="outline-title">{item.title}</span></button>
+      <button className="outline-item" type="button" onClick={() => { jumpToSource(item.path, item.line, 1); void syncSourceToPdf?.(item.path, item.line, 1); }}><small>{showLineNumber ? item.line : item.path.split("/").at(-1)}</small><span className="outline-title">{item.title}</span></button>
     </div>;
   })}{outline.length === 0 && <p className="muted padded">{t("editor.noOutline")}</p>}</div></section>;
 }
