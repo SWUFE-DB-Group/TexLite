@@ -111,3 +111,31 @@ it("shows the shared member count even when nobody is online, updates it and hid
   await act(async () => host.querySelector<HTMLButtonElement>('.share-action')!.click());
   expect(onShare).toHaveBeenCalledOnce();
 });
+
+it("retains accessible toolbar names and full layout choices when toolbar labels are compacted", async () => {
+  const changeWorkspaceLayout = vi.fn();
+  const render = (layout: WorkspaceTopbarProps["workspaceLayout"]) => act(async () => root.render(createElement(WorkspaceTopbar, {
+    ...topbarProps, workspaceLayout: layout, changeWorkspaceLayout, showCitationLibrary: true,
+    agentTerminal: { open: false, activeCount: 2, toggle: noop }
+  })));
+  await render("editor-pdf");
+  const actions = host.querySelectorAll<HTMLButtonElement>(".editor-actions > button, .layout-trigger");
+  expect(actions).toHaveLength(10);
+  for (const action of actions) expect(action.getAttribute("aria-label")).toBeTruthy();
+  const trigger = host.querySelector<HTMLButtonElement>(".layout-trigger")!;
+  expect(trigger.querySelector(".lucide-columns-2")).not.toBeNull();
+  await act(async () => trigger.click());
+  const choices = host.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
+  expect(choices).toHaveLength(3);
+  for (const choice of choices) {
+    expect(choice.querySelector("strong")?.textContent).toBeTruthy();
+    expect(choice.querySelector("small")?.textContent).toBeTruthy();
+    expect(choice.querySelector(".workspace-action-label")).toBeNull();
+  }
+  await act(async () => choices[2].click());
+  expect(changeWorkspaceLayout).toHaveBeenCalledWith("pdf-only");
+  expect(host.querySelector('[role="menu"]')).toBeNull();
+  await render("pdf-only");
+  expect(trigger.querySelector(".lucide-panel-right")).not.toBeNull();
+  expect(trigger.getAttribute("aria-label")).toContain(i18n.t("editor.layout.pdf-only.name"));
+});

@@ -20,7 +20,11 @@ interface PdfViewerCallbacks {
   onError: () => void;
   onLocation: (location: PdfLocation) => void;
   onDoubleClick: (location: PdfLocation) => void;
+  onZoom: (zoom: number) => void;
 }
+
+// Safari exposes cumulative pinch scale through non-standard gesture events.
+interface PdfGestureEvent extends Event { scale: number; clientX: number; clientY: number }
 
 export function isAllowedPdfLink(url: string): boolean {
   return /^(?:https?|mailto|ftp):/i.test(url.trim());
@@ -71,6 +75,9 @@ export class PdfViewerSession {
   private marker: HTMLSpanElement | null = null;
   private initialNavigationPending = false;
   private fittedWidth = 0;
+  private zoomFrame: number | null = null;
+  private pendingZoom: { zoom: number; origin: [number, number] } | null = null;
+  private gestureStartZoom: number | null = null;
 
   // PDF.js reserves this amount for horizontal margins in page-width mode.
   private static readonly PAGE_WIDTH_PADDING = 40;
@@ -150,6 +157,9 @@ export class PdfViewerSession {
     });
     this.container.addEventListener("dblclick", this.doubleClick, { signal: this.abort.signal });
     this.container.addEventListener("wheel", this.wheel, { passive: false, signal: this.abort.signal });
+    this.container.addEventListener("gesturestart", this.gestureStart, { passive: false, signal: this.abort.signal });
+    this.container.addEventListener("gesturechange", this.gestureChange, { passive: false, signal: this.abort.signal });
+    this.container.addEventListener("gestureend", this.gestureEnd, { passive: false, signal: this.abort.signal });
     this.resize = new ResizeObserver(() => this.scheduleUpdate(true));
     this.resize.observe(this.container);
     this.linkService.setDocument(this.document);
@@ -168,11 +178,13 @@ export class PdfViewerSession {
 
   setZoom(zoom: number): void {
     if (this.zoom === zoom) return;
+    this.cancelGestureZoom();
     this.zoom = zoom;
     if (this.initialized) this.applyZoom();
   }
 
   fitWidth(): void {
+    this.cancelGestureZoom();
     this.zoom = 100;
     if (this.initialized) this.applyZoom();
     this.container.scrollLeft = 0;
@@ -210,6 +222,7 @@ export class PdfViewerSession {
     this.abort.abort();
     this.resize?.disconnect();
     if (this.frame !== null) window.cancelAnimationFrame(this.frame);
+    this.cancelGestureZoom();
     // null is the upstream reset API; its declaration incorrectly omits null.
     if (this.viewer) (this.viewer.setDocument as (document: PDFDocumentProxy | null) => void)(null);
     this.linkService.setDocument(null);
@@ -325,9 +338,82 @@ export class PdfViewerSession {
   };
 
   private wheel = (event: WheelEvent): void => {
+    if (event.ctrlKey && this.canGestureZoom()) {
+      // Trackpad pinch is a Ctrl+wheel gesture in Chromium/Firefox. Keep
+      // browser zoom outside the PDF and ordinary scrolling untouched.
+      event.preventDefault();
+      if (this.gestureStartZoom !== null) return; // Safari may emit both streams.
+      const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.container.clientHeight : 1;
+      this.queueGestureZoom((this.pendingZoom?.zoom ?? this.zoom) * Math.exp(-event.deltaY * units / 100), event.clientX, event.clientY);
+      return;
+    }
     if (!event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
     event.preventDefault();
     this.container.scrollLeft += event.deltaY;
     this.scheduleUpdate();
   };
+
+  private canGestureZoom(): boolean {
+    return this.ready && !this.destroyed && !this.container.classList.contains("pdf-viewer-pending");
+  }
+
+  private gestureStart = (event: Event): void => {
+    if (!this.canGestureZoom()) return;
+    event.preventDefault();
+    this.gestureStartZoom = this.pendingZoom?.zoom ?? this.zoom;
+  };
+
+  private gestureChange = (event: Event): void => {
+    if (this.gestureStartZoom === null) return;
+    event.preventDefault();
+    const gesture = event as PdfGestureEvent;
+    if (Number.isFinite(gesture.scale) && gesture.scale > 0) {
+      this.queueGestureZoom(this.gestureStartZoom * gesture.scale, gesture.clientX, gesture.clientY);
+    }
+  };
+
+  private gestureEnd = (event: Event): void => {
+    if (this.gestureStartZoom === null) return;
+    event.preventDefault();
+    this.gestureStartZoom = null;
+  };
+
+  private queueGestureZoom(value: number, x: number, y: number): void {
+    if (!Number.isFinite(value)) return;
+    const bounds = this.container.getBoundingClientRect();
+    this.pendingZoom = {
+      zoom: Math.max(50, Math.min(200, value)),
+      origin: [Number.isFinite(x) ? x : bounds.left + bounds.width / 2,
+        Number.isFinite(y) ? y : bounds.top + bounds.height / 2]
+    };
+    if (this.zoomFrame !== null) return;
+    this.zoomFrame = window.requestAnimationFrame(() => {
+      this.zoomFrame = null;
+      const pending = this.pendingZoom;
+      this.pendingZoom = null;
+      const page = this.pageView(this.viewer.currentPageNumber);
+      if (!pending || !page || !this.canGestureZoom()) return;
+      const fitScale = (this.container.clientWidth - PdfViewerSession.PAGE_WIDTH_PADDING) / page.width * page.scale;
+      if (fitScale <= 0 || pending.zoom === this.zoom) return;
+      // PDF.js subtracts the container's offset-parent coordinates, not its
+      // client rect. Translate the gesture origin for our nested preview pane.
+      const bounds = this.container.getBoundingClientRect();
+      const origin = [pending.origin[0] - bounds.left + this.container.offsetLeft,
+        pending.origin[1] - bounds.top + this.container.offsetTop];
+      // Use the native pointer-anchored scaling and delayed rasterization;
+      // don't restart expensive canvas painting for every wheel event.
+      this.viewer.updateScale({ scaleFactor: fitScale * pending.zoom / 100 / this.viewer.currentScale,
+        drawingDelay: 150, origin });
+      this.zoom = Math.max(50, Math.min(200, this.viewer.currentScale / fitScale * 100));
+      this.updateMarker();
+      this.callbacks.onZoom(this.zoom);
+    });
+  }
+
+  private cancelGestureZoom(): void {
+    if (this.zoomFrame !== null) window.cancelAnimationFrame(this.zoomFrame);
+    this.zoomFrame = null;
+    this.pendingZoom = null;
+    this.gestureStartZoom = null;
+  }
 }

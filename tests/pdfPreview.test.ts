@@ -166,6 +166,23 @@ describe("PDFViewer document replacement", () => {
     expect(state.leases).toHaveLength(1);
   });
 
+  it("carries pinch zoom from the visible PDF into its pending replacement without refetching or accepting stale zoom", async () => {
+    await render(); await loaded(0); await painted(0);
+    await render({ url: "/two.pdf" });
+    await act(async () => state.sessions[0].callbacks.onZoom(123.4));
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("123%");
+    await loaded(1);
+    expect(state.sessions[1].options.zoom).toBe(123.4);
+    await act(async () => state.sessions[1].callbacks.onZoom(180));
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("123%");
+    await act(async () => state.sessions[0].callbacks.onZoom(145));
+    expect(state.sessions[1].setZoom).toHaveBeenLastCalledWith(145);
+    await painted(1);
+    await act(async () => state.sessions[0].callbacks.onZoom(70));
+    expect(container.querySelector(".pdf-zoom-value")?.textContent).toBe("145%");
+    expect(state.leases).toHaveLength(2);
+  });
+
   it("releases pending/displayed resources on unmount and ignores late responses", async () => {
     await render(); await loaded(0); await painted(0);
     await render({ url: "/two.pdf" });

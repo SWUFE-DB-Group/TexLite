@@ -67,6 +67,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .topbar, .editor-topbar { height: 62px; display: flex; align-items: center; padding: 0 26px; background: var(--ui-header-bg, #263a33); color: var(--ui-header-text, #f0f2ee); box-shadow: inset 0 -1px #ffffff0a; }
 .top-actions { margin-left: auto; display: flex; align-items: center; gap: 18px; font-size: 14px; }
 .top-actions .ghost { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: 6px; padding: 6px 8px; background: transparent; color: inherit; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.top-action-label { white-space: nowrap; }
 .top-actions .ghost:hover:not(:disabled) { border-color: #ffffff1a; background: #ffffff12; }
 .top-actions .ghost:active { background: #ffffff18; }
 .top-actions .ghost:focus-visible { outline: 2px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; }
@@ -2063,10 +2064,52 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
     padding-right: 11px;
   }
   .project-list-avatar { width: 36px; height: 36px; }
-  .editor-actions button { padding: 8px; }
-  .editor-actions button svg + * { display: none; }
-  .editor-actions .comments-action, .editor-actions .snapshots-action { padding: 7px 6px; }
-  .editor-actions .comments-action svg + *, .editor-actions .snapshots-action svg + * { display: inline; }
+}
+
+/* Compact only toolbar labels, never the text/checkmarks inside open menus. */
+@media (max-width: 1250px) {
+  .file-tools .file-quick-open { display: none; }
+  .preview-tabs .diagnostics-tab-label, .preview-tabs .diagnostic-count, .pdf-download-top .pdf-download-label { display: none; }
+  .preview-tabs .diagnostics-tab, .pdf-download-top { min-width: 44px; min-height: 44px; justify-content: center; padding-inline: 10px; }
+  .preview-tabs .diagnostics-tab > svg, .pdf-download-top > svg { width: 18px; height: 18px; flex: none; }
+  .topbar { padding-inline: 18px; }
+  .top-actions { gap: 8px; }
+  .top-actions > .ghost { flex: none; min-width: 44px; min-height: 44px; justify-content: center; padding: 10px; }
+  .top-actions > .ghost > svg { width: 20px; height: 20px; flex: none; }
+  .top-actions .top-action-label { display: none; }
+  .project-catalog-heading .section-actions { flex: none; flex-wrap: nowrap; gap: 8px; }
+  .project-catalog-heading .section-actions > button { width: 44px; height: 44px; padding: 10px; justify-content: center; }
+  .project-catalog-heading .section-actions > button > svg { width: 20px; height: 20px; flex: none; }
+  .project-catalog-heading .project-action-label { display: none; }
+}
+
+@media (max-width: 1440px) {
+  .editor-topbar { gap: 8px; }
+  .editor-topbar > .back { flex: none; }
+  .editor-actions { flex: none; gap: 6px; }
+  .editor-actions > button, .editor-actions .layout-trigger { min-width: 44px; min-height: 44px; justify-content: center; padding: 8px; }
+  .editor-actions .layout-trigger { min-width: 138px; justify-content: flex-start; padding-inline: 10px; }
+  .editor-actions > button > svg, .editor-actions .layout-trigger > svg:first-child { flex: none; width: 18px; height: 18px; }
+  .editor-actions > button > .workspace-action-label:not(.workspace-action-label-persistent) { display: none; }
+}
+
+@media (max-width: 960px) {
+  .editor-topbar { height: auto; min-height: 56px; flex-wrap: wrap; padding-block: 6px; gap: 6px 8px; }
+  .editor-topbar .project-heading { flex: 1; max-width: none; }
+  .editor-actions { width: 100%; flex-wrap: wrap; }
+  .layout-popover { left: 0; right: auto; width: min(290px, calc(100vw - 96px)); }
+}
+
+@media (max-width: 640px) {
+  .topbar { padding-inline: 12px; }
+  .top-actions { gap: 3px; }
+  .topbar .user-menu-name { display: none; }
+  .topbar .user-menu-trigger { min-height: 44px; gap: 5px; padding-inline: 7px; }
+  .topbar .site-title { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+@media (max-width: 440px) {
+  .topbar .site-title { display: none; }
 }
 
 @media (max-width: 960px) {

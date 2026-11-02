@@ -26,7 +26,7 @@ function ReaderSettings() {
   const [open, setOpen] = useState(false);
   const languageId = useId();
   return <Popover.Root open={open} onOpenChange={setOpen}>
-    <Popover.Trigger asChild><button type="button" className={open ? "active" : ""}><Settings size={15} />{t("common.settings")}</button></Popover.Trigger>
+    <Popover.Trigger asChild><button type="button" className={open ? "active" : ""} aria-label={t("common.settings")} title={t("common.settings")}><Settings size={15} /><span className="workspace-action-label workspace-action-label-persistent">{t("common.settings")}</span></button></Popover.Trigger>
     <Popover.Portal><Popover.Content className="user-menu-content shared-reader-settings" align="end" sideOffset={10} collisionPadding={12} aria-label={t("common.settings")}>
       <div className="user-menu-settings"><div className="user-menu-language">
         <label htmlFor={languageId}><Languages size={16} />{t("common.language")}</label><div className="user-menu-language-select"><select id={languageId} value={appLocale(i18n.resolvedLanguage)} onChange={(event) => void i18n.changeLanguage(event.target.value)}>
@@ -47,15 +47,15 @@ export function SharedWorkspaceTopbar({ data, path = "", loading, onRefresh, chi
     titleAccessory={data && <span className="shared-reader-access" tabIndex={0} title={expiry} data-texlite-tooltip-always><LockKeyhole size={13} aria-hidden />{t("viewLinks.readOnly")}</span>}>
     {children}
     {data && <>
-      <button type="button" className="share-action" disabled aria-label={t("projectSettings.share")}><Users size={15} /><span>{t("projectSettings.share")}</span></button>
-      <button type="button" className="snapshots-action" disabled aria-label={t("history.projectSnapshots")}><FileClock size={15} />{t("history.projectSnapshotsButton")}</button>
-      <button type="button" className="comments-action" disabled aria-label={t("common.comments")}><MessageSquare size={15} /><span>{t("common.comments")}</span></button>
-      <button type="button" className="git-action" disabled><GitBranch size={15} />Git</button>
-      <button type="button" className="reader-terminal-action" disabled aria-label={t("agents.terminal")}><TerminalSquare size={15} /><span>{t("agents.terminal")}</span></button>
+      <button type="button" className="share-action" disabled aria-label={t("projectSettings.share")}><Users size={15} /><span className="workspace-action-label">{t("projectSettings.share")}</span></button>
+      <button type="button" className="snapshots-action" disabled aria-label={t("history.projectSnapshots")}><FileClock size={15} /><span className="workspace-action-label">{t("history.projectSnapshotsButton")}</span></button>
+      <button type="button" className="comments-action" disabled aria-label={t("common.comments")}><MessageSquare size={15} /><span className="workspace-action-label">{t("common.comments")}</span></button>
+      <button type="button" className="git-action" disabled aria-label={t("git.title")}><GitBranch size={15} /><span className="workspace-action-label">Git</span></button>
+      <button type="button" className="reader-terminal-action" disabled aria-label={t("agents.terminal")}><TerminalSquare size={15} /><span className="workspace-action-label">{t("agents.terminal")}</span></button>
     </>}
-    <button type="button" disabled={loading} aria-label={t("viewLinks.refresh")} onClick={onRefresh}><RefreshCw size={15} /><span>{t("viewLinks.refresh")}</span></button>
+    <button type="button" disabled={loading} aria-label={t("viewLinks.refresh")} title={t("viewLinks.refresh")} onClick={onRefresh}><RefreshCw size={15} /><span className="workspace-action-label">{t("viewLinks.refresh")}</span></button>
     <ReaderSettings />
-    {data && <button type="button" className="compile" disabled><Play size={15} />{t("editor.compile", { engine: data.project.engine })}</button>}
+    {data && <button type="button" className="compile" disabled aria-label={t("editor.compile", { engine: data.project.engine })}><Play size={15} /><span className="workspace-action-label workspace-action-label-persistent">{t("editor.compile", { engine: data.project.engine })}</span></button>}
   </WorkspaceTopbarFrame>;
 }
 
@@ -98,9 +98,9 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
   const compiledLabel = compiledAt ? formatDateTime(compiledAt, i18n.resolvedLanguage, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
   return <>
     <SharedWorkspaceTopbar data={data} path={path} loading={loading} onRefresh={onRefresh}>
-      {showEditor && <button type="button" className={!filesCollapsed ? "active" : ""} aria-expanded={!filesCollapsed} onClick={() => {
+      {showEditor && <button type="button" className={!filesCollapsed ? "active" : ""} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={() => {
         if (filesPanel.current?.isCollapsed()) filesPanel.current.expand(); else filesPanel.current?.collapse();
-      }}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}{t("common.files")}</button>}
+      }}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
       <WorkspaceLayoutMenu value={layout} onChange={setLayout} />
     </SharedWorkspaceTopbar>
     {error && <div className="shared-reader-error error" role="alert">{error}</div>}

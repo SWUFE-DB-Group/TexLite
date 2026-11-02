@@ -32,6 +32,9 @@ vi.mock("pdfjs-dist/web/pdf_viewer.mjs", () => ({
       if (value === "page-width") this.currentScale = (this.options.container.clientWidth - 40) / 560;
     }
     update = vi.fn(); pages: any[] = [];
+    updateScale = vi.fn(({ scaleFactor }: { scaleFactor: number; drawingDelay: number; origin: number[] }) => {
+      this.currentScale = Math.round(this.currentScale * scaleFactor * 100) / 100;
+    });
     pagesCapability = pendingPages();
     get pagesPromise() { return this.pagesCapability.promise; }
     setDocument = vi.fn((document: unknown) => {
@@ -89,6 +92,7 @@ import { isAllowedPdfLink, pdfPointToSourceLocation, PdfViewerSession, sourceLoc
 
 let host: HTMLDivElement, session: PdfViewerSession | null;
 const makeCallbacks = () => ({ onReady: vi.fn<() => void>(), onError: vi.fn<() => void>(),
+  onZoom: vi.fn<(zoom: number) => void>(),
   onLocation: vi.fn<(location: { page: number; x: number; y: number }) => void>(),
   onDoubleClick: vi.fn<(location: { page: number; x: number; y: number }) => void>() });
 let callbacks: ReturnType<typeof makeCallbacks>;
@@ -105,6 +109,22 @@ function create(options: { zoom: number; location?: { page: number; x: number; y
   Object.defineProperty(session.container, "clientWidth", { value: 600, configurable: true });
   Object.defineProperty(session.container, "clientHeight", { value: 700 });
   return session;
+}
+function showPdf() {
+  create(); emit("pagesinit"); viewer().pages[0].renderingState = 3;
+  emit("pagerendered", { pageNumber: 1 }); session!.show(); flushFrames();
+}
+function pinchWheel(deltaY: number, options: WheelEventInit = {}) {
+  const event = new WheelEvent("wheel", { cancelable: true, ctrlKey: true, deltaY, clientX: 210, clientY: 320, ...options });
+  // happy-dom's WheelEvent extends UIEvent rather than MouseEvent.
+  Object.assign(event, { ctrlKey: options.ctrlKey ?? true, shiftKey: options.shiftKey ?? false,
+    clientX: options.clientX ?? 210, clientY: options.clientY ?? 320 });
+  session!.container.dispatchEvent(event); return event;
+}
+function gesture(type: string, scale = 1) {
+  const event = new Event(type, { cancelable: true });
+  Object.assign(event, { scale, clientX: 240, clientY: 350 });
+  session!.container.dispatchEvent(event); return event;
 }
 
 beforeEach(() => {
@@ -178,6 +198,88 @@ describe("PDFViewer adapter", () => {
     session!.fitWidth();
     expect(viewer().scaleChanges).toHaveLength(2);
     expect(viewer().scaleChanges[1]).toBeCloseTo(1.5);
+  });
+
+  it("coalesces trackpad pinch around the pointer and keeps React zoom synchronization from resetting its anchor", () => {
+    showPdf();
+    expect(pinchWheel(-5).defaultPrevented).toBe(true);
+    pinchWheel(-5);
+    expect(viewer().updateScale).not.toHaveBeenCalled();
+    flushFrames();
+    expect(viewer().updateScale).toHaveBeenCalledOnce();
+    expect(viewer().updateScale).toHaveBeenCalledWith({ scaleFactor: expect.closeTo(Math.exp(.1)), drawingDelay: 150, origin: [210, 320] });
+    expect(callbacks.onZoom).toHaveBeenLastCalledWith(expect.closeTo(111));
+    const changes = viewer().scaleChanges.length;
+    session!.setZoom(callbacks.onZoom.mock.lastCall![0]);
+    expect(viewer().scaleChanges).toHaveLength(changes);
+  });
+
+  it("keeps normal wheel scrolling and Shift+wheel horizontal panning independent of zoom", () => {
+    showPdf();
+    expect(pinchWheel(30, { ctrlKey: false }).defaultPrevented).toBe(false);
+    expect(pinchWheel(30, { ctrlKey: false, shiftKey: true }).defaultPrevented).toBe(true);
+    expect(session!.container.scrollLeft).toBe(30);
+    flushFrames();
+    expect(viewer().updateScale).not.toHaveBeenCalled();
+    expect(callbacks.onZoom).not.toHaveBeenCalled();
+  });
+
+  it("keeps pinch percentages relative to fit-width after resizing rather than native 96-DPI scale", () => {
+    showPdf();
+    Object.defineProperty(session!.container, "clientWidth", { value: 880, configurable: true });
+    state.observers[0].callback(); flushFrames();
+    expect(viewer().currentScale).toBe(1.5);
+    pinchWheel(-10); flushFrames();
+    expect(viewer().currentScale).toBe(1.66);
+    expect(callbacks.onZoom).toHaveBeenLastCalledWith(expect.closeTo(1.66 / 1.5 * 100));
+    session!.fitWidth();
+    expect(viewer().currentScale).toBeCloseTo(1.5);
+  });
+
+  it("translates the pinch origin when the preview sits beside the editor below the toolbar", () => {
+    showPdf();
+    session!.container.getBoundingClientRect = () => ({ left: 180, top: 120, width: 600, height: 700 } as DOMRect);
+    Object.defineProperty(session!.container, "offsetLeft", { value: 10 });
+    Object.defineProperty(session!.container, "offsetTop", { value: 20 });
+    pinchWheel(-10); flushFrames();
+    expect(viewer().updateScale).toHaveBeenLastCalledWith({ scaleFactor: expect.any(Number), drawingDelay: 150, origin: [40, 220] });
+  });
+
+  it.each([1, 2])("normalizes wheel delta mode %i and keeps zoom within existing limits", (deltaMode) => {
+    showPdf();
+    pinchWheel(-100, { deltaMode }); flushFrames();
+    expect(callbacks.onZoom).toHaveBeenLastCalledWith(200);
+    pinchWheel(-100, { deltaMode }); flushFrames();
+    expect(viewer().updateScale).toHaveBeenCalledOnce();
+    pinchWheel(100, { deltaMode }); flushFrames();
+    expect(callbacks.onZoom).toHaveBeenLastCalledWith(50);
+  });
+
+  it("handles Safari's cumulative pinch scale without double-applying its Ctrl+wheel stream", () => {
+    showPdf();
+    expect(gesture("gesturestart").defaultPrevented).toBe(true);
+    gesture("gesturechange", 1.2); flushFrames();
+    expect(callbacks.onZoom).toHaveBeenLastCalledWith(120);
+    pinchWheel(-30);
+    gesture("gesturechange", 1.4); flushFrames();
+    expect(callbacks.onZoom).toHaveBeenLastCalledWith(140);
+    expect(viewer().updateScale).toHaveBeenLastCalledWith({ scaleFactor: expect.closeTo(1.4 / 1.2), drawingDelay: 150, origin: [240, 350] });
+    gesture("gestureend");
+    pinchWheel(-10); flushFrames();
+    expect(callbacks.onZoom.mock.lastCall![0]).toBeGreaterThan(140);
+  });
+
+  it("does not intercept pinch before publishing and cancels queued pinch on fit-width or destruction", () => {
+    create(); emit("pagesinit");
+    expect(pinchWheel(-20).defaultPrevented).toBe(false);
+    expect(gesture("gesturestart").defaultPrevented).toBe(false);
+    viewer().pages[0].renderingState = 3; emit("pagerendered", { pageNumber: 1 }); session!.show(); flushFrames();
+    pinchWheel(-20); session!.fitWidth(); flushFrames();
+    expect(viewer().updateScale).not.toHaveBeenCalled();
+    pinchWheel(-20); session!.destroy(); flushFrames();
+    expect(viewer().updateScale).not.toHaveBeenCalled();
+    expect(callbacks.onZoom).not.toHaveBeenCalled();
+    expect(pinchWheel(-20).defaultPrevented).toBe(false);
   });
 
   it("restores one independent page number after a page is reset or redrawn", () => {

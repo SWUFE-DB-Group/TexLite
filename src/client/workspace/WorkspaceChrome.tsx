@@ -53,6 +53,8 @@ export function WorkspaceLayoutMenu({ value, onChange }: { value: WorkspaceLayou
     { value: "editor-only" as const, icon: PanelLeft },
     { value: "pdf-only" as const, icon: PanelRight }
   ];
+  const LayoutIcon = layouts.find((layout) => layout.value === value)!.icon;
+  const currentLabel = t("editor.layout.current", { layout: t(`editor.layout.${value}.name`) });
   useEffect(() => {
     if (!open) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -69,8 +71,8 @@ export function WorkspaceLayoutMenu({ value, onChange }: { value: WorkspaceLayou
     };
   }, [open]);
   return <div className="layout-menu" ref={root}>
-    <button type="button" className={`layout-trigger${open ? " active" : ""}`} aria-haspopup="menu" aria-expanded={open} title={t("editor.layout.current", { layout: t(`editor.layout.${value}.name`) })} onClick={() => setOpen((current) => !current)}>
-      <Columns2 size={15} /><span><small>{t("editor.layout.label")}</small>{t(`editor.layout.${value}.name`)}</span><ChevronDown size={13} />
+    <button type="button" className={`layout-trigger${open ? " active" : ""}`} aria-label={currentLabel} aria-haspopup="menu" aria-expanded={open} title={currentLabel} onClick={() => setOpen((current) => !current)}>
+      <LayoutIcon size={15} /><span className="workspace-action-label"><small>{t("editor.layout.label")}</small>{t(`editor.layout.${value}.name`)}</span><ChevronDown className="layout-trigger-chevron" size={13} />
     </button>
     {open && <div className="layout-popover" role="menu" aria-label={t("editor.layout.label")}>
       <div className="layout-popover-title">{t("editor.layout.choose")}</div>

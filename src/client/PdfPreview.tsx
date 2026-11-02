@@ -68,6 +68,13 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
           dispose(previous);
         },
         onError: fail,
+        onZoom: (value) => {
+          // The old PDF remains interactive while its replacement paints.
+          // Carry its zoom forward without accepting stale SyncTeX positions.
+          if (displayed.current !== entry) return;
+          latest.current.zoom = value;
+          setZoom(value);
+        },
         onLocation: ({ page, x, y }) => {
           if (displayed.current === entry && latest.current.url === entry.url) {
             latest.current.onViewportLocation(page, x, y);
@@ -113,7 +120,7 @@ export function PdfPreview({ url, loadingMode, target, compiling = false, onView
   return <div className="pdf-viewer">
     <div className="pdf-toolbar" role="toolbar" aria-label={t("editor.pdfZoomControls")}>
       <button disabled={zoom <= 50} title={t("editor.pdfZoomOut")} aria-label={t("editor.pdfZoomOut")} onClick={() => changeZoom(-10)}><Minus size={14} /></button>
-      <span className="pdf-zoom-value" aria-live="polite">{zoom}%</span>
+      <span className="pdf-zoom-value" aria-live="polite">{Math.round(zoom)}%</span>
       <button disabled={zoom >= 200} title={t("editor.pdfZoomIn")} aria-label={t("editor.pdfZoomIn")} onClick={() => changeZoom(10)}><Plus size={14} /></button>
       <button className="pdf-fit-width" title={t("editor.pdfFitWidth")} onClick={() => { setZoom(100); displayed.current?.session?.fitWidth(); pending.current?.session?.fitWidth(); }}><Maximize2 size={13} />{t("editor.pdfFitWidth")}</button>
     </div>
