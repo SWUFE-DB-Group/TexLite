@@ -17,7 +17,6 @@ const countedNouns = [
   ["auth.passwordMinimum", "character", "characters"],
   ["projects.pageOf", "project", "projects"],
   ["projects.unresolvedCommentsTooltip", "comment", "comments"],
-  ["projects.unreadMentionsTooltip", "message", "messages"],
   ["users.ownedChoice", "project", "projects"],
   ["editor.wordCountWordsUnit", "word", "words"],
   ["editor.wordCountItemsUnit", "item", "items"],
@@ -65,8 +64,8 @@ describe("count-aware translations", () => {
   });
 
   describe.each([
-    { language: "zh", project: "个项目", mention: "条未读消息", session: "个会话", file: "个文件", word: "字", room: "个房间", dirty: "个待保存文件" },
-    { language: "zh-Hant", project: "個專案", mention: "條未讀訊息", session: "個工作階段", file: "個檔案", word: "詞", room: "個協作空間", dirty: "個待儲存檔案" }
+    { language: "zh", project: "个项目", mention: "条未读", session: "个会话", file: "个文件", word: "字", room: "个房间", dirty: "个待保存文件" },
+    { language: "zh-Hant", project: "個專案", mention: "條未讀", session: "個工作階段", file: "個檔案", word: "詞", room: "個協作空間", dirty: "個待儲存檔案" }
   ])("$language quantities", (expected) => {
     const t = translations.getFixedT(expected.language);
     it.each([0, 1, 2])("keeps quantities natural (%i)", (count) => {
@@ -79,6 +78,10 @@ describe("count-aware translations", () => {
         rooms: t("metrics.rooms", { count }), dirty: t("metrics.dirtyFiles", { count })
       })).toBe(`${count} ${expected.room} · ${count} ${expected.dirty}`);
     });
+  });
+
+  it.each([0, 1, 2])("keeps English unread badges concise (%i)", (count) => {
+    expect(translations.t("projects.unreadMentionsTooltip", { lng: "en", count })).toBe(`${count} unread`);
   });
 
   it("uses the snapshot limit, not usage, for the noun after 'of'", () => {
