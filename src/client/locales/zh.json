@@ -294,6 +294,7 @@
   "chktex": { "recoveryTitle": "ChkTeX 不可用。", "recoveryHint": " 请确认服务器已安装 ChkTeX，然后重试；如果暂时无法安装，也可以关闭此设置。", "unavailable": "服务器未安装 ChkTeX，或 ChkTeX 当前无法运行。请在服务器安装 TeX Live 的 chktex 包后重试。", "enabled": "启用 ChkTeX 写作检查", "description": "停止输入 2 秒后检查，以蓝灰色下划线标记建议。", "noIssues": "未发现写作问题。" },
   "editor": {
     "resizeComments": "调整批注面板宽度",
+    "resizeFileOutline": "调整文件树与大纲高度",
     "vimLoading": "正在加载 Vim…",
     "vimLoadFailed": "Vim 加载失败，仍可使用普通编辑模式。",
     "languageLoadFailed": "语法高亮加载失败，仍可正常编辑和保存此文件。",

@@ -5,7 +5,10 @@ import { WorkspaceFilePanel, type WorkspaceFilePanelProps } from "../src/client/
 import { createSourceCursorStore } from "../src/client/workspace/sourceCursorStore";
 import i18n from "../src/client/i18n";
 
-vi.mock("react-resizable-panels", () => ({
+vi.mock("react-resizable-panels", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-resizable-panels")>(),
+  Group: ({ children }: { children: ReactNode }) => createElement("div", null, children),
+  Separator: () => null,
   Panel: ({ children }: { children: ReactNode }) => createElement("section", null, children)
 }));
 

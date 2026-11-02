@@ -638,7 +638,14 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .left-panel, .context-panel, .source-panel, .preview-panel { min-width: 0; min-height: 0; border-right: 1px solid var(--ui-border, #dfe2de); }
 .left-panel, .source-panel, .preview-panel, .context-panel { height: 100%; }
 .left-panel { display: flex; flex-direction: column; overflow: hidden; }
-.files-panel { position: relative; min-height: 180px; flex: 3; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--ui-border, #dfe2de); }
+.file-outline-layout { width: 100%; height: 100%; min-height: 0; }
+.file-outline-resizer { height: 6px; flex: none; display: flex; align-items: center; justify-content: center; border-block: 1px solid var(--ui-border, #dfe2de); background: var(--ui-surface, #f7f9f6); cursor: row-resize; touch-action: none; }
+.file-outline-resizer > span { width: 24px; height: 2px; border-radius: 2px; background: var(--ui-muted, #8a978e); opacity: .55; pointer-events: none; }
+.file-outline-resizer:hover, .file-outline-resizer[data-separator="active"] { background: var(--ui-hover, #e8f1eb); }
+.file-outline-resizer:hover > span, .file-outline-resizer[data-separator="active"] > span { background: var(--ui-accent, #28724e); opacity: 1; }
+.file-outline-resizer:focus-visible { outline: 2px solid var(--ui-accent, #28724e); outline-offset: -2px; }
+.files-panel { position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.files-panel > .panel-title, .outline-panel > .panel-title { flex: none; }
 .files-panel.drop-active { outline: 2px solid var(--ui-accent-border, #2c9564); outline-offset: -2px; }
 .file-drop-overlay { position: absolute; z-index: 8; inset: 42px 0 0; min-height: 130px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; padding: 16px; background: var(--ui-subtle, #e8f4edee); color: var(--ui-accent, #185d3c); text-align: center; pointer-events: none; backdrop-filter: blur(2px); }
 .file-drop-overlay strong { font-size: 13px; }
@@ -652,7 +659,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .file-upload-feedback-dismiss { width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 4px; padding: 0; background: transparent; color: inherit; cursor: pointer; }
 .file-upload-feedback-dismiss:hover { background: var(--ui-hover, #0000000b); }
 .file-upload-feedback-dismiss:focus-visible { outline: 2px solid var(--ui-accent-border, #579474); outline-offset: 1px; }
-.outline-panel { min-height: 150px; flex: 2; overflow: auto; container: workspace-outline / inline-size; }
+.outline-panel { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; container: workspace-outline / inline-size; }
 .panel-title { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--ui-border, #e6e8e5); color: var(--ui-muted, #647069); text-transform: uppercase; font-size: 11px; font-weight: 700; }
 .panel-title > span { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .panel-title .outline-heading { width: auto; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 0 5px; overflow: hidden; color: inherit; font: inherit; text-overflow: ellipsis; text-transform: inherit; white-space: nowrap; }
@@ -669,8 +676,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .panel-title .word-count-actions button:disabled { opacity: .4; }
 .panel-title button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #5d6961); }
 .panel-title button:hover { background: var(--ui-hover, #e8eeea); color: var(--ui-accent, #176b44); }
-.panel-title .file-size-toggle { width: auto; min-width: 0; display: inline-flex; padding: 0 5px; font: inherit; text-transform: inherit; cursor: pointer; }
-.panel-title .file-size-toggle[aria-pressed="true"] { color: var(--ui-accent, #176b44); background: var(--ui-accent-bg, #e4f0e8); }
+.panel-title .file-size-toggle { width: auto; min-width: 0; display: inline-flex; padding: 0 5px; color: var(--ui-accent, #184f36); font: inherit; font-weight: 600; text-transform: none; cursor: pointer; }
+.panel-title .file-size-toggle:hover { color: var(--ui-accent, #184f36); text-decoration: underline dashed; text-underline-offset: 3px; }
+.panel-title .file-size-toggle[aria-pressed="true"] { background: var(--ui-accent-bg, #e4f0e8); }
 .file-tools { flex: none; display: flex; align-items: center; gap: 4px; margin-left: 8px; }
 .file-tools button { box-sizing: border-box; }
 .file-list { min-height: 0; flex: 1; overflow-y: auto; padding: 6px 7px 10px; scrollbar-gutter: stable; }
@@ -1091,7 +1099,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .tabs { height: 42px; display: flex; border-bottom: 1px solid var(--ui-border, #e3e6e3); }
 .tabs button { flex: 1; border: 0; background: var(--ui-surface, white); color: var(--ui-muted, #707872); font-size: 12px; }
 .tabs button.active { color: var(--ui-accent, #176b44); border-bottom: 2px solid var(--ui-accent-border, #176b44); font-weight: 700; }
-.outline { padding: 10px 8px; }
+.outline { min-height: 0; flex: 1; overflow-y: auto; padding: 10px 8px; }
 .outline-row { min-width: 0; display: flex; align-items: stretch; }
 .outline-row:hover, .outline-row:focus-within { background: var(--ui-hover, #edf3ef); color: var(--ui-accent, #176b44); }
 .outline-row.current { background: var(--ui-subtle, #e2efe7); color: var(--ui-accent, #176b44); font-weight: 700; }
@@ -2292,8 +2300,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .workspace-mobile-drawer .drawer-title-actions > button:not(.save-button) { min-width: 36px; min-height: 36px; }
   .workspace-mobile-drawer .context-panel { width: 100%; border: 0; }
   .workspace-mobile-drawer .panel-title { flex: none; min-height: 44px; }
-  .workspace-mobile-drawer .files-panel { min-height: 120px; }
-  .workspace-mobile-drawer .outline-panel { min-height: 100px; }
   .workspace-mobile-drawer .file-entry-main { min-height: 40px; }
   .workspace-mobile-drawer .outline-row { min-height: 34px; }
   .workspace-mobile-drawer :is(input:not([type="checkbox"]), select, textarea), .dialog-content :is(input:not([type="checkbox"]), select, textarea) { font-size: 16px; }

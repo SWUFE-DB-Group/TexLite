@@ -16,6 +16,7 @@ import { WorkspaceLayoutMenu } from "../workspace/WorkspaceChrome";
 import { WorkspaceTopbarFrame } from "../workspace/WorkspaceTopbarFrame";
 import { WorkspacePreviewHeader } from "../workspace/WorkspacePreviewHeader";
 import { WorkspaceOutlinePanel } from "../workspace/WorkspaceFilePanel";
+import { WorkspaceSidebarLayout } from "../workspace/WorkspaceSidebarLayout";
 import type { SourceCursorStore } from "../workspace/sourceCursorStore";
 import type { WorkspaceLayout } from "../workspace/types";
 import { usePhoneWorkspace } from "../workspace/usePhoneWorkspace";
@@ -115,7 +116,7 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
     <Group orientation="horizontal" className="work-grid shared-reader-workspace">
       {showEditor && <>
         <ReaderFiles phone={phone} open={phoneFilesOpen} onClose={() => setPhoneFilesOpen(false)} filesPanel={filesPanel} onCollapsed={setFilesCollapsed}>
-          <aside className="left-panel"><section className="files-panel">
+          <WorkspaceSidebarLayout phone={phone} files={<section className="files-panel">
             <div className="panel-title"><button type="button" className="file-size-toggle" aria-pressed={showSizes} title={t(showSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowSizes((current) => !current)}>{t("common.files")}</button></div>
             <div className={`file-list shared-reader-files${selectedFolder !== null ? " folder-selected" : ""}`} style={{ fontSize: defaultEditorPreferences.fontSize }}>
               {visible.map((file) => {
@@ -129,7 +130,7 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
                 </div>;
               })}
             </div>
-          </section><WorkspaceOutlinePanel outline={data.outline} activeFile={path} activeMainFile={data.project.mainFile} sourceCursorStore={sourceCursorStore} jumpToSource={(...args) => { onJumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} /></aside>
+          </section>} outline={<WorkspaceOutlinePanel outline={data.outline} activeFile={path} activeMainFile={data.project.mainFile} sourceCursorStore={sourceCursorStore} jumpToSource={(...args) => { onJumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} />} />
         </ReaderFiles>
         {!phone && <Separator className="resize-handle" aria-label={t("common.files")}><GripVertical size={12} /></Separator>}
         <Panel id="source" minSize="22%"><section className="source-panel"><div className="editor-content-container shared-reader-source">{children}</div></section></Panel>

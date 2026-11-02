@@ -300,6 +300,7 @@
   "chktex": { "recoveryTitle": "ChkTeX is unavailable.", "recoveryHint": " Check that the ChkTeX package is installed on the server, then retry. You can turn this setting off if it is not available.", "unavailable": "ChkTeX is not installed or cannot run on this server. Install the TeX Live chktex package and try again.", "enabled": "Run ChkTeX writing checks", "description": "Checks 2 seconds after you stop typing. Suggestions use blue-gray underlines.", "noIssues": "No writing issues found." },
   "editor": {
     "resizeComments": "Resize comments panel",
+    "resizeFileOutline": "Resize files and outline",
     "vimLoading": "Loading Vim…",
     "vimLoadFailed": "Vim could not load. Standard editing remains available.",
     "languageLoadFailed": "Syntax highlighting could not load. You can still edit and save this file.",

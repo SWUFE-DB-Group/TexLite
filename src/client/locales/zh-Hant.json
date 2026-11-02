@@ -755,6 +755,7 @@
   },
   "editor": {
     "resizeComments": "調整批註面板寬度",
+    "resizeFileOutline": "調整檔案樹與大綱高度",
     "vimLoading": "正在載入 Vim…",
     "vimLoadFailed": "Vim 載入失敗，仍可使用一般編輯模式。",
     "languageLoadFailed": "語法上色載入失敗，仍可正常編輯和儲存此檔案。",
