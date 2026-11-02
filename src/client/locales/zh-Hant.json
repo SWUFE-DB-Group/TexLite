@@ -1180,7 +1180,7 @@
     "conflict": "這筆文獻已在其他位置修改，請重新整理文獻庫後再試一次。",
     "alreadyInFile": "{{key}} 已經存在於目前 BibTeX 檔案中。"
   },
-  "citationLibraryHomeDescription": "使用資料夾和標籤整理私有 BibTeX 文獻。開啟 .bib 檔案即可儲存或匯入項目。",
+  "citationLibraryHomeDescription": "使用資料夾和標籤整理私有 BibTeX 文獻。",
   "citationLibraryActions": {
     "entryActions": "{{key}} 的操作",
     "copyBibtex": "複製 BibTeX",

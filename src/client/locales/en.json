@@ -470,7 +470,7 @@
     "editTitle": "Edit {{key}}"
   },
   "citationErrors": { "invalid": "Enter one valid BibTeX entry.", "tooLarge": "This BibTeX entry is too large.", "notFound": "The citation does not exist.", "keyExists": "That citation key already exists. Review the existing entry before replacing it.", "tagNotFound": "The citation tag does not exist.", "conflict": "This citation changed elsewhere. Refresh the library and try again.", "alreadyInFile": "{{key}} is already present in this BibTeX file." },
-  "citationLibraryHomeDescription": "Organize private BibTeX references with folders and tags. Open a .bib file to save or import entries.",
+  "citationLibraryHomeDescription": "Organize private BibTeX references with folders and tags.",
   "citationLibraryActions": {
     "entryActions": "Actions for {{key}}",
     "copyBibtex": "Copy BibTeX",

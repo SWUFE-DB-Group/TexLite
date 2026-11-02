@@ -460,7 +460,7 @@
     "editTitle": "编辑 {{key}}"
   },
   "citationErrors": { "invalid": "请输入一个有效的 BibTeX 条目。", "tooLarge": "BibTeX 条目过大。", "notFound": "引用条目不存在。", "keyExists": "引用 key 已经存在，请检查现有条目后再决定是否替换。", "tagNotFound": "引用标签不存在。", "conflict": "该引用已在其他位置发生修改，请刷新引用库后重试。", "alreadyInFile": "{{key}} 已经存在于当前 BibTeX 文件中。" },
-  "citationLibraryHomeDescription": "用文件夹和标签整理私有 BibTeX 文献。打开 .bib 文件即可保存或导入条目。",
+  "citationLibraryHomeDescription": "用文件夹和标签整理私有 BibTeX 文献。",
   "citationLibraryActions": {
     "entryActions": "{{key}} 的操作",
     "copyBibtex": "复制 BibTeX",
