@@ -645,12 +645,17 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .file-upload-feedback-dismiss { width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 4px; padding: 0; background: transparent; color: inherit; cursor: pointer; }
 .file-upload-feedback-dismiss:hover { background: var(--ui-hover, #0000000b); }
 .file-upload-feedback-dismiss:focus-visible { outline: 2px solid var(--ui-accent-border, #579474); outline-offset: 1px; }
-.outline-panel { min-height: 150px; flex: 2; overflow: auto; }
+.outline-panel { min-height: 150px; flex: 2; overflow: auto; container: workspace-outline / inline-size; }
 .panel-title { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--ui-border, #e6e8e5); color: var(--ui-muted, #647069); text-transform: uppercase; font-size: 11px; font-weight: 700; }
 .panel-title > span { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .panel-title .outline-heading { width: auto; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 0 5px; overflow: hidden; color: inherit; font: inherit; text-overflow: ellipsis; text-transform: inherit; white-space: nowrap; }
 .panel-title .outline-heading:disabled { cursor: default; opacity: 1; }
 .panel-title .outline-heading:disabled:hover { background: transparent; color: inherit; }
+.outline-heading > svg { flex: none; }
+@container workspace-outline (max-width: 240px) {
+  .outline-heading-label { display: none; }
+  .panel-title .outline-heading { flex: none; width: 28px; justify-content: center; }
+}
 .word-count-actions { flex: none; display: flex; align-items: center; gap: 2px; margin-left: auto; }
 .panel-title .word-count-actions button { width: auto; height: 26px; display: inline-flex; align-items: center; gap: 3px; padding: 0 5px; color: var(--ui-muted, #52685a); font-size: 9px; text-transform: none; white-space: nowrap; }
 .panel-title .word-count-actions button:hover:not(:disabled) { background: var(--ui-hover, #e8f1eb); color: var(--ui-accent, #176b44); }
@@ -1261,6 +1266,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 :root .comment-form-actions > .save-button:disabled { color: var(--ui-muted, #778179); }
 .comment-reply-form button.primary { border-color: var(--ui-accent-border, #176b44); background: #176b44; color: white; }
 .settings { display: flex; flex-direction: column; gap: 14px; }
+.project-settings { container: workspace-settings / inline-size; }
 .settings > section { display: flex; flex-direction: column; gap: 14px; }
 .settings button { border: 1px solid var(--ui-border, #c9d0ca); background: var(--ui-surface, white); border-radius: 6px; padding: 7px 9px; font-size: 12px; }
 .settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--ui-border, #d7ded8); border-radius: 9px; background: var(--ui-surface, #f4f7f4); }
@@ -1268,6 +1274,14 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .settings-tab:hover { background: var(--ui-hover, #eaf1eb) !important; color: var(--ui-accent, #31523e); }
 .settings-tab.active { border-color: var(--ui-border, #c8d9cb) !important; background: var(--ui-accent-bg, white) !important; color: var(--ui-accent, #176b44); box-shadow: 0 1px 2px #233c2a12; }
 .settings-tab:focus-visible { outline: 2px solid var(--ui-accent-border, #176b44); outline-offset: 1px; }
+.settings-tab > svg { flex: none; }
+.settings-tab-label { white-space: nowrap; }
+@container workspace-settings (max-width: 280px) {
+  .settings-tabs { flex-wrap: nowrap; }
+  .settings-tab { min-width: 0; min-height: 44px; }
+  .settings-tab > svg { width: 18px; height: 18px; }
+  .settings-tab-label { display: none; }
+}
 .settings-actions { display: flex; width: 100%; justify-content: flex-end; padding-top: 2px; }
 .settings-section-title { display: flex; align-items: center; gap: 7px; color: var(--ui-accent, #31523e); font-size: 13px; }
 .terminal-appearance-preview { margin: 0; padding: 16px; overflow-x: auto; border: 1px solid var(--terminal-border); border-radius: 8px; background: var(--terminal-bg); color: var(--terminal-fg); }

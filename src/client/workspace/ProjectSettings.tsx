@@ -217,17 +217,17 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     } catch (requestError) { setDictionaryError(errorMessage(requestError)); }
   };
   return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <SaveButton className="drawer-settings-save" feedback={saveFeedback} saving={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{t("common.save")}</SaveButton>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div>
-    <div className="settings padded">
+    <div className="settings project-settings padded">
     {error && <p className="error">{error}</p>}
     <div className="settings-tabs" role="tablist" aria-label={t("common.settings")}>
-      <button id="settings-tab-appearance" type="button" role="tab" aria-selected={settingsTab === "appearance"} aria-controls="settings-panel-appearance" className={`settings-tab${settingsTab === "appearance" ? " active" : ""}`} onClick={() => setSettingsTab("appearance")}>
-        <Type size={15} />{t("projectSettings.editorTab")}
+      <button id="settings-tab-appearance" type="button" role="tab" aria-label={t("projectSettings.editorTab")} title={t("projectSettings.editorTab")} aria-selected={settingsTab === "appearance"} aria-controls="settings-panel-appearance" className={`settings-tab${settingsTab === "appearance" ? " active" : ""}`} onClick={() => setSettingsTab("appearance")}>
+        <Type size={15} aria-hidden /><span className="settings-tab-label">{t("projectSettings.editorTab")}</span>
       </button>
-      <button id="settings-tab-terminal" type="button" role="tab" aria-selected={settingsTab === "terminal"} aria-controls="settings-panel-terminal" className={`settings-tab${settingsTab === "terminal" ? " active" : ""}`} onClick={() => setSettingsTab("terminal")}>
-        <Terminal size={15} />{t("projectSettings.terminalTab")}
+      <button id="settings-tab-terminal" type="button" role="tab" aria-label={t("projectSettings.terminalTab")} title={t("projectSettings.terminalTab")} aria-selected={settingsTab === "terminal"} aria-controls="settings-panel-terminal" className={`settings-tab${settingsTab === "terminal" ? " active" : ""}`} onClick={() => setSettingsTab("terminal")}>
+        <Terminal size={15} aria-hidden /><span className="settings-tab-label">{t("projectSettings.terminalTab")}</span>
       </button>
-      <button id="settings-tab-compiler" type="button" role="tab" aria-selected={settingsTab === "compiler"} aria-controls="settings-panel-compiler" className={`settings-tab${settingsTab === "compiler" ? " active" : ""}`} onClick={() => setSettingsTab("compiler")}>
-        <Settings size={15} />{t("projectSettings.compilerTab")}
+      <button id="settings-tab-compiler" type="button" role="tab" aria-label={t("projectSettings.compilerTab")} title={t("projectSettings.compilerTab")} aria-selected={settingsTab === "compiler"} aria-controls="settings-panel-compiler" className={`settings-tab${settingsTab === "compiler" ? " active" : ""}`} onClick={() => setSettingsTab("compiler")}>
+        <Settings size={15} aria-hidden /><span className="settings-tab-label">{t("projectSettings.compilerTab")}</span>
       </button>
     </div>
     {settingsTab === "appearance" ? <section id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance">
