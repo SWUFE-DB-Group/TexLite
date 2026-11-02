@@ -240,6 +240,9 @@ describe("coding agent management presentation", () => {
     expect(time?.getAttribute("data-tooltip")).toBe("建立時間：" + formatDateTime(task.createdAt, "zh-Hant"));
     expect(time?.hasAttribute("title")).toBe(false);
     expect(time?.tabIndex).toBe(0);
+    expect(cells[6].getAttribute("data-label")).toBe("最近變更");
+    expect(cells[2].getAttribute("data-label")).toBe(agentUiMessages[language].project);
+    expect(cells[7].querySelectorAll("button")).toHaveLength(2);
     expect(time?.textContent).toBe(formatDateTime(task.updatedAt, "zh-Hant", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }));
     vi.mocked(api).mockResolvedValue({ tasks: [{ ...task, userUsername: null }], page: 1, pageSize: 50, total: 1 });
     await act(async () => vi.advanceTimersByTime(5_000));

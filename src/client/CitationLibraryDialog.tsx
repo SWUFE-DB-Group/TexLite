@@ -58,6 +58,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
   const [editText, setEditText] = useState("");
   const [adding, setAdding] = useState(false);
   const [addText, setAddText] = useState("");
+  const [addCollectionId, setAddCollectionId] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CitationLibraryEntry | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -96,6 +97,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
       if (controller.signal.aborted) return;
       setCollectionCatalog(result);
       setSelectedCollection((id) => !id || id === "unfiled" || result.collections.some((folder) => folder.id === id) ? id : "");
+      setAddCollectionId((id) => result.collections.some((folder) => folder.id === id) ? id : "");
     }).catch((reason) => { if (!controller.signal.aborted) setError(errorMessage(reason)); });
     return () => controller.abort();
   }, [open, currentUserId, refreshNonce]);
@@ -122,6 +124,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
     setEditing(null);
     setAdding(false);
     setAddText("");
+    setAddCollectionId("");
     setTagEditor(null);
     setDeletingId(null);
     setDeleteTarget(null);
@@ -172,12 +175,13 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
         method: "POST", body: JSON.stringify({
           bibtex: parsed.bibtex, citationKey: parsed.citationKey, entryType: parsed.entryType,
           title: parsed.title, authors: parsed.authors, year: parsed.year,
-          collectionIds: selectedCollection && selectedCollection !== "unfiled" ? [selectedCollection] : undefined
+          collectionIds: addCollectionId ? [addCollectionId] : []
         })
       });
       setEntries((current) => [result.entry, ...current.filter((item) => item.id !== result.entry.id && item.citationKey.toLowerCase() !== result.entry.citationKey.toLowerCase())]);
       setAdding(false);
       setAddText("");
+      setSelectedCollection((id) => id ? addCollectionId || "unfiled" : "");
       completedAction.show("add");
       setTagEditor(result.entry);
       setTagEditorIds(result.entry.tags.map((tag) => tag.id));
@@ -258,9 +262,20 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
       {error && !(page && (tagEditor || editing)) && <p className="error dialog-error">{error}</p>}
         <div className="citation-library-scope-heading"><strong><FolderOpen size={15} aria-hidden />{selectedFolder?.name ?? t(selectedCollection === "unfiled" ? "citationFolders.unfiled" : "citationFolders.all")}</strong>
         </div>
-        <div className="citation-library-search-row"><label className="citation-library-search"><Search size={15} /><input autoFocus placeholder={t("citationLibrary.searchPlaceholder")} value={query} onChange={(event) => { setQuery(event.target.value); setPageNumber(1); }} /><span>{t("citationLibrary.searchHint")}</span></label><button type="button" className="citation-add-entry-button" onClick={() => { completedAction.clear(); setAdding(true); setEditing(null); setTagEditor(null); }}><Plus size={14} /><span role="status">{t(completedAction.message === "add" ? "common.done" : "citationLibraryActions.addEntry")}</span></button></div>
+        <div className="citation-library-search-row"><label className="citation-library-search"><Search size={15} /><input autoFocus placeholder={t("citationLibrary.searchPlaceholder")} value={query} onChange={(event) => { setQuery(event.target.value); setPageNumber(1); }} /><span>{t("citationLibrary.searchHint")}</span></label><button type="button" className="citation-add-entry-button" onClick={() => { completedAction.clear(); setAddCollectionId(selectedFolder?.id ?? ""); setAdding(true); setEditing(null); setTagEditor(null); }}><Plus size={14} /><span role="status">{t(completedAction.message === "add" ? "common.done" : "citationLibraryActions.addEntry")}</span></button></div>
         <CitationTagFilters tags={tags} selectedId={selectedTag} onSelect={(id) => { setSelectedTag(id); setPageNumber(1); }} onManage={() => setTagManagerOpen(true)} />
-        {adding && <div className="citation-edit-panel"><div className="citation-edit-header"><div><strong>{t("citationLibraryActions.addEntryTitle")}</strong><small>{t("citationLibraryActions.addEntryDescription")}</small></div><button type="button" aria-label={t("common.close")} onClick={() => setAdding(false)}><X size={15} /></button></div><textarea autoFocus value={addText} onChange={(event) => setAddText(event.target.value)} placeholder={t("citationLibraryActions.addEntryPlaceholder")} spellCheck={false} rows={9} /><div className="citation-edit-actions"><button type="button" onClick={() => setAdding(false)}>{t("common.cancel")}</button><button type="button" className="primary" disabled={!addText.trim() || savingKey === "__new__"} onClick={() => void saveNew()}>{savingKey === "__new__" ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{t("citationLibraryActions.addEntry")}</button></div></div>}
+        {adding && <div className="citation-edit-panel citation-add-panel">
+          <div className="citation-edit-header"><div><strong>{t("citationLibraryActions.addEntryTitle")}</strong><small>{t("citationLibraryActions.addEntryDescription")}</small></div>
+            <button type="button" aria-label={t("common.close")} disabled={savingKey === "__new__"} onClick={() => setAdding(false)}><X size={15} /></button></div>
+          <textarea autoFocus value={addText} disabled={savingKey === "__new__"} onChange={(event) => setAddText(event.target.value)} placeholder={t("citationLibraryActions.addEntryPlaceholder")} spellCheck={false} rows={9} />
+          <label className="citation-project-destination"><FolderOpen size={15} aria-hidden /><span>{t("citationProject.saveFolder")}</span>
+            <select value={addCollectionId} disabled={savingKey === "__new__"} onChange={(event) => setAddCollectionId(event.target.value)}>
+              <option value="">{t("citationFolders.unfiled")}</option>
+              {collectionCatalog.collections.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+            </select></label>
+          <div className="citation-edit-actions"><button type="button" disabled={savingKey === "__new__"} onClick={() => setAdding(false)}>{t("common.cancel")}</button>
+            <button type="button" className="primary" disabled={!addText.trim() || savingKey === "__new__"} onClick={() => void saveNew()}>{savingKey === "__new__" ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{t("citationLibraryActions.addEntry")}</button></div>
+        </div>}
         {loading && !editing && !tagEditor ? <div className="citation-library-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>
           : entries.length === 0 ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.emptyTitle")}</strong><span>{selectedCollection ? t("citationFolders.empty") : selectedTag ? t("citationLibrary.noTagMatches") : t("citationLibrary.emptyDescription")}</span></div>
           : <div className="citation-entry-list">{entries.map((entry) => <div className="citation-entry-item" key={entry.id}>

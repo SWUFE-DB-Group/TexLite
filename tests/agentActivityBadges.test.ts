@@ -122,6 +122,10 @@ it("retains accessible toolbar names and full layout choices when toolbar labels
   const actions = host.querySelectorAll<HTMLButtonElement>(".editor-actions > button, .layout-trigger");
   expect(actions).toHaveLength(10);
   for (const action of actions) expect(action.getAttribute("aria-label")).toBeTruthy();
+  const compile = host.querySelector<HTMLButtonElement>("button.compile")!;
+  expect(compile.getAttribute("aria-label")).toBe("Compile · pdflatex");
+  expect(compile.querySelector(".compile-engine-label")?.textContent).toBe(" · pdflatex");
+  expect(compile.querySelector(".workspace-action-label")?.firstChild?.textContent).toBe("Compile");
   const trigger = host.querySelector<HTMLButtonElement>(".layout-trigger")!;
   expect(trigger.querySelector(".lucide-columns-2")).not.toBeNull();
   await act(async () => trigger.click());

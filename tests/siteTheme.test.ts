@@ -47,8 +47,10 @@ describe("application dark palette", () => {
     for (const match of (css + styles + boundary).matchAll(/var\((--ui-[\w-]+)/g)) expect(tokens[match[1]], match[1]).toBeDefined();
   });
 
-  it.each(["light", "dark"])("keeps %s headers readable without changing toolbar geometry or primary actions", (theme) => {
+  it.each([["light", 820], ["dark", 820], ["light", 1600], ["dark", 1600]] as const)("keeps %s headers readable at %i px without changing primary actions", (theme, width) => {
     const originalTheme = document.documentElement.getAttribute("data-theme");
+    const originalWidth = window.innerWidth;
+    window.innerWidth = width;
     document.documentElement.dataset.theme = theme;
     const sheet = document.createElement("style"); sheet.textContent = styles + "\n" + css;
     const fixture = document.createElement("div");
@@ -70,7 +72,8 @@ describe("application dark palette", () => {
       expect(style(".topbar").backgroundColor).toBe(background);
       expect(style(".editor-topbar").backgroundColor).toBe(background);
       expect(style(".topbar").height).toBe("62px");
-      expect(style(".editor-topbar").height).toBe("56px");
+      expect(style(".editor-topbar").height).toBe(width <= 1100 ? "auto" : "56px");
+      if (width <= 1100) expect(style(".editor-topbar").minHeight).toBe("56px");
       expect(style(".back").width).toBe("32px");
       expect(style(".collaboration-avatar").borderTopColor).toBe(background);
       for (const selector of [".topbar", ".editor-topbar", ".project-heading small", ".comments-action", ".layout-trigger small"]) {
@@ -87,6 +90,7 @@ describe("application dark palette", () => {
       expect(style(".ghost").boxShadow).toBe("");
     } finally {
       fixture.remove(); sheet.remove();
+      window.innerWidth = originalWidth;
       if (originalTheme === null) document.documentElement.removeAttribute("data-theme");
       else document.documentElement.setAttribute("data-theme", originalTheme);
     }

@@ -55,7 +55,7 @@ export function SharedWorkspaceTopbar({ data, path = "", loading, onRefresh, chi
     </>}
     <button type="button" disabled={loading} aria-label={t("viewLinks.refresh")} title={t("viewLinks.refresh")} onClick={onRefresh}><RefreshCw size={15} /><span className="workspace-action-label">{t("viewLinks.refresh")}</span></button>
     <ReaderSettings />
-    {data && <button type="button" className="compile" disabled aria-label={t("editor.compile", { engine: data.project.engine })}><Play size={15} /><span className="workspace-action-label workspace-action-label-persistent">{t("editor.compile", { engine: data.project.engine })}</span></button>}
+    {data && <button type="button" className="compile" disabled aria-label={t("editor.compile", { engine: data.project.engine })}><Play size={15} /><span className="workspace-action-label workspace-action-label-persistent">{t("editor.compileShort")}<span className="compile-engine-label"> · {data.project.engine}</span></span></button>}
   </WorkspaceTopbarFrame>;
 }
 

@@ -798,6 +798,7 @@
     "labelJumpHint": "按住 Ctrl/Cmd 並點選以開啟標籤定義「{{key}}」。",
     "citationTargetNotFound": "沒有找到「{{key}}」對應的參考文獻項目。",
     "labelTargetNotFound": "沒有找到「{{key}}」對應的標籤定義。",
+    "compileShort": "編譯",
     "compile": "編譯 · {{engine}}",
     "compiling": "編譯中…",
     "compileQueued": "編譯已排隊…",

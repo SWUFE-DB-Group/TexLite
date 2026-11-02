@@ -77,6 +77,36 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("citation folder workflows", () => {
+  it("defaults new entries to the current folder but saves into the destination chosen in the form", async () => {
+    await render();
+    await click(folder("Paper A")); await settle();
+    await click(named("Add entry", ".citation-add-entry-button"));
+    const destination = host.querySelector<HTMLSelectElement>('.citation-add-panel select')!;
+    expect(destination.value).toBe("a");
+    await act(async () => { destination.value = "b"; destination.dispatchEvent(new Event("change", { bubbles: true })); });
+    // Changing the form destination must not change the library filter before saving.
+    expect(folder("Paper A").getAttribute("aria-current")).toBe("true");
+    await act(async () => change(host.querySelector<HTMLTextAreaElement>('.citation-add-panel textarea')!, "@article{new, title={New paper}}"));
+    await click(named("Add entry", ".citation-edit-actions button")); await settle();
+    const post = vi.mocked(api).mock.calls.find(([url, options]) => url === "/api/citations" && options?.method === "POST")!;
+    expect(JSON.parse(String(post[1]?.body))).toMatchObject({ citationKey: "new", collectionIds: ["b"] });
+    expect(folder("Paper B").getAttribute("aria-current")).toBe("true");
+    expect(host.querySelector(".citation-entry-list")?.textContent).toContain("New paper");
+  });
+
+  it("allows adding an unfiled reference when no folders exist", async () => {
+    catalog = { collections: [], total: 0, unfiled: 0 };
+    await render();
+    await click(named("Add entry", ".citation-add-entry-button"));
+    const destination = host.querySelector<HTMLSelectElement>('.citation-add-panel select')!;
+    expect([...destination.options].map((option) => option.textContent)).toEqual(["Unfiled"]);
+    await act(async () => change(host.querySelector<HTMLTextAreaElement>('.citation-add-panel textarea')!, "@misc{unfiled, title={Unfiled reference}}"));
+    await click(named("Add entry", ".citation-edit-actions button")); await settle();
+    const post = vi.mocked(api).mock.calls.find(([url, options]) => url === "/api/citations" && options?.method === "POST")!;
+    expect(JSON.parse(String(post[1]?.body)).collectionIds).toEqual([]);
+    expect(folder("All references").getAttribute("aria-current")).toBe("true");
+  });
+
   it("creates and selects a folder, renames it and confirms deletion without deleting the references", async () => {
     await render();
     await click(named("New folder"));

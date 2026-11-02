@@ -456,7 +456,7 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 22px 0 4px; color: var(--ui-muted, #66726a); font-size: 12px; }
 .project-pagination button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--ui-border, #cbd4ce); border-radius: 7px; padding: 7px 10px; background: var(--ui-surface, white); color: var(--ui-text, #405248); font-size: 12px; }
 .project-pagination button:hover:not(:disabled) { border-color: var(--ui-accent-border, #8bae9a); background: var(--ui-hover, #f2f7f3); color: var(--ui-accent, #176b44); }
-.table-card { overflow: hidden; background: var(--ui-surface, white); border: 1px solid var(--ui-border, #dfe2de); border-radius: 12px; }
+.table-card { min-width: 0; overflow: hidden; background: var(--ui-surface, white); border: 1px solid var(--ui-border, #dfe2de); border-radius: 12px; }
 .admin-users-page { width: 100%; max-width: 1080px; margin-inline: auto; }
 .admin-user-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 20px; border: 1px solid var(--ui-border, #dfe2de); border-radius: 12px; background: var(--ui-surface, #fff); }
 .admin-user-summary > div { min-width: 0; padding: 14px 18px; }
@@ -1696,7 +1696,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-library-page .citation-edit-header { font-size: 12px; }
 .citation-library-page .citation-edit-header small { font-size: 11px; }
 .citation-library-page .citation-edit-panel textarea { font-size: 12px; line-height: 1.6; }
-.management-page { font-size: 12px; }
+.management-page { min-width: 0; font-size: 12px; }
 .management-page .section-title p { font-size: 12px; }
 .management-page :is(th, td) { padding: 10px 12px; font-size: 12px; }
 .management-page button { font-size: 12px; }
@@ -2082,6 +2082,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 
 /* Compact only toolbar labels, never the text/checkmarks inside open menus. */
 @media (max-width: 1250px) {
+  .editor-actions .compile-engine-label { display: none; }
   .file-tools .file-quick-open { display: none; }
   .preview-tabs .diagnostics-tab-label, .preview-tabs .diagnostic-count, .pdf-download-top .pdf-download-label { display: none; }
   .preview-tabs .diagnostics-tab, .pdf-download-top { min-width: 44px; min-height: 44px; justify-content: center; padding-inline: 10px; }
@@ -2107,7 +2108,20 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .editor-actions > button > .workspace-action-label:not(.workspace-action-label-persistent) { display: none; }
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1100px) {
+  .editor-topbar { height: auto; min-height: 56px; flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
+  .editor-topbar > .compact-brand-link { display: none; }
+  .editor-topbar .project-heading { flex: 1 1 80px; min-width: 80px; max-width: 160px; }
+  .editor-topbar .collaboration-presence { gap: 4px; padding-left: 0; }
+  .editor-topbar .collaboration-avatar { width: 24px; height: 24px; margin-left: -12px; font-size: 10px; }
+  .editor-actions { gap: 4px; }
+  .editor-actions > button { min-width: 36px; padding-inline: 6px; }
+  .editor-actions .layout-trigger { min-width: 0; padding-inline: 8px; }
+  .editor-actions .layout-trigger > span small { color: inherit; font-size: 12px; text-transform: none; letter-spacing: 0; }
+  .editor-actions .layout-current-label { display: none; }
+}
+
+@media (max-width: 760px) {
   .editor-topbar { height: auto; min-height: 56px; flex-wrap: wrap; padding-block: 6px; gap: 6px 8px; }
   .editor-topbar .project-heading { flex: 1; max-width: none; }
   .editor-actions { width: 100%; flex-wrap: wrap; }
