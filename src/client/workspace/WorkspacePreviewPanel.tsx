@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Panel } from "react-resizable-panels";
 import { WorkspaceSyncSeparator } from "./WorkspaceSyncSeparator";
 import { WorkspaceCommentsSlot } from "./WorkspaceCommentsSlot";
+import { WorkspaceMobileSyncButton } from "./WorkspaceMobileSyncButton";
 import type { CompileDiagnostics } from "../compileDiagnostics";
 import type { CompileMessages } from "../compileLog";
 import type { FileEntry } from "../types";
@@ -18,6 +19,7 @@ import { CompileArtifacts, CompileCleanup, CompileDiagnosticOutput, CompileOutpu
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
 
 export interface WorkspacePreviewPanelProps {
+  mobileSync?: boolean;
   commentsOpen?: boolean;
   onCommentsHost?: (element: HTMLDivElement | null) => void;
   projectId: string;
@@ -53,7 +55,7 @@ export interface WorkspacePreviewPanelProps {
   onSetPdfViewport: (viewport: { page: number; x: number; y: number }) => void;
   onResetPdfViewport: () => void;
   onPdfDisplayed: (url: string) => void;
-  syncVisiblePdfToSource: () => void;
+  syncVisiblePdfToSource: () => Promise<void>;
   syncCurrentSourceToPdf: () => Promise<void>;
   syncPdfToSource: (page: number, x: number, y: number) => Promise<void>;
   canSyncWithPdf: boolean;
@@ -65,7 +67,7 @@ export interface WorkspacePreviewPanelProps {
 }
 
 export function WorkspacePreviewPanel({
-  commentsOpen = false, onCommentsHost,
+  commentsOpen = false, onCommentsHost, mobileSync = false,
   projectId, activeMainFile, previewTab, diagnosticTab, pdfUrl, pdfLoadingMode, pdfLoading, pdfCompiledAt, pdfSizeBytes,
   pdfCompiledLabel, pdfTargetLabel, pdfDownloadUrl, pdfTarget, pdfViewport, activeFile, compileBusy, compileLog,
   compileDiagnostics, compileMessages, artifacts, artifactPreview, artifactLoading, cleaning, readOnly,
@@ -89,6 +91,8 @@ export function WorkspacePreviewPanel({
     <Panel id="preview" minSize="22%">
       <div className="workspace-preview-region">
       <div className={`workspace-output-layout${commentsOpen ? " has-comments" : ""}`}>
+      {mobileSync && !commentsOpen && previewTab === "pdf" && <WorkspaceMobileSyncButton direction="source"
+        disabled={!pdfViewport || !canSyncWithDisplayedPdf} onClick={syncVisiblePdfToSource} />}
         <WorkspaceCommentsSlot open={commentsOpen} onHost={onCommentsHost} />
       <section className="preview-panel">
         <WorkspacePreviewHeader mainFile={activeMainFile} targetLabel={pdfTargetLabel} compiledAt={pdfCompiledAt} compiledLabel={pdfCompiledLabel} sizeBytes={pdfSizeBytes}

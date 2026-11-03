@@ -106,7 +106,7 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onOpenSourceFile, 
   };
 
   const syncVisiblePdfToSource = () => {
-    if (pdfViewport) void syncPdfToSource(pdfViewport.page, pdfViewport.x, pdfViewport.y);
+    return pdfViewport ? syncPdfToSource(pdfViewport.page, pdfViewport.x, pdfViewport.y) : Promise.resolve();
   };
 
   const clearPdfViewport = () => {

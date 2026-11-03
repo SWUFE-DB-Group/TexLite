@@ -12,10 +12,12 @@ import type { LatexReference } from "../../shared/latexReferences";
 import { commentsForEditorFile, focusCommentForEditorFile } from "./commentNavigation";
 import type { SelectionLineAction } from "../selectionLineActions";
 import { EditorTerminalLayout, type TerminalPanelRenderer } from "./EditorTerminalLayout";
+import { WorkspaceMobileSyncButton } from "./WorkspaceMobileSyncButton";
 
 const LatexEditor = lazy(() => import("../LatexEditor").then((module) => ({ default: module.LatexEditor })));
 
 export interface WorkspaceEditorPanelProps {
+  mobileSync?: { disabled: boolean; onClick: () => Promise<void> };
   terminal?: TerminalPanelRenderer | null;
   project: Project;
   activeFile: string;
@@ -52,7 +54,7 @@ export function WorkspaceEditorPanel({
   project, activeFile, openTabs, content, loadedFile, readOnly, comments, focusComment,
   editorPreferences, completionIndex, nativeSpellCheck, spellCheckIssues, spellCheckJump, sourceJump,
   collaborativeText, collaborationAwareness, undoManager, editorNotice, activateTab, closeTab,
-  handleTabKeyDown, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal
+  handleTabKeyDown, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync
 }: WorkspaceEditorPanelProps) {
   const { t } = useTranslation();
   // Comment offsets are meaningful only for the source document which
@@ -89,6 +91,7 @@ export function WorkspaceEditorPanel({
           <LatexEditor key={activeFile} value={content} filePath={activeFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaborationAwareness, undoManager: readOnly ? undefined : undoManager } : undefined} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor} />
         </Suspense>
         {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
+        {mobileSync && <WorkspaceMobileSyncButton direction="pdf" {...mobileSync} />}
       </div>
     </EditorTerminalLayout>
   </Panel>;

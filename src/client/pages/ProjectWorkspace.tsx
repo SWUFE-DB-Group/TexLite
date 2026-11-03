@@ -316,7 +316,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     activeFile,
     onOpenSourceFile: (path) => openSourceFileRef.current(path),
     onError: setError,
-    onShowPdf: () => selectPreviewTab("pdf"),
+    onShowPdf: () => {
+      selectPreviewTab("pdf");
+      if (phone) setWorkspaceLayout("pdf-only");
+    },
     onShowEditor: () => {
       if (workspaceLayoutRef.current === "pdf-only") setWorkspaceLayout("editor-pdf");
     }
@@ -1348,6 +1351,12 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const syncMainFile = activeMainFile || project.mainFile;
   const canSyncWithPdf = canSyncSourceToPdf(activeFile, syncMainFile);
   const canSyncPdfToSource = Boolean(syncMainFile && /\.tex$/i.test(syncMainFile));
+  const syncCurrentSourceToPdf = () => {
+    const path = activeFileRef.current;
+    if (!path) return Promise.resolve();
+    const cursor = sourceCursorStore.getCursor();
+    return syncSourceToPdf(path, cursor.line, cursor.column);
+  };
   const activateTab = (tabPath: string): void => {
     const entry = files.find((file) => file.path === tabPath);
     if (entry && isEditableTextFile(entry.path, entry.textContent)) openFile(entry);
@@ -1450,6 +1459,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       />}
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel
+        mobileSync={phone && sidePanel !== "comments" ? { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
         terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized} /></Suspense> : null}
         project={project} activeFile={activeFile} openTabs={openTabs}
         content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
@@ -1468,6 +1478,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         onSpellCheckReplace={replaceSpellCheckIssue} onReferenceNavigate={navigateToReference} onCursor={updateSourceCursor}
       />}
       {showPreview && <WorkspacePreviewPanel
+        mobileSync={phone}
         commentsOpen={sidePanel === "comments"} onCommentsHost={setCommentsHost}
         projectId={projectId} activeMainFile={activeMainFile} previewTab={previewTab} diagnosticTab={diagnosticTab}
         pdfUrl={pdfUrl} pdfLoadingMode={pdfLoadingMode} pdfLoading={pdfLoading} pdfCompiledAt={pdfCompiledAt}
@@ -1480,12 +1491,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         diagnosticCount={diagnosticCount} selectPreviewTab={selectPreviewTab}
         changeWorkspaceLayout={changeWorkspaceLayout} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport} onPdfDisplayed={pdfDisplayed}
         syncVisiblePdfToSource={syncVisiblePdfToSource}
-        syncCurrentSourceToPdf={() => {
-          const path = activeFileRef.current;
-          if (!path) return Promise.resolve();
-          const cursor = sourceCursorStore.getCursor();
-          return syncSourceToPdf(path, cursor.line, cursor.column);
-        }}
+        syncCurrentSourceToPdf={syncCurrentSourceToPdf}
         syncPdfToSource={syncPdfToSource} canSyncWithPdf={canSyncWithPdf} canSyncPdfToSource={canSyncPdfToSource} files={files}
         jumpToSource={jumpToSource} onSetCleanMode={setCleanMode}
         viewArtifact={viewArtifact}
