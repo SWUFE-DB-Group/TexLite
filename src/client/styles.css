@@ -457,7 +457,7 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-pagination button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--ui-border, #cbd4ce); border-radius: 7px; padding: 7px 10px; background: var(--ui-surface, white); color: var(--ui-text, #405248); font-size: 12px; }
 .project-pagination button:hover:not(:disabled) { border-color: var(--ui-accent-border, #8bae9a); background: var(--ui-hover, #f2f7f3); color: var(--ui-accent, #176b44); }
 .table-card { min-width: 0; overflow: hidden; background: var(--ui-surface, white); border: 1px solid var(--ui-border, #dfe2de); border-radius: 12px; }
-.admin-users-page { width: 100%; max-width: 1080px; margin-inline: auto; }
+.admin-users-page { width: 100%; max-width: 880px; margin-inline: auto; }
 .admin-user-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 20px; border: 1px solid var(--ui-border, #dfe2de); border-radius: 12px; background: var(--ui-surface, #fff); }
 .admin-user-summary > div { min-width: 0; padding: 14px 18px; }
 .admin-user-summary > div + div { border-left: 1px solid var(--ui-border, #dfe2de); }
@@ -487,7 +487,8 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .admin-user-table table { min-width: 720px; table-layout: fixed; }
 .admin-user-table th:nth-child(2) { width: 21%; }
 .admin-user-table th:nth-child(3) { width: 22%; }
-.admin-user-table th:nth-child(4) { width: 80px; }
+.admin-user-table th:nth-child(4) { width: 88px; }
+.admin-user-table :is(th, td):nth-child(n + 4) { text-align: center; }
 .admin-user-table .admin-user-list-state { padding: 32px 16px; color: var(--ui-muted, #6b7a70); text-align: center; font-size: 13px; }
 .admin-user-list-state > span { display: inline-flex; align-items: center; gap: 7px; vertical-align: middle; }
 .admin-user-list-state > button { margin-left: 10px; }
@@ -499,8 +500,8 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .admin-user-identity strong, .admin-user-identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-user-avatar { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--ui-accent-bg, #e0eee5); color: var(--ui-accent, #315b43); font-size: 14px; font-weight: 600; }
 .admin-user-role { width: 100%; max-width: 150px; padding: 6px 9px; font-size: 12px; border: 1px solid var(--ui-border, #dce3de); border-radius: 7px; background: var(--ui-surface, #fff); }
-.admin-user-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; white-space: nowrap; }
-.admin-user-table th:last-child, .admin-user-table td:last-child { width: 130px; }
+.admin-user-actions { display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.admin-user-table th:last-child, .admin-user-table td:last-child { width: 144px; }
 .admin-user-action-items:not([hidden]) { display: flex; align-items: center; gap: 6px; }
 .admin-user-action-toggle[aria-expanded="true"] { background: var(--ui-hover, #edf3ef); border-color: var(--ui-accent-border, #a8c3b2); }
 .admin-user-action-confirmation { color: var(--ui-info, #2563b4); }
@@ -1735,7 +1736,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .management-page button { font-size: 12px; }
 .management-page .admin-user-add { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 6px 10px; border-radius: 6px; }
 .management-page .admin-user-pagination button { height: 32px; padding: 0 10px; }
-.management-page .admin-user-actions button { padding: 6px 10px; }
+.management-page .admin-user-actions button { padding: 6px 8px; }
 .management-dialog :is(button:not(.dialog-close), input, select, textarea, .form-field, .checkbox-field, .tag-management-item strong) { font-size: 12px; }
 .management-dialog :is(input:not([type="checkbox"]):not([type="radio"]), select) { padding: 7px 9px; border-radius: 6px; }
 .management-dialog :is(.dialog-footer, .citation-edit-actions, .tag-management-edit-actions) button { min-height: 32px; padding: 6px 10px; border-radius: 6px; }
