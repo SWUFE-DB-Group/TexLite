@@ -182,7 +182,7 @@
     "filterTags": "按标签过滤", "rename": "重命名", "renameTitle": "重命名项目", "duplicate": "复制项目", "duplicating": "正在复制…", "duplicateTitle": "复制项目", "duplicateDescription": "创建“{{project}}”的独立副本。会复制文件和项目设置，但不会复制成员、批注、Git 历史和编译产物。", "download": "下载",
     "transfer": "转让", "transferOwnership": "转让项目", "transferDescription": "为“{{project}}”选择新的所有者。", "newOwner": "新所有者", "chooseNewOwner": "请选择用户", "noTransferUsers": "没有其他可用用户", "transferWarning": "转让后你仍保留读写权限。源码、历史、批注和成员不会改变。GitHub 凭据属于个人账户：本项目之后使用新所有者的 token，你自己的 token 仍保留在你的账户中。",
     "transferForbidden": "只有当前项目所有者可以转让项目。", "transferTargetInvalid": "请选择新的项目所有者。", "transferSelf": "你已经是该项目的所有者。",
-    "deleteTitle": "删除项目", "deleteDescription": "确定永久删除“{{project}}”及其全部文件吗？此操作不可撤销。",
+    "deleteTitle": "删除项目", "deleteDescription": "确定永久删除“<project>{{project}}</project>”及其全部文件吗？此操作不可撤销。",
     "chooseZip": "选择 ZIP 项目", "dropZip": "将 ZIP 压缩包拖放到这里", "browse": "浏览文件",
     "selectedFileSize": "已选择 · {{size}}", "clearFile": "清除已选文件"
   },

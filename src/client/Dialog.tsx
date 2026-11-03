@@ -6,7 +6,7 @@ import { LoaderCircle } from "lucide-react";
 interface ModalProps {
   open: boolean;
   title: string;
-  description?: string;
+  description?: ReactNode;
   onOpenChange: (open: boolean) => void;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
   children: ReactNode;
@@ -95,7 +95,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function ConfirmDialog({ open, title, description, confirmLabel, danger, onCancel, onConfirm, error, busy = false, children, className }: {
-  open: boolean; title: string; description: string; confirmLabel?: string; danger?: boolean;
+  open: boolean; title: string; description: ReactNode; confirmLabel?: string; danger?: boolean;
   onCancel: () => void; onConfirm: () => void; error?: string; busy?: boolean; children?: ReactNode; className?: string;
 }) {
   const { t } = useTranslation();

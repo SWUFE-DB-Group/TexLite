@@ -39,6 +39,23 @@ afterEach(async () => {
 });
 
 describe("project deletion feedback", () => {
+  it.each(["en", "zh", "zh-Hant"])("emphasizes the project name as literal text in the %s confirmation", async (language) => {
+    await i18n.changeLanguage(language);
+    const item = { ...project("named"), name: "<em>Vis-Poison & co.</em>" };
+    const pagination = { page: 1, pageSize: 30, total: 1, totalPages: 1 };
+    const counts = { all: 1, owned: 1, shared: 0 };
+    apiMock.mockImplementation(async (url: string) => url === "/api/tags" ? { tags: [] } : { projects: [item], pagination, counts });
+    await act(async () => root.render(createElement(Dashboard, { site, user,
+      initialData: { projects: [item], tags: [], pagination, counts, filters }, onDataChange: vi.fn(), onUser: vi.fn(), onOpenProject: vi.fn() })));
+    await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu-trigger")!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu .danger")!.click());
+    const description = document.querySelector<HTMLElement>(".dialog-header p")!;
+    expect(description.querySelector("strong")?.textContent).toBe(item.name);
+    expect(description.querySelector("em")).toBeNull();
+    expect(description.textContent).not.toContain("<project>");
+    expect(apiMock.mock.calls.some(([, options]) => options?.method === "DELETE")).toBe(false);
+  });
+
   it.each(["grid", "list"])("updates live data immediately but retains a noninteractive %s card briefly", async (view) => {
     let projects = [project("first"), project("second")];
     const pagination = () => ({ page: 1, pageSize: 30, total: projects.length, totalPages: 1 });

@@ -294,7 +294,7 @@
     "transferTargetInvalid": "請選擇新的專案擁有者。",
     "transferSelf": "你已經是該專案的擁有者。",
     "deleteTitle": "刪除專案",
-    "deleteDescription": "確定永久刪除「{{project}}」及其全部檔案嗎？此操作無法復原。",
+    "deleteDescription": "確定永久刪除「<project>{{project}}</project>」及其全部檔案嗎？此操作無法復原。",
     "chooseZip": "選擇 ZIP 專案",
     "dropZip": "將 ZIP 壓縮檔拖放到這裡",
     "browse": "瀏覽檔案",
