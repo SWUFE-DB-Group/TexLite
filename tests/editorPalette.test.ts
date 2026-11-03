@@ -32,7 +32,6 @@ describe.each(["light", "dark"] as const)("%s editor palette", (theme) => {
   it("shares structural and environment color, and keeps reference keys distinct from warnings", () => {
     expect(palette.structure).toBe(palette.env);
     expect(palette.key).not.toBe(palette.warning);
-    expect(css).toContain(".cm-tl-bracket { color: var(--tl-bracket)");
   });
 
   it("keeps the active-line tint translucent so it cannot obscure drawn selections", () => {

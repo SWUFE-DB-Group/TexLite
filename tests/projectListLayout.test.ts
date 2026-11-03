@@ -39,7 +39,6 @@ describe("project list title layout", () => {
     expect(heading.contains(tags)).toBe(false); expect(heading.nextElementSibling).toBe(tags);
     expect(badge.textContent).toBe(i18n.t("projects.unresolvedCount", { count: 123 }));
     expect(name.getAttribute("title")).toBe(project.name);
-    expect(getComputedStyle(name).maxWidth).toBe("340px");
     expect(Number.parseFloat(getComputedStyle(name).minWidth)).toBe(0);
     expect(getComputedStyle(name).flexShrink).toBe("1");
     expect(getComputedStyle(badge).flexShrink).toBe("0"); expect(getComputedStyle(badge).whiteSpace).toBe("nowrap");

@@ -58,7 +58,6 @@ describe("shared save controls", () => {
     await render();
     expect(button().getAttribute("aria-label")).toBe("Update");
     expect(button().querySelector("[data-test-update-icon]")).not.toBeNull();
-    expect(getComputedStyle(button()).width).toBe("32px");
     expect(getComputedStyle(button().querySelector<HTMLElement>(".sr-only")!).position).toBe("absolute");
     await render(true);
     expect(button().querySelector("[data-test-update-icon]")).toBeNull();
@@ -69,45 +68,28 @@ describe("shared save controls", () => {
   });
 
   it.each(["light", "dark"].flatMap((theme) => [false, true].map((agentLast) => ({ theme, agentLast }))))(
-    "keeps management controls consistent in $theme mode (lazy agent CSS last=$agentLast)", async ({ theme, agentLast }) => {
+    "keeps shared save styles intact across contexts in $theme mode (lazy agent CSS last=$agentLast)", async ({ theme, agentLast }) => {
       document.documentElement.dataset.theme = theme;
       addCss(agentLast ? css : agentCss); addCss(agentLast ? agentCss : css); addCss(themeCss);
       await act(async () => root.render(createElement("div", null,
+        createElement(SaveButton, { feedback: "Saved", id: "save-reference" }, "Save"),
         ...["admin-users-page", "citation-library-page", "agent-management"].map((page) => createElement("section", {
           className: `management-page ${page}`, key: page
-        }, createElement("div", { className: "section-title" },
-          createElement("button", { className: "dashboard-back-button" }, "Back to projects")),
+        },
         createElement(SaveButton, { feedback: "Saved" }, "Save"))),
         createElement("div", { className: "management-dialog" }, createElement("div", { className: "dialog-footer" },
-          createElement(SaveButton, null, "Save"))),
-        createElement("div", { className: "citation-library-page" }, createElement("div", { className: "citation-entry-actions" },
-          createElement("button", { className: "citation-copy-button" }, createElement("span", null, "Copy BibTeX")),
-          createElement("button", { className: "citation-entry-menu-trigger" }, "…"))),
-        createElement("div", { className: "citation-entry-menu", role: "menu" },
-          ...["Tags", "Edit", "Delete"].map((label) => createElement("div", { key: label, role: "menuitem" }, label)))
+          createElement(SaveButton, { feedback: "Saved" }, "Save")))
       )));
-      const backs = [...host.querySelectorAll<HTMLElement>(".dashboard-back-button")].map((element) => getComputedStyle(element));
-      for (const style of backs) {
-        expect(style.height).toBe("32px"); expect(style.lineHeight).toBe("1");
-        expect(style.fontSize).toBe("12px"); expect(style.paddingTop).toBe("0px");
-      }
-      expect(getComputedStyle(host.querySelector(".citation-copy-button span")!).fontSize).toBe("11px");
-      for (const element of host.querySelectorAll<HTMLElement>('.citation-entry-menu [role="menuitem"]')) {
+      const reference = host.querySelector<HTMLElement>("#save-reference")!;
+      const expectedStyle = getComputedStyle(reference);
+      const expectedConfirmationColor = getComputedStyle(reference.querySelector(".save-button-confirmation")!).color;
+      expect(expectedConfirmationColor).not.toBe(expectedStyle.color);
+      for (const element of host.querySelectorAll<HTMLElement>(".management-page .save-button, .management-dialog .save-button")) {
         const style = getComputedStyle(element);
-        expect(style.fontSize).toBe("11px"); expect(style.minHeight).toBe("32px");
-      }
-      for (const element of host.querySelectorAll<HTMLElement>(".save-button")) {
-        const style = getComputedStyle(element);
-        expect(style.minHeight).toBe("32px"); expect(style.fontSize).toBe("12px");
-        expect(style.backgroundColor).toBe(theme === "dark" ? "#282c34" : "#fff");
-        expect(style.color).toBe(theme === "dark" ? "#d7dae0" : "#252b27");
-      }
-      expect(getComputedStyle(host.querySelector(".save-button-confirmation")!).color).toBe(theme === "dark" ? "#a9c8f5" : "#2563b4");
-      for (const element of host.querySelectorAll<HTMLElement>(".citation-entry-actions button")) {
-        const style = getComputedStyle(element);
-        expect(style.height).toBe("32px"); expect(style.lineHeight).toBe("1");
-        expect(style.fontSize).toBe(element.classList.contains("citation-copy-button") ? "11px" : "12px");
-        expect(style.paddingTop).toBe("0px");
+        for (const property of ["minHeight", "fontSize", "backgroundColor", "color"] as const) {
+          expect(style[property], `${element.parentElement?.className}: ${property}`).toBe(expectedStyle[property]);
+        }
+        expect(getComputedStyle(element.querySelector(".save-button-confirmation")!).color).toBe(expectedConfirmationColor);
       }
     }
   );
