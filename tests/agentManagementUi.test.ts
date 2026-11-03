@@ -53,6 +53,43 @@ afterEach(async () => {
 });
 
 describe("coding agent management presentation", () => {
+  it("keeps row end-execution actions icon-only, retains bulk text and confirms a successful stop", async () => {
+    language = "en";
+    let task: AgentTask = { id: "task", title: "Revise abstract", projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
+      agentId: "codex", state: "running", cleanupState: "none", errorCode: null, createdAt: "2026-10-25", updatedAt: "2026-10-25",
+      startedAt: "2026-10-25", endedAt: null, exitCode: null, nativeSessionId: "native-task", canResume: true };
+    let finish!: () => void;
+    vi.mocked(api).mockImplementation(async (url, options) => {
+      if (url === "/api/admin/agent-tasks/task/stop" && options?.method === "POST") {
+        await new Promise<void>((resolve) => { finish = resolve; });
+        task = { ...task, state: "stopped" };
+        return { task } as never;
+      }
+      return url === "/api/admin/agents" ? catalog : { tasks: [task], page: 1, pageSize: 50, total: 1 } as never;
+    });
+    await act(async () => root.render(createElement(AgentManagement, { user, onBack() {} })));
+    await act(async () => vi.advanceTimersByTime(150));
+    const end = container.querySelector<HTMLButtonElement>(`.agent-row-actions [aria-label="${agentUiMessages.en.end}"]`)!;
+    expect(end.getAttribute("title")).toBe(agentUiMessages.en.end);
+    expect(end.querySelector(".lucide-circle-off")).not.toBeNull();
+    expect(end.querySelector('[role="status"]')?.classList.contains("sr-only")).toBe(true);
+    expect(container.querySelector(".agent-bulk-actions")).toBeNull();
+    await act(async () => container.querySelector<HTMLInputElement>('thead input[type="checkbox"]')!.click());
+    expect(container.querySelector(".agent-bulk-actions button")?.textContent).toBe(agentUiMessages.en.batchEnd);
+    await act(async () => end.click());
+    expect(end.disabled).toBe(true);
+    expect(end.querySelector(".agent-action-confirmation")).toBeNull();
+    await act(async () => finish());
+    expect(end.querySelector(".agent-action-confirmation")).not.toBeNull();
+    expect(end.querySelector('[role="status"]')?.textContent).toBe("common.done");
+    expect(api).toHaveBeenCalledWith("/api/admin/agent-tasks/task/stop", { method: "POST" });
+    await act(async () => vi.advanceTimersByTime(2000));
+    expect(end.querySelector(".lucide-circle-off")).not.toBeNull();
+    expect(end.disabled).toBe(true);
+    await act(async () => end.click());
+    expect(vi.mocked(api).mock.calls.filter(([url]) => url === "/api/admin/agent-tasks/task/stop")).toHaveLength(1);
+  });
+
   it.each(["admin", "user"] as const)("summarizes bulk deletion without listing task names and retains actionable failures (%s)", async (role) => {
     language = "en";
     const prefix = role === "admin" ? "/api/admin/agent-tasks" : "/api/agent-tasks";

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "../agents/agents.css";
-import { ArrowDown, ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, RefreshCw, Square, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, CircleOff, LoaderCircle, RefreshCw, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useTerminalPreferences } from "../terminalPreferences";
 import { useSuccessNotice } from "../SuccessNotice";
@@ -131,7 +131,7 @@ export function AgentManagement({ user, onBack }: {
       <span className="agent-toolbar-spacer" /><small>{t("agents.taskCount", { count: result.total })}</small>
       <button aria-label={t("agents.refresh")} disabled={busy} onClick={() => setRefresh((value) => value + 1)}><RefreshCw size={14} /></button>
     </div>
-    {selectedTasks.length > 0 && <div className="agent-bulk-actions"><span>{t("agents.selected", { count: selectedTasks.length })}</span><button disabled={busy} onClick={() => void mutate(() => operate(selectedTasks, "stop"))}><Square size={13} />{t("agents.batchEnd")}</button><button className="agent-danger" disabled={busy} onClick={() => beginDelete(selectedTasks)}><Trash2 size={13} />{t("agents.batchDelete")}</button></div>}
+    {selectedTasks.length > 0 && <div className="agent-bulk-actions"><span>{t("agents.selected", { count: selectedTasks.length })}</span><button disabled={busy} onClick={() => void mutate(() => operate(selectedTasks, "stop"))}><CircleOff size={13} />{t("agents.batchEnd")}</button><button className="agent-danger" disabled={busy} onClick={() => beginDelete(selectedTasks)}><Trash2 size={13} />{t("agents.batchDelete")}</button></div>}
     <div className="agent-table-scroll table-card"><table className="agent-task-table" role="table"><thead><tr><th data-label={t("agents.all")}><input type="checkbox" aria-label={t("agents.all")} checked={result.tasks.length > 0 && result.tasks.every((task) => selected.has(task.id))} onChange={(event) => setSelected(new Set(event.target.checked ? result.tasks.map((task) => task.id) : []))} /></th><th>{t("agents.task")}</th><th>{t("agents.project")}</th>{admin && <th>{t("agents.user")}</th>}<th>{t("agents.agent")}</th><th>{t("agents.state")}</th><th scope="col" aria-sort="descending"><span className="agent-time-heading">{t("agents.updated")}<ArrowDown size={12} aria-hidden="true" /></span></th><th>{t("agents.actions")}</th></tr></thead>
       <tbody>{result.tasks.map((task) => <tr key={task.id} className={selected.has(task.id) ? "selected" : ""}>
         <td className="agent-task-selection"><input type="checkbox" aria-label={task.title} checked={selected.has(task.id)} onChange={(event) => setSelected((value) => { const next = new Set(value); if (event.target.checked) next.add(task.id); else next.delete(task.id); return next; })} /></td>
@@ -144,7 +144,14 @@ export function AgentManagement({ user, onBack }: {
         <td className="agent-table-time" data-label={t("agents.updated")}><time dateTime={task.updatedAt} tabIndex={0}
           data-tooltip={t("agents.createdTooltip", { created: formatDateTime(task.createdAt, i18n.resolvedLanguage) })}
         >{formatDateTime(task.updatedAt, i18n.resolvedLanguage, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></td>
-        <td className="agent-row-actions"><button disabled={busy || !["running", "starting", "stopping"].includes(task.state)} onClick={() => void mutate(() => operate([task], "stop"))}><Square size={12} /><span role="status">{t(completedAction.message === `stop:${task.id}` ? "common.done" : "agents.end")}</span></button><button className="agent-icon-button agent-danger" title={t("agents.delete")} aria-label={t("agents.delete")} disabled={busy} onClick={() => beginDelete([task])}><Trash2 size={14} /></button></td>
+        <td className="agent-row-actions">
+          <button type="button" className="agent-icon-button" title={t("agents.end")} aria-label={t("agents.end")}
+            disabled={busy || !["running", "starting", "stopping"].includes(task.state)} onClick={() => void mutate(() => operate([task], "stop"))}>
+            {completedAction.message === `stop:${task.id}` ? <CheckCircle2 className="agent-action-confirmation" size={14} aria-hidden="true" /> : <CircleOff size={14} aria-hidden="true" />}
+            <span className="sr-only" role="status">{t(completedAction.message === `stop:${task.id}` ? "common.done" : "agents.end")}</span>
+          </button>
+          <button className="agent-icon-button agent-danger" title={t("agents.delete")} aria-label={t("agents.delete")} disabled={busy} onClick={() => beginDelete([task])}><Trash2 size={14} /></button>
+        </td>
       </tr>)}</tbody></table>
       {!result.tasks.length && <div className="agent-task-empty">{loading ? <LoaderCircle size={24} className="spin" /> : <TerminalSquare size={28} />}<strong>{t(loading ? "common.loading" : "agents.noTasks")}</strong>{!loading && <p>{t("agents.noTasksHint")}</p>}</div>}
     </div>

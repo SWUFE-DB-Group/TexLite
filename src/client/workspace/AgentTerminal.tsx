@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import "../agents/agents.css";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, LoaderCircle, Pencil, Play, Plus, Square, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleOff, LoaderCircle, Pencil, Play, Plus, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
 import { api } from "../api";
 import { Modal } from "../Dialog";
 import { InfoPopover } from "../InfoPopover";
@@ -61,7 +61,7 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
     {(task || tasks.result.total > tasks.result.pageSize) && <div className="agent-task-toolbar">
       {tasks.result.total > tasks.result.pageSize && <><button disabled={tasks.result.page <= 1} aria-label={t("agents.previous")} onClick={() => tasks.setPage(tasks.result.page - 1)}><ChevronLeft size={13} /></button><small>{tasks.result.page} / {Math.ceil(tasks.result.total / tasks.result.pageSize)}</small><button disabled={tasks.result.page * tasks.result.pageSize >= tasks.result.total} aria-label={t("agents.next")} onClick={() => tasks.setPage(tasks.result.page + 1)}><ChevronRight size={13} /></button></>}
       {task && <><span className="agent-task-state">{t(`agents.state_${task.state}`)}</span><span className="agent-toolbar-spacer" />
-        {running ? <button disabled={tasks.busy} onClick={() => void act("/stop")}><Square size={12} />{t("agents.end")}</button>
+        {running ? <button disabled={tasks.busy} onClick={() => void act("/stop")}><CircleOff size={12} />{t("agents.end")}</button>
           : <button disabled={!available || tasks.busy} onClick={() => void act("/start")}><Play size={13} />{t(resumeTask ? "agents.resume" : "agents.start")}</button>}
         <button className="agent-icon-button" title={t("agents.rename")} aria-label={t("agents.rename")} disabled={tasks.busy} onClick={() => { setRenameTitle(task.title); setRenaming((value) => !value); }}><Pencil size={13} /></button>
         <button className="agent-icon-button agent-danger" title={t("agents.delete")} aria-label={t("agents.delete")} disabled={tasks.busy} onClick={() => { tasks.setError(""); setDeleteOpen(true); }}><Trash2 size={13} /></button>

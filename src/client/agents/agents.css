@@ -45,6 +45,7 @@
 .agent-state-badge.running, .agent-state-badge.starting { background: var(--ui-accent-bg, #eaf3ed); color: var(--ui-accent, #236544); }
 .agent-state-badge.failed { color: var(--ui-danger, #a33c36); }
 .agent-row-actions { white-space: nowrap; }
+.agent-action-confirmation { color: var(--ui-info, #2563b4); }
 .agent-management button.agent-danger, .agent-terminal-panel button.agent-danger { color: var(--ui-danger, #a33c36); }
 .agent-management .project-pagination { margin-top: 0; }
 .agent-pagination button { box-sizing: border-box; height: 32px; min-width: 92px; padding: 0 10px; line-height: 1; white-space: nowrap; }
