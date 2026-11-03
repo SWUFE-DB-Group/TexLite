@@ -30,7 +30,7 @@ import { HarperLintSupersededError, HarperUnavailableError, type HarperService }
 import { ChktexLintSupersededError, ChktexUnavailableError, type ChktexService } from "../chktex.js";
 import { supportsChktexChecks, supportsWritingChecks } from "../../shared/writingChecks.js";
 import { unreadMentionCountsForProjects } from "../commentMentions.js";
-import type { ProjectCatalogCounts, ProjectOwnershipScope } from "../../shared/projectCatalog.js";
+import { DEFAULT_PROJECT_PAGE_SIZE, type ProjectCatalogCounts, type ProjectOwnershipScope } from "../../shared/projectCatalog.js";
 import {
   commentsSummaryForProject,
   commentsSummaryForProjects,
@@ -171,8 +171,8 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const archivedOnly = query.archived === "1" || query.archived === "true";
     const requestedPage = Number.parseInt(query.page ?? "1", 10);
     const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-    const requestedPageSize = Number.parseInt(query.pageSize ?? "20", 10);
-    const pageSize = Math.min(100, Math.max(1, Number.isFinite(requestedPageSize) && requestedPageSize > 0 ? requestedPageSize : 20));
+    const requestedPageSize = Number.parseInt(query.pageSize ?? String(DEFAULT_PROJECT_PAGE_SIZE), 10);
+    const pageSize = Math.min(100, Math.max(1, Number.isFinite(requestedPageSize) && requestedPageSize > 0 ? requestedPageSize : DEFAULT_PROJECT_PAGE_SIZE));
     const search = typeof query.search === "string" ? query.search.trim() : "";
     const tagId = typeof query.tag === "string" ? query.tag.trim() : "";
     const sortColumn = query.sort === "created" ? "p.created_at" : "p.updated_at";

@@ -41,7 +41,7 @@ afterEach(async () => {
 describe("project deletion feedback", () => {
   it.each(["grid", "list"])("updates live data immediately but retains a noninteractive %s card briefly", async (view) => {
     let projects = [project("first"), project("second")];
-    const pagination = () => ({ page: 1, pageSize: 20, total: projects.length, totalPages: 1 });
+    const pagination = () => ({ page: 1, pageSize: 30, total: projects.length, totalPages: 1 });
     const counts = () => ({ all: projects.length, owned: projects.length, shared: 0 });
     let finish!: () => void;
     apiMock.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -78,7 +78,7 @@ describe("project deletion feedback", () => {
 
   it("does not animate or hide a project when deletion fails", async () => {
     const projects = [project("first")];
-    const pagination = { page: 1, pageSize: 20, total: 1, totalPages: 1 };
+    const pagination = { page: 1, pageSize: 30, total: 1, totalPages: 1 };
     const counts = { all: 1, owned: 1, shared: 0 };
     apiMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") throw new Error("Unable to delete");

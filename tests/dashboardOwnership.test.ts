@@ -36,10 +36,11 @@ function response(url: string) {
   const scoped = matching.filter((project) => archived.has(project.id) === (params.get("archived") === "1"))
     .filter((project) => params.get("scope") === "owned" ? project.ownerId === user.id
       : params.get("scope") === "shared" ? project.ownerId !== user.id : true);
-  const totalPages = Math.ceil(scoped.length / 20);
+  const pageSize = Number(params.get("pageSize") ?? 30);
+  const totalPages = Math.ceil(scoped.length / pageSize);
   const page = Math.max(1, Math.min(Number(params.get("page") ?? 1), totalPages));
-  return { projects: scoped.slice((page - 1) * 20, page * 20), counts,
-    pagination: { page, pageSize: 20, total: scoped.length, totalPages } };
+  return { projects: scoped.slice((page - 1) * pageSize, page * pageSize), counts,
+    pagination: { page, pageSize, total: scoped.length, totalPages } };
 }
 const projectCalls = () => apiMock.mock.calls.filter(([url]) => String(url).startsWith("/api/projects?"));
 const lastParams = () => new URL(String(projectCalls().at(-1)![0]), "http://localhost").searchParams;
@@ -95,12 +96,14 @@ describe("project ownership tabs", () => {
   });
 
   it.each(["grid", "list"])("keeps the %s UI, counts all pages and resets pagination when changing ownership", async (view) => {
+    projects = [...Array.from({ length: 33 }, (_, index) => makeProject(true, index)), ...Array.from({ length: 34 }, (_, index) => makeProject(false, index))];
     localStorage.setItem(scopedStorageKey("texlite-project-view"), view);
     await render();
     expect(host.querySelector(".section-title")!.nextElementSibling).toBe(host.querySelector(".project-ownership-tabs"));
     expect(tab("all").getAttribute("aria-selected")).toBe("true");
-    expect([tab("all"), tab("owned"), tab("shared")].map((button) => button.querySelector("sup")?.textContent)).toEqual(["47", "23", "24"]);
-    expect(names()).toHaveLength(20);
+    expect([tab("all"), tab("owned"), tab("shared")].map((button) => button.querySelector("sup")?.textContent)).toEqual(["67", "33", "34"]);
+    expect(lastParams().get("pageSize")).toBe("30");
+    expect(names()).toHaveLength(30);
     await click('#project-tab-owned');
     await click('.project-pagination button:last-child');
     expect(lastParams().get("scope")).toBe("owned"); expect(lastParams().get("page")).toBe("2");
@@ -108,7 +111,7 @@ describe("project ownership tabs", () => {
     await click('#project-tab-owned'); expect(lastParams().get("page")).toBe("2");
     await click('#project-tab-shared');
     expect(lastParams().get("scope")).toBe("shared"); expect(lastParams().get("page")).toBe("1");
-    expect(names()).toHaveLength(20); expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
+    expect(names()).toHaveLength(30); expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
     expect(host.querySelector(".project-grid")!.classList.contains("list-view")).toBe(view === "list");
   });
 
@@ -148,6 +151,7 @@ describe("project ownership tabs", () => {
   });
 
   it("restores the category, filters and page together when returning from a project", async () => {
+    projects.push(...Array.from({ length: 10 }, (_, index) => makeProject(false, index + 24)));
     await render(); await click('#project-tab-shared'); await changeSearch("Paper");
     await act(async () => {
       const select = host.querySelector<HTMLSelectElement>('.project-sort select')!;

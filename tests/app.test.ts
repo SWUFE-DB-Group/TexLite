@@ -1144,9 +1144,9 @@ Standalone document.
     expect(readerStillArchived.json().projects).toContainEqual(expect.objectContaining({ id: projectId, archived: true }));
   });
 
-  it("paginates project lists with twenty projects per page by default", async () => {
+  it("paginates project lists with thirty projects per page by default", async () => {
     const prefix = `Pagination ${randomUUID().slice(0, 8)}`;
-    for (let index = 1; index <= 21; index += 1) {
+    for (let index = 1; index <= 31; index += 1) {
       const created = await app.inject({
         method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: `${prefix} ${index}` }
       });
@@ -1156,18 +1156,18 @@ Standalone document.
       method: "GET", url: `/api/projects?search=${encodeURIComponent(prefix)}`, headers: { cookie }
     });
     expect(firstPage.statusCode).toBe(200);
-    expect(firstPage.json().projects).toHaveLength(20);
-    expect(firstPage.json().pagination).toMatchObject({ page: 1, pageSize: 20, total: 21, totalPages: 2 });
+    expect(firstPage.json().projects).toHaveLength(30);
+    expect(firstPage.json().pagination).toMatchObject({ page: 1, pageSize: 30, total: 31, totalPages: 2 });
     const secondPage = await app.inject({
       method: "GET", url: `/api/projects?search=${encodeURIComponent(prefix)}&page=2`, headers: { cookie }
     });
     expect(secondPage.json().projects).toHaveLength(1);
-    expect(secondPage.json().pagination).toMatchObject({ page: 2, pageSize: 20, total: 21, totalPages: 2 });
+    expect(secondPage.json().pagination).toMatchObject({ page: 2, pageSize: 30, total: 31, totalPages: 2 });
     const smallerPage = await app.inject({
       method: "GET", url: `/api/projects?search=${encodeURIComponent(prefix)}&page=2&pageSize=5`, headers: { cookie }
     });
     expect(smallerPage.json().projects).toHaveLength(5);
-    expect(smallerPage.json().pagination).toMatchObject({ page: 2, pageSize: 5, total: 21, totalPages: 5 });
+    expect(smallerPage.json().pagination).toMatchObject({ page: 2, pageSize: 5, total: 31, totalPages: 7 });
   });
 
   it("filters ownership before pagination and counts only accessible projects across all matching pages", async () => {
@@ -1181,7 +1181,7 @@ Standalone document.
       .run(otherId, `owner-${suffix}`, `Collaborator ${suffix}`, timestamp);
     const owned: string[] = [];
     const insert = db.prepare("INSERT INTO projects (id, owner_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)");
-    for (let index = 0; index < 21; index++) {
+    for (let index = 0; index < 31; index++) {
       const id = randomUUID(); owned.push(id); insert.run(id, ownerId, `${prefix} owned ${index}`, timestamp, timestamp);
     }
     const shared = [randomUUID(), randomUUID()];
@@ -1200,9 +1200,9 @@ Standalone document.
     try {
       for (const scope of ["all", "owned", "shared", "unknown"]) {
         const result = await list(`&scope=${scope}&page=2`);
-        expect(result.counts).toEqual({ all: 23, owned: 21, shared: 2 });
+        expect(result.counts).toEqual({ all: 33, owned: 31, shared: 2 });
         expect(result.projects.some((project: { id: string }) => project.id === hidden)).toBe(false);
-        expect(result.pagination).toMatchObject({ total: scope === "owned" ? 21 : scope === "shared" ? 2 : 23,
+        expect(result.pagination).toMatchObject({ total: scope === "owned" ? 31 : scope === "shared" ? 2 : 33,
           page: scope === "shared" ? 1 : 2 });
         if (scope === "owned") expect(result.projects.every((project: { ownerId: string }) => project.ownerId === ownerId)).toBe(true);
         if (scope === "shared") expect(result.projects.map((project: { id: string }) => project.id).sort()).toEqual([...shared].sort());
@@ -1213,11 +1213,11 @@ Standalone document.
       for (const scope of ["all", "owned", "shared"]) {
         for (const archived of [false, true]) {
           const result = await list(`&scope=${scope}&archived=${archived ? "1" : "0"}&page=99`);
-          expect(result.counts).toEqual({ all: 23, owned: 21, shared: 2 });
-          const total = archived ? scope === "all" ? 2 : 1 : scope === "all" ? 21 : scope === "owned" ? 20 : 1;
-          const lastPage = Math.ceil(total / 20);
+          expect(result.counts).toEqual({ all: 33, owned: 31, shared: 2 });
+          const total = archived ? scope === "all" ? 2 : 1 : scope === "all" ? 31 : scope === "owned" ? 30 : 1;
+          const lastPage = Math.ceil(total / 30);
           expect(result.pagination).toMatchObject({ total, page: lastPage, totalPages: lastPage });
-          expect(result.projects).toHaveLength(total - (lastPage - 1) * 20);
+          expect(result.projects).toHaveLength(total - (lastPage - 1) * 30);
         }
       }
       db.prepare("INSERT INTO user_tags (id, user_id, name, color, created_at, updated_at) VALUES (?, ?, ?, 'blue', ?, ?)")

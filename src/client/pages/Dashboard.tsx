@@ -21,6 +21,7 @@ import { formatDateTime } from "../dateTime";
 import { captureDeletionHeight, PROJECT_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
 import { useAgentAccess } from "../agents/useAgentAccess";
 import { useTerminalPreferences } from "../terminalPreferences";
+import { DEFAULT_PROJECT_PAGE_SIZE } from "../../shared/projectCatalog";
 
 const projectKey = (project: Project) => project.id;
 const emptyProjects: Project[] = [];
@@ -61,7 +62,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [projects, setProjects] = useState<Project[]>(() => initialData?.projects ?? []);
   const [tags, setTags] = useState<ProjectTag[]>(() => initialData?.tags ?? []);
   const [pagination, setPagination] = useState<ProjectListPagination>(() => initialData?.pagination ?? {
-    page: 1, pageSize: 20, total: initialData?.projects.length ?? 0, totalPages: initialData?.projects.length ? 1 : 0
+    page: 1, pageSize: DEFAULT_PROJECT_PAGE_SIZE, total: initialData?.projects.length ?? 0, totalPages: initialData?.projects.length ? 1 : 0
   });
   const [counts, setCounts] = useState<ProjectCatalogCounts>(() => initialData?.counts ?? { all: 0, owned: 0, shared: 0 });
   const [ownership, setOwnership] = useState<ProjectOwnershipScope>(() => initialData?.filters.ownership ?? "all");
@@ -130,7 +131,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     deletedKey: deletedProjectId, keyOf: projectKey, duration: PROJECT_DELETION_DURATION_MS
   });
   const load = (scope: ProjectOwnershipScope, archived: boolean, pageNumber: number, search: string, tag: string, order: "updated" | "created") => {
-    const params = new URLSearchParams({ page: String(pageNumber), pageSize: "20", sort: order, scope });
+    const params = new URLSearchParams({ page: String(pageNumber), pageSize: String(DEFAULT_PROJECT_PAGE_SIZE), sort: order, scope });
     if (view === "grid") params.set("previews", "1");
     if (archived) params.set("archived", "1");
     if (search.trim()) params.set("search", search.trim());

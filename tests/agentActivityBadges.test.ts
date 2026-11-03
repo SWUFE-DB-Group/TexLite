@@ -21,7 +21,7 @@ const site: SiteConfig = { siteName: "TexLite", adminEmail: "", basePath: "", mi
 const project: Project = { id: "paper", ownerId: "writer", ownerDisplayName: "Writer", name: "Paper",
   mainFile: "main.tex", lastModifiedBy: "writer", latexmkrc: null, engine: "pdflatex", icon: null,
   chktexEnabled: false, permission: "owner", tags: [], createdAt: "2026-10-26", updatedAt: "2026-10-26" };
-const pagination = { page: 1, pageSize: 20, total: 0, totalPages: 0 };
+const pagination = { page: 1, pageSize: 30, total: 0, totalPages: 0 };
 const counts = { all: 0, owned: 0, shared: 0 };
 const filters = { ownership: "all", archived: false, search: "", tag: "", sort: "updated" } as const;
 const noop = () => {};
