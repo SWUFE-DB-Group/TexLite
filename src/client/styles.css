@@ -239,17 +239,21 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-meta dt svg { flex: none; color: var(--ui-accent, #6f8e7a); }
 .project-meta dd { overflow: hidden; margin: 2px 0 0; color: var(--ui-text, #555e58); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .project-modified-by { color: var(--ui-muted, #68716b); }
-.project-grid.list-view { display: flex; flex-direction: column; gap: 6px; }
+.project-grid.list-view { display: flex; flex-direction: column; gap: 0; }
+.project-grid.list-view:has(> .project-list-row) { border: 1px solid var(--ui-border, #dfe2de); border-radius: 10px; background: var(--ui-surface, white); }
 .project-list-header,
 .project-grid.list-view .project-card.project-list-row {
   display: grid;
-  grid-template-columns: 36px minmax(260px, 1fr) 100px 90px 110px 36px 36px;
+  grid-template-columns: 28px minmax(220px, 1fr) 100px 90px 110px 32px 32px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   box-sizing: border-box;
 }
 .project-list-header {
-  padding: 1px 12px 4px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ui-border, #dfe2de);
+  border-radius: 9px 9px 0 0;
+  background: var(--ui-subtle, #f6f8f6);
   color: var(--ui-muted, #858d87);
   font-size: 11px;
   font-weight: 750;
@@ -258,7 +262,7 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 }
 .project-list-header-avatar {
   display: block;
-  width: 36px;
+  width: 28px;
   height: 1px;
 }
 .project-list-header-mentions,
@@ -270,21 +274,25 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
   padding: 2px 4px;
 }
 .project-grid.list-view .project-card {
-  height: 72px;
-  min-height: 72px;
-  padding: 0 11px;
+  height: 52px;
+  min-height: 52px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-border, #dfe2de);
+  border-radius: 0;
   overflow: visible;
   cursor: pointer;
 }
+.project-grid.list-view .project-card:last-child { border-bottom: 0; border-radius: 0 0 9px 9px; }
 .project-grid.list-view .project-card:hover {
   transform: none;
-  border-color: var(--ui-border, #a6c2ae);
   background: var(--ui-hover, #f8fbf8);
-  box-shadow: 0 8px 22px #25352a0d;
+  box-shadow: none;
 }
 .project-grid.list-view .project-card.project-list-menu-open {
-  border-color: var(--ui-accent-border, #8caf99);
-  box-shadow: 0 8px 22px #25352a12;
+  z-index: 4;
+  background: var(--ui-hover, #f8fbf8);
+  box-shadow: none;
 }
 .project-grid.list-view.project-list-menu-active .project-card:not(.project-list-menu-open) {
   opacity: .48;
@@ -304,12 +312,14 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
   outline-offset: 2px;
   border-radius: 5px;
 }
-.project-list-avatar {
-  width: 36px;
-  height: 36px;
+.project-grid.list-view .project-list-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
   margin: 0;
   justify-self: center;
 }
+.project-list-avatar > svg, .project-list-avatar .project-icon-external-glyph { width: 16px; height: 16px; }
 .project-list-summary {
   min-width: 0;
   display: flex;
@@ -322,7 +332,7 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  gap: 5px;
+  gap: 3px;
 }
 .project-list-title-line {
   width: 100%;
@@ -341,7 +351,7 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
   flex: 0 1 auto;
   overflow: hidden;
   color: var(--ui-text, #17211a);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 730;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -2167,16 +2177,11 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 @media (max-width: 1100px) {
   .project-list-header,
   .project-grid.list-view .project-card.project-list-row {
-    grid-template-columns: 36px minmax(220px, 1fr) 95px 88px 110px 36px 36px;
-    gap: 9px;
+    grid-template-columns: 28px minmax(200px, 1fr) 90px 80px 104px 32px 32px;
+    gap: 8px;
     padding-left: 10px;
     padding-right: 10px;
   }
-  .project-list-header {
-    padding-left: 11px;
-    padding-right: 11px;
-  }
-  .project-list-avatar { width: 36px; height: 36px; }
 }
 
 /* Compact only toolbar labels, never the text/checkmarks inside open menus. */
@@ -2244,13 +2249,12 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 @media (max-width: 960px) {
   .project-list-header,
   .project-grid.list-view .project-card.project-list-row {
-    grid-template-columns: 36px minmax(200px, 1fr) 95px 110px 36px 36px;
+    grid-template-columns: 28px minmax(180px, 1fr) 90px 104px 32px 32px;
   }
   .project-list-header-created,
   .project-list-created {
     display: none;
   }
-  .project-list-avatar { width: 36px; height: 36px; font-size: 15px; }
 }
 
 @media (max-width: 860px) {
@@ -2275,18 +2279,16 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .section-title { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 24px; }
   .section-title h1 { font-size: 25px; }
   .project-list-header { display: none; }
-  .project-grid.list-view { gap: 7px; }
-  .project-grid.list-view .project-card { height: 68px; min-height: 68px; }
+  .project-grid.list-view .project-card { height: 56px; min-height: 56px; }
+  .project-grid.list-view .project-card:first-of-type { border-top-left-radius: 9px; border-top-right-radius: 9px; }
   .project-grid.list-view .project-card.project-list-row {
-    grid-template-columns: 36px minmax(0, 1fr) minmax(118px, 145px) 36px;
-    gap: 8px;
-    padding: 0 8px;
+    grid-template-columns: 28px minmax(0, 1fr) minmax(100px, 125px) 32px;
+    gap: 7px;
+    padding: 7px 8px;
   }
   .project-list-owner,
   .project-list-created,
   .project-list-mentions { display: none; }
-  .project-list-avatar { width: 36px; height: 36px; }
-  .project-list-title { font-size: 15px; }
   .project-list-modified { font-size: 12px; }
   .project-list-modified small { font-size: 10px; }
   .project-action-menu-trigger { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
@@ -2323,10 +2325,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 
 @media (max-width: 520px) {
   .project-grid.list-view .project-card.project-list-row {
-    grid-template-columns: 36px minmax(0, 1fr) 88px 36px;
-    gap: 8px;
+    grid-template-columns: 28px minmax(0, 1fr) 80px 32px;
+    gap: 6px;
   }
-  .project-list-avatar { width: 36px; height: 36px; font-size: 15px; }
   .project-list-modified small { display: none; }
   .project-tag-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .project-icon-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
