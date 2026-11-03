@@ -156,45 +156,111 @@ describe("citation folder workflows", () => {
     let finish!: () => void;
     vi.mocked(api).mockImplementation((url, options) => url === "/api/citations/collections/import" ? new Promise((resolve) => {
       finish = () => {
-        const collection = { id: "imported", name: "Paper A-1", entryCount: 1 };
+        const collection = { id: "imported", name: "Personal reading", entryCount: 1 };
         catalog = { ...catalog, collections: [...catalog.collections, collection] };
         saved = { ...saved, collectionIds: [...saved.collectionIds, collection.id] };
         resolve({ collection, imported: 1 } as never);
       };
     }) : implementation(url, options));
     await render();
-    await click(named("Import folder"));
+    await click(named("Import", ".citation-collection-import button"));
     const submit = () => document.querySelector<HTMLButtonElement>(".dialog-footer .save-button")!;
     expect(submit().disabled).toBe(true);
     const input = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="file"]')!;
-    const contents = { format: "texlite-citation-folder", version: 1, name: "Paper A", entries: [{ ...saved, notes: "**Shared**" }] };
+    const contents = { format: "texlite-citation-folder", version: 1, name: "Ignore this embedded name", entries: [{ ...saved, notes: "**Shared**" }] };
     Object.defineProperty(input, "files", { configurable: true, value: [new File([JSON.stringify(contents)], "Paper A.texlite-citations.json", { type: "application/json" })] });
     await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-    expect(document.querySelector(".citation-folder-import")?.textContent).toContain("Paper A · 1 entry");
+    const name = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="text"]')!;
+    expect(name.value).toBe("Paper A.texlite-citations");
+    expect(document.querySelector(".citation-folder-import")?.textContent).toContain("Paper A.texlite-citations · 1 entry");
+    expect(submit().disabled).toBe(false);
+    await act(async () => change(name, "  "));
+    expect(submit().disabled).toBe(true);
+    await act(async () => change(name, " Personal reading "));
     expect(submit().disabled).toBe(false);
     expect(vi.mocked(api).mock.calls.filter(([url]) => url.endsWith("/import"))).toHaveLength(0);
     await click(submit()); await click(submit());
     const imports = vi.mocked(api).mock.calls.filter(([url]) => url.endsWith("/import"));
     expect(imports).toHaveLength(1);
-    expect(JSON.parse(String(imports[0][1]?.body)).entries[0]).toMatchObject({ citationKey: "paper", notes: "**Shared**" });
+    expect(name.disabled).toBe(true);
+    expect(JSON.parse(String(imports[0][1]?.body)).name).toBe("Personal reading");
+    const importedEntry = JSON.parse(String(imports[0][1]?.body)).entries[0];
+    expect(importedEntry).toMatchObject({ citationKey: "paper", notes: "**Shared**" });
+    expect(importedEntry).not.toHaveProperty("tags");
+    expect(importedEntry).not.toHaveProperty("collectionIds");
     await act(async () => finish()); await settle();
     expect(document.querySelector(".citation-folder-import")).toBeNull();
-    expect(folder("Paper A-1").getAttribute("aria-current")).toBe("true");
+    expect(folder("Personal reading").getAttribute("aria-current")).toBe("true");
     expect(host.querySelector(".citation-entry-list")?.textContent).toContain(saved.title);
   });
 
   it("leaves the library untouched when an invalid folder file is chosen and allows choosing another file", async () => {
-    await render(); await click(named("Import folder"));
+    await render(); await click(named("Import", ".citation-collection-import button"));
     const input = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="file"]')!;
     for (const contents of ["not json", JSON.stringify({ format: "texlite-citation-folder", version: 2, name: "New", entries: [] }),
       JSON.stringify({ format: "texlite-citation-folder", version: 1, name: "New", entries: [{ ...saved, bibtex: "@article{unclosed", notes: "" }] })]) {
       Object.defineProperty(input, "files", { configurable: true, value: [new File([contents], "invalid.json")] });
       await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-      expect(document.querySelector('[role="alert"]')?.textContent).toContain("Choose a valid TexLite");
+      expect(document.querySelector('[role="alert"]')?.textContent).toContain("Choose a valid .bib");
       expect(document.querySelector<HTMLButtonElement>(".dialog-footer .save-button")?.disabled).toBe(true);
       expect(input.disabled).toBe(false);
     }
     expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(0);
+  });
+
+  it("keeps a user-entered folder name when file reading finishes later", async () => {
+    await render(); await click(named("Import", ".citation-collection-import button"));
+    let finish!: (value: string) => void;
+    const file = new File([], "Original.json");
+    vi.spyOn(file, "text").mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const input = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="file"]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+    const name = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="text"]')!;
+    expect(name.value).toBe("Original");
+    await act(async () => change(name, "My folder"));
+    await act(async () => finish(JSON.stringify({ format: "texlite-citation-folder", version: 1, entries: [{ bibtex: saved.bibtex, notes: "Notes" }] })));
+    expect(name.value).toBe("My folder");
+    expect(document.querySelector<HTMLButtonElement>(".dialog-footer .save-button")?.disabled).toBe(false);
+    expect(document.querySelector(".citation-folder-import")?.textContent).toContain("My folder · 1 entry");
+  });
+
+  it("explains imports beside the folder list and supports browsing, dropping, clearing and replacing a selected file", async () => {
+    await render();
+    await click(named("About importing citations"));
+    expect(document.querySelector(".info-popover-content")?.textContent).toContain("Tags are not exported or imported");
+    await click(named("About importing citations"));
+    await click(named("Import", ".citation-collection-import button"));
+    const input = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="file"]')!;
+    const browse = vi.spyOn(input, "click");
+    await click(named("Browse files"));
+    expect(browse).toHaveBeenCalledOnce();
+    const picker = document.querySelector<HTMLElement>(".citation-folder-import .upload-picker")!;
+    const drop = async (files: File[]) => {
+      const event = new Event("drop", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "dataTransfer", { value: { files } });
+      await act(async () => picker.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(true);
+    };
+    await drop([new File(["@article{first, title={First}}\n@book{second, title={Second}}"], "Reading.BIB")]);
+    expect(picker.textContent).toContain("Reading.BIB");
+    expect(document.querySelector(".citation-folder-import")?.textContent).toContain("Reading · 2 entries");
+    expect(document.querySelector<HTMLInputElement>('.citation-folder-import input[type="text"]')?.value).toBe("Reading");
+    const submit = () => document.querySelector<HTMLButtonElement>(".dialog-footer .save-button")!;
+    expect(submit().disabled).toBe(false);
+    await click(named("Clear selected file"));
+    expect(submit().disabled).toBe(true);
+    expect(picker.textContent).not.toContain("Reading.BIB");
+    expect(document.querySelector('.citation-folder-import input[type="text"]')).toBeNull();
+    await drop([new File([saved.bibtex], "one.bib"), new File([saved.bibtex], "two.bib")]);
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("one .bib or .json");
+    expect(submit().disabled).toBe(true);
+    await drop([new File([saved.bibtex], "Final.bib")]);
+    // Hold the request so the payload can be checked without refreshing fixture data.
+    vi.mocked(api).mockImplementationOnce(() => new Promise(() => {}));
+    await click(submit());
+    const call = vi.mocked(api).mock.calls.find(([url]) => url.endsWith("/import"))!;
+    expect(JSON.parse(String(call[1]?.body))).toMatchObject({ name: "Final", entries: [{ citationKey: "paper", notes: "" }] });
   });
   it("defaults new entries to the current folder but saves into the destination chosen in the form", async () => {
     await render();
@@ -239,12 +305,42 @@ describe("citation folder workflows", () => {
     expect(folder("Renamed").getAttribute("aria-current")).toBe("true");
     expect(host.querySelector(".citation-library-scope-heading a")).toBeNull();
     await menu(folder("Renamed").parentElement!.querySelector<HTMLElement>(".citation-collection-menu-trigger")!, "Delete folder");
+    expect(document.querySelector<HTMLInputElement>(".citation-folder-delete-option input")?.checked).toBe(false);
     expect(document.body.textContent).toContain("The references inside will remain in your library");
     expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(0);
     await click(named("Delete", ".dialog-footer button")); await settle();
     expect(folder("Renamed")).toBeUndefined();
     expect(folder("All references").getAttribute("aria-current")).toBe("true");
     expect(host.textContent).toContain("A shared reference");
+  });
+
+  it("requires an explicit checkbox for deleting references, resets it on reopening, and keeps the dialog on failure", async () => {
+    await render();
+    const open = async () => menu(folder("Paper A").parentElement!.querySelector<HTMLElement>(".citation-collection-menu-trigger")!, "Delete folder");
+    const checkbox = () => document.querySelector<HTMLInputElement>(".citation-folder-delete-option input")!;
+    await open();
+    expect(checkbox().checked).toBe(false);
+    await click(checkbox());
+    expect(document.body.textContent).toContain("References in other folders will be kept");
+    await click(named("Cancel", ".dialog-footer button"));
+    expect(vi.mocked(api).mock.calls.some(([, options]) => options?.method === "DELETE")).toBe(false);
+    await open();
+    expect(checkbox().checked).toBe(false);
+    await click(checkbox());
+    const implementation = vi.mocked(api).getMockImplementation()!;
+    let fail!: (reason: Error) => void;
+    vi.mocked(api).mockImplementation((url, options) => options?.method === "DELETE" ? new Promise((_resolve, reject) => { fail = reject; }) : implementation(url, options));
+    const submit = named("Delete", ".dialog-footer button");
+    await click(submit); await click(submit);
+    expect(checkbox().disabled).toBe(true);
+    const deletions = vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "DELETE");
+    expect(deletions).toHaveLength(1);
+    expect(deletions[0][0]).toBe("/api/citations/collections/a?deleteReferences=true");
+    await act(async () => fail(new Error("Delete failed")));
+    expect(document.querySelector(".dialog-error")?.textContent).toBe("Delete failed");
+    expect(checkbox().checked).toBe(true);
+    expect(checkbox().disabled).toBe(false);
+    expect(folder("Paper A")).toBeDefined();
   });
 
   it("ignores delayed results from a previously selected folder", async () => {

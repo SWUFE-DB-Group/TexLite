@@ -9,7 +9,7 @@ import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { createSessionToken } from "../src/server/security.js";
 import type { CitationLibraryEntry } from "../src/client/types";
 import type { CitationCollection, CitationCollectionCatalog } from "../src/shared/citationCollections.js";
-import { CITATION_FOLDER_FORMAT, CITATION_FOLDER_VERSION, MAX_CITATION_FOLDER_BYTES, MAX_CITATION_NOTES_BYTES, type CitationFolderBundle } from "../src/shared/citationTransfer.js";
+import { CITATION_FOLDER_FORMAT, CITATION_FOLDER_VERSION, MAX_CITATION_FOLDER_BYTES, MAX_CITATION_NOTES_BYTES, type CitationFolderBundle, type CitationFolderImportRequest } from "../src/shared/citationTransfer.js";
 
 let root: string, db: DatabaseConnection, app: FastifyInstance;
 const cookies = new Map<string, string>();
@@ -25,6 +25,18 @@ async function entry(key: string, collectionIds?: string[], extras: object = {},
   const response = await call("POST", "/api/citations", { citationKey: key, entryType: "article", title: key, bibtex: `@article{${key}, title={${key}}}`, collectionIds, ...extras }, user);
   expect(response.statusCode, response.body).toBe(201);
   return response.json().entry;
+}
+/** Seed existing data directly, including folders created before capacity limits. */
+function seedFolder(id: string, count: number): void {
+  db.transaction(() => {
+    const insert = db.prepare(`INSERT INTO citation_library_entries
+      (id, user_id, citation_key, entry_type, bibtex, created_at, updated_at) VALUES (?, 'alice', ?, 'misc', ?, '2026', '2026')`);
+    const place = db.prepare("INSERT INTO citation_library_entry_collections (entry_id, collection_id) VALUES (?, ?)");
+    for (let index = 0; index < count; index++) {
+      const key = `${id}-${index}`;
+      insert.run(key, key, `@misc{${key}, title={Reference ${index}}}`); place.run(key, id);
+    }
+  })();
 }
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-citation-folders-"));
@@ -64,15 +76,17 @@ describe("private citation folders", () => {
 
   it("round-trips a complete folder with notes across users, replaces duplicate keys and adds numeric suffixes to duplicate folder names", async () => {
     const source = await folder("论文主题");
+    const sourceTag = (await call("POST", "/api/citations/tags", { name: "Source tag", color: "red" })).json().tag;
     const notes = "## 中文笔记\n\n**Result** `\\alpha`\n\n| A | B |\n|---|---|\n| 1 | 2 |";
-    const noted = await entry("PAPER", [source.id], { notes });
+    const noted = await entry("PAPER", [source.id], { notes, tagIds: [sourceTag.id] });
     const original = (await list("?q=paper")).json().entries[0];
     for (let index = 0; index < 61; index++) await entry(`ref${index}`, [source.id]);
     const exported = await call("GET", `/api/citations/collections/${source.id}/export?notes=true&pageSize=1`);
     expect(exported.statusCode, exported.body).toBe(200);
     expect(exported.headers["content-disposition"]).toContain(encodeURIComponent("论文主题.texlite-citations.json"));
     const bundle = exported.json<CitationFolderBundle>();
-    expect(bundle).toMatchObject({ format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, name: "论文主题" });
+    expect(Object.keys(bundle).sort()).toEqual(["entries", "format", "version"]);
+    expect(bundle).toMatchObject({ format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION });
     expect(bundle.entries).toHaveLength(62);
     expect(bundle.entries.find((entry) => entry.citationKey === "PAPER")).toMatchObject({ bibtex: noted.bibtex, notes });
     expect(Object.keys(bundle.entries[0]).sort()).toEqual(["authors", "bibtex", "citationKey", "entryType", "notes", "title", "year"]);
@@ -80,7 +94,8 @@ describe("private citation folders", () => {
     const existingFolder = await folder("论文主题", "bob"); await folder("论文主题-1", "bob");
     const tag = (await call("POST", "/api/citations/tags", { name: "Keep", color: "blue" }, "bob")).json().tag;
     const existing = await entry("paper", [existingFolder.id], { notes: "Old", tagIds: [tag.id] }, "bob");
-    const imported = await call("POST", "/api/citations/collections/import", bundle, "bob");
+    const imported = await call("POST", "/api/citations/collections/import", { ...bundle, name: "论文主题", tags: [sourceTag],
+      entries: bundle.entries.map((entry) => ({ ...entry, tags: [sourceTag], tagIds: [sourceTag.id] })) }, "bob");
     expect(imported.statusCode, imported.body).toBe(201);
     expect(imported.json()).toMatchObject({ imported: 62, collection: { name: "论文主题-2", entryCount: 62 } });
     const id = imported.json().collection.id;
@@ -88,20 +103,22 @@ describe("private citation folders", () => {
     expect(bob).toMatchObject({ id: existing.id, citationKey: "PAPER", notes, revision: 2 });
     expect(bob.collectionIds).toEqual(expect.arrayContaining([id, existingFolder.id]));
     expect(bob.tags).toEqual([tag]);
+    expect((await call("GET", "/api/citations/tags", undefined, "bob")).json().tags).toEqual([tag]);
     expect((await call("GET", `/api/citations?q=paper`)).json().entries[0]).toEqual(original);
     expect((await call("GET", `/api/citations/collections/${source.id}/export?notes=true`, undefined, "bob")).statusCode).toBe(404);
     expect((await call("POST", "/api/citations/collections/import", bundle, "anonymous")).statusCode).toBe(401);
     // Re-importing is deterministic and never reuses an existing folder.
-    expect((await call("POST", "/api/citations/collections/import", bundle, "bob")).json().collection.name).toBe("论文主题-3");
+    expect((await call("POST", "/api/citations/collections/import", { ...bundle, name: "论文主题" }, "bob")).json().collection.name).toBe("论文主题-3");
   });
 
   it("rejects invalid imports without partial changes and rolls back database failures, while allowing empty folders", async () => {
     const existing = await entry("paper", undefined, { notes: "Keep" });
     const before = (await list()).json().entries[0];
-    const bundle: CitationFolderBundle = { format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, name: "Import",
+    const bundle: CitationFolderImportRequest = { format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, name: "Import",
       entries: [{ ...existing, notes: "Replacement" }] };
     for (const payload of [
       { ...bundle, format: "unknown" }, { ...bundle, version: 2 }, { ...bundle, name: " " },
+      { ...bundle, name: undefined }, { ...bundle, name: "x".repeat(81) },
       { ...bundle, entries: [bundle.entries[0], { ...bundle.entries[0], notes: null }] },
       { ...bundle, entries: [bundle.entries[0], { ...bundle.entries[0], bibtex: "" }] },
       { ...bundle, entries: [{ ...bundle.entries[0], notes: "x".repeat(MAX_CITATION_NOTES_BYTES + 1) }] }
@@ -115,11 +132,105 @@ describe("private citation folders", () => {
     expect((await list()).json().entries[0]).toEqual(before);
     const empty = await folder("Empty");
     const emptyBundle = (await call("GET", `/api/citations/collections/${empty.id}/export?notes=true`)).json();
-    const imported = await call("POST", "/api/citations/collections/import", emptyBundle);
+    const imported = await call("POST", "/api/citations/collections/import", { ...emptyBundle, name: "Empty" });
     expect(imported.json()).toMatchObject({ collection: { name: "Empty-1", entryCount: 0 }, imported: 0 });
     const duplicates = await call("POST", "/api/citations/collections/import", { ...bundle, entries: [bundle.entries[0], { ...bundle.entries[0], citationKey: "PAPER", notes: "Last wins" }] });
     expect(duplicates.json().imported).toBe(1);
     expect((await list()).json().entries[0]).toMatchObject({ id: existing.id, notes: "Last wins", revision: 2 });
+  });
+
+  it("accepts 500 entries per import or export and rejects 501 without partial results", async () => {
+    const entries = Array.from({ length: 500 }, (_, index) => ({ citationKey: `ref${index}`, entryType: "misc",
+      bibtex: `@misc{ref${index}, title={Reference ${index}}}`, title: `Reference ${index}`, authors: null, year: null, notes: "" }));
+    const bundle: CitationFolderImportRequest = { format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, name: "Reading", entries };
+    const rejected = await call("POST", "/api/citations/collections/import", { ...bundle, entries: [...entries, entries[0]] });
+    expect(rejected.statusCode).toBe(413);
+    expect(rejected.json().code).toBe("CITATION_FOLDER_TOO_LARGE");
+    expect((await folders()).collections).toEqual([]);
+    expect((await folders()).total).toBe(0);
+    const imported = await call("POST", "/api/citations/collections/import", bundle);
+    expect(imported.statusCode, imported.body).toBe(201);
+    expect(imported.json().imported).toBe(500);
+    const id = imported.json().collection.id;
+    const exported = await call("GET", `/api/citations/collections/${id}/export?notes=true`);
+    expect(exported.statusCode).toBe(200);
+    expect(exported.json().entries).toHaveLength(500);
+    const bib = await call("GET", `/api/citations/collections/${id}/export`);
+    expect(bib.statusCode).toBe(200);
+    expect(bib.body.match(/@misc\{/g)).toHaveLength(500);
+    // Simulate an oversized folder left by an older version.
+    seedFolder(id, 1);
+    for (const suffix of ["", "?notes=true"]) {
+      const response = await call("GET", `/api/citations/collections/${id}/export${suffix}`);
+      expect(response.statusCode).toBe(413);
+      expect(response.json().code).toBe("CITATION_FOLDER_TOO_LARGE");
+      expect(response.headers["content-disposition"]).toBeUndefined();
+    }
+    expect((await folders()).total).toBe(501);
+  });
+
+  it("allows only one new reference into the final slot and rolls back additions to a full folder", async () => {
+    const full = await folder("Capacity"), empty = await folder("Empty");
+    seedFolder(full.id, 499);
+    const responses = await Promise.all(["first", "second"].map((key) => call("POST", "/api/citations", {
+      citationKey: key, entryType: "misc", bibtex: `@misc{${key}, title={Final slot}}`, collectionIds: [full.id]
+    })));
+    expect(responses.map((response) => response.statusCode).sort()).toEqual([201, 409]);
+    expect(responses.find((response) => response.statusCode === 409)!.json().code).toBe("CITATION_COLLECTION_FULL");
+    expect((await folders()).total).toBe(500);
+    const rejected = await call("POST", "/api/citations", { citationKey: "overflow", entryType: "misc",
+      bibtex: "@misc{overflow, title={Not saved}}", collectionIds: [empty.id, full.id] });
+    expect(rejected.statusCode).toBe(409);
+    expect(rejected.json().code).toBe("CITATION_COLLECTION_FULL");
+    expect((await list("?q=overflow")).json().entries).toEqual([]);
+    expect((await folders()).collections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: full.id, entryCount: 500 }), expect.objectContaining({ id: empty.id, entryCount: 0 })
+    ]));
+    await entry("unfiled");
+    await entry("other-folder", [empty.id]);
+    expect((await folders()).total).toBe(502);
+  });
+
+  it("rejects reassignment or project overwrite into full folders without changing content, tags, revisions or memberships", async () => {
+    const full = await folder("Full"), source = await folder("Source"), empty = await folder("Empty");
+    seedFolder(full.id, 500);
+    const tag = (await call("POST", "/api/citations/tags", { name: "Keep", color: "blue" })).json().tag;
+    const saved = await entry("candidate", [source.id], { notes: "Keep notes", tagIds: [tag.id] });
+    const before = (await list("?q=candidate")).json().entries[0];
+    const reassigned = await call("PATCH", `/api/citations/${saved.id}/collections`, {
+      collectionIds: [empty.id, full.id], expectedRevision: saved.revision
+    });
+    expect(reassigned.statusCode).toBe(409);
+    expect(reassigned.json().code).toBe("CITATION_COLLECTION_FULL");
+    const overwritten = await call("POST", "/api/citations", { ...saved, overwrite: true, expectedRevision: saved.revision,
+      bibtex: "@article{candidate, title={Must not replace}}", notes: "Must not replace", tagIds: [], collectionIds: [full.id] });
+    expect(overwritten.statusCode).toBe(409);
+    expect(overwritten.json().code).toBe("CITATION_COLLECTION_FULL");
+    expect((await list("?q=candidate")).json().entries[0]).toEqual(before);
+    expect((await folders()).collections.find((folder) => folder.id === empty.id)!.entryCount).toBe(0);
+  });
+
+  it("preserves oversized existing folders, permits updates and removals, and allows new entries only after capacity is freed", async () => {
+    const full = await folder("Existing"), other = await folder("Other");
+    seedFolder(full.id, 501);
+    const saved: CitationLibraryEntry = (await list(`?collection=${full.id}&pageSize=1`)).json().entries[0];
+    const updated = await call("PATCH", `/api/citations/${saved.id}`, { ...saved, notes: "New notes", expectedRevision: saved.revision });
+    expect(updated.statusCode).toBe(200);
+    const overwritten = await call("POST", "/api/citations", { ...updated.json().entry, overwrite: true,
+      collectionIds: [full.id, full.id], expectedRevision: 2 });
+    expect(overwritten.statusCode).toBe(200);
+    const retained = await call("PATCH", `/api/citations/${saved.id}/collections`, { collectionIds: [full.id, other.id], expectedRevision: 3 });
+    expect(retained.statusCode).toBe(200);
+    const candidate = await entry("new-candidate");
+    const add = () => call("PATCH", `/api/citations/${candidate.id}/collections`, { collectionIds: [full.id], expectedRevision: 1 });
+    expect((await add()).statusCode).toBe(409);
+    const moved = await call("PATCH", `/api/citations/${saved.id}/collections`, { collectionIds: [other.id], expectedRevision: 4 });
+    expect(moved.statusCode).toBe(200);
+    expect((await add()).statusCode).toBe(409); // Still exactly 500.
+    const another = (await list(`?collection=${full.id}&pageSize=1`)).json().entries[0];
+    expect((await call("DELETE", `/api/citations/${another.id}`)).statusCode).toBe(200);
+    expect((await add()).statusCode).toBe(200);
+    expect((await folders()).collections.find((folder) => folder.id === full.id)!.entryCount).toBe(500);
   });
 
   it("bounds folder transfers without returning truncated exports or leaving a database iterator open", async () => {
@@ -223,6 +334,50 @@ describe("private citation folders", () => {
     db.prepare("DELETE FROM users WHERE id = 'alice'").run();
     expect(db.prepare("SELECT * FROM citation_library_entry_collections").all()).toEqual([]);
     expect(db.prepare("SELECT * FROM citation_library_collections").all()).toEqual([]);
+  });
+
+  it("optionally deletes exclusive references and notes, keeping shared references, tag definitions and other users' libraries", async () => {
+    const a = await folder("A"), b = await folder("B"), foreign = await folder("Foreign", "bob");
+    const tag = (await call("POST", "/api/citations/tags", { name: "Keep tag", color: "blue" })).json().tag;
+    const exclusive = await entry("exclusive", [a.id], { notes: "Delete notes", tagIds: [tag.id] });
+    const shared = await entry("shared", [a.id, b.id], { notes: "Keep notes", tagIds: [tag.id] });
+    const unfiled = await entry("unfiled", undefined, { notes: "Unfiled notes" });
+    const theirs = await entry("exclusive", [foreign.id], { notes: "Other user's notes" }, "bob");
+    const url = `/api/citations/collections/${a.id}?deleteReferences=true`;
+    expect((await call("DELETE", url, undefined, "bob")).statusCode).toBe(404);
+    expect((await call("DELETE", url, undefined, "anonymous")).statusCode).toBe(401);
+    expect((await call("DELETE", url)).statusCode).toBe(200);
+    const entries = (await list()).json().entries;
+    expect(entries).toHaveLength(2);
+    expect(entries.find((entry: CitationLibraryEntry) => entry.id === shared.id)).toMatchObject({ notes: shared.notes,
+      bibtex: shared.bibtex, revision: shared.revision, collectionIds: [b.id], tags: [tag] });
+    expect(entries.find((entry: CitationLibraryEntry) => entry.id === unfiled.id)?.notes).toBe(unfiled.notes);
+    expect(db.prepare("SELECT id FROM citation_library_entries WHERE id = ?").get(exclusive.id)).toBeUndefined();
+    expect(db.prepare("SELECT * FROM citation_library_entry_tags WHERE entry_id = ?").all(exclusive.id)).toEqual([]);
+    expect(db.prepare("SELECT * FROM citation_library_entry_collections WHERE collection_id = ?").all(a.id)).toEqual([]);
+    expect((await call("GET", "/api/citations/tags")).json().tags).toEqual([tag]);
+    expect((await call("GET", "/api/citations", undefined, "bob")).json().entries[0]).toMatchObject({
+      ...theirs, ownerDisplayName: "bob", ownerUsername: "bob"
+    });
+    expect((await call("DELETE", url)).statusCode).toBe(404);
+  });
+
+  it("validates the delete option and rolls back entry deletions when the folder deletion fails", async () => {
+    const a = await folder("A");
+    const tag = (await call("POST", "/api/citations/tags", { name: "Keep", color: "blue" })).json().tag;
+    await entry("keep", [a.id], { notes: "Keep notes", tagIds: [tag.id] });
+    const before = (await list()).json().entries;
+    for (const flag of ["1", "yes", "TRUE", ""]) {
+      expect((await call("DELETE", `/api/citations/collections/${a.id}?deleteReferences=${flag}`)).statusCode).toBe(400);
+    }
+    db.exec(`CREATE TRIGGER fail_folder_delete BEFORE DELETE ON citation_library_collections
+      WHEN OLD.id = '${a.id}' BEGIN SELECT RAISE(ABORT, 'test failure'); END`);
+    expect((await call("DELETE", `/api/citations/collections/${a.id}?deleteReferences=true`)).statusCode).toBe(500);
+    expect((await list()).json().entries).toEqual(before);
+    expect((await folders()).collections).toEqual([{ ...a, entryCount: 1 }]);
+    db.exec("DROP TRIGGER fail_folder_delete");
+    expect((await call("DELETE", `/api/citations/collections/${a.id}?deleteReferences=false`)).statusCode).toBe(200);
+    expect((await list()).json().entries[0]).toMatchObject({ ...before[0], collectionIds: [] });
   });
 
   it("exports every reference, not just the current page, with stable BibTeX and a safe Unicode filename", async () => {

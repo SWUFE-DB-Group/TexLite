@@ -112,6 +112,8 @@ shared browser writing, not a replacement for a personal IDE.
 - Projects with folders, ZIP import/export, tags, sharing, ownership transfer,
   archiving, and a private per-user citation library with topic folders, tags,
   Markdown notes, and folder-wide BibTeX export with optional notes for sharing.
+  Import `.bib` files or TexLite JSON exports; imports and exports allow up to
+  500 entries per transfer and exclude tags. Each folder holds up to 500 references.
 - Owner-managed read-only links for anonymous readers, with expiry, rotation
   and revocation. Readers can view source and existing PDFs without joining collaboration.
 - CodeMirror editing with LaTeX/BibTeX highlighting, folding, completion,

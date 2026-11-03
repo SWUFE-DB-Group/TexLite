@@ -458,7 +458,7 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-pagination button:hover:not(:disabled) { border-color: var(--ui-accent-border, #8bae9a); background: var(--ui-hover, #f2f7f3); color: var(--ui-accent, #176b44); }
 .table-card { min-width: 0; overflow: hidden; background: var(--ui-surface, white); border: 1px solid var(--ui-border, #dfe2de); border-radius: 12px; }
 .admin-users-page { width: 100%; }
-.admin-user-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); align-items: start; gap: 20px; }
+.admin-user-layout { display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: start; gap: 20px; }
 .admin-user-content { min-width: 0; }
 .admin-user-summary { display: grid; grid-template-columns: minmax(0, 1fr); margin: 0; border: 1px solid var(--ui-border, #dfe2de); border-radius: 12px; background: var(--ui-surface, #fff); }
 .admin-user-summary > div { min-width: 0; padding: 14px 18px; }
@@ -1613,6 +1613,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-library-scope-heading svg { flex: none; }
 .citation-folder-form label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; }
 .citation-folder-form input { min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 6px; background: var(--ui-surface, white); color: var(--ui-text, #293d30); }
+.checkbox-field.citation-folder-delete-option { align-items: flex-start; line-height: 1.5; }
+.citation-folder-delete-option input { flex: none; margin-top: 3px; }
 .citation-collection-choices { display: flex; flex-direction: column; gap: 5px; max-height: 45vh; overflow: auto; }
 .citation-collection-choices > label { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 6px; font-size: 12px; }
 .citation-collection-choices > label:hover { background: var(--ui-hover, #edf3ef); }
@@ -1714,8 +1716,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-edit-panel textarea.citation-notes-input { font-family: inherit; font-size: 12px; line-height: 1.6; }
 .citation-content-preview { min-height: 250px; max-height: 55vh; overflow: auto; padding: 12px; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 6px; background: var(--ui-surface, #fff); }
 .citation-folder-import { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
-.citation-folder-import label { display: flex; flex-direction: column; gap: 8px; font-weight: 600; }
-.citation-folder-import input { width: 100%; min-width: 0; padding: 10px; border: 1px dashed var(--ui-border, #cbd5ce); border-radius: 7px; color: var(--ui-text, #293d30); font: inherit; }
+.citation-collection-import > .info-popover-trigger { flex: none; margin-right: 6px; }
 .citation-folder-import p { margin: 0; overflow-wrap: anywhere; }
 .citation-notes-markdown { min-width: 0; color: var(--ui-text, #293d30); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .citation-notes-markdown > :first-child { margin-top: 0; }

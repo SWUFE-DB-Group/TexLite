@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { CITATION_FOLDER_FORMAT, CITATION_FOLDER_VERSION, MAX_CITATION_FOLDER_BYTES, MAX_CITATION_FOLDER_ENTRIES,
-  type CitationFolderBundle, type CitationTransferEntry } from "../shared/citationTransfer.js";
+  type CitationFolderBundle, type CitationFolderImportRequest, type CitationTransferEntry } from "../shared/citationTransfer.js";
 import { requireUser } from "./auth.js";
 import { citationInput } from "./citationInput.js";
 import type { DatabaseConnection } from "./db.js";
 import { httpError } from "./http.js";
 
-/** Export only portable content, never owner identifiers or internal folder IDs. */
-export function exportCitationFolder(db: DatabaseConnection, userId: string, folder: { id: string; name: string }): string {
-  const bundle: CitationFolderBundle = { format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, name: folder.name, entries: [] };
+/** Export only portable content, never tags, owner identifiers or internal folder IDs. */
+export function exportCitationFolder(db: DatabaseConnection, userId: string, folder: { id: string }): string {
+  const bundle: CitationFolderBundle = { format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, entries: [] };
   let bytes = Buffer.byteLength(JSON.stringify(bundle), "utf8");
   const rows = db.prepare(`SELECT entry.citation_key AS citationKey, entry.entry_type AS entryType,
     entry.bibtex, entry.title, entry.authors, entry.year, entry.notes
@@ -27,10 +27,11 @@ export function exportCitationFolder(db: DatabaseConnection, userId: string, fol
 export function registerCitationFolderImport(app: FastifyInstance, db: DatabaseConnection): void {
   app.post("/api/citations/collections/import", { bodyLimit: MAX_CITATION_FOLDER_BYTES }, async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
-    const body = request.body as Partial<CitationFolderBundle> | null;
+    const body = request.body as Partial<CitationFolderImportRequest> | null;
     if (!body || body.format !== CITATION_FOLDER_FORMAT || body.version !== CITATION_FOLDER_VERSION
       || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80
-      || !Array.isArray(body.entries) || body.entries.length > MAX_CITATION_FOLDER_ENTRIES) throw httpError(400, "CITATION_FOLDER_INVALID");
+      || !Array.isArray(body.entries)) throw httpError(400, "CITATION_FOLDER_INVALID");
+    if (body.entries.length > MAX_CITATION_FOLDER_ENTRIES) throw httpError(413, "CITATION_FOLDER_TOO_LARGE");
     // Validate the entire import before opening a write transaction. Repeated
     // keys in the bundle follow the same last-entry-wins rule as existing keys.
     const entries = new Map<string, ReturnType<typeof citationInput>>();

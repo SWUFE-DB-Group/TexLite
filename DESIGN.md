@@ -113,7 +113,20 @@ entry/folder relation. A folder represents a paper or research topic; the same
 entry can belong to several folders without copying its BibTeX. All references
 and Unfiled are built-in views. Folder counts are library-wide, independent of
 search, tag filters and pagination. Existing references remain unfiled on
-upgrade. Folder deletion removes only placements, not entries or their tags.
+upgrade. By default, folder deletion removes only placements, not entries or their tags.
+The delete confirmation offers an unchecked option to also delete references
+exclusive to that folder, including their notes. References linked to other
+folders are kept. `DELETE .../collections/:id?deleteReferences=true` performs
+both deletions in one authenticated, user-scoped SQLite transaction; omitting
+the flag (or using `false`) retains references. Tag definitions and project
+`.bib` files are never removed by this operation.
+Each user-created folder holds at most 500 references, enforced inside the
+server's placement transactions for new saves and folder reassignment. A full
+folder still permits edits and retaining existing memberships. Failed additions
+leave content, notes, tags, revisions and other memberships unchanged. Existing
+oversized folders are preserved and may shrink, but cannot gain new entries.
+All references and Unfiled are views, not folders, and have no 500-entry cap;
+the private library's total size is not limited by folder capacity.
 The dashboard page and project import dialog share folder navigation. Project
 workflows use a separate controller and render only Import on library entries
 and Save/Update on current-file entries. These are compact icon-only actions
@@ -161,15 +174,25 @@ on the same version as the application's renderer.
 
 Export BibTeX with notes, also in the folder menu, downloads one portable
 `*.texlite-citations.json` file (`format: texlite-citation-folder`, `version: 1`).
-It contains a folder name and entries' BibTeX, display metadata and Markdown
-notes, but no user IDs, tags or database memberships. The folder sidebar's
-Import folder action validates a chosen file and its BibTeX in the browser;
+It contains entries' BibTeX, display metadata and Markdown notes, but no folder
+name, user IDs, tags or database memberships. The Import row at the top
+of the sidebar's folder list accepts a single `.bib` file or TexLite `.json`
+export, by dropping it or browsing for it, with a preview before submission.
+Its clickable info explains naming, replacement and tag handling. The import
+form requires a destination folder name and defaults to the selected filename
+without its extension, up to 80 characters. The user can edit it before import;
+any name embedded in a JSON file is ignored. A `.bib` import uses empty notes;
+JSON preserves the exported notes. The destination name is sent only in the
+import request, separately from the portable file content.
+Both paths validate the chosen file and its BibTeX in the browser;
 the server independently enforces authentication, shapes and byte limits.
-Transfers support at most 16 MB and 5,000 entries; oversized exports fail instead
+Imports and both export formats support at most 500 entries per transfer.
+Imports and JSON-with-notes exports also have a 16 MB limit; oversized exports fail instead
 of downloading a partial file. Import is one SQLite transaction: it creates a
 new private folder, appending `-1`, `-2`, etc. when the name is already used.
 Matching citation keys replace that user's BibTeX and notes and increment the
-entry revision, retaining existing tags and other folder placements. Repeated
+entry revision, retaining existing tags and other folder placements. Incoming
+tag fields are ignored, even for direct API requests. Repeated
 keys within a file use the last entry. Other users' libraries are untouched.
 Malformed input or a database failure leaves no partially imported folder.
 Entry management actions live in an accessible, portalled overflow menu, with

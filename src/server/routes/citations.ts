@@ -4,7 +4,7 @@ import { requireUser } from "../auth.js";
 import type { DatabaseConnection } from "../db.js";
 import { apiError, httpError, ValidationError } from "../http.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../limits.js";
-import { citationCollectionIds, citationCollectionsForEntries, filterCitationCollection, registerCitationCollectionRoutes } from "../citationCollections.js";
+import { assertCitationCollectionCapacity, citationCollectionIds, citationCollectionsForEntries, filterCitationCollection, registerCitationCollectionRoutes } from "../citationCollections.js";
 import { comparableCitationBibtex } from "../../shared/citationContent.js";
 import { citationInput } from "../citationInput.js";
 
@@ -280,6 +280,7 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
     const id = existing?.id ?? randomUUID();
     const timestamp = now();
     db.transaction(() => {
+      assertCitationCollectionCapacity(db, user.id, id, collectionIds ?? []);
       if (existing) {
         const result = db.prepare(`UPDATE citation_library_entries SET citation_key = ?, entry_type = ?, bibtex = ?,
           title = ?, authors = ?, year = ?, notes = COALESCE(?, notes), revision = revision + 1, updated_at = ?
@@ -345,6 +346,7 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
     db.transaction(() => {
       const result = db.prepare("UPDATE citation_library_entries SET revision = revision + 1, updated_at = ? WHERE id = ? AND user_id = ? AND revision = ?").run(now(), citationId, user.id, revision);
       if (!result.changes) throw httpError(409, "CITATION_CONFLICT");
+      assertCitationCollectionCapacity(db, user.id, citationId, collectionIds);
       db.prepare("DELETE FROM citation_library_entry_collections WHERE entry_id = ?").run(citationId);
       const insert = db.prepare("INSERT INTO citation_library_entry_collections (entry_id, collection_id) VALUES (?, ?)");
       for (const id of collectionIds) insert.run(citationId, id);

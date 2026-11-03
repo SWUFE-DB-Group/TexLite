@@ -11,6 +11,7 @@ import { useSuccessNotice } from "./SuccessNotice";
 import type { CitationCollectionCatalog } from "../shared/citationCollections";
 import type { CitationLibraryEntry } from "./types";
 import { CitationFolderImportDialog } from "./CitationFolderImportDialog";
+import { InfoPopover } from "./InfoPopover";
 
 const citationCollectionExportPath = (id: string) => appPath(`/api/citations/collections/${encodeURIComponent(id)}/export`);
 
@@ -28,6 +29,7 @@ export function CitationCollections({ catalog, selected, onSelect, onChanged, on
   const [edit, setEdit] = useState<{ id?: string; name: string } | null>(null);
   const [name, setName] = useState("");
   const [remove, setRemove] = useState<{ id: string; name: string } | null>(null);
+  const [deleteReferences, setDeleteReferences] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
@@ -54,7 +56,7 @@ export function CitationCollections({ catalog, selected, onSelect, onChanged, on
     if (!remove || pending.current || !signal || signal.aborted) return;
     pending.current = true; setBusy(true); setError("");
     try {
-      await api(`/api/citations/collections/${encodeURIComponent(remove.id)}`, { method: "DELETE", signal });
+      await api(`/api/citations/collections/${encodeURIComponent(remove.id)}${deleteReferences ? "?deleteReferences=true" : ""}`, { method: "DELETE", signal });
       if (!signal.aborted) { onDeleted(remove.id); setRemove(null); }
     } catch (reason) { if (!signal.aborted) setError(errorMessage(reason)); }
     finally { pending.current = false; if (!signal.aborted) setBusy(false); }
@@ -63,13 +65,17 @@ export function CitationCollections({ catalog, selected, onSelect, onChanged, on
     aria-current={selected === id ? "true" : undefined} onClick={() => onSelect(id)}>{icon}<span>{title}</span><small>{count}</small></button>;
   return <aside className="citation-collections">
     <div className="citation-collections-heading"><strong>{t("citationFolders.title")}</strong>{manage && <div className="citation-collections-heading-actions">
-      {onImported && maxBibtexBytes && <button type="button" aria-label={t("citationFolders.import")} data-tooltip={t("citationFolders.import")} onClick={() => setImporting(true)}><Import size={15} /></button>}
       <button type="button" aria-label={t("citationFolders.create")} data-tooltip={t("citationFolders.create")}
         onClick={() => { setEdit({ name: "" }); setName(""); setError(""); }}><Plus size={15} /></button></div>}</div>
     <nav aria-label={t("citationFolders.title")}>
       {select("", t("citationFolders.all"), catalog.total, <BookMarked size={15} aria-hidden />)}
       {select("unfiled", t("citationFolders.unfiled"), catalog.unfiled, <Inbox size={15} aria-hidden />)}
-      <div className="citation-collection-folders">{catalog.collections.map((folder) => <div className="citation-collection-row" key={folder.id}>
+      <div className="citation-collection-folders">
+        {manage && onImported && maxBibtexBytes && <div className="citation-collection-row citation-collection-import">
+          <button type="button" className="citation-collection-select" onClick={() => setImporting(true)}><Import size={15} aria-hidden /><span>{t("citationFolders.import")}</span></button>
+          <InfoPopover label={t("citationFolders.importInfo")} content={t("citationFolders.importHelp")} />
+        </div>}
+        {catalog.collections.map((folder) => <div className="citation-collection-row" key={folder.id}>
         {select(folder.id, folder.name, folder.entryCount, selected === folder.id ? <FolderOpen size={15} aria-hidden /> : <Folder size={15} aria-hidden />)}
         {manage && <DropdownMenu.Root modal={false}><DropdownMenu.Trigger asChild><button type="button" className="citation-collection-menu-trigger" aria-label={t("citationFolders.actions", { name: folder.name })}><MoreHorizontal size={15} /></button></DropdownMenu.Trigger>
           <DropdownMenu.Portal><DropdownMenu.Content className="citation-entry-menu" sideOffset={4} align="start" collisionPadding={8}>
@@ -77,7 +83,7 @@ export function CitationCollections({ catalog, selected, onSelect, onChanged, on
             <DropdownMenu.Item asChild><a href={citationCollectionExportPath(folder.id)} download><Download size={14} />{t("citationFolders.export")}</a></DropdownMenu.Item>
             <DropdownMenu.Item asChild><a href={`${citationCollectionExportPath(folder.id)}?notes=true`} download><Download size={14} />{t("citationFolders.exportWithNotes")}</a></DropdownMenu.Item>
             <DropdownMenu.Separator className="citation-entry-menu-separator" />
-            <DropdownMenu.Item className="danger-text" onSelect={() => { setRemove(folder); setError(""); }}><Trash2 size={14} />{t("citationFolders.delete")}</DropdownMenu.Item>
+            <DropdownMenu.Item className="danger-text" onSelect={() => { setRemove(folder); setDeleteReferences(false); setError(""); }}><Trash2 size={14} />{t("citationFolders.delete")}</DropdownMenu.Item>
           </DropdownMenu.Content></DropdownMenu.Portal>
         </DropdownMenu.Root>}
       </div>)}</div>
@@ -90,8 +96,11 @@ export function CitationCollections({ catalog, selected, onSelect, onChanged, on
         {error && edit && <p className="error dialog-error" role="alert">{error}</p>}
       </form>
     </Modal>
-    <ConfirmDialog open={Boolean(remove)} title={t("citationFolders.delete")} description={t("citationFolders.deleteDescription", { name: remove?.name ?? "" })}
-      confirmLabel={t("common.delete")} danger busy={busy} error={error} onCancel={() => { if (!busy) setRemove(null); }} onConfirm={() => void deleteFolder()} />
+    <ConfirmDialog open={Boolean(remove)} title={t("citationFolders.delete")} description={t(deleteReferences ? "citationFolders.deleteWithReferencesDescription" : "citationFolders.deleteDescription", { name: remove?.name ?? "" })}
+      confirmLabel={t("common.delete")} danger busy={busy} error={error} onCancel={() => { if (!busy) setRemove(null); }} onConfirm={() => void deleteFolder()}>
+      <label className="checkbox-field citation-folder-delete-option"><input type="checkbox" disabled={busy} checked={deleteReferences}
+        onChange={(event) => setDeleteReferences(event.target.checked)} /><span>{t("citationFolders.deleteReferences")}</span></label>
+    </ConfirmDialog>
   </aside>;
 }
 

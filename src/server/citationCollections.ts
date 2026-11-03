@@ -5,6 +5,7 @@ import type { DatabaseConnection } from "./db.js";
 import { requireUser } from "./auth.js";
 import { contentDisposition, httpError, ValidationError } from "./http.js";
 import { exportCitationFolder, registerCitationFolderImport } from "./citationFolderTransfer.js";
+import { MAX_CITATION_FOLDER_ENTRIES } from "../shared/citationTransfer.js";
 
 function collection(db: DatabaseConnection, userId: string, id: string): { id: string; name: string } {
   const row = db.prepare("SELECT id, name FROM citation_library_collections WHERE id = ? AND user_id = ?").get(id, userId) as { id: string; name: string } | undefined;
@@ -26,6 +27,17 @@ export function citationCollectionIds(db: DatabaseConnection, userId: string, va
     if (rows.length !== ids.length) throw httpError(404, "CITATION_COLLECTION_NOT_FOUND");
   }
   return ids;
+}
+
+/** Call inside the placement transaction, before removing existing memberships. */
+export function assertCitationCollectionCapacity(db: DatabaseConnection, userId: string, entryId: string, collectionIds: string[]): void {
+  if (!collectionIds.length) return;
+  const full = db.prepare(`SELECT link.collection_id FROM citation_library_entry_collections link
+    JOIN citation_library_entries entry ON entry.id = link.entry_id
+    WHERE entry.user_id = ? AND link.collection_id IN (${collectionIds.map(() => "?").join(",")})
+    GROUP BY link.collection_id HAVING COUNT(*) >= ? AND SUM(entry.id = ?) = 0 LIMIT 1`)
+    .get(userId, ...collectionIds, MAX_CITATION_FOLDER_ENTRIES, entryId);
+  if (full) throw httpError(409, "CITATION_COLLECTION_FULL");
 }
 
 export function citationCollectionsForEntries(db: DatabaseConnection, entryIds: string[]): Map<string, string[]> {
@@ -88,8 +100,20 @@ export function registerCitationCollectionRoutes(app: FastifyInstance, db: Datab
   app.delete("/api/citations/collections/:collectionId", async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
     const { collectionId } = request.params as { collectionId: string };
-    const result = db.prepare("DELETE FROM citation_library_collections WHERE id = ? AND user_id = ?").run(collectionId, user.id);
-    if (!result.changes) throw httpError(404, "CITATION_COLLECTION_NOT_FOUND");
+    const { deleteReferences } = request.query as { deleteReferences?: string };
+    if (deleteReferences !== undefined && deleteReferences !== "true" && deleteReferences !== "false") throw new ValidationError();
+    db.transaction(() => {
+      collection(db, user.id, collectionId);
+      if (deleteReferences === "true") {
+        // Decide exclusivity before deleting the folder and cascading its links.
+        db.prepare(`DELETE FROM citation_library_entries AS entry WHERE entry.user_id = ?
+          AND entry.id IN (SELECT entry_id FROM citation_library_entry_collections WHERE collection_id = ?)
+          AND NOT EXISTS (SELECT 1 FROM citation_library_entry_collections other
+            WHERE other.entry_id = entry.id AND other.collection_id != ?)`)
+          .run(user.id, collectionId, collectionId);
+      }
+      db.prepare("DELETE FROM citation_library_collections WHERE id = ? AND user_id = ?").run(collectionId, user.id);
+    })();
     return { ok: true };
   });
   app.get("/api/citations/collections/:collectionId/export", async (request, reply) => {
@@ -105,6 +129,10 @@ export function registerCitationCollectionRoutes(app: FastifyInstance, db: Datab
       reply.header("Content-Disposition", contentDisposition(`${filename}.texlite-citations.json`, "attachment"));
       return reply.type("application/json; charset=utf-8").send(bundle);
     }
+    const { count } = db.prepare(`SELECT COUNT(*) AS count FROM citation_library_entries entry
+      JOIN citation_library_entry_collections link ON link.entry_id = entry.id
+      WHERE entry.user_id = ? AND link.collection_id = ?`).get(user.id, collectionId) as { count: number };
+    if (count > MAX_CITATION_FOLDER_ENTRIES) throw httpError(413, "CITATION_FOLDER_TOO_LARGE");
     const statement = db.prepare(`SELECT entry.bibtex FROM citation_library_entries entry
       JOIN citation_library_entry_collections link ON link.entry_id = entry.id
       WHERE entry.user_id = ? AND link.collection_id = ? ORDER BY entry.citation_key COLLATE NOCASE, entry.id`);
