@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../src/client/api";
@@ -9,6 +9,7 @@ import { WorkspaceTopbar, type WorkspaceTopbarProps } from "../src/client/worksp
 import { defaultEditorPreferences } from "../src/client/editorPreferences";
 import i18n from "../src/client/i18n";
 import { defaultTerminalPreferences, saveTerminalPreferences } from "../src/client/terminalPreferences";
+import { GlobalTooltip } from "../src/client/GlobalTooltip";
 import type { Project, SiteConfig, User } from "../src/client/types";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
@@ -51,6 +52,51 @@ afterEach(async () => {
 });
 
 describe("active task entry badges", () => {
+  it("omits duplicate homepage hints with visible labels but keeps icon-only hints and other tooltips", async () => {
+    let compact = false;
+    const listeners = new Set<() => void>();
+    const originalMatchMedia = window.matchMedia.bind(window);
+    vi.stubGlobal("matchMedia", (query: string) => query === "(max-width: 1250px)" ? {
+      get matches() { return compact; },
+      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener)
+    } : originalMatchMedia(query));
+    const user: User = { id: "admin", username: "admin", displayName: "Admin", role: "admin",
+      disabled: false, mustChangePassword: false, canCreateProjects: true, createdAt: "2026-10-26" };
+    await act(async () => root.render(createElement(Fragment, null, createElement(Dashboard, { site, user,
+      initialData: { projects: [], tags: [], pagination, counts, filters }, onDataChange: noop, onUser: noop, onOpenProject: noop }), createElement(GlobalTooltip))));
+    const actions = [...host.querySelectorAll<HTMLButtonElement>(".top-actions > .ghost, .project-catalog-heading .section-actions > button")];
+    const buttons = ["metrics.title", "users.manage", "citationLibrary.title", "agents.title",
+      "tags.manage", "projects.upload", "projects.new"].map((key) => {
+      const label = i18n.t(key);
+      const button = actions.find((action) => action.getAttribute("aria-label") === label);
+      expect(button, label).toBeDefined();
+      return button!;
+    });
+    const hover = (button: HTMLElement) => act(async () => button.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    const leave = (button: HTMLElement) => act(async () => button.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
+    for (const button of buttons) {
+      await hover(button);
+      expect(host.querySelector('[role="tooltip"]')).toBeNull();
+      expect(button.hasAttribute("title")).toBe(false);
+      expect(button.getAttribute("aria-label")).toBeTruthy();
+      await leave(button);
+    }
+    await act(async () => { compact = true; listeners.forEach((notify) => notify()); });
+    for (const button of buttons) {
+      await hover(button);
+      expect(host.querySelector('[role="tooltip"]')?.textContent).toBe(button.getAttribute("aria-label"));
+      await leave(button);
+    }
+    await hover(buttons[0]);
+    await act(async () => { compact = false; listeners.forEach((notify) => notify()); });
+    expect(host.querySelector('[role="tooltip"]')).toBeNull();
+    await leave(buttons[0]);
+    const gridToggle = host.querySelector<HTMLButtonElement>(".view-toggle button")!;
+    await hover(gridToggle);
+    expect(host.querySelector('[role="tooltip"]')?.textContent).toBe(i18n.t("projects.grid"));
+  });
+
   it.each(["user", "admin"] as const)("shows the signed-in %s's count on the homepage and removes it at zero", async (role) => {
     const user: User = { id: `viewer-${role}`, username: role, displayName: role, role,
       disabled: false, mustChangePassword: false, canCreateProjects: true, createdAt: "2026-10-26" };

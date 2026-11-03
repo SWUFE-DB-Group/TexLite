@@ -1,5 +1,5 @@
 import { formatBytes } from "../formatBytes";
-import { lazy, useEffect, useRef, useState } from "react";
+import { lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { api, apiUpload } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
@@ -24,6 +24,14 @@ import { useTerminalPreferences } from "../terminalPreferences";
 
 const projectKey = (project: Project) => project.id;
 const emptyProjects: Project[] = [];
+// Match the breakpoint hiding top-action-label and project-action-label in CSS.
+const compactActionsQuery = "(max-width: 1250px)";
+const compactActionsSnapshot = () => window.matchMedia?.(compactActionsQuery).matches ?? false;
+const subscribeCompactActions = (notify: () => void) => {
+  const query = window.matchMedia?.(compactActionsQuery);
+  query?.addEventListener("change", notify);
+  return () => query?.removeEventListener("change", notify);
+};
 const requestKey = (ownership: ProjectOwnershipScope, archived: boolean, page: number, search: string, tag: string, sort: "updated" | "created") =>
   JSON.stringify([ownership, archived, page, search, tag, sort]);
 
@@ -48,6 +56,8 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   onOpenProject: (id: string, mentionId?: string) => void;
 }) {
   const { t } = useTranslation();
+  const compactActions = useSyncExternalStore(subscribeCompactActions, compactActionsSnapshot, () => false);
+  const actionTooltipProps = { "data-texlite-tooltips": compactActions ? undefined : "off" };
   const [projects, setProjects] = useState<Project[]>(() => initialData?.projects ?? []);
   const [tags, setTags] = useState<ProjectTag[]>(() => initialData?.tags ?? []);
   const [pagination, setPagination] = useState<ProjectListPagination>(() => initialData?.pagination ?? {
@@ -393,9 +403,9 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     <header className="topbar">
       <a className="brand-link" href={appPath("/")} aria-label={site.siteName}><SiteLogo siteName={site.siteName} /><span className="site-title">{site.siteName}</span></a>
       <div className="top-actions">
-        {user.role === "admin" && <><button className="ghost" aria-label={t("metrics.title")} title={t("metrics.title")} onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} /><span className="top-action-label">{t("metrics.title")}</span></button><button className={`ghost${adminOpen ? " top-return-action" : ""}`} aria-label={adminOpen ? t("users.back") : t("users.manage")} title={adminOpen ? t("users.back") : t("users.manage")} onClick={() => { setAdminOpen((current) => !current); setAgentsOpen(false); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}<span className="top-action-label">{adminOpen ? t("users.back") : t("users.manage")}</span></button></>}
-        <button className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} aria-label={citationLibraryOpen ? t("users.back") : t("citationLibrary.title")} title={citationLibraryOpen ? t("users.back") : t("citationLibrary.title")} onClick={() => { setAdminOpen(false); setAgentsOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}<span className="top-action-label">{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</span></button>
-        {(user.role === "admin" || agentAccess.visible) && <button className={`ghost${agentsOpen ? " top-return-action" : ""}`} aria-label={t(agentsOpen ? "agents.back" : user.role === "admin" ? "agents.title" : "agents.tasks")} title={t(agentsOpen ? "agents.back" : user.role === "admin" ? "agents.title" : "agents.tasks")} onClick={() => { setAgentsOpen((value) => !value); setAdminOpen(false); setCitationLibraryOpen(false); }}>{agentsOpen ? <ArrowLeft aria-hidden size={14} /> : <TerminalSquare aria-hidden size={14} />}<span className="top-action-label">{t(agentsOpen ? "agents.back" : user.role === "admin" ? "agents.title" : "agents.tasks")}</span>
+        {user.role === "admin" && <><button {...actionTooltipProps} className="ghost" aria-label={t("metrics.title")} data-tooltip={t("metrics.title")} onClick={() => setMetricsOpen(true)}><Activity aria-hidden size={14} /><span className="top-action-label">{t("metrics.title")}</span></button><button {...actionTooltipProps} className={`ghost${adminOpen ? " top-return-action" : ""}`} aria-label={adminOpen ? t("users.back") : t("users.manage")} data-tooltip={adminOpen ? t("users.back") : t("users.manage")} onClick={() => { setAdminOpen((current) => !current); setAgentsOpen(false); setCitationLibraryOpen(false); }}>{adminOpen ? <ArrowLeft aria-hidden size={14} /> : <Users aria-hidden size={14} />}<span className="top-action-label">{adminOpen ? t("users.back") : t("users.manage")}</span></button></>}
+        <button {...actionTooltipProps} className={`ghost${citationLibraryOpen ? " top-return-action" : ""}`} aria-label={citationLibraryOpen ? t("users.back") : t("citationLibrary.title")} data-tooltip={citationLibraryOpen ? t("users.back") : t("citationLibrary.title")} onClick={() => { setAdminOpen(false); setAgentsOpen(false); setCitationLibraryOpen((current) => !current); }}>{citationLibraryOpen ? <ArrowLeft aria-hidden size={14} /> : <BookMarked aria-hidden size={14} />}<span className="top-action-label">{citationLibraryOpen ? t("users.back") : t("citationLibrary.title")}</span></button>
+        {(user.role === "admin" || agentAccess.visible) && <button {...actionTooltipProps} className={`ghost${agentsOpen ? " top-return-action" : ""}`} aria-label={t(agentsOpen ? "agents.back" : user.role === "admin" ? "agents.title" : "agents.tasks")} data-tooltip={t(agentsOpen ? "agents.back" : user.role === "admin" ? "agents.title" : "agents.tasks")} onClick={() => { setAgentsOpen((value) => !value); setAdminOpen(false); setCitationLibraryOpen(false); }}>{agentsOpen ? <ArrowLeft aria-hidden size={14} /> : <TerminalSquare aria-hidden size={14} />}<span className="top-action-label">{t(agentsOpen ? "agents.back" : user.role === "admin" ? "agents.title" : "agents.tasks")}</span>
           {showExecutionReminder && !agentsOpen && agentAccess.activeCount > 0 && <sup className="agent-active-count" aria-label={t("agents.activeCount", { count: agentAccess.activeCount })}>{agentAccess.activeCount}</sup>}
         </button>}
         <UserMenu user={user} onGitHub={() => setGitHubAccountOpen(true)} onSignOut={logout} onUserChange={onUser} />
@@ -405,7 +415,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     {agentsOpen ? <main className="dashboard"><LazyPage onClose={() => setAgentsOpen(false)}><AgentManagement user={user} onBack={() => setAgentsOpen(false)} /></LazyPage></main> : adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} onBack={() => setAdminOpen(false)} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard">
       <LazyPage onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} maxBibtexBytes={site.maxCitationBibtexBytes} /></LazyPage>
     </main> : <main className="dashboard">
-      <div className="section-title project-catalog-heading"><div><h1><FolderKanban aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button aria-label={t("tags.manage")} title={t("tags.manage")} onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} /><span className="project-action-label">{t("tags.manage")}</span></button>{user.canCreateProjects && <><button aria-label={t("projects.upload")} title={t("projects.upload")} onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} /><span className="project-action-label">{t("projects.upload")}</span></button><button className="primary" aria-label={t("projects.new")} title={t("projects.new")} onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} /><span className="project-action-label">{t("projects.new")}</span></button></>}</div></div>
+      <div className="section-title project-catalog-heading"><div><h1><FolderKanban aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button {...actionTooltipProps} aria-label={t("tags.manage")} data-tooltip={t("tags.manage")} onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} /><span className="project-action-label">{t("tags.manage")}</span></button>{user.canCreateProjects && <><button {...actionTooltipProps} aria-label={t("projects.upload")} data-tooltip={t("projects.upload")} onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} /><span className="project-action-label">{t("projects.upload")}</span></button><button {...actionTooltipProps} className="primary" aria-label={t("projects.new")} data-tooltip={t("projects.new")} onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} /><span className="project-action-label">{t("projects.new")}</span></button></>}</div></div>
       <ProjectOwnershipTabs value={ownership} counts={counts} onChange={changeOwnership} />
       {error && <p className="error">{error}</p>}
       <div className="project-catalog-layout">
