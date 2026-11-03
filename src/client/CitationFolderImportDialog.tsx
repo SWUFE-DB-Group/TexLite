@@ -33,7 +33,7 @@ export function CitationFolderImportDialog({ maxBibtexBytes, onClose, onImported
     if (pending.current) return;
     const sequence = ++selection.current;
     setBundle(null); setError(""); setFile(file ?? null); setReading(Boolean(file));
-    setName(file ? file.name.replace(/\.(?:bib|json)$/i, "").trim().slice(0, 80) : "");
+    setName(file ? file.name.replace(/(?:\.texlite-citations)?\.json$|\.bib$/i, "").trim().slice(0, 80) : "");
     if (!file) return;
     try {
       if (file.size > MAX_CITATION_FOLDER_BYTES) throw new Error(t("citationFolders.transferTooLarge"));

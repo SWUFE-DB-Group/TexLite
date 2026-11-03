@@ -180,7 +180,8 @@ of the sidebar's folder list accepts a single `.bib` file or TexLite `.json`
 export, by dropping it or browsing for it, with a preview before submission.
 Its clickable info explains naming, replacement and tag handling. The import
 form requires a destination folder name and defaults to the selected filename
-without its extension, up to 80 characters. The user can edit it before import;
+without its extension or the export-specific `.texlite-citations` JSON suffix,
+up to 80 characters. The user can edit it before import;
 any name embedded in a JSON file is ignored. A `.bib` import uses empty notes;
 JSON preserves the exported notes. The destination name is sent only in the
 import request, separately from the portable file content.

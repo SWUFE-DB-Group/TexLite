@@ -171,8 +171,8 @@ describe("citation folder workflows", () => {
     Object.defineProperty(input, "files", { configurable: true, value: [new File([JSON.stringify(contents)], "Paper A.texlite-citations.json", { type: "application/json" })] });
     await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
     const name = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="text"]')!;
-    expect(name.value).toBe("Paper A.texlite-citations");
-    expect(document.querySelector(".citation-folder-import")?.textContent).toContain("Paper A.texlite-citations · 1 entry");
+    expect(name.value).toBe("Paper A");
+    expect(document.querySelector(".citation-folder-import")?.textContent).toContain("Paper A · 1 entry");
     expect(submit().disabled).toBe(false);
     await act(async () => change(name, "  "));
     expect(submit().disabled).toBe(true);
