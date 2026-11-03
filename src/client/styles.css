@@ -1599,8 +1599,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 }
 @media (prefers-reduced-motion: reduce) { .metric-resource-bar > span { transition: none; } }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 22px; border-top: 1px solid var(--ui-border, #e5e8e5); background: var(--ui-surface, #f8f9f7); }
-.dialog-footer button { border: 1px solid var(--ui-border, #cbd2cc); border-radius: 7px; padding: 8px 14px; background: var(--ui-surface, white); }
-.dialog-footer .update-dismiss-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-color: var(--ui-border, #dcc9c4); background: var(--ui-surface, #fff9f7); color: var(--ui-danger, #7d4941); font-size: 13px; font-weight: 500; box-shadow: 0 1px 2px #63362b0a; transition: background-color 150ms, border-color 150ms; }
+.dialog-footer :is(button, .resource-download), .dialog-content .lazy-load-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; border: 1px solid var(--ui-border, #cbd2cc); border-radius: 6px; padding: 6px 10px; background: var(--ui-surface, white); font-size: 12px; line-height: 1.25; }
+.dialog-content .lazy-load-actions .primary { border-color: var(--ui-accent-border, #176b44); background: #176b44; color: white; }
+.dialog-footer .update-dismiss-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-color: var(--ui-border, #dcc9c4); background: var(--ui-surface, #fff9f7); color: var(--ui-danger, #7d4941); font-size: 12px; font-weight: 500; box-shadow: 0 1px 2px #63362b0a; transition: background-color 150ms, border-color 150ms; }
 .dialog-footer .update-dismiss-action:hover:not(:disabled) { border-color: var(--ui-danger-border, #c99085); background: var(--ui-hover, #ffede7); }
 .dialog-footer .primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-color: var(--ui-accent-border, #176b44); background: #176b44; color: white; }
 .comment-compose-modal .dialog-footer button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 7px 12px; font-size: 12px; font-weight: 500; line-height: 1.25; }
