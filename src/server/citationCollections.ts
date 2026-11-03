@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import type { DatabaseConnection } from "./db.js";
 import { requireUser } from "./auth.js";
 import { contentDisposition, httpError, ValidationError } from "./http.js";
+import { exportCitationFolder, registerCitationFolderImport } from "./citationFolderTransfer.js";
 
 function collection(db: DatabaseConnection, userId: string, id: string): { id: string; name: string } {
   const row = db.prepare("SELECT id, name FROM citation_library_collections WHERE id = ? AND user_id = ?").get(id, userId) as { id: string; name: string } | undefined;
@@ -54,6 +55,7 @@ export function filterCitationCollection(db: DatabaseConnection, userId: string,
 
 /** Collections are private organizational metadata, never project membership. */
 export function registerCitationCollectionRoutes(app: FastifyInstance, db: DatabaseConnection): void {
+  registerCitationFolderImport(app, db);
   app.get("/api/citations/collections", async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
     const collections = db.prepare(`SELECT folder.id, folder.name, COUNT(entry.id) AS entryCount FROM citation_library_collections folder
@@ -94,13 +96,20 @@ export function registerCitationCollectionRoutes(app: FastifyInstance, db: Datab
     const user = requireUser(request, reply, db); if (!user) return;
     const { collectionId } = request.params as { collectionId: string };
     const folder = collection(db, user.id, collectionId);
+    const withNotes = (request.query as { notes?: string }).notes === "true";
+    const filename = folder.name.replace(/[\x00-\x1f\x7f/\\]/g, "_");
+    reply.header("Cache-Control", "private, no-store");
+    reply.header("X-Content-Type-Options", "nosniff");
+    if (withNotes) {
+      const bundle = exportCitationFolder(db, user.id, folder);
+      reply.header("Content-Disposition", contentDisposition(`${filename}.texlite-citations.json`, "attachment"));
+      return reply.type("application/json; charset=utf-8").send(bundle);
+    }
     const statement = db.prepare(`SELECT entry.bibtex FROM citation_library_entries entry
       JOIN citation_library_entry_collections link ON link.entry_id = entry.id
       WHERE entry.user_id = ? AND link.collection_id = ? ORDER BY entry.citation_key COLLATE NOCASE, entry.id`);
-    reply.header("Cache-Control", "private, no-store");
-    reply.header("X-Content-Type-Options", "nosniff");
     // File names are labels, not paths. Preserve Unicode via Content-Disposition.
-    reply.header("Content-Disposition", contentDisposition(`${folder.name.replace(/[\x00-\x1f\x7f/\\]/g, "_")}.bib`, "attachment"));
+    reply.header("Content-Disposition", contentDisposition(`${filename}.bib`, "attachment"));
     reply.type("application/x-bibtex; charset=utf-8");
     return reply.send(Readable.from((function* () {
       for (const row of statement.iterate(user.id, collectionId) as Iterable<{ bibtex: string }>) yield `${row.bibtex.trim()}\n\n`;

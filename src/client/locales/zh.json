@@ -1,4 +1,16 @@
 {
+  "citationNotes": {
+    "tab": "笔记",
+    "preview": "笔记预览",
+    "editorTabs": "文献内容",
+    "optional": "笔记（可选）",
+    "placeholder": "可选，使用 Markdown 记录要点或阅读笔记…",
+    "show": "查看笔记",
+    "hide": "收起笔记",
+    "title": "笔记 · {{key}}",
+    "empty": "暂无笔记。",
+    "tooLarge": "笔记不能超过 64 KB。"
+  },
   "citationProject": {
     "button": "文献",
     "saveFolder": "保存到文件夹",
@@ -7,6 +19,14 @@
     "comparisonUnavailable": "暂时无法与文献库比较，请重新打开“当前文件”标签页重试。"
   },
   "citationFolders": {
+    "exportWithNotes": "导出 BibTeX 及笔记",
+    "import": "导入文件夹",
+    "importDescription": "导入 TexLite 的含笔记文献文件夹（.json）。同 key 的条目将被替换，重名文件夹将追加数字后缀。",
+    "importFile": "文件夹文件",
+    "importPreview_one": "{{name}} · {{count}} 个条目",
+    "importPreview_other": "{{name}} · {{count}} 个条目",
+    "importInvalid": "请选择通过 TexLite 导出的含笔记文献文件夹。",
+    "transferTooLarge": "文献文件夹传输最多支持 16 MB 和 5,000 个条目。",
     "title": "文件夹",
     "all": "全部文献",
     "unfiled": "未分类",

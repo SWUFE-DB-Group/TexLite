@@ -126,6 +126,7 @@ export interface CitationLibraryEntry {
   citationKey: string;
   entryType: string;
   bibtex: string;
+  notes: string;
   title: string | null;
   authors: string | null;
   year: string | null;

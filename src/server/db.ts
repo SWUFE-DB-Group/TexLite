@@ -219,6 +219,11 @@ const databaseMigrations: readonly DatabaseMigration[] = [
     );
     CREATE INDEX IF NOT EXISTS citation_library_entry_collections_collection
       ON citation_library_entry_collections(collection_id, entry_id);`);
+  } },
+  { version: 19, name: "add_citation_notes", apply: (db) => {
+    if (missingColumn(db, "citation_library_entries", "notes")) {
+      db.exec("ALTER TABLE citation_library_entries ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+    }
   } }
 ];
 

@@ -33,7 +33,7 @@ async function chooseFolder(id = "b") {
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); await i18n.changeLanguage("en");
   onInsert.mockReset().mockResolvedValue(true); onOpenChange.mockReset(); currentFile = "refs.bib";
-  stored = { id: "ref", ownerId: "alice", ownerUsername: "alice", ownerDisplayName: "Alice", citationKey: "paper", entryType: "article", title: "Original", authors: null, year: null,
+  stored = { notes: "", id: "ref", ownerId: "alice", ownerUsername: "alice", ownerDisplayName: "Alice", citationKey: "paper", entryType: "article", title: "Original", authors: null, year: null,
     bibtex: "@article{paper,\n title={Original}\n}", revision: 1, collectionIds: ["a"], tags: [{ id: "tag", name: "Hidden tag", color: "blue", ownerId: "alice" }], createdAt: "2026-11-02", updatedAt: "2026-11-02" };
   currentSource = "@article{newKey, title={New paper}}";
   vi.mocked(api).mockReset().mockImplementation(async (url, options) => {

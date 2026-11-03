@@ -134,6 +134,39 @@ another account is an administrator. Export streams every member's stored
 BibTeX in citation-key order, without the list's search or pagination limits,
 as a UTF-8 `.bib` download. Export is available only in each folder's overflow
 menu, not as a separate list-toolbar button. No external citation service is involved.
+Migration 19 adds private Markdown notes to each library entry, initially empty.
+Add and edit forms share three accessible tabs: BibTeX, Notes, and Notes preview.
+Switching tabs preserves both drafts; preview renders the current unsaved notes.
+Save is disabled until either field changes. Notes are limited to 64 KB of UTF-8 text and use the same revision
+check as BibTeX edits. Saving updates from a project's `.bib` without a `notes`
+field preserves the existing notes. Notes never enter the project's `.bib` or
+the ordinary `.bib` export. The entry menu's Show/Hide notes action expands or
+collapses notes directly below that entry, not in a modal. Multiple entries may
+stay expanded independently, and ordinary refreshes keep their expansion state
+while displaying the latest saved notes. Each panel has a fixed header/close
+control and an internally scrolling body capped at 320px or 45vh, whichever is
+smaller. The Markdown renderer loads on demand, with GFM tables/lists, HTML disabled and default safe-URL
+handling; notes retain the site's light/dark palette. The same renderer serves
+the form's preview tab. `remark-math` parses `$...$` inline math and `$$...$$`
+display math; React components render its math nodes using the editor's KaTeX
+version, with trusted commands disabled and bounded expansion/size. Code spans
+and ordinary fenced code remain literal, and malformed formulas do not break
+the rest of a note. A scoped npm override keeps micromark's transitive KaTeX
+on the same version as the application's renderer.
+
+Export BibTeX with notes, also in the folder menu, downloads one portable
+`*.texlite-citations.json` file (`format: texlite-citation-folder`, `version: 1`).
+It contains a folder name and entries' BibTeX, display metadata and Markdown
+notes, but no user IDs, tags or database memberships. The folder sidebar's
+Import folder action validates a chosen file and its BibTeX in the browser;
+the server independently enforces authentication, shapes and byte limits.
+Transfers support at most 16 MB and 5,000 entries; oversized exports fail instead
+of downloading a partial file. Import is one SQLite transaction: it creates a
+new private folder, appending `-1`, `-2`, etc. when the name is already used.
+Matching citation keys replace that user's BibTeX and notes and increment the
+entry revision, retaining existing tags and other folder placements. Repeated
+keys within a file use the last entry. Other users' libraries are untouched.
+Malformed input or a database failure leaves no partially imported folder.
 Entry management actions live in an accessible, portalled overflow menu, with
 deletion separated from ordinary actions and still requiring confirmation.
 Copy BibTeX remains a direct button, preserves the full entry text and shows a

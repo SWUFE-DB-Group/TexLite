@@ -28,7 +28,7 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
   entry = { id: "entry", ownerId: admin.id, ownerUsername: admin.username, ownerDisplayName: admin.displayName, citationKey: "sample", entryType: "article", title: "Paper", authors: "Ada", year: "2026",
-    bibtex: "@article{sample, title={Paper}, author={Ada}, year={2026}}", tags: [], collectionIds: [], revision: 1, createdAt: "2026-10-28", updatedAt: "2026-10-28" };
+    bibtex: "@article{sample, title={Paper}, author={Ada}, year={2026}}", notes: "", tags: [], collectionIds: [], revision: 1, createdAt: "2026-10-28", updatedAt: "2026-10-28" };
   vi.mocked(api).mockReset().mockImplementation(async (url) => {
     if (url.startsWith("/api/admin/users?")) return { users: [admin, reader], pagination, summary } as never;
     if (url.startsWith("/api/citations?")) return { entries: [entry], pagination: { ...pagination, total: 1 } } as never;
@@ -163,18 +163,24 @@ describe("management action feedback", () => {
     await click([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "Edit")!);
     const textarea = host.querySelector("textarea")!;
     const save = host.querySelector<HTMLButtonElement>(".citation-edit-panel .save-button")!;
+    expect(save.disabled).toBe(true);
     await act(async () => changeText(textarea, "@article{sample, title={New paper}}"));
     entry = { ...entry, revision: 2, title: "New paper", bibtex: textarea.value };
     vi.mocked(api).mockResolvedValueOnce({ entry });
     await click(save);
     expect(save.isConnected).toBe(true);
     expect(save.textContent).toBe("Saved");
+    expect(save.disabled).toBe(true);
     expect(save.querySelector(".save-button-confirmation")).not.toBeNull();
     await act(async () => vi.advanceTimersByTime(0)); // Refresh the saved metadata without remounting the form.
     expect(host.querySelector("textarea")).toBe(textarea);
     assertNoBanner();
     await act(async () => vi.advanceTimersByTime(2000));
     expect(save.textContent).toBe("Save");
+    expect(save.disabled).toBe(true);
+    await click([...host.querySelectorAll<HTMLButtonElement>('.citation-content-tabs [role="tab"]')].find((button) => button.textContent === "Notes")!);
+    await act(async () => changeText(host.querySelector<HTMLTextAreaElement>(".citation-notes-input")!, "**New notes**"));
+    expect(save.disabled).toBe(false);
     vi.mocked(api).mockRejectedValueOnce(new Error("Citation conflict"));
     await click(save);
     const patches = vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "PATCH");
@@ -205,6 +211,7 @@ describe("management action feedback", () => {
     await act(async () => host.querySelector('[aria-haspopup="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     await click([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "Edit")!);
     let finish!: (value: { entry: CitationLibraryEntry }) => void;
+    await act(async () => changeText(host.querySelector("textarea")!, "@article{sample,title={Edited}}"));
     vi.mocked(api).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     await click(host.querySelector<HTMLElement>(".citation-edit-panel .save-button")!);
     expect(host.querySelector("textarea")?.disabled).toBe(true);
@@ -213,5 +220,26 @@ describe("management action feedback", () => {
     await act(async () => finish({ entry: { ...entry, revision: 2 } }));
     expect(host.querySelector("textarea")).toBeNull();
     assertNoBanner();
+  });
+
+  it("does not overwrite a newly opened notes draft when a previous save completes", async () => {
+    await render(createElement(CitationLibraryDialog, { open: true, page: true, currentUserId: admin.id, maxBibtexBytes: 100_000, onOpenChange: vi.fn() }));
+    const edit = async () => {
+      await act(async () => host.querySelector('[aria-haspopup="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+      await click([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "Edit")!);
+    };
+    await edit();
+    await click([...host.querySelectorAll<HTMLButtonElement>('.citation-content-tabs [role="tab"]')].find((button) => button.textContent === "Notes")!);
+    await act(async () => changeText(host.querySelector<HTMLTextAreaElement>(".citation-notes-input")!, "First draft"));
+    let finish!: (value: { entry: CitationLibraryEntry }) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    await click(host.querySelector<HTMLElement>(".citation-edit-panel .save-button")!);
+    await click(host.querySelector<HTMLElement>(".citation-edit-actions button")!);
+    await edit();
+    await click([...host.querySelectorAll<HTMLButtonElement>('.citation-content-tabs [role="tab"]')].find((button) => button.textContent === "Notes")!);
+    await act(async () => changeText(host.querySelector<HTMLTextAreaElement>(".citation-notes-input")!, "Second draft"));
+    await act(async () => finish({ entry: { ...entry, notes: "First draft", revision: 2 } }));
+    expect(host.querySelector<HTMLTextAreaElement>(".citation-notes-input")?.value).toBe("Second draft");
+    expect(host.querySelector<HTMLButtonElement>(".citation-edit-panel .save-button")?.disabled).toBe(false);
   });
 });

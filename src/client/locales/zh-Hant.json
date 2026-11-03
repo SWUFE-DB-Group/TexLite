@@ -1,4 +1,16 @@
 {
+  "citationNotes": {
+    "tab": "筆記",
+    "preview": "筆記預覽",
+    "editorTabs": "文獻內容",
+    "optional": "筆記（選填）",
+    "placeholder": "選填，使用 Markdown 記錄重點或閱讀筆記…",
+    "show": "檢視筆記",
+    "hide": "收合筆記",
+    "title": "筆記 · {{key}}",
+    "empty": "尚無筆記。",
+    "tooLarge": "筆記不能超過 64 KB。"
+  },
   "citationProject": {
     "button": "文獻",
     "saveFolder": "儲存至資料夾",
@@ -7,6 +19,14 @@
     "comparisonUnavailable": "暫時無法與文獻庫比較，請重新開啟「目前檔案」分頁重試。"
   },
   "citationFolders": {
+    "exportWithNotes": "匯出 BibTeX 及筆記",
+    "import": "匯入資料夾",
+    "importDescription": "匯入 TexLite 的含筆記文獻資料夾（.json）。相同 key 的條目將被取代，同名資料夾將加上數字後綴。",
+    "importFile": "資料夾檔案",
+    "importPreview_one": "{{name}} · {{count}} 個條目",
+    "importPreview_other": "{{name}} · {{count}} 個條目",
+    "importInvalid": "請選擇透過 TexLite 匯出的含筆記文獻資料夾。",
+    "transferTooLarge": "文獻資料夾傳輸最多支援 16 MB 和 5,000 個條目。",
     "title": "資料夾",
     "all": "全部文獻",
     "unfiled": "未分類",

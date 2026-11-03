@@ -6,7 +6,7 @@ import { citationVenue, type ParsedCitationEntry } from "./citationLibrary";
 import type { CitationLibraryEntry } from "./types";
 
 /** Entry presentation is shared; project workflows omit all management controls. */
-export function CitationCard({ entry, selected, alreadyInFile, saved, saving, saveFeedback, saveDisabled, saveHint, importDisabled, importHint, deleting, manage = true, onSave, onImport, onEdit, onTags, onCollections, onDelete, t }: {
+export function CitationCard({ entry, selected, alreadyInFile, saved, saving, saveFeedback, saveDisabled, saveHint, importDisabled, importHint, deleting, manage = true, onSave, onImport, onEdit, onTags, onCollections, onNotes, notesExpanded, notesRegionId, onDelete, t }: {
   entry: ParsedCitationEntry | CitationLibraryEntry;
   selected?: boolean;
   alreadyInFile?: boolean;
@@ -24,6 +24,9 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
   onEdit?: () => void;
   onTags?: () => void;
   onCollections?: () => void;
+  onNotes?: () => void;
+  notesExpanded?: boolean;
+  notesRegionId?: string;
   onDelete?: () => void;
   t: TFunction;
 }) {
@@ -45,7 +48,7 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
         saving={saving} disabled={saveDisabled} feedback={saveFeedback} onClick={onSave}>{t(saving ? "citationLibrary.saving" : saved ? "citationLibrary.update" : "citationLibrary.save")}</SaveButton>}
       {onImport && <button type="button" className={!manage ? "citation-icon-action" : undefined} aria-label={t("citationLibrary.import")} disabled={importDisabled || alreadyInFile} data-tooltip={importTooltip}
         onClick={() => void onImport()}><Import size={15} aria-hidden /><span className={!manage ? "sr-only" : undefined}>{t("citationLibrary.import")}</span></button>}
-      {manage && <CitationEntryMenu citationKey={entry.citationKey} bibtex={entry.bibtex} deleting={deleting} onTags={libraryEntry ? onTags : undefined} onCollections={libraryEntry ? onCollections : undefined} onEdit={libraryEntry ? onEdit : undefined} onDelete={libraryEntry ? onDelete : undefined} />}
+      {manage && <CitationEntryMenu citationKey={entry.citationKey} bibtex={entry.bibtex} deleting={deleting} onTags={libraryEntry ? onTags : undefined} onCollections={libraryEntry ? onCollections : undefined} onNotes={libraryEntry ? onNotes : undefined} notesExpanded={notesExpanded} notesRegionId={notesRegionId} onEdit={libraryEntry ? onEdit : undefined} onDelete={libraryEntry ? onDelete : undefined} />}
     </div>
   </article>;
 }

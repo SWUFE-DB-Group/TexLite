@@ -6,6 +6,7 @@ import { apiError, httpError, ValidationError } from "../http.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../limits.js";
 import { citationCollectionIds, citationCollectionsForEntries, filterCitationCollection, registerCitationCollectionRoutes } from "../citationCollections.js";
 import { comparableCitationBibtex } from "../../shared/citationContent.js";
+import { citationInput } from "../citationInput.js";
 
 interface CitationRouteContext {
   db: DatabaseConnection;
@@ -31,6 +32,7 @@ interface CitationLibraryRow {
   citation_key: string;
   entry_type: string;
   bibtex: string;
+  notes: string;
   title: string | null;
   authors: string | null;
   year: string | null;
@@ -54,6 +56,7 @@ function citationJson(row: CitationLibraryRow, tags: CitationLibraryTagRow[] = [
     citationKey: row.citation_key,
     entryType: row.entry_type,
     bibtex: row.bibtex,
+    notes: row.notes,
     title: row.title,
     authors: row.authors,
     year: row.year,
@@ -109,46 +112,6 @@ function citationExpectedRevision(value: unknown): number {
   return Number(value);
 }
 
-interface CitationInput {
-  bibtex: string;
-  citationKey: string;
-  entryType: string;
-  title: string | null;
-  authors: string | null;
-  year: string | null;
-}
-
-function citationNullableText(value: unknown, max: number): string | null {
-  if (value === undefined || value === null || value === "") return null;
-  if (typeof value !== "string" || value.length > max) throw new ValidationError();
-  const trimmed = value.trim();
-  return trimmed || null;
-}
-
-function citationInput(value: unknown): CitationInput {
-  if (typeof value !== "object" || value === null) throw new ValidationError();
-  const body = value as Record<string, unknown>;
-  if (typeof body.bibtex !== "string" || !body.bibtex.trim()) {
-    throw new ValidationError();
-  }
-  if (Buffer.byteLength(body.bibtex, "utf8") > MAX_CITATION_BIBTEX_BYTES) {
-    throw httpError(413, "CITATION_TOO_LARGE");
-  }
-  if (typeof body.citationKey !== "string" || !body.citationKey.trim() || body.citationKey.length > 512) {
-    throw new ValidationError();
-  }
-  if (typeof body.entryType !== "string" || !body.entryType.trim() || body.entryType.length > 128) {
-    throw new ValidationError();
-  }
-  return {
-    bibtex: body.bibtex.trim(),
-    citationKey: body.citationKey.trim(),
-    entryType: body.entryType.trim(),
-    title: citationNullableText(body.title, 2048),
-    authors: citationNullableText(body.authors, 2048),
-    year: citationNullableText(body.year, 128)
-  };
-}
 
 /** Register the current user's private citation-library routes. */
 export function registerCitationRoutes(app: FastifyInstance, context: CitationRouteContext): void {
@@ -319,16 +282,16 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
     db.transaction(() => {
       if (existing) {
         const result = db.prepare(`UPDATE citation_library_entries SET citation_key = ?, entry_type = ?, bibtex = ?,
-          title = ?, authors = ?, year = ?, revision = revision + 1, updated_at = ?
+          title = ?, authors = ?, year = ?, notes = COALESCE(?, notes), revision = revision + 1, updated_at = ?
           WHERE id = ? AND user_id = ? AND revision = ?`)
           .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year,
-            timestamp, id, user.id, expectedRevision);
+            citation.notes ?? null, timestamp, id, user.id, expectedRevision);
         if (!result.changes) throw httpError(409, "CITATION_CONFLICT");
       } else {
         db.prepare(`INSERT INTO citation_library_entries
-          (id, user_id, citation_key, entry_type, bibtex, title, authors, year, revision, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
-          .run(id, user.id, citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, timestamp, timestamp);
+          (id, user_id, citation_key, entry_type, bibtex, title, authors, year, notes, revision, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+          .run(id, user.id, citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, citation.notes ?? "", timestamp, timestamp);
       }
       if (tagIds !== null) {
         db.prepare("DELETE FROM citation_library_entry_tags WHERE entry_id = ?").run(id);
@@ -404,10 +367,10 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
       .get(user.id, citation.citationKey, citationId) as { id: string } | undefined;
     if (duplicate) return apiError(reply, 409, "CITATION_KEY_EXISTS");
     const result = db.prepare(`UPDATE citation_library_entries SET citation_key = ?, entry_type = ?, bibtex = ?,
-      title = ?, authors = ?, year = ?, revision = revision + 1, updated_at = ?
+      title = ?, authors = ?, year = ?, notes = COALESCE(?, notes), revision = revision + 1, updated_at = ?
       WHERE id = ? AND user_id = ? AND revision = ?`)
       .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year,
-        now(), citationId, user.id, expectedRevision);
+        citation.notes ?? null, now(), citationId, user.id, expectedRevision);
     if (!result.changes) return apiError(reply, 409, "CITATION_CONFLICT");
     const updated = db.prepare("SELECT * FROM citation_library_entries WHERE id = ? AND user_id = ?")
       .get(citationId, user.id) as CitationLibraryRow;

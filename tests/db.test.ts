@@ -21,6 +21,26 @@ function migrationConfig(root: string, databasePath: string): Config {
 }
 
 describe("database migrations", () => {
+  it("adds empty citation notes on upgrade and preserves content, revisions and saved notes across restarts", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-citation-notes-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`ALTER TABLE citation_library_entries DROP COLUMN notes;
+        DELETE FROM texlite_schema_migrations WHERE version = 19;
+        INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES ('owner', 'owner', 'Owner', 'hash', 'user', '2026-11-03');
+        INSERT INTO citation_library_entries (id, user_id, citation_key, entry_type, bibtex, revision, created_at, updated_at)
+          VALUES ('entry', 'owner', 'old', 'article', '@article{old,title={Original}}', 3, '2026-11-02', '2026-11-03');`);
+      const before = database.prepare("SELECT * FROM citation_library_entries").get() as object;
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM citation_library_entries").get()).toEqual({ ...before, notes: "" });
+      database.prepare("UPDATE citation_library_entries SET notes = ? WHERE id = 'entry'").run("# 阅读笔记\n\n**Keep** this.");
+      const applied = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 19").get();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM citation_library_entries").get()).toEqual({ ...before, notes: "# 阅读笔记\n\n**Keep** this." });
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 19").get()).toEqual(applied);
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
   it("automatically adds citation folders without changing existing references and retains folders across restarts", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-citation-folders-migration-"));
     const config = migrationConfig(root, path.join(root, "texlite.db"));
@@ -28,7 +48,7 @@ describe("database migrations", () => {
     try {
       database.exec(`DROP TABLE citation_library_entry_collections;
         DROP TABLE citation_library_collections;
-        DELETE FROM texlite_schema_migrations WHERE version = 18;
+        DELETE FROM texlite_schema_migrations WHERE version >= 18;
         INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES ('owner', 'owner', 'Owner', 'hash', 'user', '2026-11-02');
         INSERT INTO citation_library_entries (id, user_id, citation_key, entry_type, bibtex, revision, created_at, updated_at)
           VALUES ('entry', 'owner', 'old', 'article', '@article{old,title={Original}}', 3, '2026-11-02', '2026-11-02');`);
@@ -391,7 +411,8 @@ describe("database migrations", () => {
           { version: 15, name: "add_project_view_links" },
           { version: 16, name: "remove_revoked_project_view_links" },
           { version: 17, name: "store_encrypted_view_link_tokens" },
-          { version: 18, name: "add_citation_collections" }
+          { version: 18, name: "add_citation_collections" },
+          { version: 19, name: "add_citation_notes" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -420,7 +441,8 @@ describe("database migrations", () => {
           { version: 15, name: "add_project_view_links" },
           { version: 16, name: "remove_revoked_project_view_links" },
           { version: 17, name: "store_encrypted_view_link_tokens" },
-          { version: 18, name: "add_citation_collections" }
+          { version: 18, name: "add_citation_collections" },
+          { version: 19, name: "add_citation_notes" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -460,7 +482,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -548,7 +570,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }]);
       } finally {
         migrated.close();
       }

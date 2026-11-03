@@ -38,7 +38,7 @@ beforeEach(async () => {
   onInsert.mockReset().mockResolvedValue(true); onOpenChange.mockReset();
   catalog = { collections: [{ id: "a", name: "Paper A", entryCount: 1 }, { id: "b", name: "Paper B", entryCount: 0 }], total: 1, unfiled: 0 };
   saved = { id: "ref", ownerId: "alice", ownerUsername: "alice", ownerDisplayName: "Alice", citationKey: "paper", entryType: "article",
-    title: "A shared reference", authors: "Ada", year: "2026", revision: 1, bibtex: "@article{paper, title={A shared reference}}", tags: [], collectionIds: ["a"], createdAt: "2026-11-02", updatedAt: "2026-11-02" };
+    title: "A shared reference", authors: "Ada", year: "2026", revision: 1, bibtex: "@article{paper, title={A shared reference}}", notes: "", tags: [], collectionIds: ["a"], createdAt: "2026-11-02", updatedAt: "2026-11-02" };
   vi.mocked(api).mockReset().mockImplementation(async (url, options) => {
     if (url === "/api/citations/collections") {
       if (options?.method === "POST") {
@@ -70,6 +70,10 @@ beforeEach(async () => {
       const body = JSON.parse(String(options.body)); saved = { ...saved, ...body };
       return { entry: saved, updated: false } as never;
     }
+    if (url === "/api/citations/ref" && options?.method === "PATCH") {
+      saved = { ...saved, ...JSON.parse(String(options.body)), revision: saved.revision + 1 };
+      return { entry: saved } as never;
+    }
     throw new Error(`Unexpected request: ${url}`);
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -77,6 +81,118 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("citation folder workflows", () => {
+  it("submits optional Markdown notes with the BibTeX entry, not inside the BibTeX text", async () => {
+    await render();
+    await click(named("Add entry", ".citation-add-entry-button"));
+    const [bibtex, notes] = host.querySelectorAll<HTMLTextAreaElement>(".citation-content-fields textarea");
+    await act(async () => change(bibtex, "@article{new, title={New paper}}"));
+    await click(named("Notes", '.citation-content-tabs [role="tab"]'));
+    await act(async () => change(notes, "## Reading notes\n\n**Useful** result."));
+    await click(named("Add entry", ".citation-edit-actions button")); await settle();
+    const post = vi.mocked(api).mock.calls.find(([url, options]) => url === "/api/citations" && options?.method === "POST")!;
+    expect(JSON.parse(String(post[1]?.body))).toMatchObject({ bibtex: "@article{new, title={New paper}}", notes: "## Reading notes\n\n**Useful** result." });
+    expect(host.querySelector(".citation-add-panel")).toBeNull();
+  });
+
+  it("keeps Save disabled until BibTeX or notes change, handles reverting changes and displays saved Markdown from the overflow menu", async () => {
+    await render();
+    await menu(host.querySelector<HTMLElement>(".citation-entry-menu-trigger")!, "Edit");
+    const save = () => document.querySelector<HTMLButtonElement>(".citation-edit-actions .save-button")!;
+    const [bibtex, notes] = document.querySelectorAll<HTMLTextAreaElement>(".citation-content-fields textarea");
+    expect(save().disabled).toBe(true);
+    await act(async () => change(bibtex, "@article{paper, title={Edited}}"));
+    expect(save().disabled).toBe(false);
+    await act(async () => change(bibtex, saved.bibtex));
+    expect(save().disabled).toBe(true);
+    await click(named("Notes", '.citation-content-tabs [role="tab"]'));
+    await act(async () => change(notes, "## Result\n\n**Important** findings."));
+    expect(save().disabled).toBe(false);
+    await act(async () => change(notes, ""));
+    expect(save().disabled).toBe(true);
+    await act(async () => change(notes, "## Result\n\n**Important** findings."));
+    await click(save()); await settle();
+    expect(saved.notes).toBe("## Result\n\n**Important** findings.");
+    expect(save().disabled).toBe(true);
+    expect(save().textContent).toBe("Saved");
+    await click(named("Cancel", ".citation-edit-actions button"));
+    await menu(host.querySelector<HTMLElement>(".citation-entry-menu-trigger")!, "Show notes");
+    await act(async () => { await import("../src/client/CitationNotesPreview"); });
+    const item = host.querySelector(".citation-entry-item")!;
+    expect(item.querySelector(".citation-entry-notes .citation-notes-markdown h2")?.textContent).toBe("Result");
+    expect(item.querySelector(".citation-entry-notes .citation-notes-markdown strong")?.textContent).toBe("Important");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await menu(host.querySelector<HTMLElement>(".citation-entry-menu-trigger")!, "Hide notes");
+    expect(item.querySelector(".citation-entry-notes")).toBeNull();
+  });
+
+  it("expands notes independently below each entry, uses fresh entry data after a list reload and closes without a modal", async () => {
+    saved = { ...saved, notes: "## First notes\n\n$E=mc^2$" };
+    const other = { ...saved, id: "other", citationKey: "second", notes: "" };
+    const implementation = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (url, options) => url.startsWith("/api/citations?")
+      ? { entries: [saved, other], pagination: { page: 1, pageSize: 60, total: 2, totalPages: 1 } } as never : implementation(url, options));
+    await render();
+    const rows = () => [...host.querySelectorAll<HTMLElement>(".citation-entry-item")];
+    for (const row of rows()) await menu(row.querySelector<HTMLElement>(".citation-entry-menu-trigger")!, "Show notes");
+    await act(async () => { await import("../src/client/CitationNotesPreview"); });
+    expect(rows()[0].querySelector(".citation-entry-notes .katex")).not.toBeNull();
+    expect(rows()[1].querySelector(".citation-entry-notes")?.textContent).toContain("No notes yet.");
+    expect(host.querySelectorAll('.citation-entry-notes-content[role="region"][tabindex="0"]')).toHaveLength(2);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    saved = { ...saved, notes: "## Updated notes" };
+    await click(folder("Paper A")); await settle();
+    expect(rows()[0].querySelector(".citation-entry-notes h2")?.textContent).toBe("Updated notes");
+    expect(rows()[1].querySelector(".citation-entry-notes")).not.toBeNull();
+    await click(rows()[0].querySelector<HTMLElement>('.citation-entry-notes-heading [aria-label="Hide notes"]')!);
+    expect(rows()[0].querySelector(".citation-entry-notes")).toBeNull();
+    expect(rows()[1].querySelector(".citation-entry-notes")).not.toBeNull();
+  });
+
+  it("previews a folder file before import, prevents duplicate submission and selects the imported folder with filters reset", async () => {
+    const implementation = vi.mocked(api).getMockImplementation()!;
+    let finish!: () => void;
+    vi.mocked(api).mockImplementation((url, options) => url === "/api/citations/collections/import" ? new Promise((resolve) => {
+      finish = () => {
+        const collection = { id: "imported", name: "Paper A-1", entryCount: 1 };
+        catalog = { ...catalog, collections: [...catalog.collections, collection] };
+        saved = { ...saved, collectionIds: [...saved.collectionIds, collection.id] };
+        resolve({ collection, imported: 1 } as never);
+      };
+    }) : implementation(url, options));
+    await render();
+    await click(named("Import folder"));
+    const submit = () => document.querySelector<HTMLButtonElement>(".dialog-footer .save-button")!;
+    expect(submit().disabled).toBe(true);
+    const input = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="file"]')!;
+    const contents = { format: "texlite-citation-folder", version: 1, name: "Paper A", entries: [{ ...saved, notes: "**Shared**" }] };
+    Object.defineProperty(input, "files", { configurable: true, value: [new File([JSON.stringify(contents)], "Paper A.texlite-citations.json", { type: "application/json" })] });
+    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(document.querySelector(".citation-folder-import")?.textContent).toContain("Paper A · 1 entry");
+    expect(submit().disabled).toBe(false);
+    expect(vi.mocked(api).mock.calls.filter(([url]) => url.endsWith("/import"))).toHaveLength(0);
+    await click(submit()); await click(submit());
+    const imports = vi.mocked(api).mock.calls.filter(([url]) => url.endsWith("/import"));
+    expect(imports).toHaveLength(1);
+    expect(JSON.parse(String(imports[0][1]?.body)).entries[0]).toMatchObject({ citationKey: "paper", notes: "**Shared**" });
+    await act(async () => finish()); await settle();
+    expect(document.querySelector(".citation-folder-import")).toBeNull();
+    expect(folder("Paper A-1").getAttribute("aria-current")).toBe("true");
+    expect(host.querySelector(".citation-entry-list")?.textContent).toContain(saved.title);
+  });
+
+  it("leaves the library untouched when an invalid folder file is chosen and allows choosing another file", async () => {
+    await render(); await click(named("Import folder"));
+    const input = document.querySelector<HTMLInputElement>('.citation-folder-import input[type="file"]')!;
+    for (const contents of ["not json", JSON.stringify({ format: "texlite-citation-folder", version: 2, name: "New", entries: [] }),
+      JSON.stringify({ format: "texlite-citation-folder", version: 1, name: "New", entries: [{ ...saved, bibtex: "@article{unclosed", notes: "" }] })]) {
+      Object.defineProperty(input, "files", { configurable: true, value: [new File([contents], "invalid.json")] });
+      await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+      expect(document.querySelector('[role="alert"]')?.textContent).toContain("Choose a valid TexLite");
+      expect(document.querySelector<HTMLButtonElement>(".dialog-footer .save-button")?.disabled).toBe(true);
+      expect(input.disabled).toBe(false);
+    }
+    expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(0);
+  });
   it("defaults new entries to the current folder but saves into the destination chosen in the form", async () => {
     await render();
     await click(folder("Paper A")); await settle();
@@ -171,6 +287,8 @@ describe("citation folder workflows", () => {
     const exportLink = document.querySelector<HTMLAnchorElement>('a[role="menuitem"][download]');
     expect(exportLink?.textContent).toBe("Export BibTeX");
     expect(exportLink?.getAttribute("href")).toBe("/api/citations/collections/a/export");
+    const notesExport = [...document.querySelectorAll<HTMLAnchorElement>('a[role="menuitem"][download]')].find((link) => link.textContent === "Export BibTeX with notes");
+    expect(notesExport?.getAttribute("href")).toBe("/api/citations/collections/a/export?notes=true");
   });
 
   it("assigns a reference to multiple folders with unchanged-save protection and the current revision", async () => {

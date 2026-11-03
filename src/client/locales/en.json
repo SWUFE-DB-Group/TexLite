@@ -1,4 +1,16 @@
 {
+  "citationNotes": {
+    "tab": "Notes",
+    "preview": "Notes preview",
+    "editorTabs": "Citation content",
+    "optional": "Notes (optional)",
+    "placeholder": "Optional key ideas or reading notes using Markdown...",
+    "show": "Show notes",
+    "hide": "Hide notes",
+    "title": "Notes · {{key}}",
+    "empty": "No notes yet.",
+    "tooLarge": "Notes must be 64 KB or smaller."
+  },
   "citationProject": {
     "button": "Citation",
     "saveFolder": "Save to folder",
@@ -7,6 +19,14 @@
     "comparisonUnavailable": "Could not compare with your library. Reopen the current-file tab to retry."
   },
   "citationFolders": {
+    "exportWithNotes": "Export BibTeX with notes",
+    "import": "Import folder",
+    "importDescription": "Import a TexLite folder with notes (.json). Matching citation keys are replaced; duplicate folder names gain a numeric suffix.",
+    "importFile": "Folder file",
+    "importPreview_one": "{{name}} · {{count}} entry",
+    "importPreview_other": "{{name}} · {{count}} entries",
+    "importInvalid": "Choose a valid TexLite citation folder exported with notes.",
+    "transferTooLarge": "Folder transfers support up to 16 MB and 5,000 entries.",
     "title": "Folders",
     "all": "All references",
     "unfiled": "Unfiled",
