@@ -7,6 +7,7 @@ import { CitationLibraryDialog } from "../src/client/CitationLibraryDialog";
 import type { CitationLibraryEntry } from "../src/client/types";
 import type { CitationCollectionCatalog } from "../src/shared/citationCollections";
 import i18n from "../src/client/i18n";
+import { replaceCitationBibtex } from "./helpers/citationEditor";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 let root: Root, host: HTMLDivElement, catalog: CitationCollectionCatalog, saved: CitationLibraryEntry;
@@ -35,6 +36,8 @@ async function render(project = false, currentSource = "") {
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); await i18n.changeLanguage("en");
+  vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1)); vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  await import("../src/client/CitationBibtexEditor");
   onInsert.mockReset().mockResolvedValue(true); onOpenChange.mockReset();
   catalog = { collections: [{ id: "a", name: "Paper A", entryCount: 1 }, { id: "b", name: "Paper B", entryCount: 0 }], total: 1, unfiled: 0 };
   saved = { id: "ref", ownerId: "alice", ownerUsername: "alice", ownerDisplayName: "Alice", citationKey: "paper", entryType: "article",
@@ -84,8 +87,8 @@ describe("citation folder workflows", () => {
   it("submits optional Markdown notes with the BibTeX entry, not inside the BibTeX text", async () => {
     await render();
     await click(named("Add entry", ".citation-add-entry-button"));
-    const [bibtex, notes] = host.querySelectorAll<HTMLTextAreaElement>(".citation-content-fields textarea");
-    await act(async () => change(bibtex, "@article{new, title={New paper}}"));
+    const notes = host.querySelector<HTMLTextAreaElement>(".citation-notes-input")!;
+    await act(async () => replaceCitationBibtex(host, "@article{new, title={New paper}}"));
     await click(named("Notes", '.citation-content-tabs [role="tab"]'));
     await act(async () => change(notes, "## Reading notes\n\n**Useful** result."));
     await click(named("Add entry", ".citation-edit-actions button")); await settle();
@@ -98,11 +101,11 @@ describe("citation folder workflows", () => {
     await render();
     await menu(host.querySelector<HTMLElement>(".citation-entry-menu-trigger")!, "Edit");
     const save = () => document.querySelector<HTMLButtonElement>(".citation-edit-actions .save-button")!;
-    const [bibtex, notes] = document.querySelectorAll<HTMLTextAreaElement>(".citation-content-fields textarea");
+    const notes = document.querySelector<HTMLTextAreaElement>(".citation-notes-input")!;
     expect(save().disabled).toBe(true);
-    await act(async () => change(bibtex, "@article{paper, title={Edited}}"));
+    await act(async () => replaceCitationBibtex(document, "@article{paper, title={Edited}}"));
     expect(save().disabled).toBe(false);
-    await act(async () => change(bibtex, saved.bibtex));
+    await act(async () => replaceCitationBibtex(document, saved.bibtex));
     expect(save().disabled).toBe(true);
     await click(named("Notes", '.citation-content-tabs [role="tab"]'));
     await act(async () => change(notes, "## Result\n\n**Important** findings."));
@@ -202,7 +205,7 @@ describe("citation folder workflows", () => {
     await act(async () => { destination.value = "b"; destination.dispatchEvent(new Event("change", { bubbles: true })); });
     // Changing the form destination must not change the library filter before saving.
     expect(folder("Paper A").getAttribute("aria-current")).toBe("true");
-    await act(async () => change(host.querySelector<HTMLTextAreaElement>('.citation-add-panel textarea')!, "@article{new, title={New paper}}"));
+    await act(async () => replaceCitationBibtex(host, "@article{new, title={New paper}}"));
     await click(named("Add entry", ".citation-edit-actions button")); await settle();
     const post = vi.mocked(api).mock.calls.find(([url, options]) => url === "/api/citations" && options?.method === "POST")!;
     expect(JSON.parse(String(post[1]?.body))).toMatchObject({ citationKey: "new", collectionIds: ["b"] });
@@ -216,7 +219,7 @@ describe("citation folder workflows", () => {
     await click(named("Add entry", ".citation-add-entry-button"));
     const destination = host.querySelector<HTMLSelectElement>('.citation-add-panel select')!;
     expect([...destination.options].map((option) => option.textContent)).toEqual(["Unfiled"]);
-    await act(async () => change(host.querySelector<HTMLTextAreaElement>('.citation-add-panel textarea')!, "@misc{unfiled, title={Unfiled reference}}"));
+    await act(async () => replaceCitationBibtex(host, "@misc{unfiled, title={Unfiled reference}}"));
     await click(named("Add entry", ".citation-edit-actions button")); await settle();
     const post = vi.mocked(api).mock.calls.find(([url, options]) => url === "/api/citations" && options?.method === "POST")!;
     expect(JSON.parse(String(post[1]?.body)).collectionIds).toEqual([]);

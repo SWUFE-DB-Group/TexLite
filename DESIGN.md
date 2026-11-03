@@ -137,6 +137,11 @@ menu, not as a separate list-toolbar button. No external citation service is inv
 Migration 19 adds private Markdown notes to each library entry, initially empty.
 Add and edit forms share three accessible tabs: BibTeX, Notes, and Notes preview.
 Switching tabs preserves both drafts; preview renders the current unsaved notes.
+The BibTeX tab loads a compact CodeMirror editor on demand, reusing the project's
+Lezer BibTeX parser and syntax palettes. It keeps local undo history across tab
+and theme changes; external form updates do not echo back as user edits.
+Saving temporarily makes the editor read-only. The form adds no collaboration,
+lint, completion or spelling services, and Tab still leaves the input normally.
 Save is disabled until either field changes. Notes are limited to 64 KB of UTF-8 text and use the same revision
 check as BibTeX edits. Saving updates from a project's `.bib` without a `notes`
 field preserves the existing notes. Notes never enter the project's `.bib` or

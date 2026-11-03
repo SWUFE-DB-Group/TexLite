@@ -4,9 +4,12 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { CitationContentFields } from "../src/client/CitationContentFields";
 import i18n from "../src/client/i18n";
+import { citationEditor, replaceCitationBibtex } from "./helpers/citationEditor";
 
 it("preserves unsaved BibTeX and notes across accessible tabs and previews the latest Markdown and math without saving", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1)); vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  await import("../src/client/CitationBibtexEditor");
   await i18n.changeLanguage("en");
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   function Form() {
@@ -22,10 +25,11 @@ it("preserves unsaved BibTeX and notes across accessible tabs and previews the l
     await act(async () => root.render(createElement(Form)));
     const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
     const panel = () => [...host.querySelectorAll<HTMLElement>('[role="tabpanel"]')].find((node) => !node.hidden)!;
-    const [bibtex, notes] = host.querySelectorAll<HTMLTextAreaElement>("textarea");
+    const bibtex = citationEditor(host);
+    const notes = host.querySelector<HTMLTextAreaElement>(".citation-notes-input")!;
     expect(tabs.map((tab) => tab.textContent)).toEqual(["BibTeX", "Notes", "Notes preview"]);
-    expect(panel().contains(bibtex)).toBe(true);
-    await change(bibtex, "@article{paper, title={Draft}}");
+    expect(panel().contains(bibtex.contentDOM)).toBe(true);
+    await act(async () => replaceCitationBibtex(host, "@article{paper, title={Draft}}"));
     await act(async () => tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
     expect(panel().contains(notes)).toBe(true);
     await change(notes, "# Unsaved\n\n$E=mc^2$");
@@ -33,8 +37,9 @@ it("preserves unsaved BibTeX and notes across accessible tabs and previews the l
     expect(panel().querySelector("h1")?.textContent).toBe("Unsaved");
     expect(panel().querySelector(".katex")).not.toBeNull();
     await act(async () => tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
-    expect(panel().contains(bibtex)).toBe(true);
-    expect(bibtex.value).toBe("@article{paper, title={Draft}}");
+    expect(panel().contains(bibtex.contentDOM)).toBe(true);
+    expect(citationEditor(host)).toBe(bibtex);
+    expect(bibtex.state.doc.toString()).toBe("@article{paper, title={Draft}}");
     await act(async () => tabs[1].click());
     expect(notes.value).toBe("# Unsaved\n\n$E=mc^2$");
     await change(notes, "# Revised\n\n$$\n\\frac{1}{2}\n$$");

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Eye, LibraryBig, NotebookPen } from "lucide-react";
 
 const CitationNotesPreview = lazy(() => import("./CitationNotesPreview"));
+const CitationBibtexEditor = lazy(() => import("./CitationBibtexEditor"));
 const tabs = ["bibtex", "notes", "preview"] as const;
 type CitationTab = typeof tabs[number];
 
@@ -38,8 +39,9 @@ export function CitationContentFields({ bibtex, notes, disabled, autoFocus, onBi
       })}
     </div>
     <div className="citation-content-panel" role="tabpanel" id={`${id}-bibtex-panel`} aria-labelledby={`${id}-bibtex-tab`} hidden={tab !== "bibtex"}>
-      <textarea aria-label="BibTeX" autoFocus={autoFocus} value={bibtex} disabled={disabled} onChange={(event) => onBibtex(event.target.value)}
-        placeholder={t("citationLibraryActions.addEntryPlaceholder")} spellCheck={false} rows={12} />
+      <Suspense fallback={<div className="citation-bibtex-loading" role="status">{t("common.loading")}</div>}>
+        <CitationBibtexEditor value={bibtex} disabled={disabled} autoFocus={autoFocus} active={tab === "bibtex"} onChange={onBibtex} placeholder={t("citationLibraryActions.addEntryPlaceholder")} />
+      </Suspense>
     </div>
     <div className="citation-content-panel" role="tabpanel" id={`${id}-notes-panel`} aria-labelledby={`${id}-notes-tab`} hidden={tab !== "notes"}>
       <textarea aria-label={t("citationNotes.optional")} className="citation-notes-input" value={notes} disabled={disabled}

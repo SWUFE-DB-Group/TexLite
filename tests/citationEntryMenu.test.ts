@@ -8,13 +8,13 @@ import i18n from "../src/client/i18n";
 const bibtex = '@article{example,\n  title = {A {Nested} title 中文},\n  author = {Ada and Bob}\n}';
 let host: HTMLDivElement, root: Root;
 const write = vi.fn(async (_text: string) => {});
-const onTags = vi.fn(), onEdit = vi.fn(), onDelete = vi.fn();
+const onCollections = vi.fn(), onNotes = vi.fn(), onTags = vi.fn(), onEdit = vi.fn(), onDelete = vi.fn();
 let originalCopy: PropertyDescriptor | undefined;
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
   write.mockReset().mockResolvedValue();
-  onTags.mockReset(); onEdit.mockReset(); onDelete.mockReset();
+  onCollections.mockReset(); onNotes.mockReset(); onTags.mockReset(); onEdit.mockReset(); onDelete.mockReset();
   vi.spyOn(navigator.clipboard, "writeText").mockImplementation(write);
   originalCopy = Object.getOwnPropertyDescriptor(document, "execCommand");
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -28,10 +28,14 @@ afterEach(async () => {
 });
 async function render(manage = true, value = bibtex) {
   await act(async () => root.render(createElement(CitationEntryMenu, { citationKey: "example", bibtex: value,
+    onCollections: manage ? onCollections : undefined, onNotes: manage ? onNotes : undefined,
     onTags: manage ? onTags : undefined, onEdit: manage ? onEdit : undefined, onDelete: manage ? onDelete : undefined })));
 }
 const items = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 async function open() {
+  // Inline actions restore trigger focus after closing; let that settle before
+  // simulating the next keyboard interaction with the same menu.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => host.querySelector('[aria-haspopup="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
 }
 const copyButton = () => host.querySelector<HTMLButtonElement>(".citation-copy-button")!;
@@ -44,9 +48,9 @@ describe("citation entry actions", () => {
     expect(copyButton().textContent).toBe("Copy BibTeX");
     expect(host.querySelector('[aria-haspopup="menu"]')?.getAttribute("aria-label")).toBe("Actions for example");
     expect(document.querySelector('[role="menu"]')).toBeNull();
-    for (const [index, callback] of [[0, onTags], [1, onEdit], [2, onDelete]] as const) {
+    for (const [index, callback] of [[0, onCollections], [1, onNotes], [2, onTags], [3, onEdit], [4, onDelete]] as const) {
       await open();
-      expect(items().map((item) => item.textContent)).toEqual(["Tags", "Edit", "Delete"]);
+      expect(items().map((item) => item.textContent)).toEqual(["Organize into folders", "Show notes", "Tags", "Edit", "Delete"]);
       expect(host.querySelector('[role="menu"]')).toBeNull(); // Not clipped by the citation list's scroll area.
       expect(document.querySelector('[role="separator"]')).not.toBeNull();
       await act(async () => items()[index].click());

@@ -9,6 +9,7 @@ import { CitationTagManagementDialog } from "../src/client/CitationTagManagement
 import { GitHubAccountDialog } from "../src/client/GitHubAccountDialog";
 import type { CitationLibraryEntry, User } from "../src/client/types";
 import i18n from "../src/client/i18n";
+import { citationEditor, replaceCitationBibtex } from "./helpers/citationEditor";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/Dialog", () => ({
@@ -26,6 +27,8 @@ let root: Root, host: HTMLDivElement;
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1)); vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  await import("../src/client/CitationBibtexEditor");
   await i18n.changeLanguage("en");
   entry = { id: "entry", ownerId: admin.id, ownerUsername: admin.username, ownerDisplayName: admin.displayName, citationKey: "sample", entryType: "article", title: "Paper", authors: "Ada", year: "2026",
     bibtex: "@article{sample, title={Paper}, author={Ada}, year={2026}}", notes: "", tags: [], collectionIds: [], revision: 1, createdAt: "2026-10-28", updatedAt: "2026-10-28" };
@@ -161,11 +164,11 @@ describe("management action feedback", () => {
     if (page) expect(host.querySelector(".dashboard-back-button")?.textContent).toBe("Back to projects");
     await act(async () => host.querySelector('[aria-haspopup="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     await click([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "Edit")!);
-    const textarea = host.querySelector("textarea")!;
+    const editor = citationEditor(host);
     const save = host.querySelector<HTMLButtonElement>(".citation-edit-panel .save-button")!;
     expect(save.disabled).toBe(true);
-    await act(async () => changeText(textarea, "@article{sample, title={New paper}}"));
-    entry = { ...entry, revision: 2, title: "New paper", bibtex: textarea.value };
+    await act(async () => replaceCitationBibtex(host, "@article{sample, title={New paper}}"));
+    entry = { ...entry, revision: 2, title: "New paper", bibtex: editor.state.doc.toString() };
     vi.mocked(api).mockResolvedValueOnce({ entry });
     await click(save);
     expect(save.isConnected).toBe(true);
@@ -173,7 +176,7 @@ describe("management action feedback", () => {
     expect(save.disabled).toBe(true);
     expect(save.querySelector(".save-button-confirmation")).not.toBeNull();
     await act(async () => vi.advanceTimersByTime(0)); // Refresh the saved metadata without remounting the form.
-    expect(host.querySelector("textarea")).toBe(textarea);
+    expect(citationEditor(host)).toBe(editor);
     assertNoBanner();
     await act(async () => vi.advanceTimersByTime(2000));
     expect(save.textContent).toBe("Save");
@@ -211,10 +214,11 @@ describe("management action feedback", () => {
     await act(async () => host.querySelector('[aria-haspopup="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     await click([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "Edit")!);
     let finish!: (value: { entry: CitationLibraryEntry }) => void;
-    await act(async () => changeText(host.querySelector("textarea")!, "@article{sample,title={Edited}}"));
+    await act(async () => replaceCitationBibtex(host, "@article{sample,title={Edited}}"));
     vi.mocked(api).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     await click(host.querySelector<HTMLElement>(".citation-edit-panel .save-button")!);
     expect(host.querySelector("textarea")?.disabled).toBe(true);
+    expect(citationEditor(host).state.readOnly).toBe(true);
     await click(host.querySelector<HTMLElement>(".citation-edit-actions button")!);
     expect(host.querySelector("textarea")).toBeNull();
     await act(async () => finish({ entry: { ...entry, revision: 2 } }));

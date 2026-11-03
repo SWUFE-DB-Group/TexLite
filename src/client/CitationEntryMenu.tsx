@@ -54,8 +54,8 @@ export function CitationEntryMenu({ citationKey, bibtex, onTags, onCollections, 
     <DropdownMenu.Portal>
       <DropdownMenu.Content className="citation-entry-menu" align="end" sideOffset={5} collisionPadding={8}
         onCloseAutoFocus={(event) => { if (selecting.current) event.preventDefault(); selecting.current = false; }}>
-        {onNotes && <DropdownMenu.Item aria-expanded={notesExpanded} aria-controls={notesExpanded ? notesRegionId : undefined} onSelect={onNotes}><NotebookPen size={14} aria-hidden />{t(notesExpanded ? "citationNotes.hide" : "citationNotes.show")}</DropdownMenu.Item>}
         {onCollections && <DropdownMenu.Item onSelect={() => { selecting.current = true; onCollections(); }}><Folder size={14} aria-hidden />{t("citationFolders.assign")}</DropdownMenu.Item>}
+        {onNotes && <DropdownMenu.Item aria-expanded={notesExpanded} aria-controls={notesExpanded ? notesRegionId : undefined} onSelect={onNotes}><NotebookPen size={14} aria-hidden />{t(notesExpanded ? "citationNotes.hide" : "citationNotes.show")}</DropdownMenu.Item>}
         {onTags && <DropdownMenu.Item onSelect={() => { selecting.current = true; onTags(); }}><Tags size={14} aria-hidden />{t("citationLibrary.tags")}</DropdownMenu.Item>}
         {onEdit && <DropdownMenu.Item onSelect={() => { selecting.current = true; onEdit(); }}><Edit3 size={14} aria-hidden />{t("common.edit")}</DropdownMenu.Item>}
         {onDelete && <><DropdownMenu.Separator className="citation-entry-menu-separator" />

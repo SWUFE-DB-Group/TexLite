@@ -1704,6 +1704,13 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-content-panel { min-width: 0; }
 .citation-content-panel[hidden] { display: none; }
 .citation-content-fields textarea { min-height: 210px; max-height: 55vh; }
+.citation-bibtex-editor, .citation-bibtex-loading { height: 250px; min-height: 210px; max-height: 55vh; min-width: 0; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 6px; background: var(--tl-editor-bg); color: var(--tl-ink); }
+.citation-bibtex-editor { resize: vertical; overflow: hidden; }
+.citation-bibtex-editor:focus-within { border-color: var(--ui-accent-border, #176b44); box-shadow: 0 0 0 2px var(--tl-focus-ring); }
+.citation-bibtex-editor .cm-editor { font: 12px/1.6 "SFMono-Regular", Consolas, monospace; }
+.citation-bibtex-editor .cm-content { padding-block: 8px; }
+.citation-bibtex-editor .cm-lineNumbers { min-width: 2.8em; }
+.citation-bibtex-loading { display: grid; place-items: center; font-size: 12px; }
 .citation-edit-panel textarea.citation-notes-input { font-family: inherit; font-size: 12px; line-height: 1.6; }
 .citation-content-preview { min-height: 250px; max-height: 55vh; overflow: auto; padding: 12px; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 6px; background: var(--ui-surface, #fff); }
 .citation-folder-import { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
