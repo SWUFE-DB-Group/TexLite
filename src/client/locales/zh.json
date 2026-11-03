@@ -187,7 +187,7 @@
     "selectedFileSize": "已选择 · {{size}}", "clearFile": "清除已选文件"
   },
   "projectIcons": {
-    "title": "选择项目图标", "description": "为“{{project}}”选择一个视觉标识。该共享设置仅项目所有者可以修改。", "change": "修改项目图标", "search": "搜索图标…", "save": "保存图标", "useInitial": "使用项目首字", "noMatches": "没有匹配“{{query}}”的图标。", "advancedName": "高级：Lucide 图标短名称", "advancedNamePlaceholder": "例如：file-text", "advancedNameDescription": "请输入官方 Lucide 图标短名称，例如 file-text。", "advancedPreview": "高级图标预览", "browse": "浏览 Lucide 图标",
+    "title": "选择项目图标", "description": "为“{{project}}”选择一个视觉标识。该共享设置仅项目所有者可以修改。", "change": "修改项目图标", "search": "搜索图标…", "save": "保存", "useInitial": "使用项目首字", "noMatches": "没有匹配“{{query}}”的图标。", "advancedName": "高级：Lucide 图标短名称", "advancedNamePlaceholder": "例如：file-text", "advancedNameDescription": "请输入官方 Lucide 图标短名称，例如 file-text。", "advancedPreview": "高级图标预览", "browse": "浏览 Lucide 图标",
     "icons": {
       "file-text": { "name": "文档", "keywords": "文档 论文 稿件 文章 文本" },
       "book-open": { "name": "书籍", "keywords": "书籍 阅读 参考 文献" },
@@ -364,7 +364,7 @@
     "destinationFolder": "目标文件夹", "deletePath": "删除文件或文件夹", "deletePathTitle": "删除 {{name}}", "deletePathDescription": "确定删除 {{path}}？此操作不可撤销。",
     "deletePathActiveDescription_one": "确定删除 {{path}}？{{users}} 当前正在打开它，删除后这些会话将关闭该文件。", "deletePathActiveDescription_other": "确定删除 {{path}}？{{users}} 当前正在打开它，删除后这些会话将关闭该文件。", "deletePathWillClose": "系统会拒绝该路径上迟到的修改，避免内容被静默丢失。", "fileDeletedByCollaborator": "{{path}} 已在其他会话中删除，现已打开安全的备用文件。",
     "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "format": "格式化", "formatFile": "文件", "formatFileHint": "格式化当前文件", "formatFileComplete": "当前文件已格式化。", "formatFileFailed": "无法格式化当前文件：{{message}}", "formatSelected": "选区", "commentsAll": "查看", "formatSelection": "格式化选区", "formatting": "正在格式化…", "formatSelectionHint": "选择一段 LaTeX 源码后格式化", "formatSelectionRequired": "请先选择 LaTeX 源码，再进行格式化。", "formatSelectionComplete": "所选 LaTeX 源码已格式化。", "formatFailedContinue": "格式化失败，仍将继续编译：{{message}}", "formatFailed": "无法格式化选区：{{message}}", "formatSourceChanged": "格式化期间源码已发生变化，已跳过本次格式化。", "formatSelectionChanged": "格式化期间所选源码已发生变化，请重新选择后再试。", "writingSuggestions": "写作建议", "noWritingSuggestions": "没有可用的修改建议", "removeText": "删除文本", "replaceWith": "替换为 {{word}}", "spellCheckReadOnly": "当前为只读，需要编辑权限才能替换。", "spellCheckSourceChanged": "源码在应用写作修正前发生了变化。", "mathPreview": "公式预览", "mathPreviewLoading": "正在渲染公式…", "mathPreviewUnavailable": "该公式暂时无法预览。", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
-    "replyPlaceholder": "输入回复内容…（⌘/Ctrl+Enter 发送）", "sendReply": "发送回复", "editComment": "编辑批注", "deleteComment": "删除批注",
+    "replyPlaceholder": "输入回复内容…（⌘/Ctrl+Enter 发送）", "sendReply": "回复", "editComment": "编辑批注", "deleteComment": "删除批注",
     "commentPlaceholder": "输入批注内容…（⌘/Ctrl+Enter 发送）",
     "replyPrompt": "回复…",
     "showEarlierReplies_one": "之前的 {{count}} 条回复", "showEarlierReplies_other": "之前的 {{count}} 条回复",
@@ -480,7 +480,7 @@
     "tags": "标签",
     "tagsTitle": "{{key}} 的标签",
     "noTagsToAssign": "请先创建标签。",
-    "saveTags": "保存标签",
+    "saveTags": "保存",
     "editTitle": "编辑 {{key}}"
   },
   "citationErrors": { "invalid": "请输入一个有效的 BibTeX 条目。", "tooLarge": "BibTeX 条目过大。", "notFound": "引用条目不存在。", "keyExists": "引用 key 已经存在，请检查现有条目后再决定是否替换。", "tagNotFound": "引用标签不存在。", "conflict": "该引用已在其他位置发生修改，请刷新引用库后重试。", "alreadyInFile": "{{key}} 已经存在于当前 BibTeX 文件中。" },

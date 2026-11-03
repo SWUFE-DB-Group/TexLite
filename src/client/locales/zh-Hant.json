@@ -306,7 +306,7 @@
     "description": "為「{{project}}」選擇圖示。此設定由專案共用，僅擁有者可以修改。",
     "change": "修改專案圖示",
     "search": "搜尋圖示…",
-    "save": "儲存圖示",
+    "save": "儲存",
     "useInitial": "使用專案首字",
     "noMatches": "沒有符合「{{query}}」的圖示。",
     "advancedName": "進階：Lucide 圖示短名稱",
@@ -1008,7 +1008,7 @@
     "vimOnHint": "目前編輯器已啟用 Vim 按鍵配置。",
     "reply": "回覆",
     "replyPlaceholder": "輸入回覆內容…（⌘/Ctrl+Enter 傳送）",
-    "sendReply": "傳送回覆",
+    "sendReply": "回覆",
     "editComment": "編輯批註",
     "deleteComment": "刪除批註",
     "commentPlaceholder": "輸入批註內容…（⌘/Ctrl+Enter 傳送）",
@@ -1196,7 +1196,7 @@
     "tags": "標籤",
     "tagsTitle": "{{key}} 的標籤",
     "noTagsToAssign": "請先建立標籤。",
-    "saveTags": "儲存標籤",
+    "saveTags": "儲存",
     "editTitle": "編輯 {{key}}"
   },
   "citationErrors": {
