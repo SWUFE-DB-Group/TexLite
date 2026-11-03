@@ -79,5 +79,5 @@ export function CitationTagManagementDialog({ tags, onClose, onUpdated, onDelete
         </article>)}</div>}
       </fieldset>
     </div>
-  </Modal><ConfirmDialog open={Boolean(deleteTarget)} title={t("tags.deleteTitle")} description={t("citationTagManagement.deleteDescription", { tag: deleteTarget?.name ?? "" })} confirmLabel={t("common.delete")} danger busy={busy} error={deleteError} onCancel={() => { if (!busy) setDeleteTarget(null); }} onConfirm={() => void remove()} /></>;
+  </Modal><ConfirmDialog className="management-dialog" open={Boolean(deleteTarget)} title={t("tags.deleteTitle")} description={t("citationTagManagement.deleteDescription", { tag: deleteTarget?.name ?? "" })} confirmLabel={t("common.delete")} danger busy={busy} error={deleteError} onCancel={() => { if (!busy) setDeleteTarget(null); }} onConfirm={() => void remove()} /></>;
 }

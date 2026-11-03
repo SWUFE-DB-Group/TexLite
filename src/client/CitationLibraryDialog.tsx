@@ -333,7 +333,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
         {pagination.totalPages > 1 && <nav className="citation-library-pagination" aria-label={t("citationLibraryPagination.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}><button type="button" disabled={pagination.page <= 1} onClick={() => setPageNumber((current) => Math.max(1, current - 1))}><ChevronLeft size={14} />{t("citationLibraryPagination.previous")}</button><span>{t("citationLibraryPagination.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}</span><button type="button" disabled={pagination.page >= pagination.totalPages} onClick={() => setPageNumber((current) => Math.min(pagination.totalPages, current + 1))}>{t("citationLibraryPagination.next")}<ChevronRight size={14} /></button></nav>}
     </div>
     </div>;
-  const deleteConfirmation = <ConfirmDialog
+  const deleteConfirmation = <ConfirmDialog className="management-dialog"
     open={Boolean(deleteTarget)}
     title={t("citationLibrary.deleteTitle")}
     description={t("citationLibrary.deleteDescription", { key: deleteTarget?.citationKey ?? "" })}

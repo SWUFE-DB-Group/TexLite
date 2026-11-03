@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Import, LibraryBig, Upload, X } from "lucide-react";
+import { FileUp, LibraryBig, Upload, X } from "lucide-react";
 import { MAX_CITATION_FOLDER_BYTES, type CitationFolderBundle, type CitationFolderImportRequest } from "../shared/citationTransfer";
 import { api } from "./api";
 import { CitationFolderImportError, parseCitationFolderFile } from "./citationFolderImport";
@@ -58,7 +58,7 @@ export function CitationFolderImportDialog({ maxBibtexBytes, onClose, onImported
   return <Modal open className="management-dialog" title={t("citationFolders.import")} description={t("citationFolders.importDescription")}
     onOpenChange={(open) => { if (!open && !saving) onClose(); }} footer={<>
       <button type="button" disabled={saving} onClick={onClose}>{t("common.cancel")}</button>
-      <SaveButton icon={<Import size={14} aria-hidden />} saving={saving} disabled={!bundle || reading || !name.trim() || name.trim().length > 80} onClick={() => void save()}>{t("citationFolders.import")}</SaveButton>
+      <SaveButton icon={<FileUp size={14} aria-hidden />} saving={saving} disabled={!bundle || reading || !name.trim() || name.trim().length > 80} onClick={() => void save()}>{t("citationFolders.import")}</SaveButton>
     </>}>
     <div className="citation-folder-import">
       <div className={`upload-picker${file ? " has-file" : ""}${saving || reading ? " is-disabled" : ""}`}

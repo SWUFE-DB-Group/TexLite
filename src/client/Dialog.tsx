@@ -94,12 +94,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function ConfirmDialog({ open, title, description, confirmLabel, danger, onCancel, onConfirm, error, busy = false, children }: {
+export function ConfirmDialog({ open, title, description, confirmLabel, danger, onCancel, onConfirm, error, busy = false, children, className }: {
   open: boolean; title: string; description: string; confirmLabel?: string; danger?: boolean;
-  onCancel: () => void; onConfirm: () => void; error?: string; busy?: boolean; children?: ReactNode;
+  onCancel: () => void; onConfirm: () => void; error?: string; busy?: boolean; children?: ReactNode; className?: string;
 }) {
   const { t } = useTranslation();
-  return <Modal open={open} title={title} description={description} onOpenChange={(next) => { if (!next && !busy) onCancel(); }} footer={<>
+  return <Modal open={open} className={className} title={title} description={description} onOpenChange={(next) => { if (!next && !busy) onCancel(); }} footer={<>
     <button disabled={busy} onClick={onCancel}>{t("common.cancel")}</button>
     <button className={danger ? "danger" : "primary"} disabled={busy} aria-busy={busy} onClick={onConfirm}>{busy && <LoaderCircle className="spin" size={14} />}{confirmLabel ?? t("common.remove")}</button>
   </>}><>{error && <p className="error dialog-error">{error}</p>}{children ?? <div />}</></Modal>;
