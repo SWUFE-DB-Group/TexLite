@@ -479,10 +479,6 @@ export class ProjectCollaboration {
     return this.provider.wsconnected;
   }
 
-  get draftReady(): boolean {
-    return this.localDraftReady;
-  }
-
   get currentPermission(): Project["permission"] {
     return this.permission;
   }

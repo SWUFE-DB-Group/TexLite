@@ -765,15 +765,6 @@ export class CollaborationService {
     return changed;
   }
 
-  closeProject(projectId: string): void {
-    this.invalidateProject(projectId);
-    this.snapshotBarriers.delete(projectId);
-    const room = this.rooms.get(projectId);
-    if (!room) return;
-    for (const connection of room.connections) connection.socket.close(1008, "Project closed");
-    this.destroyRoom(room);
-  }
-
   resetProject(projectId: string): void {
     this.invalidateProject(projectId);
     this.snapshotBarriers.delete(projectId);

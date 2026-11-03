@@ -700,7 +700,6 @@
       "projectOwners_one": "由 {{count}} 位使用者擁有", "projectOwners_other": "由 {{count}} 位使用者擁有"
     },
     "alwaysAllowed": "一律允許",
-    "saved": "使用者設定已儲存。",
     "selfProtected": "目前登入的管理員帳號受到保護。",
     "adminCreation": "管理員始終可以建立專案。",
     "roleFor": "@{{username}} 的角色",
@@ -1135,7 +1134,6 @@
     "expand": "展開全部標籤",
     "collapse": "收合標籤",
     "exists": "該標籤已存在。",
-    "deleted": "標籤已刪除。",
     "edit": "編輯標籤 {{tag}}",
     "delete": "刪除標籤 {{tag}}",
     "deleteDescription": "刪除「{{tag}}」？該標籤將從文獻庫的所有文獻中移除，文獻本身會保留。"
@@ -1152,8 +1150,6 @@
     "update": "更新",
     "saving": "正在儲存…",
     "saved": "文獻已儲存到你的文獻庫。",
-    "updated": "文獻已更新。",
-    "deleted": "文獻已刪除。",
     "deleteTitle": "刪除文獻",
     "deleteDescription": "確定從你的私有文獻庫中刪除文獻 {{key}}？此操作無法復原。",
     "fileTooLarge": "該 BibTeX 檔案超過 {{size}} 限制。",
@@ -1196,8 +1192,7 @@
     "addEntry": "新增項目",
     "addEntryTitle": "新增 BibTeX 項目",
     "addEntryDescription": "貼上一筆完整的 BibTeX 文獻項目，儲存前會檢查格式。",
-    "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}",
-    "added": "文獻已新增到你的文獻庫。"
+    "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}"
   },
   "citationLibraryPagination": {
     "pageOf_one": "第 {{page}} / {{totalPages}} 頁 · {{count}} 筆文獻",

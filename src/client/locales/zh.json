@@ -274,7 +274,6 @@
       "projectOwners_one": "由 {{count}} 位用户拥有", "projectOwners_other": "由 {{count}} 位用户拥有"
     },
     "alwaysAllowed": "始终允许",
-    "saved": "用户设置已保存。",
     "selfProtected": "当前登录的管理员账号受到保护。",
     "adminCreation": "管理员始终可以创建项目。",
     "roleFor": "@{{username}} 的角色",
@@ -419,7 +418,6 @@
     "expand": "展开全部标签",
     "collapse": "收起标签",
     "exists": "该标签已存在。",
-    "deleted": "标签已删除。",
     "edit": "编辑标签 {{tag}}",
     "delete": "删除标签 {{tag}}",
     "deleteDescription": "删除“{{tag}}”？该标签将从引用库的所有文献中移除，文献本身会保留。"
@@ -436,8 +434,6 @@
     "update": "更新",
     "saving": "正在保存…",
     "saved": "引用已保存到你的引用库。",
-    "updated": "引用已更新。",
-    "deleted": "引用已删除。",
     "deleteTitle": "删除引用",
     "deleteDescription": "确定从你的私有引用库中删除引用 {{key}}？此操作不可撤销。",
     "fileTooLarge": "该 BibTeX 文件超过 {{size}} 限制。",
@@ -469,7 +465,7 @@
     "copying": "正在复制…",
     "copied": "已复制",
     "copyFailed": "复制失败，请重试。",
-    "addEntry": "添加条目", "addEntryTitle": "添加 BibTeX 条目", "addEntryDescription": "粘贴一个完整的 BibTeX 文献条目，保存前会进行校验。", "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}", "added": "引用已添加到你的引用库。" },
+    "addEntry": "添加条目", "addEntryTitle": "添加 BibTeX 条目", "addEntryDescription": "粘贴一个完整的 BibTeX 文献条目，保存前会进行校验。", "addEntryPlaceholder": "@article{key,\n  author = {Author},\n  title = {Title},\n  year = {2026}\n}" },
   "citationLibraryPagination": { "pageOf_one": "第 {{page}} / {{totalPages}} 页 · {{count}} 条引用", "pageOf_other": "第 {{page}} / {{totalPages}} 页 · {{count}} 条引用", "previous": "上一页", "next": "下一页" },
   "navigation": {
     "backToProjects": "返回项目",

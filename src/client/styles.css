@@ -896,7 +896,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .preview-subtabs button.active span { background: var(--ui-hover, #dfe8e2); }
 .preview-content { min-height: 0; flex: 1; }
 .preview-pdf { overflow: hidden; }
-.pdf-viewer { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; container: pdf-controls / inline-size; }
+.pdf-viewer { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .pdf-toolbar { min-height: 36px; flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px 8px; padding: 4px 8px; border-bottom: 1px solid var(--ui-border, #d4dcd6); background: var(--ui-surface, #f3f5f2); color: var(--ui-muted, #536259); font: 11px/1 Inter, ui-sans-serif, system-ui, sans-serif; }
 .pdf-page-controls, .pdf-zoom-controls { flex: none; display: flex; align-items: center; gap: 3px; }
 .pdf-zoom-controls { padding-left: 8px; border-left: 1px solid var(--ui-border, #d4dcd6); }
