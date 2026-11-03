@@ -876,7 +876,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-host .cm-lineNumbers .cm-selection-history:hover { background: var(--tl-history-action-hover-bg); color: var(--tl-history-action-hover-fg); }
 .editor-host .cm-lineNumbers .cm-selection-action-button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
 .editor-host .cm-lineNumbers .cm-selection-action-button svg { width: 1.16em; height: 1.16em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.preview-panel { display: flex; flex-direction: column; background: #6f7471; }
+.preview-panel { display: flex; flex-direction: column; container: preview-panel / inline-size; background: #6f7471; }
 .preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 4px 8px 0; border-bottom: 1px solid var(--ui-border, #dde3de); background: var(--ui-surface, #f3f5f2); }
 .preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 .preview-tabs button { position: relative; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 6px 6px 0 0; background: transparent; color: var(--ui-muted, #57655d); font-size: 11px; }
@@ -895,6 +895,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .pdf-download-top::before { content: ""; position: absolute; left: -7px; top: 7px; bottom: 7px; width: 1px; background: var(--ui-border, #d8e0da); }
 .pdf-download-top:hover { background: var(--ui-accent-bg, #e2ede4); color: var(--ui-accent, #18553c); }
 .preview-tabs button:focus-visible, .pdf-download-top:focus-visible { outline: 2px solid var(--ui-accent, #18553c); outline-offset: -3px; }
+@container preview-panel (max-width: 520px) {
+  .preview-tabs .diagnostics-tab-label, .preview-tabs .diagnostic-count, .pdf-download-top .pdf-download-label { display: none; }
+}
 .preview-subtabs { height: 36px; flex: none; display: flex; align-items: center; gap: 3px; padding: 4px 7px; border-bottom: 1px solid var(--ui-border, #cfd6d1); background: var(--ui-subtle, #e4e9e5); }
 .preview-subtabs button { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #58665d); font-size: 10px; }
 .preview-subtabs button:hover { background: var(--ui-hover, #d8e3db); color: var(--ui-accent, #205c40); }
