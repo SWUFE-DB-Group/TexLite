@@ -48,8 +48,6 @@
 .agent-action-confirmation { color: var(--ui-info, #2563b4); }
 .agent-management button.agent-danger, .agent-terminal-panel button.agent-danger { color: var(--ui-danger, #a33c36); }
 .agent-management .project-pagination { margin-top: 0; }
-.agent-pagination button { box-sizing: border-box; height: 32px; min-width: 92px; padding: 0 10px; line-height: 1; white-space: nowrap; }
-.agent-pagination > span { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 .agent-delete-item { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--ui-border, #d8e1db); font-size: 13px; }
 .agent-delete-item small { color: var(--ui-muted, #788178); }
 .agent-delete-item:last-child { border-bottom: 0; }

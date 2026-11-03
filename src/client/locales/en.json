@@ -125,6 +125,7 @@
     "reviewRequested": "Your review was requested"
   },
   "common": {
+    "pageOf": "Page {{page}} of {{totalPages}}",
     "noChangesToSave": "No changes to save.", "done": "Done",
     "cancel": "Cancel", "create": "Create", "add": "Add", "remove": "Remove", "delete": "Delete", "close": "Close",
     "user": "User", "permission": "Permission", "readOnly": "Read only", "readWrite": "Read & write", "settings": "Settings",

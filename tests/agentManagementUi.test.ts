@@ -7,6 +7,7 @@ import { AgentManagement } from "../src/client/pages/AgentManagement";
 import { AgentTerminal } from "../src/client/workspace/AgentTerminal";
 import { useAgentTasks } from "../src/client/agents/useAgentTasks";
 import { agentUiMessages } from "../src/client/agents/messages";
+import i18n from "../src/client/i18n";
 import { formatDateTime } from "../src/client/dateTime";
 import { GlobalTooltip } from "../src/client/GlobalTooltip";
 import { defaultTerminalPreferences, saveTerminalPreferences } from "../src/client/terminalPreferences";
@@ -20,7 +21,8 @@ vi.mock("../src/client/agents/useAgentTasks", () => ({ useAgentTasks: vi.fn() })
 vi.mock("../src/client/agents/AgentTerminalSurface", () => ({ AgentTerminalSurface: () => createElement("div", { "data-live-terminal": true }) }));
 vi.mock("react-i18next", async (importOriginal) => ({ ...await importOriginal<typeof import("react-i18next")>(), useTranslation: () => ({
   t: (key: string, options?: Record<string, unknown>) => {
-    const text = key.startsWith("agents.") ? agentUiMessages[language][key.slice(7) as keyof typeof agentUiMessages.en] ?? key : key;
+    const text = key.startsWith("agents.") ? agentUiMessages[language][key.slice(7) as keyof typeof agentUiMessages.en] ?? key
+      : key === "common.pageOf" ? i18n.t(key, { ...options, lng: language }) : key;
     return text.replace(/{{(\w+)}}/g, (match, name: string) => options?.[name] === undefined ? match : String(options[name]));
   },
   i18n: { resolvedLanguage: language }
@@ -402,23 +404,23 @@ describe("coding agent management presentation", () => {
     await act(async () => vi.advanceTimersByTime(150));
     const buttons = () => container.querySelectorAll<HTMLButtonElement>(".agent-pagination > button");
     const label = () => container.querySelector(".agent-pagination > span")?.textContent;
-    expect(label()).toBe("1 / 1");
+    expect(label()).toBe("第 1 / 1 頁");
     expect(buttons()[0].disabled).toBe(true);
     expect(buttons()[1].disabled).toBe(true);
 
     total = 51;
     await act(async () => window.dispatchEvent(new Event("focus")));
-    expect(label()).toBe("1 / 2");
+    expect(label()).toBe("第 1 / 2 頁");
     expect(buttons()[1].disabled).toBe(false);
     await act(async () => buttons()[1].click());
     await act(async () => vi.advanceTimersByTime(150));
     expect(api).toHaveBeenCalledWith(`${prefix}?page=2`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(label()).toBe("2 / 2");
+    expect(label()).toBe("第 2 / 2 頁");
     expect(buttons()[0].disabled).toBe(false);
     expect(buttons()[1].disabled).toBe(true);
     await act(async () => buttons()[0].click());
     await act(async () => vi.advanceTimersByTime(150));
-    expect(label()).toBe("1 / 2");
+    expect(label()).toBe("第 1 / 2 頁");
   });
 
   it("shows terminal pagination only beyond 50 tasks and navigates using the returned page", async () => {

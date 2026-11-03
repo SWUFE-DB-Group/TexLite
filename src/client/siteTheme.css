@@ -2,6 +2,11 @@
    roles separate from syntax tokens so controls never inherit syntax colors. */
 :root {
   color-scheme: light;
+  --ui-control-height: 32px;
+  --ui-control-font-size: 12px;
+  --ui-control-radius: 6px;
+  --ui-menu-font-size: 11px;
+  --ui-touch-target: 44px;
   --muted: #737a75;
   --ui-header-bg: #263a33;
   --ui-header-text: #f0f2ee;

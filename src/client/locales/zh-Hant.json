@@ -125,6 +125,7 @@
     "reviewRequested": "邀請你審核修改建議"
   },
   "common": {
+    "pageOf": "第 {{page}} / {{totalPages}} 頁",
     "noChangesToSave": "沒有需要儲存的變更。",
     "done": "已完成",
     "cancel": "取消",

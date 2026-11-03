@@ -125,6 +125,7 @@
     "reviewRequested": "邀请你审核修改建议"
   },
   "common": {
+    "pageOf": "第 {{page}} / {{totalPages}} 页",
     "noChangesToSave": "没有需要保存的更改。", "done": "已完成",
     "cancel": "取消", "create": "创建", "add": "添加", "remove": "移除", "delete": "删除", "close": "关闭", "user": "用户",
     "permission": "权限", "readOnly": "只读", "readWrite": "读写", "settings": "设置", "comments": "批注", "files": "文件",
