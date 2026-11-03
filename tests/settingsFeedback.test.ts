@@ -41,15 +41,27 @@ function changeText(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
-async function settings(onEditorPreferences = vi.fn()) {
+async function settings(onEditorPreferences = vi.fn(), settingsProject = project) {
   const onProject = vi.fn();
-  await act(async () => root.render(createElement(ProjectSettings, { project, projectId: project.id, site, files: [], dictionaryWords: [],
+  await act(async () => root.render(createElement(ProjectSettings, { project: settingsProject, projectId: settingsProject.id, site, files: [], dictionaryWords: [],
     editorPreferences: defaultEditorPreferences, onEditorPreferences, onDictionaryChange: vi.fn(), onProject, onClose: vi.fn(),
     spellCheckCount: null, spellCheckUniqueCount: null, spellCheckIndex: 0, onSpellCheckNavigate: vi.fn() })));
   return { onProject, onEditorPreferences };
 }
 
 describe("settings save feedback", () => {
+  it("shows the current project name as read-only text for owners and collaborators", async () => {
+    const name = "A long research project name with multiple sections\nand an extended subtitle";
+    for (const permission of ["owner", "edit", "read"] as const) {
+      await settings(vi.fn(), { ...project, name: `${name} (${permission})`, permission });
+      await click("#settings-tab-compiler");
+      expect(host.querySelector(".settings-project-name dt")?.textContent).toBe("projects.name");
+      expect(host.querySelector(".settings-project-name dd")?.textContent).toBe(`${name} (${permission})`);
+      expect(host.querySelector('#settings-panel-compiler input:not([type="checkbox"]), .settings-project-name [title], .settings-project-name [data-tooltip]')).toBeNull();
+    }
+    expect(vi.mocked(api).mock.calls.every(([, options]) => !options?.method)).toBe(true);
+  });
+
   it("uses a compact shared header label while keeping each tab's bottom save label", async () => {
     await settings();
     for (const [tab, bottomKey] of [["appearance", "saveAppearance"], ["terminal", "saveTerminal"], ["compiler", "saveCompiler"]]) {
@@ -91,15 +103,16 @@ describe("settings save feedback", () => {
 
   it("confirms compiler settings only after the server accepts them and blocks duplicate saves", async () => {
     const { onProject } = await settings(); await click("#settings-tab-compiler");
-    const input = host.querySelector<HTMLInputElement>('#settings-panel-compiler input:not([type="checkbox"])')!;
-    await act(async () => changeText(input, "Updated paper"));
+    await click('#settings-panel-compiler input[type="checkbox"]');
     let resolve!: (value: { project: Project }) => void;
     vi.mocked(api).mockImplementationOnce(() => new Promise((yes) => { resolve = yes; }));
     await click(".drawer-settings-save");
     expect(saveFeedback()).toBe("common.save"); expect(host.querySelector<HTMLButtonElement>(".drawer-settings-save")!.disabled).toBe(true);
     await click(".drawer-settings-save");
     expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "PATCH")).toHaveLength(1);
-    await act(async () => resolve({ project: { ...project, name: "Updated paper" } }));
+    const request = vi.mocked(api).mock.calls.find(([, options]) => options?.method === "PATCH")!;
+    expect(JSON.parse(request[1]!.body as string)).toEqual({ chktexEnabled: true, expectedSettings: { chktexEnabled: false } });
+    await act(async () => resolve({ project: { ...project, chktexEnabled: true } }));
     expect(onProject).toHaveBeenCalledOnce(); expect(saveFeedback()).toBe("editor.saved");
     expect(host.querySelector(".settings-save")?.textContent).toBe("editor.saved");
     expect(status()).toBeUndefined();
@@ -109,7 +122,7 @@ describe("settings save feedback", () => {
     await settings(); await click("#settings-tab-compiler");
     await click(".drawer-settings-save"); expect(saveFeedback()).toBe("common.noChangesToSave");
     expect(status()).toBeUndefined();
-    await act(async () => changeText(host.querySelector<HTMLInputElement>('#settings-panel-compiler input:not([type="checkbox"])')!, "Updated"));
+    await click('#settings-panel-compiler input[type="checkbox"]');
     vi.mocked(api).mockRejectedValueOnce(new Error("Server rejected save"));
     await click(".drawer-settings-save");
     expect(saveFeedback()).toBe("common.save"); expect(host.querySelector(".error")).not.toBeNull();
@@ -122,12 +135,12 @@ describe("settings save feedback", () => {
     expect(saveFeedback()).toBe("common.save");
     expect(host.querySelector(".settings-save")?.textContent).toBe("projectSettings.saveTerminal");
     await click("#settings-tab-compiler");
-    await act(async () => changeText(host.querySelector<HTMLInputElement>('#settings-panel-compiler input:not([type="checkbox"])')!, "Updated paper"));
+    await click('#settings-panel-compiler input[type="checkbox"]');
     let resolve!: (value: { project: Project }) => void;
     vi.mocked(api).mockImplementationOnce(() => new Promise((yes) => { resolve = yes; }));
     await click(".drawer-settings-save");
     await click("#settings-tab-terminal");
-    await act(async () => resolve({ project: { ...project, name: "Updated paper" } }));
+    await act(async () => resolve({ project: { ...project, chktexEnabled: true } }));
     expect(saveFeedback()).toBe("common.save");
     await click("#settings-tab-compiler");
     expect(saveFeedback()).toBe("editor.saved");

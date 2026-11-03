@@ -537,10 +537,10 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .workspace-project-title:focus-visible { outline: 1px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; border-radius: 3px; }
 .workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) > span { max-width: none; overflow: visible; }
 @media (prefers-reduced-motion: no-preference) {
-  .workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) > span { animation: project-title-pan var(--project-title-duration) linear infinite alternate; }
+  .workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) > span { animation: project-title-pan var(--project-title-duration) linear 1.5s infinite alternate; }
 }
 @keyframes project-title-pan {
-  0%, 15% { transform: translateX(0); }
+  0% { transform: translateX(0); }
   85%, 100% { transform: translateX(var(--project-title-offset)); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1304,6 +1304,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .settings { display: flex; flex-direction: column; gap: 14px; }
 .project-settings { container: workspace-settings / inline-size; }
 .settings > section { display: flex; flex-direction: column; gap: 14px; }
+.settings-project-name { display: grid; gap: 7px; margin: 0; font-size: 13px; font-weight: 650; }
+.settings-project-name dd { min-width: 0; margin: 0; color: var(--ui-text, #263b2e); font-size: 12px; font-weight: 600; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .settings button { border: 1px solid var(--ui-border, #c9d0ca); background: var(--ui-surface, white); border-radius: 6px; padding: 7px 9px; font-size: 12px; }
 .settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--ui-border, #d7ded8); border-radius: 9px; background: var(--ui-surface, #f4f7f4); }
 .settings-tab { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px solid transparent !important; border-radius: 7px !important; background: transparent !important; color: var(--ui-muted, #66716a); font-weight: 650; }

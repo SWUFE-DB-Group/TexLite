@@ -47,14 +47,13 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const { t } = useTranslation();
   const [engine, setEngine] = useState(project.engine);
   const [rcEnabled, setRcEnabled] = useState(Boolean(project.latexmkrc));
-  const [name, setName] = useState(project.name);
   const [mainFile, setMainFile] = useState(project.mainFile);
   const [chktexEnabled, setChktexEnabled] = useState(project.chktexEnabled);
   const [savingCompiler, setSavingCompiler] = useState(false);
   const compilerSaveRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const savedCompilerSettings = useRef({
-    name: project.name, mainFile: project.mainFile, engine: project.engine,
+    mainFile: project.mainFile, engine: project.engine,
     latexmkrc: project.latexmkrc, chktexEnabled: project.chktexEnabled
   });
   const [mainFileOptions, setMainFileOptions] = useState<string[] | null>(null);
@@ -133,7 +132,6 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       : rcEnabled && site.allowProjectLatexmkrc !== false ? selectedRcPath || null : null;
     const previous = savedCompilerSettings.current;
     const changes: Record<string, string | boolean | null> = {};
-    if (name !== previous.name) changes.name = name;
     if (mainFile !== previous.mainFile) changes.mainFile = mainFile;
     if (engine !== previous.engine) changes.engine = engine;
     if (latexmkrc !== previous.latexmkrc) changes.latexmkrc = latexmkrc;
@@ -160,10 +158,9 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         return;
       }
       savedCompilerSettings.current = {
-        name: result.project.name, mainFile: result.project.mainFile, engine: result.project.engine,
+        mainFile: result.project.mainFile, engine: result.project.engine,
         latexmkrc: result.project.latexmkrc, chktexEnabled: result.project.chktexEnabled
       };
-      setName(result.project.name);
       setMainFile(result.project.mainFile);
       setEngine(result.project.engine);
       setChktexEnabled(result.project.chktexEnabled);
@@ -277,7 +274,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
       <div className="settings-section-title"><Settings size={15} /><strong>{t("projectSettings.compilerTab")}</strong></div>
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>
-      <label>{t("projects.name")}<input disabled={!canManage || savingCompiler} value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <dl className="settings-project-name"><dt>{t("projects.name")}</dt><dd>{project.name}</dd></dl>
       <label>{t("projectSettings.mainFile")}<select disabled={!canManage || savingCompiler || mainFileOptions === null || mainFileOptions.length === 0} value={mainFile} onChange={(event) => setMainFile(event.target.value)}>{invalidCurrentMainFile && <option value={mainFile} disabled>{t("projectSettings.invalidMainFileOption", { path: mainFile })}</option>}{displayedMainFileOptions.map((filePath) => <option value={filePath} key={filePath}>{filePath}</option>)}</select></label>
       <label>{t(rcEnabled && rcFiles.length > 0 && site.allowProjectLatexmkrc !== false ? "projectSettings.defaultEngine" : "projectSettings.engine")}<select disabled={!canManage || savingCompiler} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
       <div className="editor-preference compiler-check-option"><label className="editor-checkbox"><input type="checkbox" disabled={!canManage || savingCompiler} checked={chktexEnabled} onChange={(event) => setChktexEnabled(event.target.checked)} /><FileCheck2 size={15} /><span>{t("chktex.enabled")}</span></label><p className="field-hint">{t("chktex.description")} <a href="https://www.nongnu.org/chktex/" target="_blank" rel="noreferrer">ChkTeX</a></p></div>
