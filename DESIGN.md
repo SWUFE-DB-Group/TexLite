@@ -67,7 +67,7 @@ variables, rich-text tags, language detection, persistence, and API headers.
 ### Project catalog
 
 The homepage places All projects, Owned by me and Shared with me tabs below the
-page title. Ownership is filtered on the server before pagination (30 projects
+page title. Ownership is filtered on the server before pagination (32 projects
 per page), preserving the existing list/grid views, search, private tags,
 sorting and per-user archive filter. Each response includes counts for all three
 categories under the current search and tag conditions, including both active

@@ -36,7 +36,7 @@ function response(url: string) {
   const scoped = matching.filter((project) => archived.has(project.id) === (params.get("archived") === "1"))
     .filter((project) => params.get("scope") === "owned" ? project.ownerId === user.id
       : params.get("scope") === "shared" ? project.ownerId !== user.id : true);
-  const pageSize = Number(params.get("pageSize") ?? 30);
+  const pageSize = Number(params.get("pageSize") ?? 32);
   const totalPages = Math.ceil(scoped.length / pageSize);
   const page = Math.max(1, Math.min(Number(params.get("page") ?? 1), totalPages));
   return { projects: scoped.slice((page - 1) * pageSize, page * pageSize), counts,
@@ -102,16 +102,16 @@ describe("project ownership tabs", () => {
     expect(host.querySelector(".section-title")!.nextElementSibling).toBe(host.querySelector(".project-ownership-tabs"));
     expect(tab("all").getAttribute("aria-selected")).toBe("true");
     expect([tab("all"), tab("owned"), tab("shared")].map((button) => button.querySelector("sup")?.textContent)).toEqual(["67", "33", "34"]);
-    expect(lastParams().get("pageSize")).toBe("30");
-    expect(names()).toHaveLength(30);
+    expect(lastParams().get("pageSize")).toBe("32");
+    expect(names()).toHaveLength(32);
     await click('#project-tab-owned');
     await click('.project-pagination button:last-child');
     expect(lastParams().get("scope")).toBe("owned"); expect(lastParams().get("page")).toBe("2");
-    expect(names()).toHaveLength(3); expect(names().every((name) => name!.startsWith("Owned"))).toBe(true);
+    expect(names()).toHaveLength(1); expect(names().every((name) => name!.startsWith("Owned"))).toBe(true);
     await click('#project-tab-owned'); expect(lastParams().get("page")).toBe("2");
     await click('#project-tab-shared');
     expect(lastParams().get("scope")).toBe("shared"); expect(lastParams().get("page")).toBe("1");
-    expect(names()).toHaveLength(30); expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
+    expect(names()).toHaveLength(32); expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
     expect(host.querySelector(".project-grid")!.classList.contains("list-view")).toBe(view === "list");
   });
 
@@ -165,7 +165,7 @@ describe("project ownership tabs", () => {
     expect(tab("shared").getAttribute("aria-selected")).toBe("true");
     expect(lastParams().get("page")).toBe("2"); expect(lastParams().get("search")).toBe("Paper");
     expect(lastParams().get("sort")).toBe("created");
-    expect(names()).toHaveLength(4); expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
+    expect(names()).toHaveLength(2); expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
   });
 
   it("supports arrow-key category changes and preserves counts when archiving or unarchiving", async () => {
