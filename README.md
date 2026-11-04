@@ -5,7 +5,7 @@
 # TexLite
 
 A lightweight self-hosted alternative to Overleaf for _small, trusted_ research
-teams. Use your existing LaTeX distribution, with no heavyweight service stack.
+teams. Use your existing LaTeX distribution and coding agents, with no heavyweight service stack.
 
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)
@@ -21,8 +21,7 @@ https://github.com/user-attachments/assets/c2b277ab-7cab-4f2b-8684-358fd9fefe8f
 
 ## Why TexLite
 
-- **Own the writing environment.** Use the host's TeX installation and keep
-  sources, history, and compiled output in one local data directory.
+- **Own the writing environment.** Use the host's TeX installation and coding agents; keep sources, history, and compiled output in one local data directory.
 - **Collaborate without a large stack.** The default deployment is one Node.js
   process, SQLite, and local files—plus real-time editing and source-level
   comments for a small trusted team.
@@ -97,6 +96,7 @@ a narrower self-hosted use case:
   follows a more involved [Docker deployment path](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit), and
   several functionalities, such as source comments, are [Server Pro features](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions).
   _If you do not mind a heftier Docker image, [we have one ready too](#docker-deployment) :)_
+- TexLite can run host-installed Coding Agent CLIs (e.g., Claude Code, Codex, OpenCode) directly in a project terminal. Agents can inspect and edit project files, while the team chooses the models and workflows; this goes beyond a built-in AI chat interface.
 
 Self-hosting does not make every document compile faster: that still depends on
 the host and the document. It does give the team control over capacity, TeX
@@ -112,8 +112,7 @@ shared browser writing, not a replacement for a personal IDE.
 - Projects with folders, ZIP import/export, tags, sharing, ownership transfer,
   archiving, and a private per-user citation library with topic folders, tags,
   Markdown notes, and folder-wide BibTeX export with optional notes for sharing.
-  Import `.bib` files or TexLite JSON exports; imports and exports allow up to
-  500 entries per transfer and exclude tags. Each folder holds up to 500 references.
+  Import `.bib` files or TexLite JSON exports.
 - Owner-managed read-only links for anonymous readers, with expiry, rotation
   and revocation. Readers can view source and existing PDFs without joining collaboration.
 - CodeMirror editing with LaTeX/BibTeX highlighting, folding, completion,
@@ -128,8 +127,7 @@ shared browser writing, not a replacement for a personal IDE.
 - Per-project history and owner-only Git/GitHub backup. Git is optional and is
   checked only when its integration is used.
 - Optional browser terminals for host-installed coding agents, enabled by an
-  administrator. Agents edit the project directly, with one running task per
-  project. See [external agent terminals](OPERATIONS.md#external-agent-terminals).
+  administrator. See [external agent terminals](OPERATIONS.md#external-agent-terminals).
 
 <a id="docker-deployment"></a>
 

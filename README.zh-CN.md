@@ -5,7 +5,7 @@
 # TexLite
 
 面向*小型、可信*研究团队的轻量自托管 Overleaf 替代方案。直接使用现有的 LaTeX
-发行版，无需沉重的服务栈。
+发行版和 Coding Agents，无需沉重的服务栈。
 
 [![CI](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml/badge.svg)](https://github.com/SWUFE-DB-Group/TexLite/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/texlite?logo=npm&label=npm)](https://www.npmjs.com/package/texlite)
@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/c2b277ab-7cab-4f2b-8684-358fd9fefe8f
 
 ## 为什么选择 TexLite
 
-- **掌控写作环境。** 直接使用宿主机 TeX 环境，并将源码、历史版本和编译产物保存在
+- **掌控写作环境。** 直接使用宿主机 TeX 环境和 Coding Agents，并将源码、历史版本和编译产物保存在
   一个本地数据目录中。
 - **无需庞大服务栈即可协作。** 默认部署只有一个 Node.js 进程、SQLite 和本地文件，
   同时提供实时编辑和源码级批注，适合少量可信协作者。
@@ -89,6 +89,7 @@ curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/inst
 - Overleaf 开源 [Community Edition](https://github.com/overleaf/overleaf) 的
   [Docker 部署路径](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit) 更复杂，且源码批注等高级功能 [仅限 Server Pro](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions)。
   *如果不介意一个更庞大的 Docker 镜像，[我们也准备好了](#docker-deployment) :)*
+- TexLite 可在项目终端中直接运行宿主机安装的 Coding Agent CLI（比如Claude Code、Codex、OpenCode），让 agent 读取和编辑项目文件，由团队自主选择模型和工作流，而不局限于内建的 AI 聊天界面。
 
 自托管并不保证每份文档都编译得更快，速度仍取决于宿主机和文档本身；它带来的是对容量、
 TeX 更新、数据位置与协作工作流的掌控。
@@ -100,7 +101,7 @@ TeX 更新、数据位置与协作工作流的掌控。
 ## 核心写作工作流
 
 - 项目支持文件夹、ZIP 导入/导出、标签、分享、所有权转让、归档和私有的个人引用库；引用库支持主题文件夹、标签、Markdown 笔记及整文件夹 BibTeX 导出，也可携带笔记导出并分享给其他用户。
-  支持导入 `.bib` 文件或 TexLite JSON 导出文件，每次导入或导出最多 500 条文献，均忽略标签；单个文件夹最多容纳 500 条文献。
+  支持导入 `.bib` 文件或 TexLite JSON 导出文件。
 - 所有者可创建免登录的只读链接，设置有效期、轮换或撤销；访客可查看源码和已有 PDF，
   不加入协作列表。
 - 基于 CodeMirror 的编辑器提供 LaTeX/BibTeX 高亮、折叠、补全、可选 Vim 模式、格式化、
@@ -111,8 +112,7 @@ TeX 更新、数据位置与协作工作流的掌控。
   可下载产物以及可选的项目级 `latexmkrc`。
 - 每个项目拥有历史版本和仅所有者可用的 Git/GitHub 备份；Git 是可选依赖，仅在使用
   集成时才检查。
-- 可选的网页终端可调用服务器上安装的代码 agent，由管理员启用。Agent 直接编辑项目，
-  每个项目同时只能运行一个任务。参见[外部 agent 终端](OPERATIONS.md#external-agent-terminals)。
+- 可选的网页终端可调用服务器上安装的代码 agent，由管理员启用。参见[外部 agent 终端](OPERATIONS.md#external-agent-terminals)。
 
 <a id="docker-deployment"></a>
 
