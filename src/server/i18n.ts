@@ -9,12 +9,14 @@ import { agentMessages } from "../shared/agentMessages.js";
 import { suggestionMessages } from "../shared/suggestionMessages.js";
 import { viewLinkMessages } from "../shared/projectViewLinks.js";
 import { citationCollectionMessages } from "../shared/citationCollections.js";
+import { projectSearchMessages } from "../shared/projectSearch.js";
 
 export type ServerLocale = AppLocale;
 
 type MessageParams = Record<string, unknown>;
 
 const enMessages = {
+    ...projectSearchMessages.en,
     ...citationCollectionMessages.en,
     ...viewLinkMessages.en,
     ...suggestionMessages.en,
@@ -165,6 +167,7 @@ export type ServerErrorCode = keyof typeof enMessages;
 
 const zhMessages: Record<ServerErrorCode, string> = {
     ...viewLinkMessages.zh,
+    ...projectSearchMessages.zh,
     ...citationCollectionMessages.zh,
     ...suggestionMessages.zh,
     ...agentMessages.zh,

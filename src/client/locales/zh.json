@@ -124,6 +124,20 @@
     "reviewBeforeResolve": "请先审核修改建议，再解决此讨论。",
     "reviewRequested": "邀请你审核修改建议"
   },
+  "projectSearch": {
+    "title": "全局搜索", "scope": "仅搜索文本文件，排除二进制和未知类型。",
+    "replaceTitle": "全局查找替换", "replacement": "替换为…（留空则删除）",
+    "replaceAll": "全部替换", "replaceMatch": "替换第 {{line}} 行、第 {{column}} 列的匹配", "replacing": "替换中…", "refresh": "刷新结果",
+    "confirmReplace_one": "替换搜索结果中的全部 {{count}} 处匹配？",
+    "confirmReplace_other": "替换搜索结果中的全部 {{count}} 处匹配？",
+    "replaced_one": "已替换 {{count}} 处匹配。", "replaced_other": "已替换 {{count}} 处匹配。",
+    "query": "搜索项目文本…", "searching": "搜索中…",
+    "matches_one": "{{count}} 处匹配", "matches_other": "{{count}} 处匹配",
+    "files_one": "{{count}} 个文件", "files_other": "{{count}} 个文件",
+    "empty": "查找项目文件中的文本。", "noMatches": "未找到匹配内容。",
+    "limited": "部分文件或匹配未显示，请缩小搜索范围后再替换。",
+    "location": "{{path}}，第 {{line}} 行，第 {{column}} 列"
+  },
   "common": {
     "pageOf": "第 {{page}} / {{totalPages}} 页",
     "noChangesToSave": "没有需要保存的更改。", "done": "已完成",

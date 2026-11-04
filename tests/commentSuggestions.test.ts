@@ -287,11 +287,11 @@ describe("comment suggestion workflow", () => {
 
   it("rechecks the reviewer snapshot after an author edits while the acceptance room is initializing", async () => {
     const comment = await suggest();
-    const prepare = CollaborationService.prototype.prepareSuggestionRoom;
+    const prepare = CollaborationService.prototype.prepareSourceEditRoom;
     let entered!: () => void, release!: () => void;
     const preparing = new Promise<void>((resolve) => { entered = resolve; });
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    vi.spyOn(CollaborationService.prototype, "prepareSuggestionRoom").mockImplementationOnce(async function (this: CollaborationService, id) {
+    vi.spyOn(CollaborationService.prototype, "prepareSourceEditRoom").mockImplementationOnce(async function (this: CollaborationService, id) {
       entered(); await gate; await prepare.call(this, id);
     });
     const accepting = review(comment).then((response) => response);

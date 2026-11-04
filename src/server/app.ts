@@ -39,6 +39,7 @@ import { registerCommentRoutes } from "./routes/comments.js";
 import { registerProjectMemberRoutes } from "./routes/projectMembers.js";
 import { registerProjectViewLinkRoutes } from "./routes/projectViewLinks.js";
 import { registerProjectFileRoutes } from "./routes/projectFiles.js";
+import { registerProjectSearchRoutes } from "./routes/projectSearch.js";
 import { registerProjectReferenceRoutes } from "./routes/projectReferences.js";
 import { registerProjectHistoryRoutes } from "./routes/projectHistory.js";
 import { registerProjectGitRoutes } from "./routes/projectGit.js";
@@ -323,6 +324,7 @@ export async function buildApp(
       metrics,
       recordHistory
     });
+    registerProjectSearchRoutes(routes, { config, db, projectMutations, collaboration });
     registerProjectReferenceRoutes(routes, { config, db, projectMutations });
     registerProjectHistoryRoutes(routes, { config, db, history, editHistory, projectMutations, recordHistory,
       clearPendingEdits: (id) => { editRetry.clear(id); failedEdits.delete(id); signalHistory(id); },

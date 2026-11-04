@@ -124,6 +124,20 @@
     "reviewBeforeResolve": "請先審核修改建議，再解決此討論。",
     "reviewRequested": "邀請你審核修改建議"
   },
+  "projectSearch": {
+    "title": "全域搜尋", "scope": "僅搜尋文字檔案，排除二進位和未知類型。",
+    "replaceTitle": "全域尋找與取代", "replacement": "取代為…（留空則刪除）",
+    "replaceAll": "全部取代", "replaceMatch": "取代第 {{line}} 行、第 {{column}} 欄的相符內容", "replacing": "取代中…", "refresh": "重新整理結果",
+    "confirmReplace_one": "取代搜尋結果中的全部 {{count}} 筆相符結果？",
+    "confirmReplace_other": "取代搜尋結果中的全部 {{count}} 筆相符結果？",
+    "replaced_one": "已取代 {{count}} 筆相符結果。", "replaced_other": "已取代 {{count}} 筆相符結果。",
+    "query": "搜尋專案文字…", "searching": "搜尋中…",
+    "matches_one": "{{count}} 筆相符結果", "matches_other": "{{count}} 筆相符結果",
+    "files_one": "{{count}} 個檔案", "files_other": "{{count}} 個檔案",
+    "empty": "尋找專案檔案中的文字。", "noMatches": "找不到相符內容。",
+    "limited": "部分檔案或相符結果未顯示，請縮小搜尋範圍後再取代。",
+    "location": "{{path}}，第 {{line}} 行，第 {{column}} 欄"
+  },
   "common": {
     "pageOf": "第 {{page}} / {{totalPages}} 頁",
     "noChangesToSave": "沒有需要儲存的變更。",

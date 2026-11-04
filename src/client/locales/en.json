@@ -124,6 +124,20 @@
     "reviewBeforeResolve": "Review the suggestion before resolving this discussion.",
     "reviewRequested": "Your review was requested"
   },
+  "projectSearch": {
+    "title": "Search project", "scope": "Text files only. Binary and unknown file types are excluded.",
+    "replaceTitle": "Search and replace", "replacement": "Replace with… (empty to delete)",
+    "replaceAll": "Replace all", "replaceMatch": "Replace match at line {{line}}, column {{column}}", "replacing": "Replacing…", "refresh": "Refresh results",
+    "confirmReplace_one": "Replace {{count}} match across the search results?",
+    "confirmReplace_other": "Replace {{count}} matches across the search results?",
+    "replaced_one": "Replaced {{count}} match.", "replaced_other": "Replaced {{count}} matches.",
+    "query": "Search text in project…", "searching": "Searching…",
+    "matches_one": "{{count}} match", "matches_other": "{{count}} matches",
+    "files_one": "{{count}} file", "files_other": "{{count}} files",
+    "empty": "Find text across your project files.", "noMatches": "No matches found.",
+    "limited": "Some files or matches were omitted. Narrow your search to enable replacement.",
+    "location": "{{path}}, line {{line}}, column {{column}}"
+  },
   "common": {
     "pageOf": "Page {{page}} of {{totalPages}}",
     "noChangesToSave": "No changes to save.", "done": "Done",

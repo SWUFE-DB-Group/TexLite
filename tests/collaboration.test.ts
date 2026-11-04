@@ -155,6 +155,46 @@ describe("project collaboration", () => {
     } finally { peer.destroy(); }
   });
 
+  it("searches server-received collaborative edits before their automatic save", async () => {
+    const projectId = (await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie },
+      payload: { name: "Search a live draft" } })).json().project.id as string;
+    const identity = { id: adminId, username: "admin", name: "Administrator" };
+    const writer = await TestPeer.connect(app, projectId, adminCookie, identity);
+    const observer = await TestPeer.connect(app, projectId, adminCookie, identity);
+    try {
+      const text = writer.doc.getText("source:main.tex");
+      text.insert(text.length, "\n% SearchableLiveDraft preserved-anchor\n");
+      // Receipt by a second peer proves the server has applied the update.
+      await waitFor(() => observer.doc.getText("source:main.tex").toString().includes("SearchableLiveDraft"));
+      const response = await app.inject({ method: "POST", url: `/api/projects/${projectId}/search`,
+        headers: { cookie: adminCookie }, payload: { query: "SearchableLiveDraft" } });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json().matches).toMatchObject([{ path: "main.tex", column: 3, preview: "% SearchableLiveDraft preserved-anchor" }]);
+      const anchorStart = text.toString().indexOf("preserved-anchor");
+      const comment = await app.inject({ method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie: adminCookie },
+        payload: { path: "main.tex", startOffset: anchorStart, endOffset: anchorStart + "preserved-anchor".length, content: "Keep this anchor" } });
+      expect(comment.statusCode).toBe(201);
+      const match = response.json().matches[0];
+      const lease = await writer.acquireFormatLease("main.tex");
+      const replacementPayload = { query: "SearchableLiveDraft", replacement: "ReplacedCollaborativeDraft", targets: [{ path: match.path, sourceHash: match.sourceHash, ranges: [{ from: match.from, to: match.to }] }] };
+      const busy = await app.inject({ method: "POST", url: `/api/projects/${projectId}/search/replace`, headers: { cookie: adminCookie }, payload: replacementPayload });
+      expect(busy.statusCode, busy.body).toBe(409); expect(busy.json().code).toBe("PROJECT_BUSY");
+      await writer.releaseFormatLease("main.tex", lease.token);
+      const replaced = await app.inject({ method: "POST", url: `/api/projects/${projectId}/search/replace`, headers: { cookie: adminCookie },
+        payload: replacementPayload });
+      expect(replaced.statusCode, replaced.body).toBe(200);
+      await waitFor(() => observer.doc.getText("source:main.tex").toString().includes("ReplacedCollaborativeDraft"));
+      const after = observer.doc.getText("source:main.tex").toString();
+      expect(fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8")).toBe(after);
+      const comments = await app.inject({ method: "GET", url: `/api/projects/${projectId}/comments?path=main.tex`, headers: { cookie: adminCookie } });
+      expect(comments.json().comments[0]).toMatchObject({ orphaned: false, startOffset: after.indexOf("preserved-anchor") });
+      const editHistory = await app.inject({ method: "GET", url: `/api/projects/${projectId}/edit-history?path=main.tex&start=0&end=${after.length}&sourceHash=${createHash("sha256").update(after).digest("hex")}`, headers: { cookie: adminCookie } });
+      expect(editHistory.statusCode, editHistory.body).toBe(200);
+      expect(editHistory.json().entries).toEqual(expect.arrayContaining([expect.objectContaining({ authors: expect.arrayContaining([expect.objectContaining({ id: adminId })]) })]));
+      expect(writer.connected).toBe(true); expect(observer.connected).toBe(true);
+    } finally { writer.destroy(); observer.destroy(); }
+  });
+
   it("collaborates on generic text while excluding binary content from Yjs", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Generic text collaboration" } });
     const id = created.json().project.id as string;

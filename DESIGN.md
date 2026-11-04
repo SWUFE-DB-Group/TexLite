@@ -994,6 +994,35 @@ temporary ZIP under the consistent-read barrier before the HTTP download starts.
 
 ## Editor, files, and navigation
 
+The file-tree overflow menu opens project-wide search in a lazy-loaded modal.
+Search is literal, with case-sensitive and whole-word options, and groups source
+previews by file. Selecting a match opens that file at its line and column.
+The authenticated endpoint checks project access and reads under the existing
+consistent-read barrier, flushing server-received collaborative edits first.
+Only shared-classifier text paths with valid UTF-8 text content are scanned;
+binary and unknown types are excluded. Searches are bounded to 500 files,
+32 MiB total and 500 matches, with an explicit incomplete-results notice.
+Per-file limits match collaborative-file limits. Case-sensitive and whole-word
+matching default to on. Writers can preview literal replacements (red deletions
+and green insertions only for a nonempty replacement), replace one exact match,
+or confirm replacement across all displayed results. Each occurrence is a separate
+row labelled with its line and column; only that occurrence is highlighted in
+its surrounding source preview. Read-only members
+only see search. Truncated results disable replacement until the search is
+narrowed. Each target includes its searched source hash and exact UTF-16 ranges.
+The server validates ranges against the search pattern, rejecting duplicates,
+overlaps and locations that are not complete matches before editing anything.
+The write queue flushes current drafts, validates every target before mutation,
+then applies exact attributed Yjs edits in one synchronous transaction. Stale
+sources and active formatting leases reject the operation; normal persistence
+updates anchors, edit history, snapshots and collaborators without a reload.
+After replacement, the modal immediately revalidates results in the background
+without clearing the current list. Stable file/location keys preserve scroll and
+collapsed groups; replacement remains disabled until fresh hashes arrive. A
+failed refresh keeps the previous results visible but non-replaceable. New
+search criteria still clear obsolete results and debounce for 350 ms. Success
+feedback sits in the footer so it does not shift the result list.
+
 Workspace resizing uses `react-resizable-panels` v4 (`Group`, `Panel`,
 `Separator`). Constraints use explicit percentage strings; numbers in v4
 would mean pixels. The editor and preview share the space remaining after the

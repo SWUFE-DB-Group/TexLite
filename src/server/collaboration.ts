@@ -262,12 +262,40 @@ export class CollaborationService {
     }
   }
 
-  async prepareSuggestionRoom(projectId: string): Promise<void> {
+  async prepareSourceEditRoom(projectId: string): Promise<void> {
     if (this.closed || this.isMaintaining(projectId)) throw httpError(409, "PROJECT_BUSY");
     const room = await this.initializeRoom(projectId, this.projectGeneration(projectId));
     // Revalidation may reject the HTTP request after hydration. Such a room
     // still needs idle eviction even if no browser ever connects to it.
     this.scheduleRoomCleanup(room);
+  }
+
+  /** Exact HTTP range edits share the normal Yjs attribution, anchors and history pipeline. */
+  applySourceEdits(projectId: string, files: readonly {
+    path: string; before: string; edits: readonly { from: number; to: number; insert: string }[];
+  }[], userId: string): void {
+    const room = this.rooms.get(projectId);
+    if (!room || room.maintenanceReason) throw httpError(409, "PROJECT_BUSY");
+    // Check every file before changing any of them. The caller holds runWrite,
+    // and this synchronous block cannot interleave incoming WebSocket updates.
+    for (const file of files) {
+      if (this.activeFormatLease(room, file.path)) throw httpError(409, "PROJECT_BUSY");
+      if (!room.allowedPaths.has(file.path) || this.trackedText(room, file.path).toString() !== file.before) {
+        throw httpError(409, "SEARCH_SOURCE_CHANGED");
+      }
+    }
+    room.doc.transact(() => {
+      for (const file of files) {
+        const text = this.trackedText(room, file.path);
+        for (const edit of [...file.edits].reverse()) {
+          text.delete(edit.from, edit.to - edit.from);
+          if (edit.insert) text.insert(edit.from, edit.insert);
+        }
+      }
+    }, { externalUserId: userId, exact: true });
+    const receipt = this.flushRoom(room);
+    for (const file of files) this.bumpFiles(room, { kind: "update", path: file.path });
+    if (!receipt.ok) throw new SourceFlushError(receipt.failedPaths);
   }
 
   /** A source-range operation, not an HTTP whole-file replacement. Called inside runWrite. */

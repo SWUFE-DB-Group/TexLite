@@ -72,7 +72,7 @@ export function registerSuggestionRoutes(app: FastifyInstance, context: CommentR
       return row;
     };
     validate();
-    if (action === "accept") await collaboration.prepareSuggestionRoom(id);
+    if (action === "accept") await collaboration.prepareSourceEditRoom(id);
     return projectMutations.runWrite(id, () => {
       const row = validate();
       const expected = action === "accept" ? "accepted" : "rejected";

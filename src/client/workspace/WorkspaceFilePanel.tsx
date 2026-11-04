@@ -22,6 +22,7 @@ const INTERNAL_PATH_DRAG_MIME = "application/x-texlite-project-path";
 const INTERNAL_PATH_DRAG_PREFIX = "texlite-path:";
 
 export interface WorkspaceFilePanelProps {
+  onProjectSearch?: () => void;
   phoneDrawer?: { open: boolean; onClose: () => void };
   project: Project;
   filesPanel: RefObject<PanelImperativeHandle | null>;
@@ -82,7 +83,7 @@ export function WorkspaceFilePanel({
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
   setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen,
   setQuickOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, uploadFiles, upload, openFile, movePathToFolder,
-  onError, onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount
+  onError, onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount, onProjectSearch
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
   const [showFileSizes, setShowFileSizes] = useState(false);
@@ -109,7 +110,7 @@ export function WorkspaceFilePanel({
               <button type="button" aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} aria-hidden /></button>
               <input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} />
             </>}
-            <FileTreeActionsMenu onQuickOpen={() => setQuickOpen(true)} onNewFolder={readOnly ? undefined : () => { setNewFolderName(""); setNewFolderOpen(true); }} />
+            <FileTreeActionsMenu onQuickOpen={() => setQuickOpen(true)} onProjectSearch={onProjectSearch} onNewFolder={readOnly ? undefined : () => { setNewFolderName(""); setNewFolderOpen(true); }} />
           </span>
         </div>
         {uploadFeedback && <div className={`file-upload-feedback ${uploadFeedback.kind}`} role={uploadFeedback.kind === "error" ? "alert" : "status"} aria-live={uploadFeedback.kind === "error" ? "assertive" : "polite"} aria-busy={uploadFeedback.kind === "uploading"}>

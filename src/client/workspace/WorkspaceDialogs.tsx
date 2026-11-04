@@ -21,8 +21,12 @@ const GitDialog = lazy(() => import("../GitDialog").then((module) => ({ default:
 const HistoryDialog = lazy(() => import("../HistoryDialog").then((module) => ({ default: module.HistoryDialog })));
 const SelectionHistoryDialog = lazy(() => import("../SelectionHistoryDialog").then((module) => ({ default: module.SelectionHistoryDialog })));
 const QuickOpenDialog = lazy(() => import("../QuickOpenDialog").then((module) => ({ default: module.QuickOpenDialog })));
+const ProjectSearchDialog = lazy(() => import("../ProjectSearchDialog").then((module) => ({ default: module.ProjectSearchDialog })));
 
 export interface WorkspaceDialogsProps {
+  projectSearchOpen: boolean;
+  setProjectSearchOpen: (open: boolean) => void;
+  onSearchNavigate: (path: string, line: number, column: number) => void;
   commentSuggestion: SuggestionDraft | null;
   setCommentSuggestion: (suggestion: SuggestionDraft | null) => void;
   user: User;
@@ -105,6 +109,7 @@ export interface WorkspaceDialogsProps {
 }
 
 export function WorkspaceDialogs({
+  projectSearchOpen, setProjectSearchOpen, onSearchNavigate,
   commentSuggestion, setCommentSuggestion,
   user, project, projectId, activeFile, content, maxCitationBibtexBytes, files, directoryEntries, readOnly,
   resourcePreview, resourcePreviewLoading, setResourcePreview, setResourcePreviewLoading,
@@ -147,6 +152,7 @@ export function WorkspaceDialogs({
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} onMemberCountChange={onSharedMemberCountChange} />
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
+    {projectSearchOpen && <LazyModal title={t("projectSearch.title")} onClose={() => setProjectSearchOpen(false)}><ProjectSearchDialog projectId={projectId} readOnly={readOnly} onClose={() => setProjectSearchOpen(false)} onNavigate={onSearchNavigate} /></LazyModal>}
     {selectionHistoryTarget && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={(open) => { if (!open) closeSelectionHistory(); }} project={project} filePath={selectionHistoryTarget.filePath} selection={selectionHistoryTarget.selection} currentSource={selectionHistoryTarget.source} /></Suspense>}
     {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}
     {project.ownerId === user.id && gitOpen && <Suspense fallback={null}><GitDialog open onOpenChange={setGitOpen} project={project} onBeforeMutation={save} /></Suspense>}

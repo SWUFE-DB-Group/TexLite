@@ -3,11 +3,13 @@ import { agentMessages } from "../../shared/agentMessages.js";
 import { suggestionMessages } from "../../shared/suggestionMessages.js";
 import { viewLinkMessages } from "../../shared/projectViewLinks.js";
 import { citationCollectionMessages } from "../../shared/citationCollections.js";
+import { projectSearchMessages } from "../../shared/projectSearch.js";
 
 /** Traditional Chinese API messages, using the same stable error codes. */
 export const zhHantMessages: Record<ServerErrorCode, string> = {
   ...viewLinkMessages["zh-Hant"],
   ...citationCollectionMessages["zh-Hant"],
+  ...projectSearchMessages["zh-Hant"],
   ...suggestionMessages["zh-Hant"],
   ...agentMessages["zh-Hant"],
   AVATAR_STYLE_INVALID: "請選擇支援的頭像風格。",

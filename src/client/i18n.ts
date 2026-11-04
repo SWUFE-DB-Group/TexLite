@@ -9,6 +9,7 @@ import { agentMessages } from "../shared/agentMessages";
 import { suggestionMessages } from "../shared/suggestionMessages";
 import { viewLinkMessages } from "../shared/projectViewLinks";
 import { citationCollectionMessages } from "../shared/citationCollections";
+import { projectSearchMessages } from "../shared/projectSearch";
 import { agentUiMessages } from "./agents/messages";
 
 // Register before initialization so detected/saved languages and later switches
@@ -21,9 +22,9 @@ i18n.on("languageChanged", () => {
 
 void i18n.use(LanguageDetector).use(initReactI18next).init({
   resources: {
-    en: { translation: { ...en, agents: agentUiMessages.en, errors: { ...en.errors, codes: { ...en.errors.codes, ...agentMessages.en, ...suggestionMessages.en, ...viewLinkMessages.en, ...citationCollectionMessages.en } } } },
-    zh: { translation: { ...zh, agents: agentUiMessages.zh, errors: { ...zh.errors, codes: { ...zh.errors.codes, ...agentMessages.zh, ...suggestionMessages.zh, ...viewLinkMessages.zh, ...citationCollectionMessages.zh } } } },
-    "zh-Hant": { translation: { ...zhHant, agents: agentUiMessages["zh-Hant"], errors: { ...zhHant.errors, codes: { ...zhHant.errors.codes, ...agentMessages["zh-Hant"], ...suggestionMessages["zh-Hant"], ...viewLinkMessages["zh-Hant"], ...citationCollectionMessages["zh-Hant"] } } } }
+    en: { translation: { ...en, agents: agentUiMessages.en, errors: { ...en.errors, codes: { ...en.errors.codes, ...projectSearchMessages.en, ...agentMessages.en, ...suggestionMessages.en, ...viewLinkMessages.en, ...citationCollectionMessages.en } } } },
+    zh: { translation: { ...zh, agents: agentUiMessages.zh, errors: { ...zh.errors, codes: { ...zh.errors.codes, ...projectSearchMessages.zh, ...agentMessages.zh, ...suggestionMessages.zh, ...viewLinkMessages.zh, ...citationCollectionMessages.zh } } } },
+    "zh-Hant": { translation: { ...zhHant, agents: agentUiMessages["zh-Hant"], errors: { ...zhHant.errors, codes: { ...zhHant.errors.codes, ...projectSearchMessages["zh-Hant"], ...agentMessages["zh-Hant"], ...suggestionMessages["zh-Hant"], ...viewLinkMessages["zh-Hant"], ...citationCollectionMessages["zh-Hant"] } } } }
   },
   fallbackLng: "en",
   supportedLngs: [...supportedLocales],

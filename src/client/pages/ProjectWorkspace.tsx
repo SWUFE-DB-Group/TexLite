@@ -169,6 +169,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [wordCountOpen, setWordCountOpen] = useState(false);
   const [wordCountMode, setWordCountMode] = useState<WordCountMode>("full");
   const [wordCountPath, setWordCountPath] = useState("");
@@ -1451,6 +1452,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         setNewFolderName={setNewFolderName} setNewFolderOpen={setNewFolderOpen}
         setNewFilePath={setNewFilePath} setNewFileOpen={setNewFileOpen}
         setQuickOpen={setQuickOpen}
+        onProjectSearch={() => setProjectSearchOpen(true)}
         setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed}
         onError={setError}
         uploadFiles={uploadFiles} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder}
@@ -1522,6 +1524,12 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     {wordCountOpen && <LazyModal title={t("editor.wordCountTitle")} onClose={() => setWordCountOpen(false)}><WordCountDialog open mode={wordCountMode} path={wordCountPath} busy={wordCountBusy}
       error={wordCountError} result={wordCountResult} onOpenChange={setWordCountOpen} /></LazyModal>}
     <WorkspaceDialogs
+      projectSearchOpen={projectSearchOpen} setProjectSearchOpen={setProjectSearchOpen}
+      onSearchNavigate={(path, line, column) => {
+        if (workspaceLayout === "pdf-only") changeWorkspaceLayout(phone ? "editor-only" : "editor-pdf");
+        if (phone) setPhoneFilesOpen(false);
+        jumpToSource(path, line, column);
+      }}
       user={user} project={project} projectId={projectId} activeFile={activeFile}
       content={content} maxCitationBibtexBytes={site.maxCitationBibtexBytes} files={files} directoryEntries={directoryEntries} readOnly={readOnly}
       resourcePreview={resourcePreview} resourcePreviewLoading={resourcePreviewLoading}

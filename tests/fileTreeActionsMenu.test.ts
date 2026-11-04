@@ -30,24 +30,28 @@ async function openMenu() {
 
 describe("file tree overflow actions", () => {
   it("shows labelled actions and closes the menu after creating a folder", async () => {
-    const onQuickOpen = vi.fn(), onNewFolder = vi.fn();
-    await act(async () => root.render(createElement(FileTreeActionsMenu, { onQuickOpen, onNewFolder })));
+    const onQuickOpen = vi.fn(), onNewFolder = vi.fn(), onProjectSearch = vi.fn();
+    await act(async () => root.render(createElement(FileTreeActionsMenu, { onQuickOpen, onNewFolder, onProjectSearch })));
     expect(menu()).toBeNull();
     await openMenu();
     const items = [...menu()!.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items.map((item) => item.textContent)).toEqual([i18n.t("navigation.quickOpen"), i18n.t("editor.newFolder")]);
+    expect(items.map((item) => item.textContent)).toEqual([i18n.t("navigation.quickOpen"), i18n.t("projectSearch.title"), i18n.t("editor.newFolder")]);
     await act(async () => items[1].click());
+    expect(onProjectSearch).toHaveBeenCalledOnce();
+    expect(menu()).toBeNull();
+    await openMenu();
+    await act(async () => menu()!.querySelectorAll<HTMLElement>('[role="menuitem"]')[2].click());
     expect(onNewFolder).toHaveBeenCalledOnce();
     expect(onQuickOpen).not.toHaveBeenCalled();
     expect(menu()).toBeNull();
   });
 
   it("keeps quick open usable without exposing a folder mutation to readers", async () => {
-    const onQuickOpen = vi.fn();
-    await act(async () => root.render(createElement(FileTreeActionsMenu, { onQuickOpen })));
+    const onQuickOpen = vi.fn(), onProjectSearch = vi.fn();
+    await act(async () => root.render(createElement(FileTreeActionsMenu, { onQuickOpen, onProjectSearch })));
     await openMenu();
     const items = menu()!.querySelectorAll<HTMLElement>('[role="menuitem"]');
-    expect(items).toHaveLength(1);
+    expect(items).toHaveLength(2);
     await act(async () => items[0].click());
     expect(onQuickOpen).toHaveBeenCalledOnce();
     expect(menu()).toBeNull();
