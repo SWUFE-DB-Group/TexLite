@@ -11,7 +11,7 @@ let root: Root, host: HTMLDivElement, sheet: HTMLStyleElement;
 const user: User = { id: "owner", username: "author", displayName: "Author", role: "user", disabled: false,
   mustChangePassword: false, canCreateProjects: true, createdAt: "2026-10-29" };
 const project: Project = { id: "paper", name: "A very long collaborative research project title that must leave room for unresolved comments",
-  ownerId: "owner", lastModifiedBy: null, mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, icon: null,
+  ownerId: "owner", ownerDisplayName: "Author", ownerUsername: "author", lastModifiedBy: null, mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, icon: null,
   permission: "owner", chktexEnabled: false, createdAt: "2026-10-29", updatedAt: "2026-10-29",
   unresolvedCommentCount: 123, commentCount: 130, tags: [{ id: "year", name: "2027", color: "yellow" }, { id: "topic", name: "Research", color: "blue" }] };
 const noop = () => {};
@@ -39,6 +39,9 @@ describe("project list title layout", () => {
     expect(heading.contains(tags)).toBe(false); expect(heading.nextElementSibling).toBe(tags);
     expect(badge.textContent).toBe(i18n.t("projects.unresolvedCount", { count: 123 }));
     expect(name.getAttribute("title")).toBe(project.name);
+    const owner = host.querySelector<HTMLElement>(".project-list-owner")!;
+    expect(owner.textContent).toContain("Author");
+    expect(owner.getAttribute("title")).toBe("@author");
     expect(Number.parseFloat(getComputedStyle(name).minWidth)).toBe(0);
     expect(getComputedStyle(name).flexShrink).toBe("1");
     expect(getComputedStyle(badge).flexShrink).toBe("0"); expect(getComputedStyle(badge).whiteSpace).toBe("nowrap");
