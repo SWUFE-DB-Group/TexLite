@@ -184,8 +184,6 @@
     "githubEncryption": "TexLite verifies the token with GitHub and stores it encrypted at rest. The token is never shown again."
   },
   "projects": {
-    "noContentYet": "No content yet",
-    "previewUnavailable": "No preview available",
     "title": "Projects", "subtitle": "Create, edit and share LaTeX documents",
     "ownership": "Project ownership", "allProjects": "All projects", "ownedByMe": "Owned by me", "sharedWithMe": "Shared with me", "noShared": "No projects shared with you yet",
     "restricted": "You can access projects shared with you. Project creation requires administrator permission.",

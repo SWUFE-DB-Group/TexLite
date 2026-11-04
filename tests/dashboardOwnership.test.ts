@@ -25,6 +25,7 @@ let host: HTMLDivElement, root: Root;
 let projects: Project[];
 let archived: Set<string>;
 const onDataChange = vi.fn<(data: DashboardData) => void>();
+const onOpenProject = vi.fn();
 
 function response(url: string) {
   const params = new URL(url, "http://localhost").searchParams;
@@ -48,7 +49,7 @@ const tab = (scope: ProjectOwnershipScope) => host.querySelector<HTMLButtonEleme
 const names = () => Array.from(host.querySelectorAll(".project-card-title, .project-list-title"), (node) => node.textContent);
 const click = (selector: string) => act(async () => host.querySelector<HTMLButtonElement>(selector)!.click());
 const render = (initialData: DashboardData | null = null) => act(async () => root.render(createElement(Dashboard,
-  { site, user, initialData, onDataChange, onUser: vi.fn(), onOpenProject: vi.fn() })));
+  { site, user, initialData, onDataChange, onUser: vi.fn(), onOpenProject })));
 const changeSearch = (value: string) => act(async () => {
   const field = host.querySelector<HTMLInputElement>('.project-toolbar input[type="search"]')!;
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
@@ -58,7 +59,7 @@ const changeSearch = (value: string) => act(async () => {
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
-  localStorage.clear(); onDataChange.mockClear(); archived = new Set();
+  localStorage.clear(); onDataChange.mockClear(); onOpenProject.mockClear(); archived = new Set();
   projects = [...Array.from({ length: 23 }, (_, index) => makeProject(true, index)), ...Array.from({ length: 24 }, (_, index) => makeProject(false, index))];
   apiMock.mockReset().mockImplementation(async (url: string) => url === "/api/tags" ? { tags: [tag] } : response(url));
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -66,11 +67,12 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.clear(); vi.unstubAllGlobals(); });
 
 describe("project ownership tabs", () => {
-  it("groups compact statuses in grid headers, substitutes real previews for missing tags and preserves list mode", async () => {
+  it("shows source metadata even with tags, keeps empty paper blank and separates card/menu actions", async () => {
     projects = [
-      { ...makeProject(true, 0), ownerDisplayName: "Administrator", unresolvedCommentCount: 5, unreadMentionCount: 1 },
-      { ...makeProject(true, 1), preview: "A readable research summary." },
-      { ...makeProject(true, 2), tags: [], preview: "" },
+      { ...makeProject(true, 0), ownerDisplayName: "Administrator", unresolvedCommentCount: 5, unreadMentionCount: 1,
+        lastModifiedDisplayName: "Grace", preview: { title: "Real source title", abstract: "A readable research summary." } },
+      { ...makeProject(true, 1), preview: { title: "Title without an abstract", abstract: "" } },
+      { ...makeProject(true, 2), tags: [], preview: { title: "", abstract: "" } },
       { ...makeProject(true, 3), preview: null }
     ];
     await render();
@@ -81,14 +83,24 @@ describe("project ownership tabs", () => {
     expect(badges.querySelector(".project-mentions-badge")?.textContent).toBe("1");
     expect(badges.querySelector(".project-comments-badge")?.textContent).toBe("5");
     expect(badges.querySelector<HTMLElement>(".project-comments-badge")?.dataset.tooltip).toBe("5 unresolved");
-    expect(cards[0].querySelector(".project-card-preview")).toBeNull();
-    expect(cards[1].querySelector(".project-card-preview")?.textContent).toBe("A readable research summary.");
-    expect(cards[2].querySelector(".project-card-preview")?.textContent).toBe("No content yet");
-    expect(cards[3].querySelector(".project-card-preview")?.textContent).toBe("No preview available");
-    for (const card of cards) {
-      expect(card.querySelector(".project-meta .project-comments-badge")).toBeNull();
-      expect(card.querySelector(".project-meta dt")?.textContent).toBe("Created");
-    }
+    expect(badges.firstElementChild?.classList.contains("project-mentions-badge")).toBe(true);
+    expect(cards[0].querySelector(".project-card-tags")?.textContent).toBe("Research");
+    expect(cards[0].querySelector(".project-paper-title")?.textContent).toBe("Real source title");
+    expect(cards[0].querySelector(".project-paper-summary")?.textContent).toBe("A readable research summary.");
+    expect(cards[0].querySelector(".project-paper-summary")?.nextElementSibling?.className).toBe("project-paper-lines");
+    expect(cards[1].querySelector(".project-paper-lines")).not.toBeNull();
+    expect(cards[2].querySelector(".project-paper")?.childElementCount).toBe(0);
+    expect(cards[3].querySelector(".project-paper-heading")).not.toBeNull();
+    expect(cards[0].querySelector(".project-card-modifier")?.textContent).toBe("Grace");
+    expect(cards[0].querySelector<HTMLElement>(".project-card-title")?.dataset.tooltip).toContain("Owner: Administrator");
+    expect(cards[0].querySelector<HTMLElement>(".project-card-title")?.dataset.tooltip).toContain("Created:");
+    expect(cards[0].querySelector<HTMLElement>(".project-card-title")?.dataset.tooltip).toContain("Last modified:");
+    expect(host.querySelector(".project-icon-avatar, .owner-badge, .project-meta")).toBeNull();
+    expect(host.querySelector("button button")).toBeNull();
+    await click(".project-action-menu-trigger");
+    expect(onOpenProject).not.toHaveBeenCalled();
+    await click(".project-card-open");
+    expect(onOpenProject).toHaveBeenCalledWith(projects[0].id);
     await click(".view-toggle button:last-child");
     expect(lastParams().has("previews")).toBe(false);
     expect(host.querySelector(".project-card-preview")).toBeNull();

@@ -30,7 +30,7 @@ import { HarperLintSupersededError, HarperUnavailableError, type HarperService }
 import { ChktexLintSupersededError, ChktexUnavailableError, type ChktexService } from "../chktex.js";
 import { supportsChktexChecks, supportsWritingChecks } from "../../shared/writingChecks.js";
 import { unreadMentionCountsForProjects } from "../commentMentions.js";
-import { DEFAULT_PROJECT_PAGE_SIZE, type ProjectCatalogCounts, type ProjectOwnershipScope } from "../../shared/projectCatalog.js";
+import { DEFAULT_PROJECT_PAGE_SIZE, type ProjectCatalogCounts, type ProjectOwnershipScope, type ProjectSourcePreview } from "../../shared/projectCatalog.js";
 import {
   commentsSummaryForProject,
   commentsSummaryForProjects,
@@ -221,9 +221,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const projectTags = tagsForProjects(db, projectIds, user.id);
     const commentsSummaries = commentsSummaryForProjects(db, projectIds);
     const unreadMentionCounts = unreadMentionCountsForProjects(db, projectIds, user.id);
-    const previews = new Map<string, string | null>();
+    const previews = new Map<string, ProjectSourcePreview | null>();
     if (query.previews === "1") await Promise.all(projects.map(async (project) => {
-      if (!projectTags.get(project.id)?.length) previews.set(project.id, await projectPreviews.read(project.id, project.main_file));
+      previews.set(project.id, await projectPreviews.read(project.id, project.main_file));
     }));
     return {
       projects: projects.map((project) => ({ ...projectJson(

@@ -1,4 +1,4 @@
-import type { ProjectCatalogCounts, ProjectOwnershipScope } from "../shared/projectCatalog";
+import type { ProjectCatalogCounts, ProjectOwnershipScope, ProjectSourcePreview } from "../shared/projectCatalog";
 
 export interface SiteConfig {
   siteName: string;
@@ -36,8 +36,8 @@ export interface Project {
   lastModifiedUsername?: string | null;
   lastModifiedDisplayName?: string | null;
   name: string;
-  /** Optional catalog-only source excerpt; empty means no content, null means unavailable. */
-  preview?: string | null;
+  /** Optional catalog metadata; empty fields mean no content, null means unavailable. */
+  preview?: ProjectSourcePreview | null;
   mainFile: string;
   latexmkrc: string | null;
   engine: "pdflatex" | "xelatex" | "lualatex";

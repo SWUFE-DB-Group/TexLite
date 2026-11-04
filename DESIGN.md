@@ -83,17 +83,19 @@ same view before revalidation. Obsolete requests are aborted and ignored, and
 rows from a previous category are not shown while its replacement is loading.
 Successful catalog mutations revalidate the currently selected view.
 
-Grid cards keep unread mentions and unresolved-comment counts in the owner
-header, using icon-and-number badges with full tooltip labels. Titles clamp to
-two lines without reserving a fixed title height; timestamp groups align at
-the bottom of equal-height cards. Private tags take precedence over a two-line
-source preview. Grid catalog requests opt into previews only for tagless rows:
-the server reads at most the first 64 KiB of the selected main document,
-preferring an abstract sentence, then the document title, then body prose.
-Reads are asynchronous, coalesced and cached by file metadata, with at most 128
-entries; includes are not traversed and no TeX is executed. Empty source and
-unavailable previews have distinct placeholders. List layout and its labels
-remain unchanged.
+Grid cards use a paper illustration containing the main document's title and
+opening abstract text. Unavailable fields use neutral bars; genuinely empty
+documents show blank paper. Grid catalog requests opt into bounded metadata
+reads for every visible project, including tagged projects. The server reads
+at most the first 64 KiB, extracts only complete title/abstract constructs,
+and limits each field to 240 Unicode characters. Reads are asynchronous,
+coalesced and cached by file metadata, with at most 128 entries; includes are
+not traversed and no TeX is executed. Unread mentions precede unresolved-comment
+badges at the thumbnail's top right; private tags sit at its bottom left.
+Single-line titles and relative-modification metadata occupy fixed caption
+slots, with owner/creation/modification details in the title tooltip. The open,
+mention and action-menu buttons are independent keyboard targets. List layout
+and its labels remain unchanged.
 
 ### Citation library
 

@@ -6,19 +6,18 @@ import { ConfirmDialog, Modal } from "../Dialog";
 import type { DashboardData, Project, ProjectCatalogCounts, ProjectListPagination, ProjectOwnershipScope, ProjectTag, SiteConfig, TagColor, User } from "../types";
 import i18n from "../i18n";
 import { errorMessage } from "../errors";
-import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, AtSign, BookMarked, CalendarDays, ChevronLeft, ChevronRight, FileArchive, FolderKanban, FolderOpen, FolderPlus, History, LoaderCircle, MessageSquare, Sparkles, Tags, TerminalSquare, Upload, Users, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, ChevronLeft, ChevronRight, FileArchive, FolderKanban, FolderOpen, FolderPlus, LoaderCircle, Sparkles, Tags, TerminalSquare, Upload, Users, X } from "lucide-react";
 import { UserMenu } from "../UserMenu";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
 import { UpdateNotification } from "../UpdateNotification";
 import { ProjectListRow } from "./ProjectListRow";
 import { ProjectOwnershipTabs } from "./ProjectOwnershipTabs";
-import { ProjectActionMenu } from "./ProjectActionMenu";
-import { ProjectIconAvatar } from "../projectIcons";
+import { ProjectGridCard } from "./ProjectGridCard";
 import { LazyModal, LazyPage } from "../LazyLoadBoundary";
 import { appPath, scopedStorageKey } from "../basePath";
 import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
 import { formatDateTime } from "../dateTime";
-import { captureDeletionHeight, PROJECT_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
+import { PROJECT_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
 import { useAgentAccess } from "../agents/useAgentAccess";
 import { useTerminalPreferences } from "../terminalPreferences";
 import { DEFAULT_PROJECT_PAGE_SIZE } from "../../shared/projectCatalog";
@@ -415,7 +414,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     {user.role === "admin" && <div className="dashboard-update"><UpdateNotification key={user.id} userId={user.id} /></div>}
     {agentsOpen ? <main className="dashboard"><LazyPage onClose={() => setAgentsOpen(false)}><AgentManagement user={user} onBack={() => setAgentsOpen(false)} /></LazyPage></main> : adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} onBack={() => setAdminOpen(false)} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard">
       <LazyPage onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} maxBibtexBytes={site.maxCitationBibtexBytes} /></LazyPage>
-    </main> : <main className="dashboard">
+    </main> : <main className={`dashboard${view === "grid" ? " project-dashboard-grid" : ""}`}>
       <div className="section-title project-catalog-heading"><div><h1><FolderKanban aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button {...actionTooltipProps} aria-label={t("tags.manage")} data-tooltip={t("tags.manage")} onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} /><span className="project-action-label">{t("tags.manage")}</span></button>{user.canCreateProjects && <><button {...actionTooltipProps} aria-label={t("projects.upload")} data-tooltip={t("projects.upload")} onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} /><span className="project-action-label">{t("projects.upload")}</span></button><button {...actionTooltipProps} className="primary" aria-label={t("projects.new")} data-tooltip={t("projects.new")} onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} /><span className="project-action-label">{t("projects.new")}</span></button></>}</div></div>
       <ProjectOwnershipTabs value={ownership} counts={counts} onChange={changeOwnership} />
       {error && <p className="error">{error}</p>}
@@ -480,70 +479,29 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             onDelete={() => { setDeleteProject(project); setDeleteError(""); }}
             onChooseIcon={() => setProjectIconTarget(project)}
           />)
-          : displayedProjects.map(({ item: project, removeAt }) => <article
+          : displayedProjects.map(({ item: project, removeAt }) => <ProjectGridCard
             key={project.id}
-            ref={removeAt !== null ? captureDeletionHeight : undefined}
-            inert={removeAt !== null ? true : undefined}
-            aria-hidden={removeAt !== null ? true : undefined}
-            className={`project-card project-grid-card${project.ownerId === user.id ? " owned-project" : ""}${projectMenuId === project.id ? " project-card-menu-open" : ""}${removeAt !== null ? " deletion-exit" : ""}`}
-            onAnimationEnd={(event) => { if (event.target === event.currentTarget && removeAt !== null) finishExit(project.id); }}
-            role="button"
-            tabIndex={0}
-            aria-label={t("projects.openProject", { project: project.name })}
-            onClick={() => { setProjectMenuId(null); onOpenProject(project.id); }}
-            onKeyDown={(event) => {
-              if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
-              event.preventDefault();
-              setProjectMenuId(null);
-              onOpenProject(project.id);
-            }}
-          >
-            <div className="project-card-meta-row">
-              <div className="project-card-badges">
-                <span className="owner-badge" title={project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}>{project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser")}</span>
-                {Boolean(project.unreadMentionCount && project.unreadMentionCount > 0) && <button className="project-mentions-badge" type="button" title={t("projects.unreadMentionsTooltip", { count: project.unreadMentionCount })} aria-label={t("projects.unreadMentionsTooltip", { count: project.unreadMentionCount })} onClick={(event) => { event.stopPropagation(); void openUnreadMention(project); }}><AtSign aria-hidden size={11} /><span>{project.unreadMentionCount}</span></button>}
-                {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && <span className="project-comments-badge unresolved" data-tooltip={t("projects.unresolvedCount", { count: project.unresolvedCommentCount })} aria-label={t("projects.unresolvedCount", { count: project.unresolvedCommentCount })}><MessageSquare aria-hidden size={11} /><span>{project.unresolvedCommentCount}</span></span>}
-              </div>
-              <ProjectActionMenu
-                variant="grid"
-                project={project}
-                currentUser={user}
-                showArchived={showArchived}
-                archiveBusy={archiveBusy === project.id}
-                menuOpen={projectMenuId === project.id}
-                t={t}
-                onToggleMenu={() => setProjectMenuId((current) => current === project.id ? null : project.id)}
-                onCloseMenu={() => setProjectMenuId((current) => current === project.id ? null : current)}
-                onAssignTags={() => { setTagAssignmentError(""); setTagProject(project); }}
-                onRename={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}
-                onDuplicate={() => { setDuplicateError(""); setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}
-                onArchive={() => void toggleArchive(project)}
-                onTransfer={() => void openTransfer(project)}
-                onDelete={() => { setDeleteProject(project); setDeleteError(""); }}
-              />
-            </div>
-            <div className="project-card-title-row">
-              <span className="project-card-icon-control" onClick={project.permission === "owner" ? (event) => event.stopPropagation() : undefined}>
-                <ProjectIconAvatar
-                  icon={project.icon}
-                  projectName={project.name}
-                  title={project.name}
-                  editable={project.permission === "owner"}
-                  editLabel={t("projectIcons.change")}
-                  onEdit={() => setProjectIconTarget(project)}
-                  className="project-card-icon"
-                />
-              </span>
-              <strong className="project-card-title" title={project.name}>{project.name}</strong>
-            </div>
-            {project.tags?.length ? <div className="project-card-tags" aria-label={t("tags.assignTitle", { project: project.name })} title={project.tags.map((tag) => tag.name).join(", ")}>
-              {project.tags?.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id} title={tag.name}>{tag.name}</span>)}
-            </div> : <p className={`project-card-preview${project.preview ? "" : " is-empty"}`}>{project.preview || t(project.preview === "" ? "projects.noContentYet" : "projects.previewUnavailable")}</p>}
-            <dl className="project-meta">
-              <div><dt><CalendarDays aria-hidden size={13} />{t("projects.created")}</dt><dd><time dateTime={project.createdAt}>{formatTime(project.createdAt)}</time></dd></div>
-              <div><dt><History aria-hidden size={13} />{t("projects.modified")}</dt><dd title={formatTime(project.updatedAt)}><time dateTime={project.updatedAt}>{formatProjectUpdatedTime(project.updatedAt)}</time><span className="project-modified-by"> · {t("projects.byUser", { user: project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser") })}</span></dd></div>
-            </dl>
-          </article>)}
+            project={project}
+            currentUser={user}
+            removing={removeAt !== null}
+            onRemovalEnd={() => finishExit(project.id)}
+            showArchived={showArchived}
+            archiveBusy={archiveBusy === project.id}
+            menuOpen={projectMenuId === project.id}
+            t={t}
+            formatUpdatedTime={formatProjectUpdatedTime}
+            formatExactTime={formatTime}
+            onOpenProject={() => { setProjectMenuId(null); onOpenProject(project.id); }}
+            onOpenMention={() => void openUnreadMention(project)}
+            onToggleMenu={() => setProjectMenuId((current) => current === project.id ? null : project.id)}
+            onCloseMenu={() => setProjectMenuId((current) => current === project.id ? null : current)}
+            onAssignTags={() => { setTagAssignmentError(""); setTagProject(project); }}
+            onRename={() => { setRenameError(""); setRenameProject(project); setRenameValue(project.name); }}
+            onDuplicate={() => { setDuplicateError(""); setDuplicateProject(project); setDuplicateValue(`${project.name} (1)`); }}
+            onArchive={() => void toggleArchive(project)}
+            onTransfer={() => void openTransfer(project)}
+            onDelete={() => { setDeleteProject(project); setDeleteError(""); }}
+          />)}
         {resultsCurrent && displayedProjects.length === 0 && (query.trim() || tagFilter
           ? <div className="empty">{t("projects.noMatches")}</div>
           : showArchived ? <div className="project-empty project-empty-archived">

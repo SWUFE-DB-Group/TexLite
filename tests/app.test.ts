@@ -112,7 +112,7 @@ describe("texLite application", () => {
     });
   });
 
-  it("provides opt-in main-document previews only for tagless catalog entries and refreshes them after source changes", async () => {
+  it("provides opt-in title/abstract previews for all grid entries and refreshes them after source changes", async () => {
     const prefix = `preview-${randomUUID().slice(0, 6)}`;
     const ids: string[] = [];
     let tagId: string | undefined;
@@ -127,19 +127,20 @@ describe("texLite application", () => {
       const tag = await app.inject({ method: "POST", url: "/api/tags", headers: { cookie }, payload: { name: prefix, color: "blue" } });
       expect(tag.statusCode).toBe(201); tagId = tag.json().tag.id;
       expect((await app.inject({ method: "POST", url: `/api/projects/${ids[2]}/tags`, headers: { cookie }, payload: { tagId } })).statusCode).toBe(201);
+      expect((await write(ids[2], "\\title{Tagged paper}")).statusCode).toBe(200);
       const ordinary = await app.inject({ method: "GET", url: `/api/projects?search=${prefix}`, headers: { cookie } });
       expect(ordinary.json().projects.every((project: object) => !("preview" in project))).toBe(true);
       const read = async () => {
         const response = await app.inject({ method: "GET", url: `/api/projects?search=${prefix}&previews=1`, headers: { cookie } });
         expect(response.statusCode, response.body).toBe(200);
-        return response.json().projects as Array<{ id: string; preview?: string | null }>;
+        return response.json().projects as Array<{ id: string; preview?: { title: string; abstract: string } | null }>;
       };
       const previews = await read();
-      expect(previews.find((project) => project.id === ids[0])?.preview).toBe("A research summary.");
-      expect(previews.find((project) => project.id === ids[1])?.preview).toBe("");
-      expect(previews.find((project) => project.id === ids[2])).not.toHaveProperty("preview");
+      expect(previews.find((project) => project.id === ids[0])?.preview).toEqual({ title: "Paper title", abstract: "A research summary. More detail." });
+      expect(previews.find((project) => project.id === ids[1])?.preview).toEqual({ title: "", abstract: "" });
+      expect(previews.find((project) => project.id === ids[2])?.preview).toEqual({ title: "Tagged paper", abstract: "" });
       expect((await write(ids[0], String.raw`\title{Updated title}`)).statusCode).toBe(200);
-      expect((await read()).find((project) => project.id === ids[0])?.preview).toBe("Updated title");
+      expect((await read()).find((project) => project.id === ids[0])?.preview).toEqual({ title: "Updated title", abstract: "" });
     } finally {
       for (const id of ids) await app.inject({ method: "DELETE", url: `/api/projects/${id}`, headers: { cookie } });
       if (tagId) await app.inject({ method: "DELETE", url: `/api/tags/${tagId}`, headers: { cookie } });

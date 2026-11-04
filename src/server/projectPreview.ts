@@ -3,9 +3,9 @@ import type { Config } from "./config.js";
 import { resolveSourcePath } from "./files.js";
 import { maskLatexComments, maskLatexLiteralContent } from "../shared/latexLiterals.js";
 import { forEachLatexCommand, readLatexMandatoryArguments } from "../shared/latexScanner.js";
+import type { ProjectSourcePreview } from "../shared/projectCatalog.js";
 
 export const PROJECT_PREVIEW_BYTES = 64 * 1024;
-const sentences = new Intl.Segmenter(undefined, { granularity: "sentence" });
 const omittedCommands = new Set(["label", "ref", "eqref", "pageref", "cite", "citep", "citet", "citealp", "citeauthor", "citeyear",
   "autocite", "parencite", "textcite", "footcite", "footnote", "thanks", "url", "input", "include", "includegraphics", "bibliography", "bibliographystyle"]);
 
@@ -29,13 +29,12 @@ function previewText(value: string): string {
 }
 
 function excerpt(value: string): string {
-  const first = sentences.segment(value)[Symbol.iterator]().next().value?.segment.trim() ?? "";
-  const characters = Array.from(first);
-  return characters.length > 240 ? `${characters.slice(0, 240).join("")}…` : first;
+  const characters = Array.from(value);
+  return characters.length > 240 ? `${characters.slice(0, 240).join("")}…` : value;
 }
 
-/** Abstract first sentence, then title. Never guess metadata from document-body commands. */
-export function extractProjectPreview(source: string): string | null {
+/** Keep title and abstract separate. Never guess metadata from document-body commands. */
+export function extractProjectPreview(source: string): ProjectSourcePreview | null {
   let title = "", abstractStart = -1, abstractEnd = -1, bodyStart = -1, bodyEnd = source.length;
   forEachLatexCommand(source, (command) => {
     if (!["title", "begin", "end"].includes(command.name)) return;
@@ -49,24 +48,23 @@ export function extractProjectPreview(source: string): string | null {
     if (command.name === "end" && value.trim() === "document" && bodyStart >= 0) bodyEnd = command.from;
   });
   const abstract = abstractStart >= 0 && abstractEnd >= abstractStart ? excerpt(previewText(source.slice(abstractStart, abstractEnd))) : "";
-  if (abstract) return abstract;
-  if (title) return Array.from(title).slice(0, 240).join("");
+  if (abstract || title) return { title: excerpt(title), abstract };
   if (bodyStart >= 0) {
     const body = source.slice(bodyStart, bodyEnd);
     // Only inspect the body to distinguish genuinely empty documents from
     // unavailable metadata. Formatting arguments and includes are not prose.
-    return maskLatexComments(body).trim() ? null : "";
+    return maskLatexComments(body).trim() ? null : { title: "", abstract: "" };
   }
-  return maskLatexComments(source).trim() ? null : "";
+  return maskLatexComments(source).trim() ? null : { title: "", abstract: "" };
 }
 
 /** Bounded main-file reads, coalesced across users and cached by file metadata. */
 export class ProjectPreviewService {
-  private readonly cache = new Map<string, { signature: string; preview: string | null }>();
-  private readonly pending = new Map<string, Promise<string | null>>();
+  private readonly cache = new Map<string, { signature: string; preview: ProjectSourcePreview | null }>();
+  private readonly pending = new Map<string, Promise<ProjectSourcePreview | null>>();
   constructor(private readonly config: Config) {}
 
-  read(projectId: string, mainFile: string): Promise<string | null> {
+  read(projectId: string, mainFile: string): Promise<ProjectSourcePreview | null> {
     let file: string;
     try { file = resolveSourcePath(this.config, projectId, mainFile); }
     catch { return Promise.resolve(null); }
@@ -77,7 +75,7 @@ export class ProjectPreviewService {
     return request;
   }
 
-  private async readFile(file: string): Promise<string | null> {
+  private async readFile(file: string): Promise<ProjectSourcePreview | null> {
     try {
       const stat = await fs.promises.stat(file);
       if (!stat.isFile()) return null;
@@ -98,7 +96,7 @@ export class ProjectPreviewService {
       } finally { await handle.close(); }
       const extracted = extractProjectPreview(source);
       // An empty prefix says nothing about content beyond the bounded read.
-      const preview = extracted === "" && stat.size > PROJECT_PREVIEW_BYTES ? null : extracted;
+      const preview = extracted && !extracted.title && !extracted.abstract && stat.size > PROJECT_PREVIEW_BYTES ? null : extracted;
       this.cache.delete(file); this.cache.set(file, { signature, preview });
       if (this.cache.size > 128) this.cache.delete(this.cache.keys().next().value!);
       return preview;

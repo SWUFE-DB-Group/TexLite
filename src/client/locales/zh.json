@@ -182,8 +182,6 @@
     "githubEncryption": "TexLite 会通过 GitHub 验证 token，并以加密形式保存；保存后不会再次显示 token 明文。"
   },
   "projects": {
-    "noContentYet": "暂无内容",
-    "previewUnavailable": "暂无预览",
     "title": "项目", "subtitle": "创建、编辑和分享 LaTeX 文档", "restricted": "你可以访问别人共享给你的项目；创建权限由管理员授予",
     "ownership": "项目归属", "allProjects": "全部项目", "ownedByMe": "我拥有的", "sharedWithMe": "共享给我的", "noShared": "暂无共享给你的项目",
     "new": "新建项目", "newDescription": "项目会使用配置文件中的默认 LaTeX 引擎。", "name": "项目名称",
