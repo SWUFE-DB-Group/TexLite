@@ -4,6 +4,7 @@ import { captureDeletionHeight } from "../useDeletionTransitions";
 import { ProjectActionMenu, type ProjectActionMenuProps } from "./ProjectActionMenu";
 import type { ProjectSourcePreview } from "../../shared/projectCatalog";
 import { RichTooltip } from "../GlobalTooltip";
+import { TagMarquee } from "../TagMarquee";
 
 interface ProjectGridCardProps extends Omit<ProjectActionMenuProps, "variant"> {
   removing: boolean;
@@ -58,11 +59,11 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
     <button type="button" className="project-card-open" aria-label={t("projects.openProject", { project: project.name })} onClick={onOpenProject}>
       <div className="project-card-thumbnail">
         <ProjectPaper preview={project.preview} />
-        <div className="project-card-tags" title={project.tags.map((tag) => tag.name).join(", ")}>
+        <TagMarquee className="project-card-tags" title={project.tags.map((tag) => tag.name).join(", ")}>
           {project.tags.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>
             <span className="tag-dot" aria-hidden="true" /><span className="tag-label">{tag.name}</span>
           </span>)}
-        </div>
+        </TagMarquee>
       </div>
       <div className="project-card-caption">
         <RichTooltip text={project.name} content={nameDetails}><strong className="project-card-title">{project.name}</strong></RichTooltip>

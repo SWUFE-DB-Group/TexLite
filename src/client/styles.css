@@ -249,7 +249,6 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-card-badges { position: absolute; top: 10px; right: 10px; max-width: calc(100% - 20px); display: flex; align-items: center; gap: 5px; }
 .project-card-badges:empty { display: none; }
 .project-card-tags { position: absolute; bottom: 10px; left: 10px; right: 10px; height: 21px; display: flex; flex-wrap: nowrap; align-items: center; gap: 5px; overflow: hidden; }
-.project-card-tags .tag { min-width: 0; max-width: min(110px, 100%); flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-card-tags .tag, .project-list-tags .tag { font-size: 9px; }
 .project-icon-avatar { width: 36px; height: 36px; box-sizing: border-box; display: grid; place-items: center; flex: none; overflow: hidden; border: 1px solid var(--ui-project-icon-border, transparent); border-radius: 50%; padding: 0; background: #263a33; color: #fff; font-size: 15px; font-weight: 750; line-height: 1; }
 .project-icon-avatar > svg { width: 18px; height: 18px; }
@@ -383,17 +382,8 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 }
 .project-list-tags {
   min-width: 0;
-  display: flex;
+  width: 100%;
   flex: none;
-  gap: 5px;
-  overflow: hidden;
-}
-.project-list-tag {
-  min-width: 0;
-  max-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .project-list-owner {
   min-width: 0;
@@ -479,6 +469,24 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .tag-green { --tag-color: #49a563; } .tag-blue { --tag-color: #4c83db; } .tag-purple { --tag-color: #9566ce; } .tag-gray { --tag-color: #929994; }
 .tag-dot[class*="tag-"] { color: var(--tag-color); }
 .tag[class*="tag-"] { border: 1px solid color-mix(in srgb, var(--tag-color) 20%, transparent); background: color-mix(in srgb, var(--tag-color) 16%, var(--ui-tag-base, white)); }
+.tag-marquee { display: block; min-width: 0; overflow: hidden; }
+.tag-marquee-track { display: flex; flex: none; align-items: center; gap: 5px; width: max-content; white-space: nowrap; }
+.tag-marquee-track > * { flex: none; }
+.tag-marquee:focus-visible { outline: 1px solid var(--ui-accent, #176b44); outline-offset: 2px; border-radius: 4px; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .tag-marquee[data-overflow="true"]:is(:hover, :focus-visible) > .tag-marquee-track,
+  :is(.project-card-open, .project-list-summary-open):focus-visible .tag-marquee[data-overflow="true"] > .tag-marquee-track {
+    animation: tag-marquee-pan var(--tag-marquee-duration) linear 1.5s infinite alternate;
+  }
+}
+@keyframes tag-marquee-pan {
+  0% { transform: translateX(0); }
+  85%, 100% { transform: translateX(var(--tag-marquee-offset)); }
+}
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .tag-marquee { overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .tag-marquee::-webkit-scrollbar { display: none; }
+}
 .empty, .center-card { padding: 50px; color: var(--ui-muted, #737a75); text-align: center; }
 .lazy-load-state { min-height: 104px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 24px; color: var(--ui-muted, #68746d); text-align: center; }
 .lazy-load-state.compact { min-height: 72px; padding: 18px 12px; font-size: 12px; }
@@ -1732,7 +1740,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-entry-heading em.private { background: var(--ui-subtle, #edf0ee); color: var(--ui-muted, #69756d); }
 .citation-entry-main > strong { overflow: hidden; color: var(--ui-text, #2b3b31); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .citation-entry-main > p { margin: 0; overflow: hidden; color: var(--ui-muted, #718078); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.citation-entry-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.citation-entry-tags { margin-top: 3px; }
+.citation-entry-tags > .tag-marquee-track { gap: 4px; }
 .citation-tag-pill { display: inline-flex; align-items: center; gap: 4px; border: 1px solid color-mix(in srgb, var(--tag-color) 35%, transparent); border-radius: 999px; padding: 2px 6px; background: color-mix(in srgb, var(--tag-color) 12%, var(--ui-tag-base, white)); color: var(--ui-text, #526158); font-size: 9px; }
 .citation-tag-dot { width: 7px; height: 7px; flex: none; display: inline-block; border-radius: 50%; background: var(--tag-color); }
 .citation-tag-filters .citation-tag-dot { background: var(--tag-color); }

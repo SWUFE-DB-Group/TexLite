@@ -4,6 +4,7 @@ import { CitationEntryMenu } from "./CitationEntryMenu";
 import { SaveButton } from "./SaveButton";
 import { citationVenue, type ParsedCitationEntry } from "./citationLibrary";
 import type { CitationLibraryEntry } from "./types";
+import { TagMarquee } from "./TagMarquee";
 
 /** Entry presentation is shared; project workflows omit all management controls. */
 export function CitationCard({ entry, selected, alreadyInFile, saved, saving, saveFeedback, saveDisabled, saveHint, importDisabled, importHint, deleting, manage = true, onSave, onImport, onEdit, onTags, onCollections, onNotes, notesExpanded, notesRegionId, onDelete, t }: {
@@ -40,7 +41,7 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
       <div className="citation-entry-heading"><code>{entry.citationKey}</code><span>@{entry.entryType}</span>{venue && <span className="citation-entry-venue" title={venue}>{venue}</span>}{saved && <em><Check size={11} />{t("citationLibrary.savedLabel")}</em>}</div>
       <strong title={entry.title || t("citationLibrary.untitled")}>{entry.title || t("citationLibrary.untitled")}</strong>
       <p>{entry.authors || t("citationLibrary.authorUnknown")}{entry.year && <span> · {entry.year}</span>}</p>
-      {manage && libraryEntry && libraryEntry.tags.length > 0 && <div className="citation-entry-tags">{libraryEntry.tags.map((tag) => <span className={`citation-tag-pill tag-${tag.color}`} key={tag.id}><span className="citation-tag-dot" />{tag.name}</span>)}</div>}
+      {manage && libraryEntry && libraryEntry.tags.length > 0 && <TagMarquee className="citation-entry-tags" focusable>{libraryEntry.tags.map((tag) => <span className={`citation-tag-pill tag-${tag.color}`} key={tag.id}><span className="citation-tag-dot" aria-hidden="true" />{tag.name}</span>)}</TagMarquee>}
     </div>
     <div className="citation-entry-actions">
       {onSave && <SaveButton iconSize={15} icon={!manage && saved ? <RefreshCw size={15} aria-hidden /> : undefined} iconOnly={!manage}

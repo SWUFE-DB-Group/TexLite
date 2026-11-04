@@ -4,6 +4,7 @@ import { ProjectIconAvatar } from "../projectIcons";
 import type { Project, User } from "../types";
 import { ProjectActionMenu } from "./ProjectActionMenu";
 import { captureDeletionHeight } from "../useDeletionTransitions";
+import { TagMarquee } from "../TagMarquee";
 
 export { projectInitial } from "../projectIcons";
 
@@ -85,9 +86,9 @@ export function ProjectListRow({
             </span>
           )}
         </span>
-        {project.tags?.length > 0 && <span className="project-list-tags">{project.tags.map((tag) => <span className={`tag tag-${tag.color} project-list-tag`} key={tag.id} title={tag.name}>
+        {project.tags?.length > 0 && <TagMarquee className="project-list-tags">{project.tags.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id} title={tag.name}>
           <span className="tag-dot" aria-hidden="true" /><span className="tag-label">{tag.name}</span>
-        </span>)}</span>}
+        </span>)}</TagMarquee>}
       </button>
     </span>
     <button type="button" className="project-list-cell-open project-list-owner" onClick={onOpenProject} title={project.ownerUsername ? `@${project.ownerUsername}` : undefined} aria-label={t("projects.openProject", { project: project.name })}>
