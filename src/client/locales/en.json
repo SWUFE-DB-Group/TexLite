@@ -184,6 +184,7 @@
     "githubEncryption": "TexLite verifies the token with GitHub and stores it encrypted at rest. The token is never shown again."
   },
   "projects": {
+    "byUserInline": "by {{user}}",
     "ownedBy": "owned by <user>{{user}}</user>",
     "createdAt": "Created at {{time}}",
     "lastModifiedAt": "Last modified at {{time}} by <user>{{user}}</user>",

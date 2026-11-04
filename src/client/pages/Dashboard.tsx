@@ -392,11 +392,12 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const formatProjectCreatedDate = (value: string) => {
     return formatDateTime(value, i18n.resolvedLanguage ?? "en", { year: "numeric", month: "2-digit", day: "2-digit" });
   };
-  const formatProjectUpdatedTime = (value: string) => formatRelativeTime(
+  const formatProjectUpdatedTime = (value: string, options?: { singleUnit?: boolean }) => formatRelativeTime(
     value,
     i18n.resolvedLanguage ?? "en",
     relativeTimeNow,
-    (key, options) => t(key, options)
+    (key, values) => t(key, values),
+    options
   );
 
   return <div className="page">
@@ -489,7 +490,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             archiveBusy={archiveBusy === project.id}
             menuOpen={projectMenuId === project.id}
             t={t}
-            formatUpdatedTime={formatProjectUpdatedTime}
+            formatUpdatedTime={(value) => formatProjectUpdatedTime(value, { singleUnit: true })}
             formatExactTime={formatTime}
             onOpenProject={() => { setProjectMenuId(null); onOpenProject(project.id); }}
             onOpenMention={() => void openUnreadMention(project)}

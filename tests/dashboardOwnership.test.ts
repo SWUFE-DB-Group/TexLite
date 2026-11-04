@@ -71,7 +71,8 @@ describe("project ownership tabs", () => {
   it("shows source metadata even with tags, keeps empty paper blank and separates card/menu actions", async () => {
     projects = [
       { ...makeProject(true, 0), ownerDisplayName: "Administrator", unresolvedCommentCount: 5, unreadMentionCount: 1,
-        lastModifiedDisplayName: "Grace", preview: { title: "Real source title", abstract: "A readable research summary." } },
+        lastModifiedDisplayName: "Grace", updatedAt: new Date(Date.now() - (16 * 60 + 31.5) * 60_000).toISOString(),
+        preview: { title: "Real source title", abstract: "A readable research summary." } },
       { ...makeProject(true, 1), preview: { title: "Title without an abstract", abstract: "" } },
       { ...makeProject(true, 2), tags: [], preview: { title: "", abstract: "" } },
       { ...makeProject(true, 3), preview: null }
@@ -92,7 +93,8 @@ describe("project ownership tabs", () => {
     expect(cards[1].querySelector(".project-paper-lines")).not.toBeNull();
     expect(cards[2].querySelector(".project-paper")?.childElementCount).toBe(0);
     expect(cards[3].querySelector(".project-paper-heading")).not.toBeNull();
-    expect(cards[0].querySelector(".project-card-modifier")?.textContent).toBe("Grace");
+    expect(cards[0].querySelector(".project-card-modifier")?.textContent).toBe("by Grace");
+    expect(cards[0].querySelector(".project-card-metadata time")?.textContent).toBe("16h ago");
     expect(cards[0].querySelector(".project-paper-abstract-label")?.textContent).toBe("Abstract");
     await act(async () => cards[0].querySelector(".project-card-title")!.dispatchEvent(new Event("pointerover", { bubbles: true })));
     const nameTooltip = host.querySelector('[role="tooltip"]')!;
@@ -121,6 +123,7 @@ describe("project ownership tabs", () => {
     expect(lastParams().has("previews")).toBe(false);
     expect(host.querySelector(".project-card-preview")).toBeNull();
     expect(host.querySelector(".project-list-title-line .project-comments-badge")?.textContent).toBe("5 unresolved");
+    expect(host.querySelector(".project-list-modified time")?.textContent).toBe("16h 31m ago");
   });
 
   it.each(["en", "zh", "zh-Hant"])("emphasizes only attribution names without treating %s user text as markup", async (language) => {
@@ -128,6 +131,7 @@ describe("project ownership tabs", () => {
     const owner = "Owner <img src=x> & team", editor = "Editor <em>name</em>";
     projects = [{ ...makeProject(true, 0), ownerDisplayName: owner, lastModifiedDisplayName: editor }];
     await render();
+    expect(host.querySelector(".project-card-modifier")?.textContent).toBe(language === "en" ? `by ${editor}` : `由 ${editor} 修改`);
     await act(async () => host.querySelector(".project-card-title")!.dispatchEvent(new Event("pointerover", { bubbles: true })));
     let tooltip = host.querySelector('[role="tooltip"]')!;
     expect([...tooltip.querySelectorAll("strong")].map((name) => name.textContent)).toEqual([projects[0].name, owner]);

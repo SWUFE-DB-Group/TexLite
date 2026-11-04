@@ -1,4 +1,4 @@
-import { AtSign, CalendarDays, History, MessageSquare } from "lucide-react";
+import { AtSign, CalendarDays, Clock, History, MessageSquare } from "lucide-react";
 import { Trans } from "react-i18next";
 import { captureDeletionHeight } from "../useDeletionTransitions";
 import { ProjectActionMenu, type ProjectActionMenuProps } from "./ProjectActionMenu";
@@ -37,7 +37,7 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
   const modifier = project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser");
   const nameDetails = <div className="project-details-tooltip project-name-tooltip">
     <strong>{project.name}</strong>{", "}
-    <span className="project-details-person"><Trans t={t} i18nKey="projects.ownedBy" values={{ user: owner }} components={{ user: <strong /> }} /></span>
+    <span className="project-details-person"><Trans t={t} i18nKey="projects.ownedBy" values={{ user: owner }} components={{ user: <strong className="project-details-name" /> }} /></span>
   </div>;
   const timeDetails = <div className="project-details-tooltip">
     <ul>
@@ -46,7 +46,7 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
       </div></li>
       <li><History aria-hidden size={14} /><div>
         <time dateTime={project.updatedAt}><Trans t={t} i18nKey="projects.lastModifiedAt"
-          values={{ time: formatExactTime(project.updatedAt), user: modifier }} components={{ user: <strong /> }} /></time>
+          values={{ time: formatExactTime(project.updatedAt), user: modifier }} components={{ user: <strong className="project-details-name" /> }} /></time>
       </div></li>
     </ul>
   </div>;
@@ -66,9 +66,9 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
         <RichTooltip text={project.name} content={nameDetails}><strong className="project-card-title">{project.name}</strong></RichTooltip>
         <div className="project-card-metadata">
           <RichTooltip text={formatExactTime(project.updatedAt)} content={timeDetails}>
-            <time dateTime={project.updatedAt}>{formatUpdatedTime(project.updatedAt)}</time>
+            <time dateTime={project.updatedAt}><Clock aria-hidden size={12} strokeWidth={1.75} /><span>{formatUpdatedTime(project.updatedAt)}</span></time>
           </RichTooltip>
-          <span aria-hidden="true">·</span><span className="project-card-modifier">{modifier}</span>
+          <span aria-hidden="true">·</span><span className="project-card-modifier">{t("projects.byUserInline", { user: modifier })}</span>
         </div>
       </div>
     </button>

@@ -182,6 +182,7 @@
     "githubEncryption": "TexLite 会通过 GitHub 验证 token，并以加密形式保存；保存后不会再次显示 token 明文。"
   },
   "projects": {
+    "byUserInline": "由 {{user}} 修改",
     "ownedBy": "拥有者：<user>{{user}}</user>",
     "createdAt": "创建于 {{time}}",
     "lastModifiedAt": "最后修改于 {{time}}，修改者：<user>{{user}}</user>",

@@ -15,7 +15,8 @@ export function formatRelativeTime(
   value: string,
   locale: string,
   now: number,
-  translate: (key: string, options: { days: number; hours: number; minutes: number }) => string
+  translate: (key: string, options: { days: number; hours: number; minutes: number }) => string,
+  options: { singleUnit?: boolean } = {}
 ): string {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return value;
@@ -34,18 +35,18 @@ export function formatRelativeTime(
   }
   if (absoluteDifference >= day) {
     const days = Math.floor(absoluteDifference / day);
-    const hours = Math.floor((absoluteDifference % day) / hour);
+    const hours = options.singleUnit ? 0 : Math.floor((absoluteDifference % day) / hour);
     const direction = difference < 0 ? "Past" : "Future";
     const unit = hours > 0 ? "DaysHours" : "Days";
     return translate(`projects.relative${unit}${direction}`, { days, hours, minutes: 0 });
   }
   if (absoluteDifference >= hour) {
     const hours = Math.floor(absoluteDifference / hour);
-    const minutes = Math.floor((absoluteDifference % hour) / minute);
+    const minutes = options.singleUnit ? 0 : Math.floor((absoluteDifference % hour) / minute);
     const direction = difference < 0 ? "Past" : "Future";
     const unit = minutes > 0 ? "HoursMinutes" : "Hours";
     return translate(`projects.relative${unit}${direction}`, { days: 0, hours, minutes });
   }
   const amount = Math.sign(difference) * Math.max(1, Math.floor(absoluteDifference / minute));
-  return spaceDateTimeNumbers(new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(amount, "minute"));
+  return spaceDateTimeNumbers(new Intl.RelativeTimeFormat(locale, { numeric: "always", style: options.singleUnit ? "narrow" : "long" }).format(amount, "minute"));
 }

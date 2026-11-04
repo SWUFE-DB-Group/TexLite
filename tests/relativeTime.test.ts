@@ -3,9 +3,9 @@ import { formatRelativeTime } from "../src/client/relativeTime";
 import i18n from "../src/client/i18n";
 
 const now = Date.parse("2026-10-21T12:00:00Z");
-function relative(minutesAgo: number, locale = "en") {
+function relative(minutesAgo: number, locale = "en", singleUnit = false) {
   return formatRelativeTime(new Date(now - minutesAgo * 60_000).toISOString(), locale, now,
-    (key, options) => i18n.t(key, { ...options, lng: locale }));
+    (key, options) => i18n.t(key, { ...options, lng: locale }), { singleUnit });
 }
 
 describe("shared project/comment relative times", () => {
@@ -32,6 +32,18 @@ describe("shared project/comment relative times", () => {
     expect(relative(-16)).toBe("in 16 minutes");
     expect(relative(-153)).toBe("in 2h 33m");
     expect(formatRelativeTime("invalid", "en", now, (key) => key)).toBe("invalid");
+  });
+
+  it.each([
+    ["en", "16m ago", "16h ago", "1d ago", "in 2h"],
+    ["zh", "16 分钟前", "16 小时前", "1 天前", "2 小时后"],
+    ["zh-Hant", "16 分鐘前", "16 小時前", "1 天前", "2 小時後"]
+  ])("uses one floored unit for grid labels in %s without changing full precision", (locale, minutes, hours, days, future) => {
+    expect(relative(16, locale, true)).toBe(minutes);
+    expect(relative(16 * 60 + 31, locale, true)).toBe(hours);
+    expect(relative(25 * 60, locale, true)).toBe(days);
+    expect(relative(-153, locale, true)).toBe(future);
+    expect(relative(0, locale, true)).toBe(relative(0, locale));
   });
 
   it("uses Traditional Chinese for both Intl and translated relative times", () => {

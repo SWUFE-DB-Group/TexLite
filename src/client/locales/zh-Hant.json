@@ -222,6 +222,7 @@
     "githubEncryption": "TexLite 會透過 GitHub 驗證 token，並以加密形式儲存；儲存後不會再次顯示 token 明文。"
   },
   "projects": {
+    "byUserInline": "由 {{user}} 修改",
     "ownedBy": "擁有者：<user>{{user}}</user>",
     "createdAt": "建立於 {{time}}",
     "lastModifiedAt": "最後修改於 {{time}}，修改者：<user>{{user}}</user>",
