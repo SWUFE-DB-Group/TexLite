@@ -1099,7 +1099,7 @@
     },
     "collaboration": {
       "connecting": "正在連線…",
-      "syncing": "正在同步文件…",
+      "syncing": "同步中…",
       "connected": "即時協作已連線",
       "disconnected": "即時協作連線已斷開",
       "editing": "正在編輯",
