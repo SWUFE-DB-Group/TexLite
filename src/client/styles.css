@@ -476,7 +476,7 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .tag-marquee[data-overflow="true"]:is(:hover, :focus-visible) > .tag-marquee-track,
   :is(.project-card-open, .project-list-summary-open):focus-visible .tag-marquee[data-overflow="true"] > .tag-marquee-track {
-    animation: tag-marquee-pan var(--tag-marquee-duration) linear 1.5s infinite alternate;
+    animation: tag-marquee-pan var(--tag-marquee-duration) linear 1s infinite alternate;
   }
 }
 @keyframes tag-marquee-pan {
@@ -600,7 +600,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .workspace-project-title:focus-visible { outline: 1px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; border-radius: 3px; }
 .workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) > span { max-width: none; overflow: visible; }
 @media (prefers-reduced-motion: no-preference) {
-  .workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) > span { animation: project-title-pan var(--project-title-duration) linear 1.5s infinite alternate; }
+  .workspace-project-title[data-overflow="true"]:is(:hover, :focus-visible) > span { animation: project-title-pan var(--project-title-duration) linear 1s infinite alternate; }
 }
 @keyframes project-title-pan {
   0% { transform: translateX(0); }
