@@ -91,24 +91,20 @@ describe("compact editor search panel", () => {
     expect(view.state.doc.toString()).toBe("value1 item2");
   });
 
-  it("puts Select all in a dismissible menu and preserves the replace value when collapsed", () => {
-    const { view, field, button, type, key } = fixture();
+  it("preserves the replacement when collapsed and exposes the current expand/collapse action without a menu", () => {
+    const { view, field, button, type } = fixture();
     type("search", "model"); type("replace", "framework");
+    expect(button("toggleReplace").getAttribute("aria-label")).toBe(en.editor.search.hideReplace);
     button("toggleReplace").click();
     expect(view.dom.querySelector<HTMLElement>(".cm-search-replace-row")!.hidden).toBe(true);
+    expect(button("toggleReplace").getAttribute("aria-expanded")).toBe("false");
+    expect(button("toggleReplace").getAttribute("aria-label")).toBe(en.editor.search.showReplace);
     button("toggleReplace").click();
     expect(field("replace").value).toBe("framework");
-    key(button("more"), "ArrowDown");
-    expect(document.activeElement).toBe(button("select"));
-    key(button("select"), "Escape");
-    expect(button("more").getAttribute("aria-expanded")).toBe("false");
+    expect(button("toggleReplace").getAttribute("aria-expanded")).toBe("true");
+    expect(button("toggleReplace").getAttribute("aria-label")).toBe(en.editor.search.hideReplace);
     expect(searchPanelOpen(view.state)).toBe(true);
-    button("more").click();
-    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
-    expect(button("more").getAttribute("aria-expanded")).toBe("false");
-    button("more").click(); button("select").click();
-    expect(view.state.selection.ranges).toHaveLength(4);
-    expect(view.hasFocus).toBe(true);
+    expect(view.dom.querySelector('button[name="more"], button[name="select"], [role="menu"]')).toBeNull();
   });
 
   it("never exposes replacement in read-only views and ignores composition Enter", () => {

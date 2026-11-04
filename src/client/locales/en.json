@@ -432,11 +432,11 @@
     },
     "search": {
       "find": "Find", "replace": "Replace",
-      "next": "Next", "previous": "Previous", "all": "Select all", "matchCase": "Match case", "regexp": "Regular expression",
+      "next": "Next", "previous": "Previous", "matchCase": "Match case", "regexp": "Regular expression",
       "wholeWord": "Whole word", "replaceNext": "Replace", "replaceAll": "Replace all", "currentMatch": "Current match",
       "onLine": "on line", "replacedMatchOnLine": "replaced match on line $", "replacedMatches": "replaced $ matches",
       "goToLine": "Go to line", "go": "Go", "matchCount_one": "{{count}} match", "matchCount_other": "{{count}} matches", "noMatches": "No results",
-      "invalidQuery": "Invalid regular expression", "more": "More search actions", "showReplace": "Show replace", "hideReplace": "Hide replace"
+      "invalidQuery": "Invalid regular expression", "showReplace": "Show replace", "hideReplace": "Hide replace"
     }
   },
   "bibtex": {

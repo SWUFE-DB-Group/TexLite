@@ -458,7 +458,6 @@ function searchPhrases(t: TFunction): Record<string, string> {
     "Replace": t("editor.search.replace"),
     "next": t("editor.search.next"),
     "previous": t("editor.search.previous"),
-    "all": t("editor.search.all"),
     "match case": t("editor.search.matchCase"),
     "regexp": t("editor.search.regexp"),
     "by word": t("editor.search.wholeWord"),

@@ -2,7 +2,7 @@ import type { TFunction } from "i18next";
 import { EditorView, runScopeHandlers, type Panel, type ViewUpdate } from "@codemirror/view";
 import {
   SearchQuery, closeSearchPanel, findNext, findPrevious, getSearchQuery,
-  replaceAll, replaceNext, selectMatches, setSearchQuery
+  replaceAll, replaceNext, setSearchQuery
 } from "@codemirror/search";
 import { countSearchMatches, currentSearchMatch, searchQuerySignature } from "./editorSearch";
 
@@ -10,7 +10,8 @@ import { countSearchMatches, currentSearchMatch, searchQuerySignature } from "./
 // CodeMirror panel must expose its main field synchronously, without a React root.
 const iconPaths = {
   down: ["m6 9 6 6 6-6"], up: ["m18 15-6-6-6 6"],
-  more: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
+  foldVertical: ["M12 22v-6", "M12 8V2", "M4 12H2", "M10 12H8", "M16 12h-2", "M22 12h-2", "m15 19-3-3-3 3", "m15 5-3 3-3-3"],
+  unfoldVertical: ["M12 22v-6", "M12 8V2", "M4 12H2", "M10 12H8", "M16 12h-2", "M22 12h-2", "m15 19-3 3-3-3", "m15 5-3-3-3 3"],
   close: ["M18 6 6 18", "m6 6 12 12"],
   replace: ["M14 4a1 1 0 0 1 1-1", "M15 10a1 1 0 0 1-1-1", "M21 4a1 1 0 0 0-1-1", "M21 9a1 1 0 0 1-1 1", "m3 7 3 3 3-3", "M6 10V5a2 2 0 0 1 2-2h2"],
   replaceAll: ["M14 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1", "M19 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1"]
@@ -50,9 +51,6 @@ class CompactSearchPanel implements Panel {
   private readonly options: HTMLButtonElement[];
   private readonly actions: HTMLButtonElement[];
   private readonly replaceActions: HTMLButtonElement[];
-  private readonly menuButton: HTMLButtonElement;
-  private readonly menu: HTMLDivElement;
-  private readonly selectAll: HTMLButtonElement;
   private query: SearchQuery;
   private countedDoc: EditorView["state"]["doc"] | null = null;
   private signature = "";
@@ -82,26 +80,13 @@ class CompactSearchPanel implements Panel {
     tools.append(this.status);
     this.searchBox.append(this.searchField, tools);
     this.toggleReplace = this.button("toggleReplace", "", () => this.showReplace(this.replaceRow.hidden));
-    this.toggleReplace.append(icon(this.doc, "down"));
     this.toggleReplace.hidden = view.state.readOnly;
     const navigation = this.element("div", "cm-search-actions");
     this.actions = [
       this.iconButton("prev", t("editor.search.previous"), "up", () => findPrevious(view), "Shift+Enter"),
       this.iconButton("next", t("editor.search.next"), "down", () => findNext(view), "Enter")
     ];
-    this.menuButton = this.iconButton("more", t("editor.search.more"), "more", () => this.showMenu(this.menu.hidden));
-    this.menuButton.setAttribute("aria-haspopup", "menu");
-    this.menu = this.element("div", "cm-search-menu");
-    this.menu.hidden = true;
-    this.menu.setAttribute("role", "menu");
-    this.menuButton.setAttribute("aria-expanded", "false");
-    this.selectAll = this.button("select", t("editor.search.all"), () => { this.showMenu(false); selectMatches(view); view.focus(); });
-    this.selectAll.textContent = t("editor.search.all");
-    this.selectAll.setAttribute("role", "menuitem");
-    this.menu.append(this.selectAll);
-    const menuAnchor = this.element("div", "cm-search-menu-anchor");
-    menuAnchor.append(this.menuButton, this.menu);
-    navigation.append(...this.actions, menuAnchor);
+    navigation.append(...this.actions);
     const close = this.iconButton("close", t("common.close"), "close", () => closeSearchPanel(view), "Escape");
     this.replaceRow = this.element("div", "cm-search-replace-row");
     const replacement = this.element("div", "cm-search-box cm-replace-box");
@@ -117,16 +102,10 @@ class CompactSearchPanel implements Panel {
     this.dom.append(layout);
     this.showReplace(!view.state.readOnly);
     this.dom.addEventListener("keydown", this.keydown);
-    this.doc.addEventListener("pointerdown", this.outsideMenu);
-    this.doc.addEventListener("focusin", this.outsideMenu);
     this.refresh();
   }
 
   mount(): void { this.searchField.focus(); this.searchField.select(); }
-  destroy(): void {
-    this.doc.removeEventListener("pointerdown", this.outsideMenu);
-    this.doc.removeEventListener("focusin", this.outsideMenu);
-  }
   update(update: ViewUpdate): void {
     const query = getSearchQuery(update.state);
     if (!query.eq(this.query) || update.docChanged || update.selectionSet) this.refresh();
@@ -188,33 +167,22 @@ class CompactSearchPanel implements Panel {
       : !this.count ? this.t("editor.search.noMatches") : `${current} / ${this.count}`;
     this.status.setAttribute("aria-label", !this.count ? this.status.textContent
       : `${this.t("editor.search.currentMatch")} ${current}, ${this.t("editor.search.matchCount", { count: this.count })}`);
-    [...this.actions, this.selectAll].forEach(button => { button.disabled = !this.count; });
+    this.actions.forEach(button => { button.disabled = !this.count; });
     // Literal, case-sensitive identical replacement cannot change the source.
     const unchanged = !this.query.regexp && this.query.caseSensitive && this.query.search === this.query.replace;
     this.replaceActions.forEach(button => { button.disabled = !this.count || unchanged || this.view.state.readOnly; });
   }
   private showReplace(show: boolean): void {
     this.replaceRow.hidden = !show;
+    this.toggleReplace.replaceChildren(icon(this.doc, show ? "foldVertical" : "unfoldVertical"));
     this.toggleReplace.setAttribute("aria-expanded", String(show));
     this.toggleReplace.title = this.t(show ? "editor.search.hideReplace" : "editor.search.showReplace");
     this.toggleReplace.setAttribute("aria-label", this.toggleReplace.title);
     this.view.requestMeasure();
   }
-  private showMenu(show: boolean): void {
-    this.menu.hidden = !show;
-    this.menuButton.setAttribute("aria-expanded", String(show));
-    if (show) this.selectAll.focus();
-  }
-  private outsideMenu = (event: Event): void => {
-    if (!this.menu.hidden && !this.menu.parentElement?.contains(event.target as Node)) this.showMenu(false);
-  };
   private keydown = (event: KeyboardEvent): void => {
     if (event.isComposing) return;
-    if (!this.menu.hidden && event.key === "Escape") {
-      event.preventDefault(); event.stopPropagation(); this.showMenu(false); this.menuButton.focus();
-    } else if (event.target === this.menuButton && event.key === "ArrowDown") {
-      event.preventDefault(); this.showMenu(true);
-    } else if (runScopeHandlers(this.view, event, "search-panel")) event.preventDefault();
+    if (runScopeHandlers(this.view, event, "search-panel")) event.preventDefault();
     else if (event.key === "Enter" && event.target === this.searchField) {
       event.preventDefault(); (event.shiftKey ? findPrevious : findNext)(this.view);
     } else if (event.key === "Enter" && event.target === this.replaceField) {

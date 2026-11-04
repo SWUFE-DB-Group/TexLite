@@ -1127,7 +1127,6 @@
       "replace": "替換為",
       "next": "下一個",
       "previous": "上一個",
-      "all": "選擇全部",
       "matchCase": "區分大小寫",
       "regexp": "正規表示式",
       "wholeWord": "全字比對",
@@ -1143,7 +1142,6 @@
       "matchCount_other": "共 {{count}} 個符合",
       "noMatches": "沒有符合項",
       "invalidQuery": "正規表示式無效",
-      "more": "更多尋找操作",
       "showReplace": "展開替換",
       "hideReplace": "收合替換"
     }
