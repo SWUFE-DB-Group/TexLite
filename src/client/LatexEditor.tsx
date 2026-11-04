@@ -194,7 +194,7 @@ export function LatexEditor({
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
-        search({ top: false }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
+        search({ top: true }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
         autocompletion({
           override: isBibtexFile ? [bibtexCompletionSource] : isLatexFile ? [(context) => latexCompletions(context, t, completionIndexRef.current)] : undefined,
           activateOnTyping: true
