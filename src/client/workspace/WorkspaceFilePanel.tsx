@@ -1,6 +1,6 @@
 import { formatBytes } from "../formatBytes";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FileSearch, FolderOpen, FolderPlus, Hash, ListTree, LoaderCircle, Move, Trash2, Upload, WandSparkles, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FolderOpen, Hash, ListTree, LoaderCircle, Move, Trash2, Upload, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type AnimationEvent, type ChangeEvent, type DragEvent, type RefObject } from "react";
 import { Panel, type PanelImperativeHandle } from "react-resizable-panels";
 import type { FileEntry, Project } from "../types";
@@ -12,6 +12,7 @@ import type { UploadFeedback } from "./useProjectFiles";
 import { appPath } from "../basePath";
 import { WorkspaceMobileDrawer } from "./WorkspaceMobileDrawer";
 import { WorkspaceSidebarLayout } from "./WorkspaceSidebarLayout";
+import { FileTreeActionsMenu } from "./FileTreeActionsMenu";
 import { captureDeletionHeight, FILE_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
 
 const fileKey = (entry: FileEntry) => entry.path;
@@ -100,7 +101,17 @@ export function WorkspaceFilePanel({
   };
   const content = <WorkspaceSidebarLayout phone={Boolean(phoneDrawer)} files={
       <section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly && !uploadingFiles) setFileDragActive(true); }} onDragOver={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly || uploadingFiles ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.stopPropagation(); return; } event.preventDefault(); setFileDragActive(false); if (readOnly || uploadingFiles) return; const files = Array.from(event.dataTransfer.files); if (containsDroppedFolder(event.dataTransfer) || files.length === 0) { onError(t("editor.dropFoldersUnsupported")); return; } void uploadFiles(files); }}>
-        <div className="panel-title"><button className="file-size-toggle" type="button" aria-pressed={showFileSizes} title={t(showFileSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowFileSizes((current) => !current)}>{t("common.files")}</button><span className="file-tools"><button type="button" className="file-quick-open" aria-label={t("navigation.quickOpen")} title={`${t("navigation.quickOpen")} (Ctrl/Cmd+P)`} onClick={() => setQuickOpen(true)}><FileSearch size={15} /></button>{!readOnly && <><button type="button" disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} /></button><button type="button" aria-label={t("editor.newFolder")} title={t("editor.newFolder")} onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}><FolderPlus size={15} /></button><button type="button" aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} /></button><input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} /></>}</span></div>
+        <div className="panel-title">
+          <button className="file-size-toggle" type="button" aria-pressed={showFileSizes} title={t(showFileSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowFileSizes((current) => !current)}>{t("common.files")}</button>
+          <span className="file-tools">
+            {!readOnly && <>
+              <button type="button" disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} aria-hidden /></button>
+              <button type="button" aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} aria-hidden /></button>
+              <input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} />
+            </>}
+            <FileTreeActionsMenu onQuickOpen={() => setQuickOpen(true)} onNewFolder={readOnly ? undefined : () => { setNewFolderName(""); setNewFolderOpen(true); }} />
+          </span>
+        </div>
         {uploadFeedback && <div className={`file-upload-feedback ${uploadFeedback.kind}`} role={uploadFeedback.kind === "error" ? "alert" : "status"} aria-live={uploadFeedback.kind === "error" ? "assertive" : "polite"} aria-busy={uploadFeedback.kind === "uploading"}>
           {uploadFeedback.kind === "uploading"
             ? <LoaderCircle className="spin" size={14} />
