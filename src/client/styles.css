@@ -249,7 +249,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-card-badges { position: absolute; top: 10px; right: 10px; max-width: calc(100% - 20px); display: flex; align-items: center; gap: 5px; }
 .project-card-badges:empty { display: none; }
 .project-card-tags { position: absolute; bottom: 10px; left: 10px; right: 10px; height: 21px; display: flex; flex-wrap: nowrap; align-items: center; gap: 5px; overflow: hidden; }
-.project-card-tags .tag { min-width: 0; max-width: 100%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-card-tags .tag { min-width: 0; max-width: min(110px, 100%); flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-card-tags .tag, .project-list-tags .tag { font-size: 9px; }
 .project-icon-avatar { width: 36px; height: 36px; box-sizing: border-box; display: grid; place-items: center; flex: none; overflow: hidden; border: 1px solid var(--ui-project-icon-border, transparent); border-radius: 50%; padding: 0; background: #263a33; color: #fff; font-size: 15px; font-weight: 750; line-height: 1; }
 .project-icon-avatar > svg { width: 18px; height: 18px; }
@@ -471,12 +471,14 @@ button.project-icon-avatar.editable:hover, button.project-icon-avatar.editable:f
 .project-mentions-badge { min-width: 0; display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--ui-danger-border, #f8c8c5); border-radius: 999px; padding: 2px 6px; background: var(--ui-subtle, #fde8e7); color: var(--ui-danger, #b3261e); font: inherit; font-size: 10px; font-weight: 700; line-height: 1.35; white-space: nowrap; }
 .project-mentions-badge:hover, .project-mentions-badge:focus-visible { border-color: var(--ui-danger-border, #f2a29d); background: var(--ui-hover, #fcdbd8); color: var(--ui-danger, #9c1f17); outline: none; }
 .project-mentions-badge svg { flex: none; }
-.tag { display: inline-flex; align-items: center; gap: 4px; width: fit-content; border-radius: 999px; padding: 2px 7px; background: var(--ui-subtle, #eef0ee); color: var(--ui-text, #4a524c); font-size: 10px; font-weight: 650; }
+.tag { display: inline-flex; align-items: center; gap: 4px; width: fit-content; border-radius: 999px; padding: 2px 7px; background: var(--ui-subtle, #eef0ee); color: var(--ui-text, #4a524c); font-size: 10px; font-weight: 500; }
+.tag > .tag-dot { width: 6px; height: 6px; flex: none; background: var(--tag-color); }
+.tag-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
 .tag-red { --tag-color: #e04b45; } .tag-orange { --tag-color: #ef9135; } .tag-yellow { --tag-color: #dbb62f; }
 .tag-green { --tag-color: #49a563; } .tag-blue { --tag-color: #4c83db; } .tag-purple { --tag-color: #9566ce; } .tag-gray { --tag-color: #929994; }
 .tag-dot[class*="tag-"] { color: var(--tag-color); }
-.tag[class*="tag-"] { border: 1px solid color-mix(in srgb, var(--tag-color) 35%, transparent); background: color-mix(in srgb, var(--tag-color) 12%, var(--ui-tag-base, white)); }
+.tag[class*="tag-"] { border: 1px solid color-mix(in srgb, var(--tag-color) 20%, transparent); background: color-mix(in srgb, var(--tag-color) 16%, var(--ui-tag-base, white)); }
 .empty, .center-card { padding: 50px; color: var(--ui-muted, #737a75); text-align: center; }
 .lazy-load-state { min-height: 104px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 24px; color: var(--ui-muted, #68746d); text-align: center; }
 .lazy-load-state.compact { min-height: 72px; padding: 18px 12px; font-size: 12px; }

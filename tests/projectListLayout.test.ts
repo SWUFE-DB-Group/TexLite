@@ -47,6 +47,8 @@ describe("project list title layout", () => {
     expect(getComputedStyle(badge).flexShrink).toBe("0"); expect(getComputedStyle(badge).whiteSpace).toBe("nowrap");
     expect(getComputedStyle(tags.parentElement!).flexDirection).toBe("column");
     expect(tags.querySelector(".tag-yellow")?.textContent).toBe("2027");
+    expect(tags.querySelector('.tag-yellow > .tag-dot[aria-hidden="true"]')).not.toBeNull();
+    expect(tags.querySelector(".tag-blue .tag-label")?.textContent).toBe("Research");
     await act(async () => tags.click()); expect(open).toHaveBeenCalledOnce();
   });
 });

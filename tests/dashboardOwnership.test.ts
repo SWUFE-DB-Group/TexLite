@@ -87,6 +87,7 @@ describe("project ownership tabs", () => {
     expect(badges.querySelector<HTMLElement>(".project-comments-badge")?.dataset.tooltip).toBe("5 unresolved");
     expect(badges.firstElementChild?.classList.contains("project-mentions-badge")).toBe(true);
     expect(cards[0].querySelector(".project-card-tags")?.textContent).toBe("Research");
+    expect(cards[0].querySelector('.project-card-tags .tag-blue > .tag-dot[aria-hidden="true"]')).not.toBeNull();
     expect(cards[0].querySelector(".project-paper-title")?.textContent).toBe("Real source title");
     expect(cards[0].querySelector(".project-paper-summary")?.textContent).toBe("A readable research summary.");
     expect(cards[0].querySelector(".project-paper-summary")?.nextElementSibling?.className).toBe("project-paper-lines");

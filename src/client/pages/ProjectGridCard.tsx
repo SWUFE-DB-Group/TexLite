@@ -59,7 +59,9 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
       <div className="project-card-thumbnail">
         <ProjectPaper preview={project.preview} />
         <div className="project-card-tags" title={project.tags.map((tag) => tag.name).join(", ")}>
-          {project.tags.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>{tag.name}</span>)}
+          {project.tags.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>
+            <span className="tag-dot" aria-hidden="true" /><span className="tag-label">{tag.name}</span>
+          </span>)}
         </div>
       </div>
       <div className="project-card-caption">
