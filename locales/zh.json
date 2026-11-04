@@ -6,7 +6,7 @@
     "title": "把 LaTeX 写作，变成一件顺手的事。",
     "titlePrefix": "把 LaTeX 写作，",
     "titleSuffix": "变成一件顺手的事。",
-    "lead": "TexLite 将编辑、编译、预览和协作放进一个清爽的浏览器工作区，同时保留你熟悉的本机 LaTeX 环境。",
+    "lead": "TexLite 将编辑、编译、预览和协作放进一个清爽的浏览器工作区，同时保留你熟悉的本机 LaTeX 环境和 Coding Agent。",
     "primary": "开始使用",
     "secondary": "了解 TexLite",
     "note": "本地优先 · 自托管 · AGPL-3.0-only",
