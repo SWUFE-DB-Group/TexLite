@@ -233,12 +233,13 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-card-modifier { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .project-details-tooltip { width: 260px; max-width: 100%; padding: 3px 2px; white-space: normal; font-weight: 400; }
 .project-name-tooltip { width: auto; line-height: 1.45; }
-.project-name-tooltip > strong { font-size: 12px; font-weight: 650; }
+.project-name-tooltip > strong { font-size: 12px; }
 .project-details-tooltip ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .project-details-tooltip li { display: grid; grid-template-columns: 14px minmax(0, 1fr); align-items: start; gap: 7px; }
 .project-details-tooltip li > svg { margin-top: 2px; color: #bed0c4; }
 .project-details-tooltip li > div { display: grid; gap: 2px; }
 .project-details-person { color: #d5e0d8; }
+.project-details-tooltip strong { font-weight: 650; }
 .project-grid-card .project-action-menu-grid { position: absolute; right: 7px; bottom: 21px; }
 .project-grid:not(.list-view) .project-grid-card.project-card-menu-open { z-index: 4; border-color: var(--ui-accent-border, #8caf99); box-shadow: 0 10px 30px #25352a18; }
 .project-grid:not(.list-view).project-list-menu-active .project-grid-card:not(.project-card-menu-open) { opacity: .48; filter: saturate(.72); }

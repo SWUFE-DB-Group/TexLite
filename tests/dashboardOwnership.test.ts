@@ -98,6 +98,7 @@ describe("project ownership tabs", () => {
     const nameTooltip = host.querySelector('[role="tooltip"]')!;
     expect(nameTooltip.querySelector("strong")?.textContent).toBe(projects[0].name);
     expect(nameTooltip.textContent).toBe(`${projects[0].name}, owned by Administrator`);
+    expect([...nameTooltip.querySelectorAll("strong")].map((name) => name.textContent)).toEqual([projects[0].name, "Administrator"]);
     expect(nameTooltip.querySelector("time")).toBeNull();
     expect(nameTooltip.textContent).not.toContain("Grace");
     await act(async () => cards[0].querySelector(".project-card-metadata time")!.dispatchEvent(new Event("pointerover", { bubbles: true })));
@@ -109,7 +110,7 @@ describe("project ownership tabs", () => {
     expect(details[1].textContent).toContain("by Grace");
     expect(timeTooltip.querySelectorAll("li > svg")).toHaveLength(2);
     expect(timeTooltip.textContent).not.toContain("owned by");
-    expect(timeTooltip.querySelector("strong")).toBeNull();
+    expect(timeTooltip.querySelector("strong")?.textContent).toBe("Grace");
     expect(host.querySelector(".project-icon-avatar, .owner-badge, .project-meta")).toBeNull();
     expect(host.querySelector("button button")).toBeNull();
     await click(".project-action-menu-trigger");
@@ -120,6 +121,21 @@ describe("project ownership tabs", () => {
     expect(lastParams().has("previews")).toBe(false);
     expect(host.querySelector(".project-card-preview")).toBeNull();
     expect(host.querySelector(".project-list-title-line .project-comments-badge")?.textContent).toBe("5 unresolved");
+  });
+
+  it.each(["en", "zh", "zh-Hant"])("emphasizes only attribution names without treating %s user text as markup", async (language) => {
+    await i18n.changeLanguage(language);
+    const owner = "Owner <img src=x> & team", editor = "Editor <em>name</em>";
+    projects = [{ ...makeProject(true, 0), ownerDisplayName: owner, lastModifiedDisplayName: editor }];
+    await render();
+    await act(async () => host.querySelector(".project-card-title")!.dispatchEvent(new Event("pointerover", { bubbles: true })));
+    let tooltip = host.querySelector('[role="tooltip"]')!;
+    expect([...tooltip.querySelectorAll("strong")].map((name) => name.textContent)).toEqual([projects[0].name, owner]);
+    expect(tooltip.querySelector("img, em")).toBeNull();
+    await act(async () => host.querySelector(".project-card-metadata time")!.dispatchEvent(new Event("pointerover", { bubbles: true })));
+    tooltip = host.querySelector('[role="tooltip"]')!;
+    expect([...tooltip.querySelectorAll("strong")].map((name) => name.textContent)).toEqual([editor]);
+    expect(tooltip.querySelector("img, em")).toBeNull();
   });
 
   it.each(["grid", "list"])("keeps the %s UI, counts all pages and resets pagination when changing ownership", async (view) => {

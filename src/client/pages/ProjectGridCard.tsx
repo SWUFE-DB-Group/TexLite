@@ -1,4 +1,5 @@
 import { AtSign, CalendarDays, History, MessageSquare } from "lucide-react";
+import { Trans } from "react-i18next";
 import { captureDeletionHeight } from "../useDeletionTransitions";
 import { ProjectActionMenu, type ProjectActionMenuProps } from "./ProjectActionMenu";
 import type { ProjectSourcePreview } from "../../shared/projectCatalog";
@@ -36,7 +37,7 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
   const modifier = project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser");
   const nameDetails = <div className="project-details-tooltip project-name-tooltip">
     <strong>{project.name}</strong>{", "}
-    <span className="project-details-person">{t("projects.ownedBy", { user: owner })}</span>
+    <span className="project-details-person"><Trans t={t} i18nKey="projects.ownedBy" values={{ user: owner }} components={{ user: <strong /> }} /></span>
   </div>;
   const timeDetails = <div className="project-details-tooltip">
     <ul>
@@ -44,7 +45,8 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
         <time dateTime={project.createdAt}>{t("projects.createdAt", { time: formatExactTime(project.createdAt) })}</time>
       </div></li>
       <li><History aria-hidden size={14} /><div>
-        <time dateTime={project.updatedAt}>{t("projects.lastModifiedAt", { time: formatExactTime(project.updatedAt), user: modifier })}</time>
+        <time dateTime={project.updatedAt}><Trans t={t} i18nKey="projects.lastModifiedAt"
+          values={{ time: formatExactTime(project.updatedAt), user: modifier }} components={{ user: <strong /> }} /></time>
       </div></li>
     </ul>
   </div>;
