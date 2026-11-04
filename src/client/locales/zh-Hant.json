@@ -223,9 +223,9 @@
   },
   "projects": {
     "byUserInline": "由 {{user}} 修改",
-    "ownedBy": "擁有者：<user>{{user}}</user>",
+    "ownedBy": "（擁有者：<user>{{user}}</user>）",
     "createdAt": "建立於 {{time}}",
-    "lastModifiedAt": "最後修改於 {{time}}，修改者：<user>{{user}}</user>",
+    "lastModifiedAt": "最後修改於 {{time}}（修改者：<user>{{user}}</user>）",
     "ownership": "專案歸屬",
     "allProjects": "全部專案",
     "ownedByMe": "我擁有的",

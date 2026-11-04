@@ -37,7 +37,7 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
   const owner = project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser");
   const modifier = project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser");
   const nameDetails = <div className="project-details-tooltip project-name-tooltip">
-    <strong>{project.name}</strong>{", "}
+    <strong>{project.name}</strong>{" "}
     <span className="project-details-person"><Trans t={t} i18nKey="projects.ownedBy" values={{ user: owner }} components={{ user: <strong className="project-details-name" /> }} /></span>
   </div>;
   const timeDetails = <div className="project-details-tooltip">

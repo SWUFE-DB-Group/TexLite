@@ -100,7 +100,7 @@ describe("project ownership tabs", () => {
     await act(async () => cards[0].querySelector(".project-card-title")!.dispatchEvent(new Event("pointerover", { bubbles: true })));
     const nameTooltip = host.querySelector('[role="tooltip"]')!;
     expect(nameTooltip.querySelector("strong")?.textContent).toBe(projects[0].name);
-    expect(nameTooltip.textContent).toBe(`${projects[0].name}, owned by Administrator`);
+    expect(nameTooltip.textContent).toBe(`${projects[0].name} (owned by Administrator)`);
     expect([...nameTooltip.querySelectorAll("strong")].map((name) => name.textContent)).toEqual([projects[0].name, "Administrator"]);
     expect(nameTooltip.querySelector("time")).toBeNull();
     expect(nameTooltip.textContent).not.toContain("Grace");
@@ -110,7 +110,7 @@ describe("project ownership tabs", () => {
     expect(details).toHaveLength(2);
     expect(details[0].textContent).toContain("Created at");
     expect(details[1].textContent).toContain("Last modified at");
-    expect(details[1].textContent).toContain("by Grace");
+    expect(details[1].textContent).toContain("(by Grace)");
     expect(timeTooltip.querySelectorAll("li > svg")).toHaveLength(2);
     expect(timeTooltip.textContent).not.toContain("owned by");
     expect(timeTooltip.querySelector("strong")?.textContent).toBe("Grace");
