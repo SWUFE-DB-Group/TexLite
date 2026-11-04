@@ -4,11 +4,12 @@ export type EditorTheme = "light" | "dark";
 // Keep the existing light colors, including CodeMirror's BibTeX/BST colors.
 const light = {
   ink: "#1F2328", "editor-bg": "#FFFFFF", cmd: "#1F55C4",
-  structure: "#0B7A5E", env: "#0B7A5E", math: "#6D28D9", key: "#9A5B00",
+  structure: "#0B7A5E", env: "#0B7A5E", math: "#6D28D9", key: "#096B75",
+  "key-highlight": "#0B5E68",
   task: "#9A5B00", special: "#B0307A", comment: "#6B7280", bracket: "#6B7280", "comment-selected": "#6B7280", "literal-bg": "#F4F5F6",
   gutter: "#9CA3AF", "gutter-active": "#4B5563", "active-line": "#69A5D71A",
   "match-bg": "#BDE5D8", "match-fg": "#075940", "selection-bg": "#C8DCF0", "selection-inactive-bg": "#C8DCF0",
-  "search-bg": "#FFE9A8", "search-outline": "#D9A91C88",
+  "search-bg": "#EC489938", "search-fg": "#4C1830", "search-active-bg": "#F6A6CF", "search-active-fg": "#4C1830", "search-outline": "#C52E78",
   error: "#D92D20", warning: "#C77700", hint: "#5B7C99", cursor: "#1F2328",
   "code-meta": "#404740", "code-keyword": "#708", "code-atom": "#219",
   "code-literal": "#164", "code-string": "#A11", "code-escape": "#E40",
@@ -41,11 +42,12 @@ export type EditorPalette = { readonly [Key in keyof typeof light]: string };
 // comments and TexLite's existing semantic color families (not inverted light colors).
 const dark: EditorPalette = {
   ink: "#D7DAE0", "editor-bg": "#282C34", cmd: "#9CC6F4",
-  structure: "#92CEB9", env: "#92CEB9", math: "#D5B5F7", key: "#E5C07B",
+  structure: "#92CEB9", env: "#92CEB9", math: "#D5B5F7", key: "#56C1C9",
+  "key-highlight": "#8EDDE3",
   task: "#E5C07B", special: "#EDB1D1", comment: "#8B95A7", bracket: "#BCC3CF", "comment-selected": "#BCC3CF", "literal-bg": "#303640",
   gutter: "#6B7487", "gutter-active": "#D7DAE0", "active-line": "#6699FF1C",
   "match-bg": "#294D44", "match-fg": "#BDEED8", "selection-bg": "#3B506D", "selection-inactive-bg": "#39414E",
-  "search-bg": "#433C2A", "search-outline": "#C9A45E99",
+  "search-bg": "#FF5DAA52", "search-fg": "#F8E5F0", "search-active-bg": "#F47DBB", "search-active-fg": "#301323", "search-outline": "#FFADDD",
   error: "#F28B82", warning: "#E5B06C", hint: "#8FB5D6", cursor: "#BDD6FF",
   "code-meta": "#BDC2CC", "code-keyword": "#D5B5F7", "code-atom": "#A2C4FB",
   "code-literal": "#A6D189", "code-string": "#A6D189", "code-escape": "#E7BA87",

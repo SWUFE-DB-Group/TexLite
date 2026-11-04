@@ -9,6 +9,7 @@ import { classifyLatexReferenceCommand } from "../../shared/latexReferenceComman
 // refinements distinguish environments from reference keys and raw text from math.
 export const latexHighlightTags = {
   environment: Tag.define(tags.attributeValue),
+  referenceKey: Tag.define(tags.attributeValue),
   heading: Tag.define(tags.heading),
   mathDelimiter: Tag.define(tags.string),
   literal: Tag.define(tags.string)
@@ -22,6 +23,7 @@ export const latexHighlightStyle = HighlightStyle.define([
   { tag: latexHighlightTags.mathDelimiter, class: "cm-tl-math-delimiter" },
   { tag: latexHighlightTags.literal, class: "cm-tl-literal" },
   { tag: tags.attributeValue, class: "cm-tl-key" },
+  { tag: latexHighlightTags.referenceKey, class: "cm-tl-key" },
   { tag: tags.escape, class: "cm-tl-special" },
   { tag: [tags.brace, tags.squareBracket], class: "cm-tl-bracket" },
   { tag: tags.comment, class: "cm-tl-comment" }

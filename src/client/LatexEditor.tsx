@@ -20,9 +20,10 @@ import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
 import type { Comment, LatexCompletionIndex } from "./types";
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
-import { editorColorScheme, editorGenericHighlightStyle, selectedCommentHighlighting } from "./editorThemeExtension";
+import { editorColorScheme, editorGenericHighlightStyle, selectedSyntaxHighlighting } from "./editorThemeExtension";
 import { useTheme, type Theme } from "./theme";
 import { createEditorSearchPanel } from "./editorSearchPanel";
+import { editorSearchOverview } from "./editorSearchOverview";
 import { bibtexCompletionSource, bibtexHighlightStyle, bibtexLanguage, bstLanguage, createBibtexEditorExtensions, latexLanguage, localizedBibtexMessages } from "./latexLanguage";
 import { supportsLatexMathHover } from "./latexMath";
 import { latexHighlightStyle, latexSemanticHighlighting } from "./latex/highlighting";
@@ -181,7 +182,7 @@ export function LatexEditor({
           onComment: (...args) => onAddCommentRef.current(...args),
           onHistory: (...args) => onSelectionHistoryRef.current(...args)
         }),
-        foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), selectedCommentHighlighting, highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
+        foldGutter(), ...(collaboration ? [] : [history()]), drawSelection(), selectedSyntaxHighlighting, highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
         isBibtexFile ? [bibtexLanguage, ...createBibtexEditorExtensions(localizedBibtexMessages(t))] : isBstFile ? bstLanguage : isLatexFile ? latexLanguage : auxiliaryLanguage.current.of([]),
         ...(isLatexFile ? [syntaxHighlighting(latexHighlightStyle), latexSemanticHighlighting] : [syntaxHighlighting(editorGenericHighlightStyle)]),
         ...(isBibtexFile ? [syntaxHighlighting(bibtexHighlightStyle)] : []),
@@ -194,7 +195,7 @@ export function LatexEditor({
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
-        search({ top: true, createPanel: createEditorSearchPanel(t) }), EditorState.phrases.of(searchPhrases(t)),
+        search({ top: true, createPanel: createEditorSearchPanel(t) }), editorSearchOverview, EditorState.phrases.of(searchPhrases(t)),
         autocompletion({
           override: isBibtexFile ? [bibtexCompletionSource] : isLatexFile ? [(context) => latexCompletions(context, t, completionIndexRef.current)] : undefined,
           activateOnTyping: true

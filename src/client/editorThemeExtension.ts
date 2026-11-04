@@ -3,6 +3,7 @@ import type { EditorState, Range } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import type { EditorTheme } from "./editorThemes";
+import { latexHighlightTags } from "./latex/highlighting";
 
 // Adapt CodeMirror's shipped generic highlighter rather than duplicating its
 // tag precedence or changing the existing light BibTeX/BST appearance.
@@ -17,12 +18,16 @@ export const editorGenericHighlightStyle = HighlightStyle.define(defaultHighligh
   return token ? { ...spec, color: `var(--tl-code-${token})`, ...(token === "comment" ? { class: "cm-code-comment" } : {}) } : spec;
 }));
 
-const commentHighlighter = tagHighlighter([{ tag: tags.comment, class: "comment" }]);
+const selectionHighlighter = tagHighlighter([
+  { tag: tags.comment, class: "comment" },
+  { tag: latexHighlightTags.referenceKey, class: "reference" }
+]);
 const selectedComment = Decoration.mark({ class: "cm-selected-comment" });
+const selectedReference = Decoration.mark({ class: "cm-selected-reference" });
 
-/** Use each language's comment tags, including BibTeX and BST, without rescanning source text. */
-export function selectedCommentDecorations(state: EditorState, visibleRanges: readonly { from: number; to: number }[]): DecorationSet {
-  if (!state.facet(EditorView.darkTheme)) return Decoration.none;
+/** Reuse syntax tags to keep selected comments and reference keys readable. */
+export function selectedSyntaxDecorations(state: EditorState, visibleRanges: readonly { from: number; to: number }[]): DecorationSet {
+  const dark = state.facet(EditorView.darkTheme);
   const tree = syntaxTree(state);
   const marks: Range<Decoration>[] = [];
   for (const selection of state.selection.ranges) {
@@ -30,24 +35,25 @@ export function selectedCommentDecorations(state: EditorState, visibleRanges: re
     for (const visible of visibleRanges) {
       const from = Math.max(selection.from, visible.from), to = Math.min(selection.to, visible.to);
       if (from >= to) continue;
-      highlightTree(tree, commentHighlighter, (start, end) => {
-        marks.push(selectedComment.range(start, end));
+      highlightTree(tree, selectionHighlighter, (start, end, classes) => {
+        if (classes === "reference") marks.push(selectedReference.range(start, end));
+        else if (dark) marks.push(selectedComment.range(start, end));
       }, from, to);
     }
   }
   return Decoration.set(marks, true);
 }
 
-export const selectedCommentHighlighting = ViewPlugin.fromClass(class {
+export const selectedSyntaxHighlighting = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(view: EditorView) {
-    this.decorations = selectedCommentDecorations(view.state, view.visibleRanges);
+    this.decorations = selectedSyntaxDecorations(view.state, view.visibleRanges);
   }
   update(update: ViewUpdate) {
     if (update.docChanged || update.selectionSet || update.viewportChanged
       || syntaxTree(update.startState) !== syntaxTree(update.state)
       || update.startState.facet(EditorView.darkTheme) !== update.state.facet(EditorView.darkTheme)) {
-      this.decorations = selectedCommentDecorations(update.state, update.view.visibleRanges);
+      this.decorations = selectedSyntaxDecorations(update.state, update.view.visibleRanges);
     }
   }
 }, { decorations: (plugin) => plugin.decorations });

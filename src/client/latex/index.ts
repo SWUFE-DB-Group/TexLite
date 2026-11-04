@@ -81,7 +81,7 @@ export const latexLanguage = LRLanguage.define({
       "VerbContent VerbatimContent LstInlineContent": latexHighlightTags.literal,
       "NewCommand/LiteralArgContent RenewCommand/LiteralArgContent": tags.tagName,
       "NewEnvironment/LiteralArgContent RenewEnvironment/LiteralArgContent": latexHighlightTags.environment,
-      "LabelArgument/ShortTextArgument/ShortArg/... RefArgument/ShortTextArgument/ShortArg/... BibKeyArgument/ShortTextArgument/ShortArg/...": tags.attributeValue,
+      "LabelArgument/ShortTextArgument/ShortArg/... RefArgument/ShortTextArgument/ShortArg/... BibKeyArgument/ShortTextArgument/ShortArg/...": latexHighlightTags.referenceKey,
       "UrlArgument/LiteralArgContent": tags.url,
       "DocumentClassArgument/ShortTextArgument/ShortArg/...": tags.typeName,
       "PackageArgument/ShortTextArgument/ShortArg/...": tags.namespace,

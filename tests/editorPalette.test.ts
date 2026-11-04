@@ -23,6 +23,15 @@ function contrast(foreground: string, background: string): number {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
+function composite(background: string, base: string): string {
+  if (background.length !== 9) return background;
+  const alpha = Number.parseInt(background.slice(7), 16) / 255;
+  return "#" + [1, 3, 5].map((index) => Math.round(
+    Number.parseInt(background.slice(index, index + 2), 16) * alpha
+      + Number.parseInt(base.slice(index, index + 2), 16) * (1 - alpha)
+  ).toString(16).padStart(2, "0")).join("");
+}
+
 describe.each(["light", "dark"] as const)("%s editor palette", (theme) => {
   const palette = editorPalettes[theme];
   it.each(["ink", "cmd", "structure", "env", "math", "key", "task", "special", "comment", "bracket"])("keeps %s text at WCAG AA contrast on the editor background", (name) => {
@@ -32,6 +41,19 @@ describe.each(["light", "dark"] as const)("%s editor palette", (theme) => {
   it("shares structural and environment color, and keeps reference keys distinct from warnings", () => {
     expect(palette.structure).toBe(palette.env);
     expect(palette.key).not.toBe(palette.warning);
+  });
+
+  it("keeps highlighted reference keys readable over selection, search and comment backgrounds", () => {
+    for (const background of ["selection-bg", "selection-inactive-bg", "search-bg", "comment-hover-bg"] as const) {
+      expect(contrast(palette["key-highlight"], composite(palette[background], palette["editor-bg"])), background).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("keeps both search states readable with a stronger background for the current match", () => {
+    for (const [foreground, background] of [["search-fg", "search-bg"], ["search-active-fg", "search-active-bg"]] as const) {
+      expect(contrast(palette[foreground], composite(palette[background], palette["editor-bg"]))).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(palette["search-active-bg"]).not.toBe(palette["search-bg"]);
   });
 
   it("keeps the active-line tint translucent so it cannot obscure drawn selections", () => {
@@ -91,11 +113,13 @@ describe("editor theme integration", () => {
     }
   });
 
-  it("keeps dark syntax readable under selection and search highlights", () => {
+  it("keeps dark syntax readable under selection highlights", () => {
     const palette = editorPalettes.dark;
-    for (const background of ["selection-bg", "selection-inactive-bg", "search-bg"] as const) {
-      for (const foreground of ["ink", "cmd", "structure", "math", "key", "special", "comment-selected", "bracket"] as const) {
-        expect(contrast(palette[foreground], palette[background]), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
+    // Search hits use their own foreground; selections retain syntax colors.
+    for (const background of ["selection-bg", "selection-inactive-bg"] as const) {
+      // Key colors, like dim comments, use a readable foreground while selected.
+      for (const foreground of ["ink", "cmd", "structure", "math", "key-highlight", "special", "comment-selected", "bracket"] as const) {
+        expect(contrast(palette[foreground], composite(palette[background], palette["editor-bg"])), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });

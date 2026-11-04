@@ -76,6 +76,8 @@ describe("semantic LaTeX palette", () => {
       expect(classesAt(source.indexOf(key))).toContain("cm-tl-key");
     }
     expect(classesAt(source.lastIndexOf("sec:test"))).toContain("cm-tl-key");
+    expect(classesAt(source.indexOf("smith"))).toEqual(classesAt(source.indexOf("sec:test")));
+    expect(classesAt(source.indexOf("smith"))).toEqual(classesAt(source.lastIndexOf("sec:test")));
     expect(classesAt(source.indexOf("{smith"))).toEqual(["cm-tl-bracket"]);
   });
 

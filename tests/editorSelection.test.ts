@@ -4,18 +4,26 @@ import { ensureSyntaxTree } from "@codemirror/language";
 import { latexLanguage } from "../src/client/latex";
 import { bibtexLanguage } from "../src/client/bibtex";
 import { bstLanguage } from "../src/client/bstLanguage";
-import { editorColorScheme, selectedCommentDecorations } from "../src/client/editorThemeExtension";
+import { editorColorScheme, selectedSyntaxDecorations } from "../src/client/editorThemeExtension";
 
 function markedText(state: EditorState, visibleRanges = [{ from: 0, to: state.doc.length }]) {
   expect(ensureSyntaxTree(state, state.doc.length, 200)).not.toBeNull();
   const ranges: Array<{ from: number; to: number; text: string }> = [];
-  selectedCommentDecorations(state, visibleRanges).between(0, state.doc.length, (from, to) => {
+  selectedSyntaxDecorations(state, visibleRanges).between(0, state.doc.length, (from, to) => {
     ranges.push({ from, to, text: state.sliceDoc(from, to) });
   });
   return ranges;
 }
 
 describe("selected comment readability", () => {
+  it.each(["light", "dark"] as const)("adjusts only selected reference keys in %s, not commands, braces or literal text", (theme) => {
+    const doc = String.raw`\label{sec:intro} \ref{sec:intro} \cite{paper} \textbf{prose} \verb|\ref{literal}|`;
+    const state = EditorState.create({ doc, selection: { anchor: 0, head: doc.length }, extensions: [latexLanguage, editorColorScheme(theme)] });
+    expect(markedText(state).map(range => range.text)).toEqual(["sec:intro", "sec:intro", "paper"]);
+    const from = doc.indexOf("paper");
+    expect(markedText(state, [{ from: from + 1, to: from + 4 }])).toEqual([{ from: from + 1, to: from + 4, text: "ape" }]);
+  });
+
   it.each([
     ["TeX", latexLanguage, String.raw`40.16\% text. % actual comment
 \verb|%| \textbf{after}`],
