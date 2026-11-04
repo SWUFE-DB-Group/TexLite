@@ -218,7 +218,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-paper-heading { display: grid; justify-items: center; gap: 4px; }
 .project-paper-heading span { width: 85%; height: 5px; border-radius: 2px; background: #2e4139; }
 .project-paper-heading span:last-child { width: 58%; }
-.project-paper-byline { display: block; width: 40%; height: 3px; margin: 7px auto 12px; border-radius: 2px; background: #b8c1ba; }
+.project-paper-byline { display: block; width: 40%; height: 3px; margin: 7px auto 8px; border-radius: 2px; background: #b8c1ba; }
+.project-paper-abstract-label { margin-bottom: 4px; text-align: center; font-size: 8px; font-weight: 700; line-height: 1.25; }
 .project-paper-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-clamp: 5; overflow: hidden; overflow-wrap: anywhere; margin: 0; font-size: 8px; font-weight: 400; line-height: 1.25; text-align: justify; }
 .project-paper-summary + .project-paper-lines { margin-top: 7px; }
 .project-paper-lines { display: grid; gap: 4px; }
@@ -231,6 +232,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-card-metadata { min-width: 0; display: flex; align-items: baseline; gap: 5px; margin-top: 3px; color: var(--ui-muted, #6a756d); font-size: 12px; font-weight: 400; line-height: 18px; white-space: nowrap; }
 .project-card-metadata time { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
 .project-card-modifier { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.project-details-tooltip { width: 260px; max-width: 100%; padding: 3px 2px; white-space: normal; font-weight: 400; }
+.project-name-tooltip { width: auto; line-height: 1.45; }
+.project-name-tooltip > strong { font-size: 12px; font-weight: 650; }
+.project-details-tooltip ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.project-details-tooltip li { display: grid; grid-template-columns: 14px minmax(0, 1fr); align-items: start; gap: 7px; }
+.project-details-tooltip li > svg { margin-top: 2px; color: #bed0c4; }
+.project-details-tooltip li > div { display: grid; gap: 2px; }
+.project-details-person { color: #d5e0d8; }
 .project-grid-card .project-action-menu-grid { position: absolute; right: 7px; bottom: 21px; }
 .project-grid:not(.list-view) .project-grid-card.project-card-menu-open { z-index: 4; border-color: var(--ui-accent-border, #8caf99); box-shadow: 0 10px 30px #25352a18; }
 .project-grid:not(.list-view).project-list-menu-active .project-grid-card:not(.project-card-menu-open) { opacity: .48; filter: saturate(.72); }

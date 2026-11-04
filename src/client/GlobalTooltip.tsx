@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 
 type TooltipPlacement = "above";
 
 interface TooltipState {
   text: string;
+  content?: ReactNode;
   left: number;
   top: number;
   placement: TooltipPlacement;
@@ -20,6 +21,30 @@ const savedTitleAttribute = "data-texlite-tooltip-title";
 const tooltipSelector = `[data-tooltip], [title], [${savedTitleAttribute}]`;
 const disabledTooltipRegionSelector = '[data-texlite-tooltips="off"]';
 const alwaysEnabledTooltipSelector = "[data-texlite-tooltip-always]";
+const richTooltipContents = new Map<string, ReactNode>();
+const richContentChanged = "texlite:tooltip-content-changed";
+
+/** Structured React content shares ordinary tooltip positioning and dismissal. */
+export function RichTooltip({ children, text, content }: {
+  children: ReactElement<Record<string, unknown>>;
+  text: string;
+  content: ReactNode;
+}) {
+  const id = useId();
+  useLayoutEffect(() => {
+    richTooltipContents.set(id, content);
+    document.dispatchEvent(new CustomEvent(richContentChanged, { detail: id }));
+  }, [id, content]);
+  useLayoutEffect(() => () => {
+    richTooltipContents.delete(id);
+    document.dispatchEvent(new CustomEvent(richContentChanged, { detail: id }));
+  }, [id]);
+  return cloneElement(children, { "data-tooltip": text, "data-tooltip-content": id });
+}
+
+function tooltipContent(element: HTMLElement): ReactNode {
+  return richTooltipContents.get(element.getAttribute("data-tooltip-content") ?? "");
+}
 
 export function globalTooltipPosition(rect: TooltipRect, viewportWidth: number, tooltipWidth = 0): Omit<TooltipState, "text"> {
   const halfWidth = Math.min(tooltipWidth, Math.max(0, viewportWidth - 16)) / 2;
@@ -119,7 +144,7 @@ export function GlobalTooltip() {
         if (!next) return;
         const text = tooltipText(next);
         if (!text) return;
-        setTooltip({ text, ...globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth) });
+        setTooltip({ text, content: tooltipContent(next), ...globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth) });
         return;
       }
       restoreNativeTitle(active.current);
@@ -134,12 +159,13 @@ export function GlobalTooltip() {
         return;
       }
       suppressNativeTitle(next);
-      setTooltip({ text, ...globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth) });
+      setTooltip({ text, content: tooltipContent(next), ...globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth) });
     };
 
     const refreshPosition = () => {
       const element = active.current;
       if (!element) return;
+      if (!element.isConnected) { dismiss(); return; }
       if (tooltipsDisabled(element)) {
         suppressNativeTitle(element);
         setTooltip(null);
@@ -147,7 +173,13 @@ export function GlobalTooltip() {
       }
       const text = tooltipText(element);
       if (!text) return;
-      setTooltip({ text, ...globalTooltipPosition(element.getBoundingClientRect(), window.innerWidth) });
+      setTooltip({ text, content: tooltipContent(element), ...globalTooltipPosition(element.getBoundingClientRect(), window.innerWidth) });
+    };
+    const refreshContent = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (active.current?.getAttribute("data-tooltip-content") !== id) return;
+      if (richTooltipContents.has(id)) refreshPosition();
+      else dismiss();
     };
 
     const remainsWithin = (element: HTMLElement, related: EventTarget | null) => related instanceof Node && element.contains(related);
@@ -179,6 +211,7 @@ export function GlobalTooltip() {
     document.addEventListener("focusin", onFocusIn, true);
     document.addEventListener("focusout", onFocusOut, true);
     document.addEventListener("click", dismiss, true);
+    document.addEventListener(richContentChanged, refreshContent);
     window.addEventListener("resize", refreshPosition);
     window.addEventListener("scroll", refreshPosition, true);
     window.addEventListener("blur", dismiss);
@@ -196,6 +229,7 @@ export function GlobalTooltip() {
       document.removeEventListener("focusin", onFocusIn, true);
       document.removeEventListener("focusout", onFocusOut, true);
       document.removeEventListener("click", dismiss, true);
+      document.removeEventListener(richContentChanged, refreshContent);
       window.removeEventListener("resize", refreshPosition);
       window.removeEventListener("scroll", refreshPosition, true);
       window.removeEventListener("blur", dismiss);
@@ -208,5 +242,5 @@ export function GlobalTooltip() {
   }, []);
 
   if (!tooltip) return null;
-  return <div ref={tooltipElement} id="texlite-global-tooltip" role="tooltip" className={`global-tooltip ${tooltip.placement}`} style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.text}</div>;
+  return <div ref={tooltipElement} id="texlite-global-tooltip" role="tooltip" className={`global-tooltip ${tooltip.placement}`} style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.content ?? tooltip.text}</div>;
 }

@@ -1,7 +1,8 @@
-import { AtSign, MessageSquare } from "lucide-react";
+import { AtSign, CalendarDays, History, MessageSquare } from "lucide-react";
 import { captureDeletionHeight } from "../useDeletionTransitions";
 import { ProjectActionMenu, type ProjectActionMenuProps } from "./ProjectActionMenu";
 import type { ProjectSourcePreview } from "../../shared/projectCatalog";
+import { RichTooltip } from "../GlobalTooltip";
 
 interface ProjectGridCardProps extends Omit<ProjectActionMenuProps, "variant"> {
   removing: boolean;
@@ -21,6 +22,7 @@ function ProjectPaper({ preview }: { preview: ProjectSourcePreview | null | unde
       {preview?.title ? <div className="project-paper-title">{preview.title}</div>
         : <div className="project-paper-heading"><span /><span /></div>}
       <span className="project-paper-byline" />
+      <div className="project-paper-abstract-label">Abstract</div>
       {preview?.abstract && <p className="project-paper-summary">{preview.abstract}</p>}
       <div className="project-paper-lines"><span /><span /><span /><span /><span /></div>
     </>}
@@ -32,8 +34,20 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
   const { project, t } = menu;
   const owner = project.ownerDisplayName ?? project.ownerUsername ?? t("projects.deletedUser");
   const modifier = project.lastModifiedDisplayName ?? project.lastModifiedUsername ?? t("projects.deletedUser");
-  const details = [project.name, `${t("projects.created")}: ${formatExactTime(project.createdAt)}`,
-    `${t("projects.owner")}: ${owner}`, `${t("projects.modified")}: ${formatExactTime(project.updatedAt)}`].join("\n");
+  const nameDetails = <div className="project-details-tooltip project-name-tooltip">
+    <strong>{project.name}</strong>{", "}
+    <span className="project-details-person">{t("projects.ownedBy", { user: owner })}</span>
+  </div>;
+  const timeDetails = <div className="project-details-tooltip">
+    <ul>
+      <li><CalendarDays aria-hidden size={14} /><div>
+        <time dateTime={project.createdAt}>{t("projects.createdAt", { time: formatExactTime(project.createdAt) })}</time>
+      </div></li>
+      <li><History aria-hidden size={14} /><div>
+        <time dateTime={project.updatedAt}>{t("projects.lastModifiedAt", { time: formatExactTime(project.updatedAt), user: modifier })}</time>
+      </div></li>
+    </ul>
+  </div>;
 
   return <article ref={removing ? captureDeletionHeight : undefined}
     inert={removing ? true : undefined} aria-hidden={removing ? true : undefined}
@@ -47,9 +61,11 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
         </div>
       </div>
       <div className="project-card-caption">
-        <strong className="project-card-title" data-tooltip={details}>{project.name}</strong>
+        <RichTooltip text={project.name} content={nameDetails}><strong className="project-card-title">{project.name}</strong></RichTooltip>
         <div className="project-card-metadata">
-          <time dateTime={project.updatedAt}>{formatUpdatedTime(project.updatedAt)}</time>
+          <RichTooltip text={formatExactTime(project.updatedAt)} content={timeDetails}>
+            <time dateTime={project.updatedAt}>{formatUpdatedTime(project.updatedAt)}</time>
+          </RichTooltip>
           <span aria-hidden="true">·</span><span className="project-card-modifier">{modifier}</span>
         </div>
       </div>

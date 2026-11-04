@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../src/client/pages/Dashboard";
 import type { DashboardData, Project, ProjectOwnershipScope, SiteConfig, User } from "../src/client/types";
 import { scopedStorageKey } from "../src/client/basePath";
 import i18n from "../src/client/i18n";
+import { GlobalTooltip } from "../src/client/GlobalTooltip";
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/client/api", async (original) => ({ ...await original<object>(), api: apiMock }));
@@ -48,8 +49,8 @@ const lastParams = () => new URL(String(projectCalls().at(-1)![0]), "http://loca
 const tab = (scope: ProjectOwnershipScope) => host.querySelector<HTMLButtonElement>(`#project-tab-${scope}`)!;
 const names = () => Array.from(host.querySelectorAll(".project-card-title, .project-list-title"), (node) => node.textContent);
 const click = (selector: string) => act(async () => host.querySelector<HTMLButtonElement>(selector)!.click());
-const render = (initialData: DashboardData | null = null) => act(async () => root.render(createElement(Dashboard,
-  { site, user, initialData, onDataChange, onUser: vi.fn(), onOpenProject })));
+const render = (initialData: DashboardData | null = null) => act(async () => root.render(createElement(Fragment, null,
+  createElement(Dashboard, { site, user, initialData, onDataChange, onUser: vi.fn(), onOpenProject }), createElement(GlobalTooltip))));
 const changeSearch = (value: string) => act(async () => {
   const field = host.querySelector<HTMLInputElement>('.project-toolbar input[type="search"]')!;
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
@@ -92,9 +93,23 @@ describe("project ownership tabs", () => {
     expect(cards[2].querySelector(".project-paper")?.childElementCount).toBe(0);
     expect(cards[3].querySelector(".project-paper-heading")).not.toBeNull();
     expect(cards[0].querySelector(".project-card-modifier")?.textContent).toBe("Grace");
-    expect(cards[0].querySelector<HTMLElement>(".project-card-title")?.dataset.tooltip).toContain("Owner: Administrator");
-    expect(cards[0].querySelector<HTMLElement>(".project-card-title")?.dataset.tooltip).toContain("Created:");
-    expect(cards[0].querySelector<HTMLElement>(".project-card-title")?.dataset.tooltip).toContain("Last modified:");
+    expect(cards[0].querySelector(".project-paper-abstract-label")?.textContent).toBe("Abstract");
+    await act(async () => cards[0].querySelector(".project-card-title")!.dispatchEvent(new Event("pointerover", { bubbles: true })));
+    const nameTooltip = host.querySelector('[role="tooltip"]')!;
+    expect(nameTooltip.querySelector("strong")?.textContent).toBe(projects[0].name);
+    expect(nameTooltip.textContent).toBe(`${projects[0].name}, owned by Administrator`);
+    expect(nameTooltip.querySelector("time")).toBeNull();
+    expect(nameTooltip.textContent).not.toContain("Grace");
+    await act(async () => cards[0].querySelector(".project-card-metadata time")!.dispatchEvent(new Event("pointerover", { bubbles: true })));
+    const timeTooltip = host.querySelector('[role="tooltip"]')!;
+    const details = [...timeTooltip.querySelectorAll("li")];
+    expect(details).toHaveLength(2);
+    expect(details[0].textContent).toContain("Created at");
+    expect(details[1].textContent).toContain("Last modified at");
+    expect(details[1].textContent).toContain("by Grace");
+    expect(timeTooltip.querySelectorAll("li > svg")).toHaveLength(2);
+    expect(timeTooltip.textContent).not.toContain("owned by");
+    expect(timeTooltip.querySelector("strong")).toBeNull();
     expect(host.querySelector(".project-icon-avatar, .owner-badge, .project-meta")).toBeNull();
     expect(host.querySelector("button button")).toBeNull();
     await click(".project-action-menu-trigger");
