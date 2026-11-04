@@ -108,7 +108,6 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       document.title = site.siteName;
     };
   }, [project?.name, site.siteName]);
-  const [collaborationReady, setCollaborationReady] = useState(false);
   const [dictionaryWords, setDictionaryWords] = useState<string[]>([]);
   const [completionIndex, setCompletionIndex] = useState<LatexCompletionIndex | null>(null);
   const [projectOutline, setProjectOutline] = useState<LoadedProjectOutline>({ mainFile: "", items: [] });
@@ -303,7 +302,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     permissionDowngrade,
     dismissPermissionDowngrade,
     discardLocalDraft
-  } = useProjectCollaboration(collaboration, activeMainFile, project?.permission ?? "read", collaborationReady);
+  } = useProjectCollaboration(collaboration, activeMainFile, project?.permission ?? "read", project?.id === projectId);
 
   const { unreadMentions, mentionsError, markMentionRead, markAllMentionsRead } = useProjectMentions(projectId, commentsRevision, setError,
     (count, all) => onMentionsReadRef.current?.(count, all));
@@ -1217,15 +1216,6 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     },
     onPdfChanged: clearPdfViewport
   });
-  useEffect(() => {
-    // Let the latest-PDF response render PdfPreview first. Its PDF request is
-    // the critical path; only then should a cold Yjs room be reconstructed.
-    if (!project || !activeMainFile || (!pdfUrl && pdfLoading)) return;
-    // Give the browser a short scheduling head start for the PDF fetch before
-    // opening the WebSocket that may trigger a cold room reconstruction.
-    const timer = window.setTimeout(() => setCollaborationReady(true), pdfUrl ? 150 : 0);
-    return () => window.clearTimeout(timer);
-  }, [project, pdfLoading, pdfUrl]);
   useEffect(() => {
     const openNavigation = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey)) return;

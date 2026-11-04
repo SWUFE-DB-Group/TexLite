@@ -8,6 +8,12 @@ import * as Y from "yjs";
 import type { ProjectCollaboration, SharedCompileState } from "../src/client/collaboration";
 import { collaborationSaveState } from "../src/client/workspace/collaborationStatus";
 import { useProjectCollaboration } from "../src/client/workspace/useProjectCollaboration";
+import { useProjectCompilation, type LatestCompileResponse } from "../src/client/workspace/useProjectCompilation";
+import type { Project } from "../src/client/types";
+import { api } from "../src/client/api";
+import "../src/client/i18n";
+
+vi.mock("../src/client/api", () => ({ api: vi.fn() }));
 
 function subscribe<T>(listeners: Set<T>, listener: T) {
   listeners.add(listener);
@@ -94,9 +100,44 @@ afterEach(async () => {
   collaboration.doc.destroy();
   container.remove();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("workspace collaboration connection status", () => {
+  it.each(["read", "edit"] as const)("connects with fetched %s permission while initial compile metadata remains pending", async (permission) => {
+    vi.useFakeTimers();
+    vi.mocked(api).mockResolvedValue({ artifacts: [] });
+    let project: Project | null = null;
+    let resolveLatest!: (value: LatestCompileResponse) => void;
+    const initialLatest = new Promise<LatestCompileResponse>((resolve) => { resolveLatest = resolve; });
+    let compilation!: ReturnType<typeof useProjectCompilation>;
+    const permissionsAtConnect: string[] = [];
+    collaboration.connect.mockImplementation(() => { permissionsAtConnect.push(collaboration.currentPermission); collaboration.transport("connecting"); });
+    function Workspace() {
+      current = useProjectCollaboration(collaboration.client, project?.mainFile ?? "", project?.permission ?? "read", project?.id === "paper");
+      compilation = useProjectCompilation({ projectId: "paper", project, mainFile: project?.mainFile ?? "", initialLatest,
+        collaborationSynced: current.synced, pdfVisible: true, sharedState: null, onSharedState: vi.fn(),
+        save: async () => true, loadOutline: async () => {}, onPreviewTab: vi.fn(), onError: vi.fn(),
+        onCompileStart: vi.fn(), onCompileSuccess: vi.fn(), onPdfChanged: vi.fn() });
+      return null;
+    }
+    await act(async () => root.render(createElement(Workspace)));
+    expect(collaboration.connect).not.toHaveBeenCalled();
+    project = { id: "paper", mainFile: "main.tex", permission } as Project;
+    await act(async () => root.render(createElement(Workspace)));
+    expect(permissionsAtConnect).toEqual([permission]);
+    expect(compilation.pdfLoading).toBe(true);
+    await connect();
+    await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
+    expect(current.synced).toBe(true);
+    expect(compilation.pdfLoading).toBe(true);
+    expect(collaboration.connect).toHaveBeenCalledOnce();
+    await act(async () => resolveLatest({ mainFile: "main.tex", latestRun: null, pdfUrl: null, pdfCompiledAt: null, pdfSizeBytes: null, pdfLoadingMode: "full" }));
+    expect(compilation.pdfLoading).toBe(false);
+    expect(current.synced).toBe(true);
+    expect(collaboration.connect).toHaveBeenCalledOnce();
+  });
+
   it.each([true, false])("reads an existing provider's handshake state when subscribing (synced=%s)", async (synced) => {
     collaboration.connected = true;
     collaboration.synced = synced;

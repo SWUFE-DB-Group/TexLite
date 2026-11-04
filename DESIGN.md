@@ -1307,8 +1307,10 @@ Compilation follows this sequence:
    request can finish.
 
 The previous successful PDF remains visible during a new compile. The latest
-published bundle is recovered after a restart and can be served before a cold
-collaboration room is initialized. PDF requests support range responses for
+published bundle is recovered after a restart independently of collaboration
+startup. Once project access metadata is available, the workspace applies the
+current permission and starts collaboration without waiting for compile
+metadata, a PDF, or file indexing. PDF requests support range responses for
 PDF.js and expose the successful compile time and artifact size. The default
 automatic loading policy uses a complete, cache-friendly response through 2 MB
 and enables PDF.js byte-range loading above that threshold; deployments can

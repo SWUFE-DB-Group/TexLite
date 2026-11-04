@@ -224,10 +224,8 @@ export class ProjectCollaboration {
       `${protocol}//${window.location.host}${appPath("/api/collaboration")}`,
       projectId,
       this.doc,
-      // Project metadata and the retained PDF are loaded before opening the
-      // collaboration room. Rebuilding a cold Yjs room can read many source
-      // files synchronously on the server, so it must not delay the first
-      // preview request.
+      // Open only after project access metadata has loaded. PDF and compiler
+      // metadata load independently and must not delay collaborative editing.
       { connect: false, disableBc: true, maxBackoffTime: 2500 }
     );
     this.awareness = this.provider.awareness;

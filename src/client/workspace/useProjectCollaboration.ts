@@ -147,7 +147,7 @@ export function useProjectCollaboration(
     refreshSessions();
     handleMeta();
     // The provider starts disconnected intentionally. Once the caller marks
-    // the critical-path requests ready, the separate effect below calls
+    // project access metadata ready, the separate effect below calls
     // connect(), and provider events update these values. Do not capture
     // `ready` here: this listener is installed once and would otherwise keep
     // the initial false value forever.
@@ -169,10 +169,6 @@ export function useProjectCollaboration(
   }, [collaboration]);
 
   useEffect(() => {
-    if (ready) collaboration.connect();
-  }, [collaboration, ready]);
-
-  useEffect(() => {
     collaboration.setPermission(projectPermission);
     setPermission(projectPermission);
     if (ready && projectPermission === "read"
@@ -186,6 +182,12 @@ export function useProjectCollaboration(
       setPermissionDowngrade(null);
     }
   }, [collaboration, projectPermission, ready]);
+
+  useEffect(() => {
+    // Apply the fetched permission above before opening the transport. PDF,
+    // compilation metadata and file indexing are independent of this gate.
+    if (ready) collaboration.connect();
+  }, [collaboration, ready]);
 
   const permissionDowngradeVisible = permissionDowngrade !== null;
   useEffect(() => {
