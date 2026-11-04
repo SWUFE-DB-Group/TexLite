@@ -195,7 +195,6 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-sort > span { white-space: nowrap; }
 .project-sort select { max-width: 150px; border: 1px solid var(--ui-border, #c4ccc6); border-radius: 7px; padding: 7px 25px 7px 8px; background: var(--ui-surface, white); color: var(--ui-text, #34433a); font-size: 12px; }
 .view-toggle { display: flex; gap: 2px; margin-left: auto; }
-.dashboard.project-dashboard-grid { max-width: 1380px; }
 .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr)); gap: 16px; }
 .project-card { position: relative; text-align: left; background: var(--ui-surface, white); border: 1px solid var(--ui-border, #dfe2de); border-radius: 11px; transition: .15s ease; }
 .project-card.deletion-exit, .file-entry[data-deletion-exit] { overflow: hidden !important; pointer-events: none; animation: deletion-collapse var(--deletion-duration, 250ms) cubic-bezier(.4, 0, .2, 1) both; }
