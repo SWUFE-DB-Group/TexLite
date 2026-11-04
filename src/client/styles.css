@@ -796,6 +796,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--tl-ink); background: var(--tl-editor-bg); }
 .editor-shell .editor-host { height: auto; min-height: 0; flex: 1 1 auto; }
 .editor-host, .cm-editor { height: 100%; min-height: 0; }
+/* Keep CodeMirror's high-z panels/tooltips below workspace drawers and modal portals. */
+.editor-host { isolation: isolate; }
 .editor-host .cm-editor { font-family: inherit; font-size: inherit; line-height: inherit; color: var(--tl-ink); background: var(--tl-editor-bg); }
 .editor-host .cm-gutters { color: var(--tl-gutter); background: var(--tl-editor-bg); border-color: var(--tl-border); }
 .editor-host .cm-content { caret-color: var(--tl-cursor); }
