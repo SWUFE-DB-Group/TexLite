@@ -426,7 +426,7 @@
       "wholeWord": "全字匹配", "replaceNext": "替换", "replaceAll": "全部替换", "currentMatch": "当前匹配",
       "onLine": "位于行", "replacedMatchOnLine": "已替换第 $ 行的匹配项", "replacedMatches": "已替换 $ 个匹配项",
       "goToLine": "跳转到行", "go": "跳转", "matchCount_one": "共 {{count}} 个匹配", "matchCount_other": "共 {{count}} 个匹配", "noMatches": "没有匹配项",
-      "invalidQuery": "正则表达式无效"
+      "invalidQuery": "正则表达式无效", "more": "更多查找操作", "showReplace": "展开替换", "hideReplace": "收起替换"
     }
   },
   "bibtex": {

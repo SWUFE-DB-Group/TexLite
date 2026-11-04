@@ -14,7 +14,7 @@ import {
 import {
   autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap
 } from "@codemirror/autocomplete";
-import { getSearchQuery, openSearchPanel, search, searchKeymap, searchPanelOpen } from "@codemirror/search";
+import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
@@ -22,7 +22,7 @@ import type { Comment, LatexCompletionIndex } from "./types";
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
 import { editorColorScheme, editorGenericHighlightStyle, selectedCommentHighlighting } from "./editorThemeExtension";
 import { useTheme, type Theme } from "./theme";
-import { countSearchMatches, searchQuerySignature } from "./editorSearch";
+import { createEditorSearchPanel } from "./editorSearchPanel";
 import { bibtexCompletionSource, bibtexHighlightStyle, bibtexLanguage, bstLanguage, createBibtexEditorExtensions, latexLanguage, localizedBibtexMessages } from "./latexLanguage";
 import { supportsLatexMathHover } from "./latexMath";
 import { latexHighlightStyle, latexSemanticHighlighting } from "./latex/highlighting";
@@ -194,7 +194,7 @@ export function LatexEditor({
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
-        search({ top: true }), searchMatchCount(t), EditorState.phrases.of(searchPhrases(t)),
+        search({ top: true, createPanel: createEditorSearchPanel(t) }), EditorState.phrases.of(searchPhrases(t)),
         autocompletion({
           override: isBibtexFile ? [bibtexCompletionSource] : isLatexFile ? [(context) => latexCompletions(context, t, completionIndexRef.current)] : undefined,
           activateOnTyping: true
@@ -471,62 +471,6 @@ function searchPhrases(t: TFunction): Record<string, string> {
     "Go to line": t("editor.search.goToLine"),
     "go": t("editor.search.go")
   };
-}
-
-function searchMatchCount(t: TFunction) {
-  return ViewPlugin.fromClass(class {
-    private frame: number | null = null;
-    private document: EditorState["doc"];
-    private signature = "";
-    private count = 0;
-
-    constructor(private readonly view: EditorView) {
-      this.document = view.state.doc;
-      this.schedule();
-    }
-
-    update(): void {
-      this.schedule();
-    }
-
-    destroy(): void {
-      if (this.frame !== null) cancelAnimationFrame(this.frame);
-    }
-
-    private schedule(): void {
-      if (this.frame !== null) cancelAnimationFrame(this.frame);
-      this.frame = requestAnimationFrame(() => {
-        this.frame = null;
-        this.render();
-      });
-    }
-
-    private render(): void {
-      if (!searchPanelOpen(this.view.state)) return;
-      const panel = this.view.dom.querySelector<HTMLElement>(".cm-panel.cm-search");
-      if (!panel) return;
-      let status = panel.querySelector<HTMLElement>(".cm-search-count");
-      if (!status) {
-        status = document.createElement("span");
-        status.className = "cm-search-count";
-        status.setAttribute("role", "status");
-        status.setAttribute("aria-live", "polite");
-        const close = panel.querySelector("[name=close]");
-        panel.insertBefore(status, close);
-      }
-      const query = getSearchQuery(this.view.state);
-      const signature = searchQuerySignature(query);
-      if (this.document !== this.view.state.doc || this.signature !== signature) {
-        this.document = this.view.state.doc;
-        this.signature = signature;
-        this.count = countSearchMatches(this.view.state, query);
-      }
-      status.textContent = !query.search ? ""
-        : !query.valid ? t("editor.search.invalidQuery")
-          : this.count === 0 ? t("editor.search.noMatches")
-            : t("editor.search.matchCount", { count: this.count });
-    }
-  });
 }
 
 function editorAppearance(preferences: EditorPreferences, nativeSpellCheck: boolean, theme: Theme) {

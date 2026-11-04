@@ -1142,7 +1142,10 @@
       "matchCount_one": "共 {{count}} 個符合",
       "matchCount_other": "共 {{count}} 個符合",
       "noMatches": "沒有符合項",
-      "invalidQuery": "正規表示式無效"
+      "invalidQuery": "正規表示式無效",
+      "more": "更多尋找操作",
+      "showReplace": "展開替換",
+      "hideReplace": "收合替換"
     }
   },
   "bibtex": {
