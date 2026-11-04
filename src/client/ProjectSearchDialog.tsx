@@ -1,10 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { CaseSensitive, Check, ChevronDown, FileSearch, FileText, LoaderCircle, Replace, ReplaceAll, Search, WholeWord } from "lucide-react";
+import { CaseSensitive, Check, ChevronDown, FileSearch, LoaderCircle, Replace, ReplaceAll, Search, WholeWord } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { PROJECT_SEARCH_MAX_QUERY_LENGTH, PROJECT_SEARCH_MAX_REPLACEMENT_LENGTH, type ProjectReplaceResult, type ProjectReplaceTarget, type ProjectSearchMatch, type ProjectSearchResult } from "../shared/projectSearch";
 import { api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { errorMessage } from "./errors";
+import { FileTypeIcon } from "./fileIcons";
 
 export function ProjectSearchDialog({ projectId, onClose, onNavigate, readOnly = false }: {
   projectId: string; onClose: () => void; onNavigate: (path: string, line: number, column: number) => void; readOnly?: boolean;
@@ -120,7 +121,7 @@ export function ProjectSearchDialog({ projectId, onClose, onNavigate, readOnly =
     <div className="project-search-results" aria-busy={loading} aria-describedby={headingId}>
       {!query || (result && groups.length === 0) ? <div className="project-search-empty"><FileSearch size={28} aria-hidden /><p>{t(query ? "projectSearch.noMatches" : "projectSearch.empty")}</p></div>
         : groups.map(([path, matches]) => <details key={path} open>
-          <summary><ChevronDown size={14} aria-hidden /><FileText size={14} aria-hidden /><span>{path}</span><small>{matches.length}</small></summary>
+          <summary><ChevronDown size={14} aria-hidden /><FileTypeIcon path={path} size={14} /><span>{path}</span><small>{matches.length}</small></summary>
           <div>{matches.map((match) => <div className="project-search-row" key={`${match.line}:${match.column}`}>
             <button type="button" className="project-search-match" disabled={locked}
               aria-label={t("projectSearch.location", { path, line: match.line, column: match.column })}

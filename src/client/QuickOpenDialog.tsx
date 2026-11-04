@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, FileText, Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { Modal } from "./Dialog";
+import { FileTypeIcon } from "./fileIcons";
 import type { FileEntry } from "./types";
 
 export function QuickOpenDialog({ open, files, onOpenChange, onOpenFile }: {
@@ -30,7 +31,7 @@ export function QuickOpenDialog({ open, files, onOpenChange, onOpenFile }: {
       if (event.key === "ArrowDown") { event.preventDefault(); setSelected((current) => Math.min(choices.length - 1, current + 1)); }
       if (event.key === "ArrowUp") { event.preventDefault(); setSelected((current) => Math.max(0, current - 1)); }
       if (event.key === "Enter" && choices[selected]) { event.preventDefault(); choose(choices[selected].entry.path); }
-    }} /></label><div className="quick-open-results">{choices.map(({ entry }, index) => <button ref={index === selected ? selectedResult : undefined} className={index === selected ? "active" : ""} key={entry.path} onMouseEnter={() => setSelected(index)} onClick={() => choose(entry.path)}><FileText size={14} /><span>{entry.path}</span>{index === selected && <Check size={13} />}</button>)}{choices.length === 0 && <p className="muted padded">{t("navigation.noFiles")}</p>}</div></div>
+    }} /></label><div className="quick-open-results">{choices.map(({ entry }, index) => <button ref={index === selected ? selectedResult : undefined} className={index === selected ? "active" : ""} key={entry.path} onMouseEnter={() => setSelected(index)} onClick={() => choose(entry.path)}><FileTypeIcon path={entry.path} size={14} /><span>{entry.path}</span>{index === selected && <Check size={13} />}</button>)}{choices.length === 0 && <p className="muted padded">{t("navigation.noFiles")}</p>}</div></div>
   </Modal>;
 }
 
