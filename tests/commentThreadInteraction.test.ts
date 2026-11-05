@@ -50,6 +50,26 @@ afterEach(async () => {
 });
 
 describe("comment reading and actions", () => {
+  it("allows resolving an unavailable review, still blocking available or applying suggestions and permitting reopen", async () => {
+    const suggestion = { originalText: "Source", replacementText: "Changed", reviewerId: null,
+      reviewerAvailable: false, status: "pending" as const, applying: false, applicable: true,
+      reviewerUsername: null, reviewerDisplayName: null, decidedById: null, decidedAt: null, decidedByUsername: null, decidedByDisplayName: null };
+    props.comment = { ...comment, suggestion };
+    await render();
+    const resolve = () => host.querySelector<HTMLButtonElement>(".resolve")!;
+    expect(resolve().disabled).toBe(false);
+    expect(resolve().dataset.tooltip).toBe("Resolve");
+    await act(async () => resolve().click());
+    expect(props.onToggle).toHaveBeenCalledOnce();
+    props.comment = { ...comment, suggestion: { ...suggestion, reviewerId: "reviewer", reviewerAvailable: true } };
+    await render(); expect(resolve().disabled).toBe(true);
+    props.comment = { ...comment, suggestion: { ...suggestion, applying: true } };
+    await render(); expect(resolve().disabled).toBe(true);
+    props.comment = { ...comment, resolved: true, suggestion: { ...suggestion, reviewerAvailable: true } };
+    await render(); expect(resolve().disabled).toBe(false);
+    expect(resolve().dataset.tooltip).toBe("Reopen");
+  });
+
   it("groups an initial avatar and strong author identity with a smaller relative date and full hover date", async () => {
     await render();
     expect(host.querySelector(".comment-avatar")?.textContent).toBe("A");

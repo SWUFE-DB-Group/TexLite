@@ -58,6 +58,37 @@ beforeEach(async () => {
 afterEach(async () => { vi.restoreAllMocks(); await app?.close(); db?.close(); fs.rmSync(root, { recursive: true, force: true }); });
 
 describe("comment suggestion workflow", () => {
+  it.each(["deleted", "disabled", "removed", "read-only"])("lets another project reader resolve a pending suggestion when its reviewer is %s", async reason => {
+    const comment = await suggest("writer");
+    const endpoint = `/api/projects/:project/comments/${comment.id}`;
+    const blocked = await request("reader", "PATCH", endpoint, { resolved: true });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().code).toBe("SUGGESTION_PENDING");
+    if (reason === "deleted") db.prepare("DELETE FROM users WHERE id = 'writer'").run();
+    if (reason === "disabled") db.prepare("UPDATE users SET disabled = 1 WHERE id = 'writer'").run();
+    if (reason === "removed") db.prepare("DELETE FROM project_members WHERE user_id = 'writer'").run();
+    if (reason === "read-only") db.prepare("UPDATE project_members SET permission = 'read' WHERE user_id = 'writer'").run();
+    expect((await comments())[0].suggestion?.reviewerAvailable).toBe(false);
+    const resolved = await request("reader", "PATCH", endpoint, { resolved: true });
+    expect(resolved.statusCode, resolved.body).toBe(200);
+    expect((await comments())[0]).toMatchObject({ resolved: true, resolvedById: "reader", suggestion: { status: "pending" } });
+    expect(source()).toBe(initial);
+    expect((await request("owner", "PATCH", endpoint, { resolved: false })).statusCode).toBe(200);
+    expect((await comments())[0].resolved).toBe(false);
+    db.prepare("DELETE FROM project_members WHERE user_id = 'other'").run();
+    expect((await request("other", "PATCH", endpoint, { resolved: true })).statusCode).toBe(404);
+  });
+
+  it("does not let a missing reviewer bypass an in-flight source application", async () => {
+    const comment = await suggest("writer");
+    db.prepare("DELETE FROM users WHERE id = 'writer'").run();
+    db.prepare("UPDATE comment_suggestions SET apply_update = ? WHERE comment_id = ?").run(Buffer.from([0, 0]), comment.id);
+    const result = await request("reader", "PATCH", `/api/projects/:project/comments/${comment.id}`, { resolved: true });
+    expect(result.statusCode).toBe(409);
+    expect(result.json().code).toBe("SUGGESTION_PENDING");
+    db.prepare("UPDATE comment_suggestions SET apply_update = NULL WHERE comment_id = ?").run(comment.id);
+  });
+
   it("keeps ordinary comments free of reviewer metadata and review notifications", async () => {
     const response = await request("reader", "POST", "/api/projects/:project/comments", {
       path: "main.tex", content: "@owner please check this claim.", startOffset: 0, endOffset: 6, sourceHash: hash(initial)

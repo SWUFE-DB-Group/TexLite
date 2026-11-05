@@ -161,6 +161,8 @@ export function CommentThread({
     {timestamp(createdAt)}
     {editedAt && <small data-tooltip={t("editor.editedAt", { time: formatTime(editedAt) })} data-texlite-tooltip-always>{t("editor.commentEdited")}</small>}
   </span>;
+  const reviewBlocksResolution = !comment.resolved && comment.suggestion?.status === "pending"
+    && (comment.suggestion.reviewerAvailable || comment.suggestion.applying);
   const markRead = async (mentionId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     // Reading an old mention must not make that reply disappear immediately.
@@ -173,9 +175,9 @@ export function CommentThread({
         {times(comment.createdAt, comment.editedAt)}
       </CommentIdentity>
       <span className="comment-header-actions">
-        <button type="button" className="resolve" disabled={toggling || submittingForm || comment.suggestion?.status === "pending"} aria-busy={toggling}
+        <button type="button" className="resolve" disabled={toggling || submittingForm || reviewBlocksResolution} aria-busy={toggling}
           aria-label={t(comment.resolved ? "editor.reopen" : "editor.resolve")}
-          data-tooltip={t(comment.suggestion?.status === "pending" ? "suggestions.reviewBeforeResolve" : comment.resolved ? "editor.reopen" : "editor.resolve")} data-texlite-tooltip-always
+          data-tooltip={t(reviewBlocksResolution ? "suggestions.reviewBeforeResolve" : comment.resolved ? "editor.reopen" : "editor.resolve")} data-texlite-tooltip-always
           onClick={(event) => {
             event.stopPropagation();
             if (toggling) return;

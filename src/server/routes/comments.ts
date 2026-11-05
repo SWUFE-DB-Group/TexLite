@@ -11,7 +11,7 @@ import { apiError, httpError } from "../http.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import { accessibleProject } from "../projects.js";
 import { isCollaborativeTextFile } from "../collaboration.js";
-import { attachSuggestion, suggestionRow } from "../commentSuggestions.js";
+import { attachSuggestion, suggestionReviewers, suggestionRow } from "../commentSuggestions.js";
 import { registerSuggestionRoutes } from "./commentSuggestions.js";
 import { defaultSuggestionComments } from "../../shared/suggestionMessages.js";
 import { serverLocale } from "../i18n.js";
@@ -220,7 +220,13 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       changed = true;
     }
     if (typeof body.resolved === "boolean") {
-      if (body.resolved && suggestionRow(db, id, commentId)?.status === "pending") return apiError(reply, 409, "SUGGESTION_PENDING");
+      if (body.resolved) {
+        const suggestion = suggestionRow(db, id, commentId);
+        if (suggestion?.status === "pending" && (suggestion.apply_update
+          || suggestionReviewers(db, id, suggestion.author_id).some(user => user.id === suggestion.reviewer_id))) {
+          return apiError(reply, 409, "SUGGESTION_PENDING");
+        }
+      }
       changed = true;
     }
     if (!changed) return apiError(reply, 400, "COMMENT_UPDATE_EMPTY");
