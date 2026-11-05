@@ -38,6 +38,17 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe("shared user avatars", () => {
+  it("uses user-x for a deleted identity without requesting its old avatar, not for ordinary missing images", async () => {
+    await act(async () => root.render(createElement(UserAvatar, { userId: null, name: "已删除用户", avatarStyle: "lorelei" })));
+    expect(host.querySelector(".lucide-user-x")).not.toBeNull();
+    expect(host.querySelector("img")).toBeNull();
+    expect(host.textContent).toBe("");
+    expect(host.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+    await act(async () => root.render(createElement(UserAvatar, { name: "Alice" })));
+    expect(host.querySelector("svg")).toBeNull();
+    expect(host.textContent).toBe("A");
+  });
+
   it("uses display-name initials by default without any image request", async () => {
     expect(avatarInitial(" 陈老师 ", "alice")).toBe("陈");
     expect(avatarInitial("", "alice")).toBe("A");

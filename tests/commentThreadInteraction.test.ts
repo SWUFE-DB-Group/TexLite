@@ -50,6 +50,14 @@ afterEach(async () => {
 });
 
 describe("comment reading and actions", () => {
+  it("shows the deleted-user icon on both comments and replies without losing their author labels", async () => {
+    props.comment = { ...comment, authorId: null, authorUsername: null, authorDisplayName: null,
+      replies: comment.replies.map(reply => ({ ...reply, authorId: null, authorUsername: null, authorDisplayName: null })) };
+    await render();
+    expect(host.querySelectorAll(".comment-avatar .lucide-user-x")).toHaveLength(2);
+    expect([...host.querySelectorAll(".comment-author strong")].map(name => name.textContent)).toEqual(["Deleted User", "Deleted User"]);
+  });
+
   it("allows resolving an unavailable review, still blocking available or applying suggestions and permitting reopen", async () => {
     const suggestion = { originalText: "Source", replacementText: "Changed", reviewerId: null,
       reviewerAvailable: false, status: "pending" as const, applying: false, applicable: true,

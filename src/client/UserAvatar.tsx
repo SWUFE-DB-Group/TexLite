@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { UserX } from "lucide-react";
 import { AVATAR_RENDER_VERSION, avatarInitial, isAvatarStyle } from "../shared/avatars";
 import { appPath } from "./basePath";
 
@@ -6,7 +7,8 @@ export function userAvatarUrl(id: string | null | undefined, style: string | nul
   return id && isAvatarStyle(style) ? appPath(`/api/users/${encodeURIComponent(id)}/avatar.svg?style=${style}&v=${AVATAR_RENDER_VERSION}${preview ? "&preview=1" : ""}`) : null;
 }
 
-/** Decorative avatar: adjacent author text remains the accessible identity. */
+/** Decorative avatar: adjacent text identifies the author. A null ID denotes
+ * a deleted user; an omitted ID still supports ordinary initial-only previews. */
 export function UserAvatar({ userId, name, username, avatarStyle, className = "", preview = false }: {
   userId?: string | null; name?: string | null; username?: string | null;
   avatarStyle?: string | null; className?: string; preview?: boolean;
@@ -14,7 +16,8 @@ export function UserAvatar({ userId, name, username, avatarStyle, className = ""
   const source = userAvatarUrl(userId, avatarStyle, preview);
   const initial = avatarInitial(name, username);
   return <span className={`user-avatar ${className}`.trim()} aria-hidden="true">
-    {source ? <AvatarImage key={source} source={source} initial={initial} lazy={preview} /> : initial}
+    {userId === null ? <UserX className="user-avatar-deleted-icon" aria-hidden="true" strokeWidth={1.8} />
+      : source ? <AvatarImage key={source} source={source} initial={initial} lazy={preview} /> : initial}
   </span>;
 }
 

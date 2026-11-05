@@ -92,6 +92,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .user-menu-avatar { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 29px; height: 29px; border-radius: 50%; background: #e9f4ed; color: #164a32; font-size: 13px; font-weight: 650; }
 .user-avatar { position: relative; overflow: hidden; }
 .user-avatar > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.user-avatar > .user-avatar-deleted-icon { width: 65%; height: 65%; }
 .user-menu-avatar-setting { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 0; border-radius: 6px; padding: 5px 0; background: transparent; color: inherit; font-size: inherit; }
 .user-menu-avatar-setting > svg { color: var(--ui-muted, #718077); }
 .user-menu-avatar-setting:hover { color: var(--ui-accent, #176b44); }
