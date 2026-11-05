@@ -1348,7 +1348,7 @@ async function createUser(app: FastifyInstance, cookie: string, username: string
 }
 
 async function login(app: FastifyInstance, username: string, password: string): Promise<string> {
-  const response = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password } });
+  const response = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username, password } });
   expect(response.statusCode).toBe(200);
   return sessionCookie(response.headers);
 }
@@ -1387,3 +1387,4 @@ async function waitFor(predicate: () => boolean, timeout = 3000): Promise<void> 
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
+import { loginEstablishedUser } from "./establishedUser";

@@ -87,7 +87,7 @@ describe("texLite application", () => {
       return Response.json({ message: "Not found" }, { status: 404 });
     };
     app = await buildApp(config, db, { logger: false, githubFetch, updateFetch: async () => Response.json({ version: "99.0.0" }) });
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: "administrator password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "admin", password: "administrator password" } });
     expect(login.statusCode).toBe(200);
     cookie = sessionCookie(login.headers);
   }, 30_000);
@@ -96,6 +96,42 @@ describe("texLite application", () => {
     await app?.close();
     db?.close();
     fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it.each(["user", "admin"])("requires new %s accounts to rotate their temporary password before using APIs", async (role) => {
+    const username = `first-login-${role}`;
+    const created = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username, password: "temporary-password", role } });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().user.mustChangePassword).toBe(true);
+    const signIn = () => app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "temporary-password" } });
+    const first = await signIn(), second = await signIn();
+    const firstCookie = sessionCookie(first.headers), secondCookie = sessionCookie(second.headers);
+    expect(first.json().user.mustChangePassword).toBe(true);
+    expect((await app.inject({ method: "GET", url: "/api/me?reload=1", headers: { cookie: firstCookie } })).json().user.mustChangePassword).toBe(true);
+    for (const url of ["/api/projects", "/api/admin/users", "/api/agents/access", "/api/collaboration/example"]) {
+      const denied = await app.inject({ method: "GET", url, headers: { cookie: firstCookie } });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json().code).toBe("PASSWORD_CHANGE_REQUIRED");
+    }
+    for (const [currentPassword, newPassword, code] of [
+      ["wrong", "replacement-password", "CURRENT_PASSWORD_INVALID"],
+      ["temporary-password", "temporary-password", "PASSWORD_UNCHANGED"],
+      ["temporary-password", "short", "PASSWORD_TOO_SHORT"]
+    ]) {
+      const failure = await app.inject({ method: "PUT", url: "/api/me/password", headers: { cookie: firstCookie }, payload: { currentPassword, newPassword } });
+      expect(failure.statusCode).toBe(400); expect(failure.json().code).toBe(code);
+    }
+    const changed = await app.inject({ method: "PUT", url: "/api/me/password", headers: { cookie: firstCookie },
+      payload: { currentPassword: "temporary-password", newPassword: "replacement-password" } });
+    expect(changed.statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/api/me", headers: { cookie: firstCookie } })).json().user.mustChangePassword).toBe(false);
+    expect((await app.inject({ method: "GET", url: "/api/projects", headers: { cookie: firstCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/api/me", headers: { cookie: secondCookie } })).statusCode).toBe(401);
+    expect((await signIn()).statusCode).toBe(401);
+    const again = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "replacement-password" } });
+    expect(again.json().user.mustChangePassword).toBe(false);
+    await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie: firstCookie } });
   });
 
   it("requires authentication and exposes only public site config", async () => {
@@ -219,7 +255,7 @@ describe("texLite application", () => {
       const missing = await app.inject({ method: "GET", url: url(`${prefix}-missing`, "10"), headers: { cookie } });
       expect(missing.json()).toEqual({ users: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 }, summary: unfiltered.json().summary });
 
-      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: records[0].username, password: "administrator password" } });
+      const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: records[0].username, password: "administrator password" } });
       expect(login.statusCode).toBe(200);
       expect((await app.inject({ method: "GET", url: url(prefix), headers: { cookie: sessionCookie(login.headers) } })).statusCode).toBe(403);
       expect((await app.inject({ method: "GET", url: url(prefix) })).statusCode).toBe(401);
@@ -306,7 +342,7 @@ describe("texLite application", () => {
       payload: { username: "disable-cookie-user", displayName: "Disable Cookie User", password: "reader-password" }
     });
     expect(created.statusCode).toBe(201);
-    const login = await app.inject({
+    const login = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login",
       payload: { username: "disable-cookie-user", password: "reader-password" }
     });
@@ -338,7 +374,7 @@ describe("texLite application", () => {
       method: "POST", url: "/api/admin/users", headers: { cookie },
       payload: { username: "harper-status-reader", displayName: "Reader", password: "reader-password" }
     });
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "harper-status-reader", password: "reader-password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "harper-status-reader", password: "reader-password" } });
     const readerCookie = sessionCookie(login.headers);
     expect((await app.inject({ method: "GET", url, headers: { cookie: readerCookie } })).statusCode).toBe(404);
     const shared = await app.inject({
@@ -1113,7 +1149,7 @@ Standalone document.
     });
     expect(createdUser.statusCode).toBe(201);
     const readerId = createdUser.json().user.id as string;
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "reader-password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username, password: "reader-password" } });
     expect(login.statusCode).toBe(200);
     const readerCookie = sessionCookie(login.headers);
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Private archive" } });
@@ -1285,7 +1321,7 @@ Standalone document.
     await app.inject({
       method: "PUT", url: `/api/projects/${projectId}/members/${user.json().user.id}`, headers: { cookie }, payload: { permission: "edit" }
     });
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "editor-password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username, password: "editor-password" } });
     const editorCookie = sessionCookie(login.headers);
     const forbidden = await app.inject({
       method: "PATCH", url: `/api/projects/${projectId}/icon`, headers: { cookie: editorCookie }, payload: { icon: "database" }
@@ -1408,7 +1444,7 @@ Copied source.
     const user = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie },
       payload: { username: "history-file-member", displayName: "Member", password: "member-password" } });
     const userId = user.json().user.id;
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "history-file-member", password: "member-password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "history-file-member", password: "member-password" } });
     const memberCookie = sessionCookie(login.headers);
     const url = `/api/projects/${projectId}/history/files`;
     expect((await app.inject({ method: "GET", url, headers: { cookie: memberCookie } })).statusCode).toBe(404);
@@ -1579,7 +1615,7 @@ Another UniqueTerm appears here.
     });
     const readerId = reader.json().user.id as string;
     await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${readerId}`, headers: { cookie }, payload: { permission: "read" } });
-    const readerLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "reader-password" } });
+    const readerLogin = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username, password: "reader-password" } });
     const readerCookie = sessionCookie(readerLogin.headers);
     const readerHistory = await app.inject({ method: "GET", url: `/api/projects/${projectId}/history`, headers: { cookie: readerCookie } });
     expect(readerHistory.statusCode).toBe(200);
@@ -1602,7 +1638,7 @@ Another UniqueTerm appears here.
     expect((await app.inject({ method: "GET", url: "/api/compiler/versions" })).statusCode).toBe(401);
     const username = `versions-user-${randomUUID().slice(0, 8)}`;
     await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: { username, displayName: "Versions User", password: "versions-password" } });
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "versions-password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username, password: "versions-password" } });
     const response = await app.inject({ method: "GET", url: "/api/compiler/versions", headers: { cookie: sessionCookie(login.headers) } });
     expect(response.statusCode).toBe(200);
     expect(response.headers["cache-control"]).toBe("no-store");
@@ -1630,7 +1666,7 @@ Another UniqueTerm appears here.
     });
     const username = `metrics-user-${randomUUID().slice(0, 8)}`;
     await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: { username, displayName: "Metrics User", password: "metrics-password" } });
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "metrics-password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username, password: "metrics-password" } });
     const userCookie = sessionCookie(login.headers);
     expect((await app.inject({ method: "GET", url: "/api/health/metrics", headers: { cookie: userCookie } })).statusCode).toBe(403);
   });
@@ -1798,7 +1834,7 @@ Second version.
     });
     const readerId = readerCreated.json().user.id;
     await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${readerId}`, headers: { cookie }, payload: { permission: "edit" } });
-    const readerLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "git-reader", password: "reader-password" } });
+    const readerLogin = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "git-reader", password: "reader-password" } });
     const readerCookie = sessionCookie(readerLogin.headers);
     const forbidden = await app.inject({ method: "GET", url: `/api/projects/${projectId}/git`, headers: { cookie: readerCookie } });
     expect(forbidden.statusCode).toBe(403);
@@ -1815,9 +1851,9 @@ Second version.
     });
     expect(createdUser.statusCode).toBe(201);
     expect(createdUser.json().user.canCreateProjects).toBe(false);
-    expect(createdUser.json().user.mustChangePassword).toBe(false);
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "writer", password: "writer-password" } });
-    expect(login.json().user.mustChangePassword).toBe(false);
+    expect(createdUser.json().user.mustChangePassword).toBe(true);
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "writer", password: "writer-password" } });
+    expect(login.json().user.mustChangePassword).toBe(true);
     const writerCookie = sessionCookie(login.headers);
     const project = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: writerCookie }, payload: { name: "Not allowed" } });
     expect(project.statusCode).toBe(403);
@@ -1833,7 +1869,7 @@ Second version.
       payload: { username: "resolution-reader", displayName: "Resolution Reader", password: "reader-password" }
     });
     const readerId = reader.json().user.id as string;
-    const login = await app.inject({ method: "POST", url: "/api/auth/login",
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login",
       payload: { username: "resolution-reader", password: "reader-password" } });
     const readerCookie = sessionCookie(login.headers);
     const project = (await app.inject({ method: "POST", url: "/api/projects", headers: { cookie },
@@ -1891,7 +1927,7 @@ Second version.
       payload: { username: "mention-reader", displayName: "Mention Reader", password: "reader-password" }
     });
     const readerId = createdUser.json().user.id as string;
-    const readerLogin = await app.inject({
+    const readerLogin = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login", payload: { username: "mention-reader", password: "reader-password" }
     });
     const readerCookie = sessionCookie(readerLogin.headers);
@@ -1964,7 +2000,7 @@ Second version.
       method: "POST", url: "/api/admin/users", headers: { cookie },
       payload: { username: "comment-review-reader", displayName: "Comment Review Reader", password: "reader-password" }
     });
-    const readerLogin = await app.inject({
+    const readerLogin = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login",
       payload: { username: "comment-review-reader", password: "reader-password" }
     });
@@ -2135,7 +2171,7 @@ Second version.
       payload: { username: "comment-reader", displayName: "Comment Reader", password: "reader-password" }
     });
     const readerId = createdUser.json().user.id;
-    const login = await app.inject({
+    const login = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login", payload: { username: "comment-reader", password: "reader-password" }
     });
     const readerCookie = sessionCookie(login.headers);
@@ -2409,7 +2445,7 @@ Second version.
       method: "POST", url: "/api/admin/users", headers: { cookie },
       payload: { username: `tag-manager-${randomUUID().slice(0, 8)}`, displayName: "Tag Manager", password: "reader-password" }
     });
-    const otherLogin = await app.inject({
+    const otherLogin = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login", payload: { username: otherUser.json().user.username, password: "reader-password" }
     });
     const otherCookie = sessionCookie(otherLogin.headers);
@@ -2492,7 +2528,7 @@ Second version.
       payload: { username, displayName: "Private Owner", password: "owner-password", canCreateProjects: true }
     });
     expect(createdUser.statusCode).toBe(201);
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "owner-password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username, password: "owner-password" } });
     const ownerCookie = sessionCookie(login.headers);
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: ownerCookie }, payload: { name: "Administrator privacy" }
@@ -2526,7 +2562,7 @@ Second version.
     });
     const recipient = createdUser.json().user;
     expect(recipient.canCreateProjects).toBe(false);
-    const recipientLogin = await app.inject({
+    const recipientLogin = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login", payload: { username: "project-recipient", password: "recipient-password" }
     });
     const recipientCookie = sessionCookie(recipientLogin.headers);
@@ -2576,7 +2612,7 @@ Second version.
       payload: { username: "disposable-owner", displayName: "Disposable Owner", password: "owner-password", canCreateProjects: true }
     });
     const ownerId = createdUser.json().user.id as string;
-    const ownerLogin = await app.inject({
+    const ownerLogin = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login", payload: { username: "disposable-owner", password: "owner-password" }
     });
     const ownerCookie = sessionCookie(ownerLogin.headers);
@@ -2636,7 +2672,7 @@ Second version.
       payload: { username: "last-editor", displayName: "Last Editor", password: "editor-password" }
     });
     const editorId = createdUser.json().user.id;
-    const login = await app.inject({
+    const login = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login", payload: { username: "last-editor", password: "editor-password" }
     });
     const editorCookie = sessionCookie(login.headers);
@@ -2662,7 +2698,7 @@ Second version.
       payload: { username: "former-reviewer", displayName: "Former Reviewer", password: "reviewer-password" }
     });
     const reviewerId = createdUser.json().user.id;
-    const login = await app.inject({
+    const login = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login", payload: { username: "former-reviewer", password: "reviewer-password" }
     });
     const reviewerCookie = sessionCookie(login.headers);
@@ -3112,7 +3148,7 @@ Second version.
 
     // 5 consecutive bad passwords
     for (let i = 0; i < 4; i++) {
-      const res = await app.inject({
+      const res = await loginEstablishedUser(app, {
         method: "POST", url: "/api/auth/login",
         payload: { username: testUsername, password: "wrong-password" }
       });
@@ -3121,7 +3157,7 @@ Second version.
     }
 
     // 5th bad attempt triggers lockout
-    const fifthRes = await app.inject({
+    const fifthRes = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login",
       payload: { username: testUsername, password: "wrong-password" }
     });
@@ -3129,7 +3165,7 @@ Second version.
     expect(fifthRes.json().code).toBe("AUTH_RATE_LIMITED");
 
     // Even with the correct password, it is locked out
-    const lockedRes = await app.inject({
+    const lockedRes = await loginEstablishedUser(app, {
       method: "POST", url: "/api/auth/login",
       payload: { username: testUsername, password: "correct-password-123" }
     });
@@ -3257,7 +3293,7 @@ Second version.
     });
     const entryId = entry.json().entry.id as string;
     const guest = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: { username: "citation-tag-guest", password: "guest-password" } });
-    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "citation-tag-guest", password: "guest-password" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "citation-tag-guest", password: "guest-password" } });
     const guestCookie = sessionCookie(login.headers);
     const url = `/api/citations/tags/${first.id}`;
     try {
@@ -3303,7 +3339,7 @@ Second version.
       method: "POST", url: "/api/admin/users", headers: { cookie },
       payload: { username: "citation-reader", displayName: "Citation Reader", password: "reader-pass-123" }
     });
-    const readerLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "citation-reader", password: "reader-pass-123" } });
+    const readerLogin = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "citation-reader", password: "reader-pass-123" } });
     const readerCookie = sessionCookie(readerLogin.headers);
     const readerLibrary = await app.inject({ method: "GET", url: "/api/citations", headers: { cookie: readerCookie } });
     expect(readerLibrary.statusCode).toBe(200);
@@ -3379,3 +3415,4 @@ function crc32(buffer: Buffer): number {
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
+import { loginEstablishedUser } from "./establishedUser";

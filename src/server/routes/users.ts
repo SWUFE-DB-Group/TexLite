@@ -79,11 +79,11 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
     const user: UserRow = {
       id: randomUUID(), username, display_name: displayName,
       password_hash: await hashPassword(password), role, disabled: 0,
-      must_change_password: 0, can_create_projects: body?.canCreateProjects === true ? 1 : 0, created_at: now()
+      must_change_password: 1, can_create_projects: body?.canCreateProjects === true ? 1 : 0, created_at: now()
     };
     db.prepare(`INSERT INTO users
       (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
-      VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)`)
+      VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?)`)
       .run(user.id, user.username, user.display_name, user.password_hash, user.role, user.can_create_projects, user.created_at);
     return reply.code(201).send({ user: publicUser(user) });
   });

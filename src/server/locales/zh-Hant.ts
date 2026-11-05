@@ -46,6 +46,8 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   COMPILE_FORBIDDEN: "你沒有編譯此專案的權限。",
   COMPILE_SNAPSHOT_BUSY: "專案原始碼仍在儲存，請稍後重新編譯。",
   CURRENT_PASSWORD_INVALID: "目前密碼錯誤。",
+  PASSWORD_CHANGE_REQUIRED: "請先變更初始密碼再繼續。",
+  PASSWORD_UNCHANGED: "新密碼不能與初始密碼相同。",
   DICTIONARY_EDIT_FORBIDDEN: "你沒有維護本專案字典的權限。",
   DIRECTORY_NOT_FOUND: "目標資料夾不存在。",
   FILE_CONTENT_INVALID: "檔案內容格式不正確。",

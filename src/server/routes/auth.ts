@@ -89,6 +89,9 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthRouteConte
     if (!(await verifyPassword(currentPassword, user.password_hash))) {
       return apiError(reply, 400, "CURRENT_PASSWORD_INVALID");
     }
+    if (user.must_change_password && newPassword === currentPassword) {
+      return apiError(reply, 400, "PASSWORD_UNCHANGED");
+    }
     const passwordHash = await hashPassword(newPassword);
     db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?")
       .run(passwordHash, user.id);

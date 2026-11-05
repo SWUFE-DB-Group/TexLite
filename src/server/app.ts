@@ -274,15 +274,20 @@ export async function buildApp(
     : null;
   const routePrefix = basePathPrefix(config.basePath);
   await app.register(async (routes) => {
-    routes.addHook("onRequest", async (request) => {
-      const requestPath = withoutBasePath(config.basePath, request.url) ?? request.url;
+    routes.addHook("onRequest", async (request, reply) => {
+      const requestPath = (withoutBasePath(config.basePath, request.url) ?? request.url).split("?")[0];
       if (requestPath.startsWith("/api/")
         && requestPath !== "/api/auth/login"
         && requestPath !== "/api/health"
         && requestPath !== "/api/config") {
         const token = request.cookies.texlite_session;
-        if (token && !currentUser(request, db)) {
+        const user = token ? currentUser(request, db) : null;
+        if (token && !user) {
           db.prepare("DELETE FROM sessions WHERE id = ?").run(digestToken(token));
+        }
+        if (user?.must_change_password
+          && !["/api/me", "/api/me/password", "/api/auth/logout"].includes(requestPath)) {
+          return apiError(reply, 403, "PASSWORD_CHANGE_REQUIRED");
         }
       }
     });
