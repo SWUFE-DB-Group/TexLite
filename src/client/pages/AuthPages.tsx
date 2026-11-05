@@ -1,10 +1,29 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent, type InputHTMLAttributes } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { errorMessage } from "../errors";
 import type { SiteConfig, User } from "../types";
 import { LanguageSwitcher } from "../LanguageSwitcher";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
+
+function PasswordField({ label, hint, ...input }: Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "type"> & { label: string; hint?: string }) {
+  const { t } = useTranslation();
+  const id = useId();
+  const [visible, setVisible] = useState(false);
+  const toggleLabel = t(visible ? "auth.hidePassword" : "auth.showPassword");
+  return <div className="auth-password-field">
+    <label htmlFor={id}>{label}</label>
+    <div className="auth-password-input">
+      <input {...input} id={id} type={visible ? "text" : "password"} />
+      <button type="button" className="auth-password-toggle" aria-label={toggleLabel} title={toggleLabel} aria-controls={id} aria-pressed={visible}
+        onMouseDown={(event) => event.preventDefault()} onClick={() => setVisible(value => !value)}>
+        {visible ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+      </button>
+    </div>
+    {hint && <small className="field-hint">{hint}</small>}
+  </div>;
+}
 
 export function ChangePassword({ site, user, onChanged }: { site: SiteConfig; user: User; onChanged: (user: User) => void }) {
   const { t } = useTranslation();
@@ -28,9 +47,9 @@ export function ChangePassword({ site, user, onChanged }: { site: SiteConfig; us
   };
   return <main className="login-page"><LanguageSwitcher /><form className="login-card" onSubmit={submit}>
     <SiteLogo siteName={site.siteName} auth /><h1 className="sr-only">{site.siteName}</h1><p className="muted">{t("auth.firstLogin")}</p>
-    <label>{t("auth.currentPassword")}<input type="password" required autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
-    <label>{t("auth.newPassword")}<input type="password" minLength={site.minPasswordLength} autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /><small className="field-hint">{t("auth.passwordMinimum", { count: site.minPasswordLength })}</small></label>
-    <label>{t("auth.confirmPassword")}<input type="password" minLength={site.minPasswordLength} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
+    <PasswordField label={t("auth.currentPassword")} required autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+    <PasswordField label={t("auth.newPassword")} required minLength={site.minPasswordLength} autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} hint={t("auth.passwordMinimum", { count: site.minPasswordLength })} />
+    <PasswordField label={t("auth.confirmPassword")} required minLength={site.minPasswordLength} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
     {error && <p className="error" role="alert">{error}</p>}<button className="primary" disabled={saving}>{t("auth.updatePassword")}</button>
   </form><SiteFooter /></main>;
 }
@@ -55,7 +74,7 @@ export function Login({ site, onLogin }: { site: SiteConfig; onLogin: (user: Use
       <h1 className="sr-only">{site.siteName}</h1>
       <p className="muted">{t("auth.tagline")}</p>
       <label>{t("auth.username")}<input autoFocus value={username} onChange={(e) => setUsername(e.target.value)} /></label>
-      <label>{t("auth.password")}<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+      <PasswordField label={t("auth.password")} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       {error && <p className="error">{error}</p>}
       <button className="primary" type="submit">{t("auth.login")}</button>
       {site.adminEmail && <small className="support">{t("auth.contact", { email: site.adminEmail })}</small>}

@@ -164,6 +164,7 @@
     "releaseNotes": "Release notes"
   },
   "auth": {
+    "showPassword": "Show password", "hidePassword": "Hide password",
     "tagline": "A lightweight LaTeX writing environment", "username": "Username", "password": "Password", "login": "Sign in",
     "contact": "Need an account? Contact {{email}}", "firstLogin": "Change your temporary password to continue",
     "currentPassword": "Current password", "newPassword": "New password", "confirmPassword": "Confirm new password",

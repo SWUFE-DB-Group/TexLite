@@ -163,6 +163,7 @@
     "releaseNotes": "版本说明"
   },
   "auth": {
+    "showPassword": "显示密码", "hidePassword": "隐藏密码",
     "tagline": "轻量 LaTeX 写作环境", "username": "用户名", "password": "密码", "login": "登录",
     "contact": "需要账号？请联系 {{email}}", "firstLogin": "首次登录，请修改初始密码", "currentPassword": "当前密码",
     "newPassword": "新密码", "confirmPassword": "确认新密码", "updatePassword": "更新密码", "mismatch": "两次输入的新密码不一致", "passwordMinimum_one": "至少 {{count}} 位", "passwordMinimum_other": "至少 {{count}} 位", "sessionExpired": "登录状态已过期，请重新登录。", "logout": "退出"
