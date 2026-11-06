@@ -59,6 +59,16 @@ export function registerProjectGitRoutes(app: FastifyInstance, context: ProjectG
     return { status: await projectGit.configureUserToken(user.id, body.token) };
   });
 
+  app.put("/api/account/github/identity", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const body = request.body as { username?: unknown; email?: unknown };
+    if (typeof body.username !== "string" || typeof body.email !== "string") {
+      return apiError(reply, 400, "GIT_IDENTITY_INVALID");
+    }
+    return { status: projectGit.updateGitIdentity(user.id, body.username, body.email) };
+  });
+
   app.delete("/api/account/github", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;

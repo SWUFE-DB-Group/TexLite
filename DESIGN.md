@@ -1475,12 +1475,14 @@ account menu and encrypted in SQLite; it is never placed in a remote URL or
 command-line argument. A project's current owner supplies the credential for
 creating its GitHub repository and pushing. The remote URL and repository
 metadata remain project-specific. The local repository lives in the project
-source directory, with temporary identity:
-
-~~~text
-user.name  = project owner's username
-user.email = <username>@texlite.com
-~~~
+source directory. The same account dialog also stores an optional Git author
+name and email (schema migration 20). Accounts without saved values default to
+the TexLite username and `<username>@texlite.com`; the owner can change both.
+TexLite resolves the project owner's effective identity when committing and
+injects it with per-command `-c user.name` / `-c user.email` overrides. The
+values are not written to the repository or the host's Git configuration.
+GitHub attributes a commit only when the configured email belongs to the
+GitHub account.
 
 For a fine-grained GitHub token in a trusted deployment, grant repository
 Administration and Contents read/write permissions. “All repositories” is the

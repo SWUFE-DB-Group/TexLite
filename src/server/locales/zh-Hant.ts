@@ -60,6 +60,7 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   GIT_COMMAND_FAILED: "Git 命令執行失敗，請檢視伺服器記錄以了解詳情。",
   GIT_COMMIT_MESSAGE_INVALID: "請輸入不超過 300 個字元的提交說明。",
   GIT_DETACHED_HEAD: "目前處於 detached HEAD，請先返回預設分支。",
+  GIT_IDENTITY_INVALID: "請輸入有效的 Git 作者名稱和電子郵件地址（分別不超過 100 和 254 個字元）。",
   GIT_REPOSITORY_NAME_INVALID: "請輸入 GitHub 儲存庫名稱。",
   GIT_REPOSITORY_NOT_INITIALIZED: "該專案尚未初始化 Git。",
   GIT_REPOSITORY_RESPONSE_INVALID: "GitHub 未傳回有效的儲存庫資訊。",

@@ -22,12 +22,16 @@ it("toggles the current diff without refetching on close, refreshes on reopen an
   vi.mocked(api).mockImplementation(async (url) => {
     if (url.endsWith("/history")) return { commits: [commit] };
     if (url.includes("/diff")) return { title: "Changes", diff: url.includes("revision=") ? "+Historical change" : content, truncated: false };
-    return { status: { initialized: true, tokenConfigured: false, latestCommit: commit, branch: "main", dirty: true, ahead: 0, restorable: true } };
+    return { status: { initialized: true, tokenConfigured: false, latestCommit: commit, branch: "main", dirty: true, ahead: 0, restorable: true,
+      commitIdentity: { name: "admin", email: "admin@texlite.com" } } };
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const flush = vi.fn(async () => true);
   await act(async () => root.render(createElement(GitDialog, { open: true, project: { id: "project", name: "Paper" } as Project,
     onBeforeMutation: flush, onOpenChange: vi.fn() })));
+  expect(host.querySelector(".git-identity-line")?.textContent).toBe("Commits use admin <admin@texlite.com>");
+  expect(host.querySelector(".git-identity-name")?.textContent).toBe("admin");
+  expect(host.querySelector(".git-identity-email")?.textContent).toBe("admin@texlite.com");
   const current = () => [...host.querySelectorAll<HTMLButtonElement>(".git-action-row button")].find(button => button.textContent === i18n.t("git.workingDiff"))!;
   const click = (button: HTMLButtonElement) => act(async () => button.click());
   const requests = () => vi.mocked(api).mock.calls.filter(([url]) => url.includes("/diff")).length;

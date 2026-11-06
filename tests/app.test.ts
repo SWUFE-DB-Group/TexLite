@@ -1695,7 +1695,7 @@ Another UniqueTerm appears here.
       expect(invalidToken.json()).toMatchObject({ code: "GIT_TOKEN_REJECTED" });
       expect(invalidToken.json().error).toContain("无效、已过期或权限不足");
       expect((await app.inject({ method: "GET", url: "/api/account/github", headers: { cookie } })).json().status)
-        .toEqual({ tokenConfigured: false, githubLogin: null });
+        .toEqual({ tokenConfigured: false, githubLogin: null, gitUsername: "admin", gitEmail: "admin@texlite.com" });
 
       githubFailure = null;
       const configured = await app.inject({
@@ -1841,7 +1841,96 @@ Second version.
 
     const removed = await app.inject({ method: "DELETE", url: "/api/account/github", headers: { cookie } });
     expect(removed.statusCode).toBe(200);
-    expect(removed.json().status).toEqual({ tokenConfigured: false, githubLogin: null });
+    expect(removed.json().status).toEqual({ tokenConfigured: false, githubLogin: null, gitUsername: "admin", gitEmail: "admin@texlite.com" });
+  });
+
+  it("uses the account's configured Git author identity and preserves it when the token is removed", async () => {
+    const me = await app.inject({ method: "GET", url: "/api/me", headers: { cookie } });
+    const userId = me.json().user.id as string;
+    const defaults = await app.inject({ method: "GET", url: "/api/account/github", headers: { cookie } });
+    expect(defaults.json().status).toMatchObject({ gitUsername: "admin", gitEmail: "admin@texlite.com" });
+
+    const invalid = await app.inject({
+      method: "PUT", url: "/api/account/github/identity", headers: { cookie },
+      payload: { username: "Backup Bot", email: "not-an-email" }
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().code).toBe("GIT_IDENTITY_INVALID");
+
+    const invalidControl = await app.inject({
+      method: "PUT", url: "/api/account/github/identity", headers: { cookie },
+      payload: { username: "Backup Bot", email: "backup\u0000@example.com" }
+    });
+    expect(invalidControl.statusCode).toBe(400);
+    expect(invalidControl.json().code).toBe("GIT_IDENTITY_INVALID");
+    expect((db.prepare("SELECT git_email FROM user_github_settings WHERE user_id = ?").get(userId) as { git_email: string | null } | undefined)?.git_email ?? null)
+      .toBeNull();
+
+    const saved = await app.inject({
+      method: "PUT", url: "/api/account/github/identity", headers: { cookie },
+      payload: { username: "Backup Bot", email: "backup@example.com" }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().status).toMatchObject({ gitUsername: "Backup Bot", gitEmail: "backup@example.com" });
+    expect(db.prepare("SELECT git_username, git_email FROM user_github_settings WHERE user_id = ?").get(userId))
+      .toEqual({ git_username: "Backup Bot", git_email: "backup@example.com" });
+
+    const token = "github_pat_test_token_1234567890";
+    expect((await app.inject({
+      method: "PUT", url: "/api/account/github", headers: { cookie }, payload: { token }
+    })).statusCode).toBe(200);
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Identity backup paper" } });
+    const projectId = created.json().project.id as string;
+    const repository = await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/git/repository`, headers: { cookie },
+      payload: { name: "identity-backup-paper", private: true }
+    });
+    expect(repository.statusCode).toBe(200);
+    expect(repository.json().status.commitIdentity).toEqual({ name: "Backup Bot", email: "backup@example.com" });
+
+    const hostileEnvironment = {
+      GIT_AUTHOR_NAME: "Hostile Author",
+      GIT_AUTHOR_EMAIL: "hostile-author@example.com",
+      GIT_COMMITTER_NAME: "Hostile Committer",
+      GIT_COMMITTER_EMAIL: "hostile-committer@example.com"
+    };
+    const previousEnvironment = Object.fromEntries(
+      Object.keys(hostileEnvironment).map((key) => [key, process.env[key]])
+    ) as Record<string, string | undefined>;
+    Object.assign(process.env, hostileEnvironment);
+    let commit: Awaited<ReturnType<typeof app.inject>>;
+    try {
+      commit = await app.inject({
+        method: "POST", url: `/api/projects/${projectId}/git/commit`, headers: { cookie },
+        payload: { message: "Configured identity" }
+      });
+    } finally {
+      for (const [key, value] of Object.entries(previousEnvironment)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+    expect(commit.statusCode, commit.body).toBe(201);
+    expect(commit.json().commit).toMatchObject({ authorName: "Backup Bot", authorEmail: "backup@example.com" });
+    const committer = await execFileAsync("git", ["log", "-1", "--format=%cn%x1f%ce"], { cwd: sourceRoot(config, projectId) });
+    expect(committer.stdout.trim()).toBe("Backup Bot\x1fbackup@example.com");
+    const repositoryEmail = await execFileAsync("git", ["config", "--local", "--get", "user.email"], { cwd: sourceRoot(config, projectId) })
+      .catch(() => ({ stdout: "" }));
+    expect(repositoryEmail.stdout.trim()).toBe("");
+
+    const removed = await app.inject({ method: "DELETE", url: "/api/account/github", headers: { cookie } });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json().status).toMatchObject({
+      tokenConfigured: false, gitUsername: "Backup Bot", gitEmail: "backup@example.com"
+    });
+    expect(db.prepare("SELECT token_ciphertext, git_username, git_email FROM user_github_settings WHERE user_id = ?").get(userId))
+      .toEqual({ token_ciphertext: null, git_username: "Backup Bot", git_email: "backup@example.com" });
+
+    // Restore the defaults used by later assertions in this suite.
+    await app.inject({
+      method: "PUT", url: "/api/account/github/identity", headers: { cookie },
+      payload: { username: "admin", email: "admin@texlite.com" }
+    });
   });
 
   it("does not grant project creation to new users by default", async () => {
@@ -2576,7 +2665,9 @@ Second version.
     const historyCount = (db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(project.id) as { count: number }).count;
     const timestamp = new Date().toISOString();
     db.prepare(`INSERT INTO user_github_settings
-      (user_id, token_ciphertext, github_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
+      (user_id, token_ciphertext, github_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET token_ciphertext = excluded.token_ciphertext,
+        github_login = excluded.github_login, updated_at = excluded.updated_at`)
       .run(formerOwnerId, "former-owner-token", "former-owner", timestamp, timestamp);
 
     // Add a comment to the project

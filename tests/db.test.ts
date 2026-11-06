@@ -27,7 +27,7 @@ describe("database migrations", () => {
     let database = openDatabase(config);
     try {
       database.exec(`ALTER TABLE citation_library_entries DROP COLUMN notes;
-        DELETE FROM texlite_schema_migrations WHERE version = 19;
+        DELETE FROM texlite_schema_migrations WHERE version >= 19;
         INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES ('owner', 'owner', 'Owner', 'hash', 'user', '2026-11-03');
         INSERT INTO citation_library_entries (id, user_id, citation_key, entry_type, bibtex, revision, created_at, updated_at)
           VALUES ('entry', 'owner', 'old', 'article', '@article{old,title={Original}}', 3, '2026-11-02', '2026-11-03');`);
@@ -412,7 +412,8 @@ describe("database migrations", () => {
           { version: 16, name: "remove_revoked_project_view_links" },
           { version: 17, name: "store_encrypted_view_link_tokens" },
           { version: 18, name: "add_citation_collections" },
-          { version: 19, name: "add_citation_notes" }
+          { version: 19, name: "add_citation_notes" },
+          { version: 20, name: "add_user_git_identity" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -442,7 +443,8 @@ describe("database migrations", () => {
           { version: 16, name: "remove_revoked_project_view_links" },
           { version: 17, name: "store_encrypted_view_link_tokens" },
           { version: 18, name: "add_citation_collections" },
-          { version: 19, name: "add_citation_notes" }
+          { version: 19, name: "add_citation_notes" },
+          { version: 20, name: "add_user_git_identity" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -482,7 +484,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -522,6 +524,47 @@ describe("database migrations", () => {
         .toEqual({ token_ciphertext: "newer-ciphertext", github_login: "new-login" });
       expect(database.prepare("SELECT token_ciphertext, github_login FROM project_git_settings ORDER BY project_id").all())
         .toEqual([{ token_ciphertext: null, github_login: null }, { token_ciphertext: null, github_login: null }]);
+    } finally {
+      database.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("adds a configurable Git author identity to existing account settings", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-git-identity-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.prepare(`INSERT INTO users
+        (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
+        VALUES ('user-1', 'owner', 'Owner', 'hash', 'admin', 0, 0, 0, '2025-01-01T00:00:00.000Z')`).run();
+      database.prepare(`INSERT INTO user_github_settings
+        (user_id, token_ciphertext, github_login, git_username, git_email, created_at, updated_at)
+        VALUES ('user-1', 'token', 'login', 'Old Name', 'old@example.com',
+          '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')`).run();
+
+      // Simulate a database created before migration 20.
+      database.prepare("DELETE FROM texlite_schema_migrations WHERE version = 20").run();
+      database.exec("ALTER TABLE user_github_settings DROP COLUMN git_username");
+      database.exec("ALTER TABLE user_github_settings DROP COLUMN git_email");
+      database.close();
+
+      database = openDatabase(config);
+      const columns = (database.prepare("PRAGMA table_info(user_github_settings)").all() as Array<{ name: string }>)
+        .map((column) => column.name);
+      expect(columns).toEqual(expect.arrayContaining(["git_username", "git_email"]));
+      expect(database.prepare(`SELECT token_ciphertext, github_login, git_username, git_email
+        FROM user_github_settings WHERE user_id = 'user-1'`).get())
+        .toEqual({ token_ciphertext: "token", github_login: "login", git_username: null, git_email: null });
+      expect(database.prepare("SELECT COUNT(*) AS count FROM texlite_schema_migrations WHERE version = 20").get())
+        .toEqual({ count: 1 });
+
+      database.prepare("UPDATE user_github_settings SET git_username = ?, git_email = ? WHERE user_id = ?")
+        .run("Ada Lovelace", "ada@example.com", "user-1");
+      database.close();
+      database = openDatabase(config);
+      expect(database.prepare("SELECT git_username, git_email FROM user_github_settings WHERE user_id = 'user-1'").get())
+        .toEqual({ git_username: "Ada Lovelace", git_email: "ada@example.com" });
     } finally {
       database.close();
       fs.rmSync(root, { recursive: true, force: true });
@@ -570,7 +613,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }]);
       } finally {
         migrated.close();
       }

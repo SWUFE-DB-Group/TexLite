@@ -26,13 +26,23 @@ interface UserGitHubSettingsRow {
   user_id: string;
   token_ciphertext: string | null;
   github_login: string | null;
+  git_username: string | null;
+  git_email: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface GitIdentity {
+  name: string;
+  email: string;
 }
 
 export interface GitHubAccountStatus {
   tokenConfigured: boolean;
   githubLogin: string | null;
+  /** Effective commit author identity, including account defaults. */
+  gitUsername: string;
+  gitEmail: string;
 }
 
 export interface GitCommit {
@@ -58,6 +68,8 @@ export interface ProjectGitStatus {
   changedFiles: number;
   ahead: number;
   latestCommit: GitCommit | null;
+  /** The project owner's configured author identity for new commits. */
+  commitIdentity: GitIdentity;
 }
 
 interface CommandResult {
@@ -82,6 +94,7 @@ export class ProjectGitService {
     assertNoSourceSymlinks(this.config, project.id);
     const settings = this.settings(project.id);
     const account = this.userSettings(project.owner_id);
+    const commitIdentity = this.identityForUser(project.owner_id);
     const gitDirectory = path.join(sourceRoot(this.config, project.id), ".git");
     let gitStat: fs.Stats | null = null;
     try { gitStat = fs.lstatSync(gitDirectory); }
@@ -103,7 +116,8 @@ export class ProjectGitService {
       restorable: false,
       changedFiles: 0,
       ahead: 0,
-      latestCommit: null
+      latestCommit: null,
+      commitIdentity
     };
     const root = sourceRoot(this.config, project.id);
     const porcelain = (await this.git(root, ["status", "--porcelain=v1"])).stdout.trim();
@@ -131,13 +145,37 @@ export class ProjectGitService {
       restorable: porcelain.split("\n").some((line) => Boolean(line) && !line.startsWith("??")),
       changedFiles: porcelain ? porcelain.split("\n").length : 0,
       ahead: aheadResult?.code === 0 ? Number.parseInt(aheadResult.stdout.trim(), 10) || 0 : 0,
-      latestCommit: latestResult.code === 0 ? parseCommit(latestResult.stdout.trim()) : null
+      latestCommit: latestResult.code === 0 ? parseCommit(latestResult.stdout.trim()) : null,
+      commitIdentity
     };
   }
 
   githubAccountStatus(userId: string): GitHubAccountStatus {
     const settings = this.userSettings(userId);
-    return { tokenConfigured: Boolean(settings?.token_ciphertext), githubLogin: settings?.github_login ?? null };
+    const identity = this.identityForUser(userId);
+    return {
+      tokenConfigured: Boolean(settings?.token_ciphertext),
+      githubLogin: settings?.github_login ?? null,
+      gitUsername: identity.name,
+      gitEmail: identity.email
+    };
+  }
+
+  updateGitIdentity(userId: string, usernameInput: string, emailInput: string): GitHubAccountStatus {
+    const username = usernameInput.trim();
+    const email = emailInput.trim();
+    const controlCharacter = /\p{Cc}/u;
+    if (!username || username.length > 100 || controlCharacter.test(username) || /[<>]/.test(username)
+      || !email || email.length > 254 || controlCharacter.test(email) || !/^[^\s<>@]+@[^\s<>@]+$/.test(email)) {
+      throw httpError(400, "GIT_IDENTITY_INVALID");
+    }
+    const timestamp = new Date().toISOString();
+    this.db.prepare(`INSERT INTO user_github_settings (user_id, git_username, git_email, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        git_username = excluded.git_username, git_email = excluded.git_email, updated_at = excluded.updated_at`)
+      .run(userId, username, email, timestamp, timestamp);
+    return this.githubAccountStatus(userId);
   }
 
   async configureUserToken(userId: string, tokenInput: string): Promise<GitHubAccountStatus> {
@@ -156,7 +194,11 @@ export class ProjectGitService {
   }
 
   removeUserToken(userId: string): GitHubAccountStatus {
-    this.db.prepare("DELETE FROM user_github_settings WHERE user_id = ?").run(userId);
+    // Keep the row so a separately configured commit identity survives
+    // disconnecting GitHub.
+    this.db.prepare(`UPDATE user_github_settings
+      SET token_ciphertext = NULL, github_login = NULL, updated_at = ? WHERE user_id = ?`)
+      .run(new Date().toISOString(), userId);
     return this.githubAccountStatus(userId);
   }
 
@@ -201,13 +243,24 @@ export class ProjectGitService {
     await this.git(root, ["add", "--all"]);
     const staged = await this.git(root, ["diff", "--cached", "--quiet"], [1]);
     if (staged.code === 0) throw httpError(409, "GIT_NO_CHANGES");
+    const identity = this.identityForUser(owner.id);
+    // GIT_AUTHOR_* / GIT_COMMITTER_* take precedence over -c configuration.
+    // Pin them to the saved identity so a host-level environment cannot
+    // replace the author shown in the UI or on GitHub.
+    const identityEnvironment = {
+      ...process.env,
+      GIT_AUTHOR_NAME: identity.name,
+      GIT_AUTHOR_EMAIL: identity.email,
+      GIT_COMMITTER_NAME: identity.name,
+      GIT_COMMITTER_EMAIL: identity.email
+    };
     await this.git(root, [
-      "-c", `user.name=${owner.username}`,
-      "-c", `user.email=${owner.username}@texlite.com`,
+      "-c", `user.name=${identity.name}`,
+      "-c", `user.email=${identity.email}`,
       "-c", "commit.gpgSign=false",
       "-c", "core.hooksPath=/dev/null",
       "commit", "-m", message
-    ]);
+    ], [], identityEnvironment);
     const result = await this.git(root, ["log", "-1", "--format=%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s"]);
     return parseCommit(result.stdout.trim());
   }
@@ -325,6 +378,22 @@ export class ProjectGitService {
 
   private userSettings(userId: string): UserGitHubSettingsRow | undefined {
     return this.db.prepare("SELECT * FROM user_github_settings WHERE user_id = ?").get(userId) as UserGitHubSettingsRow | undefined;
+  }
+
+  /** Resolve the effective author identity, applying account defaults. */
+  private identityForUser(userId: string): GitIdentity {
+    const row = this.db.prepare(`SELECT users.username, settings.git_username, settings.git_email
+      FROM users LEFT JOIN user_github_settings settings ON settings.user_id = users.id
+      WHERE users.id = ?`).get(userId) as {
+      username: string;
+      git_username: string | null;
+      git_email: string | null;
+    } | undefined;
+    const username = row?.username ?? "texlite";
+    return {
+      name: row?.git_username?.trim() || username,
+      email: row?.git_email?.trim() || `${username}@texlite.com`
+    };
   }
 
   private requireUserTokenSettings(userId: string): UserGitHubSettingsRow {

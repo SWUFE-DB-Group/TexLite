@@ -179,7 +179,7 @@
     "menu": "{{name}} 的用户菜单",
     "openGithubSettings": "打开账户设置和 GitHub 集成",
     "githubTitle": "GitHub 集成",
-    "githubDescription": "连接 GitHub，为你拥有的项目创建仓库和备份。",
+    "githubDescription": "连接 GitHub、创建仓库，并设置你拥有的项目备份所使用的提交作者身份。",
     "githubEncryption": "TexLite 会通过 GitHub 验证 token，并以加密形式保存；保存后不会再次显示 token 明文。"
   },
   "projects": {
@@ -591,7 +591,11 @@
     "repository": "仓库", "localReady": "项目源码已由本地 Git 仓库管理。", "localPending": "创建 GitHub 仓库时会初始化本地 Git 仓库。",
     "repositoryName": "GitHub 仓库名称", "privateRepository": "创建为私有仓库", "createRepository": "创建 GitHub 仓库", "repositoryCreated": "GitHub 仓库创建成功。",
     "origin": "远程仓库", "openGitHub": "打开 GitHub", "clean": "工作区干净", "changedFiles_one": "{{count}} 个文件有修改", "changedFiles_other": "{{count}} 个文件有修改",
-    "projectTab": "项目", "commitAndPush": "提交与推送", "identity": "本次提交临时使用 {{username}} <{{username}}@texlite.com>，不会写入 Git 配置。",
+    "projectTab": "项目", "commitAndPush": "提交与推送", "identityPrefix": "本次提交使用",
+    "tokenTab": "Token", "identityTab": "身份", "identityTitle": "提交身份",
+    "identityName": "Git 用户名", "identityEmail": "Git 邮箱", "saveIdentity": "保存身份", "identityEmailInvalid": "请输入有效的邮箱地址。",
+    "identityInfoLabel": "Git 提交身份",
+    "identityInfo": "新建 Git 提交的作者身份，不会写入 Git 配置。",
     "commandsInfo": "Git 命令说明",
     "commandsLocalOnly": "仅创建本地提交",
     "commandsUntrackedDiff": "未跟踪文件另用以下命令展示",

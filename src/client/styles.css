@@ -2004,6 +2004,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .checkbox-field { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .checkbox-field input { width: auto; }
 .git-dialog { display: flex; flex-direction: column; gap: 14px; }
+.account-github-panel { display: flex; flex-direction: column; gap: 12px; }
+.account-github-panel[hidden] { display: none; }
+.git-identity-validation { margin: -4px 0 0; color: var(--ui-danger, #a3342c); font-size: 11px; line-height: 1.4; }
 .git-dialog-modal-fullscreen { top: 0; left: 0; width: 100vw; height: 100vh; max-height: 100vh; transform: none; overflow: hidden; border-radius: 0; }
 .git-loading { min-height: 120px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--ui-muted, #6e7871); font-size: 13px; }
 .git-message { margin: 0; display: flex; align-items: center; gap: 7px; padding: 9px 11px; border: 1px solid; border-radius: 7px; font-size: 12px; }
@@ -2023,6 +2026,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .git-command-help code b { color: var(--ui-accent, #176b44); font-weight: 600; }
 .git-command-help li > p { margin-top: 4px; color: var(--ui-muted, #68776e); font-size: 11px; }
 .git-section-heading small { max-width: 650px; overflow: hidden; color: var(--ui-muted, #78817b); font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.git-identity-name { color: var(--ui-accent, #176b44); font-weight: 600; }
+.git-identity-email { color: var(--ui-info, #1b5aa0); font-weight: 500; }
 .git-section-content { display: flex; flex-direction: column; gap: 11px; padding-top: 2px; }
 .git-token-guidance { display: flex; flex-direction: column; gap: 4px; padding: 10px 11px; border: 1px solid var(--ui-border, #c6d9cb); border-left: 3px solid var(--ui-accent-border, #28714b); border-radius: 7px; background: var(--ui-surface, #f0f7f2); }
 .git-token-guidance strong { color: var(--ui-accent, #225d3c); font-size: 11px; }

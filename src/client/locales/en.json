@@ -181,7 +181,7 @@
     "menu": "User menu for {{name}}",
     "openGithubSettings": "Open account settings and GitHub integration",
     "githubTitle": "GitHub integration",
-    "githubDescription": "Connect GitHub to create repositories and back up projects you own.",
+    "githubDescription": "Connect GitHub, create repositories and choose the author identity used for project backups you own.",
     "githubEncryption": "TexLite verifies the token with GitHub and stores it encrypted at rest. The token is never shown again."
   },
   "projects": {
@@ -604,7 +604,11 @@
     "localPending": "Creating a GitHub repository will initialize the local Git repository.", "repositoryName": "GitHub repository name",
     "privateRepository": "Create as a private repository", "createRepository": "Create GitHub repository", "repositoryCreated": "GitHub repository created.",
     "origin": "origin", "openGitHub": "Open GitHub", "clean": "Working tree clean", "changedFiles_one": "{{count}} changed file", "changedFiles_other": "{{count}} changed files",
-    "projectTab": "Project", "commitAndPush": "Commit and push", "identity": "Commits use {{username}} <{{username}}@texlite.com> for this command only.",
+    "projectTab": "Project", "commitAndPush": "Commit and push", "identityPrefix": "Commits use",
+    "tokenTab": "Token", "identityTab": "Identity", "identityTitle": "Commit identity",
+    "identityName": "Git username", "identityEmail": "Git email", "saveIdentity": "Save identity", "identityEmailInvalid": "Enter a valid email address.",
+    "identityInfoLabel": "Git commit identity",
+    "identityInfo": "Author identity for new Git commits. These values are not written to Git configuration.",
     "commandsInfo": "Git commands",
     "commandsLocalOnly": "Creates a local commit only",
     "commandsUntrackedDiff": "Also shows untracked files using",

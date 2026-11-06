@@ -233,6 +233,7 @@ export interface ProjectGitStatus {
   changedFiles: number;
   ahead: number;
   latestCommit: GitCommit | null;
+  commitIdentity: { name: string; email: string };
 }
 
 export type { LatexCompletionKind, LatexCompletionItem, LatexCompletionIndex } from "../shared/latexCompletion";

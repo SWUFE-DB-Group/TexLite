@@ -86,7 +86,7 @@ describe("management action feedback", () => {
   });
 
   it("confirms a validated GitHub token on its save button and keeps validation failures visible", async () => {
-    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: false, githubLogin: null } });
+    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: false, githubLogin: null, gitUsername: "admin", gitEmail: "admin@texlite.com" } });
     await render(createElement(GitHubAccountDialog, { open: true, onOpenChange: vi.fn() }));
     await act(async () => changeText(host.querySelector<HTMLInputElement>('input[type="password"]')!, "example-personal-access-token"));
     const save = host.querySelector<HTMLButtonElement>(".save-button")!;
@@ -99,7 +99,7 @@ describe("management action feedback", () => {
     await click(save); await click(save);
     expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "PUT")).toHaveLength(2);
     expect(save.querySelector(".lucide-loader-circle")).not.toBeNull();
-    await act(async () => finish({ status: { tokenConfigured: true, githubLogin: "researcher" } }));
+    await act(async () => finish({ status: { tokenConfigured: true, githubLogin: "researcher", gitUsername: "admin", gitEmail: "admin@texlite.com" } }));
     expect(save.textContent).toBe("Saved");
     expect(save.querySelector(".save-button-confirmation")).not.toBeNull();
     expect(host.querySelector(".git-account")?.textContent).toContain("researcher");
@@ -110,7 +110,7 @@ describe("management action feedback", () => {
   });
 
   it("collapses token replacement and guidance for connected accounts, but opens setup after disconnecting", async () => {
-    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: true, githubLogin: "researcher" } });
+    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: true, githubLogin: "researcher", gitUsername: "admin", gitEmail: "admin@texlite.com" } });
     await render(createElement(GitHubAccountDialog, { open: true, onOpenChange: vi.fn() }));
     const form = () => host.querySelector<HTMLElement>(".git-token-form")!;
     const toggle = host.querySelector<HTMLButtonElement>(".git-token-disclosure")!;
@@ -126,11 +126,43 @@ describe("management action feedback", () => {
     expect(host.querySelector<HTMLButtonElement>(".save-button")!.disabled).toBe(true);
     await click(toggle);
     expect(form().querySelector<HTMLInputElement>("input")!.value).toBe("replacement-personal-access-token");
-    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: false, githubLogin: null } });
+    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: false, githubLogin: null, gitUsername: "admin", gitEmail: "admin@texlite.com" } });
     await click(host.querySelector<HTMLButtonElement>(".git-account button")!);
     expect(form().hidden).toBe(false);
     expect(form().querySelector<HTMLInputElement>("input")!.value).toBe("");
     expect(host.querySelector(".git-token-disclosure")).toBeNull();
+  });
+
+  it("switches between token and identity tabs and saves the Git commit identity", async () => {
+    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: false, githubLogin: null, gitUsername: "admin", gitEmail: "admin@texlite.com" } });
+    await render(createElement(GitHubAccountDialog, { open: true, onOpenChange: vi.fn() }));
+    const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Token", "Identity"]);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    await click(tabs[1]);
+    expect(tabs[1].getAttribute("aria-selected")).toBe("true");
+    const form = host.querySelector<HTMLElement>(".git-identity-form")!;
+    expect(form.hidden).toBe(false);
+    expect(host.querySelector<HTMLElement>(".account-github-panel")!.hidden).toBe(true);
+    expect(form.querySelector(".info-popover-trigger")).not.toBeNull();
+    const inputs = form.querySelectorAll<HTMLInputElement>("input");
+    expect([...inputs].map((input) => input.value)).toEqual(["admin", "admin@texlite.com"]);
+    const save = host.querySelector<HTMLButtonElement>(".save-button")!;
+    expect(save.disabled).toBe(true);
+    await act(async () => changeText(inputs[1], "backup\u0000@example.com"));
+    expect(save.disabled).toBe(true);
+    expect(form.querySelector(".git-identity-validation")?.textContent).toBe("Enter a valid email address.");
+    await act(async () => changeText(inputs[0], "Backup Bot"));
+    await act(async () => changeText(inputs[1], "backup@example.com"));
+    expect(save.disabled).toBe(false);
+    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: false, githubLogin: null, gitUsername: "Backup Bot", gitEmail: "backup@example.com" } });
+    expect(save.textContent).toBe("Save identity");
+    await click(save);
+    const call = vi.mocked(api).mock.calls.find(([url]) => url === "/api/account/github/identity")!;
+    expect(call[1]).toMatchObject({ method: "PUT" });
+    expect(JSON.parse(String(call[1]!.body))).toEqual({ username: "Backup Bot", email: "backup@example.com" });
+    expect(save.textContent).toBe("Saved");
+    expect(save.disabled).toBe(true);
   });
 
   it("toggles inline user actions, opens only one row and protects self-deletion", async () => {
