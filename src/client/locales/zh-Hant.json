@@ -956,7 +956,7 @@
     "uploadSucceededRefreshFailed": "檔案已上傳，但無法重新整理檔案清單：{{message}}",
     "newFolder": "新增資料夾",
     "folderName": "資料夾名稱",
-    "folderDestination": "資料夾將建立在 {{folder}} 中。",
+    "folderDestination": "資料夾將建立在 <path>{{folder}}</path> 中。",
     "uploadOverwriteTitle": "檔案已存在",
     "uploadOverwriteDescription_one": "以下檔案已經存在：{{files}}。要覆蓋它們嗎？",
     "uploadOverwriteDescription_other": "以下檔案已經存在：{{files}}。要覆蓋它們嗎？",

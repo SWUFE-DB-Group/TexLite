@@ -1590,6 +1590,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 @media (pointer: coarse) { .dialog-drag-handle { cursor: default; touch-action: auto; } }
 .dialog-header h2 { margin: 0; font-size: 19px; }
 .dialog-header p { margin: 6px 0 0; color: var(--ui-muted, #737a75); font-size: 12px; line-height: 1.5; }
+.folder-destination-path { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 700; overflow-wrap: anywhere; }
 .dialog-close { border: 0; background: transparent; color: var(--ui-muted, #6d746f); font-size: 22px; }
 .dialog-body { padding: 20px 22px; }
 .dialog-body .warning { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 11px; border: 1px solid var(--ui-warning-border, #e4cf91); border-radius: 7px; background: var(--ui-warning-bg, #fff8df); color: var(--ui-warning, #735a18); font-size: 11px; line-height: 1.5; }
