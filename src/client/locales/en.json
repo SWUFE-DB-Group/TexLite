@@ -604,7 +604,7 @@
     "localPending": "Creating a GitHub repository will initialize the local Git repository.", "repositoryName": "GitHub repository name",
     "privateRepository": "Create as a private repository", "createRepository": "Create GitHub repository", "repositoryCreated": "GitHub repository created.",
     "origin": "origin", "openGitHub": "Open GitHub", "clean": "Working tree clean", "changedFiles_one": "{{count}} changed file", "changedFiles_other": "{{count}} changed files",
-    "commitAndPush": "Commit and push", "identity": "Commits use {{username}} <{{username}}@texlite.com> for this command only.",
+    "projectTab": "Project", "commitAndPush": "Commit and push", "identity": "Commits use {{username}} <{{username}}@texlite.com> for this command only.",
     "commandsInfo": "Git commands",
     "commandsLocalOnly": "Creates a local commit only",
     "commandsUntrackedDiff": "Also shows untracked files using",

@@ -26,6 +26,7 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
 }) {
   const { t, i18n } = useTranslation();
   const [status, setStatus] = useState<ProjectGitStatus | null>(null);
+  const [tab, setTab] = useState<"project" | "history">("project");
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [repositoryName, setRepositoryName] = useState(() => suggestedRepositoryName(project.name));
   const [isPrivate, setIsPrivate] = useState(true);
@@ -62,7 +63,7 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
       setDiffFullscreen(false);
       return;
     }
-    setError(""); setNotice(""); setDiff(null);
+    setError(""); setNotice(""); setDiff(null); setTab("project");
     setDiffFullscreen(false);
     setRepositoryName(suggestedRepositoryName(project.name));
     setBusy("load");
@@ -180,6 +181,10 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
       {error && <p className="git-message error" role="alert">{error}</p>}
       {notice && <p className="git-message success" role="status"><GitBranch size={14} />{notice}</p>}
       {status && <>
+        <div className="share-scope-tabs" role="tablist" aria-label={t("git.title")}>
+          {(["project", "history"] as const).map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} disabled={Boolean(busy)} onClick={() => { setTab(item); setDiff(null); setDiffFullscreen(false); if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); }}>{t(item === "project" ? "git.projectTab" : "git.history")}</button>)}
+        </div>
+        {tab === "project" && <>
         <section className="git-section">
           <button className="git-section-toggle" type="button" aria-expanded={authenticationExpanded} onClick={() => setAuthenticationExpanded((current) => !current)}><span className="git-section-heading"><GitHubIcon size={16} /><span><strong>{t("git.authentication")}</strong><small>{status.tokenConfigured ? t("git.connectedAs", { login: status.githubLogin }) : t("git.authenticationHint")}</small></span></span>{authenticationExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
           {authenticationExpanded && <div className="git-section-content">
@@ -204,14 +209,16 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
           <div className="git-action-row"><button title={!status.dirty ? t("git.noChangesToCommit") : undefined} disabled={Boolean(busy) || !status.branch || !status.dirty || !commitMessage.trim()} onClick={commit}>{busy === "commit" ? <LoaderCircle className="spin" size={14} /> : <GitCommitHorizontal size={14} />}{t("git.commit")}</button><button title={status.ahead === 0 && status.branch && status.remoteUrl && status.tokenConfigured && status.latestCommit ? t("git.noUnpushedCommits") : undefined} disabled={Boolean(busy) || !status.branch || !status.tokenConfigured || !status.remoteUrl || !status.latestCommit || status.ahead === 0} onClick={push}>{busy === "push" ? <LoaderCircle className="spin" size={14} /> : <CloudUpload size={14} />}{t("git.push")}{status.ahead > 0 && <span className="git-count">{status.ahead}</span>}</button><button aria-pressed={workingDiffOpen} className={workingDiffOpen ? "is-active" : undefined} disabled={Boolean(busy) || !status.latestCommit} onClick={() => toggleDiff()}>{busy === "diff" ? <LoaderCircle className="spin" size={14} /> : workingDiffOpen ? <EyeOff size={14} /> : <Eye size={14} />}{t("git.workingDiff")}</button><button className="git-discard-button" title={!status.restorable ? t("git.noChangesToDiscard") : t("git.discardChanges")} disabled={Boolean(busy) || !status.latestCommit || !status.restorable} onClick={() => setDiscardOpen(true)}><RotateCcw size={14} />{t("git.discardChanges")}</button>{!status.branch && <button disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget("branch"); }}><GitBranch size={14} />{t("git.returnToBranch", { branch: status.defaultBranch })}</button>}</div>
         </section>}
 
+        </>}
+
         {diff && <section ref={diffSectionRef} className={`git-section git-diff-section${diffFullscreen ? " is-fullscreen" : ""}`}><div className="git-diff-heading"><div className="git-section-heading"><GitCompareArrows size={16} /><div><strong>{t("git.diffTitle")}</strong><small>{diff.title}{diff.truncated ? ` · ${t("git.diffTruncated")}` : ""}</small></div></div><div className="git-diff-controls"><div className="git-diff-font-controls" role="group" aria-label={t("git.diffFontSize")}><button type="button" className="git-diff-font-button" disabled={diffFontSize <= 8} title={t("git.diffFontDecrease")} aria-label={t("git.diffFontDecrease")} onClick={() => setDiffFontSize((current) => Math.max(8, current - 1))}><Minus size={14} /></button><span className="git-diff-font-value" aria-live="polite">{diffFontSize}px</span><button type="button" className="git-diff-font-button" disabled={diffFontSize >= 24} title={t("git.diffFontIncrease")} aria-label={t("git.diffFontIncrease")} onClick={() => setDiffFontSize((current) => Math.min(24, current + 1))}><Plus size={14} /></button></div><button type="button" className="git-diff-fullscreen" title={diffFullscreen ? t("git.exitFullscreenDiff") : t("git.fullscreenDiff")} aria-label={diffFullscreen ? t("git.exitFullscreenDiff") : t("git.fullscreenDiff")} onClick={() => void toggleDiffFullscreen()}>{diffFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button></div></div><GitDiffView content={diff.diff} empty={t("git.noChanges")} fontSize={diffFontSize} /></section>}
 
-        {status.initialized && <section className="git-section">
+        {tab === "history" && <section className="git-section">
           <div className="git-section-heading"><GitBranch size={16} /><div><strong>{t("git.history")}</strong><small>{t("git.historyHint")}</small></div></div>
           <div className="git-history">{commits.map((commitItem) => {
             const diffOpen = diff?.revision === commitItem.sha;
             return <article key={commitItem.sha}><code>{commitItem.shortSha}</code><div><strong>{commitItem.message}</strong><small>{commitItem.authorName} · {formatDateTime(commitItem.authoredAt, i18n.resolvedLanguage)}</small></div><span data-texlite-tooltip-always><button type="button" className={diffOpen ? "is-active" : undefined} title={t(diffOpen ? "git.hideCommitDiff" : "git.viewCommitDiff")} aria-label={t(diffOpen ? "git.hideCommitDiff" : "git.viewCommitDiff")} aria-pressed={diffOpen} disabled={Boolean(busy)} onClick={() => toggleDiff(commitItem.sha)}>{diffOpen ? <EyeOff size={14} /> : <Eye size={14} />}</button><button type="button" title={t("git.checkoutVersion")} disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget(commitItem); }}><Undo2 size={14} /></button></span></article>;
-          })}{commits.length === 0 && <p className="muted">{t("git.noCommits")}</p>}</div>
+          })}{commits.length === 0 && <p className="muted git-history-empty">{t("git.noCommits")}</p>}</div>
         </section>}
       </>}
     </div>

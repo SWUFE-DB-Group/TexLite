@@ -1481,6 +1481,7 @@
     "clean": "工作區無變更",
     "changedFiles_one": "{{count}} 個檔案有修改",
     "changedFiles_other": "{{count}} 個檔案有修改",
+    "projectTab": "專案",
     "commitAndPush": "提交與推送",
     "commandsInfo": "Git 指令說明",
     "commandsLocalOnly": "僅建立本機提交",

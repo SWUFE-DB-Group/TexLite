@@ -2070,6 +2070,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .git-diff span.header { color: #e8cf8b; font-weight: 650; }
 .git-diff-empty { margin: 0 -14px; padding: 28px; background: #252a27; color: #b9c0bc; font-size: 12px; text-align: center; }
 .git-history { max-height: 300px; display: flex; flex-direction: column; gap: 5px; overflow: auto; }
+.git-history-empty { text-align: center; }
 .git-history article { min-width: 0; display: grid; grid-template-columns: 66px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--ui-border, #e2e6e3); border-radius: 6px; background: var(--ui-surface, white); }
 .git-history code { color: var(--ui-accent, #176b44); font-size: 10px; }
 .git-history article > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }

@@ -44,8 +44,13 @@ it("toggles the current diff without refetching on close, refreshes on reopen an
   content = "+Updated change";
   await click(current());
   expect(host.querySelector(".git-diff")?.textContent).toContain("Updated change");
+  const tabs = host.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+  await click(tabs[1]);
+  expect(host.querySelector(".git-action-row, .git-diff-section")).toBeNull();
   await click(host.querySelector<HTMLButtonElement>(".git-history button")!);
   expect(host.querySelector(".git-diff")?.textContent).toContain("Historical change");
+  await click(tabs[0]);
+  expect(host.querySelector(".git-history, .git-diff-section")).toBeNull();
   expect(current().getAttribute("aria-pressed")).toBe("false");
   await click(current());
   expect(host.querySelector(".git-diff")?.textContent).toContain("Updated change");
