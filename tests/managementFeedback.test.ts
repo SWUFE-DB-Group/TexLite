@@ -109,6 +109,30 @@ describe("management action feedback", () => {
     expect(save.textContent).toBe("Save and verify token");
   });
 
+  it("collapses token replacement and guidance for connected accounts, but opens setup after disconnecting", async () => {
+    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: true, githubLogin: "researcher" } });
+    await render(createElement(GitHubAccountDialog, { open: true, onOpenChange: vi.fn() }));
+    const form = () => host.querySelector<HTMLElement>(".git-token-form")!;
+    const toggle = host.querySelector<HTMLButtonElement>(".git-token-disclosure")!;
+    expect(host.querySelector(".git-account")?.textContent).toContain("researcher");
+    expect(form().hidden).toBe(true);
+    expect(form().querySelector(".git-token-guidance")).not.toBeNull();
+    expect(form().querySelector(".account-github-encryption-note")).not.toBeNull();
+    await click(toggle);
+    expect(form().hidden).toBe(false); expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    await act(async () => changeText(form().querySelector<HTMLInputElement>("input")!, "replacement-personal-access-token"));
+    await click(toggle);
+    expect(form().hidden).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>(".save-button")!.disabled).toBe(true);
+    await click(toggle);
+    expect(form().querySelector<HTMLInputElement>("input")!.value).toBe("replacement-personal-access-token");
+    vi.mocked(api).mockResolvedValueOnce({ status: { tokenConfigured: false, githubLogin: null } });
+    await click(host.querySelector<HTMLButtonElement>(".git-account button")!);
+    expect(form().hidden).toBe(false);
+    expect(form().querySelector<HTMLInputElement>("input")!.value).toBe("");
+    expect(host.querySelector(".git-token-disclosure")).toBeNull();
+  });
+
   it("toggles inline user actions, opens only one row and protects self-deletion", async () => {
     await render(createElement(AdminUsers, { currentUser: admin, minPasswordLength: 8, onBack: vi.fn() }));
     const rows = [...host.querySelectorAll("tbody tr")];
