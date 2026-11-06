@@ -8,6 +8,7 @@ import { api } from "./api";
 import { Modal } from "./Dialog";
 import type { GitCommit, Project, ProjectGitStatus } from "./types";
 import { GitHubIcon } from "./GitHubIcon";
+import { InfoPopover } from "./InfoPopover";
 import { formatDateTime } from "./dateTime";
 
 interface GitDiffResult {
@@ -198,7 +199,7 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
         </section>
 
         {status.initialized && <section className="git-section">
-          <div className="git-section-heading"><GitCommitHorizontal size={16} /><div><strong>{t("git.commitAndPush")}</strong><small>{status.branch ? t("git.identity", { username: project.ownerUsername }) : t("git.detachedHead")}</small></div></div>
+          <div className="git-section-heading"><GitCommitHorizontal size={16} /><div><div className="git-section-title"><strong>{t("git.commitAndPush")}</strong><InfoPopover label={t("git.commandsInfo")} content={<GitCommandsHelp />} /></div><small>{status.branch ? t("git.identity", { username: project.ownerUsername }) : t("git.detachedHead")}</small></div></div>
           <label className="form-field">{t("git.commitMessage")}<textarea rows={3} value={commitMessage} placeholder={t("git.commitPlaceholder")} onChange={(event) => setCommitMessage(event.target.value)} /></label>
           <div className="git-action-row"><button title={!status.dirty ? t("git.noChangesToCommit") : undefined} disabled={Boolean(busy) || !status.branch || !status.dirty || !commitMessage.trim()} onClick={commit}>{busy === "commit" ? <LoaderCircle className="spin" size={14} /> : <GitCommitHorizontal size={14} />}{t("git.commit")}</button><button title={status.ahead === 0 && status.branch && status.remoteUrl && status.tokenConfigured && status.latestCommit ? t("git.noUnpushedCommits") : undefined} disabled={Boolean(busy) || !status.branch || !status.tokenConfigured || !status.remoteUrl || !status.latestCommit || status.ahead === 0} onClick={push}>{busy === "push" ? <LoaderCircle className="spin" size={14} /> : <CloudUpload size={14} />}{t("git.push")}{status.ahead > 0 && <span className="git-count">{status.ahead}</span>}</button><button aria-pressed={workingDiffOpen} className={workingDiffOpen ? "is-active" : undefined} disabled={Boolean(busy) || !status.latestCommit} onClick={() => toggleDiff()}>{busy === "diff" ? <LoaderCircle className="spin" size={14} /> : workingDiffOpen ? <EyeOff size={14} /> : <Eye size={14} />}{t("git.workingDiff")}</button><button className="git-discard-button" title={!status.restorable ? t("git.noChangesToDiscard") : t("git.discardChanges")} disabled={Boolean(busy) || !status.latestCommit || !status.restorable} onClick={() => setDiscardOpen(true)}><RotateCcw size={14} />{t("git.discardChanges")}</button>{!status.branch && <button disabled={Boolean(busy)} onClick={() => { setForceCheckout(false); setCheckoutTarget("branch"); }}><GitBranch size={14} />{t("git.returnToBranch", { branch: status.defaultBranch })}</button>}</div>
         </section>}
@@ -221,6 +222,28 @@ export function GitDialog({ open, project, onOpenChange, onBeforeMutation }: {
   </Modal><Modal open={discardOpen} title={t("git.discardTitle")} description={t("git.discardDescription")}
     onOpenChange={setDiscardOpen} footer={<><button onClick={() => setDiscardOpen(false)}>{t("common.cancel")}</button><button className="danger" onClick={discardChanges}>{t("git.discardConfirm")}</button></>}><></></Modal>
   </>;
+}
+
+function GitCommandsHelp() {
+  const { t } = useTranslation();
+  return <ul className="git-command-help">
+    <li><strong>{t("git.commit")}</strong>
+      <code><b>git add</b> --all{"\n"}<b>git commit</b> -m "…"</code>
+      <p>{t("git.commandsLocalOnly")}</p>
+    </li>
+    <li><strong>{t("git.push")}</strong>
+      <code><b>git push</b> --set-upstream origin HEAD:refs/heads/&lt;branch&gt;</code>
+    </li>
+    <li><strong>{t("git.workingDiff")}</strong>
+      <code><b>git diff</b> --no-ext-diff --unified=3 HEAD --</code>
+      <p>{t("git.commandsUntrackedDiff")}</p>
+      <code><b>git diff</b> --no-index -- /dev/null &lt;file&gt;</code>
+    </li>
+    <li><strong>{t("git.discardChanges")}</strong>
+      <code><b>git restore</b> --source=HEAD --staged --worktree -- .</code>
+      <p>{t("git.commandsRestoreHint")}</p>
+    </li>
+  </ul>;
 }
 
 function GitDiffView({ content, empty, fontSize }: { content: string; empty: string; fontSize: number }) {

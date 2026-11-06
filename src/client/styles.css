@@ -2015,6 +2015,13 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .git-section-heading > svg { flex: none; margin-top: 1px; }
 .git-section-heading > div, .git-section-heading > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .git-section-heading strong { font-size: 13px; }
+.git-section-title { display: flex; align-items: center; gap: 4px; }
+.git-command-help { display: grid; gap: 12px; margin: 0; padding-left: 14px; white-space: normal; }
+.git-command-help li::marker { color: var(--ui-accent, #176b44); }
+.git-command-help li > strong { font-size: 12px; font-weight: 600; }
+.git-command-help code { display: block; margin-top: 4px; padding: 6px 8px; border-radius: 5px; background: var(--ui-subtle, #f1f5f2); color: var(--ui-text, #273a2f); font: 11px/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.git-command-help code b { color: var(--ui-accent, #176b44); font-weight: 600; }
+.git-command-help li > p { margin-top: 4px; color: var(--ui-muted, #68776e); font-size: 11px; }
 .git-section-heading small { max-width: 650px; overflow: hidden; color: var(--ui-muted, #78817b); font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 .git-section-content { display: flex; flex-direction: column; gap: 11px; padding-top: 2px; }
 .git-token-guidance { display: flex; flex-direction: column; gap: 4px; padding: 10px 11px; border: 1px solid var(--ui-border, #c6d9cb); border-left: 3px solid var(--ui-accent-border, #28714b); border-radius: 7px; background: var(--ui-surface, #f0f7f2); }

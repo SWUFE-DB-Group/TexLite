@@ -61,15 +61,20 @@ describe("clickable help", () => {
 
   it("keeps normal hover tooltips unchanged and removes help when its owner unmounts", async () => {
     await act(async () => root.render(createElement(Fragment, null,
-      createElement(InfoPopover, { content: "Persistent help" }),
+      createElement(InfoPopover, { label: "Command help", content: createElement("ul", null,
+        createElement("li", null, createElement("code", null, "git status"))) }),
       createElement("button", { "data-tooltip": "Normal hover hint" }, "Action"), createElement(GlobalTooltip))));
     const normal = host.querySelector<HTMLButtonElement>("[data-tooltip]")!;
     await act(async () => normal.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
     expect(host.querySelector('[role="tooltip"]')?.textContent).toBe("Normal hover hint");
     await act(async () => normal.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body })));
     expect(host.querySelector('[role="tooltip"]')).toBeNull();
-    await act(async () => host.querySelector<HTMLButtonElement>(".info-popover-trigger")!.click());
-    expect(document.querySelector(".info-popover-content")).not.toBeNull();
+    const trigger = host.querySelector<HTMLButtonElement>(".info-popover-trigger")!;
+    expect(trigger.getAttribute("aria-label")).toBe("Command help");
+    await act(async () => trigger.click());
+    const content = document.querySelector(".info-popover-content")!;
+    expect(content.querySelector("ul > li > code")?.textContent).toBe("git status");
+    expect(content.querySelector("p")).toBeNull();
     await act(async () => root.render(null));
     expect(document.querySelector(".info-popover-content")).toBeNull();
   });

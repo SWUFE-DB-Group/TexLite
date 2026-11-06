@@ -1,11 +1,13 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Info, type LucideIcon } from "lucide-react";
 
 /** Persistent, selectable help text. Unlike hover hints, this is an explicit toggle. */
-export function InfoPopover({ content, label = content, className = "", icon: Icon = Info, size = 14 }: {
-  content: string; label?: string; className?: string; icon?: LucideIcon; size?: number;
-}) {
+type InfoPopoverProps = { className?: string; icon?: LucideIcon; size?: number } & (
+  { content: string; label?: string } | { content: ReactNode; label: string }
+);
+
+export function InfoPopover({ content, label = typeof content === "string" ? content : undefined, className = "", icon: Icon = Info, size = 14 }: InfoPopoverProps) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = trigger.current?.closest<HTMLElement>('[role="dialog"]') ?? null;
@@ -20,7 +22,7 @@ export function InfoPopover({ content, label = content, className = "", icon: Ic
         onOpenAutoFocus={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => event.preventDefault()}>
-        <p>{content}</p>
+        {typeof content === "string" ? <p>{content}</p> : content}
         <Popover.Arrow className="info-popover-arrow" width={10} height={5} />
       </Popover.Content>
     </Popover.Portal>
