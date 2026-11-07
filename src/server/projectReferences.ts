@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import type { Config } from "./config.js";
+import { BoundedExpiringCache } from "./boundedExpiringCache.js";
 import { listProjectFilesAsync, resolveSourcePath } from "./files.js";
 import {
   findLatexReferenceDefinitions,
@@ -24,8 +25,9 @@ export interface ProjectReferenceTarget {
    * Opaque version of the file that contains the definition. It changes
    * whenever that file's size or modification time does, so a client may reuse
    * data derived from the file for exactly as long as the value is unchanged.
+   * Absent when the file's metadata is unknown: derived data must not be reused.
    */
-  revision: string;
+  revision?: string;
 }
 
 export interface ProjectReferenceLookupOptions {
@@ -47,56 +49,49 @@ const bibExtension = /\.bib$/i;
 const MAX_REFERENCE_KEY_LENGTH = 512;
 
 interface CachedProjectSources {
-  expiresAt: number;
   signature: string;
   contents: Map<string, string>;
   directives: Map<string, LatexDocumentDirectives>;
-  bytes: number;
 }
 
 // Hover and navigation can resolve many keys from one project in quick
 // succession. Cache the source snapshot by file metadata so different keys do
 // not re-read and re-parse every LaTeX source inside the same short window.
-const SOURCE_CACHE_TTL_MS = 15_000;
-const MAX_SOURCE_CACHE_PROJECTS = 16;
-const MAX_SOURCE_CACHE_BYTES = 8 * 1024 * 1024;
-const MAX_SOURCE_CACHE_TOTAL_BYTES = 32 * 1024 * 1024;
-const sourceCache = new Map<string, CachedProjectSources>();
-let sourceCacheBytes = 0;
-let sourceCacheSweep: ReturnType<typeof setTimeout> | null = null;
+const sourceCache = new BoundedExpiringCache<CachedProjectSources>({
+  ttlMs: 15_000,
+  maxEntries: 16,
+  maxEntryBytes: 8 * 1024 * 1024,
+  maxBytes: 32 * 1024 * 1024
+});
+
+interface BibliographyIndex {
+  revision: string;
+  /** First definition of each key, as navigation resolves duplicates. */
+  locations: Map<string, { line: number; column: number }>;
+}
+
+// A .bib file can be several megabytes and every hover re-resolves its key.
+// Keep only a key -> location index per file revision, not the content, so an
+// unchanged bibliography is neither re-read nor re-scanned. Validity comes
+// from the revision; the sliding lifetime only frees indexes nobody uses.
+const bibliographyIndexCache = new BoundedExpiringCache<BibliographyIndex>({
+  ttlMs: 5 * 60_000,
+  refreshOnHit: true,
+  maxEntries: 64,
+  maxEntryBytes: 4 * 1024 * 1024,
+  maxBytes: 16 * 1024 * 1024
+});
 
 /** Resident size of the source-snapshot cache, for diagnostics and tests. */
 export function projectReferenceCacheStats(): { projects: number; bytes: number } {
-  return { projects: sourceCache.size, bytes: sourceCacheBytes };
+  const { entries, bytes } = sourceCache.stats();
+  return { projects: entries, bytes };
 }
 
-function removeCachedSources(projectId: string): void {
-  const removed = sourceCache.get(projectId);
-  if (!removed) return;
-  sourceCache.delete(projectId);
-  sourceCacheBytes -= removed.bytes;
-}
-
-/**
- * The TTL only stops an entry from being reused; it does not free it. Without
- * a sweep, an idle project's sources would stay resident until another
- * project displaced them. One timer, aimed at the earliest expiry, releases
- * them on time and is not re-armed once the cache is empty. It is unref'd so
- * it never keeps the process alive.
- */
-function scheduleSourceCacheSweep(): void {
-  if (sourceCacheSweep !== null || sourceCache.size === 0) return;
-  let earliest = Infinity;
-  for (const entry of sourceCache.values()) earliest = Math.min(earliest, entry.expiresAt);
-  sourceCacheSweep = setTimeout(() => {
-    sourceCacheSweep = null;
-    const now = Date.now();
-    for (const [projectId, entry] of sourceCache) {
-      if (entry.expiresAt <= now) removeCachedSources(projectId);
-    }
-    scheduleSourceCacheSweep();
-  }, Math.max(0, earliest - Date.now()));
-  sourceCacheSweep.unref();
+/** Resident size of the per-file bibliography index cache, for diagnostics and tests. */
+export function bibliographyIndexCacheStats(): { files: number; bytes: number } {
+  const { entries, bytes } = bibliographyIndexCache.stats();
+  return { files: entries, bytes };
 }
 
 export function validReferenceKey(value: unknown): value is string {
@@ -133,7 +128,10 @@ export async function resolveProjectReference(
     await projectSourceSnapshot(config, projectId, sourceEntries);
   const sourcePaths = [...sourceContents.keys()].sort((left, right) => left.localeCompare(right));
   const bibPaths = bibEntries.map((entry) => entry.path).sort((left, right) => left.localeCompare(right));
-  const revisions = new Map(files.map((entry) => [entry.path, `${entry.size ?? 0}:${entry.mtimeMs ?? 0}`]));
+  // Without both size and mtime there is no trustworthy version; an empty
+  // revision is omitted from the target and disables server-side caching.
+  const revisions = new Map(files.map((entry) => [entry.path,
+    entry.size === undefined || entry.mtimeMs === undefined ? "" : `${entry.size}:${entry.mtimeMs}`]));
 
   const preferredPath = sourceContents.has(lookup.preferredPath ?? "") ? lookup.preferredPath ?? "" : "";
   const mainFile = sourceContents.has(lookup.mainFile ?? "") && texExtension.test(lookup.mainFile ?? "")
@@ -150,6 +148,13 @@ export async function resolveProjectReference(
     : citationLookupOrder(sourceDirectives, prioritizedSources, bibPaths, sourcePaths);
 
   for (const entryPath of orderedPaths) {
+    const revision = revisions.get(entryPath) ?? "";
+    if (bibExtension.test(entryPath) && !sourceContents.has(entryPath)) {
+      if (kind !== "citation") continue;
+      const location = (await bibliographyIndex(config, projectId, entryPath, revision))?.get(key);
+      if (!location) continue;
+      return { path: entryPath, ...location, kind, source: "bibtex", ...(revision ? { revision } : {}) };
+    }
     const source = sourceContents.get(entryPath)
       ?? await readProjectFile(config, projectId, entryPath);
     if (source === null) continue;
@@ -157,7 +162,7 @@ export async function resolveProjectReference(
       .find((candidate) => candidate.key === key);
     if (!definition) continue;
     const location = lineAndColumnAt(source, definition.targetFrom);
-    return { path: entryPath, ...location, kind, source: definition.source, revision: revisions.get(entryPath) ?? "" };
+    return { path: entryPath, ...location, kind, source: definition.source, ...(revision ? { revision } : {}) };
   }
   return null;
 }
@@ -172,31 +177,62 @@ async function projectSourceSnapshot(
     .sort()
     .join("\n");
   const cached = sourceCache.get(projectId);
-  if (cached && cached.expiresAt > Date.now() && cached.signature === signature) {
-    // Refresh recency so an actively used project is evicted last.
-    sourceCache.delete(projectId);
-    sourceCache.set(projectId, cached);
-    return cached;
-  }
+  if (cached?.signature === signature) return cached;
 
   const contents = await readProjectSources(config, projectId, entries.map((entry) => entry.path));
   const directives = new Map<string, LatexDocumentDirectives>();
   for (const [entryPath, source] of contents) directives.set(entryPath, latexDocumentDirectives(source));
   const bytes = [...contents.values()].reduce((total, source) => total + Buffer.byteLength(source, "utf8"), 0);
-  removeCachedSources(projectId);
-  if (bytes <= MAX_SOURCE_CACHE_BYTES) {
-    sourceCache.set(projectId, {
-      expiresAt: Date.now() + SOURCE_CACHE_TTL_MS, signature, contents, directives, bytes
-    });
-    sourceCacheBytes += bytes;
-    while (sourceCache.size > MAX_SOURCE_CACHE_PROJECTS || sourceCacheBytes > MAX_SOURCE_CACHE_TOTAL_BYTES) {
-      const oldest = sourceCache.keys().next().value as string | undefined;
-      if (oldest === undefined) break;
-      removeCachedSources(oldest);
-    }
-    scheduleSourceCacheSweep();
-  }
+  sourceCache.set(projectId, { signature, contents, directives }, bytes);
   return { contents, directives };
+}
+
+/**
+ * Key -> location index of one .bib file, reused while its revision is
+ * unchanged. Returns null when the file has disappeared.
+ */
+async function bibliographyIndex(
+  config: Config,
+  projectId: string,
+  entryPath: string,
+  revision: string
+): Promise<BibliographyIndex["locations"] | null> {
+  const cacheKey = `${projectId}\0${entryPath}`;
+  if (revision) {
+    const cached = bibliographyIndexCache.get(cacheKey);
+    if (cached?.revision === revision) return cached.locations;
+  }
+  const source = await readProjectFile(config, projectId, entryPath);
+  if (source === null) {
+    bibliographyIndexCache.delete(cacheKey);
+    return null;
+  }
+  const locations: BibliographyIndex["locations"] = new Map();
+  let bytes = 0;
+  // Definitions arrive in source order, so one forward pass yields every line
+  // and column instead of rescanning from the start for each entry.
+  let line = 1;
+  let lineStart = 0;
+  let scanned = 0;
+  for (const definition of findLatexReferenceDefinitions(source, "citation", true)) {
+    if (locations.has(definition.key)) continue;
+    let location: { line: number; column: number };
+    if (definition.targetFrom < scanned) {
+      location = lineAndColumnAt(source, definition.targetFrom);
+    } else {
+      const target = Math.min(definition.targetFrom, source.length);
+      for (; scanned < target; scanned += 1) {
+        if (source.charCodeAt(scanned) !== 10) continue;
+        line += 1;
+        lineStart = scanned + 1;
+      }
+      location = { line, column: target - lineStart + 1 };
+    }
+    locations.set(definition.key, location);
+    bytes += definition.key.length * 2 + 64;
+  }
+  if (revision) bibliographyIndexCache.set(cacheKey, { revision, locations }, bytes);
+  return locations;
 }
 
 async function readProjectSources(

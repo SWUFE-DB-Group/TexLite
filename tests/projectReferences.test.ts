@@ -115,6 +115,40 @@ describe("project reference navigation", () => {
     expect(edited?.revision).not.toBe(first?.revision);
   });
 
+  it("indexes an unchanged .bib once and re-reads it only when its revision changes", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-reference-bib-index-"));
+    roots.push(root);
+    const projectId = "bib-index-project";
+    const source = path.join(root, "projects", projectId, "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), "\\documentclass{article}\n\\begin{document}\\cite{a}\\bibliography{refs}\\end{document}\n");
+    const refs = path.join(source, "refs.bib");
+    const entries = Array.from({ length: 40 }, (_, index) => `@article{k${index},\n  title = {Entry ${index}}\n}`);
+    // A duplicate later in the file must not replace the first definition.
+    fs.writeFileSync(refs, [...entries, "@misc{k3, title={Duplicate}}"].join("\n\n"));
+    const config = referenceConfig(root);
+    const bibReads = vi.spyOn(fs.promises, "readFile");
+    const readsOfRefs = () => bibReads.mock.calls.filter(([file]) => String(file).endsWith("refs.bib")).length;
+    const lookup = (key: string) => resolveProjectReference(config, projectId, "citation", key, { mainFile: "main.tex" });
+
+    try {
+      await expect(lookup("k0")).resolves.toMatchObject({ path: "refs.bib", line: 1, column: 1, source: "bibtex" });
+      await expect(lookup("k3")).resolves.toMatchObject({ line: 13, column: 1 });
+      await expect(lookup("k39")).resolves.toMatchObject({ line: 157, column: 1 });
+      await expect(lookup("missing")).resolves.toBeNull();
+      expect(readsOfRefs()).toBe(1);
+
+      fs.writeFileSync(refs, `% shifted\n${entries.join("\n\n")}`);
+      await expect(lookup("k3")).resolves.toMatchObject({ line: 14 });
+      expect(readsOfRefs()).toBe(2);
+
+      fs.rmSync(refs);
+      await expect(lookup("k3")).resolves.toBeNull();
+    } finally {
+      bibReads.mockRestore();
+    }
+  });
+
   it("reuses source snapshots but notices changed file metadata", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-reference-cache-"));
     roots.push(root);
@@ -222,6 +256,26 @@ describe("project reference source cache lifetime", () => {
     await references.resolveProjectReference(referenceConfig(root), "unref", "citation", "k");
     expect(setTimeout).toHaveBeenCalledOnce();
     expect(unref).toHaveBeenCalledOnce();
+  });
+
+  it("frees a bibliography index nobody has used for five minutes", async () => {
+    const references = await freshModule();
+    const root = tempRoot();
+    const source = path.join(root, "projects", "bib", "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "refs.bib"), "@article{a, title={One}}\n");
+    const config = referenceConfig(root);
+
+    await references.resolveProjectReference(config, "bib", "citation", "a");
+    expect(references.bibliographyIndexCacheStats().files).toBe(1);
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    // A hit restarts the lifetime of an index in use.
+    await references.resolveProjectReference(config, "bib", "citation", "a");
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    expect(references.bibliographyIndexCacheStats().files).toBe(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(references.bibliographyIndexCacheStats()).toEqual({ files: 0, bytes: 0 });
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("keeps byte accounting exact while evicting beyond the project limit", async () => {

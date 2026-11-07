@@ -1197,8 +1197,13 @@ across keys, so a project's LaTeX sources and directives are not re-read for
 every lookup. The snapshot cache is bounded by project count and bytes, and an
 unref'd timer aimed at the earliest expiry frees each entry when its 15-second
 lifetime ends, so an idle project's sources do not stay resident until another
-project displaces them. The target also carries a `revision` (size and
-modification time) of the file that defines it. The browser then fetches the
+project displaces them. Each `.bib` file gets a separate key -> line/column
+index, not its content, reused while the file's size and modification time are
+unchanged, so an unchanged bibliography is neither re-read nor re-scanned on
+every hover; it is bounded by file count and bytes and freed after five minutes
+without use. Both caches share `boundedExpiringCache.ts`. The target also
+carries a `revision` (size and modification time) of the file that defines it,
+omitted when that metadata is unknown so nothing derived from it is reused. The browser then fetches the
 target `.bib` file and parses it with the editor's Lezer BibTeX grammar in a
 dedicated, lazily created metadata worker, caching the parsed entry map per
 file for as long as the server reports the same revision. Hover never changes
