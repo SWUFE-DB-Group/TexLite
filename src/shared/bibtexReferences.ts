@@ -163,65 +163,7 @@ export function bibtexVenue(entryType: string, fields: Readonly<Record<string, s
   return venue?.trim() || null;
 }
 
-/**
- * Parse a BibTeX entry body (fields only, after `key,`). This is a display
- * helper, not a validator: malformed field syntax returns null so callers can
- * fall back instead of showing partial metadata.
- */
-export function extractBibtexFields(body: string): Record<string, string> | null {
-  const fields: Record<string, string> = {};
-  for (const segment of splitBibtexTopLevel(body, ",")) {
-    if (!segment.trim()) continue;
-    const withoutLeadingComments = segment.replace(/(^|[\r\n])\s*%[^\r\n]*/g, "$1").trim();
-    if (!withoutLeadingComments) continue;
-    const match = withoutLeadingComments.match(/^\s*([A-Za-z][A-Za-z0-9_-]*)\s*=\s*([\s\S]*)$/);
-    if (!match || !match[2].trim()) return null;
-    const value = cleanBibtexFieldValue(match[2]);
-    if (value) fields[match[1].toLowerCase()] = value;
-  }
-  return fields;
-}
-
-function splitBibtexTopLevel(source: string, separator: string): string[] {
-  const result: string[] = [];
-  let start = 0;
-  let depth = 0;
-  let quoted = false;
-  let escaped = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (character === "\\") {
-      escaped = true;
-      continue;
-    }
-    // Quotes delimit field values only at the top level. A quote inside a
-    // braced value is ordinary content and must not hide its closing brace.
-    if (character === '"' && depth === 0) {
-      quoted = !quoted;
-      continue;
-    }
-    if (quoted) continue;
-    // A top-level percent comment may contain commas, quotes, braces, or
-    // parentheses. Skip it before interpreting any of those as field syntax.
-    if (depth === 0 && isLatexCommentStart(source, index)) {
-      index = skipLatexComment(source, index);
-      continue;
-    }
-    if (character === "{") depth += 1;
-    else if (character === "}") depth = Math.max(0, depth - 1);
-    else if (character === separator && depth === 0) {
-      result.push(source.slice(start, index));
-      start = index + 1;
-    }
-  }
-  result.push(source.slice(start));
-  return result;
-}
-
+/** Strip one pair of outer braces or quotes from a field value and collapse whitespace. */
 export function cleanBibtexFieldValue(value: string): string {
   let result = value.trim();
   if ((result.startsWith("{") && result.endsWith("}")) || (result.startsWith('"') && result.endsWith('"'))) {

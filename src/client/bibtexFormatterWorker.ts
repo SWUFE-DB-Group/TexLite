@@ -1,4 +1,4 @@
-import { BibtexFormatError, formatBibtex } from "./citationLibrary";
+import { BibtexFormatError, formatBibtex } from "./bibtexFormat";
 import { calculateLatexTextEdits } from "./formatterTextEdits";
 import type { BibtexFormatterWorkerRequest, BibtexFormatterWorkerResponse } from "./bibtexFormatterProtocol";
 

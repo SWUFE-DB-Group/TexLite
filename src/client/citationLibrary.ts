@@ -1,14 +1,17 @@
-import { tidy } from "bibtex-tidy";
-import { bibtexVenue, extractBibtexFields } from "../shared/bibtexReferences";
+import { bibtexVenue } from "../shared/bibtexReferences";
+import { parseBibtexDocument, type BibtexDocumentEntry } from "./bibtex/entries";
+import { isBibtexTooLarge } from "./bibtexLimits";
+
+export { citationBibtexLimitLabel, isBibtexTooLarge } from "./bibtexLimits";
 
 /**
- * Browser-side BibTeX validation and formatting.
+ * Browser-side BibTeX validation for the citation library.
  *
- * bibtex-tidy owns the syntax/parser work. The small delimiter scanner below
- * only locates the original entry text and extracts display metadata; it does
- * not decide whether an entry is valid. Keeping validation in the browser
- * means malformed input is rejected before a request reaches the server and
- * avoids maintaining a second parser implementation on the server.
+ * The editor's Lezer grammar decides what is an entry, where it starts and
+ * ends, and whether the source is valid, so the library agrees with what the
+ * editor highlights and reports as a syntax error. Validating in the browser
+ * rejects malformed input before a request reaches the server, which keeps a
+ * second BibTeX parser out of the server.
  */
 
 export interface ParsedCitationEntry {
@@ -27,52 +30,15 @@ export interface BibtexParseResult {
   entries: ParsedCitationEntry[];
 }
 
-export class BibtexFormatError extends Error {
-  constructor(readonly kind: "too-large" | "invalid") {
-    super(kind === "too-large" ? "BibTeX input is too large to format" : "BibTeX input is invalid");
-    this.name = "BibtexFormatError";
-  }
-}
-
-const ignoredEntryTypes = new Set(["comment", "string", "preamble"]);
-const tidyOptions = { lowercase: false, removeDuplicateFields: false } as const;
-
-function byteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
-
-function citationBibtexLimit(maxBytes: number): number {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
-    throw new RangeError("Citation BibTeX limit must be a positive integer.");
-  }
-  return maxBytes;
-}
-
-export function citationBibtexLimitLabel(maxBytes: number): string {
-  return `${Math.round(citationBibtexLimit(maxBytes) / 1024)} KB`;
-}
-
-export function isBibtexTooLarge(source: string, maxBytes: number): boolean {
-  return byteLength(source) > citationBibtexLimit(maxBytes);
-}
-
-function tidyBibtex(source: string, maxBytes: number): { bibtex: string; count: number } | null {
-  if (!source.trim() || isBibtexTooLarge(source, maxBytes)) return null;
-  try {
-    const result = tidy(source, tidyOptions);
-    return { bibtex: result.bibtex, count: result.count };
-  } catch {
-    return null;
-  }
-}
-
-/** Format a BibTeX document without changing its field names or values. */
-export function formatBibtex(source: string, maxBytes: number): string {
-  if (!source.trim()) return source;
-  if (isBibtexTooLarge(source, maxBytes)) throw new BibtexFormatError("too-large");
-  const result = tidyBibtex(source, maxBytes);
-  if (!result) throw new BibtexFormatError("invalid");
-  return result.bibtex;
+function citationEntry(source: string, entry: BibtexDocumentEntry): ParsedCitationEntry {
+  return {
+    citationKey: entry.key,
+    entryType: entry.entryType,
+    bibtex: source.slice(entry.from, entry.to),
+    title: entry.fields.title ?? null,
+    authors: entry.fields.author ?? null,
+    year: entry.fields.year ?? null
+  };
 }
 
 /**
@@ -83,116 +49,24 @@ export function formatBibtex(source: string, maxBytes: number): string {
 export function parseBibEntriesResult(source: string, maxBytes: number): BibtexParseResult {
   if (!source.trim()) return { status: "empty", entries: [] };
   if (isBibtexTooLarge(source, maxBytes)) return { status: "too-large", entries: [] };
-  const tidyResult = tidyBibtex(source, maxBytes);
-  if (!tidyResult) return { status: "invalid", entries: [] };
-  if (tidyResult.count === 0) return { status: "empty", entries: [] };
-  const entries: ParsedCitationEntry[] = [];
-  let searchFrom = 0;
-  while (searchFrom < source.length) {
-    const at = source.indexOf("@", searchFrom);
-    if (at < 0) break;
-    searchFrom = at + 1;
-    const lineStart = source.lastIndexOf("\n", at - 1) + 1;
-    if (isCommented(source, lineStart, at)) continue;
-    const header = source.slice(at).match(/^@([A-Za-z][A-Za-z0-9_-]*)\s*([\{\(])/);
-    if (!header || header.index === undefined) continue;
-    const opening = at + header[0].length - 1;
-    const closing = matchingDelimiter(source, opening, header[2] === "{" ? "}" : ")");
-    if (closing < 0) continue;
-    const parsed = parseRawBibEntry(source.slice(at, closing + 1));
-    if (parsed) entries.push(parsed);
-    searchFrom = closing + 1;
-  }
-  return { status: "ok", entries };
+  const document = parseBibtexDocument(source);
+  if (document.hasSyntaxErrors) return { status: "invalid", entries: [] };
+  if (!document.entries.length) return { status: "empty", entries: [] };
+  return { status: "ok", entries: document.entries.map((entry) => citationEntry(source, entry)) };
 }
 
+/** Accept text that is exactly one citeable entry, with nothing before or after it. */
 export function parseSingleBibEntry(source: string, maxBytes: number): ParsedCitationEntry | null {
   const bibtex = source.trim();
-  const tidyResult = tidyBibtex(bibtex, maxBytes);
-  if (!tidyResult || tidyResult.count !== 1) return null;
-  return parseRawBibEntry(bibtex);
+  if (!bibtex || isBibtexTooLarge(bibtex, maxBytes)) return null;
+  const document = parseBibtexDocument(bibtex);
+  const [entry] = document.entries;
+  if (document.hasSyntaxErrors || document.entries.length !== 1 || entry.from !== 0 || entry.to !== bibtex.length) return null;
+  return citationEntry(bibtex, entry);
 }
 
 /** Return the publication venue used by the citation card, when available. */
 export function citationVenue(entry: Pick<ParsedCitationEntry, "bibtex">): string | null {
-  const header = entry.bibtex.match(/^@([A-Za-z][A-Za-z0-9_-]*)\s*([\{\(])\s*[^,\s\}\)]+\s*,/s);
-  if (!header || header.index === undefined) return null;
-  const opening = entry.bibtex.indexOf(header[2], header.index);
-  const closing = matchingDelimiter(entry.bibtex, opening, header[2] === "{" ? "}" : ")");
-  if (closing < 0) return null;
-  const fields = extractBibtexFields(entry.bibtex.slice(header[0].length, -1));
-  if (!fields) return null;
-  return bibtexVenue(header[1], fields);
-}
-
-function parseRawBibEntry(bibtex: string): ParsedCitationEntry | null {
-  const header = bibtex.match(/^@([A-Za-z][A-Za-z0-9_-]*)\s*([\{\(])\s*([^,\s\}\)]+)\s*,/s);
-  if (!header) return null;
-  const opening = bibtex.indexOf(header[2], header.index ?? 0);
-  const closing = matchingDelimiter(bibtex, opening, header[2] === "{" ? "}" : ")");
-  if (closing !== bibtex.length - 1) return null;
-  const entryType = header[1];
-  if (ignoredEntryTypes.has(entryType.toLowerCase())) return null;
-  const fields = extractBibtexFields(bibtex.slice(header[0].length, -1));
-  if (!fields) return null;
-  return {
-    citationKey: header[3],
-    entryType,
-    bibtex,
-    title: fields.title ?? null,
-    authors: fields.author ?? null,
-    year: fields.year ?? null
-  };
-}
-
-function isCommented(source: string, lineStart: number, end: number): boolean {
-  let escaped = false;
-  for (let index = lineStart; index < end; index += 1) {
-    const character = source[index];
-    if (character === "%" && !escaped) return true;
-    if (character === "\\") escaped = !escaped;
-    else escaped = false;
-  }
-  return false;
-}
-
-function matchingDelimiter(source: string, opening: number, closingCharacter: "}" | ")"): number {
-  let outerDepth = 0;
-  let braceDepth = 0;
-  let quoted = false;
-  let escaped = false;
-  for (let index = opening; index < source.length; index += 1) {
-    const character = source[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (character === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (closingCharacter === "}") {
-      if (character === '"' && outerDepth === 1) quoted = !quoted;
-      if (character === "{") outerDepth += 1;
-      else if (character === "}" && --outerDepth === 0) return index;
-      continue;
-    }
-    if (character === "{" && !quoted) {
-      braceDepth += 1;
-      continue;
-    }
-    if (character === "}" && !quoted && braceDepth > 0) {
-      braceDepth -= 1;
-      continue;
-    }
-    if (braceDepth > 0) continue;
-    if (character === '"') {
-      quoted = !quoted;
-      continue;
-    }
-    if (quoted) continue;
-    if (character === "(") outerDepth += 1;
-    else if (character === ")" && --outerDepth === 0) return index;
-  }
-  return -1;
+  const [parsed] = parseBibtexDocument(entry.bibtex).entries;
+  return parsed ? bibtexVenue(parsed.entryType, parsed.fields) : null;
 }

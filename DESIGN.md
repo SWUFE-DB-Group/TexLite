@@ -206,8 +206,14 @@ HTTP/LAN browsers without usable
 Clipboard API access. Save/import remain direct actions in project dialogs.
 Library rows use compact spacing and a single-line title with the full title
 available on hover.
-Library entries are checked in the browser with the `bibtex-tidy` JavaScript
-parser and formatter before a mutation request is sent. Citation keys are unique
+Library entries are checked in the browser before a mutation request is sent,
+using the same Lezer BibTeX grammar as the editor (`bibtex/entries.ts`). That
+grammar alone decides what an entry is, where it begins and ends, and whether
+the text is valid: a syntax error anywhere makes the whole document invalid, so
+the library never accepts what the editor underlines, and never silently skips
+a damaged entry. A single-entry write must be exactly one citeable entry with
+nothing before or after it. `bibtex-tidy` only formats, and is bundled with the
+formatter worker alone. Citation keys are unique
 per user without regard to letter case. Creating an existing key is rejected;
 updating an entry or its tags requires the revision last read by the client, so
 concurrent browser sessions report a conflict instead of silently overwriting

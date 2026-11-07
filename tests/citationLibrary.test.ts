@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BibtexFormatError, citationVenue, formatBibtex, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
+import { citationVenue, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 
 const citationLimit = MAX_CITATION_BIBTEX_BYTES;
@@ -45,10 +45,6 @@ describe("citation library BibTeX parser", () => {
       .toMatchObject({ citationKey: "encoded", title: "A {Nested} title" });
   });
 
-  it("formats valid BibTeX in the browser-facing helper", () => {
-    expect(formatBibtex("@article{x,title={One},year=2026}", citationLimit)).toContain("title         = {One}");
-  });
-
   it("extracts a conference or journal venue for citation cards", () => {
     expect(citationVenue({ bibtex: "@inproceedings{x,booktitle={Proceedings of Example},title={Paper}}" })).toBe("Proceedings of Example");
     expect(citationVenue({ bibtex: "@article{x,journal={Journal of Example},title={Paper}}" })).toBe("Journal of Example");
@@ -60,18 +56,49 @@ describe("citation library BibTeX parser", () => {
     expect(parseBibEntriesResult("x".repeat(citationLimit + 1), citationLimit)).toEqual({ status: "too-large", entries: [] });
   });
 
-  it("reports typed formatting failures without embedding a UI language", () => {
-    expect(formattingFailure("@article{x title={Y}}").kind).toBe("invalid");
-    expect(formattingFailure("x".repeat(citationLimit + 1)).kind).toBe("too-large");
+  it("keeps an entry whole when a comment inside it contains an unpaired brace", () => {
+    const entry = "@article{a,\n  title = {Hello},\n  % } stray brace in a comment\n  year = {2024}\n}";
+    const result = parseBibEntriesResult(`${entry}\n@article{b, title={B}}`, citationLimit);
+    expect(result.status).toBe("ok");
+    expect(result.entries.map((item) => item.citationKey)).toEqual(["a", "b"]);
+    expect(result.entries[0].bibtex).toBe(entry);
+    expect(result.entries[0]).toMatchObject({ title: "Hello", year: "2024" });
+    expect(parseSingleBibEntry(entry, citationLimit)).toMatchObject({ citationKey: "a", bibtex: entry, year: "2024" });
+  });
+
+  it("accepts a comment after the last field, as the editor does", () => {
+    const source = "@article{a, title = {T}, year = {2020} % note\n}";
+    expect(parseBibEntriesResult(source, citationLimit)).toMatchObject({ status: "ok", entries: [{ citationKey: "a", year: "2020" }] });
+    expect(parseSingleBibEntry(source, citationLimit)).toMatchObject({ citationKey: "a", year: "2020" });
+  });
+
+  it("shows a concatenated value as written rather than cutting it at the inner delimiters", () => {
+    expect(parseSingleBibEntry(`@article{a, title = "Deep " # "Learning", year = 2020}`, citationLimit))
+      .toMatchObject({ title: `"Deep " # "Learning"`, year: "2020" });
+    expect(parseSingleBibEntry("@article{a, title = {Deep } # {Learning}}", citationLimit))
+      .toMatchObject({ title: "{Deep } # {Learning}" });
+  });
+
+  it("keeps the entry type as written and accepts an entry without fields", () => {
+    expect(parseSingleBibEntry("@Article{Key, title={T}}", citationLimit)).toMatchObject({ entryType: "Article", citationKey: "Key" });
+    expect(parseSingleBibEntry("@misc{only}", citationLimit)).toMatchObject({ citationKey: "only", title: null });
+  });
+
+  it("requires the text to be exactly one entry, with nothing around it", () => {
+    expect(parseSingleBibEntry("  \n@article{one, title={One}}\n  ", citationLimit)?.bibtex).toBe("@article{one, title={One}}");
+    expect(parseSingleBibEntry("@string{s = \"x\"}\n@article{one, title={One}}", citationLimit)).toBeNull();
+    expect(parseSingleBibEntry("@article{one, title={One}}\n% trailing note", citationLimit)).toBeNull();
+    expect(parseSingleBibEntry("see below\n@article{one, title={One}}", citationLimit)).toBeNull();
+    expect(parseSingleBibEntry("", citationLimit)).toBeNull();
+  });
+
+  it("reports an empty library when a document has no citeable entries", () => {
+    expect(parseBibEntriesResult(`@string{s = "x"}\n@comment{@article{hidden, title={No}}}\n% only notes`, citationLimit))
+      .toEqual({ status: "empty", entries: [] });
+  });
+
+  it("rejects the whole document when any entry has a syntax error", () => {
+    expect(parseBibEntriesResult("@article{ok, title={T}}\n@article{broken, title={T}", citationLimit))
+      .toEqual({ status: "invalid", entries: [] });
   });
 });
-
-function formattingFailure(source: string): BibtexFormatError {
-  try {
-    formatBibtex(source, citationLimit);
-  } catch (error) {
-    if (error instanceof BibtexFormatError) return error;
-    throw error;
-  }
-  throw new Error("Expected BibTeX formatting to fail");
-}

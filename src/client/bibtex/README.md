@@ -27,6 +27,15 @@ replacement range. CodeMirror's incremental update callback removes a newly
 completed no-op or restores a useful candidate after deletion, without another
 document-wide value scan. Structural boundaries still trigger a fresh query.
 
+`entries.ts` is the single reading of a parsed document: each entry's key, type
+as written, exact range and fields, plus whether the grammar had to recover
+from a syntax error. Hover previews (`entryMetadata.ts`) and the citation
+library (`../citationLibrary.ts`) are built on it, so they cannot disagree with
+the editor about what an entry is. The server cannot load this browser grammar
+and keeps its own scanner (`src/shared/bibtexReferences.ts`);
+`tests/bibtexEntries.test.ts` holds a shared corpus that both must read
+identically, so change the two together.
+
 The focused regression suite is in `tests/bibtexLanguage.test.ts` and
 `tests/bibtexIndentation.test.ts`; `tests/bibtexCompletion.test.ts` covers the
 shared schema and incremental candidate filtering.
