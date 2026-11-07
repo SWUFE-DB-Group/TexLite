@@ -12,7 +12,7 @@ export function exportCitationFolder(db: DatabaseConnection, userId: string, fol
   const bundle: CitationFolderBundle = { format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, entries: [] };
   let bytes = Buffer.byteLength(JSON.stringify(bundle), "utf8");
   const rows = db.prepare(`SELECT entry.citation_key AS citationKey, entry.entry_type AS entryType,
-    entry.bibtex, entry.title, entry.authors, entry.year, entry.notes
+    entry.bibtex, entry.title, entry.authors, entry.year, entry.venue, entry.notes
     FROM citation_library_entries entry JOIN citation_library_entry_collections link ON link.entry_id = entry.id
     WHERE entry.user_id = ? AND link.collection_id = ? ORDER BY entry.citation_key COLLATE NOCASE, entry.id`)
     .iterate(userId, folder.id) as Iterable<CitationTransferEntry>;
@@ -52,17 +52,17 @@ export function registerCitationFolderImport(app: FastifyInstance, db: DatabaseC
       }
       db.prepare("INSERT INTO citation_library_collections (id, user_id, name, created_at) VALUES (?, ?, ?, ?)").run(id, user.id, candidate, timestamp);
       const upsert = db.prepare(`INSERT INTO citation_library_entries
-        (id, user_id, citation_key, entry_type, bibtex, title, authors, year, notes, revision, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        (id, user_id, citation_key, entry_type, bibtex, title, authors, year, venue, notes, revision, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
         ON CONFLICT (user_id, citation_key) DO UPDATE SET citation_key = excluded.citation_key,
           entry_type = excluded.entry_type, bibtex = excluded.bibtex, title = excluded.title,
-          authors = excluded.authors, year = excluded.year, notes = excluded.notes,
+          authors = excluded.authors, year = excluded.year, venue = excluded.venue, notes = excluded.notes,
           revision = citation_library_entries.revision + 1, updated_at = excluded.updated_at
         RETURNING id`);
       const place = db.prepare("INSERT INTO citation_library_entry_collections (entry_id, collection_id) VALUES (?, ?)");
       for (const entry of entries.values()) {
         const saved = upsert.get(randomUUID(), user.id, entry.citationKey, entry.entryType, entry.bibtex,
-          entry.title, entry.authors, entry.year, entry.notes!, timestamp, timestamp) as { id: string };
+          entry.title, entry.authors, entry.year, entry.venue, entry.notes!, timestamp, timestamp) as { id: string };
         // Existing placements and tags are retained. Imported content replaces
         // the user's shared entry, so all its placements see the updated notes.
         place.run(saved.id, id);

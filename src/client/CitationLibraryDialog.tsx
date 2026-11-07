@@ -168,7 +168,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
       const result = await api<{ entry: CitationLibraryEntry }>(`/api/citations/${encodeURIComponent(editing.id)}`, {
         method: "PATCH", body: JSON.stringify({
           bibtex: parsed.bibtex, citationKey: parsed.citationKey, entryType: parsed.entryType,
-          title: parsed.title, authors: parsed.authors, year: parsed.year,
+          title: parsed.title, authors: parsed.authors, year: parsed.year, venue: parsed.venue,
           notes: editNotes,
           expectedRevision: editing.revision
         })
@@ -204,7 +204,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
       const result = await api<{ entry: CitationLibraryEntry; updated: boolean }>("/api/citations", {
         method: "POST", body: JSON.stringify({
           bibtex: parsed.bibtex, citationKey: parsed.citationKey, entryType: parsed.entryType,
-          title: parsed.title, authors: parsed.authors, year: parsed.year,
+          title: parsed.title, authors: parsed.authors, year: parsed.year, venue: parsed.venue,
           notes: addNotes,
           collectionIds: addCollectionId ? [addCollectionId] : []
         })

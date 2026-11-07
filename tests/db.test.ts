@@ -41,6 +41,28 @@ describe("database migrations", () => {
       expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 19").get()).toEqual(applied);
     } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
   });
+
+  it("adds a citation venue column without changing existing entries", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-citation-venue-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`ALTER TABLE citation_library_entries DROP COLUMN venue;
+        DELETE FROM texlite_schema_migrations WHERE version = 21;
+        INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES ('owner', 'owner', 'Owner', 'hash', 'user', '2026-11-03');
+        INSERT INTO citation_library_entries (id, user_id, citation_key, entry_type, bibtex, revision, created_at, updated_at)
+          VALUES ('entry', 'owner', 'old', 'article', '@article{old,title={Original}}', 3, '2026-11-02', '2026-11-03');`);
+      const before = database.prepare("SELECT * FROM citation_library_entries").get() as object;
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM citation_library_entries").get()).toEqual({ ...before, venue: null });
+      database.prepare("UPDATE citation_library_entries SET venue = ? WHERE id = 'entry'").run("Journal of Testing");
+      const applied = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 21").get();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM citation_library_entries").get()).toEqual({ ...before, venue: "Journal of Testing" });
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 21").get()).toEqual(applied);
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("automatically adds citation folders without changing existing references and retains folders across restarts", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-citation-folders-migration-"));
     const config = migrationConfig(root, path.join(root, "texlite.db"));
@@ -413,7 +435,8 @@ describe("database migrations", () => {
           { version: 17, name: "store_encrypted_view_link_tokens" },
           { version: 18, name: "add_citation_collections" },
           { version: 19, name: "add_citation_notes" },
-          { version: 20, name: "add_user_git_identity" }
+          { version: 20, name: "add_user_git_identity" },
+          { version: 21, name: "add_citation_venue" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -444,7 +467,8 @@ describe("database migrations", () => {
           { version: 17, name: "store_encrypted_view_link_tokens" },
           { version: 18, name: "add_citation_collections" },
           { version: 19, name: "add_citation_notes" },
-          { version: 20, name: "add_user_git_identity" }
+          { version: 20, name: "add_user_git_identity" },
+          { version: 21, name: "add_citation_venue" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -484,7 +508,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -544,7 +568,7 @@ describe("database migrations", () => {
           '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')`).run();
 
       // Simulate a database created before migration 20.
-      database.prepare("DELETE FROM texlite_schema_migrations WHERE version = 20").run();
+      database.prepare("DELETE FROM texlite_schema_migrations WHERE version >= 20").run();
       database.exec("ALTER TABLE user_github_settings DROP COLUMN git_username");
       database.exec("ALTER TABLE user_github_settings DROP COLUMN git_email");
       database.close();
@@ -613,7 +637,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }]);
       } finally {
         migrated.close();
       }

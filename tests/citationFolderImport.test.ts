@@ -12,17 +12,22 @@ describe("citation import normalization", () => {
     const book = "@book{book, title={{Book}}, keywords={math}, year={2025}}";
     const result = parse(`\uFEFF% Reading list\n${bibtex}\n${book}`, "  阅读主题.BIB");
     expect(result).toMatchObject({ entries: [
-      { citationKey: "paper", bibtex, title: "A paper", authors: "Ada", year: "2026", notes: "" },
-      { citationKey: "book", bibtex: book, notes: "" }
+      { citationKey: "paper", bibtex, title: "A paper", authors: "Ada", year: "2026", venue: null, notes: "" },
+      { citationKey: "book", bibtex: book, venue: null, notes: "" }
     ] });
     expect(result).not.toHaveProperty("name");
+  });
+
+  it("carries the venue parsed from the entry through folder import", () => {
+    const result = parse("@article{venue, title={Paper}, journal={Journal of Testing}}", "venue.bib");
+    expect(result.entries[0]).toMatchObject({ citationKey: "venue", venue: "Journal of Testing" });
   });
 
   it("preserves JSON notes but ignores embedded folder names, tag fields, IDs and untrusted metadata", () => {
     const result = parse(JSON.stringify({ ...bundle, name: "Ignore this embedded folder name", tags: ["ignored"], entries: [{ ...bundle.entries[0],
       tags: ["ignored"], tagIds: ["foreign"], collectionIds: ["foreign"], id: "foreign", title: "Not the real title" }] }));
     expect(result).toEqual({ format: CITATION_FOLDER_FORMAT, version: 1, entries: [
-      { bibtex, citationKey: "paper", entryType: "article", title: "A paper", authors: "Ada", year: "2026", notes: "**Notes**" }
+      { bibtex, citationKey: "paper", entryType: "article", title: "A paper", authors: "Ada", year: "2026", venue: null, notes: "**Notes**" }
     ] });
     expect(parse(JSON.stringify({ ...bundle, entries: [] })).entries).toEqual([]);
   });
@@ -53,7 +58,7 @@ describe("citation import normalization", () => {
       .toThrow("citationNotes.tooLarge");
     // Test expanded payload accounting without running the parser on a huge title.
     const expanded = vi.spyOn(citationLibrary, "parseBibEntriesResult").mockReturnValue({ status: "ok", entries: [{
-      citationKey: "paper", entryType: "article", bibtex, title: "x".repeat(MAX_CITATION_FOLDER_BYTES), authors: null, year: null
+      citationKey: "paper", entryType: "article", bibtex, title: "x".repeat(MAX_CITATION_FOLDER_BYTES), authors: null, year: null, venue: null
     }] });
     try { expect(() => parse(bibtex, "file.bib")).toThrow("citationFolders.transferTooLarge"); }
     finally { expanded.mockRestore(); }

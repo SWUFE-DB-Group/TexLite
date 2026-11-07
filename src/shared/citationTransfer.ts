@@ -13,6 +13,7 @@ export interface CitationTransferEntry {
   title: string | null;
   authors: string | null;
   year: string | null;
+  venue: string | null;
   notes: string;
 }
 

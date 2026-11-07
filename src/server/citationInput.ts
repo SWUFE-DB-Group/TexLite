@@ -9,6 +9,7 @@ export interface CitationInput {
   title: string | null;
   authors: string | null;
   year: string | null;
+  venue: string | null;
   /** Omitted by project .bib updates, which must preserve private notes. */
   notes?: string;
 }
@@ -33,6 +34,7 @@ export function citationInput(value: unknown): CitationInput {
   return {
     bibtex: body.bibtex.trim(), citationKey: body.citationKey.trim(), entryType: body.entryType.trim(),
     title: nullableText(body.title, 2048), authors: nullableText(body.authors, 2048), year: nullableText(body.year, 128),
+    venue: nullableText(body.venue, 2048),
     notes: body.notes as string | undefined
   };
 }

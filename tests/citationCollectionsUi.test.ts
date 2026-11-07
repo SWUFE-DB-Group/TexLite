@@ -41,7 +41,7 @@ beforeEach(async () => {
   onInsert.mockReset().mockResolvedValue(true); onOpenChange.mockReset();
   catalog = { collections: [{ id: "a", name: "Paper A", entryCount: 1 }, { id: "b", name: "Paper B", entryCount: 0 }], total: 1, unfiled: 0 };
   saved = { id: "ref", ownerId: "alice", ownerUsername: "alice", ownerDisplayName: "Alice", citationKey: "paper", entryType: "article",
-    title: "A shared reference", authors: "Ada", year: "2026", revision: 1, bibtex: "@article{paper, title={A shared reference}}", notes: "", tags: [], collectionIds: ["a"], createdAt: "2026-11-02", updatedAt: "2026-11-02" };
+    title: "A shared reference", authors: "Ada", year: "2026", venue: null, revision: 1, bibtex: "@article{paper, title={A shared reference}}", notes: "", tags: [], collectionIds: ["a"], createdAt: "2026-11-02", updatedAt: "2026-11-02" };
   vi.mocked(api).mockReset().mockImplementation(async (url, options) => {
     if (url === "/api/citations/collections") {
       if (options?.method === "POST") {

@@ -105,6 +105,11 @@ reference preserves the author's original formatting; importing inserts the
 selected entry at the current editor cursor and requires project write access.
 Each user owns a private library. Citation entries and color tags are scoped to
 the owning user; other users cannot list, search, import, edit, or delete them.
+The browser's Lezer BibTeX parser derives the display venue (journal or
+booktitle) together with title, authors and year; the client submits it on
+save. Schema migration 21 stores it, so citation cards read the field instead
+of reparsing BibTeX on every render. Rows created before that migration keep a
+null venue until they are edited or saved again.
 The homepage keeps Projects as the default view and exposes the
 citation library as a separate management page beside the other management
 controls; the project workspace keeps a smaller `.bib` import dialog for

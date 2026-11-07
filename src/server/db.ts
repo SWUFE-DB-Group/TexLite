@@ -232,6 +232,11 @@ const databaseMigrations: readonly DatabaseMigration[] = [
     if (missingColumn(db, "user_github_settings", "git_email")) {
       db.exec("ALTER TABLE user_github_settings ADD COLUMN git_email TEXT");
     }
+  } },
+  { version: 21, name: "add_citation_venue", apply: (db) => {
+    if (missingColumn(db, "citation_library_entries", "venue")) {
+      db.exec("ALTER TABLE citation_library_entries ADD COLUMN venue TEXT");
+    }
   } }
 ];
 

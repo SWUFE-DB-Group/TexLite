@@ -54,6 +54,17 @@ beforeEach(async () => {
 afterEach(async () => { await app?.close(); db?.close(); fs.rmSync(root, { recursive: true, force: true }); });
 
 describe("private citation folders", () => {
+  it("stores and returns the client-derived venue", async () => {
+    const created = await entry("venue", undefined, { venue: "Journal of Testing" });
+    expect(created.venue).toBe("Journal of Testing");
+    expect((await list("?q=venue")).json().entries[0]).toMatchObject({ venue: "Journal of Testing" });
+    expect((await list("?q=Journal")).json().entries[0]).toMatchObject({ venue: "Journal of Testing" });
+    const updated = await call("PATCH", `/api/citations/${created.id}`, {
+      ...created, venue: "Conference Proceedings", expectedRevision: 1
+    });
+    expect(updated.json().entry).toMatchObject({ venue: "Conference Proceedings", revision: 2 });
+  });
+
   it("saves private Markdown notes with revision checks, preserves them on project updates and supports explicit clearing", async () => {
     const notes = "# 阅读笔记\n\n- **Useful** result\n- [Source](https://example.org)\n";
     const stored = await entry("noted", undefined, { notes });
@@ -89,7 +100,7 @@ describe("private citation folders", () => {
     expect(bundle).toMatchObject({ format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION });
     expect(bundle.entries).toHaveLength(62);
     expect(bundle.entries.find((entry) => entry.citationKey === "PAPER")).toMatchObject({ bibtex: noted.bibtex, notes });
-    expect(Object.keys(bundle.entries[0]).sort()).toEqual(["authors", "bibtex", "citationKey", "entryType", "notes", "title", "year"]);
+    expect(Object.keys(bundle.entries[0]).sort()).toEqual(["authors", "bibtex", "citationKey", "entryType", "notes", "title", "venue", "year"]);
     expect((await call("GET", `/api/citations/collections/${source.id}/export`)).body).not.toContain(notes);
     const existingFolder = await folder("论文主题", "bob"); await folder("论文主题-1", "bob");
     const tag = (await call("POST", "/api/citations/tags", { name: "Keep", color: "blue" }, "bob")).json().tag;
@@ -141,7 +152,7 @@ describe("private citation folders", () => {
 
   it("accepts 500 entries per import or export and rejects 501 without partial results", async () => {
     const entries = Array.from({ length: 500 }, (_, index) => ({ citationKey: `ref${index}`, entryType: "misc",
-      bibtex: `@misc{ref${index}, title={Reference ${index}}}`, title: `Reference ${index}`, authors: null, year: null, notes: "" }));
+      bibtex: `@misc{ref${index}, title={Reference ${index}}}`, title: `Reference ${index}`, authors: null, year: null, venue: null, notes: "" }));
     const bundle: CitationFolderImportRequest = { format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, name: "Reading", entries };
     const rejected = await call("POST", "/api/citations/collections/import", { ...bundle, entries: [...entries, entries[0]] });
     expect(rejected.statusCode).toBe(413);

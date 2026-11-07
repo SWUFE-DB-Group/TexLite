@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { citationVenue, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
+import { parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 
 const citationLimit = MAX_CITATION_BIBTEX_BYTES;
@@ -45,9 +45,11 @@ describe("citation library BibTeX parser", () => {
       .toMatchObject({ citationKey: "encoded", title: "A {Nested} title" });
   });
 
-  it("extracts a conference or journal venue for citation cards", () => {
-    expect(citationVenue({ bibtex: "@inproceedings{x,booktitle={Proceedings of Example},title={Paper}}" })).toBe("Proceedings of Example");
-    expect(citationVenue({ bibtex: "@article{x,journal={Journal of Example},title={Paper}}" })).toBe("Journal of Example");
+  it("extracts a conference or journal venue during the same parse", () => {
+    expect(parseSingleBibEntry("@inproceedings{x,booktitle={Proceedings of Example},title={Paper}}", citationLimit)?.venue)
+      .toBe("Proceedings of Example");
+    expect(parseSingleBibEntry("@article{x,journal={Journal of Example},title={Paper}}", citationLimit)?.venue)
+      .toBe("Journal of Example");
   });
 
   it("distinguishes an oversized document from an empty or invalid one", () => {

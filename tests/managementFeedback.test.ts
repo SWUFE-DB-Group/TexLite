@@ -30,7 +30,7 @@ beforeEach(async () => {
   vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1)); vi.stubGlobal("cancelAnimationFrame", vi.fn());
   await import("../src/client/CitationBibtexEditor");
   await i18n.changeLanguage("en");
-  entry = { id: "entry", ownerId: admin.id, ownerUsername: admin.username, ownerDisplayName: admin.displayName, citationKey: "sample", entryType: "article", title: "Paper", authors: "Ada", year: "2026",
+  entry = { id: "entry", ownerId: admin.id, ownerUsername: admin.username, ownerDisplayName: admin.displayName, citationKey: "sample", entryType: "article", title: "Paper", authors: "Ada", year: "2026", venue: null,
     bibtex: "@article{sample, title={Paper}, author={Ada}, year={2026}}", notes: "", tags: [], collectionIds: [], revision: 1, createdAt: "2026-10-28", updatedAt: "2026-10-28" };
   vi.mocked(api).mockReset().mockImplementation(async (url) => {
     if (url.startsWith("/api/admin/users?")) return { users: [admin, reader], pagination, summary } as never;

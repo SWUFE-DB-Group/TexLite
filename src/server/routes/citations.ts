@@ -36,6 +36,7 @@ interface CitationLibraryRow {
   title: string | null;
   authors: string | null;
   year: string | null;
+  venue: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -60,6 +61,7 @@ function citationJson(row: CitationLibraryRow, tags: CitationLibraryTagRow[] = [
     title: row.title,
     authors: row.authors,
     year: row.year,
+    venue: row.venue,
     revision: row.revision,
     collectionIds,
     tags: tags.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color, ownerId: tag.user_id })),
@@ -136,8 +138,9 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
             OR COALESCE(title, '') LIKE ? ESCAPE '\\'
             OR COALESCE(authors, '') LIKE ? ESCAPE '\\'
             OR COALESCE(year, '') LIKE ? ESCAPE '\\'
+            OR COALESCE(venue, '') LIKE ? ESCAPE '\\'
           )`);
-      params.push(...Array.from({ length: 5 }, () => `%${escapeLikePattern(search)}%`));
+      params.push(...Array.from({ length: 6 }, () => `%${escapeLikePattern(search)}%`));
     }
     if (tagId) {
       where.push(`EXISTS (SELECT 1 FROM citation_library_entry_tags filter_link
@@ -265,7 +268,7 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
   app.post("/api/citations", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const body = request.body as { bibtex?: unknown; citationKey?: unknown; entryType?: unknown; title?: unknown; authors?: unknown; year?: unknown; tagIds?: unknown; collectionIds?: unknown; overwrite?: unknown; expectedRevision?: unknown } | undefined;
+    const body = request.body as { bibtex?: unknown; citationKey?: unknown; entryType?: unknown; title?: unknown; authors?: unknown; year?: unknown; venue?: unknown; tagIds?: unknown; collectionIds?: unknown; overwrite?: unknown; expectedRevision?: unknown } | undefined;
     const citation = citationInput(body);
     const tagIds = citationTagIds(db, user.id, body?.tagIds);
     const collectionIds = citationCollectionIds(db, user.id, body?.collectionIds);
@@ -283,16 +286,16 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
       assertCitationCollectionCapacity(db, user.id, id, collectionIds ?? []);
       if (existing) {
         const result = db.prepare(`UPDATE citation_library_entries SET citation_key = ?, entry_type = ?, bibtex = ?,
-          title = ?, authors = ?, year = ?, notes = COALESCE(?, notes), revision = revision + 1, updated_at = ?
+          title = ?, authors = ?, year = ?, venue = ?, notes = COALESCE(?, notes), revision = revision + 1, updated_at = ?
           WHERE id = ? AND user_id = ? AND revision = ?`)
-          .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year,
+          .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, citation.venue,
             citation.notes ?? null, timestamp, id, user.id, expectedRevision);
         if (!result.changes) throw httpError(409, "CITATION_CONFLICT");
       } else {
         db.prepare(`INSERT INTO citation_library_entries
-          (id, user_id, citation_key, entry_type, bibtex, title, authors, year, notes, revision, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
-          .run(id, user.id, citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, citation.notes ?? "", timestamp, timestamp);
+          (id, user_id, citation_key, entry_type, bibtex, title, authors, year, venue, notes, revision, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+          .run(id, user.id, citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, citation.venue, citation.notes ?? "", timestamp, timestamp);
       }
       if (tagIds !== null) {
         db.prepare("DELETE FROM citation_library_entry_tags WHERE entry_id = ?").run(id);
@@ -362,16 +365,16 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
     const existing = db.prepare("SELECT id FROM citation_library_entries WHERE id = ? AND user_id = ?")
       .get(citationId, user.id) as { id: string } | undefined;
     if (!existing) return apiError(reply, 404, "CITATION_NOT_FOUND");
-    const body = request.body as { bibtex?: unknown; citationKey?: unknown; entryType?: unknown; title?: unknown; authors?: unknown; year?: unknown; expectedRevision?: unknown } | undefined;
+    const body = request.body as { bibtex?: unknown; citationKey?: unknown; entryType?: unknown; title?: unknown; authors?: unknown; year?: unknown; venue?: unknown; expectedRevision?: unknown } | undefined;
     const citation = citationInput(body);
     const expectedRevision = citationExpectedRevision(body?.expectedRevision);
     const duplicate = db.prepare("SELECT id FROM citation_library_entries WHERE user_id = ? AND citation_key = ? COLLATE NOCASE AND id != ?")
       .get(user.id, citation.citationKey, citationId) as { id: string } | undefined;
     if (duplicate) return apiError(reply, 409, "CITATION_KEY_EXISTS");
     const result = db.prepare(`UPDATE citation_library_entries SET citation_key = ?, entry_type = ?, bibtex = ?,
-      title = ?, authors = ?, year = ?, notes = COALESCE(?, notes), revision = revision + 1, updated_at = ?
+      title = ?, authors = ?, year = ?, venue = ?, notes = COALESCE(?, notes), revision = revision + 1, updated_at = ?
       WHERE id = ? AND user_id = ? AND revision = ?`)
-      .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year,
+      .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, citation.venue,
         citation.notes ?? null, now(), citationId, user.id, expectedRevision);
     if (!result.changes) return apiError(reply, 409, "CITATION_CONFLICT");
     const updated = db.prepare("SELECT * FROM citation_library_entries WHERE id = ? AND user_id = ?")

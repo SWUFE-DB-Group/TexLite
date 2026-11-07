@@ -21,6 +21,7 @@ export interface ParsedCitationEntry {
   title: string | null;
   authors: string | null;
   year: string | null;
+  venue: string | null;
 }
 
 export type BibtexParseStatus = "ok" | "empty" | "too-large" | "invalid";
@@ -37,7 +38,8 @@ function citationEntry(source: string, entry: BibtexDocumentEntry): ParsedCitati
     bibtex: source.slice(entry.from, entry.to),
     title: entry.fields.title ?? null,
     authors: entry.fields.author ?? null,
-    year: entry.fields.year ?? null
+    year: entry.fields.year ?? null,
+    venue: bibtexVenue(entry.entryType, entry.fields)
   };
 }
 
@@ -63,10 +65,4 @@ export function parseSingleBibEntry(source: string, maxBytes: number): ParsedCit
   const [entry] = document.entries;
   if (document.hasSyntaxErrors || document.entries.length !== 1 || entry.from !== 0 || entry.to !== bibtex.length) return null;
   return citationEntry(bibtex, entry);
-}
-
-/** Return the publication venue used by the citation card, when available. */
-export function citationVenue(entry: Pick<ParsedCitationEntry, "bibtex">): string | null {
-  const [parsed] = parseBibtexDocument(entry.bibtex).entries;
-  return parsed ? bibtexVenue(parsed.entryType, parsed.fields) : null;
 }

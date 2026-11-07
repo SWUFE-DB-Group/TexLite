@@ -2,7 +2,7 @@ import type { TFunction } from "i18next";
 import { Check, Import, RefreshCw } from "lucide-react";
 import { CitationEntryMenu } from "./CitationEntryMenu";
 import { SaveButton } from "./SaveButton";
-import { citationVenue, type ParsedCitationEntry } from "./citationLibrary";
+import type { ParsedCitationEntry } from "./citationLibrary";
 import type { CitationLibraryEntry } from "./types";
 import { TagMarquee } from "./TagMarquee";
 
@@ -32,7 +32,7 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
   t: TFunction;
 }) {
   const libraryEntry = "id" in entry ? entry as CitationLibraryEntry : null;
-  const venue = citationVenue(entry);
+  const venue = entry.venue;
   const saveLabel = t(saved ? "citationLibrary.update" : "citationLibrary.save");
   const saveTooltip = saving ? t("citationLibrary.saving") : saveFeedback || (saveHint ? `${saveLabel} · ${saveHint}` : saveLabel);
   const importTooltip = alreadyInFile ? t("citationErrors.alreadyInFile", { key: entry.citationKey }) : importHint || t("citationLibrary.importToFile");

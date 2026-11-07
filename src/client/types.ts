@@ -130,6 +130,7 @@ export interface CitationLibraryEntry {
   title: string | null;
   authors: string | null;
   year: string | null;
+  venue: string | null;
   revision: number;
   tags: CitationLibraryTag[];
   collectionIds: string[];
