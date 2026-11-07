@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.mocked(loadTextFileLanguage).mockReset();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   props = {
-    value: '{"title":"old"}', filePath: "settings.json", readOnly: false, comments: [], focusComment: null,
+    value: '{"title":"old"}', projectId: "project", filePath: "settings.json", mainFile: "main.tex", readOnly: false, comments: [], focusComment: null,
     preferences: defaultEditorPreferences, nativeSpellCheck: false, completionIndex: null, spellCheckIssues: [],
     spellCheckJump: null, jumpTo: null, searchRequest: 0,
     onChange: vi.fn(), onSelection: vi.fn(), onAddComment: vi.fn(), onSelectionHistory: vi.fn(),

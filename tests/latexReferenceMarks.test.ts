@@ -60,6 +60,17 @@ describe("deferred LaTeX reference marks", () => {
     h.plugin.destroy();
   });
 
+  it("resolves the citation covering a hover position", () => {
+    const source = "Text \\cite{smith2025} and \\ref{fig:one}";
+    const h = harness(source);
+    const citationStart = source.indexOf("smith2025");
+    expect(h.plugin.citationAt(citationStart + 3)?.key).toBe("smith2025");
+    expect(h.plugin.citationAt(citationStart + "smith2025".length)).toMatchObject({ key: "smith2025" });
+    expect(h.plugin.citationAt(source.indexOf("fig:one"))).toBeNull();
+    expect(h.plugin.citationAt(0)).toBeNull();
+    h.plugin.destroy();
+  });
+
   it("removes marks in the affected suffix immediately and rebuilds current offsets after scanning", () => {
     vi.useFakeTimers();
     const source = "\\cite{before}\nParagraph\n\\ref{after}";
@@ -135,6 +146,19 @@ describe("deferred LaTeX reference marks", () => {
     vi.advanceTimersByTime(REFERENCE_SCAN_DELAY_MS);
     expect(h.scan).toHaveBeenCalledTimes(2);
     expect(h.marks()[0]!.attributes.title).toBe("Enabled");
+    h.plugin.destroy();
+  });
+
+  it("suppresses the native citation title while the hover card is enabled", () => {
+    const h = harness("\\cite{paper} and \\ref{fig:one}");
+    h.edit({ effects: StateEffect.reconfigure.of(referenceNavigationSettings.of({
+      enabled: true, citationHover: true, title: (reference) => `Open ${reference.key}`
+    })) });
+    const marks = h.marks();
+    const citation = marks.find((mark) => mark.attributes["data-latex-reference-kind"] === "citation")!;
+    const label = marks.find((mark) => mark.attributes["data-latex-reference-kind"] === "label")!;
+    expect(citation.attributes.title).toBeUndefined();
+    expect(label.attributes.title).toBe("Open fig:one");
     h.plugin.destroy();
   });
 

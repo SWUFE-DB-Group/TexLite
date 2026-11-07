@@ -1,4 +1,5 @@
 import { tidy } from "bibtex-tidy";
+import { bibtexVenue, extractBibtexFields } from "../shared/bibtexReferences";
 
 /**
  * Browser-side BibTeX validation and formatting.
@@ -119,13 +120,9 @@ export function citationVenue(entry: Pick<ParsedCitationEntry, "bibtex">): strin
   const opening = entry.bibtex.indexOf(header[2], header.index);
   const closing = matchingDelimiter(entry.bibtex, opening, header[2] === "{" ? "}" : ")");
   if (closing < 0) return null;
-  const fields = extractFields(entry.bibtex.slice(header[0].length, -1));
+  const fields = extractBibtexFields(entry.bibtex.slice(header[0].length, -1));
   if (!fields) return null;
-  const entryType = header[1].toLowerCase();
-  const venue = /inproceedings|conference|incollection/.test(entryType)
-    ? fields.booktitle ?? fields.journal
-    : fields.journal ?? fields.booktitle;
-  return venue?.trim() || null;
+  return bibtexVenue(header[1], fields);
 }
 
 function parseRawBibEntry(bibtex: string): ParsedCitationEntry | null {
@@ -136,7 +133,7 @@ function parseRawBibEntry(bibtex: string): ParsedCitationEntry | null {
   if (closing !== bibtex.length - 1) return null;
   const entryType = header[1];
   if (ignoredEntryTypes.has(entryType.toLowerCase())) return null;
-  const fields = extractFields(bibtex.slice(header[0].length, -1));
+  const fields = extractBibtexFields(bibtex.slice(header[0].length, -1));
   if (!fields) return null;
   return {
     citationKey: header[3],
@@ -198,58 +195,4 @@ function matchingDelimiter(source: string, opening: number, closingCharacter: "}
     else if (character === ")" && --outerDepth === 0) return index;
   }
   return -1;
-}
-
-function extractFields(body: string): Record<string, string> | null {
-  const fields: Record<string, string> = {};
-  for (const segment of splitTopLevel(body, ",")) {
-    if (!segment.trim()) continue;
-    const withoutLeadingComments = segment.replace(/(^|[\r\n])\s*%[^\r\n]*/g, "$1").trim();
-    if (!withoutLeadingComments) continue;
-    const match = withoutLeadingComments.match(/^\s*([A-Za-z][A-Za-z0-9_-]*)\s*=\s*([\s\S]*)$/);
-    if (!match || !match[2].trim()) return null;
-    const value = cleanFieldValue(match[2]);
-    if (value) fields[match[1].toLowerCase()] = value;
-  }
-  return fields;
-}
-
-function splitTopLevel(source: string, separator: string): string[] {
-  const result: string[] = [];
-  let start = 0;
-  let depth = 0;
-  let quoted = false;
-  let escaped = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (character === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (character === '"') {
-      quoted = !quoted;
-      continue;
-    }
-    if (quoted) continue;
-    if (character === "{") depth += 1;
-    else if (character === "}") depth = Math.max(0, depth - 1);
-    else if (character === separator && depth === 0) {
-      result.push(source.slice(start, index));
-      start = index + 1;
-    }
-  }
-  result.push(source.slice(start));
-  return result;
-}
-
-function cleanFieldValue(value: string): string {
-  let result = value.trim();
-  if ((result.startsWith("{") && result.endsWith("}")) || (result.startsWith('"') && result.endsWith('"'))) {
-    result = result.slice(1, -1);
-  }
-  return result.replace(/\s+/g, " ").trim();
 }

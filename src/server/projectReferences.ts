@@ -20,6 +20,12 @@ export interface ProjectReferenceTarget {
   column: number;
   kind: LatexReferenceKind;
   source: "label" | "bibitem" | "bibtex";
+  /**
+   * Opaque version of the file that contains the definition. It changes
+   * whenever that file's size or modification time does, so a client may reuse
+   * data derived from the file for exactly as long as the value is unchanged.
+   */
+  revision: string;
 }
 
 export interface ProjectReferenceLookupOptions {
@@ -39,6 +45,59 @@ const definitionExtensions = /\.(?:tex|sty|cls)$/i;
 const texExtension = /\.tex$/i;
 const bibExtension = /\.bib$/i;
 const MAX_REFERENCE_KEY_LENGTH = 512;
+
+interface CachedProjectSources {
+  expiresAt: number;
+  signature: string;
+  contents: Map<string, string>;
+  directives: Map<string, LatexDocumentDirectives>;
+  bytes: number;
+}
+
+// Hover and navigation can resolve many keys from one project in quick
+// succession. Cache the source snapshot by file metadata so different keys do
+// not re-read and re-parse every LaTeX source inside the same short window.
+const SOURCE_CACHE_TTL_MS = 15_000;
+const MAX_SOURCE_CACHE_PROJECTS = 16;
+const MAX_SOURCE_CACHE_BYTES = 8 * 1024 * 1024;
+const MAX_SOURCE_CACHE_TOTAL_BYTES = 32 * 1024 * 1024;
+const sourceCache = new Map<string, CachedProjectSources>();
+let sourceCacheBytes = 0;
+let sourceCacheSweep: ReturnType<typeof setTimeout> | null = null;
+
+/** Resident size of the source-snapshot cache, for diagnostics and tests. */
+export function projectReferenceCacheStats(): { projects: number; bytes: number } {
+  return { projects: sourceCache.size, bytes: sourceCacheBytes };
+}
+
+function removeCachedSources(projectId: string): void {
+  const removed = sourceCache.get(projectId);
+  if (!removed) return;
+  sourceCache.delete(projectId);
+  sourceCacheBytes -= removed.bytes;
+}
+
+/**
+ * The TTL only stops an entry from being reused; it does not free it. Without
+ * a sweep, an idle project's sources would stay resident until another
+ * project displaced them. One timer, aimed at the earliest expiry, releases
+ * them on time and is not re-armed once the cache is empty. It is unref'd so
+ * it never keeps the process alive.
+ */
+function scheduleSourceCacheSweep(): void {
+  if (sourceCacheSweep !== null || sourceCache.size === 0) return;
+  let earliest = Infinity;
+  for (const entry of sourceCache.values()) earliest = Math.min(earliest, entry.expiresAt);
+  sourceCacheSweep = setTimeout(() => {
+    sourceCacheSweep = null;
+    const now = Date.now();
+    for (const [projectId, entry] of sourceCache) {
+      if (entry.expiresAt <= now) removeCachedSources(projectId);
+    }
+    scheduleSourceCacheSweep();
+  }, Math.max(0, earliest - Date.now()));
+  sourceCacheSweep.unref();
+}
 
 export function validReferenceKey(value: unknown): value is string {
   return typeof value === "string"
@@ -70,11 +129,11 @@ export async function resolveProjectReference(
     .filter((entry) => entry.type === "file" && (definitionExtensions.test(entry.path) || bibExtension.test(entry.path)));
   const sourceEntries = files.filter((entry) => definitionExtensions.test(entry.path));
   const bibEntries = files.filter((entry) => bibExtension.test(entry.path));
-  const sourceContents = await readProjectSources(config, projectId, sourceEntries.map((entry) => entry.path));
+  const { contents: sourceContents, directives: sourceDirectives } =
+    await projectSourceSnapshot(config, projectId, sourceEntries);
   const sourcePaths = [...sourceContents.keys()].sort((left, right) => left.localeCompare(right));
   const bibPaths = bibEntries.map((entry) => entry.path).sort((left, right) => left.localeCompare(right));
-  const sourceDirectives = new Map<string, LatexDocumentDirectives>();
-  for (const [entryPath, source] of sourceContents) sourceDirectives.set(entryPath, latexDocumentDirectives(source));
+  const revisions = new Map(files.map((entry) => [entry.path, `${entry.size ?? 0}:${entry.mtimeMs ?? 0}`]));
 
   const preferredPath = sourceContents.has(lookup.preferredPath ?? "") ? lookup.preferredPath ?? "" : "";
   const mainFile = sourceContents.has(lookup.mainFile ?? "") && texExtension.test(lookup.mainFile ?? "")
@@ -98,9 +157,46 @@ export async function resolveProjectReference(
       .find((candidate) => candidate.key === key);
     if (!definition) continue;
     const location = lineAndColumnAt(source, definition.targetFrom);
-    return { path: entryPath, ...location, kind, source: definition.source };
+    return { path: entryPath, ...location, kind, source: definition.source, revision: revisions.get(entryPath) ?? "" };
   }
   return null;
+}
+
+async function projectSourceSnapshot(
+  config: Config,
+  projectId: string,
+  entries: ReadonlyArray<{ path: string; size?: number; mtimeMs?: number }>
+): Promise<{ contents: Map<string, string>; directives: Map<string, LatexDocumentDirectives> }> {
+  const signature = entries
+    .map((entry) => `${entry.path}:${entry.size ?? 0}:${entry.mtimeMs ?? 0}`)
+    .sort()
+    .join("\n");
+  const cached = sourceCache.get(projectId);
+  if (cached && cached.expiresAt > Date.now() && cached.signature === signature) {
+    // Refresh recency so an actively used project is evicted last.
+    sourceCache.delete(projectId);
+    sourceCache.set(projectId, cached);
+    return cached;
+  }
+
+  const contents = await readProjectSources(config, projectId, entries.map((entry) => entry.path));
+  const directives = new Map<string, LatexDocumentDirectives>();
+  for (const [entryPath, source] of contents) directives.set(entryPath, latexDocumentDirectives(source));
+  const bytes = [...contents.values()].reduce((total, source) => total + Buffer.byteLength(source, "utf8"), 0);
+  removeCachedSources(projectId);
+  if (bytes <= MAX_SOURCE_CACHE_BYTES) {
+    sourceCache.set(projectId, {
+      expiresAt: Date.now() + SOURCE_CACHE_TTL_MS, signature, contents, directives, bytes
+    });
+    sourceCacheBytes += bytes;
+    while (sourceCache.size > MAX_SOURCE_CACHE_PROJECTS || sourceCacheBytes > MAX_SOURCE_CACHE_TOTAL_BYTES) {
+      const oldest = sourceCache.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      removeCachedSources(oldest);
+    }
+    scheduleSourceCacheSweep();
+  }
+  return { contents, directives };
 }
 
 async function readProjectSources(

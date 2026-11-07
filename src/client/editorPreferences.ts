@@ -11,6 +11,7 @@ export interface EditorPreferences {
   showTooltips: boolean;
   spellCheck: boolean;
   mathPreviewOnHover: boolean;
+  citationHover: boolean;
   vimMode: boolean;
   formatOnCompile: boolean;
   /** TOML options passed to the browser-side tex-fmt WASM formatter. */
@@ -36,6 +37,7 @@ export const defaultEditorPreferences: EditorPreferences = {
   showTooltips: false,
   spellCheck: true,
   mathPreviewOnHover: false,
+  citationHover: true,
   vimMode: false,
   formatOnCompile: false,
   texFmtConfig: defaultTexFmtConfig,
@@ -63,6 +65,7 @@ export function loadEditorPreferences(userId: string, projectId: string): Editor
       showTooltips: typeof stored.showTooltips === "boolean" ? stored.showTooltips : defaultEditorPreferences.showTooltips,
       spellCheck: typeof stored.spellCheck === "boolean" ? stored.spellCheck : defaultEditorPreferences.spellCheck,
       mathPreviewOnHover: typeof stored.mathPreviewOnHover === "boolean" ? stored.mathPreviewOnHover : defaultEditorPreferences.mathPreviewOnHover,
+      citationHover: typeof stored.citationHover === "boolean" ? stored.citationHover : defaultEditorPreferences.citationHover,
       vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode,
       formatOnCompile: typeof stored.formatOnCompile === "boolean" ? stored.formatOnCompile : defaultEditorPreferences.formatOnCompile,
       texFmtConfig: typeof stored.texFmtConfig === "string" && stored.texFmtConfig.length <= 16 * 1024

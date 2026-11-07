@@ -1453,7 +1453,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       {showEditor && <WorkspaceEditorPanel
         mobileSync={phone && sidePanel !== "comments" ? { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
         terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized} /></Suspense> : null}
-        project={project} activeFile={activeFile} openTabs={openTabs}
+        project={project} projectId={projectId} activeFile={activeFile} mainFile={activeMainFile} openTabs={openTabs}
         content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
         focusComment={focusComment} editorPreferences={editorPreferences} completionIndex={completionIndex}
         nativeSpellCheck={spellCheck.nativeFallback} spellCheckIssues={spellCheck.issues}

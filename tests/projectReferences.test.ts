@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../src/server/config.js";
 import { resolveProjectReference } from "../src/server/projectReferences.js";
 
@@ -25,7 +25,10 @@ describe("project reference navigation", () => {
 \end{thebibliography}
 \end{document}`);
     fs.writeFileSync(path.join(source, "refs.bib"), String.raw`@article{smith2025,
-  title = {A bibliography entry}
+  author = {Smith, Ada},
+  title = {A bibliography entry},
+  year = {2025},
+  journal = {Journal of Testing}
 }
 @article{manual2026,
   title = {A stale duplicate}
@@ -83,6 +86,157 @@ describe("project reference navigation", () => {
     })).resolves.toMatchObject({
       path: "preamble.tex", line: 1, column: 19, kind: "label", source: "label"
     });
+  });
+
+  it("reports a revision of the defining file that changes only when that file does", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-reference-revision-"));
+    roots.push(root);
+    const projectId = "revision-project";
+    const source = path.join(root, "projects", projectId, "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), "\\documentclass{article}\n\\begin{document}\\cite{a}\\bibliography{refs}\\end{document}\n");
+    const refs = path.join(source, "refs.bib");
+    fs.writeFileSync(refs, "@article{a, title={One}}\n");
+    const config = referenceConfig(root);
+    const lookup = () => resolveProjectReference(config, projectId, "citation", "a", { mainFile: "main.tex" });
+
+    const first = await lookup();
+    expect(first).toMatchObject({ path: "refs.bib", source: "bibtex" });
+    expect(first?.revision).toMatch(/^\d+:[\d.]+$/);
+    expect((await lookup())?.revision).toBe(first?.revision);
+
+    // Unrelated edits elsewhere in the project must not invalidate the .bib parse.
+    fs.writeFileSync(path.join(source, "main.tex"), "% edited\n\\documentclass{article}\n\\begin{document}\\cite{a}\\bibliography{refs}\\end{document}\n");
+    expect((await lookup())?.revision).toBe(first?.revision);
+
+    fs.writeFileSync(refs, "@article{a, title={Longer title}}\n");
+    const edited = await lookup();
+    expect(edited?.revision).toBeTruthy();
+    expect(edited?.revision).not.toBe(first?.revision);
+  });
+
+  it("reuses source snapshots but notices changed file metadata", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-reference-cache-"));
+    roots.push(root);
+    const projectId = "source-cache-project";
+    const source = path.join(root, "projects", projectId, "source");
+    fs.mkdirSync(source, { recursive: true });
+    const mainFile = path.join(source, "main.tex");
+    const original = [
+      "\\documentclass{article}",
+      "\\begin{document}",
+      "\\begin{thebibliography}{1}",
+      "\\bibitem{cached2026} Cached entry.",
+      "\\end{thebibliography}",
+      "\\end{document}"
+    ].join("\n");
+    fs.writeFileSync(mainFile, original);
+    const config = referenceConfig(root);
+
+    await expect(resolveProjectReference(config, projectId, "citation", "cached2026"))
+      .resolves.toMatchObject({ path: "main.tex", line: 4, source: "bibitem" });
+    fs.writeFileSync(mainFile, `% shifted\n${original}`);
+    await expect(resolveProjectReference(config, projectId, "citation", "cached2026"))
+      .resolves.toMatchObject({ path: "main.tex", line: 5, source: "bibitem" });
+  });
+});
+
+describe("project reference source cache lifetime", () => {
+  const TTL = 15_000;
+  const tempRoot = () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-reference-lifetime-"));
+    roots.push(root);
+    return root;
+  };
+  const writeProject = (root: string, projectId: string) => {
+    const source = path.join(root, "projects", projectId, "source");
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "main.tex"), "\\begin{thebibliography}{1}\n\\bibitem{k} Entry.\n\\end{thebibliography}\n");
+  };
+  // The cache is module state with its own timer, so each test gets a fresh
+  // module instance created under the fake clock. Only timers and the clock
+  // are faked: file reads must keep using the real event loop.
+  const freshModule = async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.resetModules();
+    return await import("../src/server/projectReferences.js");
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("frees an idle project's sources when they expire and then stops its timer", async () => {
+    const references = await freshModule();
+    const root = tempRoot();
+    writeProject(root, "idle");
+    const config = referenceConfig(root);
+
+    await references.resolveProjectReference(config, "idle", "citation", "k");
+    expect(references.projectReferenceCacheStats().projects).toBe(1);
+    expect(references.projectReferenceCacheStats().bytes).toBeGreaterThan(0);
+
+    await vi.advanceTimersByTimeAsync(TTL - 1);
+    expect(references.projectReferenceCacheStats().projects).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(references.projectReferenceCacheStats()).toEqual({ projects: 0, bytes: 0 });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("re-arms for the next expiry so staggered projects are each released on time", async () => {
+    const references = await freshModule();
+    const root = tempRoot();
+    writeProject(root, "early");
+    writeProject(root, "late");
+    const config = referenceConfig(root);
+
+    await references.resolveProjectReference(config, "early", "citation", "k");
+    await vi.advanceTimersByTimeAsync(10_000);
+    await references.resolveProjectReference(config, "late", "citation", "k");
+    expect(references.projectReferenceCacheStats().projects).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(references.projectReferenceCacheStats().projects).toBe(1);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(references.projectReferenceCacheStats().projects).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(references.projectReferenceCacheStats()).toEqual({ projects: 0, bytes: 0 });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not let the sweep timer keep the process alive", async () => {
+    const references = await freshModule();
+    const unref = vi.fn();
+    const clockSetTimeout = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((...args: Parameters<typeof setTimeout>) => {
+      const timer = clockSetTimeout(...args);
+      const original = timer.unref.bind(timer);
+      timer.unref = () => { unref(); return original(); };
+      return timer;
+    }) as typeof setTimeout);
+    const root = tempRoot();
+    writeProject(root, "unref");
+
+    await references.resolveProjectReference(referenceConfig(root), "unref", "citation", "k");
+    expect(setTimeout).toHaveBeenCalledOnce();
+    expect(unref).toHaveBeenCalledOnce();
+  });
+
+  it("keeps byte accounting exact while evicting beyond the project limit", async () => {
+    const references = await freshModule();
+    const root = tempRoot();
+    const config = referenceConfig(root);
+    for (let index = 0; index < 18; index += 1) {
+      writeProject(root, `bulk-${index}`);
+      await references.resolveProjectReference(config, `bulk-${index}`, "citation", "k");
+    }
+    const perProject = fs.statSync(path.join(root, "projects", "bulk-0", "source", "main.tex")).size;
+    expect(references.projectReferenceCacheStats()).toEqual({ projects: 16, bytes: 16 * perProject });
+
+    await vi.advanceTimersByTimeAsync(TTL);
+    expect(references.projectReferenceCacheStats()).toEqual({ projects: 0, bytes: 0 });
   });
 });
 

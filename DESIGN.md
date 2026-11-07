@@ -1174,6 +1174,29 @@ prefix coverage across scrolls. Pending scans are cancelled on disable/unmount,
 and their results apply only to the same immutable document. Ctrl/Cmd-click
 revalidates retained references against the current source when a scan is
 pending, including edits to later lines of multiline citation arguments.
+Hovering a citation key after a short stationary delay can preview the
+resolved BibTeX entry's key, type, title, authors, year, venue, DOI/URL and
+source location. The per-user, per-project editor preference defaults on.
+Obsolete requests are aborted when their tooltip closes. The server resolves
+only the main-document-aware target and reuses a metadata-keyed source snapshot
+across keys, so a project's LaTeX sources and directives are not re-read for
+every lookup. The snapshot cache is bounded by project count and bytes, and an
+unref'd timer aimed at the earliest expiry frees each entry when its 15-second
+lifetime ends, so an idle project's sources do not stay resident until another
+project displaces them. The target also carries a `revision` (size and
+modification time) of the file that defines it. The browser then fetches the
+target `.bib` file and parses it with the editor's Lezer BibTeX grammar in a
+dedicated, lazily created metadata worker, caching the parsed entry map per
+file for as long as the server reports the same revision. Hover never changes
+the source or opens the entry, so Ctrl/Cmd-click remains navigation.
+
+Freshness comes from the server, not from a timer. The resolve and file
+requests are both consistent reads that flush live Yjs edits to disk first, and
+every hover re-resolves its target, so a "not found" answer is never cached and
+an entry added or edited moments ago is visible on the next hover. Only the
+fetch-and-parse of an unchanged `.bib` file is reused; a changed revision, an
+aborted request, or a failed lookup is never cached and simply refetches.
+
 Automatic pairing applies its existing line-local insertion predicates before
 materializing a whole-document string. Only actual candidates need the full
 literal-state and matching-end checks; ordinary input and skipped non-candidate

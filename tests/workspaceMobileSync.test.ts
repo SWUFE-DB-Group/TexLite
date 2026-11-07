@@ -62,7 +62,7 @@ describe("phone SyncTeX controls", () => {
   it("shows only the right arrow in source when phone controls are requested", async () => {
     const run = vi.fn(done);
     // Unrelated editor dependencies are stubbed; the real panel owns the button.
-    const props: WorkspaceEditorPanelProps = { activeFile: "main.tex", loadedFile: "main.tex", content: "Source",
+    const props: WorkspaceEditorPanelProps = { activeFile: "main.tex", mainFile: "main.tex", projectId: "paper", loadedFile: "main.tex", content: "Source",
       project: { id: "paper", name: "Paper", ownerId: "owner", mainFile: "main.tex", lastModifiedBy: null,
         latexmkrc: null, engine: "pdflatex", icon: null, chktexEnabled: false, permission: "owner", tags: [], createdAt: "2026-01-01", updatedAt: "2026-01-01" },
       editorPreferences: defaultEditorPreferences, openTabs: [], comments: [], focusComment: null,

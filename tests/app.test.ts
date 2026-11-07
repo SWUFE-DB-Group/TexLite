@@ -566,7 +566,7 @@ It works.
     });
     await app.inject({
       method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
-      payload: { path: "refs.bib", content: "@article{smith2025, author={Smith}, title={A Test}}\n" }
+      payload: { path: "refs.bib", content: "@article{smith2025, author={Smith}, title={A Test}, year={2025}, journal={Testing}}\n" }
     });
     const citationTarget = await app.inject({
       method: "GET",
@@ -575,7 +575,7 @@ It works.
     });
     expect(citationTarget.statusCode).toBe(200);
     expect(citationTarget.json()).toMatchObject({
-      target: { path: "refs.bib", line: 1, column: 1, kind: "citation", source: "bibtex" }
+      target: { path: "refs.bib", line: 1, column: 1, kind: "citation", source: "bibtex", revision: expect.any(String) }
     });
     const completionIndex = await app.inject({ method: "GET", url: `/api/projects/${project.id}/completions`, headers: { cookie } });
     expect(completionIndex.statusCode).toBe(200);

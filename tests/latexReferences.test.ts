@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findBibtexEntryKeys } from "../src/shared/bibtexReferences.js";
+import { extractBibtexFields, findBibtexEntryKeys } from "../src/shared/bibtexReferences.js";
 import {
   findLatexBibliographyFiles,
   findLatexCitationCompletion,
@@ -195,6 +195,62 @@ See \citep[see][p. 4]{smith2025, doe2024} and \cref{fig:result, tab:summary}.`;
     expect(indexed.map((entry) => source.slice(entry.entryFrom, entry.entryTo))).toEqual(entries);
     expect(findLatexReferenceDefinitions(source, "citation", true).map((entry) => entry.key))
       .toEqual(indexed.map((entry) => entry.key));
+  });
+
+  it("extracts fields with the shared BibTeX field helper", () => {
+    const body = [
+      `  % a comment with , "quotes" {braces} (parens)`,
+      "  author = {Smith, Ada and Jones, Bob},",
+      "  title = {A {Nested} title},",
+      "  year = {2025},",
+      "  journal = {Journal of Testing},",
+      "  doi = {10.1000/example},",
+      `  note = "100% real, value",`,
+      "  url = {https://example.test/a%20b}"
+    ].join("\n");
+    expect(extractBibtexFields(body)).toMatchObject({
+      author: "Smith, Ada and Jones, Bob",
+      title: "A {Nested} title",
+      year: "2025",
+      journal: "Journal of Testing",
+      doi: "10.1000/example",
+      note: "100% real, value",
+      url: "https://example.test/a%20b"
+    });
+    expect(extractBibtexFields("title = {One}, broken")).toBeNull();
+  });
+
+  it("does not treat quotes inside braced values as field delimiters", () => {
+    expect(extractBibtexFields([
+      `title = {A "single quotation},`,
+      "year = {2024},",
+      `note = {Another "quoted, value" here}`
+    ].join("\n"))).toMatchObject({
+      title: `A "single quotation`,
+      year: "2024",
+      note: `Another "quoted, value" here`
+    });
+  });
+
+  it("skips unpaired braces in BibTeX comments when finding entry boundaries", () => {
+    const source = [
+      "@article{commented,",
+      "  title = {Hello},",
+      "  % } comment with a closing brace",
+      "  year = {2024}",
+      "}",
+      "@article{opened,",
+      "  title = {World},",
+      "  % { comment with an opening brace",
+      "  year = {2025}",
+      "}",
+      "@article(parenthesized,",
+      "  title = {Paren}, % ) comment",
+      "  year = {2026}",
+      ")"
+    ].join("\n");
+    expect(findBibtexEntryKeys(source).map((entry) => entry.key))
+      .toEqual(["commented", "opened", "parenthesized"]);
   });
 
   it("uses TeX's raw inline verb delimiters before scanning later references", () => {

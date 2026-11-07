@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, AlertTriangle, AlignLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, AlignLeft, BookMarked, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
@@ -239,6 +239,10 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       </div>
       <div className="editor-preference">
         <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.mathPreviewOnHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, mathPreviewOnHover: event.target.checked })} /><Sigma size={15} /><span>{t("projectSettings.mathPreviewOnHover")}</span></label>
+      </div>
+      <div className="editor-preference">
+        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.citationHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, citationHover: event.target.checked })} /><BookMarked size={15} /><span>{t("projectSettings.citationHover")}</span></label>
+        <p className="field-hint">{t("projectSettings.citationHoverDescription")}</p>
       </div>
       <div className="editor-preference">
         <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><span>{t("projectSettings.spellCheck")}</span></label>

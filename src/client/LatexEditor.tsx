@@ -28,6 +28,7 @@ import { bibtexCompletionSource, bibtexHighlightStyle, bibtexLanguage, bstLangua
 import { supportsLatexMathHover } from "./latexMath";
 import { latexHighlightStyle, latexSemanticHighlighting } from "./latex/highlighting";
 import { latexMathHover } from "./mathHover";
+import { latexCitationHover, type CitationHoverLabels } from "./citationHover";
 import { latexReferenceHover } from "./latexReferenceHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
@@ -43,7 +44,9 @@ export type { SpellCheckIssue } from "./spellCheck";
 
 interface Props {
   value: string;
+  projectId: string;
   filePath: string;
+  mainFile: string;
   readOnly: boolean;
   comments: Comment[];
   focusComment: Comment | null;
@@ -127,7 +130,7 @@ function referenceFromElement(element: EventTarget | null): LatexReference | nul
 }
 
 export function LatexEditor({
-  value, filePath, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
+  value, projectId, filePath, mainFile, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
   nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor
 }: Props) {
   const { t, i18n } = useTranslation();
@@ -148,6 +151,7 @@ export function LatexEditor({
   const appearance = useRef(new Compartment());
   const referenceNavigation = useRef(new Compartment());
   const mathHover = useRef(new Compartment());
+  const citationHover = useRef(new Compartment());
   const vimMode = useRef(new Compartment());
   const auxiliaryLanguage = useRef(new Compartment());
   const [languageLoadFailed, setLanguageLoadFailed] = useState(false);
@@ -190,8 +194,11 @@ export function LatexEditor({
         closeBrackets(), indentOnInput(), sourceCommentDecorations({
           label: t("editor.openSourceComment"), onOpen: (id, toggle) => onCommentClickRef.current(id, toggle)
         }), spellCheckIssueMarks, activeSpellCheckIssueMarks,
-        referenceNavigation.current.of(isLatexFile ? referenceNavigationSettings.of(referenceNavigationOptions(filePath, t)) : []),
+        referenceNavigation.current.of(isLatexFile ? referenceNavigationSettings.of(referenceNavigationOptions(filePath, t, preferences.citationHover)) : []),
         ...(isLatexFile ? [latexReferenceMarks, latexReferenceHover] : []),
+        citationHover.current.of(preferences.citationHover && isLatexFile ? latexCitationHover({
+          projectId, filePath, mainFile, labels: citationHoverLabels(t)
+        }) : []),
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
@@ -290,12 +297,15 @@ export function LatexEditor({
     if (!editor) return;
     editor.dispatch({ effects: [
       appearance.current.reconfigure(editorAppearance(preferences, nativeSpellCheck, theme)),
-      referenceNavigation.current.reconfigure(isLatexEditorFile(filePath) ? referenceNavigationSettings.of(referenceNavigationOptions(filePath, t)) : []),
+      referenceNavigation.current.reconfigure(isLatexEditorFile(filePath) ? referenceNavigationSettings.of(referenceNavigationOptions(filePath, t, preferences.citationHover)) : []),
+      citationHover.current.reconfigure(preferences.citationHover && isLatexEditorFile(filePath) ? latexCitationHover({
+        projectId, filePath, mainFile, labels: citationHoverLabels(t)
+      }) : []),
       mathHover.current.reconfigure(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
         loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
       }) : [])
     ] });
-  }, [preferences, nativeSpellCheck, filePath, i18n.resolvedLanguage, theme]);
+  }, [preferences, nativeSpellCheck, projectId, filePath, mainFile, i18n.resolvedLanguage, theme]);
 
   // Appearance changes must not reinstall Vim or reset Insert/Visual mode.
   // Async results belong to one editor instance and one enable attempt.
@@ -495,10 +505,25 @@ function editorAppearance(preferences: EditorPreferences, nativeSpellCheck: bool
   ];
 }
 
-function referenceNavigationOptions(filePath: string, t: TFunction): ReferenceNavigationSettings {
+function citationHoverLabels(t: TFunction): CitationHoverLabels {
+  return {
+    loading: t("editor.citationHoverLoading"),
+    unavailable: t("editor.citationHoverUnavailable"),
+    inSource: t("editor.citationHoverInSource"),
+    untitled: t("citationLibrary.untitled"),
+    doi: t("editor.citationHoverDoi"),
+    url: t("editor.citationHoverUrl"),
+    openHint: t("editor.citationHoverOpenHint"),
+    entry: (key) => t("editor.citationHoverEntry", { key }),
+    notFound: (key) => t("editor.citationTargetNotFound", { key })
+  };
+}
+
+function referenceNavigationOptions(filePath: string, t: TFunction, citationHover = false): ReferenceNavigationSettings {
   const enabled = /\.(?:tex|sty|cls)$/i.test(filePath);
   return {
     enabled,
+    citationHover,
     title: (reference) => reference.kind === "citation"
       ? t("editor.citationJumpHint", { key: reference.key })
       : t("editor.labelJumpHint", { key: reference.key })

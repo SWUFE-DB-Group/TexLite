@@ -39,6 +39,14 @@ describe("editor preference scope", () => {
     expect(loadEditorPreferences("alice", "paper")).toEqual({ ...defaultEditorPreferences, fontSize: 18 });
   });
 
+  it("enables citation hover by default and preserves an explicit choice", () => {
+    expect(defaultEditorPreferences.citationHover).toBe(true);
+    storage.setItem("texlite-editor-preferences:alice:paper", JSON.stringify({ citationHover: false }));
+    expect(loadEditorPreferences("alice", "paper").citationHover).toBe(false);
+    saveEditorPreferences("alice", "paper", { ...defaultEditorPreferences, citationHover: false });
+    expect(loadEditorPreferences("alice", "paper").citationHover).toBe(false);
+  });
+
   it("does not bind an obsolete theme value to a user or project", () => {
     storage.setItem("texlite-editor-preferences:alice:paper", JSON.stringify({ theme: "dark", fontSize: 18 }));
     const preferences = loadEditorPreferences("alice", "paper");

@@ -6,6 +6,8 @@ import { LatexReferenceViewportCache, referenceScanWindows, visibleLatexReferenc
 export interface ReferenceNavigationSettings {
   enabled: boolean;
   title: (reference: LatexReference) => string;
+  /** Suppress the native title on citations while the hover card is enabled. */
+  citationHover?: boolean;
 }
 
 export const referenceNavigationSettings = Facet.define<ReferenceNavigationSettings, ReferenceNavigationSettings>({
@@ -97,6 +99,15 @@ export class LatexReferenceMarkPlugin {
       && candidate.from === reference.from && candidate.to === reference.to && candidate.command === reference.command) ?? null;
   }
 
+  /** Return the visible citation containing a document position, if any. */
+  citationAt(position: number): LatexReference | null {
+    if (this.destroyed || !this.view.state.facet(referenceNavigationSettings).enabled) return null;
+    const references = this.scannedDocument === this.view.state.doc
+      ? this.references : this.cache.referencesFor(this.view.state.doc);
+    return references.find((reference) => reference.kind === "citation"
+      && position >= reference.from && position <= reference.to) ?? null;
+  }
+
   destroy(): void {
     this.destroyed = true;
     this.cancel();
@@ -138,17 +149,24 @@ export class LatexReferenceMarkPlugin {
       if (seen.has(signature) || reference.to <= reference.from) return false;
       seen.add(signature);
       return true;
-    }).map((reference) => Decoration.mark({
-      class: reference.kind === "citation" ? "cm-latex-citation-key" : "cm-latex-label-key",
-      attributes: {
-        title: settings.title(reference), spellcheck: "false",
+    }).map((reference) => {
+      const attributes: Record<string, string> = {
+        spellcheck: "false",
         "data-latex-reference-kind": reference.kind,
         "data-latex-reference-key": reference.key,
         "data-latex-reference-from": String(reference.from),
         "data-latex-reference-to": String(reference.to),
         "data-latex-reference-command": reference.command
+      };
+      // The citation hover card replaces the browser's native title hint.
+      if (!(reference.kind === "citation" && settings.citationHover)) {
+        attributes.title = settings.title(reference);
       }
-    }).range(reference.from, reference.to));
+      return Decoration.mark({
+        class: reference.kind === "citation" ? "cm-latex-citation-key" : "cm-latex-label-key",
+        attributes
+      }).range(reference.from, reference.to);
+    });
     this.decorations = marks.length ? Decoration.set(marks, true) : Decoration.none;
   }
 }

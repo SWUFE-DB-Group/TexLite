@@ -41,7 +41,7 @@ beforeEach(async () => {
   vi.mocked(loadVimSupport).mockReset().mockResolvedValue(support);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   props = {
-    value: "Original text.\n", filePath: "main.tex", readOnly: false, comments: [], focusComment: null,
+    value: "Original text.\n", projectId: "project", filePath: "main.tex", mainFile: "main.tex", readOnly: false, comments: [], focusComment: null,
     preferences: defaultEditorPreferences, nativeSpellCheck: false, completionIndex: null, spellCheckIssues: [],
     spellCheckJump: null, jumpTo: null, searchRequest: 0,
     onChange: vi.fn(), onSelection: vi.fn(), onAddComment: vi.fn(), onSelectionHistory: vi.fn(),
