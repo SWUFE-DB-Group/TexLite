@@ -1196,6 +1196,12 @@ lists ending in `and others`, show the first author followed by "et al." and,
 when known, the author count (`citationAuthors.ts`). `src/shared/bibtexNames.ts`
 splits names at brace-depth-0 `and` and keeps each name as written.
 The per-user, per-project editor preference defaults on.
+The workspace editor renders all CodeMirror tooltips (hover previews,
+completion, diagnostics) in a zero-size fixed layer in `<body>` instead of the
+isolated editor host, so a neighbouring PDF panel cannot cover a preview near
+the editor's right edge. The layer copies the editor font and sits at z-index
+85: above workspace panels, below menus, drawers and dialogs, preserving why
+`.editor-host` is isolated. Editors inside dialogs keep their tooltips local.
 Obsolete requests are aborted when their tooltip closes. The server resolves
 only the main-document-aware target and reuses a metadata-keyed source snapshot
 across keys, so a project's LaTeX sources and directives are not re-read for

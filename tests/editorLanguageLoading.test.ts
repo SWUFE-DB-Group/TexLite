@@ -160,3 +160,23 @@ describe("editor auxiliary language lifecycle", () => {
     expect(host.querySelector(".editor-language-notice")).toBeNull();
   });
 });
+
+describe("editor tooltip layer", () => {
+  it("renders tooltips in a body-level layer that follows the editor font and leaves with the editor", async () => {
+    await render({ filePath: "main.tex", preferences: { ...defaultEditorPreferences, fontSize: 17 } });
+    const layers = document.querySelectorAll<HTMLElement>("body > .editor-tooltip-layer");
+    expect(layers).toHaveLength(1);
+    const [layer] = layers;
+    expect(host.contains(layer)).toBe(false);
+    expect(layer.style.fontSize).toBe("17px");
+    // CodeMirror mounts its tooltip container inside the layer, with the editor's theme classes.
+    expect(layer.firstElementChild?.className).toContain(editor().themeClasses.split(" ")[0]);
+
+    await render({ preferences: { ...defaultEditorPreferences, fontSize: 13 } });
+    expect(layer.style.fontSize).toBe("13px");
+
+    await act(async () => root.unmount());
+    expect(document.querySelector(".editor-tooltip-layer")).toBeNull();
+    root = createRoot(host);
+  });
+});

@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { Annotation, Compartment, EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
 import {
   Decoration, type DecorationSet, EditorView, keymap,
-  highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, ViewPlugin
+  highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, tooltips, ViewPlugin
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
@@ -155,6 +155,7 @@ export function LatexEditor({
   const citationHover = useRef(new Compartment());
   const vimMode = useRef(new Compartment());
   const auxiliaryLanguage = useRef(new Compartment());
+  const tooltipLayer = useRef<HTMLDivElement | null>(null);
   const [languageLoadFailed, setLanguageLoadFailed] = useState(false);
   const [languageRetry, setLanguageRetry] = useState(0);
   const vimStatusCleanup = useRef<(() => void) | null>(null);
@@ -173,6 +174,22 @@ export function LatexEditor({
   spellCheckIssuesRef.current = spellCheckIssues;
   completionIndexRef.current = completionIndex;
 
+  // Tooltips (hover previews, completion, diagnostics) render in a layer in
+  // <body>, not inside the isolated editor host, so a neighbouring panel such
+  // as the PDF viewer cannot cover them. The layer sits below workspace
+  // menus, drawers and dialogs (see `.editor-tooltip-layer`). It is declared
+  // before the editor so it exists when the view is created.
+  useEffect(() => {
+    const layer = document.createElement("div");
+    layer.className = "editor-tooltip-layer";
+    document.body.append(layer);
+    tooltipLayer.current = layer;
+    return () => {
+      layer.remove();
+      if (tooltipLayer.current === layer) tooltipLayer.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     if (!host.current) return;
     const isBibtexFile = /\.bib$/i.test(filePath);
@@ -182,6 +199,7 @@ export function LatexEditor({
     const state = EditorState.create({
       doc: collaboration?.text.toString() ?? value,
       extensions: [
+        tooltips(tooltipLayer.current ? { parent: tooltipLayer.current } : {}),
         selectionLineActions({
           commentLabel: t("editor.addComment"), historyLabel: t("selectionHistory.title"),
           onComment: (...args) => onAddCommentRef.current(...args),
@@ -448,6 +466,16 @@ export function LatexEditor({
     fontSize: `${preferences.fontSize}px`,
     lineHeight: preferences.lineHeight
   }), [preferences.font, preferences.fontSize, preferences.lineHeight]);
+
+  // Tooltips no longer inherit from the editor shell; give their layer the
+  // same font so completion lists keep the editor's family and size.
+  useEffect(() => {
+    const layer = tooltipLayer.current;
+    if (!layer) return;
+    layer.style.fontFamily = appearanceStyle.fontFamily;
+    layer.style.fontSize = appearanceStyle.fontSize;
+    layer.style.lineHeight = String(appearanceStyle.lineHeight);
+  }, [appearanceStyle]);
 
   return <div className="editor-shell" data-editor-theme={theme} style={appearanceStyle}>
     <div className="editor-host" ref={host} />

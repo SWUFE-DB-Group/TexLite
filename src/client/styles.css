@@ -849,22 +849,28 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-host, .cm-editor { height: 100%; min-height: 0; }
 /* Keep CodeMirror's high-z panels/tooltips below workspace drawers and modal portals. */
 .editor-host { isolation: isolate; }
+/* Main-editor tooltips render here, in <body>, so the PDF panel beside the
+   editor cannot cover them. 85 keeps them above workspace panels but below
+   menus (90+), mobile drawers (95+) and dialogs (100+). The layer is a
+   zero-size fixed box, so it neither takes space nor becomes a containing
+   block for CodeMirror's fixed-position tooltips. */
+.editor-tooltip-layer { position: fixed; z-index: 85; top: 0; left: 0; width: 0; height: 0; color: var(--tl-ink); }
 .editor-host .cm-editor { font-family: inherit; font-size: inherit; line-height: inherit; color: var(--tl-ink); background: var(--tl-editor-bg); }
 .editor-host .cm-gutters { color: var(--tl-gutter); background: var(--tl-editor-bg); border-color: var(--tl-border); }
 .editor-host .cm-content { caret-color: var(--tl-cursor); }
 .editor-host .cm-cursor, .editor-host .cm-dropCursor { border-left-color: var(--tl-cursor); }
 .editor-host .cm-foldPlaceholder { background: var(--tl-literal-bg); border-color: var(--tl-border); color: var(--tl-bracket); }
 .editor-host .cm-selectionMatch { background: var(--tl-active-line); }
-.editor-host .cm-tooltip { color: var(--tl-ink); background: var(--tl-completion-bg); border-color: var(--tl-completion-border); }
-.editor-host .cm-tooltip-section:not(:first-child) { border-top-color: var(--tl-completion-border); }
-.editor-host .cm-tooltip .cm-tooltip-arrow::before { border-top-color: var(--tl-completion-border); border-bottom-color: var(--tl-completion-border); }
-.editor-host .cm-tooltip .cm-tooltip-arrow::after { border-top-color: var(--tl-completion-bg); border-bottom-color: var(--tl-completion-bg); }
-.editor-host .cm-tooltip-autocomplete ul li[aria-selected] { background: var(--tl-completion-active-bg); color: var(--tl-completion-active-fg); }
-.editor-host .cm-tooltip-autocomplete-disabled ul li[aria-selected] { background: var(--tl-muted-fg); }
-.editor-host .cm-diagnostic { color: var(--tl-ink); }
-.editor-host .cm-diagnostic-error { border-left-color: var(--tl-error); }
-.editor-host .cm-diagnostic-warning { border-left-color: var(--tl-warning); }
-.editor-host .cm-diagnostic-info { border-left-color: var(--tl-hint); }
+:is(.editor-host, .editor-tooltip-layer) .cm-tooltip { color: var(--tl-ink); background: var(--tl-completion-bg); border-color: var(--tl-completion-border); }
+:is(.editor-host, .editor-tooltip-layer) .cm-tooltip-section:not(:first-child) { border-top-color: var(--tl-completion-border); }
+:is(.editor-host, .editor-tooltip-layer) .cm-tooltip .cm-tooltip-arrow::before { border-top-color: var(--tl-completion-border); border-bottom-color: var(--tl-completion-border); }
+:is(.editor-host, .editor-tooltip-layer) .cm-tooltip .cm-tooltip-arrow::after { border-top-color: var(--tl-completion-bg); border-bottom-color: var(--tl-completion-bg); }
+:is(.editor-host, .editor-tooltip-layer) .cm-tooltip-autocomplete ul li[aria-selected] { background: var(--tl-completion-active-bg); color: var(--tl-completion-active-fg); }
+:is(.editor-host, .editor-tooltip-layer) .cm-tooltip-autocomplete-disabled ul li[aria-selected] { background: var(--tl-muted-fg); }
+:is(.editor-host, .editor-tooltip-layer) .cm-diagnostic { color: var(--tl-ink); }
+:is(.editor-host, .editor-tooltip-layer) .cm-diagnostic-error { border-left-color: var(--tl-error); }
+:is(.editor-host, .editor-tooltip-layer) .cm-diagnostic-warning { border-left-color: var(--tl-warning); }
+:is(.editor-host, .editor-tooltip-layer) .cm-diagnostic-info { border-left-color: var(--tl-hint); }
 .editor-host .cm-lintRange-error { background-image: none; text-decoration: underline wavy var(--tl-error); text-underline-offset: 2px; }
 .editor-host .cm-lintRange-warning { background-image: none; text-decoration: underline wavy var(--tl-warning); text-underline-offset: 2px; }
 .editor-host .cm-lineNumbers .cm-activeLineGutter { color: var(--tl-gutter-active); background: transparent; }
