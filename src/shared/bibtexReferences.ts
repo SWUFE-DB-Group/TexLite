@@ -132,12 +132,14 @@ export function findBibtexEntryKeys(source: string): BibtexEntryKey[] {
       index += 1;
       continue;
     }
+    // An entry type is a letter followed by letters, digits, `_` or `-`,
+    // matching the editor grammar (`@misc1`, `@article-v2`).
     let typeEnd = index + 1;
-    while (typeEnd < source.length && /[A-Za-z]/.test(source[typeEnd])) typeEnd += 1;
-    if (typeEnd === index + 1) {
+    if (!/[A-Za-z]/.test(source[typeEnd] ?? "")) {
       index += 1;
       continue;
     }
+    while (typeEnd < source.length && /[A-Za-z0-9_-]/.test(source[typeEnd])) typeEnd += 1;
     let opening = typeEnd;
     while (opening < source.length && /\s/.test(source[opening])) opening += 1;
     const block = readBibtexBlock(source, opening);

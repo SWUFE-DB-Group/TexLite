@@ -97,6 +97,19 @@ describe("citation library BibTeX parser", () => {
       .toEqual({ status: "empty", entries: [] });
   });
 
+  it("accepts macro names and entry types with the punctuation BibTeX allows", () => {
+    const record = "@article{key, title={Title}, author={Doe, Jane}, journal=j.bmj, year={2026}}";
+    expect(parseSingleBibEntry(record, citationLimit)).toMatchObject({ citationKey: "key", entryType: "article", year: "2026" });
+    expect(parseBibEntriesResult(`@string{j.bmj = "British Medical Journal"}\n${record}`, citationLimit))
+      .toMatchObject({ status: "ok", entries: [{ citationKey: "key", bibtex: record }] });
+    expect(parseSingleBibEntry("@misc1{custom, title={T}}", citationLimit)).toMatchObject({ entryType: "misc1" });
+    expect(parseSingleBibEntry("@article-v2{custom, title={T}}", citationLimit)).toMatchObject({ entryType: "article-v2" });
+  });
+
+  it("still rejects a bare value that is neither a number nor a macro name", () => {
+    expect(parseSingleBibEntry("@article{key, title=1abc}", citationLimit)).toBeNull();
+  });
+
   it("rejects the whole document when any entry has a syntax error", () => {
     expect(parseBibEntriesResult("@article{ok, title={T}}\n@article{broken, title={T}", citationLimit))
       .toEqual({ status: "invalid", entries: [] });

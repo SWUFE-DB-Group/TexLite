@@ -146,6 +146,42 @@ describe("internal BibTeX CodeMirror language", () => {
     expect(syntaxErrors(bibtexState("@misc(key, title = {Title}}"))).not.toEqual([]);
   });
 
+  it("accepts the identifier characters BibTeX itself accepts in macro, field and entry-type names", () => {
+    const source = String.raw`@string{j.bmj = "British Medical Journal"}
+@string{conf:2024+ = "Conference"}
+@misc1{custom-type_2,
+  alt:title = {A title},
+  journal = j.bmj,
+  booktitle = conf:2024+ # { Suffix}
+}
+@article-v2{second, title = {T}}`;
+    const state = bibtexState(source);
+    const text = (name: string) => {
+      const found: string[] = [];
+      syntaxTree(state).iterate({ enter(node) { if (node.name === name) found.push(source.slice(node.from, node.to)); } });
+      return found;
+    };
+    expect(syntaxErrors(state)).toEqual([]);
+    expect(text("StringName")).toEqual(["j.bmj", "conf:2024+"]);
+    expect(text("StringRef")).toEqual(["j.bmj", "conf:2024+"]);
+    expect(text("FieldName")).toEqual(["alt:title", "journal", "booktitle", "title"]);
+    expect(text("EntryKey")).toEqual(["custom-type_2", "second"]);
+    expect(text("EntryType").filter((type) => type !== "@string")).toEqual(["@misc1", "@article-v2"]);
+  });
+
+  it("still rejects a bare value that is neither a number nor a macro name", () => {
+    expect(syntaxErrors(bibtexState("@article{k, title=1abc}")).length).toBeGreaterThan(0);
+    expect(syntaxErrors(bibtexState("@article{k, title=12}"))).toEqual([]);
+  });
+
+  it("treats a name that merely starts like a special form as an ordinary entry type", () => {
+    const state = bibtexState("@string2{k, title = {T}}\n@comment2{c, title = {T}}");
+    const names: string[] = [];
+    syntaxTree(state).iterate({ enter(node) { if (node.name.endsWith("Entry") || node.name === "Entry") names.push(node.name); } });
+    expect(syntaxErrors(state)).toEqual([]);
+    expect(names).toEqual(["Entry", "Entry"]);
+  });
+
   it("accepts ordinary text between entries without losing bibliography values or folds", () => {
     const source = `Exported bibliography: 文献库 {draft}.
 % An ordinary line comment

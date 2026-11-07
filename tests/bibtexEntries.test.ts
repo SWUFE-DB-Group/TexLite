@@ -48,6 +48,15 @@ describe("BibTeX document model", () => {
     });
   });
 
+  it("reads entries and fields whose names contain punctuation", () => {
+    const { entries, hasSyntaxErrors } = parseBibtexDocument(
+      `@string{j.bmj = "British Medical Journal"}\n@Misc1{k, alt:title = {T}, journal = j.bmj}\n@article-v2{second, year = 2026}`
+    );
+    expect(hasSyntaxErrors).toBe(false);
+    expect(entries.map((entry) => [entry.key, entry.entryType])).toEqual([["k", "Misc1"], ["second", "article-v2"]]);
+    expect(entries[0].fields).toEqual({ "alt:title": "T", journal: "j.bmj" });
+  });
+
   it("keeps concatenations as written instead of splitting them at the delimiters", () => {
     const [entry] = parseBibtexDocument(`@article{k, title = "Deep " # "Learning", note = {A} # {B}, year = 2020}`).entries;
     expect(entry.fields).toMatchObject({ title: `"Deep " # "Learning"`, note: "{A} # {B}", year: "2020" });
@@ -102,7 +111,9 @@ describe("server entry scanner agrees with the editor grammar", () => {
     "key punctuation": "@article{Smith+2026:a/b.c, title={T}}\n@misc{k2, title={T}}",
     "case and spacing": "@ARTICLE {Upper, title={T}}\n@Book\n{Mixed, title={B}}",
     "concatenation and macros": `@string{j = "J"}\n@article{a, journal = j # { Suffix}, title = {A} # {B}}\n@book{b, title={B}}`,
-    "key-only entry": "@misc{only}\n@misc{trailing,}\n@book{b, title={B}}"
+    "key-only entry": "@misc{only}\n@misc{trailing,}\n@book{b, title={B}}",
+    "entry types with digits, hyphens and underscores": "@misc1{a, title={A}}\n@article-v2{b, title={B}}\n@my_type{c, title={C}}\n@book{d, title={D}}",
+    "macro and field names with punctuation": `@string{j.bmj = "J"}\n@article{a, journal = j.bmj, alt:title = {T}}\n@book{b, title={B}}`
   };
 
   it.each(Object.entries(corpus))("%s", (_name, source) => {
