@@ -29,6 +29,7 @@ import { supportsLatexMathHover } from "./latexMath";
 import { latexHighlightStyle, latexSemanticHighlighting } from "./latex/highlighting";
 import { latexMathHover } from "./mathHover";
 import { latexCitationHover, type CitationHoverLabels } from "./citationHover";
+import { citationAuthorLabels } from "./citationAuthors";
 import { latexReferenceHover } from "./latexReferenceHover";
 import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
@@ -515,7 +516,8 @@ function citationHoverLabels(t: TFunction): CitationHoverLabels {
     url: t("editor.citationHoverUrl"),
     openHint: t("editor.citationHoverOpenHint"),
     entry: (key) => t("editor.citationHoverEntry", { key }),
-    notFound: (key) => t("editor.citationTargetNotFound", { key })
+    notFound: (key) => t("editor.citationTargetNotFound", { key }),
+    ...citationAuthorLabels(t)
   };
 }
 

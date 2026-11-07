@@ -2,11 +2,12 @@ import type { Extension } from "@codemirror/state";
 import { hoverTooltip, type Tooltip } from "@codemirror/view";
 import type { LatexReference } from "../shared/latexReferences";
 import { api } from "./api";
+import { formatCitationAuthors, type CitationAuthorLabels } from "./citationAuthors";
 import type { BibtexEntrySummary } from "./bibtex/entryMetadata";
 import { parseBibtexMetadataInWorker } from "./bibtexMetadata";
 import { latexReferenceMarks } from "./latexReferenceMarks";
 
-export interface CitationHoverLabels {
+export interface CitationHoverLabels extends CitationAuthorLabels {
   loading: string;
   unavailable: string;
   inSource: string;
@@ -336,7 +337,9 @@ export function renderCitationHover(
     title.className = "texlite-citation-title";
     title.textContent = target.citation.title ?? labels.untitled;
     dom.append(title);
-    if (target.citation.authors) appendLine(dom, "texlite-citation-authors", target.citation.authors);
+    if (target.citation.authors) {
+      appendLine(dom, "texlite-citation-authors", formatCitationAuthors(target.citation.authors, labels));
+    }
     const meta = [target.citation.venue, target.citation.year].filter(Boolean).join(" · ");
     if (meta) appendLine(dom, "texlite-citation-meta", meta);
     if (target.citation.doi) appendLine(dom, "texlite-citation-meta", `${labels.doi}: ${target.citation.doi}`);

@@ -22,7 +22,9 @@ const labels: CitationHoverLabels = {
   url: "URL",
   openHint: "Ctrl/Cmd-click to open this entry.",
   entry: (key) => `Bibliography entry ${key}`,
-  notFound: (key) => `No bibliography entry was found for ${key}.`
+  notFound: (key) => `No bibliography entry was found for ${key}.`,
+  authorsTruncated: (names, count) => `${names} et al. (${count} authors)`,
+  authorsOthers: (names) => `${names} et al.`
 };
 
 function render(target: CitationHoverTarget | null | undefined, key = "smith2025") {
@@ -73,6 +75,18 @@ const summary = (key: string, title: string): BibtexEntrySummary => ({
 const reference = (key: string): LatexReference => ({ kind: "citation", command: "cite", key, from: 0, to: key.length });
 const bibTarget = (revision: string | undefined, path = "refs.bib") => ({
   path, line: 3, column: 1, kind: "citation", source: "bibtex", ...(revision === undefined ? {} : { revision })
+});
+
+describe("citation hover authors", () => {
+  it("shortens a long author list with biblatex's default rule", () => {
+    const dom = render({
+      path: "refs.bib", line: 3, column: 1, source: "bibtex",
+      citation: { ...summary("smith2025", "Title"), authors: "A and B and C and D" }
+    });
+    const authors = dom.querySelector(".texlite-citation-authors") as HTMLElement;
+    expect(authors.textContent).toBe("A et al. (4 authors)");
+    expect(authors.dataset.tooltip).toBeUndefined();
+  });
 });
 
 describe("citation hover resolution", () => {

@@ -1190,7 +1190,12 @@ revalidates retained references against the current source when a scan is
 pending, including edits to later lines of multiline citation arguments.
 Hovering a citation key after a short stationary delay can preview the
 resolved BibTeX entry's key, type, title, authors, year, venue, DOI/URL and
-source location. The per-user, per-project editor preference defaults on.
+source location. Author lists, here and on citation library cards, follow
+biblatex's default truncation (`maxnames=3`, `minnames=1`): longer lists, and
+lists ending in `and others`, show the first author followed by "et al." and,
+when known, the author count (`citationAuthors.ts`). `src/shared/bibtexNames.ts`
+splits names at brace-depth-0 `and` and keeps each name as written.
+The per-user, per-project editor preference defaults on.
 Obsolete requests are aborted when their tooltip closes. The server resolves
 only the main-document-aware target and reuses a metadata-keyed source snapshot
 across keys, so a project's LaTeX sources and directives are not re-read for

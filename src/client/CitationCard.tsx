@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { Check, Import, RefreshCw } from "lucide-react";
 import { CitationEntryMenu } from "./CitationEntryMenu";
 import { SaveButton } from "./SaveButton";
+import { citationAuthorLabels, formatCitationAuthors } from "./citationAuthors";
 import { citationDisplayVenue, type ParsedCitationEntry } from "./citationLibrary";
 import type { CitationLibraryEntry } from "./types";
 import { TagMarquee } from "./TagMarquee";
@@ -34,6 +35,7 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
 }) {
   const libraryEntry = "id" in entry ? entry as CitationLibraryEntry : null;
   const venue = useMemo(() => citationDisplayVenue({ venue: entry.venue, bibtex: entry.bibtex }), [entry.venue, entry.bibtex]);
+  const authors = useMemo(() => entry.authors ? formatCitationAuthors(entry.authors, citationAuthorLabels(t)) : t("citationLibrary.authorUnknown"), [entry.authors, t]);
   const saveLabel = t(saved ? "citationLibrary.update" : "citationLibrary.save");
   const saveTooltip = saving ? t("citationLibrary.saving") : saveFeedback || (saveHint ? `${saveLabel} · ${saveHint}` : saveLabel);
   const importTooltip = alreadyInFile ? t("citationErrors.alreadyInFile", { key: entry.citationKey }) : importHint || t("citationLibrary.importToFile");
@@ -41,7 +43,7 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
     <div className="citation-entry-main">
       <div className="citation-entry-heading"><code>{entry.citationKey}</code><span>@{entry.entryType}</span>{venue && <span className="citation-entry-venue" title={venue}>{venue}</span>}{saved && <em><Check size={11} />{t("citationLibrary.savedLabel")}</em>}</div>
       <strong title={entry.title || t("citationLibrary.untitled")}>{entry.title || t("citationLibrary.untitled")}</strong>
-      <p>{entry.authors || t("citationLibrary.authorUnknown")}{entry.year && <span> · {entry.year}</span>}</p>
+      <p>{authors}{entry.year && <span> · {entry.year}</span>}</p>
       {manage && libraryEntry && libraryEntry.tags.length > 0 && <TagMarquee className="citation-entry-tags" focusable>{libraryEntry.tags.map((tag) => <span className={`citation-tag-pill tag-${tag.color}`} key={tag.id}><span className="citation-tag-dot" aria-hidden="true" />{tag.name}</span>)}</TagMarquee>}
     </div>
     <div className="citation-entry-actions">
