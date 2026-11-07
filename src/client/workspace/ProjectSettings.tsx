@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, AlertTriangle, AlignLeft, BookMarked, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileCheck2, LoaderCircle, MessageCircleQuestion, PanelsTopLeft, RefreshCw, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { AlertCircle, AlertTriangle, AlignLeft, BookMarked, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, FileCheck2, Keyboard, LoaderCircle, MessageCircleQuestion, Palette, PanelsTopLeft, RefreshCw, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
 import { api } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
@@ -228,50 +229,59 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       </button>
     </div>
     {settingsTab === "appearance" ? <section id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance">
-      <div className="settings-section-title"><Type size={15} /><strong>{t("projectSettings.editorAppearance")}</strong></div>
+      <div className="settings-section-title"><Type size={15} /><strong>{t("projectSettings.editorTab")}</strong></div>
       <p className="settings-description appearance-description">{t("projectSettings.editorAppearanceDescription")}</p>
-      <label>{t("projectSettings.fontFamily")}<select value={appearancePreferences.font} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, font: event.target.value as EditorPreferences["font"] })}>{editorFonts.map((font) => <option value={font.id} key={font.id}>{t(font.labelKey)}</option>)}</select></label>
-      <label>{t("projectSettings.fontSize")}<select value={appearancePreferences.fontSize} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, fontSize: Number(event.target.value) })}>{[12, 13, 14, 15, 16, 18, 20].map((size) => <option value={size} key={size}>{size} px</option>)}</select></label>
-      <label>{t("projectSettings.lineHeight")}<select value={appearancePreferences.lineHeight} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineHeight: Number(event.target.value) })}><option value={1.45}>{t("projectSettings.lineHeightCompact")}</option><option value={1.65}>{t("projectSettings.lineHeightNormal")}</option><option value={1.85}>{t("projectSettings.lineHeightRelaxed")}</option></select></label>
-      <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.lineWrapping} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineWrapping: event.target.checked })} /><WrapText size={15} /><span>{t("projectSettings.lineWrapping")}</span></label>
-      <div className="editor-preference">
-        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.showTooltips} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, showTooltips: event.target.checked })} /><MessageCircleQuestion size={15} /><span>{t("projectSettings.showTooltips")}</span></label>
-      </div>
-      <div className="editor-preference">
-        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.mathPreviewOnHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, mathPreviewOnHover: event.target.checked })} /><Sigma size={15} /><span>{t("projectSettings.mathPreviewOnHover")}</span></label>
-      </div>
-      <div className="editor-preference">
-        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.citationHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, citationHover: event.target.checked })} /><BookMarked size={15} /><span>{t("projectSettings.citationHover")}</span></label>
-        <p className="field-hint">{t("projectSettings.citationHoverDescription")}</p>
-      </div>
-      <div className="editor-preference">
-        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><span>{t("projectSettings.spellCheck")}</span></label>
-        <p className="field-hint">{t("projectSettings.writingCheckDescription")} <a href="https://writewithharper.com/docs/integrations/language-server" target="_blank" rel="noreferrer">Harper</a></p>
-        {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.writingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("chktex.noIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
-      </div>
-      <div className="editor-preference">
-        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><span>{t("projectSettings.vimMode")}</span></label>
-        <p className="field-hint">{t("projectSettings.vimModeDescription")} <a href="https://replit-codemirror-vim.mintlify.app/" target="_blank" rel="noreferrer">{t("projectSettings.vimHelp")}</a></p>
-      </div>
-      <div className="editor-preference">
-        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.openFilesInTabs} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, openFilesInTabs: event.target.checked })} /><PanelsTopLeft size={15} /><span>{t("projectSettings.openFilesInTabs")}</span></label>
-      </div>
-      <div className="editor-preference">
-        <label className="editor-checkbox"><input type="checkbox" disabled={!canEdit} checked={appearancePreferences.formatOnCompile} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, formatOnCompile: event.target.checked })} /><AlignLeft size={15} /><span>{t("projectSettings.formatOnCompile")}</span></label>
-        <p className="field-hint">{t("projectSettings.formatterDescription")} <a href="https://www.npmjs.com/package/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a> · <a href="https://github.com/FlamingTempura/bibtex-tidy" target="_blank" rel="noreferrer">{t("projectSettings.bibtexTidyInstall")}</a>{!canEdit && <> {t("projectSettings.formatRequiresWrite")}</>}</p>
-      </div>
-      <div className="editor-preference">
-        <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
-      </div>
-      <div className="settings-section-title dictionary-heading"><BookOpen size={15} /><strong>{t("projectSettings.dictionary")}</strong><span className={`harper-cli-status ${harperCliStatus}`} role="status" aria-live="polite">
-        {harperCliStatus === "checking" ? <LoaderCircle className="spin" size={12} aria-hidden="true" /> : harperCliStatus === "available" ? <CheckCircle2 size={12} aria-hidden="true" /> : <AlertCircle size={12} aria-hidden="true" />}
-        <span>Harper CLI · {t(`projectSettings.harperCliStatus.${harperCliStatus}`)}</span>
-        {(harperCliStatus === "error" || harperCliStatus === "unavailable") && <button type="button" title={t("projectSettings.harperCliRetry")} aria-label={t("projectSettings.harperCliRetry")} onClick={() => setHarperProbeToken((value) => value + 1)}><RefreshCw size={12} /></button>}
-      </span></div>
-      <p className="settings-description">{t("projectSettings.dictionaryDescription")}</p>
-      {dictionaryError && <p className="error dictionary-error">{dictionaryError}</p>}
-      {canManageDictionary && <div className="dictionary-add"><input value={dictionaryValue} placeholder={t("projectSettings.dictionaryPlaceholder")} onChange={(event) => setDictionaryValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addDictionaryWord(); } }} /><button type="button" disabled={!dictionaryValue.trim()} onClick={() => void addDictionaryWord()}>{t("projectSettings.addWord")}</button></div>}
-      <div className="dictionary-words">{dictionaryWords.map((word) => <span className="dictionary-word" key={word}><code>{word}</code>{canManageDictionary && <button type="button" title={t("common.delete")} aria-label={`${t("common.delete")} ${word}`} onClick={() => void removeDictionaryWord(word)}><X size={13} /></button>}</span>)}{dictionaryWords.length === 0 && <span className="dictionary-empty">{t("projectSettings.dictionaryEmpty")}</span>}</div>
+      <SettingsGroup id="settings-group-appearance" icon={<Palette size={15} aria-hidden />} title={t("projectSettings.groupAppearance")}>
+        <label>{t("projectSettings.fontFamily")}<select value={appearancePreferences.font} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, font: event.target.value as EditorPreferences["font"] })}>{editorFonts.map((font) => <option value={font.id} key={font.id}>{t(font.labelKey)}</option>)}</select></label>
+        <label>{t("projectSettings.fontSize")}<select value={appearancePreferences.fontSize} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, fontSize: Number(event.target.value) })}>{[12, 13, 14, 15, 16, 18, 20].map((size) => <option value={size} key={size}>{size} px</option>)}</select></label>
+        <label>{t("projectSettings.lineHeight")}<select value={appearancePreferences.lineHeight} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineHeight: Number(event.target.value) })}><option value={1.45}>{t("projectSettings.lineHeightCompact")}</option><option value={1.65}>{t("projectSettings.lineHeightNormal")}</option><option value={1.85}>{t("projectSettings.lineHeightRelaxed")}</option></select></label>
+        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.lineWrapping} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineWrapping: event.target.checked })} /><WrapText size={15} /><span>{t("projectSettings.lineWrapping")}</span></label>
+      </SettingsGroup>
+      <SettingsGroup id="settings-group-editing" icon={<Keyboard size={15} aria-hidden />} title={t("projectSettings.groupEditing")}>
+        <div className="editor-preference">
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.openFilesInTabs} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, openFilesInTabs: event.target.checked })} /><PanelsTopLeft size={15} /><span>{t("projectSettings.openFilesInTabs")}</span></label>
+        </div>
+        <div className="editor-preference">
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.showTooltips} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, showTooltips: event.target.checked })} /><MessageCircleQuestion size={15} /><span>{t("projectSettings.showTooltips")}</span></label>
+        </div>
+        <div className="editor-preference">
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><span>{t("projectSettings.vimMode")}</span></label>
+          <p className="field-hint">{t("projectSettings.vimModeDescription")} <a href="https://replit-codemirror-vim.mintlify.app/" target="_blank" rel="noreferrer">{t("projectSettings.vimHelp")}</a></p>
+        </div>
+      </SettingsGroup>
+      <SettingsGroup id="settings-group-previews" icon={<Eye size={15} aria-hidden />} title={t("projectSettings.groupPreviews")}>
+        <div className="editor-preference">
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.mathPreviewOnHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, mathPreviewOnHover: event.target.checked })} /><Sigma size={15} /><span>{t("projectSettings.mathPreviewOnHover")}</span></label>
+        </div>
+        <div className="editor-preference">
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.citationHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, citationHover: event.target.checked })} /><BookMarked size={15} /><span>{t("projectSettings.citationHover")}</span></label>
+        </div>
+      </SettingsGroup>
+      <SettingsGroup id="settings-group-writing" icon={<SpellCheck2 size={15} aria-hidden />} title={t("projectSettings.groupWriting")}>
+        <div className="editor-preference">
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><span>{t("projectSettings.spellCheck")}</span></label>
+          <p className="field-hint">{t("projectSettings.writingCheckDescription")} <a href="https://writewithharper.com/docs/integrations/language-server" target="_blank" rel="noreferrer">Harper</a></p>
+          {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.writingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("chktex.noIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
+        </div>
+        <div className="settings-subsection-title dictionary-heading"><BookOpen size={14} /><strong>{t("projectSettings.dictionary")}</strong><span className={`harper-cli-status ${harperCliStatus}`} role="status" aria-live="polite">
+          {harperCliStatus === "checking" ? <LoaderCircle className="spin" size={12} aria-hidden="true" /> : harperCliStatus === "available" ? <CheckCircle2 size={12} aria-hidden="true" /> : <AlertCircle size={12} aria-hidden="true" />}
+          <span>Harper CLI · {t(`projectSettings.harperCliStatus.${harperCliStatus}`)}</span>
+          {(harperCliStatus === "error" || harperCliStatus === "unavailable") && <button type="button" title={t("projectSettings.harperCliRetry")} aria-label={t("projectSettings.harperCliRetry")} onClick={() => setHarperProbeToken((value) => value + 1)}><RefreshCw size={12} /></button>}
+        </span></div>
+        <p className="settings-description">{t("projectSettings.dictionaryDescription")}</p>
+        {dictionaryError && <p className="error dictionary-error">{dictionaryError}</p>}
+        {canManageDictionary && <div className="dictionary-add"><input value={dictionaryValue} placeholder={t("projectSettings.dictionaryPlaceholder")} onChange={(event) => setDictionaryValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addDictionaryWord(); } }} /><button type="button" disabled={!dictionaryValue.trim()} onClick={() => void addDictionaryWord()}>{t("projectSettings.addWord")}</button></div>}
+        <div className="dictionary-words">{dictionaryWords.map((word) => <span className="dictionary-word" key={word}><code>{word}</code>{canManageDictionary && <button type="button" title={t("common.delete")} aria-label={`${t("common.delete")} ${word}`} onClick={() => void removeDictionaryWord(word)}><X size={13} /></button>}</span>)}{dictionaryWords.length === 0 && <span className="dictionary-empty">{t("projectSettings.dictionaryEmpty")}</span>}</div>
+      </SettingsGroup>
+      <SettingsGroup id="settings-group-formatting" icon={<AlignLeft size={15} aria-hidden />} title={t("projectSettings.groupFormatting")}>
+        <div className="editor-preference">
+          <label className="editor-checkbox"><input type="checkbox" disabled={!canEdit} checked={appearancePreferences.formatOnCompile} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, formatOnCompile: event.target.checked })} /><AlignLeft size={15} /><span>{t("projectSettings.formatOnCompile")}</span></label>
+          <p className="field-hint">{t("projectSettings.formatterDescription")} <a href="https://www.npmjs.com/package/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a> · <a href="https://github.com/FlamingTempura/bibtex-tidy" target="_blank" rel="noreferrer">{t("projectSettings.bibtexTidyInstall")}</a>{!canEdit && <> {t("projectSettings.formatRequiresWrite")}</>}</p>
+        </div>
+        <div className="editor-preference">
+          <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
+        </div>
+      </SettingsGroup>
       <div className="settings-actions"><SaveButton className="settings-save" feedback={saveFeedback} onClick={saveAppearanceSettings}>{t("projectSettings.saveAppearance")}</SaveButton></div>
     </section> : settingsTab === "terminal"
       ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={setTerminalDraft} onSave={saveTerminalSettings} saveFeedback={saveFeedback} />
@@ -291,4 +301,12 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       <CompilerVersions />
     </section>}
   </div></>;
+}
+
+/** A titled group of related settings within one settings tab. */
+function SettingsGroup({ id, icon, title, children }: { id: string; icon: ReactNode; title: string; children: ReactNode }) {
+  return <div className="settings-group" role="group" aria-labelledby={id}>
+    <div className="settings-group-title" id={id}>{icon}<strong>{title}</strong></div>
+    {children}
+  </div>;
 }

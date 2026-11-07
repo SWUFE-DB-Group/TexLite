@@ -62,6 +62,21 @@ describe("settings save feedback", () => {
     expect(vi.mocked(api).mock.calls.every(([, options]) => !options?.method)).toBe(true);
   });
 
+  it("groups editor settings by topic under labelled groups", async () => {
+    await settings();
+    const groups = [...host.querySelectorAll<HTMLElement>('#settings-panel-appearance [role="group"]')];
+    expect(groups.map((group) => host.querySelector(`#${group.getAttribute("aria-labelledby")}`)?.textContent)).toEqual([
+      "projectSettings.groupAppearance", "projectSettings.groupEditing", "projectSettings.groupPreviews",
+      "projectSettings.groupWriting", "projectSettings.groupFormatting"
+    ]);
+    const groupOf = (text: string) => groups.findIndex((group) => group.textContent?.includes(text));
+    expect(groupOf("projectSettings.fontSize")).toBe(0);
+    expect(groupOf("projectSettings.vimMode")).toBe(1);
+    expect(groupOf("projectSettings.citationHover")).toBe(2);
+    expect(groupOf("projectSettings.dictionary")).toBe(3);
+    expect(groupOf("projectSettings.texFmtOptions")).toBe(4);
+  });
+
   it("uses a compact shared header label while keeping each tab's bottom save label", async () => {
     await settings();
     for (const [tab, bottomKey] of [["appearance", "saveAppearance"], ["terminal", "saveTerminal"], ["compiler", "saveCompiler"]]) {
