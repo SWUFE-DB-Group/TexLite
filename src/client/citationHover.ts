@@ -43,10 +43,171 @@ type CitationResolver = (reference: LatexReference, signal: AbortSignal) => Prom
 
 const HOVER_TIME_MS = 600;
 const MAX_FILE_CACHE_ENTRIES = 8;
+/** A shared download that has not finished by then is abandoned. */
+const DOWNLOAD_TIMEOUT_MS = 30_000;
+/** How long a download nobody waits for is kept for a hover that may join it. */
+const IDLE_DOWNLOAD_ABORT_MS = 10_000;
+
+type ParsedBibFile = Map<string, BibtexEntrySummary>;
 
 function abortError(): DOMException {
   return new DOMException("The operation was aborted", "AbortError");
 }
+
+/** Stop waiting for `promise` when `signal` aborts, without cancelling the work itself. */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal, onAbort?: () => void): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      onAbort?.();
+      reject(abortError());
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then((value) => {
+      signal.removeEventListener("abort", abort);
+      resolve(value);
+    }, (error: unknown) => {
+      signal.removeEventListener("abort", abort);
+      reject(error);
+    });
+  });
+}
+
+export interface CitationFileCache {
+  /**
+   * Parsed entries of one project .bib file at a server-reported revision.
+   * Concurrent callers share one fetch and parse; an empty revision is never
+   * shared or cached. Rejects with an AbortError when `signal` aborts, but the
+   * shared load keeps running for a while so a later hover can reuse it.
+   */
+  load(projectId: string, path: string, revision: string, signal: AbortSignal): Promise<ParsedBibFile>;
+}
+
+export interface CitationFileCacheOptions {
+  maxEntries?: number;
+  downloadTimeoutMs?: number;
+  idleDownloadAbortMs?: number;
+}
+
+interface SharedLoad {
+  revision: string;
+  promise: Promise<ParsedBibFile>;
+  join(signal: AbortSignal): Promise<ParsedBibFile>;
+}
+
+/**
+ * Bounded, revision-checked cache of parsed .bib files. One instance is shared
+ * by every resolver on the page, so remounting the editor for another file or
+ * reconfiguring it after a preference change keeps the parsed bibliography.
+ *
+ * A shared load outlives the hover that started it, but its download never
+ * hangs: it is aborted when it exceeds a deadline, or when no hover has been
+ * waiting for it for a short grace period. Parsing is not aborted; the
+ * metadata worker has its own timeout, and a finished parse fills the cache.
+ */
+export function createCitationFileCache({
+  maxEntries = MAX_FILE_CACHE_ENTRIES,
+  downloadTimeoutMs = DOWNLOAD_TIMEOUT_MS,
+  idleDownloadAbortMs = IDLE_DOWNLOAD_ABORT_MS
+}: CitationFileCacheOptions = {}): CitationFileCache {
+  const parsed = new Map<string, { revision: string; entries: ParsedBibFile }>();
+  const loading = new Map<string, SharedLoad>();
+
+  const download = async (projectId: string, path: string, signal: AbortSignal): Promise<string> => {
+    const result = await api<{ path: string; content: string }>(
+      `/api/projects/${encodeURIComponent(projectId)}/file?path=${encodeURIComponent(path)}`, { signal }
+    );
+    if (signal.aborted) throw abortError();
+    return result.content;
+  };
+
+  const parse = async (content: string): Promise<ParsedBibFile> => {
+    const summaries = await parseBibtexMetadataInWorker(content);
+    return new Map(summaries.map((entry) => [entry.key, entry]));
+  };
+
+  const remember = (key: string, revision: string, entries: ParsedBibFile) => {
+    parsed.delete(key);
+    parsed.set(key, { revision, entries });
+    while (parsed.size > maxEntries) {
+      const oldest = parsed.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      parsed.delete(oldest);
+    }
+  };
+
+  const startSharedLoad = (key: string, projectId: string, path: string, revision: string): SharedLoad => {
+    const controller = new AbortController();
+    let downloading = true;
+    let waiters = 0;
+    let idleAbort: ReturnType<typeof setTimeout> | undefined;
+    const deadline = setTimeout(() => controller.abort(), downloadTimeoutMs);
+    const downloaded = download(projectId, path, controller.signal).finally(() => {
+      downloading = false;
+      clearTimeout(deadline);
+      clearTimeout(idleAbort);
+    });
+    // The content is read after the revision was reported, so it is at least
+    // as new as that revision: a later change makes the next lookup disagree
+    // and reload. Only the newest load for a path may fill the cache, so an
+    // older revision finishing late cannot replace it.
+    const promise: Promise<ParsedBibFile> = downloaded.then(parse).then((entries) => {
+      if (loading.get(key)?.promise === promise) {
+        loading.delete(key);
+        remember(key, revision, entries);
+      }
+      return entries;
+    }, (error: unknown) => {
+      if (loading.get(key)?.promise === promise) loading.delete(key);
+      throw error;
+    });
+    // Waiters are hovers. When the last one leaves, give a hover moving to
+    // another key a short window to join; only an unfinished download is
+    // worth abandoning.
+    const join = (signal: AbortSignal): Promise<ParsedBibFile> => {
+      if (signal.aborted) return Promise.reject(abortError());
+      waiters += 1;
+      clearTimeout(idleAbort);
+      let waiting = true;
+      const release = () => {
+        if (!waiting) return;
+        waiting = false;
+        waiters -= 1;
+      };
+      promise.then(release, release);
+      return untilAborted(promise, signal, () => {
+        release();
+        if (waiters > 0 || !downloading) return;
+        idleAbort = setTimeout(() => controller.abort(), idleDownloadAbortMs);
+      });
+    };
+    return { revision, promise, join };
+  };
+
+  return {
+    load(projectId, path, revision, signal) {
+      if (!revision) {
+        return untilAborted(download(projectId, path, signal).then(parse), signal);
+      }
+      const key = `${projectId}\0${path}`;
+      const cached = parsed.get(key);
+      if (cached?.revision === revision) {
+        // Refresh recency so the file being used is evicted last.
+        remember(key, revision, cached.entries);
+        return Promise.resolve(cached.entries);
+      }
+      if (cached) parsed.delete(key);
+      let current = loading.get(key);
+      if (current?.revision !== revision) {
+        current = startSharedLoad(key, projectId, path, revision);
+        loading.set(key, current);
+      }
+      return current.join(signal);
+    }
+  };
+}
+
+const sharedFileCache = createCitationFileCache();
 
 /**
  * Resolve a citation key to its target and, for a .bib target, its parsed entry.
@@ -59,9 +220,9 @@ function abortError(): DOMException {
  * Rejects with an AbortError as soon as the signal aborts.
  */
 export function createCitationResolver(
-  options: Pick<CitationHoverOptions, "projectId" | "filePath" | "mainFile">
+  options: Pick<CitationHoverOptions, "projectId" | "filePath" | "mainFile">,
+  files: CitationFileCache = sharedFileCache
 ): CitationResolver {
-  const fileCache = new Map<string, { revision: string; entries: Map<string, BibtexEntrySummary> }>();
   const project = `/api/projects/${encodeURIComponent(options.projectId)}`;
 
   const lookup = async (reference: LatexReference, signal: AbortSignal): Promise<ResolvedCitationTarget | null> => {
@@ -75,41 +236,11 @@ export function createCitationResolver(
     return result.target;
   };
 
-  const loadEntries = async (target: ResolvedCitationTarget, signal: AbortSignal): Promise<Map<string, BibtexEntrySummary>> => {
-    const cached = fileCache.get(target.path);
-    if (cached && target.revision && cached.revision === target.revision) {
-      // Refresh recency so the file being used is evicted last.
-      fileCache.delete(target.path);
-      fileCache.set(target.path, cached);
-      return cached.entries;
-    }
-    fileCache.delete(target.path);
-    const result = await api<{ path: string; content: string }>(
-      `${project}/file?path=${encodeURIComponent(target.path)}`, { signal }
-    );
-    if (signal.aborted) throw abortError();
-    const summaries = await parseBibtexMetadataInWorker(result.content);
-    if (signal.aborted) throw abortError();
-    const entries = new Map(summaries.map((entry) => [entry.key, entry]));
-    // The content was read after the revision was reported, so it is at least
-    // as new as that revision: a later change makes the next lookup disagree
-    // and refetch, while the entries are never older than the revision claims.
-    if (target.revision) {
-      fileCache.set(target.path, { revision: target.revision, entries });
-      while (fileCache.size > MAX_FILE_CACHE_ENTRIES) {
-        const oldest = fileCache.keys().next().value as string | undefined;
-        if (oldest === undefined) break;
-        fileCache.delete(oldest);
-      }
-    }
-    return entries;
-  };
-
   return async (reference, signal) => {
     const target = await lookup(reference, signal);
     if (!target) return null;
     if (target.source !== "bibtex" || !/\.bib$/i.test(target.path)) return { ...target, citation: null };
-    const entries = await loadEntries(target, signal);
+    const entries = await files.load(options.projectId, target.path, target.revision ?? "", signal);
     return { ...target, citation: entries.get(reference.key) ?? null };
   };
 }

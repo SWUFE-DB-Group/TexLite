@@ -1206,15 +1206,23 @@ carries a `revision` (size and modification time) of the file that defines it,
 omitted when that metadata is unknown so nothing derived from it is reused. The browser then fetches the
 target `.bib` file and parses it with the editor's Lezer BibTeX grammar in a
 dedicated, lazily created metadata worker, caching the parsed entry map per
-file for as long as the server reports the same revision. Hover never changes
+project file for as long as the server reports the same revision. The bounded
+cache is shared by the whole page, so remounting the editor for another file or
+reconfiguring it after a preference change keeps it. Concurrent hovers share
+one fetch-and-parse per file revision; closing a tooltip only stops waiting, so
+a load that finishes after its hover moved on still fills the cache, and only
+the newest revision started for a path may do so. A shared download still
+cannot hang: it is aborted after 30 seconds, or 10 seconds after its last
+waiting hover closed unless another hover joins first. Parsing is not aborted;
+the metadata worker has its own timeout. Hover never changes
 the source or opens the entry, so Ctrl/Cmd-click remains navigation.
 
 Freshness comes from the server, not from a timer. The resolve and file
 requests are both consistent reads that flush live Yjs edits to disk first, and
 every hover re-resolves its target, so a "not found" answer is never cached and
 an entry added or edited moments ago is visible on the next hover. Only the
-fetch-and-parse of an unchanged `.bib` file is reused; a changed revision, an
-aborted request, or a failed lookup is never cached and simply refetches.
+fetch-and-parse of an unchanged `.bib` file is reused; a changed revision, a
+missing revision, or a failed load is never cached and simply refetches.
 
 Automatic pairing applies its existing line-local insertion predicates before
 materializing a whole-document string. Only actual candidates need the full
