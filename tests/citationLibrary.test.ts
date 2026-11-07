@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
+import { citationDisplayVenue, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 
 const citationLimit = MAX_CITATION_BIBTEX_BYTES;
@@ -50,6 +50,13 @@ describe("citation library BibTeX parser", () => {
       .toBe("Proceedings of Example");
     expect(parseSingleBibEntry("@article{x,journal={Journal of Example},title={Paper}}", citationLimit)?.venue)
       .toBe("Journal of Example");
+  });
+
+  it("derives the card venue for rows saved before the venue was stored", () => {
+    expect(citationDisplayVenue({ venue: null, bibtex: "@inproceedings{x,booktitle={Proc. Example},title={Paper}}" }))
+      .toBe("Proc. Example");
+    expect(citationDisplayVenue({ venue: "Stored", bibtex: "@article{x,journal={Parsed}}" })).toBe("Stored");
+    expect(citationDisplayVenue({ venue: null, bibtex: "@misc{x,title={No venue}}" })).toBeNull();
   });
 
   it("distinguishes an oversized document from an empty or invalid one", () => {

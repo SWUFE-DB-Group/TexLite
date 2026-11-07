@@ -57,6 +57,18 @@ export function parseBibEntriesResult(source: string, maxBytes: number): BibtexP
   return { status: "ok", entries: document.entries.map((entry) => citationEntry(source, entry)) };
 }
 
+/**
+ * Venue shown on a citation card. Rows saved before the venue column existed
+ * carry null, so derive it from their BibTeX instead of hiding it until the
+ * entry is saved again. Callers should memoize per entry; only null-venue rows
+ * pay for a parse.
+ */
+export function citationDisplayVenue(entry: Pick<ParsedCitationEntry, "bibtex" | "venue">): string | null {
+  if (entry.venue) return entry.venue;
+  const [parsed] = parseBibtexDocument(entry.bibtex).entries;
+  return parsed ? bibtexVenue(parsed.entryType, parsed.fields) : null;
+}
+
 /** Accept text that is exactly one citeable entry, with nothing before or after it. */
 export function parseSingleBibEntry(source: string, maxBytes: number): ParsedCitationEntry | null {
   const bibtex = source.trim();

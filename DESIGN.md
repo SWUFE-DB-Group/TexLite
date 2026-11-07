@@ -109,7 +109,10 @@ The browser's Lezer BibTeX parser derives the display venue (journal or
 booktitle) together with title, authors and year; the client submits it on
 save. Schema migration 21 stores it, so citation cards read the field instead
 of reparsing BibTeX on every render. Rows created before that migration keep a
-null venue until they are edited or saved again.
+null venue until they are edited or saved again; their cards derive the venue
+from the stored BibTeX (memoized per entry) so it does not disappear, but
+library search matches the stored column only. Folder import re-parses every
+entry, so imported rows always carry a venue.
 The homepage keeps Projects as the default view and exposes the
 citation library as a separate management page beside the other management
 controls; the project workspace keeps a smaller `.bib` import dialog for
