@@ -116,6 +116,14 @@ describe("server entry scanner agrees with the editor grammar", () => {
     "macro and field names with punctuation": `@string{j.bmj = "J"}\n@article{a, journal = j.bmj, alt:title = {T}}\n@book{b, title={B}}`
   };
 
+  it("never reads a field name as the key of an entry that has none", () => {
+    const source = "@article{title = {A}, year = 2020}\n@book{b, title={B}}";
+    const document = parseBibtexDocument(source);
+    expect(document.hasSyntaxErrors).toBe(true);
+    expect(document.entries.map((entry) => entry.key)).toEqual(["b"]);
+    expect(findBibtexEntryKeys(source).map((entry) => entry.key)).toEqual(["b"]);
+  });
+
   it.each(Object.entries(corpus))("%s", (_name, source) => {
     const document = parseBibtexDocument(source);
     expect(document.hasSyntaxErrors).toBe(false);

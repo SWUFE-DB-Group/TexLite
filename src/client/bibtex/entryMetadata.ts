@@ -26,10 +26,6 @@ export function bibtexEntrySummaries(source: string): Map<string, BibtexEntrySum
   return summaries;
 }
 
-export function bibtexEntrySummary(source: string, key: string): BibtexEntrySummary | null {
-  return bibtexEntrySummaries(source).get(key) ?? null;
-}
-
 function summarize({ key, entryType, fields }: BibtexDocumentEntry): BibtexEntrySummary {
   const type = entryType.toLowerCase();
   return {

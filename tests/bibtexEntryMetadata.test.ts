@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { bibtexEntrySummaries, bibtexEntrySummary } from "../src/client/bibtex/entryMetadata";
+import { bibtexEntrySummaries } from "../src/client/bibtex/entryMetadata";
+
+const bibtexEntrySummary = (source: string, key: string) => bibtexEntrySummaries(source).get(key) ?? null;
 
 describe("parser-backed BibTeX entry metadata", () => {
   it("extracts title, authors, year, venue, DOI and URL", () => {

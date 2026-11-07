@@ -41,11 +41,18 @@ export function parseBibtexDocument(source: string): BibtexDocument {
   return { entries, hasSyntaxErrors };
 }
 
+const keyFollowedByEquals = /\s*=/y;
+
 function readEntry(source: string, entry: SyntaxNode): BibtexDocumentEntry | null {
   const keyNode = entry.getChild("EntryKey");
   if (!keyNode) return null;
   const key = source.slice(keyNode.from, keyNode.to);
   if (!key) return null;
+  // `@article{title = {A}}` has no key: the grammar reads the first field name
+  // as one and then fails at `=`. Like the server scanner, require that a key
+  // is not followed by `=`, so a field name never becomes a citeable key.
+  keyFollowedByEquals.lastIndex = keyNode.to;
+  if (keyFollowedByEquals.test(source)) return null;
 
   const typeNode = entry.getChild("EntryType");
   const entryType = typeNode ? source.slice(typeNode.from, typeNode.to).replace(/^@/, "").trim() : "";
