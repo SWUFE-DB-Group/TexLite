@@ -114,11 +114,8 @@ export async function resolveProjectReference(
   projectId: string,
   kind: LatexReferenceKind,
   keyInput: string,
-  options: ProjectReferenceLookupOptions | string = {}
+  lookup: ProjectReferenceLookupOptions = {}
 ): Promise<ProjectReferenceTarget | null> {
-  // Keep the former preferred-path argument working for internal callers
-  // during the transition to the richer main-document-aware lookup options.
-  const lookup = typeof options === "string" ? { preferredPath: options } : options;
   const key = keyInput.trim();
   const files = (await listProjectFilesAsync(config, projectId))
     .filter((entry) => entry.type === "file" && (definitionExtensions.test(entry.path) || bibExtension.test(entry.path)));

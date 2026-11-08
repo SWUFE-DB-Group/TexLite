@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { scopedStorageKey } from "../basePath";
+import { readStorage, writeStorage } from "../browserStorage";
 
 const DEFAULT_WIDTH = 360;
 const MIN_WIDTH = 280;
@@ -8,11 +9,8 @@ const MAX_WIDTH = 640;
 const widthKey = () => scopedStorageKey("texlite-comments-width");
 
 function readWidth(): number {
-  try {
-    const saved = Number(window.localStorage.getItem(widthKey()));
-    if (Number.isFinite(saved) && saved >= MIN_WIDTH && saved <= MAX_WIDTH) return saved;
-  } catch { /* Browser storage is optional. */ }
-  return DEFAULT_WIDTH;
+  const saved = Number(readStorage(widthKey()));
+  return Number.isFinite(saved) && saved >= MIN_WIDTH && saved <= MAX_WIDTH ? saved : DEFAULT_WIDTH;
 }
 
 interface Bounds { min: number; max: number }
@@ -41,8 +39,7 @@ export function WorkspaceCommentsSlot({ open, onHost }: { open: boolean; onHost?
   };
   const updateWidth = (next: number) => { widthRef.current = next; setWidth(next); };
   const saveWidth = (next: number) => {
-    try { window.localStorage.setItem(widthKey(), String(Math.max(MIN_WIDTH, next))); }
-    catch { /* Resizing still works when localStorage is blocked. */ }
+    writeStorage(widthKey(), String(Math.max(MIN_WIDTH, next)));
   };
 
   useEffect(() => {

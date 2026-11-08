@@ -21,6 +21,7 @@ import { PROJECT_DELETION_DURATION_MS, useDeletionTransitions } from "../useDele
 import { useAgentAccess } from "../agents/useAgentAccess";
 import { useTerminalPreferences } from "../terminalPreferences";
 import { DEFAULT_PROJECT_PAGE_SIZE } from "../../shared/projectCatalog";
+import { readStorage, writeStorage } from "../browserStorage";
 
 const projectKey = (project: Project) => project.id;
 const emptyProjects: Project[] = [];
@@ -110,8 +111,8 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [transferUserId, setTransferUserId] = useState("");
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferError, setTransferError] = useState("");
-  const [view, setView] = useState<"grid" | "list">(() => localStorage.getItem(scopedStorageKey("texlite-project-view")) === "list" ? "list" : "grid");
-  const [sort, setSort] = useState<"updated" | "created">(() => initialData?.filters.sort ?? (localStorage.getItem(scopedStorageKey("texlite-project-sort")) === "created" ? "created" : "updated"));
+  const [view, setView] = useState<"grid" | "list">(() => readStorage(scopedStorageKey("texlite-project-view")) === "list" ? "list" : "grid");
+  const [sort, setSort] = useState<"updated" | "created">(() => initialData?.filters.sort ?? (readStorage(scopedStorageKey("texlite-project-sort")) === "created" ? "created" : "updated"));
   const [showArchived, setShowArchived] = useState(() => initialData?.filters.archived ?? false);
   const [archiveBusy, setArchiveBusy] = useState("");
   const [projectMenuId, setProjectMenuId] = useState<string | null>(null);
@@ -174,8 +175,8 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [tagFiltersOpen]);
-  const changeView = (next: "grid" | "list") => { setProjectMenuId(null); setView(next); localStorage.setItem(scopedStorageKey("texlite-project-view"), next); };
-  const changeSort = (next: "updated" | "created") => { setSort(next); setPage(1); localStorage.setItem(scopedStorageKey("texlite-project-sort"), next); };
+  const changeView = (next: "grid" | "list") => { setProjectMenuId(null); setView(next); writeStorage(scopedStorageKey("texlite-project-view"), next); };
+  const changeSort = (next: "updated" | "created") => { setSort(next); setPage(1); writeStorage(scopedStorageKey("texlite-project-sort"), next); };
   const changeOwnership = (next: ProjectOwnershipScope) => {
     if (next === ownership) return;
     setOwnership(next); setPage(1); setProjectMenuId(null);

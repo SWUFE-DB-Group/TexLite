@@ -11,6 +11,11 @@ interface CitationRouteContext {
   db: DatabaseConnection;
 }
 
+/**
+ * The lookup carries only citation keys from one .bib file, which is itself
+ * capped at MAX_CITATION_BIBTEX_BYTES; twice that leaves room for JSON quoting.
+ */
+const MAX_LOOKUP_BODY_BYTES = MAX_CITATION_BIBTEX_BYTES * 2;
 const tagColors = ["red", "orange", "yellow", "green", "blue", "purple", "gray"] as const;
 const now = (): string => new Date().toISOString();
 
@@ -226,7 +231,7 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
     return apiError(reply, 403, "CITATION_LIBRARY_PRIVATE");
   });
 
-  app.post("/api/citations/lookup", { bodyLimit: MAX_CITATION_BIBTEX_BYTES * 8 }, async (request, reply) => {
+  app.post("/api/citations/lookup", { bodyLimit: MAX_LOOKUP_BODY_BYTES }, async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
     const keyInput = (request.body as { keys?: unknown } | undefined)?.keys;

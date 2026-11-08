@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { scopedStorageKey } from "./basePath";
 import { editorThemeVariables, type EditorTheme } from "./editorThemes";
+import { isLocalStorageEvent, readStorage, writeStorage } from "./browserStorage";
 
 export type Theme = EditorTheme;
 export type ThemePreference = Theme | "system";
@@ -12,12 +13,8 @@ let initialized = false;
 let systemQuery: MediaQueryList | null = null;
 
 function savedTheme(): ThemePreference {
-  try {
-    const value = window.localStorage.getItem(themeStorageKey);
-    return value === "light" || value === "dark" ? value : "system";
-  } catch {
-    return "system";
-  }
+  const value = readStorage(themeStorageKey);
+  return value === "light" || value === "dark" ? value : "system";
 }
 
 function systemTheme(): Theme {
@@ -58,7 +55,7 @@ export function initializeTheme(): void {
   applyPreference(savedTheme());
   window.addEventListener("storage", (event) => {
     if (event.key !== null && event.key !== themeStorageKey) return;
-    try { if (event.storageArea !== window.localStorage) return; } catch { return; }
+    if (!isLocalStorageEvent(event)) return;
     const next = savedTheme();
     if (next === preference) return;
     applyPreference(next);
@@ -76,7 +73,7 @@ export function currentThemePreference(): ThemePreference {
 
 export function setTheme(value: ThemePreference): void {
   applyPreference(value);
-  try { window.localStorage.setItem(themeStorageKey, value); } catch { /* Browser storage can be disabled. */ }
+  writeStorage(themeStorageKey, value);
   for (const listener of listeners) listener();
 }
 

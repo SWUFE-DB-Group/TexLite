@@ -22,7 +22,7 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); await i18n.changeLanguage("en"); busy.mockReset(); writeText.mockReset().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   saved = [{ ...link }];
-  vi.mocked(api).mockReset().mockImplementation(async (url, options) => {
+  vi.mocked(api).mockReset().mockImplementation(async (_url, options) => {
     if (!options?.method) return { links: saved.map((item) => ({ ...item })) } as never;
     if (options.method === "DELETE") { saved = saved.filter((item) => item.id !== link.id); return { ok: true } as never; }
     const created = { ...link, id: "created", path: "/share/created#secret" }; saved.unshift(created);

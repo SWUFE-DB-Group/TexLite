@@ -1,4 +1,5 @@
 import { scopedStorageKey } from "./basePath";
+import { readStorageJson, writeStorageJson } from "./browserStorage";
 
 export type EditorFont = "jetbrains" | "source-code" | "ibm-plex" | "fira-code" | "iosevka";
 
@@ -55,9 +56,9 @@ export function editorFontStack(font: EditorFont): string {
 }
 
 export function loadEditorPreferences(userId: string, projectId: string): EditorPreferences {
-  try {
-    const stored = JSON.parse(localStorage.getItem(storageKey(userId, projectId)) ?? "{}") as Partial<EditorPreferences>;
-    return {
+  const value = readStorageJson(storageKey(userId, projectId));
+  const stored = (value && typeof value === "object" ? value : {}) as Partial<EditorPreferences>;
+  return {
       font: editorFonts.some((option) => option.id === stored.font) ? stored.font! : defaultEditorPreferences.font,
       fontSize: [12, 13, 14, 15, 16, 18, 20].includes(Number(stored.fontSize)) ? Number(stored.fontSize) : defaultEditorPreferences.fontSize,
       lineHeight: [1.45, 1.65, 1.85].includes(Number(stored.lineHeight)) ? Number(stored.lineHeight) : defaultEditorPreferences.lineHeight,
@@ -71,12 +72,10 @@ export function loadEditorPreferences(userId: string, projectId: string): Editor
       texFmtConfig: typeof stored.texFmtConfig === "string" && stored.texFmtConfig.length <= 16 * 1024
         ? stored.texFmtConfig : defaultEditorPreferences.texFmtConfig,
       openFilesInTabs: typeof stored.openFilesInTabs === "boolean" ? stored.openFilesInTabs : defaultEditorPreferences.openFilesInTabs
-    };
-  } catch {
-    return defaultEditorPreferences;
-  }
+  };
 }
 
+/** Keeps the in-memory preference usable even when the browser refuses to store it. */
 export function saveEditorPreferences(userId: string, projectId: string, preferences: EditorPreferences): void {
-  localStorage.setItem(storageKey(userId, projectId), JSON.stringify(preferences));
+  writeStorageJson(storageKey(userId, projectId), preferences);
 }

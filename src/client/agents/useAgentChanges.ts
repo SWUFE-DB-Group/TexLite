@@ -3,6 +3,7 @@ import { api } from "../api";
 import { scopedStorageKey } from "../basePath";
 import { errorMessage } from "../errors";
 import type { AgentChange, AgentChangeFile } from "../../shared/agentProtocol";
+import { readStorageJson, writeStorageJson } from "../browserStorage";
 
 /** A change still to review, with the file it belongs to. */
 export interface PendingAgentChange extends AgentChange {
@@ -35,17 +36,13 @@ function storageKey(userId: string, projectId: string): string {
 }
 
 function readReviewed(key: string): Set<string> {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(key) ?? "[]");
-    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
-  } catch {
-    return new Set();
-  }
+  const value = readStorageJson(key);
+  return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
 }
 
+/** Review marks are a convenience; a browser that refuses storage keeps them in memory only. */
 function writeReviewed(key: string, reviewed: ReadonlySet<string>): void {
-  try { window.localStorage.setItem(key, JSON.stringify([...reviewed])); }
-  catch { /* Review marks are a convenience; private windows may refuse storage. */ }
+  writeStorageJson(key, [...reviewed]);
 }
 
 /**

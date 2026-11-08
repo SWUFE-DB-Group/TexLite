@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { Annotation, Compartment, EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
 import {
   Decoration, type DecorationSet, EditorView, keymap,
-  highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, tooltips, ViewPlugin
+  highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, tooltips
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {

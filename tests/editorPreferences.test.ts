@@ -23,6 +23,17 @@ Object.defineProperty(globalThis, "localStorage", { configurable: true, value: s
 describe("editor preference scope", () => {
   beforeEach(() => storage.clear());
 
+  it("keeps working with defaults when the browser refuses storage", () => {
+    const refuse = () => { throw new DOMException("Quota exceeded", "QuotaExceededError"); };
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: refuse, setItem: refuse } });
+    try {
+      expect(() => saveEditorPreferences("alice", "project-one", { ...defaultEditorPreferences, fontSize: 20 })).not.toThrow();
+      expect(loadEditorPreferences("alice", "project-one")).toEqual(defaultEditorPreferences);
+    } finally {
+      Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
+    }
+  });
+
   it("keeps preferences isolated by user and project", () => {
     const aliceProjectOne = { ...defaultEditorPreferences, fontSize: 20, vimMode: true, formatOnCompile: true, openFilesInTabs: true, showTooltips: true };
     const bobProjectOne = { ...defaultEditorPreferences, fontSize: 12 };

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { scopedStorageKey } from "./basePath";
 import { editorFonts, type EditorFont } from "./editorPreferences";
 import { terminalThemes, type TerminalThemeId } from "./terminalTheme";
+import { isLocalStorageEvent, readStorageJson, writeStorageJson } from "./browserStorage";
 
 export interface TerminalPreferences {
   font: EditorFont | "system";
@@ -34,8 +35,7 @@ function normalize(value: unknown): TerminalPreferences {
 }
 
 function load(): TerminalPreferences {
-  try { return normalize(JSON.parse(window.localStorage.getItem(terminalPreferencesStorageKey) ?? "{}")); }
-  catch { return { ...defaultTerminalPreferences }; }
+  return normalize(readStorageJson(terminalPreferencesStorageKey));
 }
 
 let current: TerminalPreferences | undefined;
@@ -48,7 +48,7 @@ export function currentTerminalPreferences(): TerminalPreferences {
     // One app-lifetime subscription, like the browser-wide theme preference.
     if (typeof window !== "undefined") window.addEventListener("storage", (event) => {
       if (event.key !== null && event.key !== terminalPreferencesStorageKey) return;
-      try { if (event.storageArea !== window.localStorage) return; } catch { return; }
+      if (!isLocalStorageEvent(event)) return;
       current = load();
       notify();
     });
@@ -60,9 +60,8 @@ export function currentTerminalPreferences(): TerminalPreferences {
 export function saveTerminalPreferences(value: TerminalPreferences): boolean {
   currentTerminalPreferences();
   current = normalize(value);
-  let persisted = false;
-  try { window.localStorage.setItem(terminalPreferencesStorageKey, JSON.stringify(current)); persisted = true; }
-  catch { /* Keep the current page usable when browser storage is unavailable. */ }
+  // Keep the current page usable when browser storage is unavailable.
+  const persisted = writeStorageJson(terminalPreferencesStorageKey, current);
   notify();
   return persisted;
 }

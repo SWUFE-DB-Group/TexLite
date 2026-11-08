@@ -8,6 +8,7 @@ import * as syncProtocol from "y-protocols/sync";
 import { IndexeddbPersistence } from "y-indexeddb";
 import type { Project, User } from "./types";
 import { appPath, scopedStorageKey } from "./basePath";
+import { readStorage, removeStorage, storageKeys, writeStorage } from "./browserStorage";
 import { isAvatarStyle } from "../shared/avatars";
 export { avatarInitial } from "../shared/avatars";
 import {
@@ -268,7 +269,7 @@ export class ProjectCollaboration {
     this.provider.messageHandlers[MESSAGE_PROTOCOL] = (_encoder, decoder) => {
       const epoch = decoding.readVarString(decoder);
       const epochKey = this.epochStorageKey();
-      const storedEpoch = safeLocalStorageGet(epochKey);
+      const storedEpoch = readStorage(epochKey);
       const incomingProtocolVersion = /^([0-9]+):/.exec(epoch)?.[1] ?? null;
       const storedProtocolVersion = storedEpoch ? /^([0-9]+):/.exec(storedEpoch)?.[1] ?? null : null;
       // After the user explicitly refreshes into a compatible new bundle, the
@@ -300,7 +301,7 @@ export class ProjectCollaboration {
           || (incomingProtocolVersion !== null
             && incomingProtocolVersion !== String(COLLABORATION_PROTOCOL_VERSION));
         const reload = () => {
-          safeLocalStorageSet(epochKey, epoch.replace(/:reload$/, ""));
+          writeStorage(epochKey, epoch.replace(/:reload$/, ""));
           window.location.reload();
         };
         if (protocolMigration) {
@@ -313,7 +314,7 @@ export class ProjectCollaboration {
         return;
       }
       this.epoch = epoch;
-      safeLocalStorageSet(epochKey, epoch);
+      writeStorage(epochKey, epoch);
       const socket = this.provider.ws;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
       const acknowledgement = encoding.createEncoder();
@@ -798,17 +799,17 @@ export class ProjectCollaboration {
   }
 
   private clearWritableDraftMarkers(): void {
-    for (const { key } of this.readWritableDraftMarkers()) safeLocalStorageRemove(key);
+    for (const { key } of this.readWritableDraftMarkers()) removeStorage(key);
     this.draftMarkerPresent = false;
     this.stopDraftHeartbeat();
     // Clean up the short-lived map format used by the initial implementation.
-    safeLocalStorageRemove(this.writableDraftStoragePrefix().slice(0, -1));
+    removeStorage(this.writableDraftStoragePrefix().slice(0, -1));
   }
 
   private clearOwnWritableDraftMarker(flushedGeneration: number): void {
     const marker = this.readOwnWritableDraftMarker();
     if (!marker || !writableDraftCoveredByFlush(marker.generation, this.draftGeneration, flushedGeneration)) return;
-    safeLocalStorageRemove(this.ownWritableDraftStorageKey());
+    removeStorage(this.ownWritableDraftStorageKey());
     this.draftMarkerPresent = false;
     this.stopDraftHeartbeat();
   }
@@ -820,7 +821,7 @@ export class ProjectCollaboration {
   private readWritableDraftMarkers(): Array<{ key: string; tabId: string; marker: WritableDraftMarker }> {
     const prefix = this.writableDraftStoragePrefix();
     const markers: Array<{ key: string; tabId: string; marker: WritableDraftMarker }> = [];
-    for (const key of safeLocalStorageKeys()) {
+    for (const key of storageKeys()) {
       if (!key.startsWith(prefix)) continue;
       const marker = this.readWritableDraftMarker(key);
       if (marker) markers.push({ key, tabId: key.slice(prefix.length), marker });
@@ -829,7 +830,7 @@ export class ProjectCollaboration {
   }
 
   private readWritableDraftMarker(key: string): WritableDraftMarker | null {
-    const raw = safeLocalStorageGet(key);
+    const raw = readStorage(key);
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as unknown;
@@ -839,7 +840,7 @@ export class ProjectCollaboration {
       if (!Number.isInteger(candidate.generation) || (candidate.generation ?? 0) < 0
         || typeof candidate.updatedAt !== "number" || !Number.isFinite(candidate.updatedAt)
         || candidate.updatedAt <= 0 || now - candidate.updatedAt > WRITABLE_DRAFT_MARKER_MAX_AGE_MS) {
-        safeLocalStorageRemove(key);
+        removeStorage(key);
         return null;
       }
       const activeAt = typeof candidate.activeAt === "number" && Number.isFinite(candidate.activeAt)
@@ -847,7 +848,7 @@ export class ProjectCollaboration {
         : 0;
       return { generation: candidate.generation!, updatedAt: candidate.updatedAt, activeAt };
     } catch {
-      safeLocalStorageRemove(key);
+      removeStorage(key);
       return null;
     }
   }
@@ -859,7 +860,8 @@ export class ProjectCollaboration {
       updatedAt: this.draftUpdatedAt || Date.now(),
       activeAt: active ? Date.now() : 0
     };
-    safeLocalStorageSet(this.ownWritableDraftStorageKey(), JSON.stringify(marker));
+    // A refused write only loses this marker; IndexedDB still retains the draft.
+    writeStorage(this.ownWritableDraftStorageKey(), JSON.stringify(marker));
     this.draftMarkerPresent = true;
   }
 
@@ -900,30 +902,6 @@ export class ProjectCollaboration {
   }
 }
 
-function safeLocalStorageGet(key: string): string | null {
-  try { return window.localStorage.getItem(key); } catch { return null; }
-}
-
-function safeLocalStorageSet(key: string, value: string): void {
-  try { window.localStorage.setItem(key, value); } catch { /* IndexedDB still retains the draft. */ }
-}
-
-function safeLocalStorageRemove(key: string): void {
-  try { window.localStorage.removeItem(key); } catch { /* Best-effort marker cleanup. */ }
-}
-
-function safeLocalStorageKeys(): string[] {
-  try {
-    const keys: string[] = [];
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (key) keys.push(key);
-    }
-    return keys;
-  } catch {
-    return [];
-  }
-}
 
 function safeSessionStorageGet(key: string): string | null {
   try { return window.sessionStorage.getItem(key); } catch { return null; }
