@@ -189,7 +189,7 @@ describe("settings save feedback", () => {
 
   it("confirms a saved snapshot name inside the snapshot dialog", async () => {
     const version: HistoryVersion = { id: "v", snapshotHash: "a".repeat(64), reason: "file", label: null,
-      createdAt: "2026-10-26T00:00:00Z", author: null, changedPaths: [], fileCount: 0, totalSize: 0 };
+      createdAt: "2026-10-26T00:00:00Z", author: null, hasAgent: false, changedPaths: [], fileCount: 0, totalSize: 0 };
     vi.mocked(api).mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
       .mockResolvedValueOnce({ version, files: [], settings: { mainFile: "main.tex", engine: "xelatex", latexmkrc: null } });
     await act(async () => root.render(createElement(HistoryDialog, { open: true, project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));

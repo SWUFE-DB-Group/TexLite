@@ -526,6 +526,27 @@ describe("project history retention", () => {
     expect(fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])?.id).not.toBe(first.id);
   });
 
+  it("records coding-agent participation and keeps it when later autosaves coalesce into the snapshot", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    writeSource(fixture, "main.tex", "agent edit");
+    const agentSave = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"], { hasAgent: true })!;
+    expect(agentSave.hasAgent).toBe(true);
+    vi.setSystemTime(new Date("2026-01-01T00:01:00Z"));
+    writeSource(fixture, "main.tex", "direct edit");
+    expect(fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])?.id).toBe(agentSave.id);
+    // "Includes agent changes": a direct save merged later does not clear it.
+    expect(fixture.history.version(agentSave.id)).toMatchObject({ hasAgent: true, author: { id: "user-1" } });
+    vi.setSystemTime(new Date("2026-01-01T00:03:00Z"));
+    writeSource(fixture, "main.tex", "next window");
+    const direct = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])!;
+    expect(direct.id).not.toBe(agentSave.id);
+    expect(direct.hasAgent).toBe(false);
+    writeSource(fixture, "main.tex", "agent file write");
+    expect(fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"], { hasAgent: true })?.hasAgent).toBe(true);
+  });
+
   function createFixture(options: { maxVersions?: number; maxStorageBytes?: number } = {}): HistoryFixture {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-history-"));
     const config: Config = {

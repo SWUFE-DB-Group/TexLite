@@ -327,7 +327,8 @@ export class CollaborationService {
   }
 
   /** Apply disk edits as a real attributed Yjs delta, retaining pending human edits and anchors. */
-  importExternalText(projectId: string, filePath: string, content: string, userId: string): boolean {
+  /** `agent` marks text written by a coding agent on behalf of `userId`; it is recorded in edit history. */
+  importExternalText(projectId: string, filePath: string, content: string, userId: string, { agent = false }: { agent?: boolean } = {}): boolean {
     const room = this.rooms.get(projectId);
     if (!room || !isCollaborativeTextFile(filePath)) return false;
     room.allowedPaths.add(filePath);
@@ -343,7 +344,7 @@ export class CollaborationService {
         if (kind === -1) text.delete(offset, value.length);
         else { if (kind === 1) text.insert(offset, value); offset += value.length; }
       }
-    }, { externalUserId: userId });
+    }, { externalUserId: userId, ...(agent ? { agent: true } : {}) });
     this.bumpFiles(room, { kind: "update", path: filePath });
     return true;
   }
@@ -1112,7 +1113,7 @@ export class CollaborationService {
         this.recordEditStep(room, filePath, connection.user.id, event, before, after, this.activeFormatLease(room, filePath)?.connection === connection);
       }
       if (isExternalOrigin(transaction.origin) && before !== after) {
-        this.recordEditStep(room, filePath, transaction.origin.externalUserId, event, before, after);
+        this.recordEditStep(room, filePath, transaction.origin.externalUserId, event, before, after, false, transaction.origin.agent === true);
       }
       if (before !== after) {
         const edits: SourceCommentEdit[] = [];
@@ -1158,7 +1159,8 @@ export class CollaborationService {
     event: Y.YTextEvent,
     before: string,
     after: string,
-    formatted = false
+    formatted = false,
+    hasAgent = false
   ): void {
     const spans = editSpansFromYDelta(event.delta, before, after);
     if (!spans.length) return;
@@ -1176,6 +1178,8 @@ export class CollaborationService {
       && previous.filePath === filePath
       && previous.authorId === authorId
       && previous.kind === kind
+      // Agent and direct edits by the same user stay in separate segments.
+      && Boolean(previous.hasAgent) === hasAgent
       && previous.afterHash === step.beforeHash
       && Number.isFinite(previousTime)
       && Date.parse(createdAt) - previousTime <= EDIT_SEGMENT_IDLE_MS) {
@@ -1188,6 +1192,7 @@ export class CollaborationService {
       filePath,
       authorId,
       kind,
+      ...(hasAgent ? { hasAgent: true } : {}),
       beforeHash: step.beforeHash,
       afterHash: step.afterHash,
       createdAt,
@@ -1987,7 +1992,7 @@ function isConnectionOrigin(origin: unknown): origin is Connection {
   return Boolean(origin && typeof origin === "object" && "socket" in origin);
 }
 
-function isExternalOrigin(origin: unknown): origin is { externalUserId: string; exact?: boolean } {
+function isExternalOrigin(origin: unknown): origin is { externalUserId: string; exact?: boolean; agent?: boolean } {
   return Boolean(origin && typeof origin === "object" && "externalUserId" in origin);
 }
 

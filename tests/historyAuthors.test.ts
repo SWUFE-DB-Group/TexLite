@@ -23,7 +23,7 @@ const project: Project = {
 };
 const version: HistoryVersion = {
   id: "snapshot", snapshotHash: "hash", reason: "autosave", label: null,
-  author: { id: "author", name: "Administrator", username: "admin" },
+  author: { id: "author", name: "Administrator", username: "admin" }, hasAgent: false,
   createdAt: "2026-01-01T12:00:00Z", changedPaths: ["main.tex"], fileCount: 1, totalSize: 3
 };
 let root: Root;
@@ -110,6 +110,39 @@ describe("history author identities", () => {
     expect(authors[0].hasAttribute("data-texlite-tooltip-always")).toBe(true);
     expect(host.textContent).not.toContain("@admin");
     expect(host.querySelector(".selection-history-clear")).toBeNull();
+  });
+
+  it("adds Coding Agent after the authors of an edit-history entry that includes agent edits", async () => {
+    vi.mocked(api).mockResolvedValue({
+      entries: [{ id: "edit", filePath: "main.tex", createdAt: version.createdAt, updatedAt: version.createdAt,
+        authors: [version.author], hasAgent: true, content: "New", contentTruncated: false }],
+      baseline: null, chainComplete: true, hasMore: false
+    });
+    await act(async () => root.render(createElement(SelectionHistoryDialog, {
+      open: true, project, filePath: "main.tex", selection: { selectedText: "New", startOffset: 0, endOffset: 3 },
+      currentSource: "New", onOpenChange: () => {}
+    })));
+    const authors = [...host.querySelectorAll(".selection-history-author-list > span")];
+    expect(authors.map((node) => node.querySelector(".selection-history-author-name")?.textContent)).toEqual(["Administrator", "Coding Agent"]);
+    expect(authors[1].classList.contains("selection-history-agent")).toBe(true);
+    expect(authors[1].querySelector(".selection-history-avatar svg")).not.toBeNull();
+  });
+
+  it.each([
+    ["en", { ...version, hasAgent: true }, "Administrator, Coding Agent"],
+    ["zh", { ...version, hasAgent: true }, "Administrator、Coding Agent"],
+    ["en", { ...version, author: null, hasAgent: true }, "Multiple authors, Coding Agent"]
+  ] as const)("names Coding Agent after the snapshot author (%s, %j)", async (language, agentVersion, label) => {
+    await i18n.changeLanguage(language);
+    vi.mocked(api)
+      .mockResolvedValueOnce({ versions: [agentVersion], stats: null, nextCursor: null })
+      .mockResolvedValueOnce({ version: agentVersion, settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null }, files: [{ path: "main.tex", size: 3 }] })
+      .mockResolvedValueOnce({ path: "main.tex", historical: "New", comparison: "Old", against: "__previous__", previousVersion: null });
+    await act(async () => root.render(createElement(HistoryDialog, {
+      open: true, project, onOpenChange: () => {}, onBeforeMutation: async () => true
+    })));
+    expect(host.querySelector(".history-author-name")?.textContent).toBe(label);
+    expect(host.querySelector(".history-snapshot-attribution strong")?.textContent).toBe(label);
   });
 
   it.each(["en", "zh"])("limits snapshot attribution to version metadata and keeps username tooltips in the timeline (%s)", async (language) => {

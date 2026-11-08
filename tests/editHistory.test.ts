@@ -78,6 +78,19 @@ describe("selection edit history", () => {
     expect(result.entries[0]).toMatchObject({ content: "new", authors: [{ id: "alice" }] });
   });
 
+  it("stores the coding-agent flag per segment and marks a selection entry that includes agent edits", () => {
+    const fixture = createFixture();
+    const agent = { ...replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "agent", "edit"), hasAgent: true };
+    const direct = replaceSegment("main.tex", "alice", "2026-01-01T10:00:30.000Z", "agent", "final", "edit");
+    const later = replaceSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", "final", "later", "edit");
+    fixture.history.record(fixture.projectId, [agent, direct, later]);
+    expect(fixture.db.prepare("SELECT has_agent FROM project_edit_segments ORDER BY updated_at").all())
+      .toEqual([{ has_agent: 1 }, { has_agent: 0 }, { has_agent: 0 }]);
+    const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", "later", 0, 5);
+    expect(result.entries.map((entry) => ({ authors: entry.authors.map((author) => author.id), hasAgent: entry.hasAgent })))
+      .toEqual([{ authors: ["bob"], hasAgent: false }, { authors: ["alice"], hasAgent: true }]);
+  });
+
   it.each(["edit", "format"] as const)("keeps complete %s replacements while shortening only displayed passages", (kind) => {
     const fixture = createFixture();
     const original = "Initial paragraph.";

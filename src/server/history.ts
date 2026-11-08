@@ -37,6 +37,7 @@ interface HistoryRow {
   author_id: string | null;
   reason: HistoryReason;
   label: string | null;
+  has_agent: number;
   manifest_json: string;
   changed_paths_json: string;
   created_at: string;
@@ -50,6 +51,8 @@ export interface HistoryVersion {
   label: string | null;
   createdAt: string;
   author: { id: string; username: string; name: string } | null;
+  /** A coding agent made at least some of this version's changes. */
+  hasAgent: boolean;
   changedPaths: string[];
   fileCount: number;
   totalSize: number;
@@ -83,6 +86,11 @@ export interface HistoryRecordOptions {
    * retention work (manifest scans and object garbage collection).
    */
   deferRetention?: boolean;
+  /**
+   * A coding agent made these changes. Coalesced autosaves keep the flag once
+   * any merged save had it, so it means "includes agent changes".
+   */
+  hasAgent?: boolean;
 }
 
 const AUTOSAVE_COALESCE_MS = 2 * 60_000;
@@ -155,8 +163,9 @@ export class ProjectHistoryService {
       && Date.parse(createdAt) - Date.parse(previous.created_at) < AUTOSAVE_COALESCE_MS) {
       const merged = [...new Set([...parseStringArray(previous.changed_paths_json), ...changedPaths])].sort();
       this.db.prepare(`UPDATE project_history_versions
-        SET manifest_json = ?, changed_paths_json = ?, author_id = ? WHERE id = ?`)
-        .run(JSON.stringify(manifest), JSON.stringify(merged), previous.author_id === authorId ? authorId : null, previous.id);
+        SET manifest_json = ?, changed_paths_json = ?, author_id = ?, has_agent = MAX(has_agent, ?) WHERE id = ?`)
+        .run(JSON.stringify(manifest), JSON.stringify(merged), previous.author_id === authorId ? authorId : null,
+          options.hasAgent ? 1 : 0, previous.id);
       this.saveBaseline(projectId, manifest);
       if (!options.deferRetention) {
         this.removeUnreferencedObjects(projectId, new Set(previousManifest
@@ -169,9 +178,9 @@ export class ProjectHistoryService {
 
     const id = randomUUID();
     this.db.prepare(`INSERT INTO project_history_versions
-      (id, project_id, author_id, reason, manifest_json, changed_paths_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(id, projectId, authorId, reason, JSON.stringify(manifest), JSON.stringify(changedPaths), createdAt);
+      (id, project_id, author_id, reason, has_agent, manifest_json, changed_paths_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, projectId, authorId, reason, options.hasAgent ? 1 : 0, JSON.stringify(manifest), JSON.stringify(changedPaths), createdAt);
     this.saveBaseline(projectId, manifest);
     if (!options.deferRetention) this.pruneVersions(projectId);
     return this.version(id)!;
@@ -842,6 +851,7 @@ function versionJson(row: HistoryRow & { author_username?: string | null; author
       username: row.author_username ?? "deleted-user",
       name: row.author_name ?? "Deleted User"
     } : null,
+    hasAgent: Boolean(row.has_agent),
     changedPaths: parseStringArray(row.changed_paths_json),
     fileCount: files.length,
     totalSize: files.reduce((sum, file) => sum + file.size, 0)

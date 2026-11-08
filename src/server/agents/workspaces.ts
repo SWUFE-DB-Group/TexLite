@@ -24,7 +24,7 @@ export interface AgentWorkspaceContext {
   db: DatabaseConnection;
   collaboration: CollaborationService;
   projectMutations: ProjectMutationCoordinator;
-  recordHistory: (projectId: string, userId: string | null, reason: "file", paths?: readonly string[]) => unknown;
+  recordHistory: (projectId: string, userId: string | null, reason: "file", paths?: readonly string[], options?: { hasAgent?: boolean }) => unknown;
   recordEdits: (projectId: string, edits: readonly EditHistorySegmentInput[]) => void;
 }
 
@@ -226,7 +226,7 @@ export class AgentSourceSync {
         }
         if (next !== null) {
           if (next !== after?.text) this.write(relative, next);
-          if (!collaboration.importExternalText(this.projectId, relative, next, this.userId)) {
+          if (!collaboration.importExternalText(this.projectId, relative, next, this.userId, { agent: true })) {
             const previous = before?.text ?? "";
             reanchorFileComments(db, this.projectId, relative, previous, next);
             collaboration.updateFile(this.projectId, relative, next, this.userId);
@@ -248,7 +248,8 @@ export class AgentSourceSync {
       this.syncing = false;
       if (changed.length) {
         touchProject(db, this.projectId, this.userId);
-        recordHistory(this.projectId, this.userId, "file", changed);
+        // The task's user is the author; the flag shows a coding agent made the change.
+        recordHistory(this.projectId, this.userId, "file", changed, { hasAgent: true });
         collaboration.signalComments(this.projectId);
       }
     }
@@ -293,6 +294,6 @@ function externalEdit(filePath: string, before: string, after: string, authorId:
     shift += edit.insert.length - (edit.to - edit.from);
     return createEditHistorySpan(edit.from, afterStart, before.slice(edit.from, edit.to), edit.insert);
   });
-  return { filePath, authorId, kind: "edit", beforeHash: hashText(before), afterHash: hashText(after), createdAt, updatedAt: createdAt,
+  return { filePath, authorId, kind: "edit", hasAgent: true, beforeHash: hashText(before), afterHash: hashText(after), createdAt, updatedAt: createdAt,
     steps: [{ beforeHash: hashText(before), afterHash: hashText(after), createdAt, spans }] };
 }

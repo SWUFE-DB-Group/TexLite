@@ -154,6 +154,8 @@ export interface HistoryVersion {
   label: string | null;
   createdAt: string;
   author: { id: string; username: string; name: string } | null;
+  /** A coding agent made at least some of this version's changes. */
+  hasAgent: boolean;
   changedPaths: string[];
   fileCount: number;
   totalSize: number;
@@ -186,6 +188,8 @@ export interface SelectionHistoryEntry {
   createdAt: string;
   updatedAt: string;
   authors: SelectionHistoryAuthor[];
+  /** A coding agent wrote at least one of the included edits. */
+  hasAgent: boolean;
   content: string | null;
   contentTruncated: boolean;
 }

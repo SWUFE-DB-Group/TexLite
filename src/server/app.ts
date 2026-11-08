@@ -138,9 +138,11 @@ export async function buildApp(
       if (error) app.log.error({ err: error, projectId: id }, "Failed to record project edit history");
       signalHistory(id);
     });
-  const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => {
+  const recordHistory = (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[],
+    { hasAgent = false }: { hasAgent?: boolean } = {}) => {
     try {
-      const version = history.record(projectId, userId, reason, failedSnapshots.has(projectId) ? undefined : paths, { deferRetention: reason === "autosave" });
+      const version = history.record(projectId, userId, reason, failedSnapshots.has(projectId) ? undefined : paths,
+        { deferRetention: reason === "autosave", hasAgent });
       if (failedSnapshots.delete(projectId)) signalHistory(projectId);
       if (version && reason === "autosave") historyRetention.schedule(projectId);
       return version;
@@ -155,7 +157,9 @@ export async function buildApp(
   const collaboration = new CollaborationService(config, db, ({ projectId, userId, paths, edits, durationMs }) => {
     const started = performance.now();
     editRetry.save(projectId, edits);
-    recordHistory(projectId, userId, "autosave", paths);
+    // A coding agent's text reaches the source through the live room, so the
+    // autosave that persists it carries the flag of its edit segments.
+    recordHistory(projectId, userId, "autosave", paths, { hasAgent: edits.some((edit) => edit.hasAgent) });
     metrics.record("collaboration.persist", durationMs + performance.now() - started);
   });
   const projectMutations = new ProjectMutationCoordinator(collaboration);

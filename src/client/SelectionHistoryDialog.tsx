@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, HardDrive, LoaderCircle, Trash2 } from "lucide-react";
+import { Bot, Clock3, HardDrive, LoaderCircle, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
@@ -148,7 +148,10 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
                     <UserAvatar userId={author.id} name={name} username={author.username} avatarStyle={author.avatarStyle} className="selection-history-avatar" />
                     <span className="selection-history-author-name">{name}</span>
                   </span>;
-                })}</span></span>
+                })}{entry.hasAgent && <span className="selection-history-agent">
+                  <span className="selection-history-avatar" aria-hidden><Bot size={12} /></span>
+                  <span className="selection-history-author-name">{t("history.codingAgent")}</span>
+                </span>}</span></span>
               </header>
               <div className="selection-history-tabs" role="tablist" aria-label={t("selectionHistory.view")}>
                 <button type="button" className={view === "content" ? "active" : ""} role="tab" aria-selected={view === "content"} aria-controls={`selection-history-content-${entry.id}`} onClick={() => setEntryViews((current) => ({ ...current, [entry.id]: "content" }))}>{t("selectionHistory.contentTab")}</button>

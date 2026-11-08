@@ -237,6 +237,16 @@ const databaseMigrations: readonly DatabaseMigration[] = [
     if (missingColumn(db, "citation_library_entries", "venue")) {
       db.exec("ALTER TABLE citation_library_entries ADD COLUMN venue TEXT");
     }
+  } },
+  // A coding agent took part in a snapshot or an edit segment. Rows written
+  // before this migration cannot be classified reliably and stay false.
+  { version: 22, name: "add_agent_history_flags", apply: (db) => {
+    if (missingColumn(db, "project_history_versions", "has_agent")) {
+      db.exec("ALTER TABLE project_history_versions ADD COLUMN has_agent INTEGER NOT NULL DEFAULT 0");
+    }
+    if (missingColumn(db, "project_edit_segments", "has_agent")) {
+      db.exec("ALTER TABLE project_edit_segments ADD COLUMN has_agent INTEGER NOT NULL DEFAULT 0");
+    }
   } }
 ];
 

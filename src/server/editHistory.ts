@@ -46,6 +46,11 @@ export interface EditHistorySegmentInput {
   filePath: string;
   authorId: string;
   kind: EditHistoryKind;
+  /**
+   * The edit was written by a coding agent on behalf of `authorId`. A segment
+   * is never shared by agent and direct edits, so this is exact per segment.
+   */
+  hasAgent?: boolean;
   beforeHash: string;
   afterHash: string;
   createdAt: string;
@@ -59,6 +64,7 @@ interface EditHistoryRow {
   file_path: string;
   author_id: string | null;
   kind: EditHistoryKind;
+  has_agent: number;
   before_hash: string;
   after_hash: string;
   steps_json: string;
@@ -83,6 +89,8 @@ export interface SelectionHistoryEntry {
   updatedAt: string;
   /** All users whose relevant edits are included in this short time window. */
   authors: SelectionHistoryAuthor[];
+  /** A coding agent wrote at least one of the included edits. */
+  hasAgent: boolean;
   /** Selected source at the end of this editing window. */
   content: string | null;
   contentTruncated: boolean;
@@ -159,12 +167,12 @@ export class ProjectEditHistoryService {
       else segments.push({ segment, stepsJson, stepsBytes });
     }
     const insert = this.db.prepare(`INSERT INTO project_edit_segments
-      (id, project_id, file_path, author_id, kind, before_hash, after_hash, steps_json, created_at, updated_at, steps_bytes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      (id, project_id, file_path, author_id, kind, has_agent, before_hash, after_hash, steps_json, created_at, updated_at, steps_bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     this.db.transaction(() => {
       for (const { segment, stepsJson, stepsBytes } of segments) {
         insert.run(
-          randomUUID(), projectId, segment.filePath, segment.authorId, segment.kind,
+          randomUUID(), projectId, segment.filePath, segment.authorId, segment.kind, segment.hasAgent ? 1 : 0,
           segment.beforeHash, segment.afterHash, stepsJson, segment.createdAt, segment.updatedAt, stepsBytes
         );
       }
@@ -348,6 +356,7 @@ function createSelectionHistoryEntry(
     updatedAt: row.updated_at,
     authorKeys: new Set([authorKey(row)]),
     authors: [authorFromRow(row)],
+    hasAgent: Boolean(row.has_agent),
     content: content.text,
     contentTruncated: content.truncated
   };
@@ -379,6 +388,7 @@ function mergeSelectionHistoryEntry(
   row: EditHistoryRow
 ): void {
   entry.createdAt = row.created_at;
+  if (row.has_agent) entry.hasAgent = true;
   if (!entry.authorKeys.has(authorKey(row))) {
     entry.authorKeys.add(authorKey(row));
     entry.authors.push(authorFromRow(row));

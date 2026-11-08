@@ -920,6 +920,30 @@ describe("project collaboration", () => {
     }
   });
 
+  it("keeps a coding agent's imported text in its own flagged edit segment and reports it to autosave", async () => {
+    const created = await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Agent attribution room" }
+    });
+    const projectId = created.json().project.id as string;
+    const persisted: Array<{ userId: string | null; edits: Array<{ authorId: string; hasAgent?: boolean }> }> = [];
+    const service = new CollaborationService(config, db, (event) => { persisted.push({ userId: event.userId, edits: event.edits }); });
+    const internals = service as unknown as { initializeRoom: (id: string, generation: number) => Promise<unknown> };
+    try {
+      await internals.initializeRoom(projectId, 0);
+      const original = fs.readFileSync(path.join(config.projectsDir, projectId, "source", "main.tex"), "utf8");
+      expect(service.importExternalText(projectId, "main.tex", `${original}\nAgent text.\n`, adminId, { agent: true })).toBe(true);
+      // The same user's next external write right away is not an agent edit.
+      expect(service.importExternalText(projectId, "main.tex", `${original}\nAgent text.\nDirect text.\n`, adminId)).toBe(true);
+      service.flushProject(projectId);
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].userId).toBe(adminId);
+      expect(persisted[0].edits.map((edit) => ({ authorId: edit.authorId, hasAgent: Boolean(edit.hasAgent) })))
+        .toEqual([{ authorId: adminId, hasAgent: true }, { authorId: adminId, hasAgent: false }]);
+    } finally {
+      service.destroy();
+    }
+  });
+
   it("restores a transient history warning when an idle room is recreated", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "History warning room" }

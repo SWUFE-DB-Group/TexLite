@@ -13,6 +13,7 @@ import { historyTextCandidate } from "../shared/historyTracking";
 import { HistoryFilesManager } from "./HistoryFilesManager";
 import { formatDateTime } from "./dateTime";
 import { useSuccessNotice } from "./SuccessNotice";
+import { snapshotAttribution } from "./agentAttribution";
 import { SaveButton } from "./SaveButton";
 
 interface HistoryComparison {
@@ -358,9 +359,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     }
   };
 
-  const authorName = detail?.version.author?.name
-    || detail?.version.author?.username
-    || (detail?.version.reason === "autosave" ? t("history.reasons.autosave") : t("editor.deletedUser"));
+  const authorName = detail ? snapshotAttribution(detail.version, t) : "";
 
   const commitTime = detail ? formatCommitTime(detail.version.createdAt, i18n.resolvedLanguage) : "";
 
@@ -413,7 +412,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
           {versions.map((version) => {
             const reasonLabel = t(`history.reasons.${version.reason}`);
             const title = formatVersionTitle(version, reasonLabel, i18n.resolvedLanguage);
-            const author = version.author?.name || version.author?.username || (version.reason === "autosave" ? t("history.reasons.autosave") : t("editor.deletedUser"));
+            const author = snapshotAttribution(version, t);
             return (
               <button className={version.id === selectedId ? "active" : ""} key={version.id} onClick={() => setSelectedId(version.id)}>
                 <FileClock size={15} />
@@ -448,7 +447,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                   <span className="history-snapshot-time"><Clock3 size={12} aria-hidden /><time dateTime={detail.version.createdAt} title={formatDateTime(detail.version.createdAt, i18n.resolvedLanguage)}>
                     {formatDateTime(detail.version.createdAt, i18n.resolvedLanguage, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </time></span>
-                  {detail.version.author
+                  {detail.version.author || detail.version.hasAgent
                     ? <span className="history-snapshot-attribution"><span>{t("history.lastChangedBy")}</span><strong>{authorName}</strong></span>
                     : <span className="history-snapshot-origin">{detailReasonLabel}</span>}
                   <span className="history-snapshot-file-count"><FileText size={12} aria-hidden />{t("history.fileCount", { count: detail.version.fileCount })}</span>

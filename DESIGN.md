@@ -1523,7 +1523,18 @@ normal not-found results while allowing permission, I/O, and malformed generated
 resource errors to reach the server's error handler and logs.
 Autosaves across authors are coalesced within a fixed two-minute project window.
 A mixed-author snapshot has no single author attribution; selection edit history
-retains the individual contributions independently. File
+retains the individual contributions independently.
+Schema migration 22 adds a `has_agent` flag to snapshots and edit segments.
+Coding agents are not told apart: the user who ran the task stays the author,
+and the interface adds "Coding Agent" after them ("Alice, Coding Agent"; a
+coalesced autosave without one author reads "Multiple authors, Coding Agent").
+Agent text enters the live room with an `agent` marker on its external origin;
+its edit segments are flagged and never merged with the same user's direct
+edits, so the segment flag is exact. A snapshot is flagged when any change it
+holds came from an agent: the autosave that persists agent text inherits the
+flag from its segments, agent file writes and task recovery pass it directly,
+and coalescing keeps it once set, so it means "includes agent changes". Rows
+written before the migration cannot be classified and stay unflagged. File
 contents are complete SHA-256-addressed objects; unchanged files are reused
 across manifests. By default, ordinary version count is unlimited (`history.maxVersions: 0`),
 and retention is primarily governed by the soft storage limit (default 128 MiB of deduplicated

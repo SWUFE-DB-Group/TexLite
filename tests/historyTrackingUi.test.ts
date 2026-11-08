@@ -59,7 +59,7 @@ it.each(["read", "edit", "owner"] as const)("only shows snapshot file management
 it.each([".gitignore", "build.bat", "scripts/RUN.CMD", "settings.ini", "notes.custom"])("renders recorded text diffs and permits switching comparison modes (%s)", async (filePath) => {
   const version: HistoryVersion = {
     id: "v", snapshotHash: "a".repeat(64), reason: "file", label: null,
-    createdAt: "2026-10-24T00:00:00Z", author: null, changedPaths: [filePath], fileCount: 1, totalSize: 12
+    createdAt: "2026-10-24T00:00:00Z", author: null, hasAgent: false, changedPaths: [filePath], fileCount: 1, totalSize: 12
   };
   vi.mocked(api)
     .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
@@ -78,7 +78,7 @@ it.each([".gitignore", "build.bat", "scripts/RUN.CMD", "settings.ini", "notes.cu
 
 it("summarizes recorded binary bytes even when the filename has a text extension", async () => {
   const version: HistoryVersion = { id: "v", snapshotHash: "a".repeat(64), reason: "file", label: null,
-    createdAt: "2026-10-24T00:00:00Z", author: null, changedPaths: ["binary.bat"], fileCount: 1, totalSize: 3 };
+    createdAt: "2026-10-24T00:00:00Z", author: null, hasAgent: false, changedPaths: ["binary.bat"], fileCount: 1, totalSize: 3 };
   vi.mocked(api)
     .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
     .mockResolvedValueOnce({ version, files: [{ path: "binary.bat", size: 3, textContent: false }], settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null } });

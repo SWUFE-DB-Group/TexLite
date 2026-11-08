@@ -536,7 +536,7 @@
     "fileMissing": "文件已不存在",
     "noMatchingFiles": "没有匹配的文件。",
     "restoreTrackedDescription": "恢复此快照管理的文件及编译器设置？未管理的文件会保留。系统会先为当前项目创建安全检查点。",
-    "lastChangedBy": "最后修改者",
+    "lastChangedBy": "最后修改者", "codingAgent": "Coding Agent", "withCodingAgent": "{{names}}、Coding Agent", "multipleAuthors": "多位作者",
     "saveWarning": "源码已保存，但部分历史未能保存。近期失败会自动重试，较早的历史可能不完整。请检查服务器日志及可用存储空间。",
     "storageBreakdown": "文件 {{objects}} · 元数据 {{metadata}} · 受保护 {{protected}}",
     "title": "历史", "projectSnapshots": "项目快照", "projectSnapshotsButton": "项目快照", "description": "浏览自动项目快照、比较文件，并安全恢复较早的工作。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",

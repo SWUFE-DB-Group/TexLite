@@ -478,7 +478,7 @@ export class AgentService {
       // Preserve them in snapshot history before releasing its project claim.
       if (row && this.db.prepare("SELECT 1 FROM projects WHERE id = ?").get(row.project_id)) {
         const author = this.db.prepare("SELECT 1 FROM users WHERE id = ?").get(row.user_id) ? row.user_id : null;
-        this.context.recordHistory(row.project_id, author, "file");
+        this.context.recordHistory(row.project_id, author, "file", undefined, { hasAgent: true });
       }
       this.db.prepare("UPDATE agent_tasks SET state = ?, error_code = NULL, ended_at = ?, updated_at = ? WHERE id = ?").run(state, now(), now(), id);
       this.recoveries.get(id)?.();

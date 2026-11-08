@@ -309,7 +309,7 @@ describe("external agent tasks", () => {
       expect(result).toBeInstanceOf(AggregateError);
       expect((result as AggregateError).errors).toEqual([failure]);
       expect(service.task(b.id, editor)).toMatchObject({ state: "stopped", errorCode: null });
-      expect(recordHistory).toHaveBeenCalledWith(b.projectId, editor.id, "file", ["last.txt"]);
+      expect(recordHistory).toHaveBeenCalledWith(b.projectId, editor.id, "file", ["last.txt"], { hasAgent: true });
       expect(service.list(editor, false, { project: b.projectId }).activeTaskId).toBeNull();
       expect(service.list(owner, false, { project: a.projectId }).activeTaskId).toBe(a.id);
       expect(fs.existsSync(agentTaskRoot(config, a.id))).toBe(true);
@@ -754,7 +754,7 @@ describe("external agent tasks", () => {
     expect(service.task(task.id, owner)).toMatchObject({ state: "interrupted", errorCode: null });
     expect(service.list(owner, false, { project: projectId }).activeTaskId).toBeNull();
     expect(spawn).not.toHaveBeenCalled();
-    expect(recordHistory).toHaveBeenCalledWith(projectId, owner.id, "file");
+    expect(recordHistory).toHaveBeenCalledWith(projectId, owner.id, "file", undefined, { hasAgent: true });
     await service.start(task.id, owner);
     expect(service.task(task.id, owner).state).toBe("running");
   });
@@ -908,8 +908,9 @@ describe("agent direct project editing", () => {
     await service.start(task.id, editor);
     fs.writeFileSync(workingFile(task), before + "\nAgent revision.\n");
     await service.stop(task.id, editor);
-    expect(db.prepare("SELECT author_id FROM project_edit_segments WHERE project_id = ?").get(projectId)).toEqual({ author_id: editor.id });
-    expect(recordHistory).toHaveBeenCalledWith(projectId, editor.id, "file", ["main.tex"]);
+    // The initiating user stays the author; the flag records that a coding agent wrote it.
+    expect(db.prepare("SELECT author_id, has_agent FROM project_edit_segments WHERE project_id = ?").get(projectId)).toEqual({ author_id: editor.id, has_agent: 1 });
+    expect(recordHistory).toHaveBeenCalledWith(projectId, editor.id, "file", ["main.tex"], { hasAgent: true });
     await service.remove(task.id, editor);
     expect(fs.readFileSync(workingFile(task), "utf8")).toBe(before + "\nAgent revision.\n");
     expect(fs.existsSync(agentTaskRoot(config, task.id))).toBe(false);
@@ -1101,7 +1102,7 @@ describe("agent direct project editing", () => {
     fs.writeFileSync(workingFile(task, "new.tex"), "New text");
     processes[0].end();
     await vi.waitFor(() => expect(service.task(task.id, owner).state).toBe("exited"));
-    expect(recordHistory).toHaveBeenCalledWith(projectId, owner.id, "file", expect.arrayContaining(["old.txt", "image.png", "new.tex"]));
+    expect(recordHistory).toHaveBeenCalledWith(projectId, owner.id, "file", expect.arrayContaining(["old.txt", "image.png", "new.tex"]), { hasAgent: true });
     expect(fs.readFileSync(workingFile(task, "new.tex"), "utf8")).toBe("New text");
     const next = await create("claude", editor); await service.start(next.id, editor);
   });
@@ -1227,6 +1228,19 @@ describe("agent HTTP and WebSocket permissions", () => {
     expect(await access(cookies.adminCookie)).toEqual({ visible: true, activeCount: 1 });
     db.prepare("UPDATE agent_policy SET allowed = '[]' WHERE id = 1").run();
     expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 0 });
+  });
+
+  it("reports coding-agent changes in the snapshot timeline under the task's user", async () => {
+    const cookies = await httpApp();
+    db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
+    const created = await app!.inject({ method: "POST", url: `/api/projects/${projectId}/agent-tasks`,
+      headers: { cookie: cookies.ownerCookie }, payload: { agentId: "codex" } });
+    const task = created.json().task as AgentTask;
+    expect((await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/start`, headers: { cookie: cookies.ownerCookie } })).statusCode).toBe(200);
+    fs.writeFileSync(workingFile(task), fs.readFileSync(workingFile(task), "utf8") + "\nWritten by the agent.\n");
+    await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/stop`, headers: { cookie: cookies.ownerCookie } });
+    const history = (await app!.inject({ url: `/api/projects/${projectId}/history`, headers: { cookie: cookies.ownerCookie } })).json();
+    expect(history.versions[0]).toMatchObject({ hasAgent: true, author: { id: owner.id }, changedPaths: ["main.tex"] });
   });
 
   it("accepts optional task names but still validates provided values and explicit renames", async () => {
