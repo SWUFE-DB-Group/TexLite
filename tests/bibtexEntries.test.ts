@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBibtexDocument } from "../src/client/bibtex/entries";
+import { parseBibtexDocument, withCrossrefFields } from "../src/client/bibtex/entries";
 import { findBibtexEntryKeys } from "../src/shared/bibtexReferences";
 
 describe("BibTeX document model", () => {
@@ -10,7 +10,8 @@ describe("BibTeX document model", () => {
     expect(entries.map((entry) => [entry.key, entry.entryType])).toEqual([["smith2025", "Article"], ["b", "book"]]);
     expect(source.slice(entries[0].from, entries[0].to)).toBe("@Article{smith2025,\n  Title = {One},\n  title = {Two},\n  YEAR = 2025\n}");
     expect(source.slice(entries[1].from, entries[1].to)).toBe("@book(b, author={X})");
-    expect(entries[0].fields).toEqual({ title: "Two", year: "2025" });
+    // BibTeX ignores a repeated field, so the first value is the one printed.
+    expect(entries[0].fields).toEqual({ title: "One", year: "2025" });
   });
 
   it("extracts values across comments, quotes, escapes and percent signs", () => {
@@ -54,12 +55,37 @@ describe("BibTeX document model", () => {
     );
     expect(hasSyntaxErrors).toBe(false);
     expect(entries.map((entry) => [entry.key, entry.entryType])).toEqual([["k", "Misc1"], ["second", "article-v2"]]);
-    expect(entries[0].fields).toEqual({ "alt:title": "T", journal: "j.bmj" });
+    expect(entries[0].fields).toEqual({ "alt:title": "T", journal: "British Medical Journal" });
   });
 
-  it("keeps concatenations as written instead of splitting them at the delimiters", () => {
-    const [entry] = parseBibtexDocument(`@article{k, title = "Deep " # "Learning", note = {A} # {B}, year = 2020}`).entries;
-    expect(entry.fields).toMatchObject({ title: `"Deep " # "Learning"`, note: "{A} # {B}", year: "2020" });
+  it("joins concatenations and expands @string macros defined earlier, case-insensitively", () => {
+    const [entry] = parseBibtexDocument([
+      `@String{PAMI = "Pattern Analysis"}`,
+      `@string{tpami = "IEEE Trans. " # pami}`,
+      `@article{k, title = "Deep " # "Learning", note = {A} # {B}, year = 2020,`,
+      `  journal = TPAMI, month = jan, publisher = later, series = later # " x"}`,
+      `@string{later = "Too late"}`
+    ].join("\n")).entries;
+    expect(entry.fields).toMatchObject({
+      title: "Deep Learning", note: "AB", year: "2020", journal: "IEEE Trans. Pattern Analysis", month: "January",
+      // BibTeX requires a macro to be defined before use; an undefined one keeps its source text.
+      publisher: "later", series: `later # " x"`
+    });
+  });
+
+  it("inherits missing fields from a crossref parent in the same document", () => {
+    const entries = withCrossrefFields(parseBibtexDocument([
+      "@inproceedings{paper, title = {Paper}, crossref = {Conf}, year = {2021}}",
+      "@proceedings{conf, title = {Proc. of X}, year = {2020}, publisher = {P}, shorthand = {PX}}",
+      "@article{art, title = {A}, crossref = {jrnl}}",
+      "@periodical{jrnl, title = {Journal}}",
+      "@misc{orphan, crossref = {missing}}"
+    ].join("\n")).entries);
+    expect(entries[0].fields).toEqual({
+      title: "Paper", crossref: "Conf", year: "2021", booktitle: "Proc. of X", publisher: "P"
+    });
+    expect(entries[2].fields).toMatchObject({ title: "A", journaltitle: "Journal" });
+    expect(entries[4].fields).toEqual({ crossref: "missing" });
   });
 
   it("does not list @string, @preamble or @comment, even when they hide entry-like text", () => {
@@ -112,6 +138,7 @@ describe("server entry scanner agrees with the editor grammar", () => {
     "case and spacing": "@ARTICLE {Upper, title={T}}\n@Book\n{Mixed, title={B}}",
     "concatenation and macros": `@string{j = "J"}\n@article{a, journal = j # { Suffix}, title = {A} # {B}}\n@book{b, title={B}}`,
     "key-only entry": "@misc{only}\n@misc{trailing,}\n@book{b, title={B}}",
+    "comment around the key": "@article{ % before\n key % after\n , title={T}}\n@book{b, title={B}}",
     "entry types with digits, hyphens and underscores": "@misc1{a, title={A}}\n@article-v2{b, title={B}}\n@my_type{c, title={C}}\n@book{d, title={D}}",
     "macro and field names with punctuation": `@string{j.bmj = "J"}\n@article{a, journal = j.bmj, alt:title = {T}}\n@book{b, title={B}}`
   };
@@ -121,6 +148,14 @@ describe("server entry scanner agrees with the editor grammar", () => {
     const document = parseBibtexDocument(source);
     expect(document.hasSyntaxErrors).toBe(true);
     expect(document.entries.map((entry) => entry.key)).toEqual(["b"]);
+    expect(findBibtexEntryKeys(source).map((entry) => entry.key)).toEqual(["b"]);
+  });
+
+  it.each([
+    ["a key followed by something other than a comma", "@article{f(1), title={T}}\n@book{b, title={B}}"],
+    ["a key without a separator", "@article{x title={T}}\n@book{b, title={B}}"]
+  ])("neither lists %s", (_name, source) => {
+    expect(parseBibtexDocument(source).entries.map((entry) => entry.key)).toEqual(["b"]);
     expect(findBibtexEntryKeys(source).map((entry) => entry.key)).toEqual(["b"]);
   });
 

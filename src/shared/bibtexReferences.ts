@@ -98,18 +98,22 @@ function readBibtexBlock(source: string, start: number): BibtexBlock | null {
   return null;
 }
 
+/**
+ * Characters that end a key, as in the editor grammar's key token. A key must
+ * then be followed, after whitespace and comments, by `,` or the end of the
+ * entry: `@article{f(1), ...}` and `@article{title = {A}}` have no key.
+ */
+const keyTerminator = /[\s,{}()%]/;
+
 function bibtexKeyRange(source: string, entry: BibtexBlock): { key: string; from: number; to: number } | null {
-  let from = entry.contentFrom;
-  while (from < entry.contentTo && /\s/.test(source[from])) from += 1;
+  const from = skipLatexTrivia(source, entry.contentFrom);
   if (from >= entry.contentTo) return null;
   let to = from;
-  while (to < entry.contentTo && source[to] !== "," && !/\s/.test(source[to])) to += 1;
-  let trimmedTo = to;
-  while (trimmedTo > from && /\s/.test(source[trimmedTo - 1])) trimmedTo -= 1;
-  if (trimmedTo <= from) return null;
+  while (to < entry.contentTo && !keyTerminator.test(source[to])) to += 1;
+  if (to <= from) return null;
   const separator = skipLatexTrivia(source, to);
   if (separator < entry.contentTo && source[separator] !== ",") return null;
-  return { key: source.slice(from, trimmedTo), from, to: trimmedTo };
+  return { key: source.slice(from, to), from, to };
 }
 
 /**
@@ -158,18 +162,26 @@ export function findBibtexEntryKeys(source: string): BibtexEntryKey[] {
   return entries;
 }
 
+/**
+ * Where an entry was published. biblatex spells a journal `journaltitle`;
+ * BibTeX spells it `journal`. Proceedings and collection parts prefer their
+ * book title.
+ */
 export function bibtexVenue(entryType: string, fields: Readonly<Record<string, string>>): string | null {
+  const journal = fields.journaltitle ?? fields.journal;
   const venue = /inproceedings|conference|incollection/.test(entryType.toLowerCase())
-    ? fields.booktitle ?? fields.journal
-    : fields.journal ?? fields.booktitle;
+    ? fields.booktitle ?? journal
+    : journal ?? fields.booktitle;
   return venue?.trim() || null;
 }
 
-/** Strip one pair of outer braces or quotes from a field value and collapse whitespace. */
-export function cleanBibtexFieldValue(value: string): string {
-  let result = value.trim();
-  if ((result.startsWith("{") && result.endsWith("}")) || (result.startsWith('"') && result.endsWith('"'))) {
-    result = result.slice(1, -1);
-  }
-  return result.replace(/\s+/g, " ").trim();
+/**
+ * Publication year: BibTeX's `year`, or the year of biblatex's ISO 8601
+ * `date` (`2021-05-03`, `2021/2022`). A `date` without a leading four-digit
+ * year gives no year rather than a guess.
+ */
+export function bibtexYear(fields: Readonly<Record<string, string>>): string | null {
+  const year = fields.year?.trim();
+  if (year) return year;
+  return /^\s*(-?\d{4})(?!\d)/.exec(fields.date ?? "")?.[1] ?? null;
 }

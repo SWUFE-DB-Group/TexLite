@@ -17,6 +17,7 @@ const labels: CitationHoverLabels = {
   loading: "Loading bibliography entry…",
   unavailable: "Bibliography details are unavailable.",
   inSource: "In-source bibliography entry",
+  entryUnreadable: "This entry could not be read from the bibliography file.",
   untitled: "Untitled citation",
   doi: "DOI",
   url: "URL",
@@ -39,15 +40,16 @@ describe("citation hover rendering", () => {
       path: "refs.bib", line: 12, column: 1, source: "bibtex",
       citation: {
         key: "smith2025", entryType: "article", title: "A {Nested} title",
-        authors: "Smith, Ada", year: "2025", venue: "Journal of Testing",
+        authors: "Smith, Ada", year: "2025", venue: "Journal of \\& Testing",
         doi: "10.1000/example", url: "https://example.test/paper"
       }
     });
     expect(dom.querySelector(".texlite-citation-heading code")?.textContent).toBe("smith2025");
     expect(dom.querySelector(".texlite-citation-heading span")?.textContent).toBe("@article");
-    expect(dom.querySelector(".texlite-citation-title")?.textContent).toBe("A {Nested} title");
+    // TeX markup is shown as readable text.
+    expect(dom.querySelector(".texlite-citation-title")?.textContent).toBe("A Nested title");
     expect(dom.querySelector(".texlite-citation-authors")?.textContent).toBe("Smith, Ada");
-    expect(dom.querySelector(".texlite-citation-meta")?.textContent).toBe("Journal of Testing · 2025");
+    expect(dom.querySelector(".texlite-citation-meta")?.textContent).toBe("Journal of & Testing · 2025");
     expect([...dom.querySelectorAll(".texlite-citation-meta")].map((node) => node.textContent))
       .toContain("DOI: 10.1000/example");
     expect(dom.querySelector(".texlite-citation-url")?.textContent).toBe("URL: https://example.test/paper");
@@ -63,9 +65,13 @@ describe("citation hover rendering", () => {
     expect(render({ path: "main.tex", line: 4, column: 1, source: "bibitem", citation: null })
       .querySelector(".texlite-citation-message.muted")?.textContent)
       .toBe("In-source bibliography entry");
-    expect(render({ path: "refs.bib", line: 1, column: 1, source: "bibtex", citation: null })
+    expect(render({ path: "refs.bib", line: 1, column: 1, source: "bibtex", citation: null, preview: "failed" })
       .querySelector(".texlite-citation-message.muted")?.textContent)
       .toBe("Bibliography details are unavailable.");
+    const unreadable = render({ path: "refs.bib", line: 1, column: 1, source: "bibtex", citation: null, preview: "missing" });
+    expect(unreadable.querySelector(".texlite-citation-message.muted")?.textContent)
+      .toBe("This entry could not be read from the bibliography file.");
+    expect(unreadable.querySelector(".texlite-citation-source")?.textContent).toBe("refs.bib:1");
   });
 });
 
@@ -119,6 +125,11 @@ describe("citation hover resolution", () => {
       kind: "citation", key: "a", path: "chapters/intro.tex", mainFile: "main.tex"
     });
     expect(requests("/file?path=refs.bib")).toHaveLength(1);
+  });
+
+  it("marks a target whose file parsed without the entry", async () => {
+    await expect(createCitationResolver(options, files)(reference("unparsed"), new AbortController().signal))
+      .resolves.toMatchObject({ path: "refs.bib", citation: null, preview: "missing" });
   });
 
   it("never remembers a missing key, so a newly added entry is found immediately", async () => {
@@ -221,7 +232,9 @@ describe("citation hover resolution", () => {
   it("retries a failed load instead of remembering the failure", async () => {
     const resolve = createCitationResolver(options, files);
     vi.mocked(parseBibtexMetadataInWorker).mockRejectedValueOnce(new Error("worker failed"));
-    await expect(resolve(reference("a"), new AbortController().signal)).rejects.toThrow("worker failed");
+    // The target is still shown, with a failed preview, and the failure is not remembered.
+    await expect(resolve(reference("a"), new AbortController().signal))
+      .resolves.toMatchObject({ path: "refs.bib", citation: null, preview: "failed" });
     await expect(resolve(reference("a"), new AbortController().signal))
       .resolves.toMatchObject({ citation: { title: "One" } });
     expect(requests("/file?path=")).toHaveLength(2);
@@ -294,7 +307,7 @@ describe("citation hover background downloads", () => {
     expect(downloads[0].signal.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(downloads[0].signal.aborted).toBe(true);
-    await expect(first.result).rejects.toBeDefined();
+    await expect(first.result).resolves.toMatchObject({ citation: null, preview: "failed" });
 
     // The failure is not remembered: the next hover starts a fresh download.
     const next = hover("a");

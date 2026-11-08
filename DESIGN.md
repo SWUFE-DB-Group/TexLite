@@ -105,14 +105,22 @@ reference preserves the author's original formatting; importing inserts the
 selected entry at the current editor cursor and requires project write access.
 Each user owns a private library. Citation entries and color tags are scoped to
 the owning user; other users cannot list, search, import, edit, or delete them.
-The browser's Lezer BibTeX parser derives the display venue (journal or
-booktitle) together with title, authors and year; the client submits it on
-save. Schema migration 21 stores it, so citation cards read the field instead
-of reparsing BibTeX on every render. Rows created before that migration keep a
-null venue until they are edited or saved again; their cards derive the venue
-from the stored BibTeX (memoized per entry) so it does not disappear, but
-library search matches the stored column only. Folder import re-parses every
-entry, so imported rows always carry a venue.
+The browser's Lezer BibTeX parser derives the display venue (biblatex
+`journaltitle`, `journal` or `booktitle`) together with title, authors and year
+(`year`, or the year of biblatex's `date`); the client submits it on save.
+Values have `@string` macros defined earlier in the same source expanded, and
+a `.bib` import fills a `crossref` child's missing fields from a parent in the
+same file; the saved BibTeX stays as written. Schema migration 21 stores the
+venue, so citation cards read the field instead of reparsing BibTeX on every
+render. Rows created before that migration, or saved before `journaltitle` and
+`date` were read, keep a null venue or year until they are edited or saved
+again; their cards derive both from the stored BibTeX (memoized per entry) so
+they do not disappear, but library search matches the stored columns only.
+Folder import re-parses every entry, so imported rows always carry them.
+Stored title, author and venue columns are TeX as written. Cards and hover
+previews show them through `src/shared/bibtexText.ts`, which drops protective
+braces and converts common accents, special letters and TeX punctuation while
+keeping math verbatim; DOI and URL are shown unchanged.
 The homepage keeps Projects as the default view and exposes the
 citation library as a separate management page beside the other management
 controls; the project workspace keeps a smaller `.bib` import dialog for
@@ -1194,7 +1202,8 @@ source location. Author lists, here and on citation library cards, follow
 biblatex's default truncation (`maxnames=3`, `minnames=1`): longer lists, and
 lists ending in `and others`, show the first author followed by "et al." and,
 when known, the author count (`citationAuthors.ts`). `src/shared/bibtexNames.ts`
-splits names at brace-depth-0 `and` and keeps each name as written.
+splits names at brace-depth-0 `and` on the TeX source; each shown name is then
+converted to readable text.
 The per-user, per-project editor preference defaults on.
 The workspace editor renders all CodeMirror tooltips (hover previews,
 completion, diagnostics) in a zero-size fixed layer in `<body>` instead of the
@@ -1225,7 +1234,12 @@ a load that finishes after its hover moved on still fills the cache, and only
 the newest revision started for a path may do so. A shared download still
 cannot hang: it is aborted after 30 seconds, or 10 seconds after its last
 waiting hover closed unless another hover joins first. Parsing is not aborted;
-the metadata worker has its own timeout. Hover never changes
+the metadata worker receives one request at a time and times out each parse
+after 30 seconds of its own work, so a huge file that times out fails alone and
+queued parses continue on a fresh worker. When the file cannot be loaded or
+parsed the hover still shows the target's location with a short notice, and a
+file that parses without the entry (for example one the editor reads as a
+syntax error) is reported as unreadable rather than unavailable. Hover never changes
 the source or opens the entry, so Ctrl/Cmd-click remains navigation.
 
 Freshness comes from the server, not from a timer. The resolve and file

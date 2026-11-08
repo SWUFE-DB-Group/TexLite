@@ -4,7 +4,8 @@ import { Check, Import, RefreshCw } from "lucide-react";
 import { CitationEntryMenu } from "./CitationEntryMenu";
 import { SaveButton } from "./SaveButton";
 import { citationAuthorLabels, formatCitationAuthors } from "./citationAuthors";
-import { citationDisplayVenue, type ParsedCitationEntry } from "./citationLibrary";
+import { bibtexDisplayText } from "../shared/bibtexText";
+import { citationDisplayMetadata, type ParsedCitationEntry } from "./citationLibrary";
 import type { CitationLibraryEntry } from "./types";
 import { TagMarquee } from "./TagMarquee";
 
@@ -34,7 +35,12 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
   t: TFunction;
 }) {
   const libraryEntry = "id" in entry ? entry as CitationLibraryEntry : null;
-  const venue = useMemo(() => citationDisplayVenue({ venue: entry.venue, bibtex: entry.bibtex }), [entry.venue, entry.bibtex]);
+  // Stored fields are TeX as written; show readable text.
+  const { venue, year } = useMemo(() => {
+    const metadata = citationDisplayMetadata({ venue: entry.venue, year: entry.year, bibtex: entry.bibtex });
+    return { venue: metadata.venue && bibtexDisplayText(metadata.venue), year: metadata.year };
+  }, [entry.venue, entry.year, entry.bibtex]);
+  const title = useMemo(() => (entry.title && bibtexDisplayText(entry.title)) || t("citationLibrary.untitled"), [entry.title, t]);
   const authors = useMemo(() => entry.authors ? formatCitationAuthors(entry.authors, citationAuthorLabels(t)) : t("citationLibrary.authorUnknown"), [entry.authors, t]);
   const saveLabel = t(saved ? "citationLibrary.update" : "citationLibrary.save");
   const saveTooltip = saving ? t("citationLibrary.saving") : saveFeedback || (saveHint ? `${saveLabel} · ${saveHint}` : saveLabel);
@@ -42,8 +48,8 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
   return <article className={`citation-entry-card${selected ? " selected" : ""}${alreadyInFile ? " already-in-file" : ""}`} title={alreadyInFile ? t("citationErrors.alreadyInFile", { key: entry.citationKey }) : undefined}>
     <div className="citation-entry-main">
       <div className="citation-entry-heading"><code>{entry.citationKey}</code><span>@{entry.entryType}</span>{venue && <span className="citation-entry-venue" title={venue}>{venue}</span>}{saved && <em><Check size={11} />{t("citationLibrary.savedLabel")}</em>}</div>
-      <strong title={entry.title || t("citationLibrary.untitled")}>{entry.title || t("citationLibrary.untitled")}</strong>
-      <p>{authors}{entry.year && <span> · {entry.year}</span>}</p>
+      <strong title={title}>{title}</strong>
+      <p>{authors}{year && <span> · {year}</span>}</p>
       {manage && libraryEntry && libraryEntry.tags.length > 0 && <TagMarquee className="citation-entry-tags" focusable>{libraryEntry.tags.map((tag) => <span className={`citation-tag-pill tag-${tag.color}`} key={tag.id}><span className="citation-tag-dot" aria-hidden="true" />{tag.name}</span>)}</TagMarquee>}
     </div>
     <div className="citation-entry-actions">

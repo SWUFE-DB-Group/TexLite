@@ -29,7 +29,12 @@ document-wide value scan. Structural boundaries still trigger a fresh query.
 
 `entries.ts` is the single reading of a parsed document: each entry's key, type
 as written, exact range and fields, plus whether the grammar had to recover
-from a syntax error. Hover previews (`entryMetadata.ts`) and the citation
+from a syntax error. Field values follow BibTeX: `@string` macros defined
+earlier (and the month macros) are expanded case-insensitively, an expression
+with an undefined macro keeps its source text, and a repeated field keeps its
+first value. A key must be followed by a comma or the entry's end.
+`withCrossrefFields` applies biblatex's default `crossref` inheritance within
+one document for display metadata. Hover previews (`entryMetadata.ts`) and the citation
 library (`../citationLibrary.ts`) are built on it, so they cannot disagree with
 the editor about what an entry is. The server cannot load this browser grammar
 and keeps its own scanner (`src/shared/bibtexReferences.ts`);

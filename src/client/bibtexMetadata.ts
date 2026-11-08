@@ -5,15 +5,15 @@ import type {
   BibtexMetadataWorkerResponse
 } from "./bibtexMetadataProtocol";
 
+/** Time one parse may take once the worker has received it. */
 const REQUEST_TIMEOUT_MS = 30_000;
 
-let worker: Worker | null = null;
-let nextRequestId = 1;
-const pending = new Map<number, {
+interface MetadataRequest {
+  id: number;
+  source: string;
   resolve: (entries: BibtexEntrySummary[]) => void;
   reject: (error: BibtexMetadataError) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}>();
+}
 
 export class BibtexMetadataError extends Error {
   constructor(readonly kind: BibtexMetadataFailureKind) {
@@ -22,15 +22,37 @@ export class BibtexMetadataError extends Error {
   }
 }
 
-function stopWorker(kind: BibtexMetadataFailureKind): void {
+/*
+ * Requests are sent to the worker one at a time. The worker parses serially
+ * anyway, so this costs nothing, and it makes each timeout measure only its own
+ * parse: a large file that times out terminates the worker and fails alone,
+ * while the requests queued behind it continue on a fresh worker.
+ */
+let worker: Worker | null = null;
+let nextRequestId = 1;
+const queue: MetadataRequest[] = [];
+let active: { request: MetadataRequest; timeout: ReturnType<typeof setTimeout> } | null = null;
+
+function terminateWorker(): void {
   const current = worker;
   worker = null;
   current?.terminate();
-  for (const request of pending.values()) {
-    clearTimeout(request.timeout);
-    request.reject(new BibtexMetadataError(kind));
-  }
-  pending.clear();
+}
+
+function finishActive(): MetadataRequest | null {
+  const current = active;
+  active = null;
+  if (!current) return null;
+  clearTimeout(current.timeout);
+  return current.request;
+}
+
+/** Fail the request in flight, optionally discarding its worker, and move on. */
+function failActive(kind: BibtexMetadataFailureKind, discardWorker: boolean): void {
+  const request = finishActive();
+  if (discardWorker) terminateWorker();
+  request?.reject(new BibtexMetadataError(kind));
+  pump();
 }
 
 function validEntries(value: unknown): value is BibtexEntrySummary[] {
@@ -57,46 +79,47 @@ function getWorker(): Worker {
   current.onmessage = ({ data }: MessageEvent<BibtexMetadataWorkerResponse>) => {
     if (worker !== current) return;
     if (!data || typeof data.id !== "number" || typeof data.ok !== "boolean") {
-      stopWorker("unavailable");
+      failActive("unavailable", true);
       return;
     }
-    const request = pending.get(data.id);
-    if (!request) return;
+    if (data.id !== active?.request.id) return;
     if (data.ok && !validEntries(data.entries)) {
-      stopWorker("unavailable");
+      failActive("unavailable", true);
       return;
     }
-    clearTimeout(request.timeout);
-    pending.delete(data.id);
+    const request = finishActive()!;
     if (data.ok) request.resolve(data.entries);
     else request.reject(new BibtexMetadataError(failureKind(data.kind)));
+    pump();
   };
   current.onerror = current.onmessageerror = () => {
-    if (worker === current) stopWorker("unavailable");
+    if (worker === current) failActive("unavailable", true);
   };
   return current;
 }
 
+function pump(): void {
+  if (active || !queue.length) return;
+  let current: Worker;
+  try {
+    current = getWorker();
+  } catch {
+    // No worker can be created, so nothing queued can run.
+    for (const request of queue.splice(0)) request.reject(new BibtexMetadataError("unavailable"));
+    return;
+  }
+  const request = queue.shift()!;
+  active = { request, timeout: setTimeout(() => failActive("timeout", true), REQUEST_TIMEOUT_MS) };
+  try {
+    current.postMessage({ id: request.id, source: request.source } satisfies BibtexMetadataWorkerRequest);
+  } catch {
+    failActive("unavailable", true);
+  }
+}
+
 export function parseBibtexMetadataInWorker(source: string): Promise<BibtexEntrySummary[]> {
   return new Promise((resolve, reject) => {
-    let current: Worker;
-    try { current = getWorker(); }
-    catch (error) { reject(error); return; }
-    const id = nextRequestId++;
-    const timeout = setTimeout(() => {
-      if (!pending.has(id)) return;
-      pending.delete(id);
-      reject(new BibtexMetadataError("timeout"));
-      stopWorker("timeout");
-    }, REQUEST_TIMEOUT_MS);
-    pending.set(id, { resolve, reject, timeout });
-    try {
-      current.postMessage({ id, source } satisfies BibtexMetadataWorkerRequest);
-    } catch {
-      pending.delete(id);
-      clearTimeout(timeout);
-      reject(new BibtexMetadataError("unavailable"));
-      stopWorker("unavailable");
-    }
+    queue.push({ id: nextRequestId++, source, resolve, reject });
+    pump();
   });
 }

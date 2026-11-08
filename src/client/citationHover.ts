@@ -2,6 +2,7 @@ import type { Extension } from "@codemirror/state";
 import { hoverTooltip, type Tooltip } from "@codemirror/view";
 import type { LatexReference } from "../shared/latexReferences";
 import { api } from "./api";
+import { bibtexDisplayText } from "../shared/bibtexText";
 import { formatCitationAuthors, type CitationAuthorLabels } from "./citationAuthors";
 import type { BibtexEntrySummary } from "./bibtex/entryMetadata";
 import { parseBibtexMetadataInWorker } from "./bibtexMetadata";
@@ -11,6 +12,8 @@ export interface CitationHoverLabels extends CitationAuthorLabels {
   loading: string;
   unavailable: string;
   inSource: string;
+  /** The bibliography file was read, but this entry could not be parsed from it. */
+  entryUnreadable: string;
   untitled: string;
   doi: string;
   url: string;
@@ -31,6 +34,12 @@ interface ResolvedCitationTarget {
 export interface CitationHoverTarget extends ResolvedCitationTarget {
   /** Parsed from the bibliography file in the browser when available. */
   citation?: BibtexEntrySummary | null;
+  /**
+   * Why a .bib target has no `citation`: the file could not be loaded or
+   * parsed ("failed"), or it was parsed without this entry ("missing", for
+   * example an entry the editor reads as a syntax error).
+   */
+  preview?: "failed" | "missing";
 }
 
 interface CitationHoverOptions {
@@ -241,8 +250,17 @@ export function createCitationResolver(
     const target = await lookup(reference, signal);
     if (!target) return null;
     if (target.source !== "bibtex" || !/\.bib$/i.test(target.path)) return { ...target, citation: null };
-    const entries = await files.load(options.projectId, target.path, target.revision ?? "", signal);
-    return { ...target, citation: entries.get(reference.key) ?? null };
+    let entries: ParsedBibFile;
+    try {
+      entries = await files.load(options.projectId, target.path, target.revision ?? "", signal);
+    } catch (error) {
+      // The target itself is known, so still show where it is. Only this
+      // hover's own abort means nobody is waiting for an answer.
+      if (signal.aborted) throw error;
+      return { ...target, citation: null, preview: "failed" };
+    }
+    const citation = entries.get(reference.key) ?? null;
+    return { ...target, citation, ...(citation ? {} : { preview: "missing" as const }) };
   };
 }
 
@@ -331,16 +349,21 @@ export function renderCitationHover(
   dom.append(heading);
 
   if (!target.citation) {
-    appendMessage(dom, target.source === "bibitem" ? labels.inSource : labels.unavailable, "muted");
+    const message = target.source === "bibitem"
+      ? labels.inSource
+      : target.preview === "missing" ? labels.entryUnreadable : labels.unavailable;
+    appendMessage(dom, message, "muted");
   } else {
     const title = document.createElement("strong");
     title.className = "texlite-citation-title";
-    title.textContent = target.citation.title ?? labels.untitled;
+    // Fields are TeX as written; show readable text. DOI and URL stay verbatim.
+    title.textContent = (target.citation.title && bibtexDisplayText(target.citation.title)) || labels.untitled;
     dom.append(title);
     if (target.citation.authors) {
       appendLine(dom, "texlite-citation-authors", formatCitationAuthors(target.citation.authors, labels));
     }
-    const meta = [target.citation.venue, target.citation.year].filter(Boolean).join(" · ");
+    const venue = target.citation.venue && bibtexDisplayText(target.citation.venue);
+    const meta = [venue, target.citation.year].filter(Boolean).join(" · ");
     if (meta) appendLine(dom, "texlite-citation-meta", meta);
     if (target.citation.doi) appendLine(dom, "texlite-citation-meta", `${labels.doi}: ${target.citation.doi}`);
     if (target.citation.url) appendLine(dom, "texlite-citation-meta texlite-citation-url", `${labels.url}: ${target.citation.url}`);

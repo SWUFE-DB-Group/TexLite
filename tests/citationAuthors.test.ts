@@ -12,6 +12,11 @@ describe("citation author display", () => {
     expect(formatCitationAuthors("A and B and C and D", labels)).toBe("A et al. (4 authors)");
   });
 
+  it("splits on the TeX source, then shows each name as readable text", () => {
+    expect(formatCitationAuthors(`G{\\"o}del, Kurt and {Barnes and Noble} and Erd{\\H{o}}s, Paul`, labels))
+      .toBe("Gödel, Kurt; Barnes and Noble; Erdős, Paul");
+  });
+
   it("marks an `and others` list without inventing a total", () => {
     expect(formatCitationAuthors("A and others", labels)).toBe("A et al.");
     expect(formatCitationAuthors("A and B and C and D and others", labels)).toBe("A et al.");

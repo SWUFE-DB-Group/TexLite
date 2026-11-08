@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { citationDisplayVenue, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
+import { citationDisplayMetadata, parseBibEntriesResult, parseSingleBibEntry } from "../src/client/citationLibrary";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 
 const citationLimit = MAX_CITATION_BIBTEX_BYTES;
@@ -52,11 +52,28 @@ describe("citation library BibTeX parser", () => {
       .toBe("Journal of Example");
   });
 
-  it("derives the card venue for rows saved before the venue was stored", () => {
-    expect(citationDisplayVenue({ venue: null, bibtex: "@inproceedings{x,booktitle={Proc. Example},title={Paper}}" }))
-      .toBe("Proc. Example");
-    expect(citationDisplayVenue({ venue: "Stored", bibtex: "@article{x,journal={Parsed}}" })).toBe("Stored");
-    expect(citationDisplayVenue({ venue: null, bibtex: "@misc{x,title={No venue}}" })).toBeNull();
+  it("derives the card venue and year for rows saved before they were stored", () => {
+    expect(citationDisplayMetadata({ venue: null, year: null, bibtex: "@inproceedings{x,booktitle={Proc. Example},title={Paper},year=2020}" }))
+      .toEqual({ venue: "Proc. Example", year: "2020" });
+    expect(citationDisplayMetadata({ venue: "Stored", year: "1999", bibtex: "@article{x,journal={Parsed},year=2020}" }))
+      .toEqual({ venue: "Stored", year: "1999" });
+    expect(citationDisplayMetadata({ venue: null, year: null, bibtex: "@article{x,journaltitle={Nature},date={2021-05-03}}" }))
+      .toEqual({ venue: "Nature", year: "2021" });
+    expect(citationDisplayMetadata({ venue: null, year: null, bibtex: "@misc{x,title={No venue}}" }))
+      .toEqual({ venue: null, year: null });
+  });
+
+  it("reads biblatex's journaltitle and date", () => {
+    expect(parseSingleBibEntry("@article{x,journaltitle={Nature},date={2021-05-03},title={T}}", citationLimit))
+      .toMatchObject({ venue: "Nature", year: "2021" });
+    expect(parseSingleBibEntry("@article{x,date={2020/2021},year={1999}}", citationLimit)).toMatchObject({ year: "1999" });
+    expect(parseSingleBibEntry("@article{x,date={unknown}}", citationLimit)).toMatchObject({ year: null });
+  });
+
+  it("fills venue and year from a crossref parent in the same file but saves the entry as written", () => {
+    const child = "@inproceedings{paper, title={Paper}, crossref={conf}}";
+    const result = parseBibEntriesResult(`${child}\n@proceedings{conf, title={Proc. of X}, year={2020}}`, citationLimit);
+    expect(result.entries[0]).toMatchObject({ citationKey: "paper", title: "Paper", venue: "Proc. of X", year: "2020", bibtex: child });
   });
 
   it("distinguishes an oversized document from an empty or invalid one", () => {
@@ -81,11 +98,13 @@ describe("citation library BibTeX parser", () => {
     expect(parseSingleBibEntry(source, citationLimit)).toMatchObject({ citationKey: "a", year: "2020" });
   });
 
-  it("shows a concatenated value as written rather than cutting it at the inner delimiters", () => {
+  it("joins concatenated values and keeps an expression with an unknown macro as written", () => {
     expect(parseSingleBibEntry(`@article{a, title = "Deep " # "Learning", year = 2020}`, citationLimit))
-      .toMatchObject({ title: `"Deep " # "Learning"`, year: "2020" });
+      .toMatchObject({ title: "Deep Learning", year: "2020" });
     expect(parseSingleBibEntry("@article{a, title = {Deep } # {Learning}}", citationLimit))
-      .toMatchObject({ title: "{Deep } # {Learning}" });
+      .toMatchObject({ title: "Deep Learning" });
+    expect(parseSingleBibEntry(`@article{a, journal = "IEEE " # pami}`, citationLimit))
+      .toMatchObject({ venue: `"IEEE " # pami` });
   });
 
   it("keeps the entry type as written and accepts an entry without fields", () => {

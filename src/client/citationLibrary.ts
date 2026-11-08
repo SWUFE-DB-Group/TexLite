@@ -1,5 +1,5 @@
-import { bibtexVenue } from "../shared/bibtexReferences";
-import { parseBibtexDocument, type BibtexDocumentEntry } from "./bibtex/entries";
+import { bibtexVenue, bibtexYear } from "../shared/bibtexReferences";
+import { parseBibtexDocument, withCrossrefFields, type BibtexDocumentEntry } from "./bibtex/entries";
 import { isBibtexTooLarge } from "./bibtexLimits";
 
 export { citationBibtexLimitLabel, isBibtexTooLarge } from "./bibtexLimits";
@@ -38,7 +38,7 @@ function citationEntry(source: string, entry: BibtexDocumentEntry): ParsedCitati
     bibtex: source.slice(entry.from, entry.to),
     title: entry.fields.title ?? null,
     authors: entry.fields.author ?? null,
-    year: entry.fields.year ?? null,
+    year: bibtexYear(entry.fields),
     venue: bibtexVenue(entry.entryType, entry.fields)
   };
 }
@@ -54,19 +54,27 @@ export function parseBibEntriesResult(source: string, maxBytes: number): BibtexP
   const document = parseBibtexDocument(source);
   if (document.hasSyntaxErrors) return { status: "invalid", entries: [] };
   if (!document.entries.length) return { status: "empty", entries: [] };
-  return { status: "ok", entries: document.entries.map((entry) => citationEntry(source, entry)) };
+  // A parent in the same file fills the child's venue and year; the saved
+  // BibTeX stays exactly as written.
+  return { status: "ok", entries: withCrossrefFields(document.entries).map((entry) => citationEntry(source, entry)) };
 }
 
 /**
- * Venue shown on a citation card. Rows saved before the venue column existed
- * carry null, so derive it from their BibTeX instead of hiding it until the
- * entry is saved again. Callers should memoize per entry; only null-venue rows
- * pay for a parse.
+ * Venue and year shown on a citation card. Rows saved before the venue column
+ * existed, or before biblatex's `journaltitle` and `date` were read, carry
+ * null, so derive them from their BibTeX instead of hiding them until the
+ * entry is saved again. Callers should memoize per entry; only rows missing a
+ * value pay for a parse.
  */
-export function citationDisplayVenue(entry: Pick<ParsedCitationEntry, "bibtex" | "venue">): string | null {
-  if (entry.venue) return entry.venue;
+export function citationDisplayMetadata(
+  entry: Pick<ParsedCitationEntry, "bibtex" | "venue" | "year">
+): { venue: string | null; year: string | null } {
+  if (entry.venue && entry.year) return { venue: entry.venue, year: entry.year };
   const [parsed] = parseBibtexDocument(entry.bibtex).entries;
-  return parsed ? bibtexVenue(parsed.entryType, parsed.fields) : null;
+  return {
+    venue: entry.venue || (parsed ? bibtexVenue(parsed.entryType, parsed.fields) : null),
+    year: entry.year || (parsed ? bibtexYear(parsed.fields) : null)
+  };
 }
 
 /** Accept text that is exactly one citeable entry, with nothing before or after it. */

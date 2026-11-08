@@ -539,6 +539,7 @@ function citationHoverLabels(t: TFunction): CitationHoverLabels {
     loading: t("editor.citationHoverLoading"),
     unavailable: t("editor.citationHoverUnavailable"),
     inSource: t("editor.citationHoverInSource"),
+    entryUnreadable: t("editor.citationHoverEntryUnreadable"),
     untitled: t("citationLibrary.untitled"),
     doi: t("editor.citationHoverDoi"),
     url: t("editor.citationHoverUrl"),

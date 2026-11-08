@@ -35,7 +35,7 @@ describe("BibTeX metadata worker client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("lazily creates one Worker and matches responses to requests", async () => {
+  it("lazily creates one Worker and sends it one request at a time", async () => {
     expect(MockWorker.instances).toHaveLength(0);
     const first = metadata.parseBibtexMetadataInWorker("@article{paper,title={Paper}}");
     const second = metadata.parseBibtexMetadataInWorker("@article{other,title={Other}}");
@@ -43,10 +43,14 @@ describe("BibTeX metadata worker client", () => {
     const worker = MockWorker.instances[0];
     expect(worker.url.pathname).toMatch(/\/bibtexMetadataWorker\.ts$/);
     expect(worker.options).toEqual({ type: "module", name: "texlite-bibtex-metadata" });
-    const [firstRequest, secondRequest] = worker.messages;
-    worker.respond({ id: secondRequest.id, ok: true, entries: [{ ...summary, key: "other", title: "Other" }] });
+    expect(worker.messages).toHaveLength(1);
+    const [firstRequest] = worker.messages;
+    // A stray answer for a request that is not in flight is ignored.
+    worker.respond({ id: firstRequest.id + 100, ok: true, entries: [] });
     worker.respond({ id: firstRequest.id, ok: true, entries: [summary] });
     await expect(first).resolves.toEqual([summary]);
+    expect(worker.messages).toHaveLength(2);
+    worker.respond({ id: worker.messages[1].id, ok: true, entries: [{ ...summary, key: "other", title: "Other" }] });
     await expect(second).resolves.toMatchObject([{ key: "other", title: "Other" }]);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -80,21 +84,20 @@ describe("BibTeX metadata worker client", () => {
     expect(replacement.terminate).not.toHaveBeenCalled();
   });
 
-  it("terminates timed-out work and can retry with a fresh Worker", async () => {
-    const first = metadata.parseBibtexMetadataInWorker("source");
-    const second = metadata.parseBibtexMetadataInWorker("other");
-    const rejected = Promise.all([
-      expect(first).rejects.toMatchObject({ kind: "timeout" }),
-      expect(second).rejects.toMatchObject({ kind: "timeout" })
-    ]);
+  it("fails only the timed-out parse and continues queued work on a fresh Worker", async () => {
+    const slow = metadata.parseBibtexMetadataInWorker("huge");
+    const queued = metadata.parseBibtexMetadataInWorker("small");
+    const rejected = expect(slow).rejects.toMatchObject({ kind: "timeout" });
+    // Time spent waiting in the queue does not count against the next parse.
     await vi.advanceTimersByTimeAsync(30_000);
     await rejected;
     expect(MockWorker.instances[0].terminate).toHaveBeenCalledOnce();
+    const replacement = MockWorker.instances[1];
+    expect(replacement.messages.map((message) => message.source)).toEqual(["small"]);
+    await vi.advanceTimersByTimeAsync(29_999);
+    replacement.respond({ id: replacement.messages[0].id, ok: true, entries: [summary] });
+    await expect(queued).resolves.toEqual([summary]);
     expect(vi.getTimerCount()).toBe(0);
-    const retry = metadata.parseBibtexMetadataInWorker("source");
-    const worker = MockWorker.instances[1];
-    worker.respond({ id: worker.messages[0].id, ok: true, entries: [summary] });
-    await expect(retry).resolves.toEqual([summary]);
   });
 
   it("reports unavailable Workers instead of parsing on the main thread", async () => {

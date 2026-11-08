@@ -844,7 +844,7 @@
     "labelTargetNotFound": "沒有找到「{{key}}」對應的標籤定義。",
     "citationHoverLoading": "正在載入參考文獻項目…",
     "citationHoverUnavailable": "暫時無法顯示參考文獻資訊。",
-    "citationHoverInSource": "文件內參考文獻項目",
+    "citationHoverInSource": "文件內參考文獻項目", "citationHoverEntryUnreadable": "無法從參考文獻檔案中讀取此項目。",
     "citationHoverEntry": "參考文獻項目 {{key}}",
     "citationHoverDoi": "DOI",
     "citationHoverUrl": "連結",
