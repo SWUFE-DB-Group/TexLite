@@ -10,6 +10,8 @@
  * stored BibTeX is never rewritten; this is only applied where text is shown.
  */
 
+import { bracedGroupEnd } from "./bibtexBraces.js";
+
 /** Combining marks for TeX's accent commands; NFC composes them where Unicode can. */
 const accents: Readonly<Record<string, string>> = {
   "\"": "̈", "'": "́", "`": "̀", "^": "̂", "~": "̃",
@@ -166,17 +168,8 @@ function skipSpaces(source: string, index: number): number {
   return index;
 }
 
-/** Index after the brace that closes the group opened at `start`. */
+/** Index after the brace closing the group opened at `start`; an unclosed group runs to the end. */
 function groupEnd(source: string, start: number): number {
-  let depth = 0;
-  for (let index = start; index < source.length; index += 1) {
-    const character = source[index];
-    if (character === "\\") {
-      index += 1;
-      continue;
-    }
-    if (character === "{") depth += 1;
-    else if (character === "}" && --depth === 0) return index + 1;
-  }
-  return source.length;
+  const end = bracedGroupEnd(source, start);
+  return end < 0 ? source.length : end;
 }

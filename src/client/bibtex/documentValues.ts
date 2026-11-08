@@ -3,6 +3,7 @@
 import { EditorState } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { SyntaxNode } from '@lezer/common';
+import { findTopLevelAndSeparators } from '../../shared/bibtexNames';
 
 export interface DocumentValues {
     authors: Set<string>;
@@ -51,54 +52,8 @@ interface CachedDocumentValues {
 
 const documentValuesCache = new WeakMap<EditorState['doc'], CachedDocumentValues>();
 
-interface TopLevelAndSeparator {
-    /** Includes the whitespace that separates the preceding name from `and`. */
-    from: number;
-    /** Includes whitespace following `and`, when present. */
-    to: number;
-}
-
-/**
- * Find BibTeX name-list separators without mistaking `and` inside a braced
- * corporate name (or an escaped TeX fragment) for a person separator.
- */
-export function findTopLevelAndSeparators(text: string): TopLevelAndSeparator[] {
-    const separators: TopLevelAndSeparator[] = [];
-    let depth = 0;
-
-    for (let index = 0; index < text.length; index++) {
-        const character = text[index];
-        if (character === '\\') {
-            index++;
-            continue;
-        }
-        if (character === '{') {
-            depth++;
-            continue;
-        }
-        if (character === '}') {
-            depth = Math.max(0, depth - 1);
-            continue;
-        }
-        if (depth !== 0 || text.slice(index, index + 3).toLowerCase() !== 'and') continue;
-
-        const before = text[index - 1];
-        const after = text[index + 3];
-        // A trailing `and` is an incomplete name list while the user is
-        // typing. Treat it as a separator too, so it never becomes a
-        // reusable author completion.
-        if (!before || !/\s/.test(before) || (after !== undefined && !/\s/.test(after))) continue;
-
-        let from = index;
-        while (from > 0 && /\s/.test(text[from - 1])) from--;
-        let to = index + 3;
-        while (to < text.length && /\s/.test(text[to])) to++;
-        separators.push({ from, to });
-        index += 2;
-    }
-
-    return separators;
-}
+// Separator rules are shared with author display (`shared/bibtexNames.ts`).
+export { findTopLevelAndSeparators };
 
 export function splitAuthors(raw: string): string[] {
     // Completion runs against incomplete entries too. Do not turn a trailing
@@ -126,7 +81,7 @@ export function splitAuthors(raw: string): string[] {
  * inner braces. In name lists, an inner pair of braces marks a corporate
  * author and must remain visible to `splitAuthors`.
  */
-function unwrapValueAtom(text: string): string {
+export function unwrapValueAtom(text: string): string {
     const trimmed = text.trim();
     if (
         (trimmed.startsWith('{') && trimmed.endsWith('}')) ||

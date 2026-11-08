@@ -149,4 +149,4 @@
 .agent-review-tabs button:hover { background: var(--ui-hover, #f1f6f2); color: var(--ui-accent, #355840); }
 .agent-review-tabs button.active { border-bottom-color: var(--ui-accent-border, #34845a); color: var(--ui-accent, #235e3b); font-weight: 650; }
 .agent-review-content { max-height: 160px; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: monospace; font-size: 11px; line-height: 1.7; color: var(--ui-text, #28352d); }
-.agent-review-content mark { color: inherit; background: color-mix(in srgb, var(--agent-change, #7c4dcc) 18%, transparent); border-radius: 2px; }
+.agent-review-content mark { color: inherit; background: color-mix(in srgb, var(--tl-agent-change) 18%, transparent); border-radius: 2px; }

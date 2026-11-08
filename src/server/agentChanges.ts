@@ -1,5 +1,6 @@
 import type { AgentChange, AgentChangeRange } from "../shared/agentProtocol.js";
 import type { EditHistorySpan } from "./editHistory.js";
+import { lineAndColumnAt } from "../shared/latexReferences.js";
 
 /**
  * Coding-agent changes, mapped to the current source.
@@ -156,7 +157,7 @@ function describe(group: readonly Located[], content: string): AgentChange {
     at: group.reduce((latest, change) => change.at > latest ? change.at : latest, group[0].at),
     from,
     to,
-    line: content.slice(0, from).split("\n").length,
+    line: lineAndColumnAt(content, from).line,
     pieces: group.flatMap((change) => change.pieces),
     anchors: group.flatMap((change) => change.anchor === null ? [] : [change.anchor]),
     before: after === null ? null : reconstructBefore(group, after, lineStart),

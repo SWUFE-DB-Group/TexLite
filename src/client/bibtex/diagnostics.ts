@@ -5,7 +5,7 @@ import { EditorView } from '@codemirror/view';
 import { Text } from '@codemirror/state';
 import { syntaxTree, ensureSyntaxTree } from '@codemirror/language';
 import { SyntaxNode, Tree } from '@lezer/common';
-import { splitAuthors } from './documentValues';
+import { splitAuthors, unwrapValueAtom } from './documentValues';
 import { defaultBibtexMessages, type BibtexMessages } from './messages';
 
 import {
@@ -59,7 +59,7 @@ function reportSyntaxErrors(tree: Tree, docLength: number, diagnostics: Diagnost
 }
 
 function reportDuplicatePersons(field: CollectedField, doc: Text, diagnostics: Diagnostic[], messages: BibtexMessages): void {
-  const value = stripBracesAndQuotes(doc.sliceString(field.valueFrom, field.valueTo));
+  const value = unwrapValueAtom(doc.sliceString(field.valueFrom, field.valueTo));
   const seen = new Set<string>();
   for (const person of splitAuthors(value)) {
     const key = person.toLowerCase();
@@ -256,7 +256,7 @@ function collectFields(entry: SyntaxNode, doc: Text): CollectedField[] {
       nameTo: nameNode.to,
       valueFrom,
       valueTo,
-      isEmpty: !valueNode || stripBracesAndQuotes(valueText).trim() === '',
+      isEmpty: !valueNode || unwrapValueAtom(valueText) === '',
       hasError: valueNode ? hasErrorNode(valueNode) : false
     });
   }
@@ -339,15 +339,4 @@ function hasErrorNode(node: SyntaxNode): boolean {
     }
   });
   return found;
-}
-
-function stripBracesAndQuotes(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-    return trimmed.slice(1, -1);
-  }
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
 }
