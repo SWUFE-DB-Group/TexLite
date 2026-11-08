@@ -46,9 +46,9 @@ describe("selection edit history", () => {
     const fixture = createFixture({ editHistoryMaxSegments: 3 });
     fixture.history.record(fixture.projectId, [
       replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "first", "edit"),
-      replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", "first", "second", "edit"),
-      replaceSegment("other.tex", "alice", "2026-01-01T10:06:00.000Z", "other old", "other new", "edit"),
-      replaceSegment("main.tex", "alice", "2026-01-01T10:09:00.000Z", "second", "final", "edit")
+      replaceSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", "first", "second", "edit"),
+      replaceSegment("other.tex", "alice", "2026-01-01T10:20:00.000Z", "other old", "other new", "edit"),
+      replaceSegment("main.tex", "alice", "2026-01-01T10:30:00.000Z", "second", "final", "edit")
     ]);
     expect(fixture.history.stats(fixture.projectId).segmentCount).toBe(3);
     expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", "final", 0, 5))
@@ -78,17 +78,17 @@ describe("selection edit history", () => {
     expect(result.entries[0]).toMatchObject({ content: "new", authors: [{ id: "alice" }] });
   });
 
-  it("stores the coding-agent flag per segment and marks a selection entry that includes agent edits", () => {
+  it("stores the coding-agent flag per segment and shows agent edits as their own selection entries", () => {
     const fixture = createFixture();
     const agent = { ...replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "agent", "edit"), hasAgent: true };
     const direct = replaceSegment("main.tex", "alice", "2026-01-01T10:00:30.000Z", "agent", "final", "edit");
-    const later = replaceSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", "final", "later", "edit");
+    const later = replaceSegment("main.tex", "bob", "2026-01-01T10:20:00.000Z", "final", "later", "edit");
     fixture.history.record(fixture.projectId, [agent, direct, later]);
     expect(fixture.db.prepare("SELECT has_agent FROM project_edit_segments ORDER BY updated_at").all())
       .toEqual([{ has_agent: 1 }, { has_agent: 0 }, { has_agent: 0 }]);
     const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", "later", 0, 5);
     expect(result.entries.map((entry) => ({ authors: entry.authors.map((author) => author.id), hasAgent: entry.hasAgent })))
-      .toEqual([{ authors: ["bob"], hasAgent: false }, { authors: ["alice"], hasAgent: true }]);
+      .toEqual([{ authors: ["bob"], hasAgent: false }, { authors: ["alice"], hasAgent: false }, { authors: ["alice"], hasAgent: true }]);
   });
 
   it.each(["edit", "format"] as const)("keeps complete %s replacements while shortening only displayed passages", (kind) => {
@@ -98,7 +98,7 @@ describe("selection edit history", () => {
     const final = "Final paragraph.";
     const first = replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", original, expanded, kind);
     first.steps[0].spans = [createEditHistorySpan(0, 0, original, expanded)];
-    const second = replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", expanded, final, kind);
+    const second = replaceSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", expanded, final, kind);
     second.steps[0].spans = [createEditHistorySpan(0, 0, expanded, final)];
     fixture.history.record(fixture.projectId, [first, second]);
 
@@ -122,7 +122,7 @@ describe("selection edit history", () => {
     legacy.steps[0].spans[0].truncated = true;
     const final = "Final paragraph.";
     fixture.history.record(fixture.projectId, [legacy,
-      replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", replaced, final, "edit")]);
+      replaceSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", replaced, final, "edit")]);
     const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", final, 0, final.length);
     expect(result.entries.map((entry) => entry.content)).toEqual([final, replaced]);
     expect(result.baseline).toEqual({ content: null, contentTruncated: false });
@@ -138,7 +138,7 @@ describe("selection edit history", () => {
     expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", huge, 0, huge.length))
       .toMatchObject({ entries: [], baseline: null, chainComplete: false });
     const final = huge + "!";
-    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", huge, final, "edit")]);
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", huge, final, "edit")]);
     const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", final, huge.length - 4, final.length);
     expect(result).toMatchObject({ chainComplete: false, baseline: { content: huge.slice(-4), contentTruncated: false } });
     expect(result.entries[0].content).toBe(final.slice(-5));
@@ -149,7 +149,7 @@ describe("selection edit history", () => {
     "rejects a whole internal batch with an invalid %s instead of silently repairing or dropping it", (field) => {
       const fixture = createFixture();
       const valid = replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit");
-      const invalid = replaceSegment("main.tex", "alice", "2026-01-01T10:03:00.000Z", "new", "next", "edit");
+      const invalid = replaceSegment("main.tex", "alice", "2026-01-01T10:10:00.000Z", "new", "next", "edit");
       switch (field) {
         case "author": invalid.authorId = ""; break;
         case "kind": Object.assign(invalid, { kind: "unknown" }); break;
@@ -226,7 +226,7 @@ describe("selection edit history", () => {
     fixture.history.clear(fixture.projectId);
     expect(fixture.history.stats(fixture.projectId)).toMatchObject({ segmentCount: 0, payloadBytes: 0 });
     expect(fixture.db.prepare("SELECT COUNT(*) AS n FROM project_edit_history_boundaries WHERE project_id = ?").get(fixture.projectId)).toEqual({ n: 0 });
-    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", "2026-01-01T10:03:00.000Z", "new", "next", "edit")]);
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", "2026-01-01T10:10:00.000Z", "new", "next", "edit")]);
     expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", "next", 0, 4).baseline?.content).toBe("new");
   });
 
@@ -244,8 +244,8 @@ describe("selection edit history", () => {
       const fixture = createFixture();
       fixture.history.record(fixture.projectId, [
         replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", original, first, "edit"),
-        replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", first, second, "edit"),
-        replaceSegment("main.tex", "owner", "2026-01-01T10:06:00.000Z", second, final, "edit")
+        replaceSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", first, second, "edit"),
+        replaceSegment("main.tex", "owner", "2026-01-01T10:20:00.000Z", second, final, "edit")
       ]);
       const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", final, start, start + 3);
       expect(result.entries.map((entry) => entry.content)).toEqual(["XYZ", "OLD"]);
@@ -260,7 +260,8 @@ describe("selection edit history", () => {
     let source = "version-0";
     for (let index = 1; index <= 62; index++) {
       const next = `version-${index}`;
-      const time = new Date(Date.UTC(2026, 0, 1, 0, index * 3)).toISOString();
+      // Pauses longer than the session gap keep every version its own entry.
+      const time = new Date(Date.UTC(2026, 0, 1, 0, index * 6)).toISOString();
       fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "alice", time, source, next, "edit")]);
       source = next;
     }
@@ -347,7 +348,7 @@ describe("selection edit history", () => {
     const afterBob = "The clear abstract.\n";
     fixture.history.record(fixture.projectId, [
       replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", original, afterAlice, "edit"),
-      replaceSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", afterAlice, afterBob, "edit")
+      replaceSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", afterAlice, afterBob, "edit")
     ]);
 
     const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", afterBob, 0, afterBob.length);
@@ -359,12 +360,41 @@ describe("selection edit history", () => {
     ]));
   });
 
+  it("groups an editing session by pauses, caps its span, and separates agent edits", () => {
+    const fixture = createFixture();
+    let source = "v0";
+    const segments: EditHistorySegmentInput[] = [];
+    // 4-minute pauses: one session, until it would span more than 30 minutes.
+    for (let index = 1; index <= 10; index++) {
+      const next = `v${index}`;
+      segments.push(replaceSegment("main.tex", "alice", new Date(Date.UTC(2026, 0, 1, 10, index * 4)).toISOString(), source, next, "edit"));
+      source = next;
+    }
+    const agent = { ...replaceSegment("main.tex", "alice", "2026-01-01T10:41:00.000Z", source, "agent", "edit"), hasAgent: true };
+    fixture.history.record(fixture.projectId, [...segments, agent]);
+    const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", "agent", 0, 5);
+    expect(result.entries.map((entry) => [entry.content, entry.hasAgent, entry.createdAt.slice(11, 16), entry.updatedAt.slice(11, 16)])).toEqual([
+      ["agent", true, "10:41", "10:41"],
+      ["v10", false, "10:12", "10:40"],
+      ["v2", false, "10:04", "10:08"]
+    ]);
+  });
+
+  it("keeps the agent flag of the change that wrote the text when a later boundary-only edit is folded in", () => {
+    const fixture = createFixture();
+    const agent = { ...replaceSegment("main.tex", "bob", "2026-01-01T10:00:00.000Z", "old", "agent", "edit"), hasAgent: true };
+    fixture.history.record(fixture.projectId, [agent, noOpSelectionSegment("main.tex", "alice", "2026-01-01T10:20:00.000Z", "agent")]);
+    const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", "agent", 0, 5);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]).toMatchObject({ content: "agent", hasAgent: true });
+  });
+
   it("coalesces consecutive windows when their selected content is unchanged", () => {
     const fixture = createFixture();
     const source = "The concise abstract.\n";
     fixture.history.record(fixture.projectId, [
       noOpSelectionSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", source),
-      noOpSelectionSegment("main.tex", "bob", "2026-01-01T10:03:00.000Z", source)
+      noOpSelectionSegment("main.tex", "bob", "2026-01-01T10:10:00.000Z", source)
     ]);
 
     const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", source, 0, source.length);
@@ -373,7 +403,7 @@ describe("selection edit history", () => {
     expect(result.entries[0]).toMatchObject({
       content: source,
       createdAt: "2026-01-01T10:00:00.000Z",
-      updatedAt: "2026-01-01T10:03:00.000Z",
+      updatedAt: "2026-01-01T10:10:00.000Z",
       authors: [{ id: "bob", name: "Bob" }, { id: "alice", name: "Alice" }]
     });
   });

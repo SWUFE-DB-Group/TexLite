@@ -526,25 +526,125 @@ describe("project history retention", () => {
     expect(fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])?.id).not.toBe(first.id);
   });
 
-  it("records coding-agent participation and keeps it when later autosaves coalesce into the snapshot", () => {
+  it("records coding-agent participation and never coalesces agent and human autosaves", () => {
     vi.useFakeTimers();
     const fixture = createFixture();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    writeSource(fixture, "main.tex", "human draft");
+    const human = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])!;
+    vi.setSystemTime(new Date("2026-01-01T00:00:30Z"));
     writeSource(fixture, "main.tex", "agent edit");
     const agentSave = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"], { hasAgent: true })!;
-    expect(agentSave.hasAgent).toBe(true);
+    // The state before the agent remains its own restore point.
+    expect(agentSave.id).not.toBe(human.id);
+    expect(fixture.history.version(human.id)?.hasAgent).toBe(false);
+    expect(agentSave).toMatchObject({ hasAgent: true, author: { id: "user-1" } });
+    vi.setSystemTime(new Date("2026-01-01T00:00:40Z"));
+    writeSource(fixture, "main.tex", "more agent text");
+    expect(fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"], { hasAgent: true })?.id).toBe(agentSave.id);
     vi.setSystemTime(new Date("2026-01-01T00:01:00Z"));
     writeSource(fixture, "main.tex", "direct edit");
-    expect(fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])?.id).toBe(agentSave.id);
-    // "Includes agent changes": a direct save merged later does not clear it.
-    expect(fixture.history.version(agentSave.id)).toMatchObject({ hasAgent: true, author: { id: "user-1" } });
-    vi.setSystemTime(new Date("2026-01-01T00:03:00Z"));
-    writeSource(fixture, "main.tex", "next window");
     const direct = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])!;
     expect(direct.id).not.toBe(agentSave.id);
     expect(direct.hasAgent).toBe(false);
-    writeSource(fixture, "main.tex", "agent file write");
-    expect(fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"], { hasAgent: true })?.hasAgent).toBe(true);
+    expect(fixture.history.version(agentSave.id)?.hasAgent).toBe(true);
+  });
+
+  it("coalesces one user's consecutive agent writes but keeps the snapshot before the agent and other users separate", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    fixture.db.prepare(`INSERT INTO users (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
+      SELECT 'user-2', 'peer', 'Peer', password_hash, role, disabled, must_change_password, can_create_projects, created_at FROM users WHERE id = 'user-1'`).run();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    writeSource(fixture, "main.tex", "human draft");
+    const human = fixture.history.record(fixture.projectId, "user-1", "autosave", ["main.tex"])!;
+    vi.setSystemTime(new Date("2026-01-01T00:00:10Z"));
+    writeSource(fixture, "main.tex", "agent one");
+    const agent = fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"], { hasAgent: true })!;
+    expect(agent.id).not.toBe(human.id);
+    vi.setSystemTime(new Date("2026-01-01T00:00:20Z"));
+    writeSource(fixture, "notes.txt", "agent two");
+    expect(fixture.history.record(fixture.projectId, "user-1", "file", ["notes.txt"], { hasAgent: true })?.id).toBe(agent.id);
+    expect(fixture.history.version(agent.id)?.changedPaths).toEqual(["main.tex", "notes.txt"]);
+    // A direct file operation, another user's agent and a later window each start a new snapshot.
+    vi.setSystemTime(new Date("2026-01-01T00:00:30Z"));
+    writeSource(fixture, "upload.txt", "uploaded");
+    const upload = fixture.history.record(fixture.projectId, "user-1", "file", ["upload.txt"])!;
+    expect(upload.id).not.toBe(agent.id);
+    writeSource(fixture, "peer.txt", "peer agent");
+    const peer = fixture.history.record(fixture.projectId, "user-2", "file", ["peer.txt"], { hasAgent: true })!;
+    expect(peer.id).not.toBe(upload.id);
+    vi.setSystemTime(new Date("2026-01-01T00:03:00Z"));
+    writeSource(fixture, "peer.txt", "peer agent later");
+    expect(fixture.history.record(fixture.projectId, "user-2", "file", ["peer.txt"], { hasAgent: true })?.id).not.toBe(peer.id);
+  });
+
+  it("thins older history by local hour and day only while over the storage budget", () => {
+    vi.useFakeTimers();
+    const timezone = process.env.TZ;
+    process.env.TZ = "Asia/Shanghai";
+    try {
+      const fixture = createFixture();
+      const versions: Array<[string, "file" | "checkpoint", string?]> = [
+        ["2026-01-01T02:00:00Z", "file", "Submitted"], // 10:00 local, labeled
+        ["2026-01-01T02:30:00Z", "file"],              // same local day as 04:00
+        ["2026-01-01T03:00:00Z", "checkpoint"],        // pre-restore safety point
+        ["2026-01-01T04:00:00Z", "file"],              // newest of local 1 January
+        ["2026-01-01T17:00:00Z", "file"],              // same UTC day, but 01:00 on local 2 January
+        ["2026-01-05T10:05:00Z", "file"], ["2026-01-05T10:12:00Z", "file"], // same local hour
+        ["2026-01-05T11:05:00Z", "file"],
+        ["2026-01-09T08:00:00Z", "file"], ["2026-01-09T08:10:00Z", "file"], // within the last day
+        ["2026-01-09T09:00:00Z", "file"]
+      ];
+      versions.forEach(([time, reason, label], index) => {
+        vi.setSystemTime(new Date(time));
+        writeSource(fixture, "main.tex", `version ${index}`);
+        const version = fixture.history.record(fixture.projectId, "user-1", reason, ["main.tex"])!;
+        if (label) fixture.history.setLabel(fixture.projectId, version.id, label);
+      });
+      const times = () => (fixture.db.prepare("SELECT created_at FROM project_history_versions WHERE reason <> 'initial' ORDER BY created_at")
+        .all() as Array<{ created_at: string }>).map((row) => row.created_at.slice(0, 16));
+      // Under the budget every version is kept, however old.
+      expect(times()).toHaveLength(versions.length);
+
+      fixture.config.historyMaxStorageBytes = fixture.history.stats(fixture.projectId).totalBytes - 1;
+      fixture.history.enforceRetention(fixture.projectId);
+      expect(times()).toEqual([
+        "2026-01-01T02:00", "2026-01-01T03:00", "2026-01-01T04:00", "2026-01-01T17:00",
+        "2026-01-05T10:12", "2026-01-05T11:05",
+        "2026-01-09T08:00", "2026-01-09T08:10", "2026-01-09T09:00"
+      ]);
+    } finally {
+      process.env.TZ = timezone;
+    }
+  });
+
+  it("counts the latest version as its bucket's representative in an idle project", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture();
+    for (const time of ["2026-01-05T10:05:00Z", "2026-01-05T10:06:00Z"]) {
+      vi.setSystemTime(new Date(time));
+      writeSource(fixture, "main.tex", time);
+      fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"]);
+    }
+    vi.setSystemTime(new Date("2026-01-07T00:00:00Z"));
+    fixture.config.historyMaxStorageBytes = fixture.history.stats(fixture.projectId).totalBytes - 1;
+    fixture.history.enforceRetention(fixture.projectId);
+    expect((fixture.db.prepare("SELECT created_at FROM project_history_versions WHERE reason = 'file'").all() as Array<{ created_at: string }>)
+      .map((row) => row.created_at.slice(0, 16))).toEqual(["2026-01-05T10:06"]);
+  });
+
+  it("applies the version cap before thinning so thinning never makes the cap remove extra versions", () => {
+    vi.useFakeTimers();
+    const fixture = createFixture({ maxVersions: 3 });
+    for (const [index, time] of ["2026-01-01T10:00:00Z", "2026-01-01T10:10:00Z", "2026-01-02T10:00:00Z", "2026-01-02T10:10:00Z", "2026-01-09T10:00:00Z"].entries()) {
+      vi.setSystemTime(new Date(time));
+      writeSource(fixture, "main.tex", `v${index}`);
+      fixture.history.record(fixture.projectId, "user-1", "file", ["main.tex"]);
+    }
+    // Under the budget only the cap applies: the newest three ordinary versions remain.
+    expect((fixture.db.prepare("SELECT created_at FROM project_history_versions WHERE reason = 'file' ORDER BY created_at").all() as Array<{ created_at: string }>)
+      .map((row) => row.created_at.slice(0, 16))).toEqual(["2026-01-02T10:00", "2026-01-02T10:10", "2026-01-09T10:00"]);
   });
 
   function createFixture(options: { maxVersions?: number; maxStorageBytes?: number } = {}): HistoryFixture {

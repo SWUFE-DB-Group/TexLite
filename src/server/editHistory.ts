@@ -89,7 +89,12 @@ export interface SelectionHistoryEntry {
   updatedAt: string;
   /** All users whose relevant edits are included in this short time window. */
   authors: SelectionHistoryAuthor[];
-  /** A coding agent wrote at least one of the included edits. */
+  /**
+   * The selected text shown by this entry was written by a coding agent.
+   * Time-based grouping never mixes agent and direct edits; when later rows
+   * that left the text unchanged are folded together, the flag follows the
+   * oldest row, which wrote the text.
+   */
   hasAgent: boolean;
   /** Selected source at the end of this editing window. */
   content: string | null;
@@ -105,7 +110,10 @@ export interface SelectionHistoryResult {
 }
 
 const DEFAULT_RESULT_LIMIT = 60;
-const EDIT_SESSION_GAP_MS = 2 * 60 * 1_000;
+/** Edits separated by at most this pause belong to one displayed entry. */
+const EDIT_SESSION_GAP_MS = 5 * 60 * 1_000;
+/** A long continuous session is still split, so earlier states stay visible. */
+const MAX_EDIT_ENTRY_SPAN_MS = 30 * 60 * 1_000;
 const MAX_PASSAGE_PREVIEW_CHARS = 6_000;
 export const DEFAULT_EDIT_HISTORY_MAX_STORAGE_BYTES = CONFIG_DEFAULTS.editHistoryMaxStorageMB * 1024 * 1024;
 
@@ -308,8 +316,10 @@ export class ProjectEditHistoryService {
         break;
       }
       if (relevant) {
-        if (openEntry && (canMergeIntoEntry(openEntry, row) || hasSameSelectionContent(openEntry, afterPassage))) {
-          mergeSelectionHistoryEntry(openEntry, row);
+        if (openEntry && canMergeIntoEntry(openEntry, row)) {
+          mergeSelectionHistoryEntry(openEntry, row, "session");
+        } else if (openEntry && hasSameSelectionContent(openEntry, afterPassage)) {
+          mergeSelectionHistoryEntry(openEntry, row, "same-text");
         } else {
           if (openEntry) {
             entries.push(stripEntryMetadata(openEntry));
@@ -362,11 +372,21 @@ function createSelectionHistoryEntry(
   };
 }
 
+/**
+ * Rows are visited newest first. A row joins the open entry when it is part of
+ * the same editing session (no pause longer than the gap before the entry's
+ * oldest edit, and the entry stays within its maximum span) and when it is the
+ * same kind of change: agent and direct edits are shown separately.
+ */
 function canMergeIntoEntry(entry: OpenSelectionHistoryEntry, row: EditHistoryRow): boolean {
-  const latest = Date.parse(entry.updatedAt);
-  const current = Date.parse(row.updated_at);
-  return Number.isFinite(latest) && Number.isFinite(current)
-    && latest >= current && latest - current <= EDIT_SESSION_GAP_MS;
+  const newest = Date.parse(entry.updatedAt);
+  const oldest = Date.parse(entry.createdAt);
+  const rowEnd = Date.parse(row.updated_at);
+  const rowStart = Date.parse(row.created_at);
+  return [newest, oldest, rowEnd, rowStart].every(Number.isFinite)
+    && Boolean(row.has_agent) === entry.hasAgent
+    && oldest >= rowEnd && oldest - rowEnd <= EDIT_SESSION_GAP_MS
+    && newest - rowStart <= MAX_EDIT_ENTRY_SPAN_MS;
 }
 
 /**
@@ -385,10 +405,14 @@ function hasSameSelectionContent(entry: OpenSelectionHistoryEntry, passage: Pass
 
 function mergeSelectionHistoryEntry(
   entry: OpenSelectionHistoryEntry,
-  row: EditHistoryRow
+  row: EditHistoryRow,
+  reason: "session" | "same-text"
 ): void {
   entry.createdAt = row.created_at;
-  if (row.has_agent) entry.hasAgent = true;
+  // Session merges only join rows of the same kind, so the flag is unchanged.
+  // An older row folded in because the entry's newer rows left the selected
+  // text as it produced it is the row that wrote that text: its flag decides.
+  if (reason === "same-text") entry.hasAgent = Boolean(row.has_agent);
   if (!entry.authorKeys.has(authorKey(row))) {
     entry.authorKeys.add(authorKey(row));
     entry.authors.push(authorFromRow(row));

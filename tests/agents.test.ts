@@ -1230,17 +1230,26 @@ describe("agent HTTP and WebSocket permissions", () => {
     expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 0 });
   });
 
-  it("reports coding-agent changes in the snapshot timeline under the task's user", async () => {
+  it("reports a coding agent's burst of changes as one snapshot under the task's user", async () => {
     const cookies = await httpApp();
     db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
     const created = await app!.inject({ method: "POST", url: `/api/projects/${projectId}/agent-tasks`,
       headers: { cookie: cookies.ownerCookie }, payload: { agentId: "codex" } });
     const task = created.json().task as AgentTask;
     expect((await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/start`, headers: { cookie: cookies.ownerCookie } })).statusCode).toBe(200);
-    fs.writeFileSync(workingFile(task), fs.readFileSync(workingFile(task), "utf8") + "\nWritten by the agent.\n");
+    const versions = async () => (await app!.inject({ url: `/api/projects/${projectId}/history`, headers: { cookie: cookies.ownerCookie } })).json().versions as Array<{ hasAgent: boolean; changedPaths: string[] }>;
+    const before = (await versions()).length;
+    // A write picked up by a running source poll, then another file synchronized
+    // by the final scan at stop: two scans, one agent snapshot. Waiting on the
+    // first snapshot (not a fixed delay) keeps the test independent of timing.
+    fs.writeFileSync(workingFile(task), fs.readFileSync(workingFile(task), "utf8") + "\nFirst agent line.\n");
+    await vi.waitFor(async () => expect((await versions())[0]).toMatchObject({ hasAgent: true, changedPaths: ["main.tex"] }),
+      { timeout: 5_000, interval: 50 });
+    fs.writeFileSync(path.join(sourceRoot(config, projectId), "notes.txt"), "Agent notes.\n");
     await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/stop`, headers: { cookie: cookies.ownerCookie } });
-    const history = (await app!.inject({ url: `/api/projects/${projectId}/history`, headers: { cookie: cookies.ownerCookie } })).json();
-    expect(history.versions[0]).toMatchObject({ hasAgent: true, author: { id: owner.id }, changedPaths: ["main.tex"] });
+    const history = { versions: await versions() };
+    expect(history.versions.length - before).toBe(1);
+    expect(history.versions[0]).toMatchObject({ hasAgent: true, author: { id: owner.id }, changedPaths: ["main.tex", "notes.txt"] });
   });
 
   it("accepts optional task names but still validates provided values and explicit renames", async () => {

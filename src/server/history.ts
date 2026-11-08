@@ -87,12 +87,26 @@ export interface HistoryRecordOptions {
    */
   deferRetention?: boolean;
   /**
-   * A coding agent made these changes. Coalesced autosaves keep the flag once
-   * any merged save had it, so it means "includes agent changes".
+   * A coding agent made these changes. Snapshots coalesce only with others
+   * that have the same flag.
    */
   hasAgent?: boolean;
 }
 
+const HOUR_MS = 60 * 60_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** Server-local hour or day, matching the local days the timeline is grouped by. */
+function historyBucket(time: number, size: "hour" | "day"): string {
+  const date = new Date(time);
+  const day = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+  return size === "day" ? `day:${day}` : `hour:${day}:${date.getHours()}`;
+}
+/** Every version younger than this is kept. */
+const HISTORY_KEEP_ALL_MS = DAY_MS;
+/** Up to this age one version per hour is kept; older history keeps one per day. */
+const HISTORY_KEEP_HOURLY_MS = 7 * DAY_MS;
+/** Fixed window, from a run's first save, in which autosaves (or one user's agent writes) share a snapshot. */
 const AUTOSAVE_COALESCE_MS = 2 * 60_000;
 // Logical stored payload; SQLite pages, indexes and WAL are shared database overhead.
 function historyMetadataBytes(row: HistoryRow): number {
@@ -158,14 +172,22 @@ export class ProjectHistoryService {
     }
 
     const createdAt = new Date().toISOString();
-    if (!policyChanged && reason === "autosave" && previous?.reason === "autosave" && !previous.label
+    // Autosaves coalesce across authors, but agent and human changes never
+    // share a snapshot, so the state before an agent started stays a separate
+    // restore point. A coding agent's file writes, seen by separate source
+    // polls, coalesce only with the same user's previous agent write.
+    const hasAgent = Boolean(options.hasAgent);
+    const sameRun = reason === "autosave"
+      ? previous?.reason === "autosave" && Boolean(previous.has_agent) === hasAgent
+      : reason === "file" && hasAgent && previous?.reason === "file"
+        && Boolean(previous.has_agent) && previous.author_id === authorId;
+    if (!policyChanged && sameRun && previous && !previous.label
       && JSON.stringify(parseManifest(previous.manifest_json).tracking) === JSON.stringify(tracking)
       && Date.parse(createdAt) - Date.parse(previous.created_at) < AUTOSAVE_COALESCE_MS) {
       const merged = [...new Set([...parseStringArray(previous.changed_paths_json), ...changedPaths])].sort();
       this.db.prepare(`UPDATE project_history_versions
-        SET manifest_json = ?, changed_paths_json = ?, author_id = ?, has_agent = MAX(has_agent, ?) WHERE id = ?`)
-        .run(JSON.stringify(manifest), JSON.stringify(merged), previous.author_id === authorId ? authorId : null,
-          options.hasAgent ? 1 : 0, previous.id);
+        SET manifest_json = ?, changed_paths_json = ?, author_id = ? WHERE id = ?`)
+        .run(JSON.stringify(manifest), JSON.stringify(merged), previous.author_id === authorId ? authorId : null, previous.id);
       this.saveBaseline(projectId, manifest);
       if (!options.deferRetention) {
         this.removeUnreferencedObjects(projectId, new Set(previousManifest
@@ -672,15 +694,38 @@ export class ProjectHistoryService {
     };
 
     // 1. Cap by historyMaxVersions (prune excess ordinary versions when configured; 0 = unlimited)
+    const remainingOrdinary = () => ordinaryDesc.filter((row) => !toDeleteIds.has(row.id));
     if (this.config.historyMaxVersions > 0 && ordinaryDesc.length > this.config.historyMaxVersions) {
       const obsolete = ordinaryDesc.slice(this.config.historyMaxVersions);
       for (const row of obsolete) removeVersionRefs(row.id);
     }
 
-    // 2. Cap by historyMaxStorageBytes (prune remaining eligible versions from oldest to newest)
+    // 2. Over the storage budget, first thin older history so the budget
+    // covers a longer period: keep every version from the last day, the newest
+    // of each local hour for the last week, and the newest of each local day
+    // before that. The latest version occupies its own hour or day. Labeled,
+    // initial, restore and pre-restore checkpoint versions are never thinned.
+    // Under the budget nothing is removed.
     if (retainedBytes > this.config.historyMaxStorageBytes) {
-      const remainingEligibleAsc = ordinaryDesc
-        .filter((row) => row.id !== latestId && !toDeleteIds.has(row.id))
+      const now = Date.now();
+      const keptBuckets = new Set<string>();
+      for (const row of remainingOrdinary()) {
+        const time = Date.parse(row.created_at);
+        if (!Number.isFinite(time) || now - time <= HISTORY_KEEP_ALL_MS) continue;
+        const bucket = historyBucket(time, now - time <= HISTORY_KEEP_HOURLY_MS ? "hour" : "day");
+        if (row.id === latestId || row.reason === "restore" || row.reason === "checkpoint") {
+          if (row.id === latestId) keptBuckets.add(bucket);
+          continue;
+        }
+        if (keptBuckets.has(bucket)) removeVersionRefs(row.id);
+        else keptBuckets.add(bucket);
+      }
+    }
+
+    // 3. Still over the budget: prune remaining eligible versions from oldest to newest.
+    if (retainedBytes > this.config.historyMaxStorageBytes) {
+      const remainingEligibleAsc = remainingOrdinary()
+        .filter((row) => row.id !== latestId)
         .reverse();
       for (const row of remainingEligibleAsc) {
         if (retainedBytes <= this.config.historyMaxStorageBytes) break;
@@ -690,13 +735,13 @@ export class ProjectHistoryService {
 
     if (!toDeleteIds.size) return;
 
-    // 3. Batch delete rows in a single transaction
+    // 4. Batch delete rows in a single transaction
     const remove = this.db.prepare("DELETE FROM project_history_versions WHERE id = ? AND project_id = ?");
     this.db.transaction(() => {
       for (const id of toDeleteIds) remove.run(id, projectId);
     })();
 
-    // 4. Remove unreferenced CAS objects on disk
+    // 5. Remove unreferenced CAS objects on disk
     for (const [digest, count] of refCounts.entries()) {
       if (count === 0) fs.rmSync(this.objectPath(projectId, digest), { force: true });
     }

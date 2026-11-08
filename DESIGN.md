@@ -939,9 +939,14 @@ payloads at once. This budget never shares or
 reduces the 128 MB recovery-snapshot budget. A too-large individual edit burst
 is omitted, and retention removes the oldest records; both deliberately create
 a visible history boundary rather than presenting an unsafe attribution. When selection history is viewed,
-adjacent records affecting the selection are consolidated into a bounded
-two-minute editing window. Its raw per-user records remain separate, while the
-timeline lists every contributor to that window. Each entry maps the selected
+adjacent records affecting the selection are consolidated into one editing
+session while no pause between them exceeds five minutes, up to a 30-minute
+span; a longer continuous session is split so earlier states stay visible.
+Coding-agent edits and direct edits never share a session entry, so an agent's
+change can be compared on its own. When later edits only moved the selection
+boundary and are folded into the state they left unchanged, the entry keeps the
+agent flag of the older change that wrote the text. Raw per-user records remain separate, while
+the timeline lists every contributor to that session. Each entry maps the selected
 passage backward through the durable edit chain and presents the resulting
 selected content, a semantic character-level comparison with the preceding
 older state, contributors, and latest edit time in reverse chronological order.
@@ -1521,7 +1526,11 @@ Invalid snapshot changed-path metadata is reported as an error rather than an
 empty file list. File-backed root validation and icon lookup likewise preserve
 normal not-found results while allowing permission, I/O, and malformed generated
 resource errors to reach the server's error handler and logs.
-Autosaves across authors are coalesced within a fixed two-minute project window.
+Autosaves across authors are coalesced within a fixed two-minute project window,
+but only with autosaves of the same kind: agent and human changes never share a
+snapshot, so the snapshot before an agent started remains a separate restore
+point. A coding agent's file writes are observed by separate source polls; one
+user's consecutive agent writes share a snapshot within the same window.
 A mixed-author snapshot has no single author attribution; selection edit history
 retains the individual contributions independently.
 Schema migration 22 adds a `has_agent` flag to snapshots and edit segments.
@@ -1530,13 +1539,26 @@ and the interface adds "Coding Agent" after them ("Alice, Coding Agent"; a
 coalesced autosave without one author reads "Multiple authors, Coding Agent").
 Agent text enters the live room with an `agent` marker on its external origin;
 its edit segments are flagged and never merged with the same user's direct
-edits, so the segment flag is exact. A snapshot is flagged when any change it
+edits, so the segment flag is exact. A snapshot is flagged when changes it
 holds came from an agent: the autosave that persists agent text inherits the
-flag from its segments, agent file writes and task recovery pass it directly,
-and coalescing keeps it once set, so it means "includes agent changes". Rows
+flag from its segments, and agent file writes and task recovery pass it
+directly. Because coalescing never crosses the flag, a flagged snapshot holds
+agent changes; it can still include human text the agent sync merged. Rows
 written before the migration cannot be classified and stay unflagged. File
 contents are complete SHA-256-addressed objects; unchanged files are reused
-across manifests. By default, ordinary version count is unlimited (`history.maxVersions: 0`),
+across manifests. Under the storage budget nothing is removed. Over it,
+retention first thins older history so the budget covers a longer period:
+every version from the last 24 hours is kept, then the newest version of each
+server-local hour for the last week, then the newest of each server-local day;
+the latest version represents its own hour or day. Initial, labeled, restore
+and pre-restore checkpoint versions are never thinned. Only if the history is
+still over the budget are the oldest remaining versions removed. The
+snapshot timeline groups versions under local-day headers and folds runs of
+three or more plain automatic saves (no name, no agent changes) into one
+expandable row. Selecting a snapshot, or a fresh list load, opens the row that
+holds the selection; later list updates leave a row the user collapsed alone,
+and a row stays open while saves join either end.
+By default, ordinary version count is unlimited (`history.maxVersions: 0`),
 and retention is primarily governed by the soft storage limit (default 128 MiB of deduplicated
 objects plus snapshot row text and baseline manifests per project). This includes
 metadata for settings-only snapshots even when all file objects are reused.

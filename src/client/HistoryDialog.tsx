@@ -2,7 +2,7 @@ import { formatBytes } from "./formatBytes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  CheckCircle2, Clock3, FileClock, FileCode2, FileText, HardDrive, ListChecks,
+  CheckCircle2, ChevronDown, ChevronRight, Clock3, FileClock, FileCode2, FileText, HardDrive, ListChecks,
   LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Tag, Trash2
 } from "lucide-react";
 import { ApiError, api } from "./api";
@@ -14,6 +14,7 @@ import { HistoryFilesManager } from "./HistoryFilesManager";
 import { formatDateTime } from "./dateTime";
 import { useSuccessNotice } from "./SuccessNotice";
 import { snapshotAttribution } from "./agentAttribution";
+import { historyTimeline, localDayKey } from "./historyTimeline";
 import { SaveButton } from "./SaveButton";
 
 interface HistoryComparison {
@@ -53,6 +54,13 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const [error, setError] = useState("");
   const [manageFiles, setManageFiles] = useState(false);
   const [trackingRevision, setTrackingRevision] = useState(0);
+  /**
+   * Versions whose folded autosave run is open. A run is open while any of its
+   * members is listed, so it stays open when newer or older saves join it.
+   */
+  const [openRunMembers, setOpenRunMembers] = useState<ReadonlySet<string>>(() => new Set());
+  /** Counts completed first-page loads, so a fresh list opens the selected run once. */
+  const [loadGeneration, setLoadGeneration] = useState(0);
   const diffSectionRef = useRef<HTMLDivElement>(null);
   const olderPageAbortRef = useRef<AbortController | null>(null);
   const snapshotRefreshAbortRef = useRef<AbortController | null>(null);
@@ -70,6 +78,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
 
   useEffect(() => {
     savedNotice.clear();
+    setOpenRunMembers(new Set());
     if (!open) {
       setManageFiles(false);
       snapshotRefreshAbortRef.current?.abort();
@@ -94,6 +103,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         setStats(result.stats);
         setNextCursor(result.nextCursor);
         setSelectedId((current) => result.versions.some((version) => version.id === current) ? current : result.versions[0]?.id ?? "");
+        setLoadGeneration((value) => value + 1);
       })
       .catch((reason) => { if (!isAbort(reason)) setError(message(reason)); })
       .finally(() => { if (!controller.signal.aborted) setBusy(""); });
@@ -359,6 +369,36 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     }
   };
 
+  const timeline = useMemo(() => historyTimeline(versions, localDayKey), [versions]);
+  const timelineRef = useRef(timeline);
+  timelineRef.current = timeline;
+  // Open the folded run that holds a newly selected snapshot, or the selected
+  // one after a fresh load. Later list updates (older pages, renames) leave a
+  // run the user collapsed alone.
+  useEffect(() => {
+    const holdsSelection = timelineRef.current.some((item) => item.kind === "autosaves"
+      && item.versions.some((version) => version.id === selectedId));
+    if (holdsSelection) setOpenRunMembers((current) => current.has(selectedId) ? current : new Set(current).add(selectedId));
+  }, [selectedId, loadGeneration]);
+  const renderVersion = (version: HistoryVersion, grouped: boolean) => {
+    const reasonLabel = t(`history.reasons.${version.reason}`);
+    const title = formatVersionTitle(version, reasonLabel, i18n.resolvedLanguage);
+    const author = snapshotAttribution(version, t);
+    return (
+      <button className={`${version.id === selectedId ? "active" : ""}${grouped ? " history-grouped" : ""}`.trim() || undefined} key={version.id} onClick={() => setSelectedId(version.id)}>
+        <FileClock size={15} />
+        <span>
+          <div className="history-item-heading">
+            <strong title={title}>{title}</strong>
+            <span className={`history-reason-badge reason-${version.reason}`}>{reasonLabel}</span>
+          </div>
+          <small>{formatDateTime(version.createdAt, i18n.resolvedLanguage)}</small>
+          <small><span className="history-author-name" data-tooltip={version.author?.username ? `@${version.author.username}` : undefined} data-texlite-tooltip-always>{author}</span> · {t("history.changedCount", { count: version.changedPaths.length })}</small>
+        </span>
+      </button>
+    );
+  };
+
   const authorName = detail ? snapshotAttribution(detail.version, t) : "";
 
   const commitTime = detail ? formatCommitTime(detail.version.createdAt, i18n.resolvedLanguage) : "";
@@ -409,23 +449,36 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
             <small>{t("history.versionUsage", { count: stats.maxVersions, versions: stats.ordinaryVersionCount, limit: stats.maxVersions > 0 ? stats.maxVersions : "∞" })}{stats.labeledVersionCount > 0 ? ` · ${t("history.protectedVersions", { count: stats.labeledVersionCount })}` : ""}</small>
             {stats.storageLimitExceeded && <small className="history-storage-warning">{t("history.storageExceeded")}</small>}
           </div>}
-          {versions.map((version) => {
-            const reasonLabel = t(`history.reasons.${version.reason}`);
-            const title = formatVersionTitle(version, reasonLabel, i18n.resolvedLanguage);
-            const author = snapshotAttribution(version, t);
-            return (
-              <button className={version.id === selectedId ? "active" : ""} key={version.id} onClick={() => setSelectedId(version.id)}>
-                <FileClock size={15} />
-                <span>
-                  <div className="history-item-heading">
-                    <strong title={title}>{title}</strong>
-                    <span className={`history-reason-badge reason-${version.reason}`}>{reasonLabel}</span>
-                  </div>
-                  <small>{formatDateTime(version.createdAt, i18n.resolvedLanguage)}</small>
-                  <small><span className="history-author-name" data-tooltip={version.author?.username ? `@${version.author.username}` : undefined} data-texlite-tooltip-always>{author}</span> · {t("history.changedCount", { count: version.changedPaths.length })}</small>
-                </span>
-              </button>
-            );
+          {timeline.map((item) => {
+            if (item.kind === "day") {
+              return <div className="history-day" key={`day-${item.key}`}>
+                {formatDateTime(item.date, i18n.resolvedLanguage, { year: "numeric", month: "short", day: "numeric", weekday: "short" })}
+              </div>;
+            }
+            if (item.kind === "autosaves") {
+              const expanded = item.versions.some((version) => openRunMembers.has(version.id));
+              const containsSelected = item.versions.some((version) => version.id === selectedId);
+              const time = (version: HistoryVersion) => formatDateTime(version.createdAt, i18n.resolvedLanguage, { hour: "2-digit", minute: "2-digit" });
+              return [
+                <button type="button" key={`run-${item.id}`} aria-expanded={expanded}
+                  className={`history-autosave-run${containsSelected && !expanded ? " active" : ""}`}
+                  onClick={() => setOpenRunMembers((current) => {
+                    const next = new Set(current);
+                    for (const version of item.versions) {
+                      if (expanded) next.delete(version.id); else next.add(version.id);
+                    }
+                    return next;
+                  })}>
+                  {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                  <span>
+                    <strong>{t("history.autosaveRun", { count: item.versions.length })}</strong>
+                    <small>{time(item.versions.at(-1)!)}–{time(item.versions[0])}</small>
+                  </span>
+                </button>,
+                ...(expanded ? item.versions.map((version) => renderVersion(version, true)) : [])
+              ];
+            }
+            return renderVersion(item.version, false);
           })}
           {nextCursor && <div className="history-load-more">
             <button type="button" disabled={controlsBusy} aria-busy={loadingOlder} onClick={() => void loadOlder()}>

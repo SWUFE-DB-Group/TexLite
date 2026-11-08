@@ -1280,7 +1280,7 @@
     "fileMissing": "檔案已不存在",
     "noMatchingFiles": "沒有符合的檔案。",
     "restoreTrackedDescription": "還原此快照管理的檔案及編譯器設定？未管理的檔案會保留。系統會先為目前專案建立安全檢查點。",
-    "lastChangedBy": "最後修改者", "codingAgent": "Coding Agent", "withCodingAgent": "{{names}}、Coding Agent", "multipleAuthors": "多位作者",
+    "lastChangedBy": "最後修改者", "autosaveRun_one": "{{count}} 次自動儲存", "autosaveRun_other": "{{count}} 次自動儲存", "codingAgent": "Coding Agent", "withCodingAgent": "{{names}}、Coding Agent", "multipleAuthors": "多位作者",
     "saveWarning": "原始碼已儲存，但部分歷史未能儲存。近期失敗會自動再試一次，較早的歷史可能不完整。請檢查伺服器記錄及可用儲存空間。",
     "storageBreakdown": "檔案 {{objects}} · 中繼資料 {{metadata}} · 受保護 {{protected}}",
     "title": "歷史",

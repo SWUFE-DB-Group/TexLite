@@ -145,6 +145,50 @@ describe("history author identities", () => {
     expect(host.querySelector(".history-snapshot-attribution strong")?.textContent).toBe(label);
   });
 
+  it("folds a run of automatic saves under a day header and opens it for the selected snapshot", async () => {
+    await i18n.changeLanguage("en");
+    const saves = [3, 2, 1].map((minute) => ({ ...version, id: `save-${minute}`, createdAt: `2026-01-01T12:0${minute}:00Z` }));
+    const named = { ...version, id: "named", reason: "file" as const, label: "Submitted", createdAt: "2026-01-01T11:00:00Z" };
+    vi.mocked(api).mockImplementation(async (url: string) => (url.includes("/history?")
+      ? { versions: [...saves, named], stats: null, nextCursor: null }
+      : { version: saves[0], settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null }, files: [] }) as never);
+    await act(async () => root.render(createElement(HistoryDialog, {
+      open: true, project, onOpenChange: () => {}, onBeforeMutation: async () => true
+    })));
+    const run = () => host.querySelector<HTMLButtonElement>(".history-autosave-run")!;
+    expect(host.querySelectorAll(".history-day")).toHaveLength(1);
+    expect(run().textContent).toContain("3 automatic saves");
+    // The newest snapshot is selected, so its run starts open.
+    expect(run().getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelectorAll(".history-grouped")).toHaveLength(3);
+    await act(async () => run().click());
+    expect(run().getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelectorAll(".history-grouped")).toHaveLength(0);
+    // A collapsed run that holds the selection is marked, and named snapshots stay visible.
+    expect(run().classList.contains("active")).toBe(true);
+    expect(host.textContent).toContain("Submitted");
+  });
+
+  it("leaves a collapsed run collapsed when older snapshots are loaded", async () => {
+    await i18n.changeLanguage("en");
+    const saves = [3, 2, 1].map((minute) => ({ ...version, id: `save-${minute}`, createdAt: `2026-01-01T12:0${minute}:00Z` }));
+    const older = { ...version, id: "older", reason: "file" as const, createdAt: "2026-01-01T11:00:00Z" };
+    vi.mocked(api).mockImplementation(async (url: string) => (url.includes("before=")
+      ? { versions: [older], stats: null, nextCursor: null }
+      : url.includes("/history?")
+        ? { versions: saves, stats: null, nextCursor: "next" }
+        : { version: saves[0], settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null }, files: [] }) as never);
+    await act(async () => root.render(createElement(HistoryDialog, {
+      open: true, project, onOpenChange: () => {}, onBeforeMutation: async () => true
+    })));
+    const run = () => host.querySelector<HTMLButtonElement>(".history-autosave-run")!;
+    expect(run().getAttribute("aria-expanded")).toBe("true");
+    await act(async () => run().click());
+    await act(async () => host.querySelector<HTMLButtonElement>(".history-load-more button")!.click());
+    expect(host.textContent).toContain(i18n.t("history.reasons.file"));
+    expect(run().getAttribute("aria-expanded")).toBe("false");
+  });
+
   it.each(["en", "zh"])("limits snapshot attribution to version metadata and keeps username tooltips in the timeline (%s)", async (language) => {
     await i18n.changeLanguage(language);
     vi.mocked(api)

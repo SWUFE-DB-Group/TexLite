@@ -240,7 +240,7 @@ preferred.
 | `sessionDays` | `14` | Login-session lifetime. |
 | `uploads.maxFileSizeMB` | `50` MB | Limit for uploads, ZIP entries, and attachments. |
 | `pdf.loadingStrategy` / `pdf.rangeThresholdMB` | `auto` / `2` MB | Uses full transfer through the threshold and allows PDF.js byte-range requests above it. Explicitly configured thresholds are preserved. |
-| `history.maxVersions` / `history.maxStorageMB` | `0` (unlimited) / `128` MiB | Per-project ordinary-version count (`0` = unlimited) and soft limit for deduplicated files plus snapshot metadata. Protected snapshots may exceed the limit; shared SQLite overhead is excluded. |
+| `history.maxVersions` / `history.maxStorageMB` | `0` (unlimited) / `128` MiB | Per-project ordinary-version count (`0` = unlimited) and soft limit for deduplicated files plus snapshot metadata. Over the storage limit, older history is first thinned to one version per hour after a day and one per day after a week (named, restore and checkpoint snapshots are kept); only then are the oldest versions removed. Protected snapshots may exceed the limit; shared SQLite overhead is excluded. |
 | `editHistory.maxStorageMB` / `editHistory.maxSegments` | `64` MiB / `20000` | Independent per-project payload and segment-count caps for author-attributed selection edits. Retains the newest records within both limits and never consumes snapshot storage. Both settings are optional; existing explicit limits are preserved. |
 | `latex.latexmk` | `latexmk` | Host command. |
 | `latex.defaultEngine` | `xelatex` | Must appear in the allowed list. |

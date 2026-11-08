@@ -546,7 +546,7 @@
     "fileMissing": "File no longer exists",
     "noMatchingFiles": "No matching files.",
     "restoreTrackedDescription": "Restore the files managed by this snapshot and its compiler settings? Unmanaged files are kept. The current project is checkpointed first.",
-    "lastChangedBy": "Last changed by", "codingAgent": "Coding Agent", "withCodingAgent": "{{names}}, Coding Agent", "multipleAuthors": "Multiple authors",
+    "lastChangedBy": "Last changed by", "autosaveRun_one": "{{count}} automatic save", "autosaveRun_other": "{{count}} automatic saves", "codingAgent": "Coding Agent", "withCodingAgent": "{{names}}, Coding Agent", "multipleAuthors": "Multiple authors",
     "saveWarning": "Source files were saved, but some history could not be saved. Recent failures are retried automatically; older history may be incomplete. Check server logs and available storage.",
     "storageBreakdown": "Files {{objects}} · Metadata {{metadata}} · Protected {{protected}}",
     "title": "History", "projectSnapshots": "Project snapshots", "projectSnapshotsButton": "Snapshots", "description": "Browse automatic project snapshots, compare files and safely restore earlier work.", "empty": "No project snapshots yet.", "loadOlder": "Load older snapshots",

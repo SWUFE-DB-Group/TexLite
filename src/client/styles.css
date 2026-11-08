@@ -2283,6 +2283,10 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-timeline > button strong, .history-timeline > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-timeline > button small { color: var(--ui-muted, #68736b); font-size: 10px; }
 .history-timeline > button .history-author-name { display: inline; }
+.history-day { flex-shrink: 0; padding: 6px 12px 5px; border-bottom: 1px solid var(--ui-border, #e1e6e2); background: var(--ui-surface, #f5f7f5); color: var(--ui-muted, #68736b); font-size: 10px; font-weight: 650; }
+.history-timeline > button.history-autosave-run { padding-block: 8px; color: var(--ui-muted, #55685c); }
+.history-timeline > button.history-autosave-run strong { font-size: 11px; font-weight: 600; color: var(--ui-text, #34443a); }
+.history-timeline > button.history-grouped { padding-left: 24px; }
 .history-item-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
 .history-item-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ui-text, #253329); flex: 1; min-width: 0; }
 .history-reason-badge { display: inline-flex; align-items: center; flex: none; padding: 1px 5px; border-radius: 4px; font-size: 9px; font-weight: 500; line-height: 1.4; white-space: nowrap; background: var(--ui-subtle, #edf2ee); color: var(--ui-muted, #55685c); }
