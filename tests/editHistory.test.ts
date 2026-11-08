@@ -1,3 +1,4 @@
+import { createTestConfig } from "./helpers/testConfig";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -527,16 +528,7 @@ function commonPrefix(left: string, right: string): number {
 
 function createFixture(options: FixtureOptions = {}): Fixture {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-edit-history-"));
-  const config: Config = {
-    configPath: path.join(root, "config.json"), siteName: "Edit history test", adminEmail: "",
-    host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath: path.join(root, "texlite.db"),
-    projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
-    compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
-    allowedEngines: ["xelatex"], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024 * 1024,
-    pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-    historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024, editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
-    git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
-  };
+  const config: Config = createTestConfig(root, { siteName: "Edit history test", historyMaxVersions: 0, historyMaxStorageBytes: 128 * 1024 * 1024 });
   const db = openDatabase(config);
   for (const [id, username, name] of [["owner", "owner", "Owner"], ["alice", "alice", "Alice"], ["bob", "bob", "Bob"]] as const) {
     db.prepare(`INSERT INTO users (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)

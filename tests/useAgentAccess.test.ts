@@ -6,7 +6,7 @@ import { api } from "../src/client/api";
 import { notifyAgentTasksChanged, useAgentAccess } from "../src/client/agents/useAgentAccess";
 import type { AgentAccess } from "../src/shared/agentProtocol";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 function deferred() {
   let resolve!: (value: AgentAccess) => void;
   const promise = new Promise<AgentAccess>((done) => { resolve = done; });

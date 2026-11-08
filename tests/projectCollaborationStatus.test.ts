@@ -13,7 +13,7 @@ import type { Project } from "../src/client/types";
 import { api } from "../src/client/api";
 import "../src/client/i18n";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 
 function subscribe<T>(listeners: Set<T>, listener: T) {
   listeners.add(listener);

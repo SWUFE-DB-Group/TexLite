@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { AlertCircle, AlertTriangle, AlignLeft, BookMarked, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, FileCheck2, Keyboard, LoaderCircle, MessageCircleQuestion, Palette, PanelsTopLeft, RefreshCw, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
-import { api } from "../api";
+import { api, isAbortError } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
 import { errorMessage } from "../errors";
@@ -117,7 +117,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     void api<{ mainFiles: string[] }>(`/api/projects/${projectId}/main-files`, { signal: controller.signal })
       .then((result) => setMainFileOptions(result.mainFiles))
       .catch((requestError) => {
-        if (requestError instanceof Error && requestError.name === "AbortError") return;
+        if (isAbortError(requestError)) return;
         setError(errorMessage(requestError));
       });
     return () => controller.abort();

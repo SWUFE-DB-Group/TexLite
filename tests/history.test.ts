@@ -1,3 +1,4 @@
+import { createTestConfig } from "./helpers/testConfig";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -649,18 +650,7 @@ describe("project history retention", () => {
 
   function createFixture(options: { maxVersions?: number; maxStorageBytes?: number } = {}): HistoryFixture {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-history-"));
-    const config: Config = {
-      configPath: path.join(root, "config.json"), siteName: "History Test", adminEmail: "",
-      host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath: path.join(root, "texlite.db"),
-      projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
-      compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
-      allowedEngines: ["xelatex"], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024 * 1024,
-      pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: options.maxVersions ?? 200,
-      historyMaxStorageBytes: options.maxStorageBytes ?? 512 * 1024 * 1024,
-      editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
-      git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
-    };
+    const config: Config = createTestConfig(root, { siteName: "History Test", historyMaxVersions: options.maxVersions ?? 200, historyMaxStorageBytes: options.maxStorageBytes ?? 512 * 1024 * 1024 });
     const db = openDatabase(config);
     const projectId = "project-1";
     db.prepare(`INSERT INTO users

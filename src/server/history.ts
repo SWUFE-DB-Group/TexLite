@@ -7,8 +7,8 @@ import { assertNoSourceSymlinks, listProjectFiles, outputRoot, projectRoot, reso
 import { httpError } from "./http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
 import { defaultHistoryTracking, historyTextCandidate, historyTrackingOverride, type HistoryTrackedFile, type HistoryTrackingPolicy } from "../shared/historyTracking.js";
-
-export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
+import type { HistoryPage, HistoryReason, HistoryStats, HistoryVersion } from "../shared/historyProtocol.js";
+export type { HistoryPage, HistoryReason, HistoryStats, HistoryVersion } from "../shared/historyProtocol.js";
 
 interface HistoryFile {
   digest: string;
@@ -41,41 +41,6 @@ interface HistoryRow {
   manifest_json: string;
   changed_paths_json: string;
   created_at: string;
-}
-
-export interface HistoryVersion {
-  id: string;
-  /** Fingerprint of the immutable manifest currently stored for this row. */
-  snapshotHash: string;
-  reason: HistoryReason;
-  label: string | null;
-  createdAt: string;
-  author: { id: string; username: string; name: string } | null;
-  /** A coding agent made at least some of this version's changes. */
-  hasAgent: boolean;
-  changedPaths: string[];
-  fileCount: number;
-  totalSize: number;
-}
-
-export interface HistoryPage {
-  versions: HistoryVersion[];
-  /** Opaque cursor for the next older page, or null when the timeline ends. */
-  nextCursor: string | null;
-}
-
-export interface HistoryStats {
-  versionCount: number;
-  ordinaryVersionCount: number;
-  labeledVersionCount: number;
-  objectCount: number;
-  objectBytes: number;
-  metadataBytes: number;
-  totalBytes: number;
-  protectedBytes: number;
-  maxVersions: number;
-  maxStorageBytes: number;
-  storageLimitExceeded: boolean;
 }
 
 export interface HistoryRecordOptions {

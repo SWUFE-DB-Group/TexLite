@@ -7,7 +7,7 @@ import { GlobalTooltip } from "../src/client/GlobalTooltip";
 import { SystemMetricsDialog } from "../src/client/SystemMetricsDialog";
 import i18n from "../src/client/i18n";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/Dialog", () => ({
   Modal: ({ open, children, className }: { open: boolean; children: ReactNode; className?: string }) => open ? createElement("section", { className }, children) : null
 }));

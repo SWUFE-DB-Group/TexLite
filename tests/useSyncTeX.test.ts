@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../src/client/api";
 import { canSyncSourceToPdf, useSyncTeX } from "../src/client/workspace/useSyncTeX";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 
 type HookOptions = Parameters<typeof useSyncTeX>[0];
 let current: ReturnType<typeof useSyncTeX>;

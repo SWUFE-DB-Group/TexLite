@@ -1,7 +1,7 @@
 import { formatBytes } from "../formatBytes";
 import { lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { api, apiUpload } from "../api";
+import { api, apiUpload, isAbortError } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import type { DashboardData, Project, ProjectCatalogCounts, ProjectListPagination, ProjectOwnershipScope, ProjectTag, SiteConfig, TagColor, User } from "../types";
 import i18n from "../i18n";
@@ -44,9 +44,6 @@ const TagManagementDialog = lazy(() => import("./TagManagementDialog").then((mod
 const ProjectIconPickerDialog = lazy(() => import("./ProjectIconPickerDialog").then((module) => ({ default: module.ProjectIconPickerDialog })));
 const GitHubAccountDialog = lazy(() => import("../GitHubAccountDialog").then((module) => ({ default: module.GitHubAccountDialog })));
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
 
 export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpenProject }: {
   site: SiteConfig;

@@ -7,7 +7,7 @@ import { api } from "../src/client/api";
 import i18n from "../src/client/i18n";
 import type { ProjectSearchResult } from "../src/shared/projectSearch";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 let host: HTMLDivElement, root: Root;
 const navigate = vi.fn(), close = vi.fn();
 const result: ProjectSearchResult = { matches: [

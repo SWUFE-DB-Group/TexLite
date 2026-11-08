@@ -8,6 +8,8 @@ import { assertGitAvailable } from "./environment.js";
 import { assertNoSourceSymlinks, sourceRoot, symbolicLinkError } from "./files.js";
 import { httpError } from "./http.js";
 import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
+import type { GitCommit, GitIdentity, ProjectGitStatus } from "../shared/gitProtocol.js";
+export type { GitCommit, GitIdentity, ProjectGitStatus } from "../shared/gitProtocol.js";
 
 const MAX_COMMAND_OUTPUT = 8 * 1024 * 1024;
 const MAX_DIFF_OUTPUT = 1024 * 1024;
@@ -32,44 +34,12 @@ interface UserGitHubSettingsRow {
   updated_at: string;
 }
 
-export interface GitIdentity {
-  name: string;
-  email: string;
-}
-
 export interface GitHubAccountStatus {
   tokenConfigured: boolean;
   githubLogin: string | null;
   /** Effective commit author identity, including account defaults. */
   gitUsername: string;
   gitEmail: string;
-}
-
-export interface GitCommit {
-  sha: string;
-  shortSha: string;
-  authorName: string;
-  authorEmail: string;
-  authoredAt: string;
-  message: string;
-}
-
-export interface ProjectGitStatus {
-  initialized: boolean;
-  tokenConfigured: boolean;
-  githubLogin: string | null;
-  remoteUrl: string | null;
-  repositoryName: string | null;
-  repositoryHtmlUrl: string | null;
-  defaultBranch: string;
-  branch: string | null;
-  dirty: boolean;
-  restorable: boolean;
-  changedFiles: number;
-  ahead: number;
-  latestCommit: GitCommit | null;
-  /** The project owner's configured author identity for new commits. */
-  commitIdentity: GitIdentity;
 }
 
 interface CommandResult {

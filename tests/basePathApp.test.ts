@@ -1,3 +1,4 @@
+import { createTestConfig } from "./helpers/testConfig";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,18 +18,7 @@ describe("application mounted below the origin root", () => {
 
   beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-base-path-app-"));
-    const config: Config = {
-      configPath: path.join(root, "config.json"), siteName: "Mounted TexLite", adminEmail: "",
-      host: "127.0.0.1", port: 3000, basePath: "/tools/texlite",
-      dataDir: root, databasePath: path.join(root, "texlite.db"), projectsDir: path.join(root, "projects"),
-      clientDir: path.join(root, "client"), sessionDays: 1, compileTimeoutMs: 30_000, maxCompileJobs: 1,
-      latexmk: "latexmk", defaultEngine: "pdflatex", allowedEngines: ["pdflatex"], extraArgs: [],
-      allowProjectLatexmkrc: true, maxUploadBytes: 1024 * 1024,
-      pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: 10, historyMaxStorageBytes: 16 * 1024 * 1024,
-      editHistoryMaxStorageBytes: 4 * 1024 * 1024, editHistoryMaxSegments: 20_000,
-      git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
-    };
+    const config: Config = createTestConfig(root, { siteName: "Mounted TexLite", basePath: "/tools/texlite", defaultEngine: "pdflatex", allowedEngines: ["pdflatex"], historyMaxVersions: 10, historyMaxStorageBytes: 16 * 1024 * 1024, editHistoryMaxStorageBytes: 4 * 1024 * 1024 });
     fs.mkdirSync(path.join(config.clientDir, "assets"), { recursive: true });
     fs.writeFileSync(path.join(config.clientDir, "index.html"),
       '<!doctype html><html><head><base href="/" /><meta name="texlite-base-path" content="/" /></head><body></body></html>');

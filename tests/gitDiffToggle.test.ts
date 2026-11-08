@@ -7,7 +7,7 @@ import { api } from "../src/client/api";
 import i18n from "../src/client/i18n";
 import type { Project } from "../src/client/types";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/Dialog", () => ({
   Modal: ({ open, className, children }: { open: boolean; className?: string; children: ReactNode }) => open ? createElement("section", { className }, children) : null
 }));

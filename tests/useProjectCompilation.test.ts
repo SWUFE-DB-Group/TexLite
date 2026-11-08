@@ -6,7 +6,7 @@ import { api } from "../src/client/api";
 import type { Project } from "../src/client/types";
 import { useProjectCompilation, type LatestCompileResponse } from "../src/client/workspace/useProjectCompilation";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("react-i18next", async (importOriginal) => {
   const t = (key: string) => key;
   return { ...await importOriginal<typeof import("react-i18next")>(), useTranslation: () => ({ t }) };

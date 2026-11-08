@@ -1,3 +1,4 @@
+import { createTestConfig } from "./helpers/testConfig";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -183,13 +184,5 @@ describe("project outline service", () => {
 });
 
 function outlineConfig(root: string): Config {
-  return {
-    configPath: path.join(root, "config.json"), siteName: "TexLite", adminEmail: "", host: "127.0.0.1", port: 3000, basePath: "/",
-    dataDir: root, databasePath: path.join(root, "texlite.db"), projectsDir: path.join(root, "projects"),
-    clientDir: path.join(root, "client"), sessionDays: 1, compileTimeoutMs: 30_000, maxCompileJobs: 1,
-    latexmk: "latexmk", defaultEngine: "pdflatex", allowedEngines: ["pdflatex", "xelatex", "lualatex"], extraArgs: [],
-    allowProjectLatexmkrc: true, maxUploadBytes: 50 * 1024 * 1024,
-    pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024, historyMaxVersions: 200,
-    historyMaxStorageBytes: 512 * 1024 * 1024, editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000, git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
-  };
+  return createTestConfig(root, { siteName: "TexLite", defaultEngine: "pdflatex", allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024 });
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
-import { api } from "../api";
+import { api, isAbortError } from "../api";
 import type { SharedCompileState } from "../collaboration";
 import { errorMessage } from "../errors";
 import type { Project } from "../types";
@@ -34,7 +34,6 @@ interface UseProjectCompilationOptions {
 
 interface ScopedRequest { owner: CompilationResults; controller: AbortController }
 const targetKey = (projectId: string, mainFile: string) => `${projectId}\0${mainFile}`;
-const isAbortError = (error: unknown) => error instanceof Error && error.name === "AbortError";
 
 function abortRequest(ref: { current: ScopedRequest | null }, owner?: CompilationResults): void {
   if (ref.current && (!owner || ref.current.owner === owner)) {

@@ -9,7 +9,7 @@ import { api } from "../src/client/api";
 import i18n from "../src/client/i18n";
 import type { User } from "../src/client/types";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/Dialog", () => ({
   Modal: ({ children, footer }: { children: ReactNode; footer?: ReactNode }) => createElement("section", null, children, footer)
 }));

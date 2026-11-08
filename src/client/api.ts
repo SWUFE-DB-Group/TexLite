@@ -17,7 +17,8 @@ export class ApiError extends Error {
   }
 }
 
-function isAbortError(error: unknown): error is Error {
+/** A request was cancelled through its AbortSignal; callers usually ignore it. */
+export function isAbortError(error: unknown): error is Error {
   return error instanceof Error && error.name === "AbortError";
 }
 

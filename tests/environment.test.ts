@@ -1,3 +1,4 @@
+import { createTestConfig } from "./helpers/testConfig";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -6,16 +7,7 @@ import { assertEnvironment, assertGitAvailable, hostRequirementsSatisfied, inspe
 
 function testConfig(): Config {
   const root = path.join(os.tmpdir(), "texlite-environment-test");
-  return {
-    configPath: path.join(root, "config.json"), siteName: "Test", adminEmail: "",
-    host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath: path.join(root, "db.sqlite"),
-    projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
-    compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: process.execPath, defaultEngine: "xelatex",
-    allowedEngines: [], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024,
-    pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-    historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024, editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
-    git: process.execPath, gitOperationTimeoutMs: 10_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
-  };
+  return createTestConfig(root, { databasePath: path.join(root, "db.sqlite"), latexmk: process.execPath, allowedEngines: [], maxUploadBytes: 1024, git: process.execPath, gitOperationTimeoutMs: 10_000 });
 }
 
 describe("startup environment checks", () => {

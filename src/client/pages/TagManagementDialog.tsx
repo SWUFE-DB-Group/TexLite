@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { api } from "../api";
+import { api, isAbortError } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
 import { TagColorSelect } from "../TagColorSelect";
@@ -17,9 +17,6 @@ function sortTags<T extends ProjectTag>(tags: T[]): T[] {
   return [...tags].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
 
 /** Manage one user's private project-tag catalog without reloading the dashboard. */
 export function TagManagementDialog({

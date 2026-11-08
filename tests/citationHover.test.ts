@@ -10,7 +10,7 @@ import {
 } from "../src/client/citationHover";
 import type { LatexReference } from "../src/shared/latexReferences";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/bibtexMetadata", () => ({ parseBibtexMetadataInWorker: vi.fn() }));
 
 const labels: CitationHoverLabels = {

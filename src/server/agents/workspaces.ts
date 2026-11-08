@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { makeDiff } from "@sanity/diff-match-patch";
+import { textReplacements, type TextReplacement } from "../../shared/textDiff.js";
 import { isTextContent } from "../../shared/fileTypes.js";
 import type { Config } from "../config.js";
 import type { DatabaseConnection, UserRow } from "../db.js";
@@ -47,23 +47,12 @@ export async function ensureAgentInstructions(context: AgentWorkspaceContext, pr
 }
 
 interface FileState { signature: string; text: string | null }
-interface Change { from: number; to: number; insert: string }
+type Change = TextReplacement;
 const ignored = (name: string) => name === ".git" || name === ".texlite-agent-conflicts" || /\.(?:collaboration-\d+-[^.]+|agent-[^.]+)\.tmp$/.test(name);
 
+/** Exact (uncleaned) replacements, so three-way merging never widens an edit. */
 function changes(before: string, after: string): Change[] {
-  const result: Change[] = [];
-  let offset = 0;
-  let pending: Change | undefined;
-  for (const [kind, text] of makeDiff(before, after, { checkLines: true, timeout: 1 })) {
-    if (kind === 0) { if (pending) result.push(pending); pending = undefined; offset += text.length; }
-    else {
-      pending ??= { from: offset, to: offset, insert: "" };
-      if (kind === -1) { offset += text.length; pending.to = offset; }
-      else pending.insert += text;
-    }
-  }
-  if (pending) result.push(pending);
-  return result;
+  return textReplacements(before, after);
 }
 
 /** Conservative three-way merge: never fuzzy-apply overlapping replacements. */

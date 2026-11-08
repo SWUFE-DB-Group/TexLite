@@ -5,7 +5,7 @@ import {
   CheckCircle2, ChevronDown, ChevronRight, Clock3, FileClock, FileCode2, FileText, HardDrive, ListChecks,
   LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Tag, Trash2
 } from "lucide-react";
-import { ApiError, api } from "./api";
+import { ApiError, api, isAbortError } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { formatCommitTime, formatVersionTitle, generateUnifiedDiff } from "./diff";
 import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
@@ -16,6 +16,7 @@ import { useSuccessNotice } from "./SuccessNotice";
 import { snapshotAttribution } from "./agentAttribution";
 import { historyTimeline, localDayKey } from "./historyTimeline";
 import { SaveButton } from "./SaveButton";
+import { errorMessage } from "./errors";
 
 interface HistoryComparison {
   path: string;
@@ -105,7 +106,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         setSelectedId((current) => result.versions.some((version) => version.id === current) ? current : result.versions[0]?.id ?? "");
         setLoadGeneration((value) => value + 1);
       })
-      .catch((reason) => { if (!isAbort(reason)) setError(message(reason)); })
+      .catch((reason) => { if (!isAbortError(reason)) setError(errorMessage(reason)); })
       .finally(() => { if (!controller.signal.aborted) setBusy(""); });
     return () => controller.abort();
   }, [open, project.id, trackingRevision]);
@@ -142,7 +143,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       setStats(result.stats);
       setNextCursor(result.nextCursor);
     } catch (reason) {
-      if (!isAbort(reason)) setError(message(reason));
+      if (!isAbortError(reason)) setError(errorMessage(reason));
     } finally {
       if (olderPageAbortRef.current === controller) {
         olderPageAbortRef.current = null;
@@ -176,7 +177,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       setLabel(result.version.label ?? "");
       const preferred = result.version.changedPaths.find((filePath) => result.files.some((file) => file.path === filePath)) ?? "";
       setSelectedPath(preferred);
-    }).catch((reason) => { if (!controller.signal.aborted && !isAbort(reason)) setError(message(reason)); })
+    }).catch((reason) => { if (!controller.signal.aborted && !isAbortError(reason)) setError(errorMessage(reason)); })
       .finally(() => { if (!controller.signal.aborted) setBusy((current) => current === "detail" ? "" : current); });
     return () => controller.abort();
   }, [open, project.id, selectedId]);
@@ -210,7 +211,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         if (!controller.signal.aborted) setComparison(res);
       })
       .catch((reason) => {
-        if (!controller.signal.aborted && !isAbort(reason)) setError(message(reason));
+        if (!controller.signal.aborted && !isAbortError(reason)) setError(errorMessage(reason));
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy((current) => (current === "compare" ? "" : current));
@@ -297,12 +298,12 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         try {
           if (!(await refreshSnapshot(detail.version.id, true))) return;
         } catch (refreshReason) {
-          if (isAbort(refreshReason)) return;
-          setError(message(refreshReason));
+          if (isAbortError(refreshReason)) return;
+          setError(errorMessage(refreshReason));
           return;
         }
       }
-      setError(message(reason));
+      setError(errorMessage(reason));
     }
     finally { setBusy(""); }
   };
@@ -328,7 +329,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
           setDetail(null); setComparison(null);
         }
       }
-    } catch (reason) { setError(message(reason)); }
+    } catch (reason) { setError(errorMessage(reason)); }
     finally { setBusy(""); }
   };
 
@@ -355,16 +356,16 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
             return;
           }
         } catch (refreshReason) {
-          if (isAbort(refreshReason)) {
+          if (isAbortError(refreshReason)) {
             setBusy("");
             return;
           }
-          setError(message(refreshReason));
+          setError(errorMessage(refreshReason));
           setBusy("");
           return;
         }
       }
-      setError(message(reason));
+      setError(errorMessage(reason));
       setBusy("");
     }
   };
@@ -614,12 +615,4 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     <ConfirmDialog open={Boolean(deleteTarget)} title={deleteTarget === "all" ? t("history.clearAllTitle") : t("history.deleteVersionTitle")}
       description={deleteTarget === "all" ? t("history.clearAllDescription") : t("history.deleteVersionDescription", { name: deleteTargetName })}
       confirmLabel={deleteTarget === "all" ? t("history.clearAll") : t("history.deleteVersion")} danger onCancel={() => setDeleteTarget(null)} onConfirm={() => void removeHistory()} /></>;
-}
-
-function message(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason);
-}
-
-function isAbort(reason: unknown): boolean {
-  return reason instanceof Error && reason.name === "AbortError";
 }

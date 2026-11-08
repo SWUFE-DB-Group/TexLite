@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { ArrowLeft, BookMarked, Check, ChevronLeft, ChevronRight, FolderOpen, LoaderCircle, NotebookPen, Plus, Search, X } from "lucide-react";
 import { ConfirmDialog, Modal } from "./Dialog";
-import { api } from "./api";
+import { api, isAbortError } from "./api";
 import { errorMessage } from "./errors";
 import { CitationTagFilters } from "./CitationTagFilters";
 import { CitationCard } from "./CitationCard";
@@ -97,7 +97,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
       void api<{ entries: CitationLibraryEntry[]; pagination: ProjectListPagination }>(`/api/citations?${params.toString()}`, { signal: controller.signal })
         .then((result) => { if (!controller.signal.aborted) { setEntries(result.entries); setPagination(result.pagination); if (result.pagination.page !== pageNumber) setPageNumber(result.pagination.page); } })
         .catch((requestError) => {
-          if (controller.signal.aborted || requestError instanceof Error && requestError.name === "AbortError") return;
+          if (controller.signal.aborted || isAbortError(requestError)) return;
           setError(errorMessage(requestError));
         })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -123,7 +123,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
     void api<{ tags: CitationLibraryTag[] }>("/api/citations/tags", { signal: controller.signal })
       .then((result) => setTags(result.tags))
       .catch((requestError) => {
-        if (!(requestError instanceof Error && requestError.name === "AbortError")) setError(errorMessage(requestError));
+        if (!(isAbortError(requestError))) setError(errorMessage(requestError));
       });
     return () => controller.abort();
   }, [open]);

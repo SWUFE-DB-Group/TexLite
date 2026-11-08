@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, isAbortError } from "../api";
 import type { PdfTarget } from "../PdfPreview";
 import { errorMessage } from "../errors";
 
@@ -20,9 +20,6 @@ interface UseSyncTeXOptions {
   onShowEditor: () => void;
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
 
 /** The root selects the PDF; SyncTeX decides whether this source has a mapping. */
 export function canSyncSourceToPdf(sourcePath: string, mainFile: string): boolean {

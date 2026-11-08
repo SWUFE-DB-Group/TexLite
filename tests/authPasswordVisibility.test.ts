@@ -7,7 +7,7 @@ import { api } from "../src/client/api";
 import i18n from "../src/client/i18n";
 import type { SiteConfig, User } from "../src/client/types";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 const site = { siteName: "TexLite", minPasswordLength: 8, adminEmail: "" } as SiteConfig;
 let root: Root, host: HTMLDivElement;
 beforeEach(async () => {

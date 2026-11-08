@@ -16,7 +16,7 @@ import type { User } from "../src/client/types";
 
 let language: keyof typeof agentUiMessages = "zh-Hant";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 vi.mock("../src/client/agents/useAgentTasks", () => ({ useAgentTasks: vi.fn() }));
 vi.mock("../src/client/agents/AgentTerminalSurface", () => ({ AgentTerminalSurface: () => createElement("div", { "data-live-terminal": true }) }));
 vi.mock("react-i18next", async (importOriginal) => ({ ...await importOriginal<typeof import("react-i18next")>(), useTranslation: () => ({

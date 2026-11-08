@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { api, ApiError } from "../api";
+import { api, ApiError, isAbortError } from "../api";
 import type { CitationLibraryEntry, Comment, CommentMention, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
 import i18n from "../i18n";
 import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
@@ -62,9 +62,6 @@ function loadCitationLibrary() {
   return citationLibraryModule;
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
 type FormatterRecoveryAction = "file" | "selection";
 interface FormatterRecovery { action: FormatterRecoveryAction; kind: TexFmtFailureKind; detail: string }
 interface FormattedSource { formatted: string }

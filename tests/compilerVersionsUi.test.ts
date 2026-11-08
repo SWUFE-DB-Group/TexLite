@@ -7,7 +7,7 @@ import { CompilerVersions } from "../src/client/workspace/CompilerVersions";
 import i18n from "../src/client/i18n";
 import type { CompilerVersionsResponse } from "../src/shared/compilerVersions";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 
 let root: Root;
 let host: HTMLDivElement;

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, Clock3, HardDrive, LoaderCircle, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { api } from "./api";
+import { api, isAbortError } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { generateSelectionHistoryDiff, type SelectionHistoryDiffPiece, type SelectionHistorySemanticDiff } from "./selectionHistoryDiff";
 import { sourceHash } from "./sourceHash";
 import { UserAvatar } from "./UserAvatar";
 import { formatDateTime } from "./dateTime";
 import type { Project, SelectionHistoryAuthor, SelectionHistoryEntry, SelectionHistoryResult } from "./types";
+import { errorMessage } from "./errors";
 
 interface SourceSelection {
   selectedText: string;
@@ -49,7 +50,7 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
     const controller = new AbortController();
     void api<NonNullable<typeof stats>>(`/api/projects/${project.id}/edit-history/stats`, { signal: controller.signal })
       .then((result) => { if (!controller.signal.aborted) setStats(result); })
-      .catch((reason) => { if (!controller.signal.aborted && !isAbort(reason)) setError(message(reason)); });
+      .catch((reason) => { if (!controller.signal.aborted && !isAbortError(reason)) setError(errorMessage(reason)); });
     return () => controller.abort();
   }, [open, project.id, project.permission, statsRevision]);
 
@@ -61,7 +62,7 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
       setEntries([]); setBaseline(null); setHasMore(false); setChainComplete(true);
       setStatsRevision((revision) => revision + 1);
       setClearOpen(false);
-    } catch (reason) { setClearError(message(reason)); }
+    } catch (reason) { setClearError(errorMessage(reason)); }
     finally { setClearing(false); }
   };
   const [entryViews, setEntryViews] = useState<Record<string, "content" | "diff">>({});
@@ -90,7 +91,7 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
         setHasMore(result.hasMore);
       })
       .catch((reason) => {
-        if (!isAbort(reason)) setError(message(reason));
+        if (!isAbortError(reason)) setError(errorMessage(reason));
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
@@ -206,12 +207,4 @@ function DiffSide({ label, pieces, variant }: {
 
 function formatTime(value: string, language?: string): string {
   return formatDateTime(value, language, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function isAbort(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

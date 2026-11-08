@@ -6,7 +6,7 @@ import { api } from "../src/client/api";
 import { useAgentTasks } from "../src/client/agents/useAgentTasks";
 import type { AgentTask, AgentTaskPage } from "../src/shared/agentProtocol";
 
-vi.mock("../src/client/api", () => ({ api: vi.fn() }));
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 const task = (id: string, state: AgentTask["state"] = "running"): AgentTask => ({
   id, state, projectId: "paper", projectName: "Paper", userId: "writer", userName: "Writer", agentId: "codex",
   title: id, cleanupState: "none", errorCode: null, createdAt: "2026-10-25T00:00:00Z",

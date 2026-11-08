@@ -1,3 +1,4 @@
+import { createTestConfig } from "./helpers/testConfig";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -300,16 +301,7 @@ describe("source comment anchors", () => {
 
   function createFixture(): { root: string; db: DatabaseConnection; config: Config } {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-anchors-"));
-    const config: Config = {
-      configPath: path.join(root, "config.json"), siteName: "Anchor Test", adminEmail: "",
-      host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath: path.join(root, "texlite.db"),
-      projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), sessionDays: 1,
-      compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
-      allowedEngines: ["xelatex"], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024 * 1024,
-      pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: 200, historyMaxStorageBytes: 512 * 1024 * 1024, editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
-      git: "git", gitOperationTimeoutMs: 30_000, githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
-    };
+    const config: Config = createTestConfig(root, { siteName: "Anchor Test" });
     const db = openDatabase(config);
     db.prepare("INSERT INTO users (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at) VALUES ('user-1', 'owner', 'Owner', 'hash', 'admin', 0, 0, 1, '2026-01-01T00:00:00.000Z')").run();
     db.prepare("INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, created_at, updated_at) VALUES ('project-1', 'user-1', 'user-1', 'Paper', 'main.tex', NULL, 'xelatex', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')").run();

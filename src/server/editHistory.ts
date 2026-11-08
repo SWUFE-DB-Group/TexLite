@@ -4,6 +4,8 @@ import { CONFIG_DEFAULTS } from "./config.js";
 import { safeRelativePath } from "./files.js";
 import type { AgentChange } from "../shared/agentProtocol.js";
 import { collectAgentChanges, type AgentChangeStep } from "./agentChanges.js";
+import type { SelectionHistoryAuthor, SelectionHistoryEntry, SelectionHistoryResult } from "../shared/historyProtocol.js";
+export type { SelectionHistoryAuthor, SelectionHistoryEntry, SelectionHistoryResult } from "../shared/historyProtocol.js";
 
 /**
  * An edit step is deliberately smaller than a recovery snapshot. It describes
@@ -75,40 +77,6 @@ interface EditHistoryRow {
   author_username: string | null;
   author_name: string | null;
   author_avatar_style: string | null;
-}
-
-export interface SelectionHistoryAuthor {
-  id: string | null;
-  username: string | null;
-  name: string | null;
-  avatarStyle: string | null;
-}
-
-export interface SelectionHistoryEntry {
-  id: string;
-  filePath: string;
-  createdAt: string;
-  updatedAt: string;
-  /** All users whose relevant edits are included in this short time window. */
-  authors: SelectionHistoryAuthor[];
-  /**
-   * The selected text shown by this entry was written by a coding agent.
-   * Time-based grouping never mixes agent and direct edits; when later rows
-   * that left the text unchanged are folded together, the flag follows the
-   * oldest row, which wrote the text.
-   */
-  hasAgent: boolean;
-  /** Selected source at the end of this editing window. */
-  content: string | null;
-  contentTruncated: boolean;
-}
-
-export interface SelectionHistoryResult {
-  entries: SelectionHistoryEntry[];
-  baseline: { content: string | null; contentTruncated: boolean } | null;
-  hasMore: boolean;
-  /** False means an unrecorded source replacement or retention boundary was reached. */
-  chainComplete: boolean;
 }
 
 /** Agent-change mapping walks at most this many of a file's newest segments. */

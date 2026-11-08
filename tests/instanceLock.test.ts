@@ -1,3 +1,4 @@
+import { createTestConfig } from "./helpers/testConfig";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,35 +21,12 @@ describe("instance lock", () => {
   });
 
   function mockConfig(dataDir: string, configPath = "/test/texlite.config.json"): Config {
-    return {
-      dataDir,
-      configPath,
-      host: "127.0.0.1",
-      port: 3000,
-      basePath: "/",
-      databasePath: path.join(dataDir, "texlite.db"),
-      projectsDir: path.join(dataDir, "projects"),
-      clientDir: "/test/client",
-      siteName: "TexLite Test",
-      adminEmail: "admin@example.com",
-      sessionDays: 7,
-      maxUploadBytes: 50 * 1024 * 1024,
-      pdfLoadingStrategy: "auto",
-      pdfRangeThresholdBytes: 5 * 1024 * 1024,
-      historyMaxVersions: 50,
-      historyMaxStorageBytes: 100 * 1024 * 1024,
-      editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
-      latexmk: "latexmk",
-      defaultEngine: "xelatex",
-      allowedEngines: ["pdflatex", "xelatex", "lualatex"],
-      extraArgs: [],
-      allowProjectLatexmkrc: false,
-      compileTimeoutMs: 60000,
-      maxCompileJobs: 2,
-      git: "git",
-      gitOperationTimeoutMs: 15000,
-      githubApiBaseUrl: "https://api.github.com", updatesEnabled: false
-    };
+    return createTestConfig(dataDir, {
+      configPath, clientDir: "/test/client", siteName: "TexLite Test", adminEmail: "admin@example.com", sessionDays: 7,
+      maxUploadBytes: 50 * 1024 * 1024, historyMaxVersions: 50, historyMaxStorageBytes: 100 * 1024 * 1024,
+      allowedEngines: ["pdflatex", "xelatex", "lualatex"], allowProjectLatexmkrc: false, compileTimeoutMs: 60_000,
+      maxCompileJobs: 2, gitOperationTimeoutMs: 15_000
+    });
   }
 
   it("checks process liveness accurately", () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { api, ApiError, localizedResponseError, normalizeNetworkError, responseErrorCode } from "../api";
+import { api, ApiError, localizedResponseError, normalizeNetworkError, responseErrorCode, isAbortError } from "../api";
 import { errorMessage } from "../errors";
 import type { FileEntry, Project, SiteConfig } from "../types";
 import { appPath } from "../basePath";
@@ -32,9 +32,6 @@ export interface FileLoadOptions {
 
 export const MAX_DIRECT_RESOURCE_PREVIEW_BYTES = 10 * 1024 * 1024;
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
 
 export function parentFolders(filePath: string): string[] {
   const parts = filePath.split("/").filter(Boolean);

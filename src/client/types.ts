@@ -1,4 +1,12 @@
 import type { ProjectCatalogCounts, ProjectOwnershipScope, ProjectSourcePreview } from "../shared/projectCatalog";
+import type { HistoryVersion } from "../shared/historyProtocol";
+
+export type {
+  HistoryReason, HistoryStats, HistoryVersion, SelectionHistoryAuthor, SelectionHistoryEntry, SelectionHistoryResult
+} from "../shared/historyProtocol";
+/** The snapshot-list response as the browser receives it. */
+export type { HistoryPageResponse as HistoryPage } from "../shared/historyProtocol";
+export type { GitCommit, ProjectGitStatus } from "../shared/gitProtocol";
 
 export interface SiteConfig {
   siteName: string;
@@ -145,100 +153,11 @@ export interface CitationLibraryTag {
   ownerId: string;
 }
 
-export type HistoryReason = "initial" | "autosave" | "file" | "settings" | "git" | "restore" | "checkpoint";
-
-export interface HistoryVersion {
-  id: string;
-  snapshotHash: string;
-  reason: HistoryReason;
-  label: string | null;
-  createdAt: string;
-  author: { id: string; username: string; name: string } | null;
-  /** A coding agent made at least some of this version's changes. */
-  hasAgent: boolean;
-  changedPaths: string[];
-  fileCount: number;
-  totalSize: number;
-}
-
 export interface HistoryVersionDetail {
   version: HistoryVersion;
   scoped?: boolean;
   settings: { mainFile: string; engine: Project["engine"]; latexmkrc: string | null; chktexEnabled?: boolean };
   files: Array<{ path: string; size: number; deleted?: boolean; textContent?: boolean }>;
-}
-
-/** A cursor page from the immutable project-snapshot timeline. */
-export interface HistoryPage {
-  versions: HistoryVersion[];
-  nextCursor: string | null;
-  stats: HistoryStats | null;
-}
-
-export interface SelectionHistoryAuthor {
-  id: string | null;
-  username: string | null;
-  name: string | null;
-  avatarStyle?: string | null;
-}
-
-export interface SelectionHistoryEntry {
-  id: string;
-  filePath: string;
-  createdAt: string;
-  updatedAt: string;
-  authors: SelectionHistoryAuthor[];
-  /** A coding agent wrote at least one of the included edits. */
-  hasAgent: boolean;
-  content: string | null;
-  contentTruncated: boolean;
-}
-
-export interface SelectionHistoryResult {
-  entries: SelectionHistoryEntry[];
-  baseline: { content: string | null; contentTruncated: boolean } | null;
-  hasMore: boolean;
-  chainComplete: boolean;
-}
-
-export interface HistoryStats {
-  versionCount: number;
-  ordinaryVersionCount: number;
-  labeledVersionCount: number;
-  objectCount: number;
-  objectBytes: number;
-  metadataBytes: number;
-  totalBytes: number;
-  protectedBytes: number;
-  maxVersions: number;
-  maxStorageBytes: number;
-  storageLimitExceeded: boolean;
-}
-
-export interface GitCommit {
-  sha: string;
-  shortSha: string;
-  authorName: string;
-  authorEmail: string;
-  authoredAt: string;
-  message: string;
-}
-
-export interface ProjectGitStatus {
-  initialized: boolean;
-  tokenConfigured: boolean;
-  githubLogin: string | null;
-  remoteUrl: string | null;
-  repositoryName: string | null;
-  repositoryHtmlUrl: string | null;
-  defaultBranch: string;
-  branch: string | null;
-  dirty: boolean;
-  restorable: boolean;
-  changedFiles: number;
-  ahead: number;
-  latestCommit: GitCommit | null;
-  commitIdentity: { name: string; email: string };
 }
 
 export type { LatexCompletionKind, LatexCompletionItem, LatexCompletionIndex } from "../shared/latexCompletion";
