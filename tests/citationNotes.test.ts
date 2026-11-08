@@ -30,7 +30,7 @@ it("renders inline and block math while leaving escaped dollars, inline code and
     await act(async () => root.render(createElement(CitationNotesPreview, { notes })));
     expect(host.querySelectorAll(".katex")).toHaveLength(2);
     expect(host.querySelector("p .katex math")).not.toBeNull();
-    expect(host.querySelector(".citation-notes-equation .katex-display math mfrac")).not.toBeNull();
+    expect(host.querySelector(".markdown-equation .katex-display math mfrac")).not.toBeNull();
     expect(host.textContent).toContain("Escaped $5");
     expect(host.querySelector("pre code.language-tex")?.textContent).toBe("$also not math$\n");
     expect([...host.querySelectorAll("code")].some((node) => node.textContent === "$not math$")).toBe(true);

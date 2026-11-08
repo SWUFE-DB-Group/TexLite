@@ -852,6 +852,15 @@
     "citationHoverOpenHint": "按住 Ctrl/Cmd 點選可開啟該項目。",
     "compileShort": "編譯",
     "mobileSource": "原始碼",
+    "mobilePreview": "預覽",
+    "markdown": {
+      "tab": "Markdown",
+      "tabTitle": "{{path}} 的轉譯預覽",
+      "empty": "這個 Markdown 檔案是空的。",
+      "showInSource": "在原始碼中顯示目前預覽位置",
+      "showInPreview": "在預覽中顯示目前原始碼游標的位置",
+      "linkMissing": "專案中沒有 {{path}}。"
+    },
     "moreActions": "更多操作",
     "compile": "編譯 · {{engine}}",
     "compiling": "編譯中…",

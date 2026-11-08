@@ -7,6 +7,7 @@ import type { WorkspaceLayout } from "./types";
 import { CollaborationPresence, WorkspaceLayoutMenu } from "./WorkspaceChrome";
 import { useTerminalPreferences } from "../terminalPreferences";
 import { WorkspaceTopbarFrame } from "./WorkspaceTopbarFrame";
+import { isMarkdownPath } from "./markdownPreview";
 
 export interface WorkspaceTopbarProps {
   agentTerminal?: { open: boolean; activeCount: number; toggle: () => void };
@@ -64,7 +65,7 @@ export function WorkspaceTopbar({
     {collaborationStatus === "disconnected" && !protocolUpgradeRequired && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
     </>}>
       {showEditor && <button className={`files-action${!filesCollapsed ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
-      <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} workspacePrimary />
+      <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} workspacePrimary previewLabel={isMarkdownPath(activeFile) ? t("editor.mobilePreview") : undefined} />
       <button type="button" className="share-action" title={t("projectSettings.share")} aria-label={project.sharedMemberCount ? `${t("projectSettings.share")} (${project.sharedMemberCount})` : t("projectSettings.share")} onClick={onShare}>
         <Users size={15} /><span className="workspace-action-label">{t("projectSettings.share")}</span>
         {(project.sharedMemberCount ?? 0) > 0 && <sup className="share-action-count">{project.sharedMemberCount}</sup>}

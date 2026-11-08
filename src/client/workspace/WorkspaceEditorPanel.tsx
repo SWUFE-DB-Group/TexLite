@@ -18,7 +18,7 @@ import { WorkspaceMobileSyncButton } from "./WorkspaceMobileSyncButton";
 const LatexEditor = lazy(() => import("../LatexEditor").then((module) => ({ default: module.LatexEditor })));
 
 export interface WorkspaceEditorPanelProps {
-  mobileSync?: { disabled: boolean; onClick: () => Promise<void> };
+  mobileSync?: { disabled: boolean; onClick: () => Promise<void>; label?: string };
   terminal?: TerminalPanelRenderer | null;
   project: Project;
   projectId: string;

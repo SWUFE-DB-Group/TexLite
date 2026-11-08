@@ -45,7 +45,9 @@ export function CollaborationPresence({ sessions, status }: { sessions: ActiveSe
   </div>;
 }
 
-export function WorkspaceLayoutMenu({ value, onChange }: { value: WorkspaceLayout; onChange: (value: WorkspaceLayout) => void; workspacePrimary?: boolean }) {
+export function WorkspaceLayoutMenu({ value, onChange, previewLabel = "PDF" }: { value: WorkspaceLayout; onChange: (value: WorkspaceLayout) => void; workspacePrimary?: boolean;
+  /** Name of the phone's preview view, e.g. for a Markdown file. */
+  previewLabel?: string }) {
   const { t } = useTranslation();
   const phone = usePhoneWorkspace();
   const [open, setOpen] = useState(false);
@@ -74,7 +76,7 @@ export function WorkspaceLayoutMenu({ value, onChange }: { value: WorkspaceLayou
   }, [open]);
   if (phone) return <div className="workspace-phone-views" role="group" aria-label={t("editor.layout.label")}>
     <button type="button" aria-pressed={value !== "pdf-only"} onClick={() => onChange("editor-only")}><Code2 size={15} /><span>{t("editor.mobileSource")}</span></button>
-    <button type="button" aria-pressed={value === "pdf-only"} onClick={() => onChange("pdf-only")}><FileText size={15} /><span>PDF</span></button>
+    <button type="button" aria-pressed={value === "pdf-only"} onClick={() => onChange("pdf-only")}><FileText size={15} /><span>{previewLabel}</span></button>
   </div>;
   return <div className="layout-menu" ref={root}>
     <button type="button" className={`layout-trigger${open ? " active" : ""}`} aria-label={currentLabel} aria-haspopup="menu" aria-expanded={open} title={currentLabel} onClick={() => setOpen((current) => !current)}>

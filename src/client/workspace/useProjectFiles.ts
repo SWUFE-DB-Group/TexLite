@@ -56,7 +56,7 @@ export function fileOpenKind(entry: FileEntry, maxTextBytes: number): "editor" |
   return kind === "text" ? "editor" : kind;
 }
 
-function rawFileUrl(projectId: string, filePath: string): string {
+export function rawFileUrl(projectId: string, filePath: string): string {
   return appPath(`/api/projects/${projectId}/file/raw?path=${encodeURIComponent(filePath)}`);
 }
 

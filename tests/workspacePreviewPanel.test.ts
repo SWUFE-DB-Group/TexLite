@@ -71,3 +71,26 @@ describe("uncompiled PDF preview", () => {
     expect(render({ previewTab: "diagnostics" })).not.toContain("preview-empty-uncompiled");
   });
 });
+
+describe("Markdown preview surface", () => {
+  const markdown = { path: "docs/README.md", source: null, reveal: null, onOpenPath: () => {}, onShowLine: () => {}, onShowCursor: () => {} };
+  it("adds a Markdown tab for the active Markdown file and uses line alignment instead of SyncTeX", async () => {
+    await i18n.changeLanguage("en");
+    const html = render({ previewTab: "markdown", markdown, showSyncResize: true });
+    expect(html).toMatch(/class="markdown-tab active"[^>]*aria-selected="true"|aria-selected="true"[^>]*class="markdown-tab active"/);
+    expect(html).toContain("README.md");
+    expect(html).toContain(`aria-label="${i18n.t("editor.markdown.showInSource")}"`);
+    expect(html).toContain(`aria-label="${i18n.t("editor.markdown.showInPreview")}"`);
+    expect(html).not.toContain(`aria-label="${i18n.t("editor.showInPdf")}"`);
+    expect(html).not.toContain("preview-empty-uncompiled");
+  });
+  it("keeps the PDF and SyncTeX controls when the PDF is chosen for a Markdown file", () => {
+    const html = render({ previewTab: "pdf", markdown, showSyncResize: true });
+    expect(html).toContain('class="markdown-tab"');
+    expect(html).toContain(`aria-label="${i18n.t("editor.showInPdf")}"`);
+    expect(html).toContain("preview-empty-uncompiled");
+  });
+  it("has no Markdown tab for other files", () => {
+    expect(render()).not.toContain("markdown-tab");
+  });
+});

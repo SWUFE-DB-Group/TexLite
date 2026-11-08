@@ -38,10 +38,12 @@ import { WorkspaceFilePanel } from "../workspace/WorkspaceFilePanel";
 import { WorkspaceEditorPanel } from "../workspace/WorkspaceEditorPanel";
 import { useAgentAccess } from "../agents/useAgentAccess";
 import { useAgentChanges, type PendingAgentChange } from "../agents/useAgentChanges";
-import { WorkspacePreviewPanel } from "../workspace/WorkspacePreviewPanel";
+import { WorkspacePreviewPanel, type WorkspaceMarkdownPreview } from "../workspace/WorkspacePreviewPanel";
 import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
 import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
 import { createSourceCursorStore, type SourceCursorStore } from "../workspace/sourceCursorStore";
+import { displayedPreviewSurface, isMarkdownPath } from "../workspace/markdownPreview";
+import { useMarkdownPreviewPreference } from "../workspace/useMarkdownPreviewPreference";
 import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
 import { workspaceOutlineForMainFile, type LoadedProjectOutline, type OutlineSourceSnapshot } from "../workspace/outlineState";
 import { LazyModal } from "../LazyLoadBoundary";
@@ -132,9 +134,9 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const sourceCursorStoreRef = useRef<SourceCursorStore | null>(null);
   if (!sourceCursorStoreRef.current) sourceCursorStoreRef.current = createSourceCursorStore();
   const sourceCursorStore = sourceCursorStoreRef.current;
-  const [previewTab, setPreviewTab] = useState<PreviewSurface>("pdf");
+  const [previewTab, setPreviewTab] = useState<Exclude<PreviewSurface, "markdown">>("pdf");
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticTab>("log");
-  const selectPreviewTab = (next: PreviewTab | PreviewSurface): void => {
+  const selectPreviewTab = (next: PreviewTab | "diagnostics"): void => {
     if (next === "pdf") {
       setPreviewTab("pdf");
       return;
@@ -147,6 +149,16 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setPreviewTab("diagnostics");
   };
   const { workspaceLayout, setWorkspaceLayout, phone } = useWorkspaceLayout(user.id, projectId);
+  const [markdownPreferred, setMarkdownPreferred] = useMarkdownPreviewPreference(user.id, projectId);
+  const markdownActive = isMarkdownPath(activeFile);
+  const previewSurface = displayedPreviewSurface(previewTab, markdownActive, markdownPreferred);
+  /** A tab chosen in the preview header, which also records the Markdown preference. */
+  const choosePreviewSurface = (next: PreviewTab | PreviewSurface): void => {
+    if (next === "markdown") setMarkdownPreferred(true);
+    else if (next === "pdf" && markdownActive) setMarkdownPreferred(false);
+    selectPreviewTab(next === "markdown" ? "pdf" : next);
+  };
+  const [markdownReveal, setMarkdownReveal] = useState<{ line: number; nonce: number } | null>(null);
   const [phoneFilesOpen, setPhoneFilesOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -1206,7 +1218,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     getCurrentMainFile,
     initialLatest: preload?.projectId === projectId ? preload.latestCompile : null,
     collaborationSynced,
-    pdfVisible: previewTab === "pdf" && workspaceLayout !== "editor-only",
+    pdfVisible: previewSurface === "pdf" && workspaceLayout !== "editor-only",
     sharedState: compileState,
     onSharedState: setCompileState,
     save: saveForCompile,
@@ -1372,6 +1384,29 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     const cursor = sourceCursorStore.getCursor();
     return syncSourceToPdf(path, cursor.line, cursor.column);
   };
+  const showCursorInMarkdown = () => {
+    choosePreviewSurface("markdown");
+    if (phone) setWorkspaceLayout("pdf-only");
+    setMarkdownReveal((current) => ({ line: sourceCursorStore.getCursor().line, nonce: (current?.nonce ?? 0) + 1 }));
+    return Promise.resolve();
+  };
+  const markdownPreview: WorkspaceMarkdownPreview | null = markdownActive ? {
+    path: activeFile,
+    source: loadedFile === activeFile ? content : null,
+    reveal: markdownReveal,
+    onOpenPath: (path) => {
+      const entry = files.find((file) => file.path === path);
+      if (!entry) { setError(t("editor.markdown.linkMissing", { path })); return; }
+      // Another Markdown file keeps showing as a preview; other text opens in the editor.
+      if (!isMarkdownPath(path) && isEditableTextFile(entry.path, entry.textContent) && workspaceLayout === "pdf-only") setWorkspaceLayout("editor-pdf");
+      openFile(entry);
+    },
+    onShowLine: (line) => {
+      if (workspaceLayoutRef.current === "pdf-only") setWorkspaceLayout("editor-pdf");
+      jumpToSource(activeFile, line, 1);
+    },
+    onShowCursor: () => void showCursorInMarkdown()
+  } : null;
   const activateTab = (tabPath: string): void => {
     const entry = files.find((file) => file.path === tabPath);
     if (entry && isEditableTextFile(entry.path, entry.textContent)) openFile(entry);
@@ -1475,7 +1510,9 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       />}
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel
-        mobileSync={phone && sidePanel !== "comments" ? { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
+        mobileSync={phone && sidePanel !== "comments" ? markdownActive
+          ? { disabled: loadedFile !== activeFile, onClick: showCursorInMarkdown, label: t("editor.markdown.showInPreview") }
+          : { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
         terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized}
           review={agentChanges} activeChangeId={activeAgentChangeId} onShowChange={showAgentChange} reviewFocus={agentReviewFocus} /></Suspense> : null}
         project={project} projectId={projectId} activeFile={activeFile} mainFile={activeMainFile} openTabs={openTabs}
@@ -1500,7 +1537,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       {showPreview && <WorkspacePreviewPanel
         mobileSync={phone}
         commentsOpen={sidePanel === "comments"} onCommentsHost={setCommentsHost}
-        projectId={projectId} activeMainFile={activeMainFile} previewTab={previewTab} diagnosticTab={diagnosticTab}
+        projectId={projectId} activeMainFile={activeMainFile} previewTab={previewSurface} diagnosticTab={diagnosticTab}
         pdfUrl={pdfUrl} pdfLoadingMode={pdfLoadingMode} pdfLoading={pdfLoading} pdfCompiledAt={pdfCompiledAt}
         pdfSizeBytes={pdfSizeBytes} pdfCompiledLabel={pdfCompiledLabel} pdfTargetLabel={pdfTargetLabel} pdfDownloadUrl={pdfDownloadUrl}
         pdfTarget={pdfTarget} pdfViewport={pdfViewport} activeFile={activeFile}
@@ -1508,7 +1545,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         compileMessages={compileMessages} artifacts={artifacts}
         artifactPreview={artifactPreview} artifactLoading={artifactLoading} cleaning={cleaning}
         readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={showEditor && showPreview}
-        diagnosticCount={diagnosticCount} selectPreviewTab={selectPreviewTab}
+        diagnosticCount={diagnosticCount} selectPreviewTab={choosePreviewSurface} markdown={markdownPreview}
         changeWorkspaceLayout={changeWorkspaceLayout} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport} onPdfDisplayed={pdfDisplayed}
         syncVisiblePdfToSource={syncVisiblePdfToSource}
         syncCurrentSourceToPdf={syncCurrentSourceToPdf}

@@ -372,6 +372,15 @@
     "saved": "已保存", "savedAt": "已于 {{time}} 保存到服务器", "loading": "载入中", "pending": "等待保存", "saving": "正在保存到服务器", "saveFailed": "保存失败", "offlineDraft": "离线 · 本地草稿已保留", "harperRecoveryTitle": "Harper 暂不可用。", "harperFallbackHint": " 已自动改用浏览器内置拼写检查。", "texFmtRecoveryTitle": "tex-fmt 无法加载。", "texFmtOptionsRecoveryTitle": "tex-fmt 无法处理当前源码或参数。", "texFmtRuntimeRecoveryTitle": "tex-fmt 返回了异常结果。", "clientToolRecoveryHint": " 可立即重试；如果页面在系统更新前已经打开，请刷新页面加载最新资源。", "resetFormatterOptions": "清空参数并重试", "formattingBy": "{{name}} 正在格式化此文件，请稍候…", "citationJumpHint": "按住 Ctrl/Cmd 并点击以打开参考文献条目“{{key}}”。", "labelJumpHint": "按住 Ctrl/Cmd 并点击以打开标签定义“{{key}}”。", "citationTargetNotFound": "没有找到“{{key}}”对应的参考文献条目。", "labelTargetNotFound": "没有找到“{{key}}”对应的标签定义。", "citationHoverLoading": "正在载入参考文献信息…", "citationHoverUnavailable": "暂时无法显示参考文献信息。", "citationHoverInSource": "文档内参考文献条目", "citationHoverEntryUnreadable": "无法从参考文献文件中读取此条目。", "citationHoverEntry": "参考文献条目 {{key}}", "citationHoverDoi": "DOI", "citationHoverUrl": "链接", "citationHoverOpenHint": "按住 Ctrl/Cmd 点击可打开该条目。",
     "compileShort": "编译",
     "mobileSource": "源码",
+    "mobilePreview": "预览",
+    "markdown": {
+      "tab": "Markdown",
+      "tabTitle": "{{path}} 的渲染预览",
+      "empty": "这个 Markdown 文件是空的。",
+      "showInSource": "在源码中显示当前预览位置",
+      "showInPreview": "在预览中显示当前源码光标位置",
+      "linkMissing": "项目中没有 {{path}}。"
+    },
     "moreActions": "更多操作",
     "compile": "编译 · {{engine}}", "compiling": "编译中…", "compileQueued": "编译已排队…", "compileFailedRetained": "编译失败，当前显示上一次成功生成的 PDF（{{time}}）。", "compileFailedNoPdf": "编译失败，且没有可用的成功 PDF。", "upToDate": "文件已是最新，无需重新编译。", "compileSnapshotStale": "PDF 基于较早的一致快照编译，未包含之后的源码修改。", "addComment": "添加批注", "sourceComments": "源码批注", "mentionUsers": "@ 项目成员", "mentionedYou": "提到了你", "markMentionRead": "标记已读", "markAllMentionsRead": "全部标记已读", "commentScope": "批注范围", "commentScopeFile": "当前文件", "commentScopeProject": "整个项目", "commentFilter": "批注筛选", "commentFilterUnresolved": "待解决 {{count}}", "commentFilterResolved": "已解决 {{count}}", "commentPrevious": "上一条批注", "commentNext": "下一条批注", "commentPosition": "{{current}} / {{total}}", "commentNoMatches": "没有符合此筛选条件的批注。", "commentLocation": "{{path}} · 第 {{line}} 行",
     "projectSettings": "TexLite 设置", "uploadAttachment": "上传附件", "newFile": "新建文本文件", "binary": "二进制附件已保存，但不能在文本编辑器中打开。",

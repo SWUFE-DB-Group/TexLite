@@ -1022,22 +1022,33 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .preview-panel { display: flex; flex-direction: column; container: preview-panel / inline-size; background: #6f7471; }
 .preview-tabs { min-height: 48px; flex: none; display: flex; align-items: stretch; padding: 4px 8px 0; border-bottom: 1px solid var(--ui-border, #dde3de); background: var(--ui-surface, #f3f5f2); }
 .preview-tab-list { min-width: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+/* The PDF tab takes the free width; the Markdown tab only what its label needs. */
+.preview-tab-list.has-markdown { grid-template-columns: minmax(0, 1fr) auto auto; }
+.preview-tabs .markdown-tab { max-width: 220px; }
 .preview-tabs button { position: relative; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 6px 6px 0 0; background: transparent; color: var(--ui-muted, #57655d); font-size: 11px; }
 .preview-tabs button:hover { background: var(--ui-hover, #e9eeea); color: var(--ui-text, #344b3e); }
 .preview-tabs button.active { background: var(--ui-accent-bg, #e4eee5); color: var(--ui-accent, #18553c); font-weight: 600; box-shadow: inset 0 0 0 1px var(--ui-accent-border, #c5d9cb); }
 .preview-tabs button.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--ui-accent, #18553c); }
 .preview-tabs .diagnostic-count { min-width: 17px; padding: 1px 5px; border-radius: 999px; background: var(--ui-hover, #e3e9e4); color: var(--ui-muted, #647168); font-size: 9px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .preview-tabs .diagnostics-tab.active .diagnostic-count { background: var(--ui-accent-bg, #deebe1); color: var(--ui-accent, #18553c); }
-.preview-tabs .pdf-tab { justify-content: flex-start; gap: 8px; padding: 7px 12px; font-size: 12px; }
+.preview-tabs :is(.pdf-tab, .markdown-tab) { justify-content: flex-start; gap: 8px; padding: 7px 12px; font-size: 12px; }
 .preview-tabs .pdf-tab-icon { width: 16px; height: 16px; flex: none; }
-.preview-tabs .pdf-tab-label { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 12px; line-height: 1.15; }
-.preview-tabs .pdf-tab-title { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.preview-tabs .pdf-tab small { max-width: 100%; overflow: hidden; color: var(--ui-muted, #6a786e); font-size: 9px; font-weight: 400; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+/* Same Markdown mark and colour as the file tree. */
+.preview-tabs .markdown-tab-icon { width: 16px; height: 16px; flex: none; color: var(--ui-info, #3d6da8); }
+.preview-tabs :is(.pdf-tab-label, .markdown-tab-label) { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 12px; line-height: 1.15; }
+.preview-tabs :is(.pdf-tab-title, .markdown-tab-title) { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-tabs :is(.pdf-tab, .markdown-tab) small { max-width: 100%; overflow: hidden; color: var(--ui-muted, #6a786e); font-size: 9px; font-weight: 400; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
 .preview-tabs .diagnostics-tab { flex: none; white-space: nowrap; }
 .pdf-download-top { position: relative; flex: none; align-self: center; height: 30px; display: inline-flex; align-items: center; gap: 5px; margin-left: 12px; padding: 0 9px; border: 0; border-radius: 5px; color: var(--ui-accent, #18553c); font-size: 11px; text-decoration: none; white-space: nowrap; }
 .pdf-download-top::before { content: ""; position: absolute; left: -7px; top: 7px; bottom: 7px; width: 1px; background: var(--ui-border, #d8e0da); }
 .pdf-download-top:hover { background: var(--ui-accent-bg, #e2ede4); color: var(--ui-accent, #18553c); }
 .preview-tabs button:focus-visible, .pdf-download-top:focus-visible { outline: 2px solid var(--ui-accent, #18553c); outline-offset: -3px; }
+/* When space is short the Markdown tab keeps only its icon so the PDF tab stays readable;
+   its label remains the accessible name. */
+@container preview-panel (max-width: 640px) {
+  .preview-tabs .markdown-tab { justify-content: center; padding-inline: 10px; }
+  .preview-tabs .markdown-tab-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+}
 @container preview-panel (max-width: 520px) {
   .preview-tabs .diagnostics-tab-label, .preview-tabs .diagnostic-count, .pdf-download-top .pdf-download-label { display: none; }
 }
@@ -1049,6 +1060,23 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .preview-subtabs button.active span { background: var(--ui-hover, #dfe8e2); }
 .preview-content { min-height: 0; flex: 1; }
 .preview-pdf { overflow: hidden; }
+.preview-markdown { overflow: hidden; background: var(--ui-raised, #fff); }
+.markdown-preview { height: 100%; overflow: auto; overscroll-behavior: contain; }
+.markdown-preview:focus-visible { outline: 2px solid var(--ui-accent, #18553c); outline-offset: -2px; }
+.workspace-markdown { max-width: 860px; margin: 0 auto; padding: 24px clamp(16px, 5cqi, 40px) 48px; font-size: 14px; line-height: 1.7; }
+.workspace-markdown :is(h1, h2) { padding-bottom: .3em; border-bottom: 1px solid var(--ui-border, #dbe3dc); }
+.workspace-markdown h1 { font-size: 24px; }
+.workspace-markdown h2 { font-size: 20px; }
+.workspace-markdown h3 { font-size: 17px; }
+.workspace-markdown :is(h4, h5, h6) { font-size: 15px; }
+.workspace-markdown hr { height: 0; margin: 1.5em 0; border: 0; border-top: 1px solid var(--ui-border, #dbe3dc); }
+.workspace-markdown input[type="checkbox"] { margin: 0 .4em 0 0; vertical-align: middle; }
+.workspace-markdown li.task-list-item { list-style: none; }
+.workspace-markdown .markdown-source-target { border-radius: 4px; animation: markdown-source-target 1.6s ease-out; }
+@keyframes markdown-source-target { from { background: #ef9c2440; box-shadow: 0 0 0 4px #ef9c2440; } to { background: transparent; box-shadow: 0 0 0 4px transparent; } }
+@media (prefers-reduced-motion: reduce) { .workspace-markdown .markdown-source-target { animation: none; outline: 2px solid #ef9c24; outline-offset: 2px; } }
+.markdown-preview-empty { color: var(--ui-muted, #647168); }
+.markdown-preview-empty span { color: inherit; }
 .pdf-viewer { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .pdf-toolbar { min-height: 36px; flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px 8px; padding: 4px 8px; border-bottom: 1px solid var(--ui-border, #d4dcd6); background: var(--ui-surface, #f3f5f2); color: var(--ui-muted, #536259); font: 11px/1 Inter, ui-sans-serif, system-ui, sans-serif; }
 .pdf-page-controls, .pdf-zoom-controls { flex: none; display: flex; align-items: center; gap: 3px; }
@@ -1863,24 +1891,24 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-folder-import { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
 .citation-collection-import > .info-popover-trigger { flex: none; margin-right: 6px; }
 .citation-folder-import p { margin: 0; overflow-wrap: anywhere; }
-.citation-notes-markdown { min-width: 0; color: var(--ui-text, #293d30); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
-.citation-notes-markdown > :first-child { margin-top: 0; }
-.citation-notes-markdown > :last-child { margin-bottom: 0; }
-.citation-notes-markdown :is(h1, h2, h3, h4, h5, h6) { margin: 1.3em 0 .5em; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.4; }
-.citation-notes-markdown h1 { font-size: 19px; }
-.citation-notes-markdown h2 { font-size: 17px; }
-.citation-notes-markdown :is(p, ul, ol, blockquote, pre, table) { margin: .8em 0; }
-.citation-notes-markdown :is(ul, ol) { padding-left: 1.6em; }
-.citation-notes-markdown code { padding: 2px 4px; border-radius: 4px; background: var(--ui-subtle, #edf1ed); font-size: .9em; }
-.citation-notes-markdown pre { overflow-x: auto; padding: 12px; border-radius: 7px; background: var(--ui-subtle, #edf1ed); }
-.citation-notes-markdown pre code { padding: 0; background: none; white-space: pre; }
-.citation-notes-markdown .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
-.citation-notes-math .katex-error { color: var(--ui-danger, #b3261e) !important; }
-.citation-notes-markdown a { color: var(--ui-info, #2563b4); text-decoration: underline; text-underline-offset: 2px; }
-.citation-notes-markdown blockquote { margin-inline: 0; padding-left: 12px; border-left: 3px solid var(--ui-border, #cbd5ce); color: var(--ui-muted, #78857c); }
-.citation-notes-markdown img { max-width: 100%; height: auto; }
-.citation-notes-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
-.citation-notes-markdown :is(th, td) { padding: 6px 10px; border: 1px solid var(--ui-border, #cbd5ce); text-align: left; }
+.markdown-content { min-width: 0; color: var(--ui-text, #293d30); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.markdown-content > :first-child { margin-top: 0; }
+.markdown-content > :last-child { margin-bottom: 0; }
+.markdown-content :is(h1, h2, h3, h4, h5, h6) { margin: 1.3em 0 .5em; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.markdown-content h1 { font-size: 19px; }
+.markdown-content h2 { font-size: 17px; }
+.markdown-content :is(p, ul, ol, blockquote, pre, table) { margin: .8em 0; }
+.markdown-content :is(ul, ol) { padding-left: 1.6em; }
+.markdown-content code { padding: 2px 4px; border-radius: 4px; background: var(--ui-subtle, #edf1ed); font-size: .9em; }
+.markdown-content pre { overflow-x: auto; padding: 12px; border-radius: 7px; background: var(--ui-subtle, #edf1ed); }
+.markdown-content pre code { padding: 0; background: none; white-space: pre; }
+.markdown-content .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.markdown-math .katex-error { color: var(--ui-danger, #b3261e) !important; }
+.markdown-content a { color: var(--ui-info, #2563b4); text-decoration: underline; text-underline-offset: 2px; }
+.markdown-content blockquote { margin-inline: 0; padding-left: 12px; border-left: 3px solid var(--ui-border, #cbd5ce); color: var(--ui-muted, #78857c); }
+.markdown-content img { max-width: 100%; height: auto; }
+.markdown-content table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.markdown-content :is(th, td) { padding: 6px 10px; border: 1px solid var(--ui-border, #cbd5ce); text-align: left; }
 .citation-notes-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; min-height: 140px; gap: 10px; color: var(--ui-muted, #78857c); font-size: 13px; }
 .citation-notes-empty p { margin: 0; }
 .citation-entry-notes { min-width: 0; overflow: hidden; margin: -2px 0 2px; border: 1px solid var(--ui-border, #d5dfd8); border-radius: 8px; background: var(--ui-surface, #fff); }
@@ -2582,9 +2610,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .workspace-mobile-drawer .outline-row { min-height: 34px; }
   .workspace-mobile-drawer :is(input:not([type="checkbox"]), select, textarea), .dialog-content :is(input:not([type="checkbox"]), select, textarea) { font-size: 16px; }
   .preview-tabs { min-width: 0; }
-  .preview-tabs .pdf-tab { min-width: 0; padding-inline: 9px; }
-  .preview-tabs .pdf-tab-title { font-size: 12px; }
-  .preview-tabs .pdf-tab-label small { font-size: 10px; }
+  .preview-tabs :is(.pdf-tab, .markdown-tab) { min-width: 0; padding-inline: 9px; }
+  .preview-tabs :is(.pdf-tab-title, .markdown-tab-title) { font-size: 12px; }
+  .preview-tabs :is(.pdf-tab-label, .markdown-tab-label) small { font-size: 10px; }
   .pdf-toolbar { min-height: 44px; gap: 5px; padding-inline: 8px; }
   .pdf-toolbar button { min-width: 36px; min-height: 36px; }
   .pdf-toolbar .pdf-page-input { height: 36px; font-size: 16px; }
