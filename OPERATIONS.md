@@ -233,7 +233,7 @@ preferred.
 | --- | --- | --- |
 | `siteName` | `TexLite` | Site title. |
 | `adminEmail` | empty | Optional administrator contact address. |
-| `server.host` / `server.port` | `127.0.0.1` / `3000` | Keep localhost unless the deployment is separately secured. |
+| `server.host` / `server.port` | `127.0.0.1` / `3000` | Use `0.0.0.0` to serve a trusted local network; keep localhost behind a tunnel or reverse proxy. |
 | `server.basePath` | `/` | Public URL mount point, such as `/texlite` or `/tools/texlite`. |
 | `storage.dataDir` | XDG data directory | Stores all persistent project data. |
 | `clientDir` | Installed package's `dist/client` | Normally changed only for development or a custom deployment. |

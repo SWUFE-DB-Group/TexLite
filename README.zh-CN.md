@@ -58,28 +58,6 @@ texlite logs
 `restart`、`status`、`logs` 使用 npm 包内置的 PM2 运行时；完整命令请执行
 `texlite help`。
 
-<details>
-<summary>如何公开访问 TexLite</summary>
-
-建议让 TexLite 继续监听 `127.0.0.1`。如果需要方便、安全地公开访问，请使用
-[TexLite Share](https://share.zhongpu.info/)。TexLite Share 目前部署在香港，来自中国大陆或
-东南亚以外地区的访问可能较慢。确保 TexLite 已在默认端口启动，然后安装并运行隧道客户端：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
-~/.local/bin/texlite-tunnel-client --server-url https://share.zhongpu.info
-```
-
-如果 TexLite 使用非默认端口，请明确指定本地地址：
-
-```bash
-~/.local/bin/texlite-tunnel-client \
-  --server-url https://share.zhongpu.info \
-  --local-addr 127.0.0.1:8080
-```
-
-</details>
-
 ## 与 Overleaf 的实际区别
 
 [Overleaf](https://www.overleaf.com/about/features-overview) 在团队需要其托管产品或更完整生态时
@@ -149,16 +127,44 @@ Docker 版的用户配置和日常运维请参见
 
 ## 范围与安全
 
-TexLite 是一个面向可信用户的单宿主机应用，并非 LaTeX 编译沙箱：LaTeX 本身以及启用的
-项目 `latexmkrc` 都可能执行强大的本机行为。
-不要直接暴露其服务端口。
+TexLite 是面向小型可信团队的单宿主机应用。账号由管理员创建，项目权限由服务端校验。
+它不是编译沙箱：LaTeX 本身以及启用的项目 `latexmkrc` 都可以在宿主机上执行强大的命令，
+因此只应给可信的人开设账号。
 
-[TexLite Share](https://share.zhongpu.info/) 是最简单、专门面向 TexLite 的分享方式。
-根据部署环境，也可以使用 [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
-构建私有 Tailnet，通过 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
-提供托管的公网入口，或使用 [frp](https://github.com/fatedier/frp) 自行维护反向隧道。
-无论采用哪一种访问层，都应保留 TexLite 登录认证、启用 HTTPS、限制访问范围，并注意
-LaTeX 编译环境并不是面向不可信代码的沙箱。
+**局域网内使用。** TexLite 默认监听 `127.0.0.1`，只有本机可以访问。若要让同一实验室或
+办公网络中的同事使用，在 `texlite.config.json` 中把 `server.host` 设为 `0.0.0.0`
+（或设置环境变量 `TEXLITE_HOST=0.0.0.0`），然后运行 `texlite restart`。其他人即可通过
+`http://<宿主机 IP>:3000` 访问；如有需要，请在宿主机防火墙中放行该端口。
+`texlite config` 会显示当前使用的配置文件。
+
+**局域网外访问。** 请使用隧道或私有网络，不要在路由器上直接做端口转发。此时 TexLite
+继续监听 `127.0.0.1`，所有项目仍由 TexLite 自身的登录保护。
+
+<details>
+<summary><b>TexLite Share</b>：为 TexLite 提供最简单的 HTTPS 链接</summary>
+
+[TexLite Share](https://share.zhongpu.info/) 目前部署在香港，来自中国大陆或东南亚以外
+地区的访问可能较慢。确保 TexLite 已在默认端口启动，然后安装并运行隧道客户端：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
+~/.local/bin/texlite-tunnel-client --server-url https://share.zhongpu.info
+```
+
+如果 TexLite 使用非默认端口，请明确指定本地地址：
+
+```bash
+~/.local/bin/texlite-tunnel-client \
+  --server-url https://share.zhongpu.info \
+  --local-addr 127.0.0.1:8080
+```
+
+</details>
+
+其他常见选择包括
+[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)、
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
+和 [frp](https://github.com/fatedier/frp)。
 
 ## 许可证
 

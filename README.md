@@ -60,31 +60,6 @@ texlite logs
 `start`, `stop`, `restart`, `status`, and `logs` use the PM2 runtime bundled
 with the npm package. Run `texlite help` for the complete command list.
 
-<details>
-<summary>How to access TexLite publicly</summary>
-
-Keep TexLite bound to `127.0.0.1` and use
-[TexLite Share](https://share.zhongpu.info/) when you need convenient,
-HTTPS-protected public access. TexLite Share is currently hosted in Hong Kong,
-so access from mainland China or regions outside Southeast Asia may be slower.
-With TexLite running locally on its default port, install and launch the tunnel
-client with:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
-~/.local/bin/texlite-tunnel-client --server-url https://share.zhongpu.info
-```
-
-For a non-default local port, specify the address explicitly:
-
-```bash
-~/.local/bin/texlite-tunnel-client \
-  --server-url https://share.zhongpu.info \
-  --local-addr 127.0.0.1:8080
-```
-
-</details>
-
 ## A practical distinction from Overleaf
 
 [Overleaf](https://www.overleaf.com/about/features-overview) is a strong choice
@@ -166,18 +141,49 @@ for its user-facing configuration and operations guide.
 
 ## Scope and security
 
-TexLite is a single-host application for trusted users. It is not a compiler
-sandbox: LaTeX and an enabled project `latexmkrc` can execute powerful local
-behaviour. Do not expose its service port directly.
+TexLite is a single-host application for a small, trusted team. Accounts are
+created by an administrator, and project access is enforced by the server. It
+is not a compiler sandbox: LaTeX and an enabled project `latexmkrc` can run
+powerful commands on the host, so only give accounts to people you trust.
 
-[TexLite Share](https://share.zhongpu.info/) provides the simplest
-TexLite-specific sharing path. Depending on the deployment environment, common
-alternatives include [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
-for a private tailnet, [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
-for a managed public endpoint, and [frp](https://github.com/fatedier/frp) for a
-self-managed reverse tunnel. Whichever access layer is used, retain TexLite's
-authentication, enable HTTPS, restrict the audience, and remember that LaTeX
-compilation is not an untrusted-code sandbox.
+**Within a local network.** TexLite listens on `127.0.0.1` by default, so only
+the host itself can open it. To let colleagues on the same lab or office
+network use it, set `server.host` to `0.0.0.0` in `texlite.config.json` (or
+set `TEXLITE_HOST=0.0.0.0`) and run `texlite restart`. Others can then open
+`http://<host-ip>:3000`; allow the port in the host firewall if needed.
+`texlite config` prints the configuration file in use.
+
+**Outside the local network.** Use a tunnel or a private network instead of
+forwarding the port on your router. TexLite keeps listening on `127.0.0.1`, and
+its own login still protects every project.
+
+<details>
+<summary><b>TexLite Share</b>: the simplest HTTPS link for TexLite</summary>
+
+[TexLite Share](https://share.zhongpu.info/) is currently hosted in Hong Kong,
+so access from mainland China or regions outside Southeast Asia may be slower.
+With TexLite running locally on its default port, install and launch the tunnel
+client:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
+~/.local/bin/texlite-tunnel-client --server-url https://share.zhongpu.info
+```
+
+For a non-default local port, specify the address explicitly:
+
+```bash
+~/.local/bin/texlite-tunnel-client \
+  --server-url https://share.zhongpu.info \
+  --local-addr 127.0.0.1:8080
+```
+
+</details>
+
+Other common options include
+[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve),
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/),
+and [frp](https://github.com/fatedier/frp).
 
 ## License
 
