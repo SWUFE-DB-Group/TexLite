@@ -15,8 +15,15 @@
     "button": "文獻",
     "saveFolder": "儲存至資料夾",
     "chooseFolder": "選擇資料夾",
-    "unchanged": "已是最新內容",
-    "comparisonUnavailable": "暫時無法與文獻庫比較，請重新開啟「目前檔案」分頁重試。"
+    "comparisonUnavailable": "暫時無法檢查文獻庫，請重新開啟「目前檔案」分頁重試。",
+    "searchPlaceholder": "搜尋目前檔案…",
+    "statusFilters": "入庫狀態",
+    "statusAll": "全部",
+    "statusNew": "未入庫",
+    "noMatches": "目前檔案中沒有符合的項目。",
+    "introCurrent": "將目前檔案中尚未入庫的項目儲存到你的個人文獻庫，存入所選資料夾。",
+    "introLibrary": "從你的個人文獻庫中選擇項目，匯入到目前的 BibTeX 檔案。",
+    "introLibraryNeedsBib": "開啟 .bib 檔案後，才能從文獻庫匯入項目。"
   },
   "citationFolders": {
     "exportWithNotes": "匯出 BibTeX 及筆記",
@@ -1199,7 +1206,6 @@
     "emptyDescription": "在文獻庫中新增 BibTeX 項目。",
     "noEntries": "沒有找到 BibTeX 項目",
     "save": "儲存",
-    "update": "更新",
     "saving": "正在儲存…",
     "saved": "文獻已儲存到你的文獻庫。",
     "deleteTitle": "刪除文獻",

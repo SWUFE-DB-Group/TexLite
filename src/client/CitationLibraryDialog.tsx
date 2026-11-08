@@ -201,7 +201,7 @@ function CitationLibraryManager({ open, onOpenChange, page = false, onBack, curr
         setError(t("citationErrors.invalid"));
         return;
       }
-      const result = await api<{ entry: CitationLibraryEntry; updated: boolean }>("/api/citations", {
+      const result = await api<{ entry: CitationLibraryEntry }>("/api/citations", {
         method: "POST", body: JSON.stringify({
           bibtex: parsed.bibtex, citationKey: parsed.citationKey, entryType: parsed.entryType,
           title: parsed.title, authors: parsed.authors, year: parsed.year, venue: parsed.venue,

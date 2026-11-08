@@ -146,14 +146,25 @@ oversized folders are preserved and may shrink, but cannot gain new entries.
 All references and Unfiled are views, not folders, and have no 500-entry cap;
 the private library's total size is not limited by folder capacity.
 The dashboard page and project import dialog share folder navigation. Project
-workflows use a separate controller and render only Import on library entries
-and Save/Update on current-file entries. These are compact icon-only actions
+workflows use a separate controller: My library entries only offer Import into
+the current file, and current-file entries only offer Save into the library. These are compact icon-only actions
 with accessible names, action/state tooltips and the shared saved-check feedback.
 Tag filters combine with folders, search and pagination, but project dialogs do
 not expose tag or entry management controls. The workspace's compact entry is
-labelled Citation; the homepage keeps Citation library. New saves require a destination folder; updates preserve
-existing folder placements. A bounded, debounced comparison request returns
-only key/id/revision and content-equality metadata, never full library text.
+labelled Citation; the homepage keeps Citation library. Saving from the current
+file only adds entries whose key is not in the library yet, into a chosen
+destination folder; an entry already there shows as saved and is never changed
+from the project dialog. A bounded, debounced key lookup returns only
+key/id/revision metadata, never library text.
+The project dialog opens a `.bib` file on its Current file tab, and any other
+file on My library. It reads the current file once per opening: edits made
+while it stays open are neither re-parsed nor re-compared, and reopening shows
+them. My library is paginated by the server; Current file pages the parsed
+entries in the browser (60 per page) with a local search and a library-status
+filter, while the key lookup still covers the whole file so the counts are
+exact. The folder sidebar filters My library only and is hidden on Current
+file, whose save destination is a separate selector; entering Current file
+without a destination offers the folder being browsed.
 Equality ignores platform line endings and outer whitespace, not differences
 inside an entry. Unchanged entries cannot be updated; changed ones still need
 the last-read revision. Source/file switches abort stale comparisons and
@@ -233,9 +244,10 @@ formatter worker alone. Citation keys are unique
 per user without regard to letter case. Creating an existing key is rejected;
 updating an entry or its tags requires the revision last read by the client, so
 concurrent browser sessions report a conflict instead of silently overwriting
-newer content. Entry-text and tag-only mutations use separate endpoints, while
-the explicit save-from-`.bib` action can replace the stored entry without
-discarding its existing tags. The server retains only transport-level size and
+newer content. Entry-text and tag-only mutations use separate endpoints.
+`POST /api/citations` only creates entries, including saves from a project's
+`.bib`; it never replaces an existing key, and the key lookup reports only
+which keys exist. The server retains only transport-level size and
 field-shape limits; it does not reparse BibTeX syntax.
 
 TexLite is intentionally a single-instance application. The collaboration

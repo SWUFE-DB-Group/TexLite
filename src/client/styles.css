@@ -1730,6 +1730,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-compose-modal .dialog-footer .primary { font-weight: 600; }
 .dialog-footer .danger, button.danger { border-color: var(--ui-danger-border, #b3261e); background: #b3261e; color: white; }
 .citation-library-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; align-items: start; min-width: 0; }
+.citation-library-layout.without-sidebar { grid-template-columns: minmax(0, 1fr); }
 .citation-library-dialog { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .citation-collections { min-width: 0; padding: 8px 0; }
 .citation-collections-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 9px; color: var(--ui-muted, #727b75); font-size: 11px; }
@@ -1776,6 +1777,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .citation-entry-main { width: 100%; }
 }
 .citation-library-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--ui-border, #d7ded8); border-radius: 9px; background: var(--ui-surface, #f4f7f4); }
+.citation-project-intro { margin: 0; color: var(--ui-muted, #66726a); font-size: 12px; line-height: 1.5; }
 .citation-library-tabs button { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ui-muted, #66716a); font-size: 12px; }
 .citation-library-tabs button:hover { background: var(--ui-hover, #eaf1eb); color: var(--ui-accent, #31523e); }
 .citation-library-tabs button.active { border-color: var(--ui-border, #c8d9cb); background: var(--ui-accent-bg, white); color: var(--ui-accent, #176b44); box-shadow: 0 1px 2px #233c2a12; }
@@ -1794,6 +1796,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-tag-name { overflow: hidden; text-overflow: ellipsis; }
 .citation-tag-filters button:hover { background: var(--ui-hover, #e6eee8); }
 .citation-tag-filters button.active { border-color: var(--ui-accent-border, #9cbea6); background: var(--ui-accent-bg, #e8f2eb); color: var(--ui-accent, #176b44); }
+.citation-status-filters button > span { color: inherit; font-variant-numeric: tabular-nums; opacity: 0.72; }
+.citation-status-filters button:disabled { cursor: default; opacity: 0.55; }
 .citation-tag-manage, .citation-tag-expand { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; border: 1px solid var(--ui-border, #bdc9c0); border-radius: 6px; padding: 5px 8px; background: var(--ui-surface, white); color: var(--ui-accent, #31523e); font-size: 10px; white-space: nowrap; }
 .citation-tag-manage { flex: none; }
 .citation-tag-expand { margin-top: 5px; border-color: transparent; color: var(--ui-muted, #66776c); }

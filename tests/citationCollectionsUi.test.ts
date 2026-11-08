@@ -71,7 +71,7 @@ beforeEach(async () => {
     }
     if (url === "/api/citations" && options?.method === "POST") {
       const body = JSON.parse(String(options.body)); saved = { ...saved, ...body };
-      return { entry: saved, updated: false } as never;
+      return { entry: saved } as never;
     }
     if (url === "/api/citations/ref" && options?.method === "PATCH") {
       saved = { ...saved, ...JSON.parse(String(options.body)), revision: saved.revision + 1 };
@@ -408,6 +408,7 @@ describe("citation folder workflows", () => {
 
   it("filters project imports by folder and passes the selected reference to the existing .bib import workflow", async () => {
     await render(true);
+    await click(buttons('[role="tab"]').find((button) => button.textContent?.includes(i18n.t("citationLibrary.myLibrary")))!);
     await click(folder("Paper A")); await settle();
     expect(vi.mocked(api).mock.calls.some(([url]) => url.includes("collection=a"))).toBe(true);
     await click(named("Import", ".citation-entry-actions button"));
@@ -415,8 +416,9 @@ describe("citation folder workflows", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("saves a current .bib entry into the chosen folder", async () => {
+  it("offers the browsed folder as the destination for a current .bib entry", async () => {
     await render(true, "@article{newKey, title={New paper}}");
+    await click(buttons('[role="tab"]').find((button) => button.textContent?.includes(i18n.t("citationLibrary.myLibrary")))!);
     await click(folder("Paper B")); await settle();
     await click(buttons('[role="tab"]').find((button) => button.textContent?.includes(i18n.t("citationLibrary.currentFile")))!);
     expect(document.querySelector<HTMLSelectElement>(".citation-project-destination select")?.value).toBe("b");

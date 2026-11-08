@@ -15,8 +15,15 @@
     "button": "Citation",
     "saveFolder": "Save to folder",
     "chooseFolder": "Choose a folder",
-    "unchanged": "Already up to date",
-    "comparisonUnavailable": "Could not compare with your library. Reopen the current-file tab to retry."
+    "comparisonUnavailable": "Could not check your library. Reopen the current-file tab to retry.",
+    "searchPlaceholder": "Search this file…",
+    "statusFilters": "Library status",
+    "statusAll": "All",
+    "statusNew": "Not in library",
+    "noMatches": "No entries in this file match.",
+    "introCurrent": "Save entries from this file that are not in your private library yet into the folder you choose.",
+    "introLibrary": "Import entries from your private library into this BibTeX file.",
+    "introLibraryNeedsBib": "Open a .bib file to import entries from your library."
   },
   "citationFolders": {
     "exportWithNotes": "Export BibTeX with notes",
@@ -485,7 +492,6 @@
     "emptyDescription": "Add a BibTeX entry to your library.",
     "noEntries": "No BibTeX entries found",
     "save": "Save",
-    "update": "Update",
     "saving": "Saving…",
     "saved": "Citation saved to your library.",
     "deleteTitle": "Delete citation",

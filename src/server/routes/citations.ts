@@ -5,7 +5,6 @@ import type { DatabaseConnection } from "../db.js";
 import { apiError, httpError, ValidationError } from "../http.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../limits.js";
 import { assertCitationCollectionCapacity, citationCollectionIds, citationCollectionsForEntries, filterCitationCollection, registerCitationCollectionRoutes } from "../citationCollections.js";
-import { comparableCitationBibtex } from "../../shared/citationContent.js";
 import { citationInput } from "../citationInput.js";
 
 interface CitationRouteContext {
@@ -230,37 +229,20 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
   app.post("/api/citations/lookup", { bodyLimit: MAX_CITATION_BIBTEX_BYTES * 8 }, async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const body = request.body as { keys?: unknown; entries?: unknown } | undefined;
-    let contents: Map<string, string> | null = null;
-    let keyInput: unknown = body?.keys;
-    if (body?.entries !== undefined) {
-      if (body.keys !== undefined || !Array.isArray(body.entries) || body.entries.length > 5000) throw new ValidationError();
-      contents = new Map();
-      let bytes = 0;
-      keyInput = body.entries.map((value: unknown) => {
-        if (typeof value !== "object" || !value) throw new ValidationError();
-        const item = value as { citationKey?: unknown; bibtex?: unknown };
-        if (typeof item.citationKey !== "string" || typeof item.bibtex !== "string" || !item.bibtex.trim()) throw new ValidationError();
-        bytes += Buffer.byteLength(item.bibtex, "utf8");
-        if (bytes > MAX_CITATION_BIBTEX_BYTES) throw httpError(413, "CITATION_TOO_LARGE");
-        contents!.set(item.citationKey.trim().toLowerCase(), comparableCitationBibtex(item.bibtex));
-        return item.citationKey;
-      });
-    }
+    const keyInput = (request.body as { keys?: unknown } | undefined)?.keys;
     if (!Array.isArray(keyInput) || keyInput.length > 5000
       || keyInput.some((key) => typeof key !== "string" || !key.trim() || key.length > 512)) {
       throw new ValidationError();
     }
     const keys = [...new Map(keyInput.map((key: string) => [key.trim().toLowerCase(), key.trim()] as const)).values()];
-    const matches: Array<{ id: string; citationKey: string; revision: number; sameContent?: boolean }> = [];
+    const matches: Array<{ id: string; citationKey: string; revision: number }> = [];
     for (let offset = 0; offset < keys.length; offset += 500) {
       const chunk = keys.slice(offset, offset + 500);
       const placeholders = chunk.map(() => "?").join(", ");
-      const rows = db.prepare(`SELECT id, citation_key, revision${contents ? ", bibtex" : ""} FROM citation_library_entries
+      const rows = db.prepare(`SELECT id, citation_key, revision FROM citation_library_entries
         WHERE user_id = ? AND citation_key COLLATE NOCASE IN (${placeholders})`)
-        .iterate(user.id, ...chunk) as Iterable<{ id: string; citation_key: string; revision: number; bibtex: string }>;
-      for (const row of rows) matches.push({ id: row.id, citationKey: row.citation_key, revision: row.revision,
-        ...(contents ? { sameContent: comparableCitationBibtex(row.bibtex) === contents.get(row.citation_key.toLowerCase()) } : {}) });
+        .iterate(user.id, ...chunk) as Iterable<{ id: string; citation_key: string; revision: number }>;
+      for (const row of rows) matches.push({ id: row.id, citationKey: row.citation_key, revision: row.revision });
     }
     return { matches };
   });
@@ -268,46 +250,29 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
   app.post("/api/citations", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
-    const body = request.body as { bibtex?: unknown; citationKey?: unknown; entryType?: unknown; title?: unknown; authors?: unknown; year?: unknown; venue?: unknown; tagIds?: unknown; collectionIds?: unknown; overwrite?: unknown; expectedRevision?: unknown } | undefined;
+    const body = request.body as { bibtex?: unknown; citationKey?: unknown; entryType?: unknown; title?: unknown; authors?: unknown; year?: unknown; venue?: unknown; tagIds?: unknown; collectionIds?: unknown } | undefined;
     const citation = citationInput(body);
     const tagIds = citationTagIds(db, user.id, body?.tagIds);
     const collectionIds = citationCollectionIds(db, user.id, body?.collectionIds);
-    const overwrite = body?.overwrite === true;
-    const existing = db.prepare("SELECT id, revision FROM citation_library_entries WHERE user_id = ? AND citation_key = ? COLLATE NOCASE")
-      .get(user.id, citation.citationKey) as { id: string; revision: number } | undefined;
-    if (existing && !overwrite) return apiError(reply, 409, "CITATION_KEY_EXISTS");
-    const expectedRevision = existing ? citationExpectedRevision(body?.expectedRevision) : null;
-    if (existing && existing.revision !== expectedRevision) {
-      return apiError(reply, 409, "CITATION_CONFLICT");
-    }
-    const id = existing?.id ?? randomUUID();
+    // POST only creates. An existing entry is changed through PATCH, which
+    // requires its revision; a key already in the library is a conflict.
+    const id = randomUUID();
     const timestamp = now();
     db.transaction(() => {
+      const existing = db.prepare("SELECT 1 FROM citation_library_entries WHERE user_id = ? AND citation_key = ? COLLATE NOCASE")
+        .get(user.id, citation.citationKey);
+      if (existing) throw httpError(409, "CITATION_KEY_EXISTS");
       assertCitationCollectionCapacity(db, user.id, id, collectionIds ?? []);
-      if (existing) {
-        const result = db.prepare(`UPDATE citation_library_entries SET citation_key = ?, entry_type = ?, bibtex = ?,
-          title = ?, authors = ?, year = ?, venue = ?, notes = COALESCE(?, notes), revision = revision + 1, updated_at = ?
-          WHERE id = ? AND user_id = ? AND revision = ?`)
-          .run(citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, citation.venue,
-            citation.notes ?? null, timestamp, id, user.id, expectedRevision);
-        if (!result.changes) throw httpError(409, "CITATION_CONFLICT");
-      } else {
-        db.prepare(`INSERT INTO citation_library_entries
-          (id, user_id, citation_key, entry_type, bibtex, title, authors, year, venue, notes, revision, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
-          .run(id, user.id, citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, citation.venue, citation.notes ?? "", timestamp, timestamp);
-      }
-      if (tagIds !== null) {
-        db.prepare("DELETE FROM citation_library_entry_tags WHERE entry_id = ?").run(id);
-        for (const tagId of tagIds) db.prepare("INSERT INTO citation_library_entry_tags (entry_id, tag_id, created_at) VALUES (?, ?, ?)").run(id, tagId, timestamp);
-      }
-      // Saving from a project's .bib adds the chosen folder without removing
-      // other placements of an already-saved reference.
+      db.prepare(`INSERT INTO citation_library_entries
+        (id, user_id, citation_key, entry_type, bibtex, title, authors, year, venue, notes, revision, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+        .run(id, user.id, citation.citationKey, citation.entryType, citation.bibtex, citation.title, citation.authors, citation.year, citation.venue, citation.notes ?? "", timestamp, timestamp);
+      for (const tagId of tagIds ?? []) db.prepare("INSERT INTO citation_library_entry_tags (entry_id, tag_id, created_at) VALUES (?, ?, ?)").run(id, tagId, timestamp);
       for (const collectionId of collectionIds ?? []) db.prepare("INSERT OR IGNORE INTO citation_library_entry_collections (entry_id, collection_id) VALUES (?, ?)").run(id, collectionId);
     })();
     const row = db.prepare("SELECT * FROM citation_library_entries WHERE id = ? AND user_id = ?")
       .get(id, user.id) as CitationLibraryRow;
-    return reply.code(existing ? 200 : 201).send({ entry: citationDetails(db, row), updated: Boolean(existing) });
+    return reply.code(201).send({ entry: citationDetails(db, row) });
   });
 
   app.patch("/api/citations/:citationId/tags", async (request, reply) => {

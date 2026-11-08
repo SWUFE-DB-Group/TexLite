@@ -65,7 +65,7 @@ describe("private citation folders", () => {
     expect(updated.json().entry).toMatchObject({ venue: "Conference Proceedings", revision: 2 });
   });
 
-  it("saves private Markdown notes with revision checks, preserves them on project updates and supports explicit clearing", async () => {
+  it("saves private Markdown notes with revision checks, preserves them across tag changes and supports explicit clearing", async () => {
     const notes = "# 阅读笔记\n\n- **Useful** result\n- [Source](https://example.org)\n";
     const stored = await entry("noted", undefined, { notes });
     expect(stored.notes).toBe(notes);
@@ -73,14 +73,11 @@ describe("private citation folders", () => {
     const updated = await call("PATCH", `/api/citations/${stored.id}`, { ...stored, notes: "Revised", expectedRevision: 1 });
     expect(updated.json().entry).toMatchObject({ notes: "Revised", revision: 2 });
     expect((await call("PATCH", `/api/citations/${stored.id}`, { ...stored, notes: "Stale", expectedRevision: 1 })).statusCode).toBe(409);
-    const { notes: _notes, ...projectEntry } = updated.json().entry;
-    const fromProject = await call("POST", "/api/citations", { ...projectEntry, bibtex: "@article{noted, title={Updated from project}}", overwrite: true, expectedRevision: 2 });
-    expect(fromProject.json().entry).toMatchObject({ notes: "Revised", revision: 3 });
-    const tagged = await call("PATCH", `/api/citations/${stored.id}/tags`, { tagIds: [], expectedRevision: 3 });
+    const tagged = await call("PATCH", `/api/citations/${stored.id}/tags`, { tagIds: [], expectedRevision: 2 });
     expect(tagged.json().entry.notes).toBe("Revised");
-    const cleared = await call("PATCH", `/api/citations/${stored.id}`, { ...stored, notes: "", expectedRevision: 4 });
-    expect(cleared.json().entry).toMatchObject({ notes: "", revision: 5 });
-    expect((await call("PATCH", `/api/citations/${stored.id}`, { ...stored, expectedRevision: 5 }, "bob")).statusCode).toBe(404);
+    const cleared = await call("PATCH", `/api/citations/${stored.id}`, { ...stored, notes: "", expectedRevision: 3 });
+    expect(cleared.json().entry).toMatchObject({ notes: "", revision: 4 });
+    expect((await call("PATCH", `/api/citations/${stored.id}`, { ...stored, expectedRevision: 4 }, "bob")).statusCode).toBe(404);
     expect((await call("POST", "/api/citations", { ...stored, citationKey: "invalidNotes", notes: null })).statusCode).toBe(400);
     expect((await call("POST", "/api/citations", { ...stored, citationKey: "hugeNotes", notes: "中".repeat(MAX_CITATION_NOTES_BYTES / 3 + 1) })).statusCode).toBe(413);
   });
@@ -202,7 +199,7 @@ describe("private citation folders", () => {
     expect((await folders()).total).toBe(502);
   });
 
-  it("rejects reassignment or project overwrite into full folders without changing content, tags, revisions or memberships", async () => {
+  it("rejects reassignment into full folders and never replaces an entry by key, without changing content, tags, revisions or memberships", async () => {
     const full = await folder("Full"), source = await folder("Source"), empty = await folder("Empty");
     seedFolder(full.id, 500);
     const tag = (await call("POST", "/api/citations/tags", { name: "Keep", color: "blue" })).json().tag;
@@ -213,10 +210,11 @@ describe("private citation folders", () => {
     });
     expect(reassigned.statusCode).toBe(409);
     expect(reassigned.json().code).toBe("CITATION_COLLECTION_FULL");
+    // POST only creates: a former overwrite request for an existing key is a conflict.
     const overwritten = await call("POST", "/api/citations", { ...saved, overwrite: true, expectedRevision: saved.revision,
-      bibtex: "@article{candidate, title={Must not replace}}", notes: "Must not replace", tagIds: [], collectionIds: [full.id] });
+      bibtex: "@article{CANDIDATE, title={Must not replace}}", citationKey: "CANDIDATE", notes: "Must not replace", tagIds: [], collectionIds: [empty.id] });
     expect(overwritten.statusCode).toBe(409);
-    expect(overwritten.json().code).toBe("CITATION_COLLECTION_FULL");
+    expect(overwritten.json().code).toBe("CITATION_KEY_EXISTS");
     expect((await list("?q=candidate")).json().entries[0]).toEqual(before);
     expect((await folders()).collections.find((folder) => folder.id === empty.id)!.entryCount).toBe(0);
   });
@@ -227,15 +225,12 @@ describe("private citation folders", () => {
     const saved: CitationLibraryEntry = (await list(`?collection=${full.id}&pageSize=1`)).json().entries[0];
     const updated = await call("PATCH", `/api/citations/${saved.id}`, { ...saved, notes: "New notes", expectedRevision: saved.revision });
     expect(updated.statusCode).toBe(200);
-    const overwritten = await call("POST", "/api/citations", { ...updated.json().entry, overwrite: true,
-      collectionIds: [full.id, full.id], expectedRevision: 2 });
-    expect(overwritten.statusCode).toBe(200);
-    const retained = await call("PATCH", `/api/citations/${saved.id}/collections`, { collectionIds: [full.id, other.id], expectedRevision: 3 });
+    const retained = await call("PATCH", `/api/citations/${saved.id}/collections`, { collectionIds: [full.id, other.id], expectedRevision: 2 });
     expect(retained.statusCode).toBe(200);
     const candidate = await entry("new-candidate");
     const add = () => call("PATCH", `/api/citations/${candidate.id}/collections`, { collectionIds: [full.id], expectedRevision: 1 });
     expect((await add()).statusCode).toBe(409);
-    const moved = await call("PATCH", `/api/citations/${saved.id}/collections`, { collectionIds: [other.id], expectedRevision: 4 });
+    const moved = await call("PATCH", `/api/citations/${saved.id}/collections`, { collectionIds: [other.id], expectedRevision: 3 });
     expect(moved.statusCode).toBe(200);
     expect((await add()).statusCode).toBe(409); // Still exactly 500.
     const another = (await list(`?collection=${full.id}&pageSize=1`)).json().entries[0];
@@ -261,23 +256,17 @@ describe("private citation folders", () => {
     expect(tooLarge.statusCode).toBe(413);
     expect((await folders()).collections).toHaveLength(2);
   });
-  it("compares project entries without returning library text, treating only line endings and outer whitespace as insignificant", async () => {
+  it("looks up project keys case-insensitively without returning library text", async () => {
     const stored = await entry("paper", undefined, { bibtex: "@article{paper,\n title={Original}\n}" });
-    const unchanged = await call("POST", "/api/citations/lookup", { entries: [{ citationKey: "PAPER", bibtex: ` \r\n${stored.bibtex.replaceAll("\n", "\r\n")}\r\n ` }] });
-    expect(unchanged.statusCode, unchanged.body).toBe(200);
-    expect(unchanged.json().matches).toEqual([{ id: stored.id, citationKey: "paper", revision: 1, sameContent: true }]);
-    const changed = await call("POST", "/api/citations/lookup", { entries: [{ citationKey: "paper", bibtex: stored.bibtex.replace("Original", "Edited") }, { citationKey: "missing", bibtex: "@article{missing, title={Missing}}" }] });
-    expect(changed.json().matches).toEqual([{ id: stored.id, citationKey: "paper", revision: 1, sameContent: false }]);
-    expect(changed.body).not.toContain("Original");
-    expect((await call("POST", "/api/citations/lookup", { entries: [{ citationKey: "paper", bibtex: stored.bibtex }] }, "bob")).json().matches).toEqual([]);
-    const before = (await list()).json().entries[0];
-    expect(before.revision).toBe(1);
-    for (const body of [{ entries: [null] }, { entries: [{ citationKey: "paper", bibtex: 123 }] }, { entries: [{ citationKey: "paper", bibtex: "" }] }, { keys: ["paper"], entries: [] }]) {
+    const response = await call("POST", "/api/citations/lookup", { keys: ["PAPER", "missing"] });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().matches).toEqual([{ id: stored.id, citationKey: "paper", revision: 1 }]);
+    expect(response.body).not.toContain("Original");
+    expect((await call("POST", "/api/citations/lookup", { keys: ["paper"] }, "bob")).json().matches).toEqual([]);
+    // Content comparison was removed with project updates; only keys are accepted.
+    for (const body of [{ entries: [{ citationKey: "paper", bibtex: stored.bibtex }] }, { keys: [""] }, { keys: [123] }, { keys: "paper" }]) {
       expect((await call("POST", "/api/citations/lookup", body)).statusCode).toBe(400);
     }
-    const huge = await call("POST", "/api/citations/lookup", { entries: [{ citationKey: "paper", bibtex: "a".repeat(512 * 1024 + 1) }] });
-    expect(huge.statusCode).toBe(413);
-    expect((await list()).json().entries[0]).toEqual(before);
   });
   it("creates, renames and validates case-insensitive per-user names", async () => {
     expect(await folders()).toEqual({ collections: [], total: 0, unfiled: 0 });
@@ -319,17 +308,6 @@ describe("private citation folders", () => {
     const clear = await call("PATCH", target, { collectionIds: [], expectedRevision: 2 });
     expect(clear.json().entry).toMatchObject({ collectionIds: [], revision: 3 });
     expect((await list("?collection=unfiled")).json().pagination.total).toBe(1);
-  });
-
-  it("adds the destination folder when saving an existing project reference without removing other placements or tags", async () => {
-    const a = await folder("A"), b = await folder("B"), saved = await entry("one", [a.id]);
-    const response = await call("POST", "/api/citations", { ...saved, title: "Updated", collectionIds: [b.id], overwrite: true, expectedRevision: saved.revision });
-    expect(response.statusCode, response.body).toBe(200);
-    expect(response.json().entry.collectionIds).toEqual([a.id, b.id]);
-    const updated = await call("PATCH", `/api/citations/${saved.id}`, { ...saved, title: "Edited again", expectedRevision: 2 });
-    expect(updated.json().entry).toMatchObject({ collectionIds: [a.id, b.id], revision: 3 });
-    const tagged = await call("PATCH", `/api/citations/${saved.id}/tags`, { tagIds: [], expectedRevision: 3 });
-    expect(tagged.json().entry.collectionIds).toEqual([a.id, b.id]);
   });
 
   it("deletes folders without deleting references and cascades membership when an entry or user is deleted", async () => {

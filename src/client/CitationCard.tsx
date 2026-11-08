@@ -1,6 +1,6 @@
 import type { TFunction } from "i18next";
 import { useMemo } from "react";
-import { Check, Import, RefreshCw } from "lucide-react";
+import { Check, Import } from "lucide-react";
 import { CitationEntryMenu } from "./CitationEntryMenu";
 import { SaveButton } from "./SaveButton";
 import { citationAuthorLabels, formatCitationAuthors } from "./citationAuthors";
@@ -42,7 +42,7 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
   }, [entry.venue, entry.year, entry.bibtex]);
   const title = useMemo(() => (entry.title && bibtexDisplayText(entry.title)) || t("citationLibrary.untitled"), [entry.title, t]);
   const authors = useMemo(() => entry.authors ? formatCitationAuthors(entry.authors, citationAuthorLabels(t)) : t("citationLibrary.authorUnknown"), [entry.authors, t]);
-  const saveLabel = t(saved ? "citationLibrary.update" : "citationLibrary.save");
+  const saveLabel = t("citationLibrary.save");
   const saveTooltip = saving ? t("citationLibrary.saving") : saveFeedback || (saveHint ? `${saveLabel} · ${saveHint}` : saveLabel);
   const importTooltip = alreadyInFile ? t("citationErrors.alreadyInFile", { key: entry.citationKey }) : importHint || t("citationLibrary.importToFile");
   return <article className={`citation-entry-card${selected ? " selected" : ""}${alreadyInFile ? " already-in-file" : ""}`} title={alreadyInFile ? t("citationErrors.alreadyInFile", { key: entry.citationKey }) : undefined}>
@@ -53,9 +53,9 @@ export function CitationCard({ entry, selected, alreadyInFile, saved, saving, sa
       {manage && libraryEntry && libraryEntry.tags.length > 0 && <TagMarquee className="citation-entry-tags" focusable>{libraryEntry.tags.map((tag) => <span className={`citation-tag-pill tag-${tag.color}`} key={tag.id}><span className="citation-tag-dot" aria-hidden="true" />{tag.name}</span>)}</TagMarquee>}
     </div>
     <div className="citation-entry-actions">
-      {onSave && <SaveButton iconSize={15} icon={!manage && saved ? <RefreshCw size={15} aria-hidden /> : undefined} iconOnly={!manage}
+      {onSave && <SaveButton iconSize={15} iconOnly={!manage}
         className={!manage ? "citation-icon-action" : undefined} aria-label={saveLabel} data-tooltip={saveTooltip}
-        saving={saving} disabled={saveDisabled} feedback={saveFeedback} onClick={onSave}>{t(saving ? "citationLibrary.saving" : saved ? "citationLibrary.update" : "citationLibrary.save")}</SaveButton>}
+        saving={saving} disabled={saveDisabled} feedback={saveFeedback} onClick={onSave}>{t(saving ? "citationLibrary.saving" : "citationLibrary.save")}</SaveButton>}
       {onImport && <button type="button" className={!manage ? "citation-icon-action" : undefined} aria-label={t("citationLibrary.import")} disabled={importDisabled || alreadyInFile} data-tooltip={importTooltip}
         onClick={() => void onImport()}><Import size={15} aria-hidden /><span className={!manage ? "sr-only" : undefined}>{t("citationLibrary.import")}</span></button>}
       {manage && <CitationEntryMenu citationKey={entry.citationKey} bibtex={entry.bibtex} deleting={deleting} onTags={libraryEntry ? onTags : undefined} onCollections={libraryEntry ? onCollections : undefined} onNotes={libraryEntry ? onNotes : undefined} notesExpanded={notesExpanded} notesRegionId={notesRegionId} onEdit={libraryEntry ? onEdit : undefined} onDelete={libraryEntry ? onDelete : undefined} />}

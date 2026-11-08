@@ -15,8 +15,15 @@
     "button": "文献",
     "saveFolder": "保存到文件夹",
     "chooseFolder": "选择文件夹",
-    "unchanged": "已是最新内容",
-    "comparisonUnavailable": "暂时无法与文献库比较，请重新打开“当前文件”标签页重试。"
+    "comparisonUnavailable": "暂时无法检查引用库，请重新打开“当前文件”标签页重试。",
+    "searchPlaceholder": "搜索当前文件…",
+    "statusFilters": "入库状态",
+    "statusAll": "全部",
+    "statusNew": "未入库",
+    "noMatches": "当前文件中没有匹配的条目。",
+    "introCurrent": "将当前文件中尚未入库的条目保存到你的个人引用库，保存到所选文件夹。",
+    "introLibrary": "从你的个人引用库中选择条目，导入到当前 BibTeX 文件。",
+    "introLibraryNeedsBib": "打开 .bib 文件后，才能从引用库导入条目。"
   },
   "citationFolders": {
     "exportWithNotes": "导出 BibTeX 及笔记",
@@ -475,7 +482,6 @@
     "emptyDescription": "向文献库中添加 BibTeX 条目。",
     "noEntries": "没有找到 BibTeX 条目",
     "save": "保存",
-    "update": "更新",
     "saving": "正在保存…",
     "saved": "引用已保存到你的引用库。",
     "deleteTitle": "删除引用",

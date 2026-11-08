@@ -3357,17 +3357,17 @@ Second version.
       payload: { tagIds: [], expectedRevision: 2 }
     });
     expect(staleTags.statusCode).toBe(409);
+    // POST only creates; even an explicit overwrite request cannot replace an entry.
     const explicitOverwrite = await app.inject({
       method: "POST", url: "/api/citations", headers: { cookie },
       payload: citationPayload("versioned2026", "Updated from a project", "@article{versioned2026, title={Updated from a project}, year={2026}}", {
         overwrite: true, expectedRevision: 3
       })
     });
-    expect(explicitOverwrite.statusCode).toBe(200);
-    expect(explicitOverwrite.json()).toMatchObject({ updated: true, entry: { revision: 4, title: "Updated from a project" } });
-    expect(explicitOverwrite.json().entry.tags).toEqual([expect.objectContaining({ id: tagId })]);
+    expect(explicitOverwrite.statusCode).toBe(409);
+    expect(explicitOverwrite.json().code).toBe("CITATION_KEY_EXISTS");
     const stored = await app.inject({ method: "GET", url: "/api/citations?q=versioned2026", headers: { cookie } });
-    expect(stored.json().entries[0]).toMatchObject({ revision: 4, title: "Updated from a project" });
+    expect(stored.json().entries[0]).toMatchObject({ revision: 3, title: "Edited safely" });
     expect(stored.json().entries[0].tags).toEqual([expect.objectContaining({ id: tagId })]);
 
     expect((await app.inject({ method: "DELETE", url: `/api/citations/${entryId}`, headers: { cookie } })).statusCode).toBe(200);
