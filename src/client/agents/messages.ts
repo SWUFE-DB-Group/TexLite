@@ -28,7 +28,12 @@ const en = {
   permissionLost: "Project write access is required.", policySaved: "Coding Agent CLI settings saved.",
   saved: "Saved",
   next: "Next", previous: "Previous", bulkDeleteDescription: "End and delete the selected tasks and their saved conversations? Project files are kept.",
-  updated: "Last changed", createdTooltip: "Created: {{created}}", taskUnavailable: "Task unavailable", exitCode: "Exit code: {{code}}"
+  updated: "Last changed", createdTooltip: "Created: {{created}}", taskUnavailable: "Task unavailable", exitCode: "Exit code: {{code}}",
+  reviewTitle: "Agent changes", previousChange: "Previous change", nextChange: "Next change", markReviewed: "Mark reviewed",
+  markAllReviewed: "Mark all reviewed", refreshChanges: "Refresh agent changes", openChange: "Open in editor",
+  changePreviewUnavailable: "This change was edited afterwards or is too large to compare. Open it in the editor.",
+  contentUnavailable: "This change is too large to preview. Open it in the editor.",
+  contentTab: "New content", diffTab: "Diff", openReview: "Open in agent review"
 };
 const zh: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任务", terminal: "终端", back: "返回项目",
@@ -52,7 +57,12 @@ const zh: Record<keyof typeof en, string> = {
   state_ready: "待启动", state_starting: "启动中", state_running: "运行中", state_stopping: "停止中", state_stopped: "已停止", state_exited: "已退出", state_interrupted: "服务重启后已中断", state_failed: "失败",
   permissionLost: "需要项目写入权限。", policySaved: "Coding Agent CLI 设置已保存。", saved: "已保存",
   next: "下一页", previous: "上一页", bulkDeleteDescription: "结束并删除所选任务及其保存的对话？项目文件会保留。",
-  updated: "最近变更", createdTooltip: "创建时间：{{created}}", taskUnavailable: "任务不可用", exitCode: "退出码：{{code}}"
+  updated: "最近变更", createdTooltip: "创建时间：{{created}}", taskUnavailable: "任务不可用", exitCode: "退出码：{{code}}",
+  reviewTitle: "Agent 修改", previousChange: "上一处修改", nextChange: "下一处修改", markReviewed: "标为已审阅",
+  markAllReviewed: "全部标为已审阅", refreshChanges: "刷新 Agent 修改", openChange: "在编辑器中打开",
+  changePreviewUnavailable: "此修改之后又被编辑过，或内容过大，无法对比。请在编辑器中查看。",
+  contentUnavailable: "此修改内容过大，无法预览。请在编辑器中查看。",
+  contentTab: "新内容", diffTab: "差异", openReview: "在 Agent 审阅中查看"
 };
 const zhHant: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任務", terminal: "終端機", back: "返回專案",
@@ -76,6 +86,11 @@ const zhHant: Record<keyof typeof en, string> = {
   state_ready: "待啟動", state_starting: "啟動中", state_running: "執行中", state_stopping: "停止中", state_stopped: "已停止", state_exited: "已退出", state_interrupted: "服務重啟後已中斷", state_failed: "失敗",
   permissionLost: "需要專案寫入權限。", policySaved: "Coding Agent CLI 設定已儲存。", saved: "已儲存",
   next: "下一頁", previous: "上一頁", bulkDeleteDescription: "結束並刪除所選任務及其儲存的對話？專案檔案會保留。",
-  updated: "最近變更", createdTooltip: "建立時間：{{created}}", taskUnavailable: "任務無法使用", exitCode: "退出碼：{{code}}"
+  updated: "最近變更", createdTooltip: "建立時間：{{created}}", taskUnavailable: "任務無法使用", exitCode: "退出碼：{{code}}",
+  reviewTitle: "Agent 修改", previousChange: "上一處修改", nextChange: "下一處修改", markReviewed: "標為已審閱",
+  markAllReviewed: "全部標為已審閱", refreshChanges: "重新整理 Agent 修改", openChange: "在編輯器中開啟",
+  changePreviewUnavailable: "此修改之後又被編輯過，或內容過大，無法對比。請在編輯器中查看。",
+  contentUnavailable: "此修改內容過大，無法預覽。請在編輯器中查看。",
+  contentTab: "新內容", diffTab: "差異", openReview: "在 Agent 審閱中查看"
 };
 export const agentUiMessages = { en, zh, "zh-Hant": zhHant };

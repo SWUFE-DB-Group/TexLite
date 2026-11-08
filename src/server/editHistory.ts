@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseConnection } from "./db.js";
 import { CONFIG_DEFAULTS } from "./config.js";
 import { safeRelativePath } from "./files.js";
+import type { AgentChange } from "../shared/agentProtocol.js";
+import { collectAgentChanges, type AgentChangeStep } from "./agentChanges.js";
 
 /**
  * An edit step is deliberately smaller than a recovery snapshot. It describes
@@ -109,6 +111,8 @@ export interface SelectionHistoryResult {
   chainComplete: boolean;
 }
 
+/** Agent-change mapping walks at most this many of a file's newest segments. */
+const MAX_AGENT_CHANGE_CHAIN_SEGMENTS = 2_000;
 const DEFAULT_RESULT_LIMIT = 60;
 /** Edits separated by at most this pause belong to one displayed entry. */
 const EDIT_SESSION_GAP_MS = 5 * 60 * 1_000;
@@ -345,6 +349,39 @@ export class ProjectEditHistoryService {
     return { entries, baseline, hasMore: !exhaustedRows, chainComplete };
   }
 
+  /**
+   * Coding-agent changes made for `userId` in one file, mapped to `currentSource`.
+   * Only the newest part of the chain is walked; a gap in it (an unrecorded
+   * replacement, a restore, retention) drops everything before the gap, and a
+   * chain that does not end at the current source yields nothing rather than
+   * misplaced ranges.
+   */
+  agentChanges(projectId: string, filePathInput: string, currentSource: string, userId: string): AgentChange[] {
+    const filePath = safeRelativePath(filePathInput);
+    const rows = (this.db.prepare(`SELECT id, author_id, has_agent, before_hash, after_hash, steps_json
+      FROM project_edit_segments WHERE project_id = ? AND file_path = ?
+      ORDER BY updated_at DESC, rowid DESC LIMIT ?`)
+      .all(projectId, filePath, MAX_AGENT_CHANGE_CHAIN_SEGMENTS) as Array<Pick<EditHistoryRow,
+        "id" | "author_id" | "has_agent" | "before_hash" | "after_hash" | "steps_json">>).reverse();
+    let steps: AgentChangeStep[] = [];
+    let expectedHash: string | null = null;
+    for (const row of rows) {
+      const parsed = parseSteps(row.steps_json);
+      const valid = parsed.length > 0 && parsed[0].beforeHash === row.before_hash && parsed.at(-1)!.afterHash === row.after_hash
+        && parsed.every((step, index) => index === 0 || parsed[index - 1].afterHash === step.beforeHash);
+      // A gap before this row, or a row that cannot be replayed, means earlier
+      // positions cannot be carried forward.
+      if (!valid || (expectedHash !== null && row.before_hash !== expectedHash)) steps = [];
+      expectedHash = row.after_hash;
+      if (!valid) continue;
+      const agent = Boolean(row.has_agent) && row.author_id === userId;
+      parsed.forEach((step, index) => steps.push({ id: `${row.id}:${index}`, agent, createdAt: step.createdAt, spans: step.spans }));
+    }
+    if (expectedHash !== hashText(currentSource)) return [];
+    const first = steps.findIndex((step) => step.agent);
+    return first < 0 ? [] : collectAgentChanges(steps.slice(first), currentSource);
+  }
+
   private reachedRetentionBoundary(projectId: string, filePath: string, expectedHash: string): boolean {
     const row = this.db.prepare(`SELECT after_hash FROM project_edit_history_boundaries
       WHERE project_id = ? AND file_path = ?`).get(projectId, filePath) as { after_hash?: string } | undefined;
@@ -507,7 +544,7 @@ function validateSpan(span: EditHistorySpan): void {
     || typeof span.truncated !== "boolean") throw new Error("Invalid edit history span");
 }
 
-function parseSteps(input: string): EditHistoryStep[] {
+export function parseSteps(input: string): EditHistoryStep[] {
   try {
     const parsed = JSON.parse(input);
     if (!Array.isArray(parsed)) return [];

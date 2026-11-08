@@ -1842,6 +1842,31 @@ save the agent version under `.texlite-agent-conflicts/<task-id>/`, then stop th
 task with a visible warning. Symlinks and unreadable files stop synchronization
 instead of being followed. Polling ends with execution, not browser attachment.
 
+A user reviews their own coding-agent changes manually. `GET
+/api/projects/:id/agent-changes` returns only the caller's flagged edit
+segments, mapped forward through the file's edit chain to the current source
+(`src/server/agentChanges.ts`). The chain already holds each replacement's
+complete text, so nothing new is stored: a later edit that replaces agent text
+drops it from the range, a chain gap (an unrecorded replacement, a restore, or
+retention) drops everything before it, and a chain that does not end at the
+current source yields nothing rather than misplaced ranges. Replacements from
+one write within 80 characters, and not separated by a blank line, are one
+change; each comes with its affected lines before and after the write when the
+agent's text still stands as written. The agent panel shows a review bar above
+the terminal with previous/next across files, "New content" and "Diff" tabs
+(the affected lines with the agent's text marked, and a line diff; Diff is the
+default and the chosen tab stays while moving between changes), "Mark
+reviewed" and "Mark all reviewed"; previous/next scrolls the editor without
+taking keyboard focus, and "Open in editor" moves focus there. Where the agent
+panel is available, a small agent button after each highlighted change opens
+the panel (if needed) and selects that change in the review without moving the
+editor. The editor highlights
+unreviewed agent text only on the exact source revision the ranges were
+computed for, and otherwise asks for a fresh result a bounded number of times.
+Which changes were reviewed is kept per user and project in browser storage,
+pruned to changes that still exist; the list refreshes on task events and every
+few seconds while one of the user's tasks runs. Reviewing never changes source.
+
 Task context JSON and a compile log are exposed through `TEXLITE_PROJECT_CONTEXT`
 and `TEXLITE_COMPILE_LOG`; compile API completion refreshes this context. A CLI
 does not become sandboxed by running in a project, nor does this watcher impose

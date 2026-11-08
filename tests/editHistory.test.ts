@@ -380,6 +380,26 @@ describe("selection edit history", () => {
     ]);
   });
 
+  it("maps only the requesting user's agent changes to the current source and stops at chain gaps", () => {
+    const fixture = createFixture();
+    const v0 = "Intro.\nOld claim.\n";
+    const v1 = "Intro.\nA stronger claim.\n";
+    const v2 = "Intro, revised.\nA stronger claim.\n";
+    const agent = { ...replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", v0, v1, "edit"), hasAgent: true };
+    const direct = replaceSegment("main.tex", "bob", "2026-01-01T10:01:00.000Z", v1, v2, "edit");
+    fixture.history.record(fixture.projectId, [agent, direct]);
+    const [change] = fixture.history.agentChanges(fixture.projectId, "main.tex", v2, "alice");
+    expect(change).toMatchObject({ line: 2, before: "Old claim.", after: "A stronger claim." });
+    expect(change.pieces.map((piece) => v2.slice(piece.from, piece.to)).join("")).toBe("A stronger");
+    // Another user's agent work is never returned, and a source the chain does not reach yields nothing.
+    expect(fixture.history.agentChanges(fixture.projectId, "main.tex", v2, "bob")).toEqual([]);
+    expect(fixture.history.agentChanges(fixture.projectId, "main.tex", v2 + "unrecorded", "alice")).toEqual([]);
+    // An unrecorded replacement before later edits drops the agent change before it.
+    const replaced = "Replaced from disk.\n";
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "bob", "2026-01-01T10:02:00.000Z", replaced, replaced + "More.\n", "edit")]);
+    expect(fixture.history.agentChanges(fixture.projectId, "main.tex", replaced + "More.\n", "alice")).toEqual([]);
+  });
+
   it("keeps the agent flag of the change that wrote the text when a later boundary-only edit is folded in", () => {
     const fixture = createFixture();
     const agent = { ...replaceSegment("main.tex", "bob", "2026-01-01T10:00:00.000Z", "old", "agent", "edit"), hasAgent: true };

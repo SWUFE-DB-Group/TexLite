@@ -37,6 +37,7 @@ import { collaborationSaveState } from "../workspace/collaborationStatus";
 import { WorkspaceFilePanel } from "../workspace/WorkspaceFilePanel";
 import { WorkspaceEditorPanel } from "../workspace/WorkspaceEditorPanel";
 import { useAgentAccess } from "../agents/useAgentAccess";
+import { useAgentChanges, type PendingAgentChange } from "../agents/useAgentChanges";
 import { WorkspacePreviewPanel } from "../workspace/WorkspacePreviewPanel";
 import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
 import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
@@ -96,6 +97,15 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const currentProjectId = useRef(projectId);
   const agentAccess = useAgentAccess(user.id, projectId);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  // The user's own coding-agent changes, reviewed manually in the agent panel
+  // and highlighted in the editor until marked reviewed.
+  const agentChanges = useAgentChanges(user.id, projectId, agentAccess.activeCount > 0);
+  const [activeAgentChangeId, setActiveAgentChangeId] = useState<string | null>(null);
+  /** Scroll the editor to a change without taking keyboard focus from the agent panel. */
+  const [agentChangeReveal, setAgentChangeReveal] = useState<{ id: string; path: string; nonce: number } | null>(null);
+  const agentRevealNonce = useRef(0);
+  /** Select a change in the agent panel's review, opening the panel if needed. */
+  const [agentReviewFocus, setAgentReviewFocus] = useState<{ id: string; nonce: number } | null>(null);
   currentProjectId.current = projectId;
   const [project, setProject] = useState<Project | null>(null);
   const updateSharedMemberCount = useCallback((projectId: string, count: number) => {
@@ -1268,6 +1278,23 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setWorkspaceLayout(next);
     if (next === "pdf-only") selectPreviewTab("pdf");
   };
+  const showAgentChange = useCallback((change: PendingAgentChange, focus: boolean) => {
+    setActiveAgentChangeId(change.id);
+    if (focus) {
+      jumpToSource(change.path, change.line, 1);
+      return;
+    }
+    if (change.path !== activeFile) openSourceFileRef.current(change.path);
+    setAgentChangeReveal({ id: change.id, path: change.path, nonce: ++agentRevealNonce.current });
+  }, [activeFile, jumpToSource]);
+  const agentPanelAvailable = Boolean(showEditor && agentAccess.visible && project?.permission !== "read");
+  const openAgentChangeReview = useCallback((id: string) => {
+    setTerminalOpen(true);
+    setActiveAgentChangeId(id);
+    setAgentReviewFocus({ id, nonce: ++agentRevealNonce.current });
+  }, []);
+  const activeAgentChanges = useMemo(() => activeFile ? agentChanges.forFile(activeFile) : null, [activeFile, agentChanges.forFile]);
+
   const navigateToReference = useCallback((reference: LatexReference) => {
     referenceNavigationRequest.current?.abort();
     const controller = new AbortController();
@@ -1452,7 +1479,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel
         mobileSync={phone && sidePanel !== "comments" ? { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
-        terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized} /></Suspense> : null}
+        terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized}
+          review={agentChanges} activeChangeId={activeAgentChangeId} onShowChange={showAgentChange} reviewFocus={agentReviewFocus} /></Suspense> : null}
         project={project} projectId={projectId} activeFile={activeFile} mainFile={activeMainFile} openTabs={openTabs}
         content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
         focusComment={focusComment} editorPreferences={editorPreferences} completionIndex={completionIndex}
@@ -1468,6 +1496,9 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         }}
         onCommentClick={openCommentFromSource}
         onSpellCheckReplace={replaceSpellCheckIssue} onReferenceNavigate={navigateToReference} onCursor={updateSourceCursor}
+        agentChanges={activeAgentChanges} activeAgentChangeId={activeAgentChangeId}
+        agentChangeReveal={agentChangeReveal?.path === activeFile ? agentChangeReveal : null} onAgentChangesStale={agentChanges.refreshSoon}
+        onOpenAgentChange={agentPanelAvailable ? openAgentChangeReview : undefined}
       />}
       {showPreview && <WorkspacePreviewPanel
         mobileSync={phone}

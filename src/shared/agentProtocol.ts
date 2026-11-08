@@ -77,3 +77,37 @@ export function parseAgentClientMessage(raw: string): AgentClientMessage | null 
   }
   return null;
 }
+
+/** A range of the current source. */
+export interface AgentChangeRange { from: number; to: number }
+
+/**
+ * One reviewable change a coding agent made for the requesting user, mapped to
+ * the current source. Nearby replacements from the same agent write are
+ * grouped. `pieces` are the agent's surviving inserted text (later edits by
+ * anyone trim them); `anchors` mark pure deletions. `before`/`after` are the
+ * whole affected lines, for a diff; `before` is null when the change was
+ * edited afterwards or is too large to reconstruct for preview.
+ */
+export interface AgentChange {
+  id: string;
+  /** Ids of the grouped replacements; review state is kept per id. */
+  ids: string[];
+  at: string;
+  from: number;
+  to: number;
+  line: number;
+  pieces: AgentChangeRange[];
+  anchors: number[];
+  before: string | null;
+  after: string | null;
+  /** Source offset where `after` starts (the start of the first affected line). */
+  afterFrom: number;
+}
+
+export interface AgentChangeFile {
+  path: string;
+  /** SHA-256 of the source the ranges refer to. */
+  sourceHash: string;
+  changes: AgentChange[];
+}

@@ -41,6 +41,9 @@ import type { LatexReference } from "../shared/latexReferences";
 import { latexReferenceMarks, referenceNavigationSettings, type ReferenceNavigationSettings } from "./latexReferenceMarks";
 import type { SpellCheckIssue } from "./spellCheck";
 import { SpellSuggestionsMenu, type WritingSuggestionAnchor } from "./SpellSuggestionsMenu";
+import type { AgentChange } from "../shared/agentProtocol";
+import { agentChangeMarks, setAgentChangeMarks } from "./agents/agentChangeMarks";
+import { sourceHash } from "./sourceHash";
 export type { SpellCheckIssue } from "./spellCheck";
 
 interface Props {
@@ -67,6 +70,15 @@ interface Props {
   onSpellCheckReplace: (issue: SpellCheckIssue, replacement: string) => void;
   onReferenceNavigate: (reference: LatexReference) => void;
   onCursor: (line: number, column: number, offset: number) => void;
+  /** Unreviewed coding-agent changes in this file, with the source revision they refer to. */
+  agentChanges?: { sourceHash: string; changes: AgentChange[] } | null;
+  activeAgentChangeId?: string | null;
+  /** Scroll to this change (without taking focus) once its marks are placed. */
+  agentChangeReveal?: { id: string; nonce: number } | null;
+  /** The editor's text differs from the revision the changes refer to. */
+  onAgentChangesStale?: () => void;
+  /** Open a change in the agent panel's review (shows a button after each change). */
+  onOpenAgentChange?: (id: string) => void;
 }
 
 interface SpellSuggestionMenu {
@@ -132,7 +144,8 @@ function referenceFromElement(element: EventTarget | null): LatexReference | nul
 
 export function LatexEditor({
   value, projectId, filePath, mainFile, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
-  nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor
+  nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor,
+  agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: Props) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
@@ -212,7 +225,7 @@ export function LatexEditor({
         ...(isBibtexFile ? [] : [bracketMatching(), ...(isLatexFile ? [Prec.high(EditorView.inputHandler.of(latexAutoPairInput)), latexSkippedBracePair] : [])]),
         closeBrackets(), indentOnInput(), sourceCommentDecorations({
           label: t("editor.openSourceComment"), onOpen: (id, toggle) => onCommentClickRef.current(id, toggle)
-        }), spellCheckIssueMarks, activeSpellCheckIssueMarks,
+        }), spellCheckIssueMarks, activeSpellCheckIssueMarks, agentChangeMarks,
         referenceNavigation.current.of(isLatexFile ? referenceNavigationSettings.of(referenceNavigationOptions(filePath, t, preferences.citationHover)) : []),
         ...(isLatexFile ? [latexReferenceMarks, latexReferenceHover] : []),
         citationHover.current.of(preferences.citationHover && isLatexFile ? latexCitationHover({
@@ -425,6 +438,34 @@ export function LatexEditor({
     editor.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: "center" }) });
     editor.focus();
   }, [filePath, focusComment]);
+
+  // Agent ranges are only placed on the exact revision they were computed
+  // for; otherwise the editor holds newer text and asks for a fresh result.
+  const agentMarksPlaced = useRef(false);
+  const onAgentChangesStaleRef = useRef(onAgentChangesStale);
+  onAgentChangesStaleRef.current = onAgentChangesStale;
+  const onOpenAgentChangeRef = useRef(onOpenAgentChange);
+  onOpenAgentChangeRef.current = onOpenAgentChange;
+  const canOpenAgentChange = Boolean(onOpenAgentChange);
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor) return;
+    const matches = Boolean(agentChanges?.changes.length) && sourceHash(editor.state.doc.toString()) === agentChanges!.sourceHash;
+    agentMarksPlaced.current = matches;
+    const open = canOpenAgentChange ? { label: t("agents.openReview"), onOpen: (id: string) => onOpenAgentChangeRef.current?.(id) } : undefined;
+    editor.dispatch({ effects: setAgentChangeMarks.of(matches ? { changes: agentChanges!.changes, activeId: activeAgentChangeId, open } : null) });
+    if (agentChanges?.changes.length && !matches) onAgentChangesStaleRef.current?.();
+  }, [agentChanges, activeAgentChangeId, canOpenAgentChange, i18n.resolvedLanguage]);
+
+  const revealedAgentChange = useRef(0);
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor || !agentChangeReveal || revealedAgentChange.current === agentChangeReveal.nonce || !agentMarksPlaced.current) return;
+    const change = agentChanges?.changes.find((candidate) => candidate.id === agentChangeReveal.id);
+    if (!change || change.from > editor.state.doc.length) return;
+    revealedAgentChange.current = agentChangeReveal.nonce;
+    editor.dispatch({ effects: EditorView.scrollIntoView(change.from, { y: "center", yMargin: 60 }) });
+  }, [agentChangeReveal?.nonce, agentChanges]);
 
   useEffect(() => {
     const editor = view.current;

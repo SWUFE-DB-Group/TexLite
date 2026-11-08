@@ -9,6 +9,7 @@ import type { EditorPreferences } from "../editorPreferences";
 import type { SpellCheckIssue } from "../spellCheck";
 import type { SpellCheckJump } from "../LatexEditor";
 import type { LatexReference } from "../../shared/latexReferences";
+import type { AgentChange } from "../../shared/agentProtocol";
 import { commentsForEditorFile, focusCommentForEditorFile } from "./commentNavigation";
 import type { SelectionLineAction } from "../selectionLineActions";
 import { EditorTerminalLayout, type TerminalPanelRenderer } from "./EditorTerminalLayout";
@@ -50,13 +51,20 @@ export interface WorkspaceEditorPanelProps {
   onSpellCheckReplace: (issue: SpellCheckIssue, replacement: string) => void;
   onReferenceNavigate: (reference: LatexReference) => void;
   onCursor: (line: number, column: number, offset: number) => void;
+  /** Unreviewed coding-agent changes in the active file, for highlighting. */
+  agentChanges?: { sourceHash: string; changes: AgentChange[] } | null;
+  activeAgentChangeId?: string | null;
+  agentChangeReveal?: { id: string; nonce: number } | null;
+  onAgentChangesStale?: () => void;
+  onOpenAgentChange?: (id: string) => void;
 }
 
 export function WorkspaceEditorPanel({
   project, projectId, activeFile, mainFile, openTabs, content, loadedFile, readOnly, comments, focusComment,
   editorPreferences, completionIndex, nativeSpellCheck, spellCheckIssues, spellCheckJump, sourceJump,
   collaborativeText, collaborationAwareness, undoManager, editorNotice, activateTab, closeTab,
-  handleTabKeyDown, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync
+  handleTabKeyDown, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync,
+  agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: WorkspaceEditorPanelProps) {
   const { t } = useTranslation();
   // Comment offsets are meaningful only for the source document which
@@ -90,7 +98,8 @@ export function WorkspaceEditorPanel({
       )}>
       <div id="editor-source-content" className="editor-content-container">
         <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
-          <LatexEditor key={activeFile} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaborationAwareness, undoManager: readOnly ? undefined : undoManager } : undefined} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor} />
+          <LatexEditor key={activeFile} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaborationAwareness, undoManager: readOnly ? undefined : undoManager } : undefined} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
+            agentChanges={agentChanges} activeAgentChangeId={activeAgentChangeId} agentChangeReveal={agentChangeReveal} onAgentChangesStale={onAgentChangesStale} onOpenAgentChange={onOpenAgentChange} />
         </Suspense>
         {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
         {mobileSync && <WorkspaceMobileSyncButton direction="pdf" {...mobileSync} />}

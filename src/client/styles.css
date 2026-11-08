@@ -2628,3 +2628,13 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
     .panel-title .file-tools button { width: 32px; height: 40px; }
   }
 }
+
+/* Unreviewed text written by the user's coding agent (see agents/agentChangeMarks.ts). */
+.cm-agent-change { background: color-mix(in srgb, var(--tl-agent-change) 16%, transparent); border-radius: 2px; }
+.cm-agent-change.cm-agent-change-active { background: color-mix(in srgb, var(--tl-agent-change) 30%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tl-agent-change) 55%, transparent); }
+.cm-agent-deletion { display: inline-block; width: 2px; height: 1.1em; margin: 0 1px; vertical-align: text-bottom; background: color-mix(in srgb, var(--tl-agent-change) 70%, transparent); }
+.cm-agent-deletion.cm-agent-change-active { width: 3px; background: var(--tl-agent-change); }
+.cm-agent-review-button { display: inline-grid; place-items: center; width: 16px; height: 16px; margin: 0 1px 0 2px; padding: 0; vertical-align: text-bottom; border: 1px solid color-mix(in srgb, var(--tl-agent-change) 45%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--tl-agent-change) 12%, var(--tl-editor-bg)); color: var(--tl-agent-change); cursor: pointer; }
+.cm-agent-review-button svg { width: 11px; height: 11px; }
+.cm-agent-review-button:hover, .cm-agent-review-button.cm-agent-change-active { background: color-mix(in srgb, var(--tl-agent-change) 26%, var(--tl-editor-bg)); }
+.cm-agent-review-button:focus-visible { outline: 2px solid var(--tl-focus); outline-offset: 1px; }

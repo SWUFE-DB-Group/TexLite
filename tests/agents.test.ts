@@ -1250,6 +1250,16 @@ describe("agent HTTP and WebSocket permissions", () => {
     const history = { versions: await versions() };
     expect(history.versions.length - before).toBe(1);
     expect(history.versions[0]).toMatchObject({ hasAgent: true, author: { id: owner.id }, changedPaths: ["main.tex", "notes.txt"] });
+
+    // The same changes are reviewable by the task's user only, mapped to the current sources.
+    const own = (await app!.inject({ url: `/api/projects/${projectId}/agent-changes`, headers: { cookie: cookies.ownerCookie } })).json();
+    expect(own.files.map((file: { path: string }) => file.path)).toEqual(["main.tex", "notes.txt"]);
+    const main = own.files[0] as { changes: Array<{ after: string; pieces: Array<{ from: number; to: number }> }> };
+    const mainSource = fs.readFileSync(workingFile(task), "utf8");
+    expect(main.changes.flatMap((change) => change.pieces.map((piece) => mainSource.slice(piece.from, piece.to))).join("")).toContain("First agent line.");
+    expect((await app!.inject({ url: `/api/projects/${projectId}/agent-changes`, headers: { cookie: cookies.editorCookie } })).json()).toEqual({ files: [] });
+    expect((await app!.inject({ url: `/api/projects/${projectId}/agent-changes`, headers: { cookie: cookies.adminCookie } })).statusCode).toBe(404);
+    expect((await app!.inject({ url: `/api/projects/${projectId}/agent-changes` })).statusCode).toBe(401);
   });
 
   it("accepts optional task names but still validates provided values and explicit renames", async () => {

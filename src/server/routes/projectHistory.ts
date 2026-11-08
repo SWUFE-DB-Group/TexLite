@@ -11,6 +11,10 @@ import { resolveSourcePath, safeRelativePath } from "../files.js";
 import { apiError, httpError } from "../http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "../limits.js";
 import { defaultHistoryTracking, historyTextCandidate } from "../../shared/historyTracking.js";
+import type { AgentChangeFile } from "../../shared/agentProtocol.js";
+
+/** Files with agent changes examined per request; the newest edits matter most. */
+const MAX_AGENT_CHANGE_FILES = 200;
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import {
@@ -88,6 +92,37 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
       if (hashText(content) !== query.sourceHash) return apiError(reply, 409, "SELECTION_HISTORY_SOURCE_CHANGED");
       if (start > end || end > content.length) return apiError(reply, 400, "REQUEST_INVALID");
       return editHistory.selectionHistory(id, filePath, content, start, end, requestedLimit ?? undefined);
+    }, { preflight: () => {
+      if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
+    } });
+  });
+
+  /**
+   * The caller's own coding-agent changes across the project, mapped to the
+   * current sources. Other users' agent work is never returned. Read-only:
+   * which changes were reviewed is kept by the browser.
+   */
+  app.get("/api/projects/:id/agent-changes", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    return await projectMutations.runConsistentRead(id, () => {
+      const paths = (db.prepare(`SELECT DISTINCT file_path FROM project_edit_segments
+        WHERE project_id = ? AND author_id = ? AND has_agent = 1 ORDER BY file_path LIMIT ?`)
+        .all(id, user.id, MAX_AGENT_CHANGE_FILES) as Array<{ file_path: string }>).map((row) => row.file_path);
+      const files: AgentChangeFile[] = [];
+      for (const filePath of paths) {
+        if (!isCollaborativeTextFile(filePath)) continue;
+        let source: string;
+        try { source = resolveSourcePath(config, id, filePath); }
+        catch { continue; }
+        if (!fs.existsSync(source) || !fs.statSync(source).isFile() || fs.statSync(source).size > maxCollaborativeFileBytes(config)) continue;
+        const content = fs.readFileSync(source, "utf8");
+        const changes = editHistory.agentChanges(id, filePath, content, user.id);
+        if (changes.length) files.push({ path: filePath, sourceHash: hashText(content), changes });
+      }
+      return { files };
     }, { preflight: () => {
       if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
     } });

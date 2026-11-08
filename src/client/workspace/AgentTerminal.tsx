@@ -13,11 +13,15 @@ import { AgentIcon } from "../agents/AgentIcon";
 import { AgentSelect } from "../agents/AgentSelect";
 import { terminalThemeStyle } from "../terminalTheme";
 import { useTerminalPreferences } from "../terminalPreferences";
+import { AgentChangesReview } from "../agents/AgentChangesReview";
+import type { AgentChangeReview, PendingAgentChange } from "../agents/useAgentChanges";
 
 const AgentTerminalSurface = lazy(() => import("../agents/AgentTerminalSurface").then((module) => ({ default: module.AgentTerminalSurface })));
 
-export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, onToggleMaximized }: {
+export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, onToggleMaximized, review, activeChangeId = null, onShowChange, reviewFocus = null }: {
   projectId: string; readOnly: boolean; onHide: () => void; maximized?: boolean; onToggleMaximized?: () => void;
+  review?: AgentChangeReview; activeChangeId?: string | null; onShowChange?: (change: PendingAgentChange, focus: boolean) => void;
+  reviewFocus?: { id: string; nonce: number } | null;
 }) {
   const { t } = useTranslation();
   const tasks = useAgentTasks(projectId);
@@ -91,6 +95,7 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
     {task?.errorCode && !tasks.error && !deleteOpen && <p className="error agent-inline-error" role="alert">{t(`errors.codes.${task.errorCode}`, { defaultValue: t("agents.taskUnavailable") })}</p>}
     {(projectBusy || (creating && tasks.result.activeTaskId)) && <p className="agent-inline-warning" role="status"><TriangleAlert size={14} aria-hidden="true" /><span>{t("errors.codes.AGENT_PROJECT_BUSY")}</span></p>}
     {tasks.catalog && !tasks.catalog.ptyAvailable && <p className="error agent-inline-error">{t("agents.ptyUnavailable")}</p>}
+    {review && onShowChange && <AgentChangesReview review={review} activeId={activeChangeId} onShow={onShowChange} focus={reviewFocus} />}
     <div className="agent-terminal-body" style={terminalThemeStyle(preferences.theme)}>
       <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}>
         {task && running && !readOnly ? <AgentTerminalSurface key={task.id} task={task} onTask={tasks.acceptTask} />
