@@ -8,6 +8,10 @@ interface UseChktexOptions {
   content: string;
 }
 
+// A fresh [] would look like a changed result to every memo and effect that
+// depends on the issues, including the one that closes the suggestions menu.
+const NO_ISSUES: SpellCheckIssue[] = [];
+
 /** Run the optional host ChkTeX checker only after a quiet two-second edit. */
 export function useChktex({ active, projectId, activeFile, content }: UseChktexOptions) {
   const [issues, setIssues] = useState<SpellCheckIssue[]>([]);
@@ -76,7 +80,7 @@ export function useChktex({ active, projectId, activeFile, content }: UseChktexO
 
   const visible = active && checkedFile === activeFile && checkedSource === content;
   return {
-    issues: visible ? issues : [],
+    issues: visible ? issues : NO_ISSUES,
     checked: visible,
     error: active && !dismissed ? error : null,
     retry: () => { setError(null); setDismissed(false); setRetryToken((value) => value + 1); },

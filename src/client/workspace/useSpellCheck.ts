@@ -14,7 +14,9 @@ interface UseSpellCheckOptions {
   additionalIssuesReady?: boolean;
 }
 
-export function useSpellCheck({ active, harperEnabled = true, projectId, activeFile, content, dictionaryWords, additionalIssues = [], additionalIssuesReady = true }: UseSpellCheckOptions) {
+const NO_ADDITIONAL_ISSUES: SpellCheckIssue[] = [];
+
+export function useSpellCheck({ active, harperEnabled = true, projectId, activeFile, content, dictionaryWords, additionalIssues = NO_ADDITIONAL_ISSUES, additionalIssuesReady = true }: UseSpellCheckOptions) {
   const [issues, setIssues] = useState<SpellCheckIssue[]>([]);
   const [checkedSource, setCheckedSource] = useState("");
   const [checkedFile, setCheckedFile] = useState("");
