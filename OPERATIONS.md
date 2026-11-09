@@ -590,6 +590,19 @@ renderer is bundled and loaded only when a terminal is opened. Linux PTY I/O and
 termination are covered by a local, deterministic test agent without any model
 calls; platform/native-agent login behavior should also be checked when deploying.
 
+### Copying terminal text
+
+Drag across the text, right-click the selection and choose **Copy**. If dragging
+selects nothing because the CLI captures the mouse, hold `Shift` while dragging
+and release it before right-clicking. On macOS that override is not available,
+so text in such a CLI cannot be selected this way.
+
+`Ctrl+C` is not a copy shortcut here: it goes to the CLI, normally as an
+interrupt. While text is selected, right clicks and pointer movement are not
+reported to the CLI; a left click clears the selection and restores reporting.
+Text that a CLI selects and copies on its own through OSC 52 does not reach the
+system clipboard.
+
 ## TikZ gallery add-on
 
 The gallery of editable TikZ and pgfplots figures is a separate repository, not

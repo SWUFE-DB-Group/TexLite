@@ -1898,6 +1898,11 @@ and full transcripts are not persisted by TexLite. Native CLI history can still
 exist in task-local or shared host state. Raw terminal replay is a bounded recent stream, not a
 complete saved terminal screen; very long full-screen sessions may need a redraw.
 
+xterm clears its selection on input, and a CLI with mouse reporting receives
+clicks and pointer movement as input. While text is selected, the surface
+withholds right clicks and pointer movement from xterm, and a right click opens
+TexLite's own Copy menu because the browser's menu does not reliably offer Copy.
+
 Terminal appearance is separate from editor appearance. Its font, size and theme
 are browser-local preferences shared across projects and scoped to the
 deployment base path, without user/database or CLI configuration changes. The

@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { AgentClientMessage, AgentServerMessage, AgentTask } from "../../shared/agentProtocol";
 import { agentInputChunks } from "../../shared/agentProtocol";
 import { appPath } from "../basePath";
+import { copyTextToClipboard } from "../clipboard";
 import { terminalFontStack, terminalLineHeight, useTerminalPreferences } from "../terminalPreferences";
 import { terminalThemes, terminalThemeStyle } from "../terminalTheme";
 
@@ -24,6 +25,7 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
   const [connection, setConnection] = useState<"connecting" | "open" | "closed">("connecting");
   const [errorCode, setErrorCode] = useState("");
   const [reconnect, setReconnect] = useState(0);
+  const [copyMenu, setCopyMenu] = useState<{ x: number; y: number; text: string; failed: boolean } | null>(null);
   const send = (message: AgentClientMessage) => {
     if (socket.current?.readyState !== WebSocket.OPEN) return;
     if (message.type === "input") {
@@ -57,7 +59,24 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     const observer = new ResizeObserver(() => { try { fit.fit(); } catch { /* Hidden panel. */ } });
     observer.observe(element);
     fit.fit();
-    return () => { observer.disconnect(); input.dispose(); resize.dispose(); term.dispose(); terminal.current = null; fitAddon.current = null; };
+    // xterm clears its selection on input, and a CLI with mouse reporting receives
+    // right clicks and pointer movement as input. Withhold those while text is
+    // selected so it can still be copied; a drag or left click behaves as usual.
+    const keepSelection = (event: MouseEvent) => {
+      if (term.hasSelection() && (event.type === "mousemove" ? event.buttons === 0 : event.button === 2)) event.stopPropagation();
+    };
+    // Whether the browser's own menu offers Copy varies, so a selection gets ours.
+    const openCopyMenu = (event: MouseEvent) => {
+      const text = term.hasSelection() ? term.getSelection() : "";
+      if (!text) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setCopyMenu({ x: Math.min(event.clientX, window.innerWidth - 120), y: Math.min(event.clientY, window.innerHeight - 60), text, failed: false });
+    };
+    element.addEventListener("mousedown", keepSelection, true);
+    element.addEventListener("mousemove", keepSelection, true);
+    element.addEventListener("contextmenu", openCopyMenu, true);
+    return () => { element.removeEventListener("mousedown", keepSelection, true); element.removeEventListener("mousemove", keepSelection, true); element.removeEventListener("contextmenu", openCopyMenu, true); observer.disconnect(); input.dispose(); resize.dispose(); term.dispose(); terminal.current = null; fitAddon.current = null; };
   }, []);
   useEffect(() => {
     if (terminal.current) {
@@ -119,6 +138,37 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     connect();
     return () => { disposed = true; window.clearTimeout(retry); socket.current?.close(); socket.current = null; writableRef.current = false; };
   }, [task.id, reconnect]);
+  const copyMenuOpen = copyMenu !== null;
+  useEffect(() => {
+    if (!copyMenuOpen) return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!(event.target instanceof Element && event.target.closest(".agent-terminal-menu"))) setCopyMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // The terminal must not also send Escape, which can interrupt the agent.
+      event.preventDefault();
+      event.stopPropagation();
+      setCopyMenu(null);
+      terminal.current?.focus();
+    };
+    document.addEventListener("mousedown", closeOutside, true);
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside, true);
+      document.removeEventListener("keydown", closeOnEscape, true);
+    };
+  }, [copyMenuOpen]);
+  const copySelection = async () => {
+    if (!copyMenu) return;
+    try {
+      await copyTextToClipboard(copyMenu.text, () => root.current);
+      setCopyMenu(null);
+      terminal.current?.focus();
+    } catch {
+      setCopyMenu((current) => current && { ...current, failed: true });
+    }
+  };
   return <div className="agent-terminal-surface" style={terminalThemeStyle(preferences.theme)}>
     {(connection !== "open" || !writable) && <div className="agent-terminal-status" role="status">
       <span>{errorCode ? t(`errors.codes.${errorCode}`, { defaultValue: t("agents.connectionLost") })
@@ -127,5 +177,9 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
         : connection === "open" && <button onClick={() => send({ type: "takeControl" })}>{t("agents.takeControl")}</button>}
     </div>}
     <div className="agent-xterm" ref={root} />
+    {copyMenu && <div className="spell-suggestions-menu agent-terminal-menu" role="menu" style={{ left: copyMenu.x, top: copyMenu.y }}>
+      <button type="button" role="menuitem" autoFocus onClick={() => void copySelection()}>{t("agents.copy")}</button>
+      {copyMenu.failed && <small role="alert">{t("agents.copyFailed")}</small>}
+    </div>}
   </div>;
 }
