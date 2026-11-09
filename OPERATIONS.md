@@ -605,26 +605,8 @@ system clipboard.
 
 ## TikZ gallery add-on
 
-The gallery of editable TikZ and pgfplots figures is a separate repository, not
-part of TexLite. To add it, clone it into `addon/` beside `texlite.config.json`
-(`texlite config` prints `configPath`):
-
-~~~bash
-cd <directory containing texlite.config.json>
-git clone https://github.com/ChenZhongPu/texlite-tikz.git addon/texlite-tikz
-~~~
-
-Then set `"tikzGallery": { "enabled": true }` in the configuration and run
-`texlite restart`. `texlite doctor` reports whether the add-on was found. `git pull`
-updates it without a restart. Importing copies a figure into the project, so
-removing the add-on does not affect figures already imported. Only the sources and
-previews its catalog lists are served, and only to signed-in users, but treat the
-repository as you would any other software you install on the host.
-
-If the add-on includes `TIKZ.md`, Coding Agents read it for TikZ and pgfplots work
-and may copy figures from the add-on. The instruction is in the `AGENTS.md` template
-that TexLite copies into a project only when the project has none, so a project with
-an existing `AGENTS.md` needs that section added by hand.
+The optional TikZ gallery is a beta feature. See [addon.md](addon.md) for
+installation, configuration and use.
 
 ## Backup and security
 

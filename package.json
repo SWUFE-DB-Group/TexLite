@@ -28,6 +28,7 @@
     "OPERATIONS.md",
     "DESIGN.md",
     "NPM_TESTING.md",
+    "addon.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "texlite.config.example.json"

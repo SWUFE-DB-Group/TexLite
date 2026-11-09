@@ -136,6 +136,7 @@ for its user-facing configuration and operations guide.
 | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | Installation, configuration paths, effective defaults, environment overrides, service management, backups, and security boundaries | [Operations guide](OPERATIONS.md)                          |
 | Collaboration, source persistence, compilation isolation, history, and design trade-offs                                           | [Design](DESIGN.md)                                        |
+| TikZ gallery add-on (beta) | [TikZ gallery add-on](addon.md) |
 | Testing an npm package before publication                                                                                          | [NPM testing guide](NPM_TESTING.md)                        |
 | Complete configuration starting point                                                                                              | [texlite.config.example.json](texlite.config.example.json) |
 
