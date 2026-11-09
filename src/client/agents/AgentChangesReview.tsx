@@ -76,7 +76,9 @@ export function AgentChangesReview({ review, activeId, onShow, focus = null }: {
     if (next) onShow(next, false);
   };
 
-  if (!pending.length && !review.loading && !review.error) return null;
+  // Polling must not depend on `loading` here: a bar that appears for one request
+  // resizes the terminal below it, and the PTY redraws the whole screen.
+  if (!pending.length && !review.error) return null;
   return <section className="agent-review" aria-label={t("agents.reviewTitle")}>
     <div className="agent-review-bar">
       <button type="button" className="agent-review-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>

@@ -117,6 +117,11 @@ describe("agent change review bar", () => {
     expect(host.querySelector(".agent-review")).toBeNull();
   });
 
+  it("does not appear for a background refresh, which would resize the terminal", async () => {
+    await act(async () => root.render(createElement(AgentChangesReview, { review: { ...review([]), loading: true }, activeId: null, onShow: vi.fn() })));
+    expect(host.querySelector(".agent-review")).toBeNull();
+  });
+
   it("selects a change requested from the editor and switches between new content and diff", async () => {
     const onShow = vi.fn();
     const changes = [pending("a", "main.tex", 2), pending("b", "main.tex", 2, { id: "b", ids: ["b"] })];
