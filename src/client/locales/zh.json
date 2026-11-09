@@ -373,6 +373,7 @@
     "compileShort": "编译",
     "mobileSource": "源码",
     "mobilePreview": "预览",
+    "tikz": { "compilePdf": "编译为 PDF", "pdfSaved": "已保存 {{file}}", "chooseEngine": "选择图的 LaTeX 引擎" },
     "markdown": {
       "tab": "Markdown",
       "tabTitle": "{{path}} 的渲染预览",

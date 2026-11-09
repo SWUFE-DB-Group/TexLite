@@ -122,18 +122,21 @@ export function useProjectFiles({
     }
   };
 
+  /** Creates a file that must not exist yet and opens it. */
+  const addFile = async (path: string, content: string) => {
+    await api(`/api/projects/${projectId}/file`, { method: "POST", body: JSON.stringify({ path, content }) });
+    const nextFiles = await loadFiles();
+    const created = nextFiles?.find((entry) => entry.path === path);
+    if (created) await openFile(created);
+    setSelectedFolder(null);
+    setExpandedFolders((current) => new Set([...current, ...parentFolders(path)]));
+  };
+
   const createFile = async () => {
     if (!newFilePath.trim() || newFilePath.trim().endsWith("/")) return;
     setFileDialogError("");
     try {
-      await api(`/api/projects/${projectId}/file`, {
-        method: "POST", body: JSON.stringify({ path: newFilePath, content: "" })
-      });
-      const nextFiles = await loadFiles();
-      const created = nextFiles?.find((entry) => entry.path === newFilePath);
-      if (created) await openFile(created);
-      setSelectedFolder(null);
-      setExpandedFolders((current) => new Set([...current, ...parentFolders(newFilePath)]));
+      await addFile(newFilePath, "");
       setNewFileOpen(false);
       setNewFilePath("");
     } catch (error) { setFileDialogError(errorMessage(error)); }
@@ -445,7 +448,7 @@ export function useProjectFiles({
     fileDragActive, setFileDragActive,
     uploadConflict, setUploadConflict, uploadingFiles, uploadFeedback, dismissUploadFeedback,
     directoryEntries, visibleEntries,
-    createFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, removePath
+    createFile, addFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, removePath
   };
 }
 

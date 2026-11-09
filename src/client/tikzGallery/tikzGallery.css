@@ -1,0 +1,43 @@
+.tikz-gallery { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; height: min(60vh, 540px); }
+.tikz-gallery-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tikz-gallery-search { flex: 1 1 200px; display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--ui-muted, #58665d); }
+.tikz-gallery-search input { flex: 1; min-width: 0; }
+.tikz-gallery-search input, .tikz-gallery-import input { box-sizing: border-box; height: var(--ui-control-height); padding: 0 8px; border: 1px solid var(--ui-border, #d5ddd7); border-radius: 5px; background: var(--ui-raised, #fff); color: inherit; font-size: 12px; }
+.tikz-gallery-types { display: flex; gap: 2px; }
+.tikz-gallery-types button { height: var(--ui-control-height); padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #58665d); font-size: 12px; }
+.tikz-gallery-types button:hover { background: var(--ui-hover, #edf3ef); }
+.tikz-gallery-types button[aria-pressed="true"] { background: var(--ui-accent-bg, #e4eee5); color: var(--ui-accent, #18553c); font-weight: 600; }
+.tikz-gallery-tabs, .tikz-gallery-categories { flex: 0 0 100%; }
+.tikz-gallery-tabs { padding-bottom: 8px; border-bottom: 1px solid var(--ui-border, #d5ddd7); }
+.tikz-gallery-main { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 12px; min-height: 0; }
+.tikz-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; align-content: start; min-height: 0; overflow: auto; padding: 2px; }
+.tikz-gallery-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 5px; border: 1px solid var(--ui-border, #d5ddd7); border-radius: 6px; background: var(--ui-raised, #fff); color: inherit; cursor: pointer; }
+.tikz-gallery-card:hover { border-color: var(--ui-accent, #18553c); }
+.tikz-gallery-card[aria-pressed="true"] { border-color: var(--ui-accent, #18553c); box-shadow: inset 0 0 0 1px var(--ui-accent, #18553c); }
+/* Previews are drawn for a light page, in dark themes too. */
+.tikz-gallery-preview { display: flex; align-items: center; justify-content: center; height: 84px; padding: 5px; border-radius: 4px; background: #fff; }
+.tikz-gallery-preview img { max-width: 100%; max-height: 100%; }
+.tikz-gallery-name { overflow: hidden; font-size: 11px; line-height: 1.3; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+/* Icons are small marks: more per row, drawn at one size whatever their natural dimensions. */
+.tikz-gallery-grid-icons { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 6px; }
+.tikz-gallery-grid-icons .tikz-gallery-card { gap: 3px; padding: 4px; }
+.tikz-gallery-grid-icons .tikz-gallery-preview { height: 40px; padding: 3px; }
+.tikz-gallery-grid-icons .tikz-gallery-preview img { width: 100%; height: 100%; object-fit: contain; }
+.tikz-gallery-grid-icons .tikz-gallery-name { display: -webkit-box; min-height: 2.5em; font-size: 10px; line-height: 1.25; text-align: center; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.tikz-gallery-state { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 7px; margin: 40px 0; color: var(--ui-muted, #58665d); font-size: 12px; }
+.tikz-gallery-detail { display: flex; flex-direction: column; min-height: 0; overflow: auto; padding-left: 12px; border-left: 1px solid var(--ui-border, #d5ddd7); font-size: 12px; line-height: 1.45; }
+.tikz-gallery-detail h3 { margin: 0 0 6px; font-size: 13px; }
+.tikz-gallery-detail h4 { margin: 4px 0 2px; font-size: 11px; color: var(--ui-muted, #58665d); }
+.tikz-gallery-detail p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.tikz-gallery-hint, .tikz-gallery-note { color: var(--ui-muted, #58665d); }
+.tikz-gallery-error { color: var(--ui-danger, #a4312b); }
+.tikz-gallery-detail .tikz-gallery-attribution { margin: auto 0 0; padding-top: 8px; color: var(--ui-muted, #58665d); font-size: 11px; }
+.tikz-gallery-import { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tikz-gallery-import label { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; white-space: nowrap; }
+.tikz-gallery-import input { flex: 1; min-width: 0; }
+.tikz-gallery-import button { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 640px) {
+  .tikz-gallery { height: 68vh; }
+  .tikz-gallery-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 34%); }
+  .tikz-gallery-detail { padding: 8px 0 0; border-top: 1px solid var(--ui-border, #d5ddd7); border-left: 0; }
+}

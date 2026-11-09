@@ -18,6 +18,9 @@ export const CONFIG_DEFAULTS = {
   basePath: ROOT_BASE_PATH,
   dataDir: defaultDataDirectory(),
   clientDir: packageClientDirectory(),
+  tikzGalleryEnabled: false,
+  /** Relative to the configuration file, like a relative storage.dataDir. */
+  tikzGalleryPath: path.join("addon", "texlite-tikz"),
   sessionDays: 14,
   compileTimeoutSeconds: 600,
   maxCompileJobs: 10,
@@ -64,6 +67,8 @@ export interface Config {
   databasePath: string;
   projectsDir: string;
   clientDir: string;
+  tikzGalleryEnabled: boolean;
+  tikzGalleryDir: string;
   sessionDays: number;
   compileTimeoutMs: number;
   maxCompileJobs: number;
@@ -169,6 +174,8 @@ export function loadConfig(configPathOverride?: string): Config {
     databasePath: path.join(dataDir, "texlite.db"),
     projectsDir: path.join(dataDir, "projects"),
     clientDir,
+    tikzGalleryEnabled: fileConfig.tikzGallery?.enabled ?? CONFIG_DEFAULTS.tikzGalleryEnabled,
+    tikzGalleryDir: resolveConfiguredPath("tikzGallery.path", fileConfig.tikzGallery?.path ?? CONFIG_DEFAULTS.tikzGalleryPath, configDirectory),
     sessionDays: integerSetting("sessionDays", process.env.TEXLITE_SESSION_DAYS, fileConfig.sessionDays, CONFIG_DEFAULTS.sessionDays, CONFIG_LIMITS.sessionDays),
     compileTimeoutMs: compileTimeoutSeconds * 1000,
     maxCompileJobs,
@@ -251,6 +258,7 @@ interface FileConfig {
   sessionDays?: number;
   server?: { host?: string; port?: number; basePath?: string };
   storage?: { dataDir?: string };
+  tikzGallery?: { enabled?: boolean; path?: string };
   latex?: {
     latexmk?: string;
     defaultEngine?: string;
@@ -318,6 +326,11 @@ function validateFileConfig(config: FileConfig): void {
   optionalString(server?.basePath, "server.basePath", { min: 1, max: 1_024 });
   const storage = optionalSection(config.storage, "storage");
   optionalString(storage?.dataDir, "storage.dataDir", { min: 1, max: 4_096 });
+  const tikzGallery = optionalSection(config.tikzGallery, "tikzGallery");
+  if (tikzGallery && Object.prototype.hasOwnProperty.call(tikzGallery, "enabled") && typeof tikzGallery.enabled !== "boolean") {
+    throw configurationError("tikzGallery.enabled", "must be true or false");
+  }
+  optionalString(tikzGallery?.path, "tikzGallery.path", { min: 1, max: 4_096 });
   const uploads = optionalSection(config.uploads, "uploads");
   optionalInteger(uploads?.maxFileSizeMB, "uploads.maxFileSizeMB", CONFIG_LIMITS.maxFileSizeMB);
   const pdf = optionalSection(config.pdf, "pdf");

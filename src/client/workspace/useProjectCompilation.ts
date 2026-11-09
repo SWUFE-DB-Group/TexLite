@@ -328,13 +328,14 @@ export function useProjectCompilation(options: UseProjectCompilationOptions) {
     return () => { request.controller.abort(); if (completedRequest.current === request) completedRequest.current = null; };
   }, [owner, sharedState?.runId, sharedState?.status, sharedState?.mainFile, sharedState?.stale, localCompiling, initialLoad, cleaning]);
 
-  const compile = async () => {
-    if (!project || project.permission === "read" || !collaborationSynced) return;
+  /** Resolves with the response this request received, or null when none applies. */
+  const compile = async (engine?: Project["engine"]): Promise<CompileResponse | null> => {
+    if (!project || project.permission === "read" || !collaborationSynced) return null;
     const requestedMainFile = callbacks.current.resolveCompileMainFile?.() || currentMainFile();
     const id = targetKey(projectId, requestedMainFile);
     const shared = callbacks.current.sharedState;
     if (!requestedMainFile || compileRequests.current.has(id)
-      || (shared?.mainFile === requestedMainFile && (shared.status === "queued" || shared.status === "running"))) return;
+      || (shared?.mainFile === requestedMainFile && (shared.status === "queued" || shared.status === "running"))) return null;
     let scope = ownerRef.current!;
     // Adopt a synchronously promoted root so its request and the following
     // React render share the same selection lifetime.
@@ -352,21 +353,23 @@ export function useProjectCompilation(options: UseProjectCompilationOptions) {
     compileRequests.current.set(id, request);
     setCompilingTargets((current) => new Set([...current, id]));
     try {
-      if (!(await callbacks.current.save()) || !isCurrent(scope, request.controller.signal)) return;
+      if (!(await callbacks.current.save()) || !isCurrent(scope, request.controller.signal)) return null;
       // Saving can fail without ever starting a compile. Keep the previous
       // received run (and its replay suppression) until a POST is submitted.
       scope.beginCompile(); setSnapshot(scope.snapshot);
       const result = await api<CompileResponse>(`/api/projects/${projectId}/compile`, {
-        method: "POST", signal: request.controller.signal, body: JSON.stringify({ mainFile: requestedMainFile })
+        method: "POST", signal: request.controller.signal, body: JSON.stringify({ mainFile: requestedMainFile, engine })
       });
-      if (!isCurrent(scope, request.controller.signal) || !publish(scope, scope.receiveLocal(result))) return;
+      if (!isCurrent(scope, request.controller.signal) || !publish(scope, scope.receiveLocal(result))) return null;
       if (result.cancelled) setEditorNotice(callbacks.current.t("compileControls.cancelled"));
       if (result.skipped) setEditorNotice(callbacks.current.t("editor.upToDate"));
       if (result.ok && result.stale) setEditorNotice(callbacks.current.t("editor.compileSnapshotStale"));
       if (result.pdfUrl) { refreshArtifactsAfterPdf(scope); callbacks.current.onPreviewTab("pdf"); }
       else callbacks.current.onPreviewTab(result.diagnostics.errors.length ? "errors" : "log");
+      return result;
     } catch (error) {
       if (!isAbortError(error) && isCurrent(scope, request.controller.signal)) callbacks.current.onError(errorMessage(error));
+      return null;
     } finally {
       if (compileRequests.current.get(id) === request) {
         compileRequests.current.delete(id);

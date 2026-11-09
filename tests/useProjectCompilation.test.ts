@@ -41,7 +41,7 @@ let root: Root, container: HTMLDivElement, options: Options;
 let current: ReturnType<typeof useProjectCompilation>;
 let latest: LatestCompileResponse;
 let post: ReturnType<typeof deferred<CompileResult>>;
-let compilePromise: Promise<void>;
+let compilePromise: Promise<unknown>;
 let strictMode = false;
 let unmounted = false;
 

@@ -65,6 +65,7 @@ export function registerSystemRoutes(app: FastifyInstance, context: SystemRouteC
     maxUploadSizeMB: Math.floor(config.maxUploadBytes / 1024 / 1024),
     maxCollaborativeFileSizeMB: Math.floor(maxCollaborativeFileBytes(config) / 1024 / 1024),
     allowedEngines: config.allowedEngines,
+    tikzGalleryEnabled: config.tikzGalleryEnabled,
     allowProjectLatexmkrc: config.allowProjectLatexmkrc
   }));
 

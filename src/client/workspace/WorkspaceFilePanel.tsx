@@ -59,6 +59,8 @@ export interface WorkspaceFilePanelProps {
   setNewFolderOpen: (open: boolean) => void;
   setNewFilePath: (path: string) => void;
   setNewFileOpen: (open: boolean) => void;
+  tikzGalleryEnabled: boolean;
+  setTikzGalleryOpen: (open: boolean) => void;
   setQuickOpen: (open: boolean) => void;
   setFileDragActive: (active: boolean) => void;
   dismissUploadFeedback: () => void;
@@ -81,7 +83,7 @@ export function WorkspaceFilePanel({
   expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
   editorFontSize, outline, sourceCursorStore, wordCountBusy, hasSelection, hasFormatSelection, uploadInput,
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
-  setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen,
+  setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen, tikzGalleryEnabled, setTikzGalleryOpen,
   setQuickOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, uploadFiles, upload, openFile, movePathToFolder,
   onError, onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount, onProjectSearch
 }: WorkspaceFilePanelProps) {
@@ -110,7 +112,7 @@ export function WorkspaceFilePanel({
               <button type="button" aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} aria-hidden /></button>
               <input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} />
             </>}
-            <FileTreeActionsMenu onQuickOpen={() => setQuickOpen(true)} onProjectSearch={onProjectSearch} onNewFolder={readOnly ? undefined : () => { setNewFolderName(""); setNewFolderOpen(true); }} />
+            <FileTreeActionsMenu onQuickOpen={() => setQuickOpen(true)} onProjectSearch={onProjectSearch} onNewFolder={readOnly ? undefined : () => { setNewFolderName(""); setNewFolderOpen(true); }} onTikzGallery={readOnly || !tikzGalleryEnabled ? undefined : () => setTikzGalleryOpen(true)} />
           </span>
         </div>
         {uploadFeedback && <div className={`file-upload-feedback ${uploadFeedback.kind}`} role={uploadFeedback.kind === "error" ? "alert" : "status"} aria-live={uploadFeedback.kind === "error" ? "assertive" : "polite"} aria-busy={uploadFeedback.kind === "uploading"}>

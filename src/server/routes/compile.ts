@@ -8,7 +8,9 @@ import type { Config } from "../config.js";
 import type { DatabaseConnection } from "../db.js";
 import { requireUser } from "../auth.js";
 import { accessibleProject, canEdit } from "../projects.js";
-import { resolveSourcePath, safeRelativePath, texFileStem } from "../files.js";
+import { outputRoot, resolveSourcePath, safeRelativePath, texFileStem } from "../files.js";
+import { isStandaloneTikz } from "../../shared/tikzStandalone.js";
+import { touchProject } from "./projectShared.js";
 import {
   captureCompileSnapshot,
   cleanCompileArtifacts,
@@ -319,6 +321,44 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     } });
   });
 
+  // Copies the latest successful PDF of a standalone TikZ figure beside its
+  // source so that other documents can include it. A separate step because
+  // concurrent compile requests are coalesced into one run.
+  app.post("/api/projects/:id/compile/export-pdf", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const permitted = () => {
+      const project = accessibleProject(db, id, user);
+      if (!project || !canEdit(project)) throw httpError(403, "COMPILE_FORBIDDEN");
+      return project;
+    };
+    const body = (request.body ?? {}) as { mainFile?: unknown };
+    return projectMutations.runWrite(id, () => {
+      const project = permitted();
+      const mainFile = compileMainFile(config, id, project.main_file, body.mainFile);
+      if (!mainFile) throw httpError(400, "MAIN_DOCUMENT_INVALID");
+      if (!isStandaloneTikz(fs.readFileSync(resolveSourcePath(config, id, mainFile), "utf8"))) throw httpError(400, "REQUEST_INVALID");
+      const pdf = availablePdf(config, id, mainFile);
+      if (!pdf) throw httpError(404, "PDF_NOT_FOUND");
+      const target = `${mainFile.slice(0, -".tex".length)}.pdf`;
+      const destination = resolveSourcePath(config, id, target);
+      if (fs.statSync(destination, { throwIfNoEntry: false })?.isDirectory()) throw httpError(409, "PATH_EXISTS");
+      // Staged outside the source tree, on the same filesystem, so collaborators
+      // and including documents only ever see a complete file.
+      const staged = path.join(outputRoot(config, id), `.export-${randomUUID()}.pdf`);
+      try {
+        fs.copyFileSync(pdf.path, staged);
+        fs.renameSync(staged, destination);
+      } finally {
+        fs.rmSync(staged, { force: true });
+      }
+      touchProject(db, id, user.id);
+      collaboration.invalidateSourceTree(id, target);
+      return { path: target };
+    }, { preflight: () => { permitted(); } });
+  });
+
   app.post("/api/projects/:id/compile/cancel", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
@@ -339,7 +379,12 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const { id } = request.params as { id: string };
     const initialProject = accessibleProject(db, id, user);
     if (!initialProject || !canEdit(initialProject)) return apiError(reply, 403, "COMPILE_FORBIDDEN");
-    const body = (request.body ?? {}) as { mainFile?: unknown };
+    const body = (request.body ?? {}) as { mainFile?: unknown; engine?: unknown };
+    const requestedEngine = config.allowedEngines.find((engine) => engine === body.engine);
+    if (body.engine !== undefined && !requestedEngine) return apiError(reply, 400, "REQUEST_INVALID");
+    // For this run only; part of the compile generation and cache key, so a
+    // request for another engine is neither coalesced nor treated as up to date.
+    const withRequestedEngine = <T extends { engine: string }>(row: T): T => requestedEngine ? { ...row, engine: requestedEngine } : row;
     const requestedMainFile = typeof body.mainFile === "string" && body.mainFile ? body.mainFile : null;
     const initialMainFile = compileMainFile(config, id, initialProject.main_file, body.mainFile);
     if (!initialMainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
@@ -368,10 +413,10 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       }
       const generationRevision = receipt?.revision ?? revisionBeforeFlush;
       const admissionResult = {
-        project: refreshedProject,
+        project: withRequestedEngine(refreshedProject),
         mainFile: currentMainFile,
         generation: compileRequestGeneration(
-          refreshedProject,
+          withRequestedEngine(refreshedProject),
           generationRevision,
           collaboration.currentGeneration(id),
           config.extraArgs
@@ -453,7 +498,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
             const currentMainFile = compileMainFile(config, id, currentProject.main_file, body.mainFile);
             if (!currentMainFile) throw new Error("Selected main document is no longer available");
             if (!requestedMainFile && currentMainFile !== mainFile) throw mainDocumentChangedError();
-            project = currentProject;
+            project = withRequestedEngine(currentProject);
             mainFile = currentMainFile;
             // Capture only after all exclusive source-tree operations queued
             // before this request have completed. A collaboration barrier

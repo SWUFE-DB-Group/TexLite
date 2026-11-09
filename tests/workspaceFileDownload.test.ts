@@ -28,7 +28,7 @@ function render(readOnly = false): string {
     hasSelection: false, hasFormatSelection: false, uploadInput: { current: null },
     setSelectedFolder: noop, setExpandedFolders: noop, setMoveEntry: noop, setMoveName: noop,
     setMoveDestination: noop, setDeleteEntry: noop, setFileDialogError: noop, setNewFolderName: noop,
-    setNewFolderOpen: noop, setNewFilePath: noop, setNewFileOpen: noop, setQuickOpen: noop,
+    setNewFolderOpen: noop, setNewFilePath: noop, setNewFileOpen: noop, tikzGalleryEnabled: true, setTikzGalleryOpen: noop, setQuickOpen: noop,
     setFileDragActive: noop, dismissUploadFeedback: noop, setFilesCollapsed: noop, onError: noop,
     uploadFiles: asyncNoop, upload: asyncNoop, openFile: noop, movePathToFolder: asyncNoop,
     onFormatFile: noop, onFormatSelection: noop, jumpToSource: noop, syncSourceToPdf: asyncNoop, onWordCount: noop

@@ -378,6 +378,7 @@
     "compileShort": "Compile",
     "mobileSource": "Source",
     "mobilePreview": "Preview",
+    "tikz": { "compilePdf": "Compile to PDF", "pdfSaved": "Saved {{file}}", "chooseEngine": "Choose the LaTeX engine for figures" },
     "markdown": {
       "tab": "Markdown",
       "tabTitle": "Rendered preview of {{path}}",

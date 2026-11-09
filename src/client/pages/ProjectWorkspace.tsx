@@ -20,6 +20,8 @@ import { useProjectMentions } from "../workspace/useProjectMentions";
 import { DiscussionQueryProvider } from "../workspace/DiscussionQueryProvider";
 import { useProjectCollaboration } from "../workspace/useProjectCollaboration";
 import { ProjectCollaborationSession } from "../workspace/ProjectCollaborationSession";
+import { useTikzFigurePdf } from "../workspace/useTikzFigurePdf";
+import { isStandaloneTikz } from "../../shared/tikzStandalone";
 import { useProjectCompilation } from "../workspace/useProjectCompilation";
 import { isEditableTextFile, parentFolders, pathContains, useProjectFiles } from "../workspace/useProjectFiles";
 import { useSpellCheck } from "../workspace/useSpellCheck";
@@ -36,6 +38,7 @@ import { WorkspaceTopbar } from "../workspace/WorkspaceTopbar";
 import { collaborationSaveState } from "../workspace/collaborationStatus";
 import { WorkspaceFilePanel } from "../workspace/WorkspaceFilePanel";
 import { WorkspaceEditorPanel } from "../workspace/WorkspaceEditorPanel";
+import type { WorkspaceFigurePdf } from "../workspace/WorkspaceEditorPanel";
 import { useAgentAccess } from "../agents/useAgentAccess";
 import { useAgentChanges, type PendingAgentChange } from "../agents/useAgentChanges";
 import { WorkspacePreviewPanel, type WorkspaceMarkdownPreview } from "../workspace/WorkspacePreviewPanel";
@@ -187,6 +190,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [tikzGalleryOpen, setTikzGalleryOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [wordCountOpen, setWordCountOpen] = useState(false);
   const [wordCountMode, setWordCountMode] = useState<WordCountMode>("full");
@@ -995,7 +999,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     fileDragActive, setFileDragActive,
     uploadConflict, setUploadConflict, uploadingFiles, uploadFeedback, dismissUploadFeedback,
     directoryEntries, visibleEntries,
-    createFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, removePath
+    createFile, addFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, removePath
   } = useProjectFiles({
     projectId,
     site,
@@ -1235,6 +1239,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     },
     onPdfChanged: clearPdfViewport
   });
+  const tikzPdf = useTikzFigurePdf({ projectId, userId: user.id, projectEngine: project?.engine, allowedEngines: site.allowedEngines, compile, onError: setError });
+  const standaloneFigure = useMemo(() => loadedFile === activeFile && /\.tex$/i.test(activeFile) && isStandaloneTikz(content), [activeFile, loadedFile, content]);
   useEffect(() => {
     const openNavigation = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey)) return;
@@ -1384,6 +1390,14 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     const cursor = sourceCursorStore.getCursor();
     return syncSourceToPdf(path, cursor.line, cursor.column);
   };
+  const figurePdf: WorkspaceFigurePdf | null = standaloneFigure && !readOnly ? {
+    state: tikzPdf.state?.path === activeFile ? tikzPdf.state : null,
+    disabled: compileBusy || !collaborationSynced,
+    engine: tikzPdf.engine,
+    engines: tikzPdf.engines,
+    onEngineChange: tikzPdf.setEngine,
+    onCompile: () => void tikzPdf.run(activeFile)
+  } : null;
   const showCursorInMarkdown = () => {
     choosePreviewSurface("markdown");
     if (phone) setWorkspaceLayout("pdf-only");
@@ -1465,7 +1479,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       commentsOpen={sidePanel === "comments"} unresolvedCommentCount={projectCommentSummary?.unresolvedCount ?? project.unresolvedCommentCount ?? 0}
       onToggleSettings={() => setSidePanel(sidePanel === "settings" ? null : "settings")}
       settingsOpen={sidePanel === "settings"} compileBusy={compileBusy} sharedCompiling={sharedCompiling}
-      localCompiling={localCompiling} cancelling={cancelling} onCompile={compile} onCancelCompile={() => void cancelCompile()}
+      localCompiling={localCompiling} cancelling={cancelling} onCompile={() => void compile()} onCancelCompile={() => void cancelCompile()}
     />
     {protocolUpgradeRequired && <div className="workspace-update-banner" role="alert">
       <AlertTriangle size={15} />
@@ -1483,7 +1497,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
     <Group orientation="horizontal" className="work-grid" {...panelLayout}>
-      {showEditor && <WorkspaceFilePanel
+      {showEditor && <WorkspaceFilePanel tikzGalleryEnabled={site.tikzGalleryEnabled === true} setTikzGalleryOpen={setTikzGalleryOpen}
         phoneDrawer={phone ? { open: phoneFilesOpen, onClose: () => setPhoneFilesOpen(false) } : undefined}
         project={project} filesPanel={filesPanel} visibleEntries={visibleEntries}
         deletedPath={filesEvent?.kind === "delete" ? filesEvent.path : null}
@@ -1509,7 +1523,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} syncSourceToPdf={syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
       />}
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
-      {showEditor && <WorkspaceEditorPanel
+      {showEditor && <WorkspaceEditorPanel figurePdf={figurePdf}
         mobileSync={phone && sidePanel !== "comments" ? markdownActive
           ? { disabled: loadedFile !== activeFile, onClick: showCursorInMarkdown, label: t("editor.markdown.showInPreview") }
           : { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
@@ -1606,6 +1620,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       commentError={commentError} addComment={addComment}
       shareOpen={shareOpen} setShareOpen={setShareOpen} onSharedMemberCountChange={updateSharedMemberCount} citationLibraryOpen={citationLibraryOpen}
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
+      tikzGalleryOpen={tikzGalleryOpen} setTikzGalleryOpen={setTikzGalleryOpen} tikzGalleryFolder={selectedFolder} addFile={addFile}
       quickOpen={quickOpen} setQuickOpen={setQuickOpen} openFile={openFile}
       selectionHistoryTarget={selectionHistoryTarget} closeSelectionHistory={() => setSelectionHistoryTarget(null)}
       historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} gitOpen={gitOpen} setGitOpen={setGitOpen}

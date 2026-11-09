@@ -35,6 +35,9 @@ development. Never stop an existing service or remove its lock just to run tests
 - `scripts/`: development launcher, generated assets/parsers, and build plugins.
 - `tests/`: Vitest tests; individual UI tests opt into `happy-dom`.
 - `website/`: standalone public website, with its own CSS and locale catalogs.
+- `src/client/tikzGallery/` and `src/server/tikzGallery.ts`: the optional TikZ
+  gallery, reading an add-on repository named by `tikzGallery.path`. Treat its
+  files as untrusted content and keep this code independent of the workspace.
 
 Use `DESIGN.md` for architecture, `OPERATIONS.md` for deployment/configuration,
 and `NPM_TESTING.md` for isolated package verification. Check code when a document

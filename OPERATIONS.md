@@ -233,6 +233,7 @@ preferred.
 | --- | --- | --- |
 | `siteName` | `TexLite` | Site title. |
 | `adminEmail` | empty | Optional administrator contact address. |
+| `tikzGallery.enabled` / `tikzGallery.path` | `false` / `addon/texlite-tikz` | Optional figure gallery. A relative path is resolved from the configuration file. |
 | `server.host` / `server.port` | `127.0.0.1` / `3000` | Use `0.0.0.0` to serve a trusted local network; keep localhost behind a tunnel or reverse proxy. |
 | `server.basePath` | `/` | Public URL mount point, such as `/texlite` or `/tools/texlite`. |
 | `storage.dataDir` | XDG data directory | Stores all persistent project data. |
@@ -587,6 +588,24 @@ the server's Node/platform and restart before retrying. The browser's terminal
 renderer is bundled and loaded only when a terminal is opened. Linux PTY I/O and
 termination are covered by a local, deterministic test agent without any model
 calls; platform/native-agent login behavior should also be checked when deploying.
+
+## TikZ gallery add-on
+
+The gallery of editable TikZ and pgfplots figures is a separate repository, not
+part of TexLite. To add it, clone it into `addon/` beside `texlite.config.json`
+(`texlite config` prints `configPath`):
+
+~~~bash
+cd <directory containing texlite.config.json>
+git clone <repository url> addon/texlite-tikz
+~~~
+
+Then set `"tikzGallery": { "enabled": true }` in the configuration and run
+`texlite restart`. `texlite doctor` reports whether the add-on was found. `git pull`
+updates it without a restart. Importing copies a figure into the project, so
+removing the add-on does not affect figures already imported. Only the sources and
+previews its catalog lists are served, and only to signed-in users, but treat the
+repository as you would any other software you install on the host.
 
 ## Backup and security
 

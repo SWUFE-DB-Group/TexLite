@@ -843,6 +843,17 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-tab-item.active .editor-tab-close:hover { background: var(--ui-subtle, #e3ece5); color: var(--ui-accent, #184f36); }
 .editor-tab-close:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--ui-accent-border, #4c9a6d); outline-offset: -2px; }
 .editor-content-container { position: relative; flex: 1 1 auto; min-height: 0; height: 100%; overflow: hidden; }
+.editor-content-column { display: flex; flex-direction: column; }
+.editor-content-fill { position: relative; flex: 1 1 0; min-height: 0; }
+.figure-pdf-bar { flex: none; display: flex; align-items: center; justify-content: flex-end; min-height: 32px; padding: 3px 7px; border-bottom: 1px solid var(--ui-border, #d4ded7); background: var(--ui-subtle, #eaefe9); }
+.tikz-compile-pdf { flex: none; display: inline-flex; align-items: center; }
+.tikz-compile-pdf button { display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 9px; border: 0; border-radius: 5px 0 0 5px; background: transparent; color: var(--ui-accent, #18553c); font-size: 11px; font-weight: 600; }
+.tikz-compile-pdf button:hover:not(:disabled) { background: var(--ui-hover, #d8e3db); }
+.tikz-compile-pdf button:disabled { opacity: .5; }
+.tikz-compile-pdf button:focus-visible { outline: 2px solid var(--ui-accent, #18553c); outline-offset: -2px; }
+.tikz-compile-pdf .tikz-engine-trigger { gap: 3px; padding: 0 6px; border-left: 1px solid var(--ui-border, #d4ded7); border-radius: 0 5px 5px 0; font-weight: 400; }
+.file-actions-menu [role="menuitemradio"] { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--ui-control-height); border-radius: 5px; padding: 7px 9px; font-size: var(--ui-menu-font-size); line-height: 1.4; outline: none; cursor: pointer; }
+.file-actions-menu [role="menuitemradio"] .tikz-engine-check { flex: none; width: 14px; height: 14px; }
 .editor-centered-notice { position: absolute; z-index: 8; top: 50%; left: 50%; max-width: calc(100% - 32px); transform: translate(-50%, -50%); pointer-events: none; border: 1px solid #69a780; border-radius: 8px; padding: 9px 15px; background: #1d6b46ed; color: white; font: 600 12px/1.4 inherit; text-align: center; box-shadow: 0 8px 26px #071d1238; }
 .editor-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--tl-ink); background: var(--tl-editor-bg); }
 .editor-shell .editor-host { height: auto; min-height: 0; flex: 1 1 auto; }

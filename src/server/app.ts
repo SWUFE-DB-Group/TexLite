@@ -47,6 +47,7 @@ import { registerProjectCatalogRoutes } from "./routes/projects.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerUserManagementRoutes } from "./routes/users.js";
 import { registerWordCountRoutes } from "./routes/wordCount.js";
+import { registerTikzGalleryRoutes } from "./routes/tikzGallery.js";
 import { registerAgentRoutes } from "./routes/agents.js";
 import { AgentService, type AgentServiceOptions } from "./agents/sessions.js";
 import { HarperService } from "./harper.js";
@@ -351,6 +352,7 @@ export async function buildApp(
       recordHistory
     });
     registerWordCountRoutes(routes, { config, db, projectMutations, texcount });
+    registerTikzGalleryRoutes(routes, { config, db });
     registerCompileRoutes(routes, { config, db, collaboration, projectMutations, compileCoordinator, metrics, pruneCompileRuns });
 
     // The factory owns shared services and lifecycle hooks; route modules own endpoint behavior.

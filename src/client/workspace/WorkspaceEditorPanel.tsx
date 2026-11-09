@@ -1,5 +1,7 @@
 import { lazy, Suspense, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { BookOpen, FileText, LoaderCircle, X } from "lucide-react";
+import { TikzCompileButton } from "./TikzCompileButton";
+import type { LatexEngine, TikzFigurePdfState } from "./useTikzFigurePdf";
 import { useTranslation } from "react-i18next";
 import { Panel } from "react-resizable-panels";
 import * as Y from "yjs";
@@ -17,7 +19,18 @@ import { WorkspaceMobileSyncButton } from "./WorkspaceMobileSyncButton";
 
 const LatexEditor = lazy(() => import("../LatexEditor").then((module) => ({ default: module.LatexEditor })));
 
+/** Offered while the open file is a standalone TikZ figure the user may edit. */
+export interface WorkspaceFigurePdf {
+  state: TikzFigurePdfState;
+  disabled: boolean;
+  engine: LatexEngine;
+  engines: LatexEngine[];
+  onEngineChange: (engine: LatexEngine) => void;
+  onCompile: () => void;
+}
+
 export interface WorkspaceEditorPanelProps {
+  figurePdf?: WorkspaceFigurePdf | null;
   mobileSync?: { disabled: boolean; onClick: () => Promise<void>; label?: string };
   terminal?: TerminalPanelRenderer | null;
   project: Project;
@@ -64,7 +77,7 @@ export function WorkspaceEditorPanel({
   editorPreferences, completionIndex, nativeSpellCheck, spellCheckIssues, spellCheckJump, sourceJump,
   collaborativeText, collaborationAwareness, undoManager, editorNotice, activateTab, closeTab,
   handleTabKeyDown, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync,
-  agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
+  figurePdf = null, agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: WorkspaceEditorPanelProps) {
   const { t } = useTranslation();
   // Comment offsets are meaningful only for the source document which
@@ -96,11 +109,14 @@ export function WorkspaceEditorPanel({
           </div>
         </div>
       )}>
-      <div id="editor-source-content" className="editor-content-container">
+      <div id="editor-source-content" className="editor-content-container editor-content-column">
+        {figurePdf && <div className="figure-pdf-bar"><TikzCompileButton {...figurePdf} /></div>}
+        <div className="editor-content-fill">
         <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
           <LatexEditor key={activeFile} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaborationAwareness, undoManager: readOnly ? undefined : undoManager } : undefined} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
             agentChanges={agentChanges} activeAgentChangeId={activeAgentChangeId} agentChangeReveal={agentChangeReveal} onAgentChangesStale={onAgentChangesStale} onOpenAgentChange={onOpenAgentChange} />
         </Suspense>
+        </div>
         {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
         {mobileSync && <WorkspaceMobileSyncButton direction="pdf" {...mobileSync} />}
       </div>

@@ -17,6 +17,7 @@ export interface SiteConfig {
   /** Server-enforced cap for one citation-library BibTeX entry. */
   maxCitationBibtexBytes: number;
   allowedEngines?: Array<"pdflatex" | "xelatex" | "lualatex">;
+  tikzGalleryEnabled?: boolean;
   allowProjectLatexmkrc?: boolean;
   maxUploadSizeMB: number;
   maxCollaborativeFileSizeMB: number;

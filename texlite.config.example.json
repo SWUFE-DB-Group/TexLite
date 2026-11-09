@@ -10,6 +10,10 @@
     "port": 3000,
     "basePath": "/"
   },
+  "tikzGallery": {
+    "enabled": false,
+    "path": "addon/texlite-tikz"
+  },
   "uploads": {
     "maxFileSizeMB": 50
   },

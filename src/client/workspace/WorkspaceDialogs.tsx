@@ -20,10 +20,15 @@ const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then
 const GitDialog = lazy(() => import("../GitDialog").then((module) => ({ default: module.GitDialog })));
 const HistoryDialog = lazy(() => import("../HistoryDialog").then((module) => ({ default: module.HistoryDialog })));
 const SelectionHistoryDialog = lazy(() => import("../SelectionHistoryDialog").then((module) => ({ default: module.SelectionHistoryDialog })));
+const TikzGalleryDialog = lazy(() => import("../tikzGallery/TikzGalleryDialog").then((module) => ({ default: module.TikzGalleryDialog })));
 const QuickOpenDialog = lazy(() => import("../QuickOpenDialog").then((module) => ({ default: module.QuickOpenDialog })));
 const ProjectSearchDialog = lazy(() => import("../ProjectSearchDialog").then((module) => ({ default: module.ProjectSearchDialog })));
 
 export interface WorkspaceDialogsProps {
+  tikzGalleryOpen: boolean;
+  setTikzGalleryOpen: (open: boolean) => void;
+  tikzGalleryFolder: string | null;
+  addFile: (path: string, content: string) => Promise<void>;
   projectSearchOpen: boolean;
   setProjectSearchOpen: (open: boolean) => void;
   onSearchNavigate: (path: string, line: number, column: number) => void;
@@ -113,7 +118,7 @@ export function WorkspaceDialogs({
   commentSuggestion, setCommentSuggestion,
   user, project, projectId, activeFile, content, maxCitationBibtexBytes, files, directoryEntries, readOnly,
   resourcePreview, resourcePreviewLoading, setResourcePreview, setResourcePreviewLoading,
-  uploadConflict, setUploadConflict, dismissUploadFeedback, uploadFiles, cleanMode, setCleanMode, cleanCompile, newFileOpen,
+  uploadConflict, setUploadConflict, dismissUploadFeedback, uploadFiles, cleanMode, setCleanMode, cleanCompile, tikzGalleryOpen, setTikzGalleryOpen, tikzGalleryFolder, addFile, newFileOpen,
   setNewFileOpen, newFilePath, setNewFilePath, newFolderOpen, setNewFolderOpen, newFolderName,
   setNewFolderName, selectedFolder, fileDialogError, setFileDialogError, createFile, createFolder, moveEntry,
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
@@ -151,6 +156,7 @@ export function WorkspaceDialogs({
       onClose={closeComment} onCancel={cancelComment} draftRestored={commentDraftRestored} canRetarget={commentDraftCanRetarget} onRetarget={useCurrentCommentSelection} />
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} onMemberCountChange={onSharedMemberCountChange} />
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
+    {tikzGalleryOpen && <LazyModal title={t("gallery.title")} onClose={() => setTikzGalleryOpen(false)}><TikzGalleryDialog folder={tikzGalleryFolder} onClose={() => setTikzGalleryOpen(false)} onImport={addFile} /></LazyModal>}
     {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
     {projectSearchOpen && <LazyModal title={t("projectSearch.title")} onClose={() => setProjectSearchOpen(false)}><ProjectSearchDialog projectId={projectId} readOnly={readOnly} onClose={() => setProjectSearchOpen(false)} onNavigate={onSearchNavigate} /></LazyModal>}
     {selectionHistoryTarget && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={(open) => { if (!open) closeSelectionHistory(); }} project={project} filePath={selectionHistoryTarget.filePath} selection={selectionHistoryTarget.selection} currentSource={selectionHistoryTarget.source} /></Suspense>}

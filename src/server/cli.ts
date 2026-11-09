@@ -14,6 +14,7 @@ import { serve } from "./index.js";
 import { processStatus, restartManaged, startManaged, stopManaged, streamLogs, waitForOnline, type ProcessStatus } from "./pm2.js";
 import { resolveConfigPath } from "./runtimePaths.js";
 import { basePathHref } from "../shared/basePath.js";
+import { TikzGalleryLibrary } from "./tikzGallery.js";
 
 export interface CliOptions {
   command: string;
@@ -227,7 +228,8 @@ async function requirements(options: CliOptions): Promise<void> {
 function inspectDoctorApplication(config: Awaited<ReturnType<typeof loadValidatedConfig>>["config"], configPath: string): DoctorApplicationCheck[] {
   const checks: DoctorApplicationCheck[] = [
     { name: "Configuration", status: "passed", detail: `Valid: ${configPath}` },
-    inspectClientAssets(config)
+    inspectClientAssets(config),
+    ...(config.tikzGalleryEnabled ? [inspectTikzGallery(config)] : [])
   ];
   let db: ReturnType<typeof openDatabase> | null = null;
   try {
@@ -256,6 +258,14 @@ function inspectClientAssets(config: Awaited<ReturnType<typeof loadValidatedConf
   return { name: "Client assets", status: "failed", detail: `Missing ${entry}; run \`npm run build\` or reinstall TexLite.` };
 }
 
+function inspectTikzGallery(config: Awaited<ReturnType<typeof loadValidatedConfig>>["config"]): DoctorApplicationCheck {
+  const result = new TikzGalleryLibrary(config.tikzGalleryDir).catalog();
+  if (result.status === "ok") return { name: "TikZ gallery", status: "passed", detail: `${result.catalog.items.length} figures: ${config.tikzGalleryDir}` };
+  return { name: "TikZ gallery", status: "failed", detail: result.status === "incompatible"
+    ? `${config.tikzGalleryDir} has a catalog this TexLite cannot read; update TexLite or the add-on.`
+    : `No catalog in ${config.tikzGalleryDir}; clone the add-on there or set tikzGallery.enabled to false.` };
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message.replace(/\s+/g, " ").slice(0, 240) : String(error).slice(0, 240);
 }
@@ -271,6 +281,7 @@ async function printConfig(options: CliOptions): Promise<void> {
     dataDir: config.dataDir,
     databasePath: config.databasePath,
     projectsDir: config.projectsDir,
+    tikzGallery: { enabled: config.tikzGalleryEnabled, path: config.tikzGalleryDir },
     clientDir: config.clientDir,
     sessionDays: config.sessionDays,
     compileTimeoutSeconds: config.compileTimeoutMs / 1000,

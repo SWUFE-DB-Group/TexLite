@@ -1006,6 +1006,59 @@ Standalone document.
     }
   }, 10_000);
 
+  it("compiles a TikZ figure with a chosen engine and saves its PDF beside the source", async () => {
+    const originalLatexmk = config.latexmk;
+    const engineLog = path.join(root, "figure-engines.log");
+    const fakeLatexmk = path.join(root, "figure-latexmk.mjs");
+    fs.writeFileSync(fakeLatexmk, `#!/usr/bin/env node
+import fs from "node:fs";
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(engineLog)}, args.find((arg) => /^-(pdf|xelatex|lualatex)$/.test(arg)) + "\\n");
+fs.writeFileSync(args.find((arg) => arg.startsWith("-outdir=")).slice(8) + "/arch.pdf", "%PDF-" + args.find((arg) => /^-(pdf|xelatex|lualatex)$/.test(arg)));
+`, { mode: 0o700 });
+    fs.chmodSync(fakeLatexmk, 0o700);
+    config.latexmk = fakeLatexmk;
+    try {
+      const project = (await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Figures" } })).json().project;
+      await app.inject({ method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie }, payload: { path: "arch.tex", content: "\\documentclass[tikz]{standalone}\n\\begin{document}\\end{document}\n" } });
+      const url = `/api/projects/${project.id}/compile`;
+      const compile = (payload: object) => app.inject({ method: "POST", url, headers: { cookie }, payload });
+      const exportPdf = (mainFile: string, headers: Record<string, string> = { cookie }) => app.inject({ method: "POST", url: `${url}/export-pdf`, headers, payload: { mainFile } });
+      const saved = path.join(config.projectsDir, project.id, "source", "arch.pdf");
+
+      expect((await exportPdf("arch.tex")).json()).toMatchObject({ code: "PDF_NOT_FOUND" });
+      expect((await compile({ mainFile: "arch.tex", engine: "tectonic" })).statusCode).toBe(400);
+
+      expect((await compile({ mainFile: "arch.tex", engine: "lualatex" })).json()).toMatchObject({ ok: true });
+      expect((await exportPdf("arch.tex")).json()).toEqual({ path: "arch.pdf" });
+      expect(fs.readFileSync(saved, "utf8")).toBe("%PDF--lualatex");
+
+      // Another engine is a real rebuild, the PDF is overwritten, and the project's engine stays.
+      expect((await compile({ mainFile: "arch.tex", engine: "pdflatex" })).json()).toMatchObject({ ok: true, skipped: false });
+      fs.writeFileSync(saved, "edited by hand");
+      await exportPdf("arch.tex");
+      expect(fs.readFileSync(saved, "utf8")).toBe("%PDF--pdf");
+      expect(fs.readFileSync(engineLog, "utf8").trim().split("\n")).toEqual(["-lualatex", "-pdf"]);
+      const after = (await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } })).json().project;
+      expect(after.engine).toBe(project.engine);
+
+      // Only standalone figures are written back, and only by those who may edit.
+      await compile({ mainFile: "main.tex" });
+      expect((await exportPdf("main.tex")).statusCode).toBe(400);
+      expect(fs.existsSync(path.join(config.projectsDir, project.id, "source", "main.pdf"))).toBe(false);
+      expect((await exportPdf("arch.tex", {})).statusCode).toBe(401);
+      const reader = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: { username: "figure-reader", displayName: "Reader", password: "reader-password" } });
+      const readerLogin = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "figure-reader", password: "reader-password" } });
+      await app.inject({ method: "PUT", url: `/api/projects/${project.id}/members/${reader.json().user.id}`, headers: { cookie }, payload: { permission: "read" } });
+      expect((await exportPdf("arch.tex", { cookie: sessionCookie(readerLogin.headers) })).json()).toMatchObject({ code: "COMPILE_FORBIDDEN" });
+      fs.rmSync(saved);
+      fs.mkdirSync(saved);
+      expect((await exportPdf("arch.tex")).json()).toMatchObject({ code: "PATH_EXISTS" });
+    } finally {
+      config.latexmk = originalLatexmk;
+    }
+  }, 10_000);
+
   it("creates folders and moves files and directories while preserving linked paths", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Organized" } });
     const project = created.json().project;

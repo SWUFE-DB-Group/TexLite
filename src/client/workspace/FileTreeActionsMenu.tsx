@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { FileSearch, FolderPlus, MoreHorizontal, Search } from "lucide-react";
+import { FileSearch, FolderPlus, LayoutGrid, MoreHorizontal, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch }: {
+export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch, onTikzGallery }: {
   onQuickOpen: () => void;
   onNewFolder?: () => void;
   onProjectSearch?: () => void;
+  onTikzGallery?: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -31,6 +32,7 @@ export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch 
         <DropdownMenu.Item onSelect={() => select(onQuickOpen)}><FileSearch size={14} aria-hidden />{t("navigation.quickOpen")}</DropdownMenu.Item>
         {onProjectSearch && <DropdownMenu.Item onSelect={() => select(onProjectSearch)}><Search size={14} aria-hidden />{t("projectSearch.title")}</DropdownMenu.Item>}
         {onNewFolder && <DropdownMenu.Item onSelect={() => select(onNewFolder)}><FolderPlus size={14} aria-hidden />{t("editor.newFolder")}</DropdownMenu.Item>}
+        {onTikzGallery && <DropdownMenu.Item onSelect={() => select(onTikzGallery)}><LayoutGrid size={14} aria-hidden />{t("gallery.title")}</DropdownMenu.Item>}
       </DropdownMenu.Content>
     </DropdownMenu.Portal>
   </DropdownMenu.Root>;

@@ -853,6 +853,7 @@
     "compileShort": "編譯",
     "mobileSource": "原始碼",
     "mobilePreview": "預覽",
+    "tikz": { "compilePdf": "編譯為 PDF", "pdfSaved": "已儲存 {{file}}", "chooseEngine": "選擇圖的 LaTeX 引擎" },
     "markdown": {
       "tab": "Markdown",
       "tabTitle": "{{path}} 的轉譯預覽",
