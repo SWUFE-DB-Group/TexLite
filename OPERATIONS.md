@@ -597,7 +597,7 @@ part of TexLite. To add it, clone it into `addon/` beside `texlite.config.json`
 
 ~~~bash
 cd <directory containing texlite.config.json>
-git clone <repository url> addon/texlite-tikz
+git clone https://github.com/ChenZhongPu/texlite-tikz.git addon/texlite-tikz
 ~~~
 
 Then set `"tikzGallery": { "enabled": true }` in the configuration and run
