@@ -1536,7 +1536,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         onError={setError}
         uploadFiles={uploadFiles} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder}
         onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
-        jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} syncSourceToPdf={syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
+        jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} syncSourceToPdf={phone ? undefined : syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
       />}
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel figurePdf={figurePdf}

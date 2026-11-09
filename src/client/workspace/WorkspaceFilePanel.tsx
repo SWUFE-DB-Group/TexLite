@@ -75,7 +75,7 @@ export interface WorkspaceFilePanelProps {
   onFormatFile: () => void;
   onFormatSelection: () => void;
   jumpToSource: (path: string, line: number, column: number) => void;
-  syncSourceToPdf: (path: string, line: number, column: number) => Promise<void>;
+  syncSourceToPdf?: (path: string, line: number, column: number) => Promise<void>;
   onWordCount: (mode: WordCountMode) => void;
 }
 
