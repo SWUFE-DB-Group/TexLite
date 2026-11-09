@@ -445,7 +445,8 @@ deletion) ends execution and synchronizes its last writes first.
 
 Task-specific CLI state stays under `dataDir/agent-tasks/<task-id>/state/`.
 `TEXLITE_PROJECT_CONTEXT` names a JSON file containing the source directory,
-configured main file, output directory and last compile result.
+configured main file, output directory, last compile result and, when the TikZ
+gallery add-on is enabled and ships one, the path of its `TIKZ.md` guide.
 `TEXLITE_COMPILE_LOG` names its log file; it is refreshed after compilation through
 TexLite. Ask the agent to read these paths when diagnosing a compile failure.
 There is no separate source copy or review/apply step.
@@ -606,6 +607,11 @@ updates it without a restart. Importing copies a figure into the project, so
 removing the add-on does not affect figures already imported. Only the sources and
 previews its catalog lists are served, and only to signed-in users, but treat the
 repository as you would any other software you install on the host.
+
+If the add-on includes `TIKZ.md`, Coding Agents read it for TikZ and pgfplots work
+and may copy figures from the add-on. The instruction is in the `AGENTS.md` template
+that TexLite copies into a project only when the project has none, so a project with
+an existing `AGENTS.md` needs that section added by hand.
 
 ## Backup and security
 

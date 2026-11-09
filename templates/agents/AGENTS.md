@@ -130,6 +130,18 @@ file modification times or treating an older retained PDF as the latest result.
 - Summarize the files changed and checks performed. If you did not recompile,
   or could not verify a fix, state that explicitly.
 
+## TikZ and pgfplots figures
+
+Before creating or substantially editing a TikZ or pgfplots figure, read
+`tikzGuide` from the JSON file named by `TEXLITE_PROJECT_CONTEXT`. If it is a
+path, TexLite's figure library is installed: read that file and follow it for the
+figure work. If it is `null` or missing, continue without it.
+
+That file and the library directory containing it are a read-only exception to
+working in this project's source tree. Copy what you need into the project and
+never change anything in the library. The guide applies only to figure work and
+does not change the rest of these instructions.
+
 This file was copied from TexLite's default template because the project had
 no root `AGENTS.md`. Project maintainers can edit it; TexLite does not overwrite
 an existing file.

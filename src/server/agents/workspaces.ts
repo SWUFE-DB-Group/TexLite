@@ -260,6 +260,14 @@ export class AgentSourceSync {
   }
 }
 
+/** The add-on's guide for figure work, when the add-on is enabled and ships one. */
+async function tikzGuidePath(config: Config): Promise<string | null> {
+  if (!config.tikzGalleryEnabled) return null;
+  const guide = path.join(config.tikzGalleryDir, "TIKZ.md");
+  try { await fs.promises.access(guide, fs.constants.R_OK); return guide; }
+  catch { return null; }
+}
+
 /** Provide logs outside the source tree without introducing generated project files. */
 export async function writeAgentProjectContext(context: AgentWorkspaceContext, taskId: string, projectId: string): Promise<void> {
   const { config, db } = context;
@@ -272,7 +280,7 @@ export async function writeAgentProjectContext(context: AgentWorkspaceContext, t
   await fs.promises.writeFile(path.join(state, "project-context.json"), JSON.stringify({ sourceDirectory: sourceRoot(config, projectId),
     mainFile: project.main_file, outputDirectory: outputRoot(config, projectId),
     latestCompile: latest ? { runId: latest.id, status: latest.status } : null,
-    compileLog: path.join(state, "compile.log") }, null, 2), { mode: 0o600 });
+    compileLog: path.join(state, "compile.log"), tikzGuide: await tikzGuidePath(config) }, null, 2), { mode: 0o600 });
 }
 
 function externalEdit(filePath: string, before: string, after: string, authorId: string): EditHistorySegmentInput {

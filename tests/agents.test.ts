@@ -1132,6 +1132,34 @@ describe("agent direct project editing", () => {
     expect(recordHistory).not.toHaveBeenCalled();
   });
 
+  it("names the figure guide only when the add-on is enabled and ships one", async () => {
+    const task = await create();
+    const library = path.join(path.dirname(config.dataDir), "tikz-addon-guide-test");
+    fs.mkdirSync(library, { recursive: true });
+    const guide = () => {
+      const file = path.join(agentTaskRoot(config, task.id), "state", "project-context.json");
+      return (JSON.parse(fs.readFileSync(file, "utf8")) as { tikzGuide: string | null }).tikzGuide;
+    };
+    const original = { enabled: config.tikzGalleryEnabled, directory: config.tikzGalleryDir };
+    try {
+      config.tikzGalleryDir = library;
+      fs.writeFileSync(path.join(library, "TIKZ.md"), "guide");
+      config.tikzGalleryEnabled = false;
+      await service.start(task.id, owner);
+      expect(guide()).toBeNull();
+      config.tikzGalleryEnabled = true;
+      await service.refreshProjectContext(projectId);
+      expect(guide()).toBe(path.join(library, "TIKZ.md"));
+      fs.rmSync(path.join(library, "TIKZ.md"));
+      await service.refreshProjectContext(projectId);
+      expect(guide()).toBeNull();
+    } finally {
+      config.tikzGalleryEnabled = original.enabled;
+      config.tikzGalleryDir = original.directory;
+      fs.rmSync(library, { recursive: true, force: true });
+    }
+  });
+
   it("provides project/main-file/log context outside the source tree", async () => {
     const task = await create();
     db.prepare("INSERT INTO compile_runs (id, project_id, main_file, status, log, created_at) VALUES (?, ?, 'main.tex', 'failed', 'Missing package', ?)").run(randomUUID(), projectId, new Date().toISOString());
