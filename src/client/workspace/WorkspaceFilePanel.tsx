@@ -45,6 +45,8 @@ export interface WorkspaceFilePanelProps {
   outline: ProjectOutlineItem[];
   sourceCursorStore: SourceCursorStore;
   wordCountBusy: boolean;
+  plainWordCount?: boolean;
+  canCountFull?: boolean;
   hasSelection: boolean;
   hasFormatSelection: boolean;
   uploadInput: RefObject<HTMLInputElement | null>;
@@ -81,7 +83,7 @@ export function WorkspaceFilePanel({
   phoneDrawer,
   project, filesPanel, visibleEntries, deletedPath = null, activeFile, activeMainFile, selectedFile, selectedFolder,
   expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
-  editorFontSize, outline, sourceCursorStore, wordCountBusy, hasSelection, hasFormatSelection, uploadInput,
+  editorFontSize, outline, sourceCursorStore, wordCountBusy, plainWordCount, canCountFull, hasSelection, hasFormatSelection, uploadInput,
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
   setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen, tikzGalleryEnabled, setTikzGalleryOpen,
   setQuickOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, uploadFiles, upload, openFile, movePathToFolder,
@@ -185,7 +187,7 @@ export function WorkspaceFilePanel({
           </div>
         </div>}
       </section>} outline={
-      <WorkspaceOutlinePanel outline={outline} activeFile={activeFile} activeMainFile={activeMainFile} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy} hasSelection={hasSelection} jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={onWordCount} />
+      <WorkspaceOutlinePanel outline={outline} activeFile={activeFile} activeMainFile={activeMainFile} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy} plainWordCount={plainWordCount} canCountFull={canCountFull} hasSelection={hasSelection} jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={onWordCount} />
     } />;
   if (phoneDrawer) return <WorkspaceMobileDrawer files open={phoneDrawer.open} title={t("common.files")} onClose={phoneDrawer.onClose}>
     <button className="workspace-mobile-files-close" type="button" aria-label={t("common.close")} onClick={phoneDrawer.onClose}><X size={18} /></button>{content}
@@ -226,13 +228,16 @@ function startPathDrag(event: DragEvent<HTMLButtonElement>, entry: FileEntry, se
 }
 
 export function WorkspaceOutlinePanel({
-  outline, activeFile, activeMainFile, sourceCursorStore, wordCountBusy = false, hasSelection = false, jumpToSource, syncSourceToPdf, onWordCount
+  outline, activeFile, activeMainFile, sourceCursorStore, wordCountBusy = false, plainWordCount = false, canCountFull = Boolean(activeMainFile), hasSelection = false, jumpToSource, syncSourceToPdf, onWordCount
 }: {
   outline: ProjectOutlineItem[];
   activeFile: string;
   activeMainFile: string;
   sourceCursorStore: SourceCursorStore;
   wordCountBusy?: boolean;
+  /** The active file is counted in the browser rather than by TeXcount. */
+  plainWordCount?: boolean;
+  canCountFull?: boolean;
   hasSelection?: boolean;
   jumpToSource: (path: string, line: number, column: number) => void;
   syncSourceToPdf?: (path: string, line: number, column: number) => Promise<void>;
@@ -268,7 +273,7 @@ export function WorkspaceOutlinePanel({
     return next;
   });
 
-  return <section className="outline-panel"><div className="panel-title"><button className="outline-heading" type="button" aria-label={t("common.outline")} aria-expanded={!allCollapsed} title={t(allCollapsed ? "editor.expandOutline" : "editor.collapseOutline")} onClick={toggleAll} disabled={collapsibleKeys.length === 0}><ListTree size={14} aria-hidden /><span className="outline-heading-label">{t("common.outline")}</span></button>{onWordCount && <span className="word-count-actions" role="group" aria-label={t("editor.wordCountTitle")}><button type="button" title={t("editor.wordCountFullHint")} onClick={() => onWordCount("full")} disabled={wordCountBusy || !activeMainFile}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountFull")}</button><button type="button" title={t("editor.wordCountSelectionHint")} onClick={() => onWordCount("selection")} disabled={wordCountBusy || !hasSelection}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountSelection")}</button></span>}</div><div className="outline">{visibleItems.map((entry) => {
+  return <section className="outline-panel"><div className="panel-title"><button className="outline-heading" type="button" aria-label={t("common.outline")} aria-expanded={!allCollapsed} title={t(allCollapsed ? "editor.expandOutline" : "editor.collapseOutline")} onClick={toggleAll} disabled={collapsibleKeys.length === 0}><ListTree size={14} aria-hidden /><span className="outline-heading-label">{t("common.outline")}</span></button>{onWordCount && <span className="word-count-actions" role="group" aria-label={t("editor.wordCountTitle")}><button type="button" title={t(plainWordCount ? "editor.wordCountFileHint" : "editor.wordCountFullHint")} onClick={() => onWordCount("full")} disabled={wordCountBusy || !canCountFull}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountFull")}</button><button type="button" title={t(plainWordCount ? "editor.wordCountPlainSelectionHint" : "editor.wordCountSelectionHint")} onClick={() => onWordCount("selection")} disabled={wordCountBusy || !hasSelection}>{wordCountBusy ? <LoaderCircle className="spin" size={12} /> : <Hash size={12} />}{t("editor.wordCountSelection")}</button></span>}</div><div className="outline">{visibleItems.map((entry) => {
     const { item } = entry;
     const collapsed = collapsedKeys.has(entry.key);
     const current = activeFile === item.path && sourceCursorLine === item.line;

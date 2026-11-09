@@ -12,6 +12,7 @@ import { classifyCompileLog } from "../compileLog";
 import { formatDateTime } from "../dateTime";
 import type { CollaborationSaveReceipt, FormatLease, ProjectCollaboration } from "../collaboration";
 import { errorMessage } from "../errors";
+import { countPlainText, usesPlainTextCount, type PlainTextCount } from "../workspace/plainTextCount";
 import type { WordCountMode, WorkspaceLayout } from "../workspace/types";
 import type { CompileCleanMode } from "../workspace/useProjectCompilation";
 import { useProjectComments, type SourceSelection } from "../workspace/useProjectComments";
@@ -198,6 +199,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const [wordCountBusy, setWordCountBusy] = useState(false);
   const [wordCountError, setWordCountError] = useState("");
   const [wordCountResult, setWordCountResult] = useState<WordCountResult | null>(null);
+  const [wordCountPlainResult, setWordCountPlainResult] = useState<PlainTextCount | null>(null);
   const [formatting, setFormatting] = useState(false);
   const [formatterRecovery, setFormatterRecovery] = useState<FormatterRecovery | null>(null);
   const [permissionDowngradeBusy, setPermissionDowngradeBusy] = useState(false);
@@ -290,6 +292,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setWordCountBusy(false);
     setWordCountError("");
     setWordCountResult(null);
+    setWordCountPlainResult(null);
   }, [projectId]);
 
   const closeTab = (tabPath: string) => {
@@ -724,15 +727,26 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       return false;
     }
   };
+  const plainWordCount = usesPlainTextCount(activeFile);
   const requestWordCount = async (mode: WordCountMode): Promise<void> => {
     if (!project || wordCountBusy) return;
-    const filePath = mode === "full"
+    const filePath = mode === "full" && !plainWordCount
       ? (activeMainFileRef.current || project.mainFile)
       : activeFileRef.current;
     const selectedText = mode === "selection" ? selectionRef.current.selectedText : "";
     if (!filePath) return;
-    if (mode === "selection" && (!selectedText.trim() || !/\.(?:tex|sty|cls)$/i.test(filePath))) {
+    if (mode === "selection" && (!selectedText.trim() || !(plainWordCount || /\.(?:tex|sty|cls)$/i.test(filePath)))) {
       setNotice(t("editor.wordCountSelectionEmpty"));
+      return;
+    }
+    if (plainWordCount) {
+      if (mode === "full" && loadedFile !== activeFile) return;
+      setWordCountMode(mode);
+      setWordCountPath(filePath);
+      setWordCountResult(null);
+      setWordCountError("");
+      setWordCountPlainResult(countPlainText(mode === "full" ? content : selectedText));
+      setWordCountOpen(true);
       return;
     }
     wordCountRequest.current?.abort();
@@ -741,6 +755,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setWordCountMode(mode);
     setWordCountPath(filePath);
     setWordCountResult(null);
+    setWordCountPlainResult(null);
     setWordCountError("");
     setWordCountOpen(true);
     setWordCountBusy(true);
@@ -1507,7 +1522,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         canFormat={isFormattableLatexFile(activeFile)} activeFormatLease={Boolean(activeFormatLease)} collaborationSynced={collaborationSynced}
         editorFontSize={editorPreferences.fontSize}
         outline={outline} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy}
-        hasSelection={Boolean(selection.selectedText.trim()) && /\.(?:tex|sty|cls)$/i.test(activeFile)}
+        plainWordCount={plainWordCount} canCountFull={plainWordCount ? loadedFile === activeFile : Boolean(activeMainFile)}
+        hasSelection={Boolean(selection.selectedText.trim()) && (plainWordCount || /\.(?:tex|sty|cls)$/i.test(activeFile))}
         hasFormatSelection={Boolean(selection.selectedText.trim())} uploadInput={uploadInput}
         setSelectedFolder={setSelectedFolder} setExpandedFolders={setExpandedFolders}
         setMoveEntry={setMoveEntry} setMoveName={setMoveName} setMoveDestination={setMoveDestination}
@@ -1591,7 +1607,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       />
     </Group>
     {wordCountOpen && <LazyModal title={t("editor.wordCountTitle")} onClose={() => setWordCountOpen(false)}><WordCountDialog open mode={wordCountMode} path={wordCountPath} busy={wordCountBusy}
-      error={wordCountError} result={wordCountResult} onOpenChange={setWordCountOpen} /></LazyModal>}
+      error={wordCountError} result={wordCountResult} plainResult={wordCountPlainResult} onOpenChange={setWordCountOpen} /></LazyModal>}
     <WorkspaceDialogs
       projectSearchOpen={projectSearchOpen} setProjectSearchOpen={setProjectSearchOpen}
       onSearchNavigate={(path, line, column) => {
