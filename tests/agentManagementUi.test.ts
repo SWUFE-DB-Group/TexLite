@@ -172,7 +172,7 @@ describe("coding agent management presentation", () => {
         nativeSessionId: "native-conversation", canResume: true };
       vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1, activeTaskId: task.id },
         selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-        acceptTask: vi.fn(), mutate: async (operation) => operation() });
+        acceptTask: vi.fn(), refreshTasks: vi.fn(), mutate: async (operation) => operation() });
       await act(async () => root.render(createElement(Fragment, null,
         createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} }), createElement(GlobalTooltip))));
       const hints = container.querySelectorAll<HTMLButtonElement>(".agent-terminal-heading .agent-session-help");
@@ -206,7 +206,7 @@ describe("coding agent management presentation", () => {
     catalog.agents[0].enabled = true;
     vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1 },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-      acceptTask: vi.fn(), mutate: async (operation) => operation() });
+      acceptTask: vi.fn(), refreshTasks: vi.fn(), mutate: async (operation) => operation() });
     await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
     const empty = container.querySelector(".agent-task-empty");
     expect(empty?.querySelector("p")?.textContent).toBe("啟動或繼續此任務。");
@@ -242,7 +242,7 @@ describe("coding agent management presentation", () => {
       const acceptTask = vi.fn();
       vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1 },
         selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-        acceptTask, mutate: async (operation) => operation() });
+        acceptTask, refreshTasks: vi.fn(), mutate: async (operation) => operation() });
       await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
       const launch = container.querySelector<HTMLButtonElement>(".agent-task-toolbar button")!;
       expect(launch.textContent).toBe(label);
@@ -266,7 +266,7 @@ describe("coding agent management presentation", () => {
     catalog.agents[0].enabled = true;
     vi.mocked(useAgentTasks).mockReturnValue({ catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 1, activeTaskId: task.id },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-      acceptTask, mutate: async (operation) => operation() });
+      acceptTask, refreshTasks: vi.fn(), mutate: async (operation) => operation() });
     const render = () => act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide })));
     await render();
     const reminder = container.querySelector(".agent-execution-reminder");
@@ -430,7 +430,7 @@ describe("coding agent management presentation", () => {
       nativeSessionId: null, canResume: false };
     const state: ReturnType<typeof useAgentTasks> = { catalog, result: { tasks: [task], page: 1, pageSize: 50, total: 50 },
       selected: task, selectedId: task.id, page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-      acceptTask: vi.fn(), mutate: async (operation) => operation() };
+      acceptTask: vi.fn(), refreshTasks: vi.fn(), mutate: async (operation) => operation() };
     const render = () => act(async () => {
       vi.mocked(useAgentTasks).mockReturnValue(state);
       root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} }));
@@ -460,7 +460,7 @@ describe("coding agent management presentation", () => {
     vi.mocked(useAgentTasks).mockReturnValue({ catalog,
       result: { tasks: [], page: 1, pageSize: 50, total: 0, activeTaskId: "another-task" }, selected: null,
       selectedId: "", page: 1, busy: false, error: "", setPage: vi.fn(), setSelectedId: vi.fn(), setError: vi.fn(),
-      acceptTask: vi.fn(), mutate: async (operation) => operation() });
+      acceptTask: vi.fn(), refreshTasks: vi.fn(), mutate: async (operation) => operation() });
     await act(async () => root.render(createElement(AgentTerminal, { projectId: "paper", readOnly: false, onHide() {} })));
     const warning = container.querySelector('.agent-inline-warning[role="status"]');
     expect(warning?.textContent).toBe("errors.codes.AGENT_PROJECT_BUSY");

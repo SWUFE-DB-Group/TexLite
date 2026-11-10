@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import "../agents/agents.css";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleOff, LoaderCircle, Pencil, Play, Plus, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
@@ -19,6 +19,9 @@ import { notifyAgentTasksChanged } from "../agents/useAgentAccess";
 import type { AgentPasteRequest } from "../agents/commentAgentPrompt";
 
 const AgentTerminalSurface = lazy(() => import("../agents/AgentTerminalSurface").then((module) => ({ default: module.AgentTerminalSurface })));
+
+/** A paste the terminal cannot take by then is dropped, so it can never land unexpectedly later. */
+const PASTE_REQUEST_TIMEOUT_MS = 15_000;
 
 export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, onToggleMaximized, review, activeChangeId = null, onShowChange, reviewFocus = null, pasteRequest = null, onPasteFinished }: {
   projectId: string; readOnly: boolean; onHide: () => void; maximized?: boolean; onToggleMaximized?: () => void;
@@ -47,16 +50,35 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
   const cannotCreate = readOnly || tasks.busy || Boolean(tasks.result.activeTaskId) || !tasks.catalog?.ptyAvailable || !creationAgent?.installed || !creationAgent.enabled;
   const available = !projectBusy && !readOnly && activeAgent?.installed && activeAgent.enabled && tasks.catalog?.ptyAvailable && task?.cleanupState === "none";
   const activeTaskId = tasks.result.activeTaskId;
+  const pasteSelection = useRef("");
+  const pasteListingRefreshed = useRef<number | null>(null);
   useEffect(() => {
     // Undefined means the first task listing has not arrived yet.
     if (!pasteRequest || activeTaskId === undefined) return;
-    if (activeTaskId && tasks.result.tasks.some((entry) => entry.id === activeTaskId)) { tasks.setSelectedId(activeTaskId); return; }
+    if (activeTaskId && tasks.result.tasks.some((entry) => entry.id === activeTaskId)) {
+      // Select it once: the user can still move to another task during the wait.
+      const selection = `${pasteRequest.id}:${activeTaskId}`;
+      if (pasteSelection.current !== selection) { pasteSelection.current = selection; tasks.setSelectedId(activeTaskId); }
+      return;
+    }
     if (activeTaskId && tasks.result.page !== 1) { tasks.setPage(1); return; }
+    // The request was accepted on a newer count than this listing, for example
+    // after a task started in another tab, so look again before refusing it.
+    if (pasteListingRefreshed.current !== pasteRequest.id) { pasteListingRefreshed.current = pasteRequest.id; tasks.refreshTasks(); return; }
     // The button outlived the task, or the active task belongs to someone else.
     tasks.setError(t("agents.commentAgentUnavailable"));
     notifyAgentTasksChanged();
     onPasteFinished?.(pasteRequest.id);
   }, [pasteRequest, activeTaskId, tasks.result]);
+  const pasteRequestId = pasteRequest?.id;
+  useEffect(() => {
+    if (pasteRequestId === undefined) return;
+    const timer = window.setTimeout(() => {
+      tasks.setError(t("agents.commentAgentTimedOut"));
+      onPasteFinished?.(pasteRequestId);
+    }, PASTE_REQUEST_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [pasteRequestId]);
   const choose = (id: string) => { tasks.setSelectedId(id); setRenaming(false); };
   const act = (suffix: string) => tasks.mutate(async () => {
     if (!task) return;

@@ -66,6 +66,17 @@ export function EditorTabs({ openTabs, activeFile, projectMainFile, activateTab,
   // A collaborator's rename or deletion can change the tabs under the pointer.
   useEffect(() => { finishDrag(false); }, [openTabs]);
 
+  // Until a press becomes a drag the strip has no capture, so a release over
+  // the editor never reaches it. A leftover press must not revive as a drag.
+  useEffect(() => {
+    const endPress = (event: PointerEvent) => {
+      if (session.current && !session.current.slots && session.current.pointerId === event.pointerId) session.current = null;
+    };
+    const events = ["pointerdown", "pointerup", "pointercancel"] as const;
+    for (const name of events) window.addEventListener(name, endPress, true);
+    return () => { for (const name of events) window.removeEventListener(name, endPress, true); };
+  }, []);
+
   useEffect(() => {
     if (!dragging) return;
     let frame = window.requestAnimationFrame(function scroll() {

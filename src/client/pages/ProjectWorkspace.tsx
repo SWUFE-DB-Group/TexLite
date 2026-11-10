@@ -1312,6 +1312,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setWorkspaceLayout(next);
     if (next === "pdf-only") selectPreviewTab("pdf");
   };
+  // A closed terminal cannot take the paste; it must not land when reopened later.
+  useEffect(() => {
+    if (!terminalOpen || !showEditor) setAgentPasteRequest(null);
+  }, [terminalOpen, showEditor]);
   const askAgentAboutComment = (comment: Comment) => {
     if (agentAccess.activeCount === 0) {
       // A task started in another tab is only noticed on the next refresh.
@@ -1560,7 +1564,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         mobileSync={phone && sidePanel !== "comments" ? markdownActive
           ? { disabled: loadedFile !== activeFile, onClick: showCursorInMarkdown, label: t("editor.markdown.showInPreview") }
           : { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
-        terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => { setTerminalOpen(false); setAgentPasteRequest(null); }} maximized={maximized} onToggleMaximized={toggleMaximized}
+        terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized}
           review={agentChanges} activeChangeId={activeAgentChangeId} onShowChange={showAgentChange} reviewFocus={agentReviewFocus}
           pasteRequest={agentPasteRequest} onPasteFinished={finishAgentPaste} /></Suspense> : null}
         project={project} projectId={projectId} activeFile={activeFile} mainFile={activeMainFile} openTabs={openTabs}

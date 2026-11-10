@@ -35,7 +35,8 @@ const en = {
   contentUnavailable: "This change is too large to preview. Open it in the editor.",
   contentTab: "New content", diffTab: "Diff", openReview: "Open in agent review",
   askAboutComment: "Ask Agent about this comment",
-  commentAgentUnavailable: "Start a Coding Agent task first."
+  commentAgentUnavailable: "Start a Coding Agent task first.",
+  commentAgentTimedOut: "Could not paste into the Coding Agent terminal. Check that the task is running and try again."
 };
 const zh: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任务", terminal: "终端", back: "返回项目",
@@ -66,7 +67,8 @@ const zh: Record<keyof typeof en, string> = {
   contentUnavailable: "此修改内容过大，无法预览。请在编辑器中查看。",
   contentTab: "新内容", diffTab: "差异", openReview: "在 Agent 审阅中查看",
   askAboutComment: "让 Agent 分析批注",
-  commentAgentUnavailable: "请先启动 Coding Agent 任务"
+  commentAgentUnavailable: "请先启动 Coding Agent 任务",
+  commentAgentTimedOut: "未能粘贴到 Coding Agent 终端，请确认任务正在运行后重试"
 };
 const zhHant: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任務", terminal: "終端機", back: "返回專案",
@@ -97,6 +99,7 @@ const zhHant: Record<keyof typeof en, string> = {
   contentUnavailable: "此修改內容過大，無法預覽。請在編輯器中查看。",
   contentTab: "新內容", diffTab: "差異", openReview: "在 Agent 審閱中查看",
   askAboutComment: "讓 Agent 分析批註",
-  commentAgentUnavailable: "請先啟動 Coding Agent 任務"
+  commentAgentUnavailable: "請先啟動 Coding Agent 任務",
+  commentAgentTimedOut: "無法貼上至 Coding Agent 終端機，請確認任務正在執行後重試"
 };
 export const agentUiMessages = { en, zh, "zh-Hant": zhHant };

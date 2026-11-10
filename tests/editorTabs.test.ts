@@ -114,6 +114,16 @@ describe("dragging editor tabs", () => {
     expect(activateTab).not.toHaveBeenCalled();
   });
 
+  it("forgets a press released outside the strip, so a later drag over it moves nothing", async () => {
+    await pointer(tabButton(1), "pointerdown", 150);
+    await pointer(document.body, "pointerup", 150);
+    await pointer(strip(), "pointermove", 215);
+    expect(strip().classList.contains("reordering")).toBe(false);
+    await pointer(strip(), "pointerup", 215);
+    expect(reorderTab).not.toHaveBeenCalled();
+    expect(activateTab).not.toHaveBeenCalled();
+  });
+
   it("makes no change when the tab is dropped where it started", async () => {
     await pointer(tabButton(0), "pointerdown", 50);
     await pointer(strip(), "pointermove", 70);
