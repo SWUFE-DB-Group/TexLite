@@ -69,6 +69,8 @@ export interface WorkspaceFilePanelProps {
   setFilesCollapsed: (collapsed: boolean) => void;
   onError: (message: string) => void;
   uploadFiles: (files: File[]) => Promise<void>;
+  /** Reload the tree; empty files and folders a coding agent creates send no change event. */
+  refreshFiles: () => void;
   upload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   openFile: (entry: FileEntry) => void;
   movePathToFolder: (entry: FileEntry, destinationDirectory: string) => Promise<void>;
@@ -86,7 +88,7 @@ export function WorkspaceFilePanel({
   editorFontSize, outline, sourceCursorStore, wordCountBusy, plainWordCount, canCountFull, hasSelection, hasFormatSelection, uploadInput,
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
   setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen, tikzGalleryEnabled, setTikzGalleryOpen,
-  setQuickOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, uploadFiles, upload, openFile, movePathToFolder,
+  setQuickOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, uploadFiles, refreshFiles, upload, openFile, movePathToFolder,
   onError, onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount, onProjectSearch
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
@@ -107,7 +109,7 @@ export function WorkspaceFilePanel({
   const content = <WorkspaceSidebarLayout phone={Boolean(phoneDrawer)} files={
       <section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly && !uploadingFiles) setFileDragActive(true); }} onDragOver={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly || uploadingFiles ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.stopPropagation(); return; } event.preventDefault(); setFileDragActive(false); if (readOnly || uploadingFiles) return; const files = Array.from(event.dataTransfer.files); if (containsDroppedFolder(event.dataTransfer) || files.length === 0) { onError(t("editor.dropFoldersUnsupported")); return; } void uploadFiles(files); }}>
         <div className="panel-title">
-          <button className="file-size-toggle" type="button" aria-pressed={showFileSizes} title={t(showFileSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowFileSizes((current) => !current)}>{t("common.files")}</button>
+          <button className="file-size-toggle" type="button" aria-pressed={showFileSizes} title={t(showFileSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => { setShowFileSizes((current) => !current); refreshFiles(); }}>{t("common.files")}</button>
           <span className="file-tools">
             {!readOnly && <>
               <button type="button" disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} aria-hidden /></button>

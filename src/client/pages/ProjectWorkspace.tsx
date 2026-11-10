@@ -1551,7 +1551,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         onProjectSearch={() => setProjectSearchOpen(true)}
         setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed}
         onError={setError}
-        uploadFiles={uploadFiles} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder}
+        uploadFiles={uploadFiles} refreshFiles={() => { void loadFiles().catch((error) => setNotice(errorMessage(error))); }} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder}
         onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
         jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} syncSourceToPdf={phone ? undefined : syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
       />}

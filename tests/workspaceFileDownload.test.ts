@@ -30,7 +30,7 @@ function render(readOnly = false): string {
     setMoveDestination: noop, setDeleteEntry: noop, setFileDialogError: noop, setNewFolderName: noop,
     setNewFolderOpen: noop, setNewFilePath: noop, setNewFileOpen: noop, tikzGalleryEnabled: true, setTikzGalleryOpen: noop, setQuickOpen: noop,
     setFileDragActive: noop, dismissUploadFeedback: noop, setFilesCollapsed: noop, onError: noop,
-    uploadFiles: asyncNoop, upload: asyncNoop, openFile: noop, movePathToFolder: asyncNoop,
+    uploadFiles: asyncNoop, refreshFiles: noop, upload: asyncNoop, openFile: noop, movePathToFolder: asyncNoop,
     onFormatFile: noop, onFormatSelection: noop, jumpToSource: noop, syncSourceToPdf: asyncNoop, onWordCount: noop
   };
   return renderToStaticMarkup(createElement(WorkspaceFilePanel, props));
