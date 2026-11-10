@@ -562,6 +562,12 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     void loadCompletionIndex({}, activeMainFile);
   }, [activeMainFile, project?.id, projectId]);
 
+  // Typing does not update the project index. Labels and citation keys added in
+  // one file are needed in the next one, and the server flushes before reading.
+  useEffect(() => {
+    if (project && activeFile) void loadCompletionIndex();
+  }, [activeFile]);
+
   // A project-list @ badge carries one notification id in the route. Resolve
   // it to a real file/thread here, but deliberately do not mark it read: that
   // remains an explicit action in the source-comments panel.

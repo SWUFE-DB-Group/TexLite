@@ -31,6 +31,7 @@ import {
   UsePackageCtrlSeq,
   HrefCtrlSeq,
   UrlCtrlSeq,
+  PathUrlCtrlSeq,
   VerbCtrlSeq,
   LstInlineCtrlSeq,
   MintInlineCtrlSeq,
@@ -350,6 +351,20 @@ export const argumentListWithOptionalTokenizer = lookaheadTokenizer(next => {
 
 const CHAR_AT_SYMBOL = _char('@')
 
+// TikZ's \\path takes coordinates. Only the url package's form opens a brace
+// directly, and a name-only specializer could not tell the two apart.
+const URL_PATH_COMMAND = '\\path'
+export const urlPathTokenizer = new ExternalTokenizer(input => {
+  for (let index = 0; index < URL_PATH_COMMAND.length; index++) {
+    if (input.peek(index) !== URL_PATH_COMMAND.charCodeAt(index)) return
+  }
+  let offset = URL_PATH_COMMAND.length
+  while (input.peek(offset) === 32 || input.peek(offset) === 9) offset++
+  if (input.peek(offset) !== CHAR_OPEN_BRACE) return
+  input.advance(URL_PATH_COMMAND.length)
+  input.acceptToken(PathUrlCtrlSeq)
+})
+
 export const csnameTokenizer = new ExternalTokenizer(input => {
   let offset = 0
   let end = -1
@@ -588,6 +603,7 @@ const otherKnowncommands = {
   '\\usepackage': UsePackageCtrlSeq,
   '\\href': HrefCtrlSeq,
   '\\url': UrlCtrlSeq,
+  '\\nolinkurl': UrlCtrlSeq,
   '\\verb': VerbCtrlSeq,
   '\\lstinline': LstInlineCtrlSeq,
   '\\Verb': LstInlineCtrlSeq,

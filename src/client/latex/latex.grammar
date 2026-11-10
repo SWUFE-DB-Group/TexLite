@@ -28,6 +28,10 @@
 
 // external tokenizer to read control sequence names including @ signs
 // (which are often used in TeX definitions).
+@external tokens urlPathTokenizer from "./tokens.mjs" {
+    PathUrlCtrlSeq
+}
+
 @external tokens csnameTokenizer from "./tokens.mjs" {
     Csname
 }
@@ -289,7 +293,7 @@ KnownCommand<ArgumentType> {
         TheoremStyleCtrlSeq optionalWhitespace? ShortTextArgument
     } |
     UrlCommand {
-        UrlCtrlSeq optionalWhitespace? UrlArgument
+        (UrlCtrlSeq | PathUrlCtrlSeq) optionalWhitespace? UrlArgument
     } |
     VerbCommand {
         VerbCtrlSeq VerbContent

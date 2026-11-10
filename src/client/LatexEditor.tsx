@@ -32,7 +32,7 @@ import { latexCitationHover, type CitationHoverLabels } from "./citationHover";
 import { citationAuthorLabels } from "./citationAuthors";
 import { latexReferenceHover } from "./latexReferenceHover";
 import { deleteLatexEscapedPair, enterLatexEnvironmentBody, latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
-import { latexCompletions } from "./latexCompletions";
+import { enterAfterCompleteLatexCommand, latexCompletions } from "./latexCompletions";
 import { isLatexEditorFile, loadTextFileLanguage } from "./textLanguages";
 import { loadVimSupport } from "./vimLoader";
 import { selectionLineActions, type SelectionLineAction } from "./selectionLineActions";
@@ -243,7 +243,8 @@ export function LatexEditor({
         }) : []),
         search({ top: true, createPanel: createEditorSearchPanel(t) }), editorSearchOverview, EditorState.phrases.of(searchPhrases(t)),
         // Ahead of the snippet keymap, so Tab in a snippet field accepts an open list first.
-        Prec.highest(keymap.of([{ key: "Tab", run: acceptCompletion }])),
+        Prec.highest(keymap.of([{ key: "Tab", run: acceptCompletion },
+          ...(isLatexFile ? [{ key: "Enter", run: enterAfterCompleteLatexCommand }] : [])])),
         autocompletion({
           override: isBibtexFile ? [bibtexCompletionSource] : isLatexFile ? [(context) => latexCompletions(context, t, completionIndexRef.current)] : undefined,
           activateOnTyping: true

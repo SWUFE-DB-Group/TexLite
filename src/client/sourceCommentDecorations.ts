@@ -41,6 +41,9 @@ export function openSourceCommentOnClick(event: MouseEvent, view: EditorView, on
 class CommentPin extends WidgetType {
   constructor(private readonly id: string, private readonly options: SourceCommentOptions) { super(); }
 
+  // Marks are rebuilt on every edit; an unchanged pin keeps its element.
+  eq(other: CommentPin): boolean { return other.id === this.id && other.options.label === this.options.label; }
+
   toDOM(): HTMLElement {
     const pin = document.createElement("button");
     pin.type = "button";

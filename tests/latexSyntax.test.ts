@@ -35,6 +35,20 @@ describe("LaTeX syntax handling", () => {
     expect(tree.resolveInner(source.indexOf("\\textbf") + 1).name).toBe("TextBoldCtrlSeq");
   });
 
+  it.each([String.raw`\path{a%b} after`, String.raw`\path {a%b} after`, String.raw`\nolinkurl{a%b} after`])("keeps a percent sign literal in %s", (source) => {
+    const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+    const tree = syntaxTree(state);
+    expect(tree.resolveInner(source.indexOf("after") + 1, 1).name).not.toBe("Comment");
+    expect(tree.resolveInner(source.indexOf("%") + 1, 1).name).toBe("LiteralArgContent");
+  });
+
+  it("still reads TikZ path commands as ordinary commands", () => {
+    const source = String.raw`\path[draw] (0,0) -- (1,1); % note`;
+    const tree = syntaxTree(EditorState.create({ doc: source, extensions: [latexLanguage] }));
+    expect(tree.resolveInner(2, 1).name).toBe("CtrlSeq");
+    expect(tree.resolveInner(source.indexOf("note"), 1).name).toBe("Comment");
+  });
+
   it("folds after literal percent signs and ignores nested-looking raw commands", () => {
     for (const body of [String.raw`\verb|%|`, String.raw`\lstinline{%}`, String.raw`\begin{verbatim}
 \begin{figure}

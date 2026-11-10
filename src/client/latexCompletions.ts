@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 import { Transaction } from "@codemirror/state";
-import { insertCompletionText, pickedCompletion, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
+import { closeCompletion, currentCompletions, insertCompletionText, pickedCompletion, selectedCompletionIndex, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
+import type { EditorView } from "@codemirror/view";
 import type { LatexCompletionIndex, LatexCompletionItem } from "./types";
 import { latexCompletionContext, latexEnvironmentCompletionPlan } from "./latexCompletionContexts";
 import { isLatexEscaped } from "../shared/latexScanner";
@@ -125,6 +126,7 @@ const COMMAND_TAIL = /^[A-Za-z@0-9:_]*\*?/;
 const ENVIRONMENT_TAIL = /^[A-Za-z0-9@:*_.+\-]*/;
 const LIST_ITEM_TAIL = /^[^,{}%\s]*/;
 const ARGUMENT_TAIL = /^[^{}]*/;
+const commandsWithSnippets = new WeakSet<Completion>();
 const PLAIN_COMMAND = /^\\[A-Za-z@][A-Za-z@0-9:_]*\*?$/;
 
 /** Completing inside an argument replaces the rest of that item, not just its start. */
@@ -147,7 +149,7 @@ function replacingTail(option: Completion, tail: RegExp): Completion {
  */
 function replacingCommand(option: Completion, known: ReadonlySet<string>): Completion {
   const original = option.apply;
-  return {
+  const replacing: Completion = {
     ...option,
     apply(view, completion, from, to) {
       const name = view.state.sliceDoc(from, to);
@@ -162,6 +164,21 @@ function replacingCommand(option: Completion, known: ReadonlySet<string>): Compl
       }
     }
   };
+  if (typeof original === "function") commandsWithSnippets.add(replacing);
+  return replacing;
+}
+
+/**
+ * A fully typed command with nothing to expand has nothing to complete, so
+ * Enter closes the list and starts a new line. Returns false to let it through.
+ */
+export function enterAfterCompleteLatexCommand(view: EditorView): boolean {
+  const index = selectedCompletionIndex(view.state);
+  const option = index === null ? undefined : currentCompletions(view.state)[index];
+  if (!option?.label.startsWith("\\") || commandsWithSnippets.has(option)) return false;
+  const head = view.state.selection.main.head;
+  if (view.state.sliceDoc(head - option.label.length, head) === option.label) closeCompletion(view);
+  return false;
 }
 
 export function latexCompletions(context: CompletionContext, t: TFunction, index: LatexCompletionIndex | null) {

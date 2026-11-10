@@ -61,6 +61,23 @@ function sourceClick(state: EditorState, onOpen: (id: string) => void, overrides
 }
 
 describe("source comment navigation", () => {
+  it("keeps a pin's element when an unrelated edit rebuilds the marks", () => {
+    const pins = (state: EditorState) => {
+      const widgets: Array<{ eq(other: unknown): boolean }> = [];
+      for (const source of state.facet(EditorView.decorations)) {
+        const set = (typeof source === "function" ? source(undefined as never) : source) as DecorationSet;
+        set.between(0, state.doc.length, (_from, _to, value) => { if (value.spec.widget) widgets.push(value.spec.widget); });
+      }
+      return widgets;
+    };
+    const { state } = fixture();
+    const [before] = pins(state);
+    const [after] = pins(state.update({ changes: { from: state.doc.length, insert: "!" } }).state);
+    expect(before.eq(after)).toBe(true);
+    const [other] = pins(fixture([comment("different")]).state);
+    expect(before.eq(other)).toBe(false);
+  });
+
   it("links unresolved source and pins, leaving resolved, orphaned and other-file threads unmarked", () => {
     const { state } = fixture([
       comment("thread"), { ...comment("resolved"), resolved: true },
