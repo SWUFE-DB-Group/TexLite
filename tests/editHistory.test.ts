@@ -8,6 +8,7 @@ import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import {
   createEditHistorySpan,
   hashText,
+  moveEditHistoryPaths,
   ProjectEditHistoryService,
   type EditHistorySegmentInput,
   type EditHistorySpan
@@ -61,6 +62,32 @@ describe("selection edit history", () => {
       .toMatchObject({ chainComplete: false, baseline: { content: "second" } });
     expect(reduced.selectionHistory(fixture.projectId, "other.tex", "other new", 0, 9))
       .toMatchObject({ chainComplete: true, baseline: { content: "other old" } });
+  });
+
+  it("reuses mapped agent changes until the chain or the source changes", () => {
+    const fixture = createFixture();
+    const agent = { ...replaceSegment("main.tex", "alice", "2026-01-01T10:00:00.000Z", "old", "new", "edit"), hasAgent: true };
+    fixture.history.record(fixture.projectId, [agent]);
+    const first = fixture.history.agentChanges(fixture.projectId, "main.tex", "new", "alice");
+    expect(first).toHaveLength(1);
+    expect(fixture.history.agentChanges(fixture.projectId, "main.tex", "new", "alice")).toBe(first);
+    expect(fixture.history.agentChanges(fixture.projectId, "main.tex", "newer", "alice")).toEqual([]);
+    fixture.history.record(fixture.projectId, [replaceSegment("main.tex", "bob", "2026-01-01T10:01:00.000Z", "new", "new!", "edit")]);
+    expect(fixture.history.agentChanges(fixture.projectId, "main.tex", "new!", "alice")).toHaveLength(1);
+    expect(fixture.history.agentChanges(fixture.projectId, "main.tex", "new", "alice")).toEqual([]);
+    expect(fixture.history.agentChanges(fixture.projectId, "main.tex", "new!", "bob")).toEqual([]);
+  });
+
+  it("keeps a file's edit chain through a rename or a folder move", () => {
+    const fixture = createFixture();
+    fixture.history.record(fixture.projectId, [
+      { ...replaceSegment("old/a.tex", "alice", "2026-01-01T10:00:00.000Z", "x", "y", "edit"), hasAgent: true },
+      { ...replaceSegment("other.tex", "alice", "2026-01-01T10:00:00.000Z", "p", "q", "edit"), hasAgent: true }
+    ]);
+    moveEditHistoryPaths(fixture.db, fixture.projectId, (filePath) => filePath.startsWith("old/") ? "new/" + filePath.slice(4) : filePath);
+    expect(fixture.history.agentChanges(fixture.projectId, "new/a.tex", "y", "alice")).toHaveLength(1);
+    expect(fixture.history.agentChanges(fixture.projectId, "old/a.tex", "y", "alice")).toEqual([]);
+    expect(fixture.history.agentChanges(fixture.projectId, "other.tex", "q", "alice")).toHaveLength(1);
   });
 
   it("streams past 5,000 unrelated edits to reconstruct an older selection", () => {

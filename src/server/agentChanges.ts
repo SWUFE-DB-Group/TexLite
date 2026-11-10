@@ -38,6 +38,8 @@ interface TrackedChange {
   pieces: AgentChangeRange[];
   /** Position of a pure deletion; null for a replacement or insertion. */
   anchor: number | null;
+  /** Someone later inserted text at this deletion, so its preview would be wrong. */
+  touched?: boolean;
 }
 
 export function collectAgentChanges(steps: readonly AgentChangeStep[], content: string): AgentChange[] {
@@ -74,7 +76,10 @@ function mapChange(change: TrackedChange, spans: readonly EditHistorySpan[]): Tr
   if (change.anchor !== null) {
     // A later replacement across a deletion point rewrote that text.
     if (spans.some((span) => span.beforeEnd > span.beforeStart && span.beforeStart < change.anchor! && change.anchor! < span.beforeEnd)) return [];
-    return [{ ...change, anchor: mapPosition(change.anchor, spans, "end") }];
+    const insertion = spans.find((span) => span.beforeStart === change.anchor && span.beforeEnd === change.anchor && span.insertedLength > 0);
+    // The deleted text was put back exactly, so nothing is left to review.
+    if (insertion && change.deleted && !insertion.truncated && insertion.insertedPreview === change.deleted) return [];
+    return [{ ...change, anchor: mapPosition(change.anchor, spans, "end"), touched: change.touched || Boolean(insertion) }];
   }
   const pieces = change.pieces.flatMap((piece) => mapRange(piece, spans));
   return pieces.length ? [{ ...change, pieces }] : [];
@@ -144,11 +149,49 @@ function groupChanges(changes: readonly TrackedChange[], content: string): Agent
   return groups.map((group) => describe(group, content));
 }
 
+/** Letters and digits of scripts written with spaces; a CJK run is not one word. */
+const WORD_CHARACTER = /(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])[\p{L}\p{N}]/u;
+
+interface DisplayPiece extends AgentChangeRange { intact: boolean }
+
+/**
+ * Highlighted ranges. A character diff keeps letters that a rewrite happens to
+ * share, so "paper" can come back as "p", "ape" and "r". Text that still stands
+ * as written is shown in whole words, joined across plain spaces; text a later
+ * edit trimmed keeps its exact surviving ranges.
+ */
+function displayPieces(group: readonly Located[], content: string): AgentChangeRange[] {
+  const pieces: DisplayPiece[] = group.flatMap((change) => {
+    const intact = change.pieces.length === 1 && change.inserted.length > 0
+      && content.slice(change.pieces[0].from, change.pieces[0].to) === change.inserted;
+    return change.pieces.map((piece) => {
+      if (!intact) return { ...piece, intact };
+      let { from, to } = piece;
+      if (WORD_CHARACTER.test(content[from])) while (from > 0 && WORD_CHARACTER.test(content[from - 1])) from -= 1;
+      if (WORD_CHARACTER.test(content[to - 1])) while (to < content.length && WORD_CHARACTER.test(content[to])) to += 1;
+      return { from, to, intact };
+    });
+  }).sort((left, right) => left.from - right.from);
+  const merged: DisplayPiece[] = [];
+  for (const piece of pieces) {
+    const last = merged.at(-1);
+    if (last && (piece.from <= last.to || (last.intact && piece.intact && /^[ \t]+$/.test(content.slice(last.to, piece.from))))) {
+      last.to = Math.max(last.to, piece.to);
+      last.intact &&= piece.intact;
+    } else merged.push({ ...piece });
+  }
+  return merged.map(({ from, to }) => ({ from, to }));
+}
+
 function describe(group: readonly Located[], content: string): AgentChange {
-  const from = group[0].start;
-  const to = Math.max(...group.map((change) => change.end));
-  const lineStart = content.lastIndexOf("\n", from - 1) + 1;
-  const newline = content.indexOf("\n", to);
+  const start = group[0].start;
+  const end = Math.max(...group.map((change) => change.end));
+  // lastIndexOf treats -1 as 0, and would find a newline at the very start.
+  const lineStart = start === 0 ? 0 : content.lastIndexOf("\n", start - 1) + 1;
+  const pieces = displayPieces(group, content);
+  const from = Math.min(start, pieces[0]?.from ?? start);
+  const to = Math.max(end, pieces.at(-1)?.to ?? end);
+  const newline = content.indexOf("\n", end);
   const lineEnd = newline < 0 ? content.length : newline;
   const after = lineEnd - lineStart <= MAX_AGENT_CHANGE_PREVIEW_CHARS ? content.slice(lineStart, lineEnd) : null;
   return {
@@ -157,8 +200,8 @@ function describe(group: readonly Located[], content: string): AgentChange {
     at: group.reduce((latest, change) => change.at > latest ? change.at : latest, group[0].at),
     from,
     to,
-    line: lineAndColumnAt(content, from).line,
-    pieces: group.flatMap((change) => change.pieces),
+    line: lineAndColumnAt(content, start).line,
+    pieces,
     anchors: group.flatMap((change) => change.anchor === null ? [] : [change.anchor]),
     before: after === null ? null : reconstructBefore(group, after, lineStart),
     after,
@@ -175,6 +218,7 @@ function reconstructBefore(group: readonly Located[], after: string, offset: num
   let before = after;
   for (const change of [...group].reverse()) {
     if (change.anchor !== null) {
+      if (change.touched) return null;
       before = before.slice(0, change.anchor - offset) + change.deleted + before.slice(change.anchor - offset);
       continue;
     }
@@ -184,4 +228,41 @@ function reconstructBefore(group: readonly Located[], after: string, offset: num
     before = before.slice(0, piece.from - offset) + change.deleted + before.slice(piece.to - offset);
   }
   return before;
+}
+
+/**
+ * The editor always holds "\n" line endings, whatever the file has on disk.
+ * Express results in the text the editor holds, so that revisions compare equal
+ * and offsets land on the same characters.
+ */
+export function normalizeAgentChangeLineEndings(changes: readonly AgentChange[], content: string): { source: string; changes: readonly AgentChange[] } {
+  if (!content.includes("\r")) return { source: content, changes };
+  const removed: number[] = [];
+  for (let index = content.indexOf("\r\n"); index >= 0; index = content.indexOf("\r\n", index + 2)) removed.push(index);
+  const position = (offset: number) => {
+    let low = 0;
+    let high = removed.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (removed[middle] < offset) low = middle + 1; else high = middle;
+    }
+    return offset - low;
+  };
+  const source = content.replace(/\r\n?/g, "\n");
+  // A preview ends where the line's "\n" begins, which can leave its "\r" behind.
+  const preview = (value: string | null) => value?.replace(/\r$/, "").replace(/\r\n?/g, "\n") ?? null;
+  return {
+    source,
+    changes: changes.map((change) => ({
+      ...change,
+      from: position(change.from),
+      to: position(change.to),
+      line: lineAndColumnAt(source, position(change.from)).line,
+      pieces: change.pieces.map((piece) => ({ from: position(piece.from), to: position(piece.to) })),
+      anchors: change.anchors.map(position),
+      before: preview(change.before),
+      after: preview(change.after),
+      afterFrom: position(change.afterFrom)
+    }))
+  };
 }

@@ -1860,12 +1860,18 @@ reviewed" and "Mark all reviewed"; previous/next scrolls the editor without
 taking keyboard focus, and "Open in editor" moves focus there. Where the agent
 panel is available, a small agent button after each highlighted change opens
 the panel (if needed) and selects that change in the review without moving the
-editor. The editor highlights
-unreviewed agent text only on the exact source revision the ranges were
-computed for, and otherwise asks for a fresh result a bounded number of times.
-Which changes were reviewed is kept per user and project in browser storage,
-pruned to changes that still exist; the list refreshes on task events and every
-few seconds while one of the user's tasks runs. Reviewing never changes source.
+editor. The editor places
+unreviewed agent ranges only on the exact source revision they were computed
+for. Once the text has moved on, marks already placed follow the edits and can
+still be hidden or activated, and a fresh result is requested at a limited rate.
+The request first pulls a running agent's newest disk write into the edit chain,
+so its file does not briefly look as if it had no changes. Which changes were
+reviewed is kept per user and project in browser storage, bounded in size and
+never dropped because a change is missing from one result. Text that still
+stands as written is highlighted in whole words, and results are expressed in
+the editor's `\n` line endings whatever the file has on disk. A rename or move
+carries the file's edit chain with it. The list refreshes on task events and every few seconds while one of the user's tasks runs.
+Reviewing never changes source.
 
 Task context JSON and a compile log are exposed through `TEXLITE_PROJECT_CONTEXT`
 and `TEXLITE_COMPILE_LOG`; compile API completion refreshes this context. A CLI

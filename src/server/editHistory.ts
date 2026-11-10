@@ -81,6 +81,8 @@ interface EditHistoryRow {
 
 /** Agent-change mapping walks at most this many of a file's newest segments. */
 const MAX_AGENT_CHANGE_CHAIN_SEGMENTS = 2_000;
+/** Files whose mapped agent changes stay in memory between requests. */
+const MAX_CACHED_AGENT_CHANGE_FILES = 64;
 const DEFAULT_RESULT_LIMIT = 60;
 /** Edits separated by at most this pause belong to one displayed entry. */
 const EDIT_SESSION_GAP_MS = 5 * 60 * 1_000;
@@ -120,6 +122,7 @@ interface OpenSelectionHistoryEntry extends SelectionHistoryEntry {
  */
 export class ProjectEditHistoryService {
   private readonly maxStorageBytes: number;
+  private readonly agentChangeCache = new Map<string, { signature: string; changes: AgentChange[] }>();
 
   constructor(
     private readonly db: DatabaseConnection,
@@ -326,6 +329,25 @@ export class ProjectEditHistoryService {
    */
   agentChanges(projectId: string, filePathInput: string, currentSource: string, userId: string): AgentChange[] {
     const filePath = safeRelativePath(filePathInput);
+    // Browsers poll this while a task runs. The chain's shape and the source
+    // decide the result, and reading them avoids parsing every stored edit.
+    const shape = this.db.prepare(`SELECT COUNT(*) AS total, MAX(rowid) AS newest
+      FROM project_edit_segments WHERE project_id = ? AND file_path = ?`).get(projectId, filePath) as { total: number; newest: number | null };
+    const cacheKey = JSON.stringify([projectId, filePath, userId]);
+    const signature = `${shape.total}:${shape.newest}:${hashText(currentSource)}`;
+    const cached = this.agentChangeCache.get(cacheKey);
+    if (cached?.signature === signature) return cached.changes;
+    const changes = this.mapAgentChanges(projectId, filePath, currentSource, userId);
+    this.agentChangeCache.delete(cacheKey);
+    this.agentChangeCache.set(cacheKey, { signature, changes });
+    for (const key of this.agentChangeCache.keys()) {
+      if (this.agentChangeCache.size <= MAX_CACHED_AGENT_CHANGE_FILES) break;
+      this.agentChangeCache.delete(key);
+    }
+    return changes;
+  }
+
+  private mapAgentChanges(projectId: string, filePath: string, currentSource: string, userId: string): AgentChange[] {
     const rows = (this.db.prepare(`SELECT id, author_id, has_agent, before_hash, after_hash, steps_json
       FROM project_edit_segments WHERE project_id = ? AND file_path = ?
       ORDER BY updated_at DESC, rowid DESC LIMIT ?`)
@@ -471,6 +493,20 @@ function previewPassage(value: string | null): { text: string | null; truncated:
   if (value.length <= MAX_PASSAGE_PREVIEW_CHARS) return { text: value, truncated: false };
   const edge = Math.floor((MAX_PASSAGE_PREVIEW_CHARS - 1) / 2);
   return { text: `${value.slice(0, edge)}…${value.slice(value.length - edge)}`, truncated: true };
+}
+
+/**
+ * Keep a file's edit chain with it through a rename or folder move. Run this in
+ * the transaction that moves the file; `movedPath` returns unaffected paths as is.
+ */
+export function moveEditHistoryPaths(db: DatabaseConnection, projectId: string, movedPath: (filePath: string) => string): void {
+  for (const table of ["project_edit_segments", "project_edit_history_boundaries"]) {
+    const update = db.prepare(`UPDATE OR REPLACE ${table} SET file_path = ? WHERE project_id = ? AND file_path = ?`);
+    for (const { file_path: filePath } of db.prepare(`SELECT DISTINCT file_path FROM ${table} WHERE project_id = ?`).all(projectId) as Array<{ file_path: string }>) {
+      const next = movedPath(filePath);
+      if (next !== filePath) update.run(next, projectId, filePath);
+    }
+  }
 }
 
 export function hashText(content: string): string {

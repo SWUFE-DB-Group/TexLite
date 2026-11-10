@@ -9,7 +9,7 @@ import { LatexEditor } from "../src/client/LatexEditor";
 import { defaultEditorPreferences } from "../src/client/editorPreferences";
 import { agentChangeMarks } from "../src/client/agents/agentChangeMarks";
 import { AgentChangesReview } from "../src/client/agents/AgentChangesReview";
-import { useAgentChanges, type AgentChangeReview, type PendingAgentChange } from "../src/client/agents/useAgentChanges";
+import { limitReviewed, useAgentChanges, type AgentChangeReview, type PendingAgentChange } from "../src/client/agents/useAgentChanges";
 import { sourceHash } from "../src/client/sourceHash";
 import type { AgentChange, AgentChangeFile } from "../src/shared/agentProtocol";
 
@@ -92,6 +92,36 @@ describe("agent change marks in the editor", () => {
     expect(props.onAgentChangesStale).toHaveBeenCalledOnce();
   });
 
+  it("keeps marks on their text after an edit, while review clicks still apply", async () => {
+    const changes = [change("a", "A stronger"), change("b", "End")];
+    const agentChanges = { sourceHash: sourceHash(source), changes };
+    await render({ agentChanges });
+    await act(async () => editor().dispatch({ changes: { from: 0, insert: "Typed. " } }));
+
+    await render({ agentChanges, activeAgentChangeId: "b" });
+    expect(marked()).toEqual([["A stronger", "cm-agent-change"], ["End", "cm-agent-change cm-agent-change-active"]]);
+    expect(props.onAgentChangesStale).toHaveBeenCalled();
+
+    // Marking "a" reviewed takes it away without a fresh result.
+    await render({ agentChanges: { ...agentChanges, changes: [changes[1]] } });
+    expect(marked()).toEqual([["End", "cm-agent-change cm-agent-change-active"]]);
+
+    // A result for text the editor no longer holds cannot move or add marks.
+    await render({ agentChanges: { sourceHash: sourceHash("other"), changes: [changes[1], change("c", "Intro")] } });
+    expect(marked()).toEqual([["End", "cm-agent-change cm-agent-change-active"]]);
+
+    const scrolled = vi.spyOn(EditorView, "scrollIntoView");
+    await render({ agentChangeReveal: { id: "b", nonce: 7 } });
+    expect(scrolled.mock.calls[0]?.[0]).toBe(editor().state.doc.toString().indexOf("End"));
+    scrolled.mockRestore();
+  });
+
+  it("does not count text typed inside a change as the agent's", async () => {
+    await render({ agentChanges: { sourceHash: sourceHash(source), changes: [change("a", "A stronger")] } });
+    await act(async () => editor().dispatch({ changes: { from: source.indexOf("stronger"), insert: "much " } }));
+    expect(marked().map(([text]) => text)).toEqual(["A ", "stronger"]);
+  });
+
   it("scrolls to a revealed change without moving the selection", async () => {
     const changes = [change("a", "A stronger")];
     await render({ agentChanges: { sourceHash: sourceHash(source), changes } });
@@ -169,7 +199,7 @@ describe("agent change review state", () => {
   }
   const files = (changes: AgentChange[]): { files: AgentChangeFile[] } => ({ files: [{ path: "main.tex", sourceHash: "h", changes }] });
 
-  it("keeps review marks in this browser per user, and forgets marks for changes that no longer exist", async () => {
+  it("keeps review marks in this browser per user, even when a result briefly omits their change", async () => {
     vi.mocked(api).mockResolvedValue(files([change("a", "A stronger"), change("b", "End")]) as never);
     await act(async () => root.render(createElement(Probe, { userId: "alice" })));
     expect(api).toHaveBeenCalledWith("/api/projects/paper/agent-changes", expect.anything());
@@ -186,9 +216,48 @@ describe("agent change review state", () => {
 
     vi.mocked(api).mockResolvedValue(files([change("b", "End")]) as never);
     await act(async () => current.refresh());
-    const stored = Object.entries(window.localStorage).find(([key]) => key.includes("texlite-agent-review") && key.includes("alice"));
-    expect(JSON.parse(stored![1] as string)).toEqual([]);
+    vi.mocked(api).mockResolvedValue(files([change("a", "A stronger"), change("b", "End")]) as never);
+    await act(async () => current.refresh());
+    expect(current.pending.map((item) => item.id)).toEqual(["b"]);
     await act(async () => current.markAllReviewed());
     expect(current.pending).toEqual([]);
+  });
+
+  it("shares review marks with another tab of this browser", async () => {
+    vi.mocked(api).mockResolvedValue(files([change("a", "A stronger"), change("b", "End")]) as never);
+    await act(async () => root.render(createElement(Probe, { userId: "alice" })));
+    const stored = () => Object.keys(window.localStorage).find((key) => key.includes("texlite-agent-review"));
+    await act(async () => current.markReviewed(current.pending[0]));
+    const key = stored()!;
+    // The other tab's mark is kept when this tab next saves, and shown at once.
+    window.localStorage.setItem(key, JSON.stringify(["a", "other-tab"]));
+    await act(async () => current.markReviewed(current.pending[0]));
+    expect(JSON.parse(window.localStorage.getItem(key)!).sort()).toEqual(["a", "b", "other-tab"]);
+    window.localStorage.setItem(key, JSON.stringify([]));
+    await act(async () => window.dispatchEvent(new StorageEvent("storage", { key, storageArea: window.localStorage })));
+    expect(current.pending.map((item) => item.id)).toEqual(["a", "b"]);
+  });
+
+  it("limits stored marks by dropping the oldest without a current change", () => {
+    const present = new Set(["old-live"]);
+    const reviewed = new Set(["old-live", "gone-1", "gone-2", "gone-3"]);
+    expect([...limitReviewed(reviewed, present, 2)]).toEqual(["old-live", "gone-3"]);
+    expect(limitReviewed(reviewed, present, 4)).toBe(reviewed);
+  });
+
+  it("keeps asking for fresh results over time but not in a tight loop", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api).mockResolvedValue(files([change("a", "A stronger")]) as never);
+      await act(async () => root.render(createElement(Probe, { userId: "alice" })));
+      const requests = () => vi.mocked(api).mock.calls.length;
+      const stale = () => act(async () => { current.refreshSoon(); await vi.advanceTimersByTimeAsync(2_100); });
+      const first = requests();
+      for (let round = 0; round < 5; round += 1) await stale();
+      expect(requests() - first).toBe(3);
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+      await stale();
+      expect(requests() - first).toBe(4);
+    } finally { vi.useRealTimers(); }
   });
 });

@@ -4,6 +4,7 @@ import { requireUser } from "../auth.js";
 import type { Config } from "../config.js";
 import { isCollaborativeTextFile, maxCollaborativeFileBytes } from "../collaboration.js";
 import type { DatabaseConnection } from "../db.js";
+import { normalizeAgentChangeLineEndings } from "../agentChanges.js";
 import { hashText, type ProjectEditHistoryService } from "../editHistory.js";
 import type { HistoryReason, ProjectHistoryService } from "../history.js";
 import { HISTORY_RETENTION_DELAY_MS } from "../historyRetention.js";
@@ -107,10 +108,16 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    return await projectMutations.runConsistentRead(id, () => {
+    // Everything below is synchronous, so no autosave can interleave with it.
+    return await projectMutations.runSnapshot(id, () => {
       const paths = (db.prepare(`SELECT DISTINCT file_path FROM project_edit_segments
         WHERE project_id = ? AND author_id = ? AND has_agent = 1 ORDER BY file_path LIMIT ?`)
         .all(id, user.id, MAX_AGENT_CHANGE_FILES) as Array<{ file_path: string }>).map((row) => row.file_path);
+      // A running agent's newest write may not have reached the edit chain yet.
+      // Its file would not match the chain's end and look as if it had no changes.
+      try { projectMutations.reconcileExternalSources(id, paths); }
+      catch { /* The writer's next scan reports this and stops the task. */ }
+      projectMutations.flushProject(id);
       const files: AgentChangeFile[] = [];
       for (const filePath of paths) {
         if (!isCollaborativeTextFile(filePath)) continue;
@@ -120,7 +127,10 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
         if (!fs.existsSync(source) || !fs.statSync(source).isFile() || fs.statSync(source).size > maxCollaborativeFileBytes(config)) continue;
         const content = fs.readFileSync(source, "utf8");
         const changes = editHistory.agentChanges(id, filePath, content, user.id);
-        if (changes.length) files.push({ path: filePath, sourceHash: hashText(content), changes });
+        if (changes.length) {
+          const normalized = normalizeAgentChangeLineEndings(changes, content);
+          files.push({ path: filePath, sourceHash: hashText(normalized.source), changes: [...normalized.changes] });
+        }
       }
       return { files };
     }, { preflight: () => {

@@ -3,7 +3,7 @@ import { api } from "../api";
 import { scopedStorageKey } from "../basePath";
 import { errorMessage } from "../errors";
 import type { AgentChange, AgentChangeFile } from "../../shared/agentProtocol";
-import { readStorageJson, writeStorageJson } from "../browserStorage";
+import { isLocalStorageEvent, readStorageJson, writeStorageJson } from "../browserStorage";
 
 /** A change still to review, with the file it belongs to. */
 export interface PendingAgentChange extends AgentChange {
@@ -28,8 +28,11 @@ export interface AgentChangeReview {
 /** While one of the user's agent tasks runs, its new changes appear this quickly. */
 const RUNNING_POLL_MS = 4_000;
 const SOON_DELAY_MS = 2_000;
-/** Consecutive "soon" refreshes without a newer result, so a busy editor cannot loop. */
+/** "Soon" refreshes allowed per window, so an editor that never matches cannot loop. */
 const MAX_SOON_REFRESHES = 3;
+const SOON_WINDOW_MS = 30_000;
+/** Marks kept in this browser; beyond this the oldest ones with no current change go first. */
+const MAX_REVIEW_MARKS = 2_000;
 
 function storageKey(userId: string, projectId: string): string {
   return scopedStorageKey(`texlite-agent-review:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`);
@@ -46,6 +49,22 @@ function writeReviewed(key: string, reviewed: ReadonlySet<string>): void {
 }
 
 /**
+ * Absence from one result does not mean a change is gone: a file can briefly
+ * not match its edit chain. Ids are never reused, so a leftover mark is harmless
+ * and only the size limit removes marks, never one for a change still listed.
+ */
+export function limitReviewed(reviewed: ReadonlySet<string>, present: ReadonlySet<string>, limit = MAX_REVIEW_MARKS): ReadonlySet<string> {
+  let excess = reviewed.size - limit;
+  if (excess <= 0) return reviewed;
+  const kept = new Set<string>();
+  for (const id of reviewed) {
+    if (excess > 0 && !present.has(id)) excess -= 1;
+    else kept.add(id);
+  }
+  return kept;
+}
+
+/**
  * The user's own coding-agent changes in a project, for manual review. The
  * server maps them to the current sources on each request; which ones were
  * reviewed is remembered only in this browser, per user and project.
@@ -58,40 +77,42 @@ export function useAgentChanges(userId: string, projectId: string, agentRunning:
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
   const soonTimer = useRef<number | undefined>(undefined);
-  const soonCount = useRef(0);
+  const soonBudget = useRef({ windowStart: 0, used: 0 });
+  const requesting = useRef(false);
 
-  const load = useCallback((soon: boolean) => {
-    // Only "soon" requests count towards their limit; any other refresh ends the run.
-    if (!soon) soonCount.current = 0;
+  const refresh = useCallback(() => {
     controller.current?.abort();
     const current = new AbortController();
     controller.current = current;
+    requesting.current = true;
     setLoading(true);
     void api<{ files: AgentChangeFile[] }>(`/api/projects/${encodeURIComponent(projectId)}/agent-changes`, { signal: current.signal })
       .then((result) => {
         if (current.signal.aborted) return;
         setFiles(result.files);
         setError("");
-        // Forget marks for changes that no longer exist, so storage stays small.
         const present = new Set(result.files.flatMap((file) => file.changes.flatMap((change) => change.ids)));
         setReviewed((previous) => {
-          const kept = new Set([...previous].filter((id) => present.has(id)));
-          if (kept.size !== previous.size) writeReviewed(key, kept);
+          const kept = limitReviewed(previous, present);
+          if (kept !== previous) writeReviewed(key, kept);
           return kept;
         });
       })
       .catch((reason: unknown) => {
         if (!current.signal.aborted) setError(errorMessage(reason));
       })
-      .finally(() => { if (controller.current === current) setLoading(false); });
+      .finally(() => { if (controller.current === current) { requesting.current = false; setLoading(false); } });
   }, [projectId, key]);
-  const refresh = useCallback(() => load(false), [load]);
 
   const refreshSoon = useCallback(() => {
-    if (soonTimer.current !== undefined || soonCount.current >= MAX_SOON_REFRESHES) return;
-    soonCount.current += 1;
-    soonTimer.current = window.setTimeout(() => { soonTimer.current = undefined; load(true); }, SOON_DELAY_MS);
-  }, [load]);
+    if (soonTimer.current !== undefined) return;
+    const budget = soonBudget.current;
+    const now = Date.now();
+    if (now - budget.windowStart >= SOON_WINDOW_MS) { budget.windowStart = now; budget.used = 0; }
+    if (budget.used >= MAX_SOON_REFRESHES) return;
+    budget.used += 1;
+    soonTimer.current = window.setTimeout(() => { soonTimer.current = undefined; refresh(); }, SOON_DELAY_MS);
+  }, [refresh]);
 
   useEffect(() => {
     setReviewed(readReviewed(key));
@@ -99,8 +120,14 @@ export function useAgentChanges(userId: string, projectId: string, agentRunning:
     refresh();
     const onTasks = () => refresh();
     window.addEventListener("texlite:agent-tasks", onTasks);
+    // Another tab of this browser reviewed something.
+    const onStorage = (event: StorageEvent) => {
+      if (isLocalStorageEvent(event) && (event.key === key || event.key === null)) setReviewed(readReviewed(key));
+    };
+    window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("texlite:agent-tasks", onTasks);
+      window.removeEventListener("storage", onStorage);
       controller.current?.abort();
       window.clearTimeout(soonTimer.current);
       soonTimer.current = undefined;
@@ -109,7 +136,8 @@ export function useAgentChanges(userId: string, projectId: string, agentRunning:
 
   useEffect(() => {
     if (!agentRunning) return;
-    const timer = window.setInterval(() => { if (document.visibilityState !== "hidden") refresh(); }, RUNNING_POLL_MS);
+    // A slow response is left to finish; replacing it each time would never show a result.
+    const timer = window.setInterval(() => { if (document.visibilityState !== "hidden" && !requesting.current) refresh(); }, RUNNING_POLL_MS);
     return () => window.clearInterval(timer);
   }, [agentRunning, refresh]);
 
@@ -123,8 +151,7 @@ export function useAgentChanges(userId: string, projectId: string, agentRunning:
   }, [files, unreviewed]);
 
   const mark = useCallback((ids: readonly string[]) => setReviewed((previous) => {
-    const next = new Set(previous);
-    for (const id of ids) next.add(id);
+    const next = new Set([...readReviewed(key), ...previous, ...ids]);
     writeReviewed(key, next);
     return next;
   }), [key]);

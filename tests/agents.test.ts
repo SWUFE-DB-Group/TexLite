@@ -1290,6 +1290,26 @@ describe("agent HTTP and WebSocket permissions", () => {
     expect((await app!.inject({ url: `/api/projects/${projectId}/agent-changes` })).statusCode).toBe(401);
   });
 
+  it("includes an agent's newest write in its reviewable changes before the next source scan", async () => {
+    const cookies = await httpApp();
+    db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
+    const created = await app!.inject({ method: "POST", url: `/api/projects/${projectId}/agent-tasks`,
+      headers: { cookie: cookies.ownerCookie }, payload: { agentId: "codex" } });
+    const task = created.json().task as AgentTask;
+    await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/start`, headers: { cookie: cookies.ownerCookie } });
+    const changes = async () => (await app!.inject({ url: `/api/projects/${projectId}/agent-changes`, headers: { cookie: cookies.ownerCookie } })).json()
+      .files.flatMap((file: { changes: Array<{ ids: string[] }> }) => file.changes.flatMap((change) => change.ids)) as string[];
+    const source = workingFile(task);
+    fs.writeFileSync(source, fs.readFileSync(source, "utf8") + "\nFirst agent line.\n");
+    await vi.waitFor(async () => expect(await changes()).toHaveLength(1), { timeout: 5_000, interval: 50 });
+    const first = await changes();
+    fs.writeFileSync(source, fs.readFileSync(source, "utf8") + "\nSecond agent line.\n");
+    const second = await changes();
+    expect(second).toEqual(expect.arrayContaining(first));
+    expect(second.length).toBeGreaterThan(first.length);
+    await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/stop`, headers: { cookie: cookies.ownerCookie } });
+  });
+
   it("accepts optional task names but still validates provided values and explicit renames", async () => {
     const cookies = await httpApp();
     db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();

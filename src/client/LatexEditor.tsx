@@ -42,7 +42,7 @@ import { latexReferenceMarks, referenceNavigationSettings, type ReferenceNavigat
 import type { SpellCheckIssue } from "./spellCheck";
 import { SpellSuggestionsMenu, type WritingSuggestionAnchor } from "./SpellSuggestionsMenu";
 import type { AgentChange } from "../shared/agentProtocol";
-import { agentChangeMarks, setAgentChangeMarks } from "./agents/agentChangeMarks";
+import { agentChangeMarks, agentChangeStart, setAgentChangeMarks } from "./agents/agentChangeMarks";
 import { sourceHash } from "./sourceHash";
 export type { SpellCheckIssue } from "./spellCheck";
 
@@ -440,8 +440,8 @@ export function LatexEditor({
   }, [filePath, focusComment]);
 
   // Agent ranges are only placed on the exact revision they were computed
-  // for; otherwise the editor holds newer text and asks for a fresh result.
-  const agentMarksPlaced = useRef(false);
+  // for; otherwise the editor holds newer text, so the marks already there
+  // stay where editing carried them and a fresh result is requested.
   const onAgentChangesStaleRef = useRef(onAgentChangesStale);
   onAgentChangesStaleRef.current = onAgentChangesStale;
   const onOpenAgentChangeRef = useRef(onOpenAgentChange);
@@ -450,21 +450,21 @@ export function LatexEditor({
   useEffect(() => {
     const editor = view.current;
     if (!editor) return;
-    const matches = Boolean(agentChanges?.changes.length) && sourceHash(editor.state.doc.toString()) === agentChanges!.sourceHash;
-    agentMarksPlaced.current = matches;
+    const changes = agentChanges?.changes ?? [];
+    const matches = changes.length > 0 && sourceHash(editor.state.doc.toString()) === agentChanges!.sourceHash;
     const open = canOpenAgentChange ? { label: t("agents.openReview"), onOpen: (id: string) => onOpenAgentChangeRef.current?.(id) } : undefined;
-    editor.dispatch({ effects: setAgentChangeMarks.of(matches ? { changes: agentChanges!.changes, activeId: activeAgentChangeId, open } : null) });
-    if (agentChanges?.changes.length && !matches) onAgentChangesStaleRef.current?.();
+    editor.dispatch({ effects: setAgentChangeMarks.of(changes.length ? { changes, activeId: activeAgentChangeId, open, restyleOnly: !matches } : null) });
+    if (changes.length && !matches) onAgentChangesStaleRef.current?.();
   }, [agentChanges, activeAgentChangeId, canOpenAgentChange, i18n.resolvedLanguage]);
 
   const revealedAgentChange = useRef(0);
   useEffect(() => {
     const editor = view.current;
-    if (!editor || !agentChangeReveal || revealedAgentChange.current === agentChangeReveal.nonce || !agentMarksPlaced.current) return;
-    const change = agentChanges?.changes.find((candidate) => candidate.id === agentChangeReveal.id);
-    if (!change || change.from > editor.state.doc.length) return;
+    if (!editor || !agentChangeReveal || revealedAgentChange.current === agentChangeReveal.nonce) return;
+    const start = agentChangeStart(editor.state, agentChangeReveal.id);
+    if (start === null) return;
     revealedAgentChange.current = agentChangeReveal.nonce;
-    editor.dispatch({ effects: EditorView.scrollIntoView(change.from, { y: "center", yMargin: 60 }) });
+    editor.dispatch({ effects: EditorView.scrollIntoView(start, { y: "center", yMargin: 60 }) });
   }, [agentChangeReveal?.nonce, agentChanges]);
 
   useEffect(() => {

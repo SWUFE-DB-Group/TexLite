@@ -622,6 +622,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     const deletedCompileTarget = filesEvent.kind === "delete" && Boolean(filesEvent.path)
       && pathContains(filesEvent.path!, activeMainFileRef.current);
     if (filesEvent.kind === "move" && filesEvent.source && filesEvent.destination) {
+      agentChanges.refresh();
       const source = filesEvent.source;
       const destination = filesEvent.destination;
       const remap = (value: string) => value === source

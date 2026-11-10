@@ -69,6 +69,11 @@ export class ProjectMutationCoordinator {
     return this.requireSuccessfulFlush(this.collaboration.flushProject(projectId));
   }
 
+  /** See `CollaborationService.reconcileExternalSources`; call it inside a project operation. */
+  reconcileExternalSources(projectId: string, paths: readonly string[]): void {
+    this.collaboration.reconcileExternalSources(projectId, paths);
+  }
+
   async runExclusive<T>(
     projectId: string,
     reason: string,

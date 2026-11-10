@@ -25,6 +25,7 @@ import type { LatexCompletionService } from "../latexCompletion.js";
 import type { MetricRegistry } from "../metrics.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
+import { moveEditHistoryPaths } from "../editHistory.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { mainDocumentCandidates } from "../latexRoot.js";
 import { isTextContent } from "../../shared/fileTypes.js";
@@ -244,6 +245,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
             hasCommentUpdates = true;
           }
         }
+        moveEditHistoryPaths(db, id, (filePath) => movedProjectPath(filePath, source, destination)!);
         db.exec("COMMIT");
       } catch (error) {
         db.exec("ROLLBACK");

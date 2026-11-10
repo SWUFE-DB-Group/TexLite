@@ -326,6 +326,11 @@ export class CollaborationService {
     return () => { if (this.externalSources.get(projectId) === observer) this.externalSources.delete(projectId); };
   }
 
+  /** Pull an active external writer's newest disk edits for these files into the room now. */
+  reconcileExternalSources(projectId: string, paths: readonly string[]): void {
+    this.externalSources.get(projectId)?.beforeFlush(paths);
+  }
+
   /** Apply disk edits as a real attributed Yjs delta, retaining pending human edits and anchors. */
   /** `agent` marks text written by a coding agent on behalf of `userId`; it is recorded in edit history. */
   importExternalText(projectId: string, filePath: string, content: string, userId: string, { agent = false }: { agent?: boolean } = {}): boolean {

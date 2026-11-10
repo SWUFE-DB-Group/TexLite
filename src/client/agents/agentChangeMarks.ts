@@ -1,4 +1,4 @@
-import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
+import { StateEffect, StateField, type EditorState, type Range, type Transaction } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import type { AgentChange } from "../../shared/agentProtocol";
 
@@ -8,12 +8,15 @@ export interface AgentChangeMarksInput {
   activeId: string | null;
   /** Open a change in the agent panel's review; without it no button is shown. */
   open?: { label: string; onOpen: (id: string) => void };
+  /**
+   * The document has moved on from the revision these changes were computed
+   * for. Keep the marks where editing carried them and only apply which
+   * changes remain and which is active.
+   */
+  restyleOnly?: boolean;
 }
 
 export const setAgentChangeMarks = StateEffect.define<AgentChangeMarksInput | null>();
-
-const insertedMark = Decoration.mark({ class: "cm-agent-change" });
-const activeInsertedMark = Decoration.mark({ class: "cm-agent-change cm-agent-change-active" });
 
 /** A thin marker where an agent deleted text, which leaves nothing to colour. */
 class DeletionMarker extends WidgetType {
@@ -64,38 +67,93 @@ class ReviewButton extends WidgetType {
   ignoreEvent(): boolean { return true; }
 }
 
+type MarkKind = "inserted" | "deletion" | "button";
+
+/** One mark of a change; its spec names the change so the mark can be found and restyled. */
+function decoration(kind: MarkKind, changeId: string, input: AgentChangeMarksInput): Decoration | null {
+  const active = changeId === input.activeId;
+  const spec = { changeId, kind };
+  if (kind === "inserted") return Decoration.mark({ ...spec, class: `cm-agent-change${active ? " cm-agent-change-active" : ""}` });
+  if (kind === "deletion") return Decoration.widget({ ...spec, widget: new DeletionMarker(active), side: -1 });
+  return input.open ? Decoration.widget({ ...spec, widget: new ReviewButton(changeId, active, input.open), side: 1 }) : null;
+}
+
 function build(input: AgentChangeMarksInput | null, state: EditorState): DecorationSet {
   if (!input) return Decoration.none;
   const length = state.doc.length;
   const ranges: Range<Decoration>[] = [];
+  const add = (kind: MarkKind, id: string, from: number, to = from) => {
+    const mark = decoration(kind, id, input);
+    if (mark && from >= 0 && to <= length) ranges.push(mark.range(from, to));
+  };
   for (const change of input.changes) {
-    const active = change.id === input.activeId;
-    for (const piece of change.pieces) {
-      if (piece.from >= 0 && piece.to <= length && piece.from < piece.to) {
-        ranges.push((active ? activeInsertedMark : insertedMark).range(piece.from, piece.to));
-      }
-    }
-    for (const anchor of change.anchors) {
-      if (anchor >= 0 && anchor <= length) ranges.push(Decoration.widget({ widget: new DeletionMarker(active), side: -1 }).range(anchor));
-    }
-    if (input.open && change.to >= 0 && change.to <= length) {
-      ranges.push(Decoration.widget({ widget: new ReviewButton(change.id, active, input.open), side: 1 }).range(change.to));
-    }
+    for (const piece of change.pieces) if (piece.from < piece.to) add("inserted", change.id, piece.from, piece.to);
+    for (const anchor of change.anchors) add("deletion", change.id, anchor);
+    add("button", change.id, change.to);
   }
   return Decoration.set(ranges, true);
 }
 
+function restyle(marks: DecorationSet, input: AgentChangeMarksInput, state: EditorState): DecorationSet {
+  const remaining = new Set(input.changes.map((change) => change.id));
+  const ranges: Range<Decoration>[] = [];
+  marks.between(0, state.doc.length, (from, to, value) => {
+    const { changeId, kind } = value.spec as { changeId: string; kind: MarkKind };
+    const mark = remaining.has(changeId) ? decoration(kind, changeId, input) : null;
+    if (mark) ranges.push(mark.range(from, to));
+  });
+  return Decoration.set(ranges, true);
+}
+
+/**
+ * Text typed inside agent text is not the agent's. Mapping stretches a mark
+ * over it, so cut it out until a server result replaces the marks.
+ */
+function excludeInsertions(marks: DecorationSet, transaction: Transaction): DecorationSet {
+  const inserted: Array<[number, number]> = [];
+  transaction.changes.iterChanges((_fromA, _toA, fromB, toB) => { if (toB > fromB) inserted.push([fromB, toB]); });
+  const covered = (from: number, to: number) => inserted.some(([start, end]) => start < to && from < end);
+  let affected = false;
+  const ranges: Range<Decoration>[] = [];
+  marks.between(0, transaction.newDoc.length, (from, to, value) => {
+    if (from === to || !covered(from, to)) { ranges.push(value.range(from, to)); return; }
+    affected = true;
+    let cursor = from;
+    for (const [start, end] of inserted) {
+      if (end <= cursor || start >= to) continue;
+      if (start > cursor) ranges.push(value.range(cursor, start));
+      cursor = end;
+    }
+    if (cursor < to) ranges.push(value.range(cursor, to));
+  });
+  return affected ? Decoration.set(ranges, true) : marks;
+}
+
+/** Where a change's marks currently start, following any edits since they were placed. */
+export function agentChangeStart(state: EditorState, id: string): number | null {
+  let start: number | null = null;
+  state.field(agentChangeMarks).between(0, state.doc.length, (from, _to, value) => {
+    if ((value.spec as { changeId: string }).changeId !== id) return undefined;
+    start = from;
+    return false;
+  });
+  return start;
+}
+
 /**
  * Background marks for agent-written text. They follow later edits through
- * CodeMirror's position mapping until the next server result replaces them,
- * so typing nearby never shifts them onto the wrong text.
+ * CodeMirror's position mapping until a server result for the current text
+ * replaces them, so typing nearby never shifts them onto the wrong text.
  */
 export const agentChangeMarks = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(value, transaction) {
     let mapped = value.map(transaction.changes);
+    if (transaction.docChanged && mapped.size) mapped = excludeInsertions(mapped, transaction);
     for (const effect of transaction.effects) {
-      if (effect.is(setAgentChangeMarks)) mapped = build(effect.value, transaction.state);
+      if (effect.is(setAgentChangeMarks)) {
+        mapped = effect.value?.restyleOnly ? restyle(mapped, effect.value, transaction.state) : build(effect.value, transaction.state);
+      }
     }
     return mapped;
   },
