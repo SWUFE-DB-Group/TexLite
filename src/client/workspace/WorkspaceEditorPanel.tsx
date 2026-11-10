@@ -1,5 +1,6 @@
 import { lazy, Suspense, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { BookOpen, FileText, LoaderCircle, X } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
+import { EditorTabs } from "./EditorTabs";
 import { TikzCompileButton } from "./TikzCompileButton";
 import type { LatexEngine, TikzFigurePdfState } from "./useTikzFigurePdf";
 import { useTranslation } from "react-i18next";
@@ -56,6 +57,7 @@ export interface WorkspaceEditorPanelProps {
   activateTab: (path: string) => void;
   closeTab: (path: string) => void;
   handleTabKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => void;
+  reorderTab: (path: string, to: number) => void;
   updateEditorContent: (value: string) => void;
   setSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
   onAddComment: (selectedText: string, startOffset: number, endOffset: number, source: string) => void;
@@ -76,7 +78,7 @@ export function WorkspaceEditorPanel({
   project, projectId, activeFile, mainFile, openTabs, content, loadedFile, readOnly, comments, focusComment,
   editorPreferences, completionIndex, nativeSpellCheck, spellCheckIssues, spellCheckJump, sourceJump,
   collaborativeText, collaborationAwareness, undoManager, editorNotice, activateTab, closeTab,
-  handleTabKeyDown, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync,
+  handleTabKeyDown, reorderTab, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync,
   figurePdf = null, agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: WorkspaceEditorPanelProps) {
   const { t } = useTranslation();
@@ -87,27 +89,7 @@ export function WorkspaceEditorPanel({
   const editorFocusComment = focusCommentForEditorFile(focusComment, activeFile, loadedFile);
   return <Panel id="source" minSize="22%">
     <EditorTerminalLayout terminal={terminal} tabs={editorPreferences.openFilesInTabs && openTabs.length > 0 && (
-        <div className="editor-tabs-bar" role="tablist" aria-label={t("editor.openFiles")}>
-          <div className="editor-tabs-scroll">
-            {openTabs.map((tabPath, index) => {
-              const isActive = tabPath === activeFile;
-              // The visible main-document badge reflects the shared project
-              // setting. `activeMainFile` can deliberately vary per user for
-              // compilation, so using it here made the UI appear to change
-              // the project's configured main document when a tab was opened.
-              const isMain = tabPath === project.mainFile;
-              const fileName = tabPath.split("/").at(-1) || tabPath;
-              return <div className={`editor-tab-item${isActive ? " active" : ""}`} role="presentation" key={tabPath}>
-                <button id={`editor-tab-${encodeURIComponent(tabPath)}`} type="button" role="tab" aria-selected={isActive} aria-controls="editor-source-content" tabIndex={isActive ? 0 : -1} className={`editor-tab${isActive ? " active" : ""}${isMain ? " main-tab" : ""}`} onClick={() => activateTab(tabPath)} onKeyDown={(event) => handleTabKeyDown(event, index)} title={tabPath}>
-                  <span className="editor-tab-icon">{isMain ? <BookOpen size={13} /> : <FileText size={13} />}</span>
-                  <span className="editor-tab-title">{fileName}</span>
-                  {isMain && <small className="editor-tab-badge">{t("editor.currentMainShort")}</small>}
-                </button>
-                <button type="button" className="editor-tab-close" title={t("common.close")} aria-label={`${t("common.close")} ${fileName}`} onClick={() => closeTab(tabPath)}><X size={12} /></button>
-              </div>;
-            })}
-          </div>
-        </div>
+        <EditorTabs openTabs={openTabs} activeFile={activeFile} projectMainFile={project.mainFile} activateTab={activateTab} closeTab={closeTab} handleTabKeyDown={handleTabKeyDown} reorderTab={reorderTab} />
       )}>
       <div id="editor-source-content" className="editor-content-container editor-content-column">
         {figurePdf && <div className="figure-pdf-bar"><TikzCompileButton {...figurePdf} /></div>}

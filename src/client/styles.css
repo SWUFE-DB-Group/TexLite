@@ -830,6 +830,10 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-tab-item { display: inline-flex; align-items: center; max-width: 220px; border: 1px solid var(--ui-border, #ccd6ce); border-bottom: 0; border-radius: 6px 6px 0 0; background: var(--ui-subtle, #dce4de); color: var(--ui-muted, #55665c); }
 .editor-tab-item:hover { background: var(--ui-hover, #e6eee8); color: var(--ui-text, #1e3628); }
 .editor-tab-item.active { background: var(--ui-surface, #ffffff); border-color: var(--ui-border, #cad7ce); box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.04); }
+.editor-tabs-scroll.reordering, .editor-tabs-scroll.reordering button { cursor: grabbing; user-select: none; }
+.editor-tabs-scroll.reordering .editor-tab-item:not(.dragging) { transition: transform 150ms ease; }
+.editor-tab-item.dragging { z-index: 2; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18); }
+@media (prefers-reduced-motion: reduce) { .editor-tabs-scroll.reordering .editor-tab-item:not(.dragging) { transition: none; } }
 .editor-tab { display: inline-flex; align-items: center; gap: 5px; min-width: 0; flex: 1 1 auto; padding: 4px 7px 4px 10px; border: 0; border-radius: 6px 0 0 0; background: transparent; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; user-select: none; white-space: nowrap; }
 .editor-tab:hover { color: var(--ui-text, #1e3628); }
 .editor-tab.active { color: var(--ui-accent, #184f36); font-weight: 600; }

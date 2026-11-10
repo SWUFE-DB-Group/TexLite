@@ -68,7 +68,7 @@ describe("phone SyncTeX controls", () => {
       editorPreferences: defaultEditorPreferences, openTabs: [], comments: [], focusComment: null,
       readOnly: false, completionIndex: null, nativeSpellCheck: false, spellCheckIssues: [], spellCheckJump: null, sourceJump: null,
       collaborativeText: null, collaborationAwareness: {} as WorkspaceEditorPanelProps["collaborationAwareness"],
-      editorNotice: "", activateTab: noop, closeTab: noop, handleTabKeyDown: noop, updateEditorContent: noop, setSelection: noop,
+      editorNotice: "", activateTab: noop, closeTab: noop, handleTabKeyDown: noop, reorderTab: noop, updateEditorContent: noop, setSelection: noop,
       onAddComment: noop, onSelectionHistory: noop, onCommentClick: noop, onSpellCheckReplace: noop, onReferenceNavigate: noop, onCursor: noop,
       mobileSync: { disabled: false, onClick: run } };
     await render(createElement(WorkspaceEditorPanel, props));

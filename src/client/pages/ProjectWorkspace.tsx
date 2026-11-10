@@ -46,6 +46,7 @@ import { useAgentChanges, type PendingAgentChange } from "../agents/useAgentChan
 import { WorkspacePreviewPanel, type WorkspaceMarkdownPreview } from "../workspace/WorkspacePreviewPanel";
 import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
 import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
+import { moveTab } from "../workspace/editorTabOrder";
 import { createSourceCursorStore, type SourceCursorStore } from "../workspace/sourceCursorStore";
 import { displayedPreviewSurface, isMarkdownPath } from "../workspace/markdownPreview";
 import { useMarkdownPreviewPreference } from "../workspace/useMarkdownPreviewPreference";
@@ -1472,6 +1473,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     activateTab(nextPath);
     window.requestAnimationFrame(() => focusTab(nextPath));
   };
+  const reorderTab = (tabPath: string, to: number): void => updateOpenTabs((current) => moveTab(current, tabPath, to));
   const compileStatusMessage = compileBusy
     ? sharedCompiling
       ? compileState?.status === "queued" ? t("editor.compileQueued") : t("editor.compilingBy", { name: compileState?.requestedBy.name ?? t("common.user") })
@@ -1568,7 +1570,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         spellCheckJump={spellCheck.jump} sourceJump={sourceJump} collaborativeText={collaborativeText}
         collaborationAwareness={collaboration.awareness} undoManager={activeFile ? collaboration.getUndoManager(activeFile) : undefined}
         editorNotice={editorNotice} activateTab={activateTab} closeTab={closeTab}
-        handleTabKeyDown={handleTabKeyDown} updateEditorContent={updateEditorContent}
+        handleTabKeyDown={handleTabKeyDown} reorderTab={reorderTab} updateEditorContent={updateEditorContent}
         setSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })}
         onAddComment={(selectedText, startOffset, endOffset, source) => openComment({ selectedText, startOffset, endOffset }, source)}
         onSelectionHistory={(selectedText, startOffset, endOffset, source) => {
