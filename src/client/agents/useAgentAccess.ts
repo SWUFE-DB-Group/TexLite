@@ -7,7 +7,7 @@ export function notifyAgentTasksChanged(): void {
   window.dispatchEvent(new Event("texlite:agent-tasks"));
 }
 
-const noAccess: AgentAccess = { visible: false, activeCount: 0 };
+const noAccess: AgentAccess = { visible: false, activeCount: 0, enabled: false };
 const POLL_INTERVAL_MS = 5 * 60_000;
 const REFRESH_COOLDOWN_MS = 30_000;
 

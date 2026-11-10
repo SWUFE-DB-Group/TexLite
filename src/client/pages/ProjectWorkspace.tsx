@@ -40,7 +40,8 @@ import { collaborationSaveState } from "../workspace/collaborationStatus";
 import { WorkspaceFilePanel } from "../workspace/WorkspaceFilePanel";
 import { WorkspaceEditorPanel } from "../workspace/WorkspaceEditorPanel";
 import type { WorkspaceFigurePdf } from "../workspace/WorkspaceEditorPanel";
-import { useAgentAccess } from "../agents/useAgentAccess";
+import { notifyAgentTasksChanged, useAgentAccess } from "../agents/useAgentAccess";
+import { commentAgentPrompt, type AgentPasteRequest } from "../agents/commentAgentPrompt";
 import { useAgentChanges, type PendingAgentChange } from "../agents/useAgentChanges";
 import { WorkspacePreviewPanel, type WorkspaceMarkdownPreview } from "../workspace/WorkspacePreviewPanel";
 import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
@@ -100,6 +101,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const currentProjectId = useRef(projectId);
   const agentAccess = useAgentAccess(user.id, projectId);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [agentPasteRequest, setAgentPasteRequest] = useState<AgentPasteRequest | null>(null);
+  const finishAgentPaste = useCallback((id: number) => setAgentPasteRequest((current) => current?.id === id ? null : current), []);
   // The user's own coding-agent changes, reviewed manually in the agent panel
   // and highlighted in the editor until marked reviewed.
   const agentChanges = useAgentChanges(user.id, projectId, agentAccess.activeCount > 0);
@@ -1308,6 +1311,18 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setWorkspaceLayout(next);
     if (next === "pdf-only") selectPreviewTab("pdf");
   };
+  const askAgentAboutComment = (comment: Comment) => {
+    if (agentAccess.activeCount === 0) {
+      // A task started in another tab is only noticed on the next refresh.
+      notifyAgentTasksChanged();
+      return false;
+    }
+    // The terminal lives in the editor pane.
+    if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf");
+    setTerminalOpen(true);
+    setAgentPasteRequest({ id: ++agentRevealNonce.current, text: commentAgentPrompt(comment) });
+    return true;
+  };
   const showAgentChange = useCallback((change: PendingAgentChange, focus: boolean) => {
     setActiveAgentChangeId(change.id);
     if (focus) {
@@ -1543,8 +1558,9 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         mobileSync={phone && sidePanel !== "comments" ? markdownActive
           ? { disabled: loadedFile !== activeFile, onClick: showCursorInMarkdown, label: t("editor.markdown.showInPreview") }
           : { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
-        terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized}
-          review={agentChanges} activeChangeId={activeAgentChangeId} onShowChange={showAgentChange} reviewFocus={agentReviewFocus} /></Suspense> : null}
+        terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => { setTerminalOpen(false); setAgentPasteRequest(null); }} maximized={maximized} onToggleMaximized={toggleMaximized}
+          review={agentChanges} activeChangeId={activeAgentChangeId} onShowChange={showAgentChange} reviewFocus={agentReviewFocus}
+          pasteRequest={agentPasteRequest} onPasteFinished={finishAgentPaste} /></Suspense> : null}
         project={project} projectId={projectId} activeFile={activeFile} mainFile={activeMainFile} openTabs={openTabs}
         content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
         focusComment={focusComment} editorPreferences={editorPreferences} completionIndex={completionIndex}
@@ -1599,6 +1615,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         onFocusComment={focusReviewComment} onToggleComment={toggleComment}
         onReplyComment={replyToComment} onEditComment={editComment} onDeleteComment={deleteComment}
         onEditCommentReply={editCommentReply} onDeleteCommentReply={deleteCommentReply}
+        onAskAgentAboutComment={agentAccess.enabled && project.permission !== "read" && !phone ? askAgentAboutComment : undefined}
         dictionaryWords={dictionaryWords} onDictionaryChange={setDictionaryWords}
         editorPreferences={editorPreferences} onEditorPreferences={updateEditorPreferences}
         spellCheckCount={spellCheck.summary?.total ?? null} spellCheckUniqueCount={spellCheck.summary?.unique ?? null}

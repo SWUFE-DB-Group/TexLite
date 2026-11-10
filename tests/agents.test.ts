@@ -1218,7 +1218,7 @@ describe("agent HTTP and WebSocket permissions", () => {
     const access = async (cookie: string, project?: string) => (await app!.inject({
       url: `/api/agents/access${project ? `?project=${project}` : ""}`, headers: { cookie }
     })).json();
-    expect(await access(cookies.ownerCookie)).toEqual({ visible: false, activeCount: 0 });
+    expect(await access(cookies.ownerCookie)).toEqual({ visible: false, activeCount: 0, enabled: false });
     db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
     const launch = async (project: string, cookie: string) => {
       const created = await app!.inject({ method: "POST", url: `/api/projects/${project}/agent-tasks`,
@@ -1242,20 +1242,20 @@ describe("agent HTTP and WebSocket permissions", () => {
     const firstPage = (await app!.inject({ url: "/api/agent-tasks", headers: { cookie: cookies.ownerCookie } })).json();
     expect(firstPage.tasks).toHaveLength(50);
     expect(firstPage.tasks.some((task: AgentTask) => task.id === own.id)).toBe(false);
-    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 1 });
-    expect(await access(cookies.adminCookie)).toEqual({ visible: true, activeCount: 1 });
-    expect(await access(cookies.readerCookie, projectId)).toEqual({ visible: true, activeCount: 0 });
-    expect(await access(cookies.adminCookie, projectId)).toEqual({ visible: true, activeCount: 0 });
-    expect(await access(cookies.adminCookie, adminProject)).toEqual({ visible: true, activeCount: 1 });
+    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 1, enabled: true });
+    expect(await access(cookies.adminCookie)).toEqual({ visible: true, activeCount: 1, enabled: true });
+    expect(await access(cookies.readerCookie, projectId)).toEqual({ visible: true, activeCount: 0, enabled: true });
+    expect(await access(cookies.adminCookie, projectId)).toEqual({ visible: true, activeCount: 0, enabled: true });
+    expect(await access(cookies.adminCookie, adminProject)).toEqual({ visible: true, activeCount: 1, enabled: true });
     for (const state of ["starting", "running", "stopping"]) {
       db.prepare("UPDATE agent_tasks SET state = ? WHERE id = ?").run(state, own.id);
-      expect(await access(cookies.ownerCookie, projectId)).toEqual({ visible: true, activeCount: 1 });
+      expect(await access(cookies.ownerCookie, projectId)).toEqual({ visible: true, activeCount: 1, enabled: true });
     }
     await app!.inject({ method: "POST", url: `/api/agent-tasks/${own.id}/stop`, headers: { cookie: cookies.ownerCookie } });
-    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 0 });
-    expect(await access(cookies.adminCookie)).toEqual({ visible: true, activeCount: 1 });
+    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 0, enabled: true });
+    expect(await access(cookies.adminCookie)).toEqual({ visible: true, activeCount: 1, enabled: true });
     db.prepare("UPDATE agent_policy SET allowed = '[]' WHERE id = 1").run();
-    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 0 });
+    expect(await access(cookies.ownerCookie)).toEqual({ visible: true, activeCount: 0, enabled: false });
   });
 
   it("reports a coding agent's burst of changes as one snapshot under the task's user", async () => {

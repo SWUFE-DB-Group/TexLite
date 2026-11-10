@@ -43,7 +43,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("en");
   vi.mocked(api).mockReset().mockImplementation(async (url) => (url === "/api/tags" ? { tags: [] }
     : { projects: [], pagination, counts }) as never);
-  vi.mocked(useAgentAccess).mockReset().mockReturnValue({ visible: true, activeCount: 2 });
+  vi.mocked(useAgentAccess).mockReset().mockReturnValue({ visible: true, activeCount: 2, enabled: true });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => {
@@ -114,7 +114,7 @@ describe("active task entry badges", () => {
     expect(entry?.isConnected).toBe(true);
     await act(async () => saveTerminalPreferences(defaultTerminalPreferences));
     expect(host.querySelector(".top-actions sup")?.textContent).toBe("2");
-    vi.mocked(useAgentAccess).mockReturnValue({ visible: true, activeCount: 0 });
+    vi.mocked(useAgentAccess).mockReturnValue({ visible: true, activeCount: 0, enabled: true });
     await render();
     expect(host.querySelector(".top-actions sup")).toBeNull();
   });

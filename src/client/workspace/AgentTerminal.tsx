@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import "../agents/agents.css";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleOff, LoaderCircle, Pencil, Play, Plus, TerminalSquare, Trash2, TriangleAlert, X } from "lucide-react";
@@ -15,13 +15,16 @@ import { terminalThemeStyle } from "../terminalTheme";
 import { useTerminalPreferences } from "../terminalPreferences";
 import { AgentChangesReview } from "../agents/AgentChangesReview";
 import type { AgentChangeReview, PendingAgentChange } from "../agents/useAgentChanges";
+import { notifyAgentTasksChanged } from "../agents/useAgentAccess";
+import type { AgentPasteRequest } from "../agents/commentAgentPrompt";
 
 const AgentTerminalSurface = lazy(() => import("../agents/AgentTerminalSurface").then((module) => ({ default: module.AgentTerminalSurface })));
 
-export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, onToggleMaximized, review, activeChangeId = null, onShowChange, reviewFocus = null }: {
+export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, onToggleMaximized, review, activeChangeId = null, onShowChange, reviewFocus = null, pasteRequest = null, onPasteFinished }: {
   projectId: string; readOnly: boolean; onHide: () => void; maximized?: boolean; onToggleMaximized?: () => void;
   review?: AgentChangeReview; activeChangeId?: string | null; onShowChange?: (change: PendingAgentChange, focus: boolean) => void;
   reviewFocus?: { id: string; nonce: number } | null;
+  pasteRequest?: AgentPasteRequest | null; onPasteFinished?: (id: number) => void;
 }) {
   const { t } = useTranslation();
   const tasks = useAgentTasks(projectId);
@@ -43,6 +46,17 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
   const projectBusy = Boolean(tasks.result.activeTaskId && tasks.result.activeTaskId !== task?.id);
   const cannotCreate = readOnly || tasks.busy || Boolean(tasks.result.activeTaskId) || !tasks.catalog?.ptyAvailable || !creationAgent?.installed || !creationAgent.enabled;
   const available = !projectBusy && !readOnly && activeAgent?.installed && activeAgent.enabled && tasks.catalog?.ptyAvailable && task?.cleanupState === "none";
+  const activeTaskId = tasks.result.activeTaskId;
+  useEffect(() => {
+    // Undefined means the first task listing has not arrived yet.
+    if (!pasteRequest || activeTaskId === undefined) return;
+    if (activeTaskId && tasks.result.tasks.some((entry) => entry.id === activeTaskId)) { tasks.setSelectedId(activeTaskId); return; }
+    if (activeTaskId && tasks.result.page !== 1) { tasks.setPage(1); return; }
+    // The button outlived the task, or the active task belongs to someone else.
+    tasks.setError(t("agents.commentAgentUnavailable"));
+    notifyAgentTasksChanged();
+    onPasteFinished?.(pasteRequest.id);
+  }, [pasteRequest, activeTaskId, tasks.result]);
   const choose = (id: string) => { tasks.setSelectedId(id); setRenaming(false); };
   const act = (suffix: string) => tasks.mutate(async () => {
     if (!task) return;
@@ -98,7 +112,7 @@ export function AgentTerminal({ projectId, readOnly, onHide, maximized = false, 
     {review && onShowChange && <AgentChangesReview review={review} activeId={activeChangeId} onShow={onShowChange} focus={reviewFocus} />}
     <div className="agent-terminal-body" style={terminalThemeStyle(preferences.theme)}>
       <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}>
-        {task && running && !readOnly ? <AgentTerminalSurface key={task.id} task={task} onTask={tasks.acceptTask} />
+        {task && running && !readOnly ? <AgentTerminalSurface key={task.id} task={task} onTask={tasks.acceptTask} pasteRequest={task.id === activeTaskId ? pasteRequest : null} onPasteFinished={onPasteFinished} />
             : <div className="agent-task-empty"><TerminalSquare size={24} /><strong>{task?.title || t("agents.noTasks")}</strong><p>{readOnly ? t("agents.permissionLost") : t("agents.readyHint")}</p>{task?.exitCode !== null && task?.exitCode !== undefined && task.exitCode !== 0 && <small>{t("agents.exitCode", { code: task.exitCode })}</small>}</div>}
       </Suspense>
     </div>

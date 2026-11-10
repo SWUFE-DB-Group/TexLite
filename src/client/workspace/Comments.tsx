@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { AtSign, Check, CheckCircle2, ChevronRight, ChevronUp, LoaderCircle, RotateCcw, Trash2, UserPlus, Users } from "lucide-react";
+import { AtSign, Check, CheckCircle2, ChevronRight, ChevronUp, LoaderCircle, RotateCcw, Sparkles, Trash2, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
 import { ConfirmDialog, Modal } from "../Dialog";
 import { errorMessage } from "../errors";
@@ -60,7 +60,7 @@ export function CommentThread({
   projectId, comment, draftStore, currentUserId, unreadCommentMentionId, unreadReplyMentionIds,
   highlightedComment, highlightedReplyId, currentComment, showFilePath, onMarkMentionRead, onFocus, onActivate, onToggle,
   onReply, onEdit, onDelete, onEditReply, onDeleteReply, selectedParticipantIds, highlightReplyParticipants,
-  replyExpansion, onReplyExpansionChange
+  replyExpansion, onReplyExpansionChange, onAskAgent
 }: {
   projectOwnerId?: string;
   canEditSource?: boolean;
@@ -89,11 +89,19 @@ export function CommentThread({
   onDelete: () => Promise<boolean>;
   onEditReply: (replyId: string, content: string) => Promise<boolean>;
   onDeleteReply: (replyId: string) => Promise<boolean>;
+  /** Absent when the user cannot use agents here. Returns false when no task of theirs is running. */
+  onAskAgent?: () => boolean;
 }) {
   const { t, i18n } = useTranslation();
   const now = useRelativeTimeNow();
   const [toggling, setToggling] = useState(false);
   const [suggestionTarget, setSuggestionTarget] = useState<SuggestionSourceTarget | null>(null);
+  const [agentTaskNeeded, setAgentTaskNeeded] = useState(false);
+  useEffect(() => {
+    if (!agentTaskNeeded) return;
+    const timer = window.setTimeout(() => setAgentTaskNeeded(false), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [agentTaskNeeded]);
   const subscribe = useCallback((listener: () => void) => draftStore.subscribe(comment.id, listener), [draftStore, comment.id]);
   const getDrafts = useCallback(() => draftStore.getThread(comment.id), [draftStore, comment.id]);
   const drafts = useSyncExternalStore(subscribe, getDrafts, getDrafts);
@@ -175,6 +183,9 @@ export function CommentThread({
         {times(comment.createdAt, comment.editedAt)}
       </CommentIdentity>
       <span className="comment-header-actions">
+        <button type="button" className="comment-ask-agent" disabled={!onAskAgent} aria-label={t("agents.askAboutComment")}
+          data-tooltip={t("agents.askAboutComment")} data-texlite-tooltip-always
+          onClick={(event) => { event.stopPropagation(); if (onAskAgent) setAgentTaskNeeded(!onAskAgent()); }}><Sparkles size={15} aria-hidden /></button>
         <button type="button" className="resolve" disabled={toggling || submittingForm || reviewBlocksResolution} aria-busy={toggling}
           aria-label={t(comment.resolved ? "editor.reopen" : "editor.resolve")}
           data-tooltip={t(reviewBlocksResolution ? "suggestions.reviewBeforeResolve" : comment.resolved ? "editor.reopen" : "editor.resolve")} data-texlite-tooltip-always
@@ -196,6 +207,7 @@ export function CommentThread({
           onDelete={() => { setDeleteError(""); setDeleteCommentOpen(true); }} />}
       </span>
     </header>
+    {agentTaskNeeded && <p className="comment-agent-hint" role="status">{t("agents.commentAgentUnavailable")}</p>}
     <div className="comment-location">{comment.orphaned ? t("editor.orphaned") : showFilePath ? t("editor.commentLocation", { path: comment.filePath, line: comment.startLine }) : t("editor.line", { line: comment.startLine })}</div>
     {comment.selectedText && <blockquote className="comment-selected-text">{comment.selectedText}</blockquote>}
     {commentEditDraft?.open && comment.authorId === currentUserId ? draftForm("edit-comment", t("editor.editComment"), onEdit, comment.content)

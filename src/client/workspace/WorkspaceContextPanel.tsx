@@ -64,6 +64,7 @@ export interface WorkspaceContextPanelProps {
   onDeleteComment: (comment: Comment) => Promise<boolean>;
   onEditCommentReply: (comment: Comment, replyId: string, content: string) => Promise<boolean>;
   onDeleteCommentReply: (comment: Comment, replyId: string) => Promise<boolean>;
+  onAskAgentAboutComment?: (comment: Comment) => boolean;
   dictionaryWords: string[];
   onDictionaryChange: (words: string[]) => void;
   editorPreferences: EditorPreferences;
@@ -83,7 +84,7 @@ export function WorkspaceContextPanel({
   onClearFocusComment,
   targetCommentId, targetReplyId, onFocusComment,
   onToggleComment, onReplyComment, onEditComment, onDeleteComment, onEditCommentReply,
-  onDeleteCommentReply, dictionaryWords, onDictionaryChange, editorPreferences,
+  onDeleteCommentReply, onAskAgentAboutComment, dictionaryWords, onDictionaryChange, editorPreferences,
   onEditorPreferences, spellCheckCount, spellCheckUniqueCount, spellCheckIndex,
   onSpellCheckNavigate, onProject
 }: WorkspaceContextPanelProps) {
@@ -300,7 +301,7 @@ export function WorkspaceContextPanel({
                   setReplyExpansion((current) => current.get(comment.id) === expanded ? current : new Map(current).set(comment.id, expanded));
                 }}
                 selectedParticipantIds={singleCommentMode ? undefined : participantIds} highlightReplyParticipants={!singleCommentMode && !topLevelOnly}
-                onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onActivate={() => setActiveComposerId(comment.id)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} /></div></div>;
+                onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onActivate={() => setActiveComposerId(comment.id)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} onAskAgent={onAskAgentAboutComment ? () => onAskAgentAboutComment(comment) : undefined} /></div></div>;
             })}
             {displayedComments.length === 0 && !commentsLoading && !commentsError && <div className="comment-review-empty" role="status">
               <span className="comment-review-empty-icon" aria-hidden="true"><MessagesSquare size={23} strokeWidth={1.5} /></span>

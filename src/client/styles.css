@@ -1408,14 +1408,16 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .comment-author { min-width: 0; max-width: 100%; display: flex; flex-direction: column; }
 .comment-author strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-text, #303a33); font-weight: 600; }
 .comment-author.participant-match strong { align-self: flex-start; max-width: 100%; border-radius: 3px; padding: 0 2px; background: var(--ui-surface, #edf5ff); color: var(--ui-info, #2563a6); }
+.comment-agent-hint { margin: 5px 0 0; color: var(--ui-accent, #176b44); font-size: 11px; }
 .comment-location { margin-top: 5px; color: var(--ui-muted, #768079); font-size: 10px; overflow-wrap: anywhere; }
 .comments blockquote { margin: 8px 0; padding: 6px 8px; border-left: 2px solid var(--ui-accent-border, #85ad96); background: var(--ui-page, #f4f7f5); color: var(--ui-muted, #657069); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .comments p { white-space: pre-wrap; user-select: text; -webkit-user-select: text; cursor: text; }.comments blockquote, .comments .comment-content { user-select: text; -webkit-user-select: text; cursor: text; }
 .comments .comment-content { overflow-wrap: anywhere; }
 .comment-inline-mention { color: var(--ui-info, #2563a6); font-style: italic; font-synthesis: style; font-weight: 650; }
-.comments .resolve { display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #7c8780); padding: 0; }
-.comments .resolve:hover:not(:disabled) { background: var(--ui-accent-bg, #eaf2ec); color: var(--ui-accent, #176b44); }
-.comments .resolve:focus-visible, .comment-actions-menu-trigger:focus-visible { outline: 2px solid var(--ui-accent-border, #75a68a); outline-offset: 2px; }
+.comments .resolve, .comments .comment-ask-agent { display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #7c8780); padding: 0; }
+.comments .resolve:hover:not(:disabled), .comments .comment-ask-agent:hover:not(:disabled) { background: var(--ui-accent-bg, #eaf2ec); color: var(--ui-accent, #176b44); }
+.comments .comment-ask-agent:disabled { opacity: 0.4; cursor: not-allowed; }
+.comments .resolve:focus-visible, .comments .comment-ask-agent:focus-visible, .comment-actions-menu-trigger:focus-visible { outline: 2px solid var(--ui-accent-border, #75a68a); outline-offset: 2px; }
 .comment-replies { display: flex; flex-direction: column; gap: 7px; margin: 10px 0 8px; padding-left: 9px; border-left: 1px solid var(--ui-border, #dce0e4); }
 .comment-replies-list { display: flex; flex-direction: column; gap: 7px; }
 .comments .comment-replies-toggle { display: inline-flex; align-items: center; align-self: flex-start; gap: 3px; margin-left: 8px; border: 0; border-radius: 3px; padding: 3px 0; background: transparent; color: var(--ui-muted, #68736c); font-size: 10px; line-height: 1.4; text-align: left; }
@@ -2641,7 +2643,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 /* Touch density is independent of viewport width (including tablets in landscape). */
 @media (pointer: coarse) {
   .info-popover-trigger, .agent-management button.agent-policy-help, .comment-actions-menu-trigger,
-  .comments .resolve, .citation-entry-actions .citation-entry-menu-trigger, .citation-entry-actions .citation-copy-button,
+  .comments .resolve, .comments .comment-ask-agent, .citation-entry-actions .citation-entry-menu-trigger, .citation-entry-actions .citation-copy-button,
   :root .citation-entry-actions .citation-icon-action, .project-action-menu-trigger,
   .citation-edit-header button, .dialog-close {
     flex-shrink: 0; min-width: var(--ui-touch-target); min-height: var(--ui-touch-target);

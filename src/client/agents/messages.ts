@@ -33,7 +33,9 @@ const en = {
   markAllReviewed: "Mark all reviewed", refreshChanges: "Refresh agent changes", openChange: "Open in editor",
   changePreviewUnavailable: "This change was edited afterwards or is too large to compare. Open it in the editor.",
   contentUnavailable: "This change is too large to preview. Open it in the editor.",
-  contentTab: "New content", diffTab: "Diff", openReview: "Open in agent review"
+  contentTab: "New content", diffTab: "Diff", openReview: "Open in agent review",
+  askAboutComment: "Ask Agent about this comment",
+  commentAgentUnavailable: "Start a Coding Agent task first."
 };
 const zh: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任务", terminal: "终端", back: "返回项目",
@@ -62,7 +64,9 @@ const zh: Record<keyof typeof en, string> = {
   markAllReviewed: "全部标为已审阅", refreshChanges: "刷新 Agent 修改", openChange: "在编辑器中打开",
   changePreviewUnavailable: "此修改之后又被编辑过，或内容过大，无法对比。请在编辑器中查看。",
   contentUnavailable: "此修改内容过大，无法预览。请在编辑器中查看。",
-  contentTab: "新内容", diffTab: "差异", openReview: "在 Agent 审阅中查看"
+  contentTab: "新内容", diffTab: "差异", openReview: "在 Agent 审阅中查看",
+  askAboutComment: "让 Agent 分析批注",
+  commentAgentUnavailable: "请先启动 Coding Agent 任务"
 };
 const zhHant: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任務", terminal: "終端機", back: "返回專案",
@@ -91,6 +95,8 @@ const zhHant: Record<keyof typeof en, string> = {
   markAllReviewed: "全部標為已審閱", refreshChanges: "重新整理 Agent 修改", openChange: "在編輯器中開啟",
   changePreviewUnavailable: "此修改之後又被編輯過，或內容過大，無法對比。請在編輯器中查看。",
   contentUnavailable: "此修改內容過大，無法預覽。請在編輯器中查看。",
-  contentTab: "新內容", diffTab: "差異", openReview: "在 Agent 審閱中查看"
+  contentTab: "新內容", diffTab: "差異", openReview: "在 Agent 審閱中查看",
+  askAboutComment: "讓 Agent 分析批註",
+  commentAgentUnavailable: "請先啟動 Coding Agent 任務"
 };
 export const agentUiMessages = { en, zh, "zh-Hant": zhHant };

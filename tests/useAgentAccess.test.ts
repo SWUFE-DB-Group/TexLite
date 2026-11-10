@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-  vi.mocked(api).mockReset().mockResolvedValue({ visible: true, activeCount: 2 });
+  vi.mocked(api).mockReset().mockResolvedValue({ visible: true, activeCount: 2, enabled: true });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => {
@@ -38,10 +38,10 @@ describe("personal active agent badges", () => {
     await render();
     expect(api).toHaveBeenCalledWith("/api/agents/access", { signal: expect.any(AbortSignal) });
     expect(current.activeCount).toBe(activeCount);
-    vi.mocked(api).mockResolvedValue({ visible: true, activeCount: 1 });
+    vi.mocked(api).mockResolvedValue({ visible: true, activeCount: 1, enabled: true });
     await act(async () => notifyAgentTasksChanged());
     expect(current.activeCount).toBe(1);
-    vi.mocked(api).mockResolvedValue({ visible: true, activeCount: 0 });
+    vi.mocked(api).mockResolvedValue({ visible: true, activeCount: 0, enabled: true });
     await act(async () => vi.advanceTimersByTime(299_999));
     expect(api).toHaveBeenCalledTimes(2);
     expect(current.activeCount).toBe(1);
@@ -67,7 +67,7 @@ describe("personal active agent badges", () => {
       notifyAgentTasksChanged();
     });
     expect(api).not.toHaveBeenCalled();
-    vi.mocked(api).mockResolvedValue({ visible: true, activeCount: 0 });
+    vi.mocked(api).mockResolvedValue({ visible: true, activeCount: 0, enabled: true });
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     await act(async () => {
       document.dispatchEvent(new Event("visibilitychange"));
@@ -75,7 +75,7 @@ describe("personal active agent badges", () => {
     });
     expect(api).toHaveBeenCalledOnce();
     expect(current.activeCount).toBe(0);
-    vi.mocked(api).mockResolvedValue({ visible: true, activeCount: 1 });
+    vi.mocked(api).mockResolvedValue({ visible: true, activeCount: 1, enabled: true });
     await act(async () => vi.advanceTimersByTime(29_999));
     await act(async () => window.dispatchEvent(new Event("focus")));
     expect(api).toHaveBeenCalledOnce();
@@ -84,10 +84,10 @@ describe("personal active agent badges", () => {
     expect(api).toHaveBeenCalledTimes(2);
     expect(current.activeCount).toBe(1);
     // Explicit policy changes must not wait for the focus cooldown.
-    vi.mocked(api).mockResolvedValue({ visible: false, activeCount: 0 });
+    vi.mocked(api).mockResolvedValue({ visible: false, activeCount: 0, enabled: false });
     await act(async () => window.dispatchEvent(new Event("texlite:agents-policy")));
     expect(api).toHaveBeenCalledTimes(3);
-    expect(current).toEqual({ visible: false, activeCount: 0 });
+    expect(current).toEqual({ visible: false, activeCount: 0, enabled: false });
   });
 
   it("does not poll again immediately after a task event near the polling boundary", async () => {
@@ -109,8 +109,8 @@ describe("personal active agent badges", () => {
     const firstSignal = vi.mocked(api).mock.calls[0][1]?.signal;
     await act(async () => notifyAgentTasksChanged());
     expect(firstSignal?.aborted).toBe(true);
-    await act(async () => refresh.resolve({ visible: true, activeCount: 2 }));
-    await act(async () => first.resolve({ visible: true, activeCount: 9 }));
+    await act(async () => refresh.resolve({ visible: true, activeCount: 2, enabled: true }));
+    await act(async () => first.resolve({ visible: true, activeCount: 9, enabled: true }));
     expect(current.activeCount).toBe(2);
 
     await render("admin", "paper");
@@ -119,9 +119,9 @@ describe("personal active agent badges", () => {
     const oldProjectSignal = vi.mocked(api).mock.calls.at(-1)![1]?.signal;
     await render("admin", "other-paper");
     expect(oldProjectSignal?.aborted).toBe(true);
-    await act(async () => otherUser.resolve({ visible: true, activeCount: 1 }));
+    await act(async () => otherUser.resolve({ visible: true, activeCount: 1, enabled: true }));
     expect(current.activeCount).toBe(0);
-    await act(async () => otherProject.resolve({ visible: true, activeCount: 1 }));
+    await act(async () => otherProject.resolve({ visible: true, activeCount: 1, enabled: true }));
     expect(current.activeCount).toBe(1);
   });
 
@@ -139,7 +139,7 @@ describe("personal active agent badges", () => {
       window.dispatchEvent(new Event("focus"));
       window.dispatchEvent(new Event("texlite:agents-policy"));
       document.dispatchEvent(new Event("visibilitychange"));
-      pending.resolve({ visible: true, activeCount: 1 });
+      pending.resolve({ visible: true, activeCount: 1, enabled: true });
     });
     expect(api).not.toHaveBeenCalled();
   });

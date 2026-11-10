@@ -87,7 +87,8 @@ export class AgentService {
       COUNT(CASE WHEN state IN ('starting', 'running', 'stopping')
         AND (? IS NULL OR project_id = ?) THEN 1 END) AS activeCount
       FROM agent_tasks WHERE user_id = ?`).get(projectId ?? null, projectId ?? null, userId) as { total: number; activeCount: number };
-    return { visible: this.policy().allowed.length > 0 || total > 0, activeCount };
+    const enabled = this.policy().allowed.length > 0;
+    return { visible: enabled || total > 0, activeCount, enabled };
   }
 
   async catalog(refresh = false): Promise<AgentCatalog> {

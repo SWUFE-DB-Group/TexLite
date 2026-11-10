@@ -9,8 +9,12 @@ import { appPath } from "../basePath";
 import { copyTextToClipboard } from "../clipboard";
 import { terminalFontStack, terminalLineHeight, useTerminalPreferences } from "../terminalPreferences";
 import { terminalThemes, terminalThemeStyle } from "../terminalTheme";
+import type { AgentPasteRequest } from "./commentAgentPrompt";
 
-export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask: (task: AgentTask) => void }) {
+export function AgentTerminalSurface({ task, onTask, pasteRequest = null, onPasteFinished }: {
+  task: AgentTask; onTask: (task: AgentTask) => void;
+  pasteRequest?: AgentPasteRequest | null; onPasteFinished?: (id: number) => void;
+}) {
   const { t } = useTranslation();
   const preferences = useTerminalPreferences();
   const palette = terminalThemes[preferences.theme];
@@ -138,6 +142,25 @@ export function AgentTerminalSurface({ task, onTask }: { task: AgentTask; onTask
     connect();
     return () => { disposed = true; window.clearTimeout(retry); socket.current?.close(); socket.current = null; writableRef.current = false; };
   }, [task.id, reconnect]);
+  const controlRequestedFor = useRef<number | null>(null);
+  const pastedRequest = useRef<number | null>(null);
+  useEffect(() => {
+    if (!pasteRequest || connection !== "open" || task.state !== "running") return;
+    if (!writable) {
+      // The click is an explicit request to use this terminal; ask only once
+      // so that another tab can still take control back.
+      if (controlRequestedFor.current !== pasteRequest.id) {
+        controlRequestedFor.current = pasteRequest.id;
+        send({ type: "takeControl" });
+      }
+      return;
+    }
+    if (pastedRequest.current === pasteRequest.id) return;
+    pastedRequest.current = pasteRequest.id;
+    terminal.current?.paste(pasteRequest.text);
+    terminal.current?.focus();
+    onPasteFinished?.(pasteRequest.id);
+  }, [pasteRequest, connection, writable, task.state, onPasteFinished]);
   const copyMenuOpen = copyMenu !== null;
   useEffect(() => {
     if (!copyMenuOpen) return;
