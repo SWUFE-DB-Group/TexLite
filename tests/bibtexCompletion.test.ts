@@ -17,6 +17,13 @@ function updateResult(result: CompletionResult, state: EditorState, from: number
 }
 
 describe("BibTeX completion quality", () => {
+  it.each(["@article{k, title = {X},▮", "@article{k, title = {X}, ▮", "@article{k,▮"])("does not open a field list on punctuation or spaces: %s", (marked) => {
+    const position = marked.indexOf("▮");
+    const state = EditorState.create({ doc: marked.replace("▮", ""), extensions: [bibtexLanguage] });
+    expect(bibtexCompletionSource(new CompletionContext(state, position, false))).toBeNull();
+    expect(bibtexCompletionSource(new CompletionContext(state, position, true))?.options.length).toBeGreaterThan(0);
+  });
+
   it("uses the same entry types for completion and validation", () => {
     expect(new Set(entryTypes)).toEqual(validEntryTypes);
     expect(entryTypes).toHaveLength(validEntryTypes.size);

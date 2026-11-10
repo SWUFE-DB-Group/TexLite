@@ -6,13 +6,13 @@ import {
   Decoration, type DecorationSet, EditorView, keymap,
   highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, tooltips
 } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import {
   bracketMatching, foldGutter, foldKeymap,
   indentOnInput, syntaxHighlighting
 } from "@codemirror/language";
 import {
-  autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap
+  acceptCompletion, autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap
 } from "@codemirror/autocomplete";
 import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
@@ -31,7 +31,7 @@ import { latexMathHover } from "./mathHover";
 import { latexCitationHover, type CitationHoverLabels } from "./citationHover";
 import { citationAuthorLabels } from "./citationAuthors";
 import { latexReferenceHover } from "./latexReferenceHover";
-import { latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
+import { deleteLatexEscapedPair, enterLatexEnvironmentBody, latexAutoPairInput, latexSkippedBracePair } from "./latexAutoPairs";
 import { latexCompletions } from "./latexCompletions";
 import { isLatexEditorFile, loadTextFileLanguage } from "./textLanguages";
 import { loadVimSupport } from "./vimLoader";
@@ -127,6 +127,11 @@ const activeSpellCheckIssueMarks = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field)
 });
 
+/** The parts of an editor that depend on whether it can be edited right now. */
+function editabilityExtensions(readOnly: boolean, collaborative: boolean) {
+  return [EditorState.readOnly.of(readOnly), ...(collaborative && !readOnly ? [keymap.of(yUndoManagerKeymap)] : [])];
+}
+
 function referenceFromElement(element: EventTarget | null): LatexReference | null {
   if (!(element instanceof HTMLElement)) return null;
   const target = element.closest<HTMLElement>("[data-latex-reference-kind][data-latex-reference-key]");
@@ -167,6 +172,9 @@ export function LatexEditor({
   const mathHover = useRef(new Compartment());
   const citationHover = useRef(new Compartment());
   const vimMode = useRef(new Compartment());
+  const editability = useRef(new Compartment());
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   const auxiliaryLanguage = useRef(new Compartment());
   const tooltipLayer = useRef<HTMLDivElement | null>(null);
   const [languageLoadFailed, setLanguageLoadFailed] = useState(false);
@@ -208,7 +216,6 @@ export function LatexEditor({
     const isBibtexFile = /\.bib$/i.test(filePath);
     const isBstFile = /\.bst$/i.test(filePath);
     const isLatexFile = isLatexEditorFile(filePath);
-    const collaborationUndoManager = collaboration && !readOnly ? collaboration.undoManager ?? null : null;
     const state = EditorState.create({
       doc: collaboration?.text.toString() ?? value,
       extensions: [
@@ -235,16 +242,19 @@ export function LatexEditor({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
         search({ top: true, createPanel: createEditorSearchPanel(t) }), editorSearchOverview, EditorState.phrases.of(searchPhrases(t)),
+        // Ahead of the snippet keymap, so Tab in a snippet field accepts an open list first.
+        Prec.highest(keymap.of([{ key: "Tab", run: acceptCompletion }])),
         autocompletion({
           override: isBibtexFile ? [bibtexCompletionSource] : isLatexFile ? [(context) => latexCompletions(context, t, completionIndexRef.current)] : undefined,
           activateOnTyping: true
         }),
         vimMode.current.of([]),
-        keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...foldKeymap,
-          ...(collaboration && !readOnly ? yUndoManagerKeymap : []), ...defaultKeymap,
-          ...(collaboration ? [] : historyKeymap)]),
-        ...(collaboration ? [yCollab(collaboration.text, collaboration.awareness, { undoManager: collaborationUndoManager ?? false })] : []),
-        EditorState.readOnly.of(readOnly), appearance.current.of(editorAppearance(preferences, nativeSpellCheck, theme)),
+        // Tab indents; Escape then Tab, or Ctrl-M, leaves the editor by keyboard.
+        keymap.of([...(isLatexFile ? [{ key: "Backspace", run: deleteLatexEscapedPair }] : []), ...closeBracketsKeymap, ...completionKeymap,
+          ...(isLatexFile ? [{ key: "Enter", run: enterLatexEnvironmentBody }] : []), ...searchKeymap, ...foldKeymap,
+          ...defaultKeymap, indentWithTab, ...(collaboration ? [] : historyKeymap)]),
+        ...(collaboration ? [yCollab(collaboration.text, collaboration.awareness, { undoManager: collaboration.undoManager ?? false })] : []),
+        editability.current.of(editabilityExtensions(readOnly, Boolean(collaboration))), appearance.current.of(editorAppearance(preferences, nativeSpellCheck, theme)),
         EditorView.domEventHandlers({
           mousedown(event, editor) {
             const reference = referenceFromElement(event.target);
@@ -307,7 +317,13 @@ export function LatexEditor({
       view.current?.destroy();
       view.current = null;
     };
-  }, [filePath, readOnly, i18n.resolvedLanguage, collaboration?.text]);
+  }, [filePath, i18n.resolvedLanguage, collaboration?.text]);
+
+  // A dropped connection also makes the editor read-only. Reconfiguring keeps
+  // its cursor, scroll position, folds and focus through the reconnect.
+  useEffect(() => {
+    view.current?.dispatch({ effects: editability.current.reconfigure(editabilityExtensions(readOnly, Boolean(collaboration))) });
+  }, [readOnly, Boolean(collaboration)]);
 
   useEffect(() => {
     const editor = view.current;
@@ -322,7 +338,7 @@ export function LatexEditor({
       if (!cancelled && view.current === editor) setLanguageLoadFailed(true);
     });
     return () => { cancelled = true; };
-  }, [filePath, readOnly, i18n.resolvedLanguage, collaboration?.text, languageRetry]);
+  }, [filePath, i18n.resolvedLanguage, collaboration?.text, languageRetry]);
 
   useEffect(() => {
     const editor = view.current;
@@ -355,10 +371,10 @@ export function LatexEditor({
     setVimStatus(""); setVimLoadState("loading");
     void loadVimSupport().then((support) => {
       if (cancelled || view.current !== editor) return;
-      const undoManager = collaboration && !readOnly ? collaboration.undoManager : undefined;
+      const undoManager = collaboration?.undoManager;
       editor.dispatch({ effects: vimMode.current.reconfigure(support.createVimExtension(undoManager ? {
-        undo: () => undoManager.undo() !== null,
-        redo: () => undoManager.redo() !== null
+        undo: () => !readOnlyRef.current && undoManager.undo() !== null,
+        redo: () => !readOnlyRef.current && undoManager.redo() !== null
       } : undefined)) });
       vimStatusCleanup.current = support.watchVimStatus(editor, setVimStatus);
       setVimLoadState("working");
@@ -374,7 +390,7 @@ export function LatexEditor({
       vimStatusCleanup.current?.();
       vimStatusCleanup.current = null;
     };
-  }, [preferences.vimMode, filePath, readOnly, i18n.resolvedLanguage, collaboration?.text, collaboration?.undoManager, vimRetry]);
+  }, [preferences.vimMode, filePath, i18n.resolvedLanguage, collaboration?.text, collaboration?.undoManager, vimRetry]);
 
   useEffect(() => {
     const editor = view.current;

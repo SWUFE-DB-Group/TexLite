@@ -136,12 +136,12 @@ describe("editor lazy Vim lifecycle", () => {
     expect(host.querySelector(".vim-editor-status")?.textContent).toBe("--NORMAL--");
   });
 
-  it("reinstalls Vim on a read-only transition without allowing document changes", async () => {
+  it("keeps Vim through a read-only transition without allowing document changes", async () => {
     await toggle(true);
     const old = editor();
     await render({ readOnly: true });
     const current = editor();
-    expect(current).not.toBe(old);
+    expect(current).toBe(old);
     expect(getCM(current)).toBeDefined();
     await press("x"); await press("u");
     expect(current.state.doc.toString()).toBe(props.value);

@@ -140,6 +140,29 @@ describe("editor LaTeX completion source", () => {
     expect(state.doc.toString()).toBe(String.raw`\end{figure}`);
   });
 
+  describe("completing inside existing source", () => {
+    const accept = (marked: string, label: string) => {
+      const to = marked.indexOf("|");
+      const source = marked.replace("|", "");
+      let state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+      const result = latexCompletions(new CompletionContext(state, to, true), t, { ...index,
+        citations: [{ label: "knuth84", kind: "constant", detail: "BibTeX key", source: "refs.bib" }],
+        commands: [{ label: "\\section", kind: "function", detail: "x", apply: "\\section{${title}}" }, { label: "\\emph", kind: "function", detail: "x", apply: "\\emph{${text}}" }] })!;
+      const option = result.options.find((entry) => entry.label === label)!;
+      const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as unknown as EditorView;
+      (option.apply as Exclude<Completion["apply"], string | undefined>)(view, option, result.from, to);
+      return state.doc.toString();
+    };
+    it.each([
+      ["\\sec|tion{Intro}", "\\section", "\\section{Intro}"],
+      ["\\em|{Intro}", "\\emph", "\\emph{Intro}"],
+      ["\\cite{knu|th84, b}", "knuth84", "\\cite{knuth84, b}"],
+      ["\\begin{fig|ure}\n\\end{figure}", "figure", "\\begin{figure}\n\\end{figure}"]
+    ])("%s keeps the rest of the command", (marked, label, expected) => {
+      expect(accept(marked, label)).toBe(expected);
+    });
+  });
+
   it("keeps command menus free of descriptive text", () => {
     expect(complete(String.raw`\noind`)?.options.find((entry) => entry.label === "\\noindent")?.detail).toBeUndefined();
   });

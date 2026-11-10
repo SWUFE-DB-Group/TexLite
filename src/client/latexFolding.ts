@@ -79,6 +79,16 @@ export function findMatchingLatexEnvironmentEnd(doc: Text, from: number, name: s
   return null;
 }
 
+const environmentsWithArguments = new Set([
+  "tabular", "tabular*", "tabularx", "tabulary", "longtable", "array", "minipage", "figure", "figure*", "table", "table*",
+  "subfigure", "subtable", "wrapfigure", "wraptable", "multicols", "multicols*"
+]);
+
+/** Arguments follow \begin{name} on its line, so a new pair keeps the cursor there. */
+export function latexEnvironmentTakesArguments(name: string): boolean {
+  return environmentsWithArguments.has(name);
+}
+
 /** Locate a nearby begin command, including trivia on preceding lines. */
 export function latexEnvironmentBeginStart(doc: Text, position: number): number | null {
   const start = Math.max(0, position - environmentLookahead);

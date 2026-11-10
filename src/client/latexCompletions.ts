@@ -1,6 +1,6 @@
 import type { TFunction } from "i18next";
 import { Transaction } from "@codemirror/state";
-import { pickedCompletion, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
+import { insertCompletionText, pickedCompletion, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { LatexCompletionIndex, LatexCompletionItem } from "./types";
 import { latexCompletionContext, latexEnvironmentCompletionPlan } from "./latexCompletionContexts";
 import { isLatexEscaped } from "../shared/latexScanner";
@@ -121,6 +121,49 @@ function environmentCompletion(entry: Completion, command: "begin" | "end"): Com
   };
 }
 
+const COMMAND_TAIL = /^[A-Za-z@0-9:_]*\*?/;
+const ENVIRONMENT_TAIL = /^[A-Za-z0-9@:*_.+\-]*/;
+const LIST_ITEM_TAIL = /^[^,{}%\s]*/;
+const ARGUMENT_TAIL = /^[^{}]*/;
+const PLAIN_COMMAND = /^\\[A-Za-z@][A-Za-z@0-9:_]*\*?$/;
+
+/** Completing inside an argument replaces the rest of that item, not just its start. */
+function replacingTail(option: Completion, tail: RegExp): Completion {
+  const original = option.apply;
+  return {
+    ...option,
+    apply(view, completion, from, to) {
+      const end = to + (tail.exec(view.state.sliceDoc(to, to + 512))?.[0].length ?? 0);
+      if (typeof original === "function") original(view, completion, from, end);
+      else view.dispatch({ ...insertCompletionText(view.state, original ?? completion.label, from, end), annotations: pickedCompletion.of(completion) });
+    }
+  };
+}
+
+/**
+ * Completing a command already in the source replaces its whole name and keeps
+ * its arguments. Text after the cursor that does not form a known command stays:
+ * typing \\emph directly before a word must not swallow the word.
+ */
+function replacingCommand(option: Completion, known: ReadonlySet<string>): Completion {
+  const original = option.apply;
+  return {
+    ...option,
+    apply(view, completion, from, to) {
+      const name = view.state.sliceDoc(from, to);
+      const tail = PLAIN_COMMAND.test(name + "x") ? COMMAND_TAIL.exec(view.state.sliceDoc(to, to + 256))?.[0] ?? "" : "";
+      const next = view.state.sliceDoc(to + tail.length, to + tail.length + 1);
+      const hasArguments = next === "{" || next === "[";
+      const end = known.has(name + tail) || hasArguments ? to + tail.length : to;
+      if (typeof original === "function" && !(hasArguments && end === to + tail.length && PLAIN_COMMAND.test(completion.label))) {
+        original(view, completion, from, end);
+      } else {
+        view.dispatch({ ...insertCompletionText(view.state, typeof original === "string" ? original : completion.label, from, end), annotations: pickedCompletion.of(completion) });
+      }
+    }
+  };
+}
+
 export function latexCompletions(context: CompletionContext, t: TFunction, index: LatexCompletionIndex | null) {
   // Do not build the current-file symbol index during ordinary prose input.
   // CodeMirror reuses results while validFor matches the current token.
@@ -132,26 +175,29 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
     const options = mergeCompletionItems(t, withoutSnippets(local().environments), withoutSnippets(index?.environments ?? []));
     return {
       from: argument.from,
-      options: withoutCompletionDetails(options.map((option) => environmentCompletion(option, argument.command as "begin" | "end"))),
+      options: withoutCompletionDetails(options.map((option) => replacingTail(environmentCompletion(option, argument.command as "begin" | "end"), ENVIRONMENT_TAIL))),
       validFor: /^[A-Za-z0-9@:*_.+\-]*$/
     };
   }
-  if (argument?.kind === "label") return { from: argument.from, options: mergeCompletionItems(t, local().labels, index?.labels ?? []), validFor: /^[^,{}%\s]*$/ };
-  if (argument?.kind === "citation") return { from: argument.from, options: mergeCompletionItems(t, local().citations, bibtexCitationItems(index)), validFor: /^[^,{}%\s]*$/ };
+  const replacing = (options: Completion[], tail: RegExp) => options.map((option) => replacingTail(option, tail));
+  if (argument?.kind === "label") return { from: argument.from, options: replacing(mergeCompletionItems(t, local().labels, index?.labels ?? []), LIST_ITEM_TAIL), validFor: /^[^,{}%\s]*$/ };
+  if (argument?.kind === "citation") return { from: argument.from, options: replacing(mergeCompletionItems(t, local().citations, bibtexCitationItems(index)), LIST_ITEM_TAIL), validFor: /^[^,{}%\s]*$/ };
   if (argument?.kind === "file") return {
     from: argument.from,
-    options: withoutCompletionDetails(mergeCompletionItems(t, local().files, index?.files ?? [])),
+    options: replacing(withoutCompletionDetails(mergeCompletionItems(t, local().files, index?.files ?? [])), argument.command === "bibliography" ? LIST_ITEM_TAIL : ARGUMENT_TAIL),
     validFor: argument.command === "bibliography" ? /^[^,{}%\s]*$/ : /^[^{}]*$/
   };
-  if (argument?.kind === "package") return { from: argument.from, options: mergeCompletionItems(t, local().packages, index?.packages ?? []), validFor: /^[^,{}%\s]*$/ };
-  if (argument?.kind === "class") return { from: argument.from, options: mergeCompletionItems(t, local().classes, index?.classes ?? []), validFor: /^[^{}]*$/ };
+  if (argument?.kind === "package") return { from: argument.from, options: replacing(mergeCompletionItems(t, local().packages, index?.packages ?? []), LIST_ITEM_TAIL), validFor: /^[^,{}%\s]*$/ };
+  if (argument?.kind === "class") return { from: argument.from, options: replacing(mergeCompletionItems(t, local().classes, index?.classes ?? []), ARGUMENT_TAIL), validFor: /^[^{}]*$/ };
   const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);
   if (command) {
     const from = Math.max(0, command.from - 256);
     if (isLatexEscaped(context.state.sliceDoc(from, command.from + 1), command.from - from)) return null;
   }
   if (command || context.explicit) {
-    return { from: command?.from ?? context.pos, options: withoutCompletionDetails(mergeCompletionItems(t, local().commands, index?.commands ?? [], completionOptions())), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
+    const options = withoutCompletionDetails(mergeCompletionItems(t, local().commands, index?.commands ?? [], completionOptions()));
+    const known = new Set(options.map((option) => option.label));
+    return { from: command?.from ?? context.pos, options: options.map((option) => replacingCommand(option, known)), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
   }
   return null;
 }

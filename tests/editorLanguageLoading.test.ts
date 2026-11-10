@@ -97,14 +97,13 @@ describe("editor auxiliary language lifecycle", () => {
     vi.mocked(loadTextFileLanguage).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     await render();
     const old = editor();
-    await render({ readOnly: true });
+    await render({ filePath: "other.json" });
     const current = editor();
     expect(current).not.toBe(old);
     await act(async () => first.reject(new Error("Old request failed")));
     expect(host.querySelector(".editor-language-notice")).toBeNull();
     expect(jsonLanguage.isActiveAt(current.state, 0)).toBe(false);
     await act(async () => second.resolve(json()));
-    expect(current.state.readOnly).toBe(true);
     expect(jsonLanguage.isActiveAt(current.state, 0)).toBe(true);
     expect(editor()).toBe(current);
   });

@@ -413,7 +413,9 @@ export function bibtexCompletionSource(context: CompletionContext): CompletionRe
     const explicitAt = context.matchBefore(/@[a-zA-Z]*$/);
     if (explicitAt) return completeEntryType(context);
     if (node.name === 'EntryKey' || node.name === 'EntryType') return null;
-    if (!context.explicit && !/[a-zA-Z_,{\s]/.test(before)) return null;
+    // Punctuation and spaces are not the start of a field name. An open list
+    // would take the Enter that was meant to start the next line.
+    if (!context.explicit && !/[a-zA-Z_]/.test(before)) return null;
     return completeFieldName(context, node);
   }
 

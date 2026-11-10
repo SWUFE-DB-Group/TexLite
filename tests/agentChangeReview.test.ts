@@ -116,6 +116,19 @@ describe("agent change marks in the editor", () => {
     scrolled.mockRestore();
   });
 
+  it("keeps the same editor when it becomes read-only, as it does during a reconnect", async () => {
+    await render();
+    const before = editor();
+    await act(async () => before.dispatch({ selection: { anchor: 5 } }));
+    await render({ readOnly: true });
+    expect(editor()).toBe(before);
+    expect(before.state.readOnly).toBe(true);
+    await render({ readOnly: false });
+    expect(editor()).toBe(before);
+    expect(before.state.readOnly).toBe(false);
+    expect(before.state.selection.main.head).toBe(5);
+  });
+
   it("does not count text typed inside a change as the agent's", async () => {
     await render({ agentChanges: { sourceHash: sourceHash(source), changes: [change("a", "A stronger")] } });
     await act(async () => editor().dispatch({ changes: { from: source.indexOf("stronger"), insert: "much " } }));

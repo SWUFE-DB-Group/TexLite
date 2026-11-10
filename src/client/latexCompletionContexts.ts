@@ -1,6 +1,6 @@
 import type { CompletionContext } from "@codemirror/autocomplete";
 import type { Text } from "@codemirror/state";
-import { findReusableLatexEnvironmentEnd, latexEnvironmentBeginStart } from "./latexFolding";
+import { findReusableLatexEnvironmentEnd, latexEnvironmentBeginStart, latexEnvironmentTakesArguments } from "./latexFolding";
 import { latexContextAt, type LatexCursorContext } from "./latex/context";
 
 // Reuse one tree lookup for a completion request; never retain editor states
@@ -44,7 +44,7 @@ export function latexEnvironmentCompletionPlan(doc: Text, from: number, to: numb
   return {
     to: to + closingBrace,
     insert: `${replacement}\n${indent}\t\n${indent}\\end{${name}}`,
-    cursor: from + replacement.length + 1 + indent.length + 1,
+    cursor: from + replacement.length + (latexEnvironmentTakesArguments(name) ? 0 : 1 + indent.length + 1),
     reusesExistingEnd: false
   };
 }
