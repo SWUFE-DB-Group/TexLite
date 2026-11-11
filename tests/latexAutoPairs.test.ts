@@ -54,15 +54,15 @@ describe("LaTeX auto pairs", () => {
     const source = String.raw`\begin{itemize}`;
     const state = EditorState.create({ doc: source, selection: { anchor: source.length - 1 }, extensions: [latexSkippedBracePair] });
     const transaction = state.update({ selection: { anchor: source.length }, userEvent: "input" });
-    expect(transaction.newDoc.toString()).toBe(source + "\n\t\n\\end{itemize}");
-    expect(transaction.newSelection.main.head).toBe(source.length + 2);
+    expect(transaction.newDoc.toString()).toBe(source + "\n  \n\\end{itemize}");
+    expect(transaction.newSelection.main.head).toBe(source.length + 3);
   });
 
   it("pairs when closeBrackets steps over the brace by replacing it with itself", () => {
     const source = String.raw`\begin{itemize}`;
     const state = EditorState.create({ doc: source, selection: { anchor: source.length - 1 }, extensions: [latexSkippedBracePair] });
     const transaction = state.update({ changes: { from: source.length - 1, to: source.length, insert: "}" }, selection: { anchor: source.length }, userEvent: "input.type" });
-    expect(transaction.newDoc.toString()).toBe(source + "\n\t\n\\end{itemize}");
+    expect(transaction.newDoc.toString()).toBe(source + "\n  \n\\end{itemize}");
   });
 
   it("leaves the cursor on the begin line of an environment that takes arguments", () => {

@@ -1,6 +1,8 @@
 import { EditorState, Text, Transaction } from "@codemirror/state";
+import { indentUnit } from "@codemirror/language";
 import type { EditorView } from "@codemirror/view";
 import { latexOpaqueContextAt } from "../shared/latexLiterals";
+import { latexContextAt } from "./latex/context";
 import { findReusableLatexEnvironmentEnd, latexEnvironmentBeginStart, latexEnvironmentTakesArguments } from "./latexFolding";
 
 export interface LatexAutoPair {
@@ -32,12 +34,12 @@ function environmentMatch(context: ReturnType<typeof lineContext>): RegExpMatchA
   return context.prefix.match(/^([ \t]*)\\begin\s*\{\s*([A-Za-z][A-Za-z0-9*:_-]*)\s*\}\s*$/);
 }
 
-function environmentPair(context: ReturnType<typeof lineContext>, match: RegExpMatchArray): LatexAutoPair | null {
+function environmentPair(context: ReturnType<typeof lineContext>, match: RegExpMatchArray, unit: string): LatexAutoPair | null {
   const environment = match[2];
   const doc = Text.of(context.nextSource.split("\n"));
   const beginStart = latexEnvironmentBeginStart(doc, context.cursor);
   if (beginStart !== null && findReusableLatexEnvironmentEnd(doc, beginStart, context.cursor, environment)) return null;
-  const bodyIndent = match[1] + "\t";
+  const bodyIndent = match[1] + unit;
   const insert = "\n" + bodyIndent + "\n" + match[1] + "\\end{" + environment + "}";
   return { insert, cursorOffset: latexEnvironmentTakesArguments(environment) ? 0 : 1 + bodyIndent.length, kind: "environment" };
 }
@@ -71,7 +73,8 @@ export function latexAutoPair(
   source: string,
   from: number,
   to: number,
-  text: string
+  text: string,
+  unit = "\t"
 ): LatexAutoPair | null {
   if (from !== to || !text) return null;
   const context = lineContext(source, from, text);
@@ -79,19 +82,19 @@ export function latexAutoPair(
   const delimiter = environment ? null : delimiterMatch(context);
   if (!environment && !delimiter) return null;
   if (latexOpaqueContextAt(context.nextSource, context.cursor)) return null;
-  if (environment) return environmentPair(context, environment);
+  if (environment) return environmentPair(context, environment, unit);
   if (delimiter) return delimiterPair(delimiter);
   return null;
 }
 
-export function latexAutoPairAtCursor(source: string, cursor: number): LatexAutoPair | null {
+export function latexAutoPairAtCursor(source: string, cursor: number, unit = "\t"): LatexAutoPair | null {
   if (cursor < 0 || cursor > source.length) return null;
   const context = lineContext(source, cursor, "");
   const environment = environmentMatch(context);
   const delimiter = environment ? null : delimiterMatch(context);
   if (!environment && !delimiter) return null;
   if (latexOpaqueContextAt(context.nextSource, context.cursor)) return null;
-  if (environment) return environmentPair(context, environment);
+  if (environment) return environmentPair(context, environment, unit);
   if (delimiter) return delimiterPair(delimiter);
   return null;
 }
@@ -133,11 +136,43 @@ function escapedDelimiterInput(view: EditorView, from: number, to: number, text:
   return true;
 }
 
-/** Backspace in an empty `\[|\]` removes the pair, as it does for plain brackets. */
+/**
+ * `$` opens a pair only in ordinary text, where the parser says no math is open,
+ * and steps over a closer already at the cursor. Elsewhere it is an ordinary character.
+ */
+function dollarInput(view: EditorView, from: number, to: number, insert: () => Transaction): boolean {
+  const { state } = view;
+  if (followsActiveBackslash(state.doc, from)) return false;
+  const context = latexContextAt(state, from);
+  if (!context.available) return false;
+  const next = state.sliceDoc(to, to + 1);
+  if (from !== to) {
+    if (context.region !== "text") return false;
+    view.dispatch({ changes: [{ from, insert: "$" }, { from: to, insert: "$" }], selection: { anchor: from + 1, head: to + 1 }, userEvent: "input.type" });
+    return true;
+  }
+  if (context.region === "math" && next === "$") {
+    view.dispatch({ selection: { anchor: from + 1 }, scrollIntoView: true, userEvent: "input.type" });
+    return true;
+  }
+  if (context.region !== "text" || (next && !/[\s)\]}:;>,.]/.test(next))) return false;
+  const input = insert();
+  const cursor = input.newSelection.main.head;
+  view.dispatch(view.state.update(input, { sequential: true, changes: { from: cursor, insert: "$" }, selection: { anchor: cursor }, annotations: Transaction.userEvent.of("input.type") }));
+  return true;
+}
+
+/** Backspace in an empty `\[|\]` or `$|$` removes the pair, as it does for plain brackets. */
 export function deleteLatexEscapedPair(view: EditorView): boolean {
   const { state } = view;
   const { main, ranges } = state.selection;
-  if (state.readOnly || ranges.length !== 1 || !main.empty || main.head < 2) return false;
+  if (state.readOnly || ranges.length !== 1 || !main.empty || main.head < 1) return false;
+  if (state.sliceDoc(main.head - 1, main.head + 1) === "$$" && !followsActiveBackslash(state.doc, main.head - 1)
+    && latexContextAt(state, main.head).region === "math") {
+    view.dispatch({ changes: { from: main.head - 1, to: main.head + 1 }, scrollIntoView: true, userEvent: "delete.backward" });
+    return true;
+  }
+  if (main.head < 2) return false;
   const before = state.sliceDoc(main.head - 2, main.head);
   if (before[0] !== "\\" || escapedClosers[before[1]] === undefined || state.sliceDoc(main.head, main.head + 2) !== escapedClosers[before[1]]
     || !followsActiveBackslash(state.doc, main.head - 1)) return false;
@@ -164,7 +199,8 @@ export function latexAutoPairInput(view: EditorView, from: number, to: number, t
   if (view.state.readOnly || view.composing || view.state.selection.ranges.length !== 1) return false;
   // Ordinary prose never needs a whole-document string or literal-state scan.
   // Reuse the exact insertion predicates before materializing global context.
-  const pair = from === to && text && mayAutoPair(view.state.doc, from, text) ? latexAutoPair(view.state.doc.toString(), from, to, text) : null;
+  if (text === "$") return dollarInput(view, from, to, insert);
+  const pair = from === to && text && mayAutoPair(view.state.doc, from, text) ? latexAutoPair(view.state.doc.toString(), from, to, text, view.state.facet(indentUnit)) : null;
   if (!pair) return escapedDelimiterInput(view, from, to, text, insert);
   const input = insert();
   if (!input.docChanged) return false;
@@ -196,7 +232,7 @@ export const latexSkippedBracePair = EditorState.transactionFilter.of((transacti
     || !transaction.newSelection.main.empty) return transaction;
   const cursor = transaction.newSelection.main.head;
   if (!mayAutoPair(transaction.newDoc, cursor, "")) return transaction;
-  const pair = latexAutoPairAtCursor(transaction.newDoc.toString(), cursor);
+  const pair = latexAutoPairAtCursor(transaction.newDoc.toString(), cursor, transaction.startState.facet(indentUnit));
   if (!pair) return transaction;
   return [transaction, {
     sequential: true,

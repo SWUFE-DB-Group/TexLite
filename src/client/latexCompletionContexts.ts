@@ -26,7 +26,7 @@ export interface LatexEnvironmentCompletionPlan {
  * Build an environment completion without inserting a second closing command
  * when the document already has one below the cursor.
  */
-export function latexEnvironmentCompletionPlan(doc: Text, from: number, to: number, name: string, command: "begin" | "end" = "begin"): LatexEnvironmentCompletionPlan {
+export function latexEnvironmentCompletionPlan(doc: Text, from: number, to: number, name: string, command: "begin" | "end" = "begin", unit = "\t"): LatexEnvironmentCompletionPlan {
   const closingBrace = doc.sliceString(to, to + 1) === "}" ? 1 : 0;
   const replacement = `${name}}`;
   const beginStart = latexEnvironmentBeginStart(doc, from);
@@ -43,8 +43,8 @@ export function latexEnvironmentCompletionPlan(doc: Text, from: number, to: numb
   const indent = line.text.match(/^\s*/)?.[0] ?? "";
   return {
     to: to + closingBrace,
-    insert: `${replacement}\n${indent}\t\n${indent}\\end{${name}}`,
-    cursor: from + replacement.length + (latexEnvironmentTakesArguments(name) ? 0 : 1 + indent.length + 1),
+    insert: `${replacement}\n${indent}${unit}\n${indent}\\end{${name}}`,
+    cursor: from + replacement.length + (latexEnvironmentTakesArguments(name) ? 0 : 1 + indent.length + unit.length),
     reusesExistingEnd: false
   };
 }

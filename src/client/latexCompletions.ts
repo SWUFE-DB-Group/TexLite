@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import { Transaction } from "@codemirror/state";
+import { indentUnit } from "@codemirror/language";
 import { closeCompletion, currentCompletions, insertCompletionText, pickedCompletion, selectedCompletionIndex, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { EditorView } from "@codemirror/view";
 import type { LatexCompletionIndex, LatexCompletionItem } from "./types";
@@ -112,7 +113,7 @@ function environmentCompletion(entry: Completion, command: "begin" | "end"): Com
     ...entry,
     apply(view, completion, from, to) {
       const name = completion.label;
-      const plan = latexEnvironmentCompletionPlan(view.state.doc, from, to, name, command);
+      const plan = latexEnvironmentCompletionPlan(view.state.doc, from, to, name, command, view.state.facet(indentUnit));
       view.dispatch({
         changes: { from, to: plan.to, insert: plan.insert },
         selection: { anchor: plan.cursor },
@@ -181,6 +182,45 @@ export function enterAfterCompleteLatexCommand(view: EditorView): boolean {
   return false;
 }
 
+const TEX_SOURCE = /\.(?:tex|ltx|tikz|pgf|pdf_tex|inc)$/i;
+const BIBLIOGRAPHY = /\.bib$/i;
+const fileTypes: Readonly<Record<string, RegExp>> = {
+  input: TEX_SOURCE, include: TEX_SOURCE, subfile: TEX_SOURCE, import: TEX_SOURCE, subimport: TEX_SOURCE,
+  includegraphics: /\.(?:pdf|png|jpe?g|eps|mps|jbig2|jb2)$/i, includepdf: /\.pdf$/i, includesvg: /\.svg$/i,
+  bibliography: BIBLIOGRAPHY, addbibresource: BIBLIOGRAPHY
+};
+/** A name without an extension is how TeX sources often refer to these files. */
+const NO_EXTENSION = /(?:^|\/)[^./]+$/;
+
+function filesForCommand(options: Completion[], command: string, firstArgument: string | undefined): Completion[] {
+  const type = fileTypes[command];
+  const matching = type ? options.filter((option) => type.test(option.label) || NO_EXTENSION.test(option.label)) : options;
+  if (!firstArgument || (command !== "import" && command !== "subimport")) return matching;
+  // These take a directory, then a file named relative to it.
+  const base = firstArgument.trim().replace(/^\.\//, "").replace(/\/?$/, "/");
+  return base === "/" ? matching : matching.filter((option) => option.label.startsWith(base))
+    .map((option) => ({ ...option, label: option.label.slice(base.length) }));
+}
+
+const STANDARD_BIBLIOGRAPHY_STYLES = ["abbrv", "abbrvnat", "acm", "alpha", "apalike", "ieeetr", "plain", "plainnat", "siam", "unsrt", "unsrtnat"];
+
+function bibliographyStyles(files: readonly LatexCompletionItem[]): Completion[] {
+  const project = files.filter((file) => /\.bst$/i.test(file.label)).map((file) => file.label.replace(/\.bst$/i, ""));
+  return [...new Set([...project, ...STANDARD_BIBLIOGRAPHY_STYLES])].map((label) => ({ label, type: "text" }));
+}
+
+/** Commands that only mean something in math, offered first there and later in prose. */
+const MATH_COMMANDS = new Set([
+  ...fallbackCommandLabels.slice(fallbackCommandLabels.indexOf("\\displaystyle"), fallbackCommandLabels.indexOf("\\LaTeX")),
+  "\\frac", "\\dfrac", "\\tfrac", "\\sqrt", "\\binom", "\\mathbf", "\\mathrm", "\\mathit", "\\mathsf", "\\mathtt", "\\mathbb", "\\mathcal", "\\mathscr",
+  "\\boldsymbol", "\\hat", "\\widehat", "\\bar", "\\overline", "\\vec", "\\tilde", "\\widetilde", "\\dot", "\\ddot", "\\overset", "\\underset", "\\overbrace",
+  "\\underbrace", "\\left", "\\right", "\\middle", "\\operatorname", "\\pmod", "\\bmod", "\\zeta", "\\eta", "\\iota", "\\kappa", "\\nu", "\\xi", "\\chi", "\\psi"
+]);
+
+function rankedForRegion(option: Completion, region: string): Completion {
+  return MATH_COMMANDS.has(option.label) ? { ...option, boost: region === "math" ? 20 : -20 } : option;
+}
+
 export function latexCompletions(context: CompletionContext, t: TFunction, index: LatexCompletionIndex | null) {
   // Do not build the current-file symbol index during ordinary prose input.
   // CodeMirror reuses results while validFor matches the current token.
@@ -201,11 +241,12 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
   if (argument?.kind === "citation") return { from: argument.from, options: replacing(mergeCompletionItems(t, local().citations, bibtexCitationItems(index)), LIST_ITEM_TAIL), validFor: /^[^,{}%\s]*$/ };
   if (argument?.kind === "file") return {
     from: argument.from,
-    options: replacing(withoutCompletionDetails(mergeCompletionItems(t, local().files, index?.files ?? [])), argument.command === "bibliography" ? LIST_ITEM_TAIL : ARGUMENT_TAIL),
+    options: replacing(filesForCommand(withoutCompletionDetails(mergeCompletionItems(t, local().files, index?.files ?? [])), argument.command, argument.firstArgument), argument.command === "bibliography" ? LIST_ITEM_TAIL : ARGUMENT_TAIL),
     validFor: argument.command === "bibliography" ? /^[^,{}%\s]*$/ : /^[^{}]*$/
   };
   if (argument?.kind === "package") return { from: argument.from, options: replacing(mergeCompletionItems(t, local().packages, index?.packages ?? []), LIST_ITEM_TAIL), validFor: /^[^,{}%\s]*$/ };
   if (argument?.kind === "class") return { from: argument.from, options: replacing(mergeCompletionItems(t, local().classes, index?.classes ?? []), ARGUMENT_TAIL), validFor: /^[^{}]*$/ };
+  if (argument?.kind === "bibliographyStyle") return { from: argument.from, options: replacing(bibliographyStyles(index?.files ?? []), ARGUMENT_TAIL), validFor: /^[^{}]*$/ };
   const command = context.matchBefore(/\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/);
   if (command) {
     const from = Math.max(0, command.from - 256);
@@ -214,7 +255,7 @@ export function latexCompletions(context: CompletionContext, t: TFunction, index
   if (command || context.explicit) {
     const options = withoutCompletionDetails(mergeCompletionItems(t, local().commands, index?.commands ?? [], completionOptions()));
     const known = new Set(options.map((option) => option.label));
-    return { from: command?.from ?? context.pos, options: options.map((option) => replacingCommand(option, known)), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
+    return { from: command?.from ?? context.pos, options: options.map((option) => replacingCommand(rankedForRegion(option, cursor.region), known)), validFor: /^\\(?:[A-Za-z@0-9:_]*(?:\*)?|[,;!:])$/ };
   }
   return null;
 }

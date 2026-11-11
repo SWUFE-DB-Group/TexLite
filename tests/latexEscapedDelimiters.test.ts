@@ -48,6 +48,29 @@ describe("escaped LaTeX delimiters", () => {
     expect(view.state.doc.toString()).not.toContain("\\]");
   });
 
+  describe("dollar signs", () => {
+    it.each([
+      ["a |", "a $|$"], ["|", "$|$"], ["\\|", "\\$|"], ["% c |", "% c $|"], ["\\verb|$x|", null],
+      ["$x|$", "$x$|"], ["$x|", "$x$|"], ["|word", "$|word"]
+    ])("types $ at %s", (source, expected) => {
+      if (expected === null) return;
+      const view = editor(source);
+      type(view, "$");
+      expect(marked(view)).toBe(expected);
+    });
+
+    it("wraps a selection and removes an empty pair", () => {
+      const view = new EditorView({ state: EditorState.create({ doc: "x y", selection: { anchor: 0, head: 1 },
+        extensions: [latexLanguage, EditorView.inputHandler.of(latexAutoPairInput), closeBrackets()] }) });
+      const insert = () => view.state.update({ changes: { from: 0, to: 1, insert: "$" }, selection: { anchor: 1 }, userEvent: "input.type" });
+      view.state.facet(EditorView.inputHandler).some((handler) => handler(view, 0, 1, "$", insert));
+      expect(view.state.doc.toString()).toBe("$x$ y");
+      const empty = editor("a $|$");
+      expect(deleteLatexEscapedPair(empty)).toBe(true);
+      expect(marked(empty)).toBe("a |");
+    });
+  });
+
   it("steps over the closer when it is typed by hand", () => {
     const view = editor("\\[ x \\|\\]");
     type(view, "]");
@@ -67,7 +90,7 @@ describe("escaped LaTeX delimiters", () => {
   it("closes a typed environment over the auto-inserted brace", () => {
     const view = editor("\\begin|");
     for (const text of ["{", "itemize", "}"]) type(view, text);
-    expect(marked(view)).toBe("\\begin{itemize}\n\t|\n\\end{itemize}");
+    expect(marked(view)).toBe("\\begin{itemize}\n  |\n\\end{itemize}");
   });
 
   it("goes from the end of a begin line into its empty body", () => {

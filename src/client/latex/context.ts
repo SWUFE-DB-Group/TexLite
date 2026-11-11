@@ -7,13 +7,15 @@ import { maskLatexComments } from "../../shared/latexLiterals";
 import { findLatexCitationCompletion, findLatexLabelCompletion } from "../../shared/latexReferences";
 import { isLatexEscaped, readLatexBalancedArgument, skipLatexTrivia } from "../../shared/latexScanner";
 
-export type LatexArgumentKind = "environment" | "citation" | "label" | "file" | "package" | "class";
+export type LatexArgumentKind = "environment" | "citation" | "label" | "file" | "package" | "class" | "bibliographyStyle";
 export interface LatexCursorArgument {
   kind: LatexArgumentKind;
   command: string;
   commandFrom: number;
   from: number;
   query: string;
+  /** Contents of the first argument, for commands that complete their second. */
+  firstArgument?: string;
 }
 export type LatexCursorRegion = "text" | "math" | "comment" | "literal";
 export type LatexCursorContext =
@@ -34,6 +36,9 @@ const typedArguments: Readonly<Record<string, LatexArgumentKind>> = {
   PackageArgument: "package", DocumentClassArgument: "class", FilePathArgument: "file"
 };
 const commandToken = /^(?:CtrlSeq|Begin|End)$|CtrlSeq$/;
+const fileCommands = new Set(["input", "include", "subfile", "includegraphics", "bibliography", "addbibresource",
+  "includepdf", "includesvg", "lstinputlisting", "inputminted", "import", "subimport"]);
+const secondArgumentCommands = new Set(["inputminted", "import", "subimport"]);
 
 function contextTree(state: EditorState, position: number): Tree | null {
   const activeLanguage = state.facet(language);
@@ -99,7 +104,8 @@ function regionAt(state: EditorState, position: number, ancestors: readonly Synt
 
 function commandKind(command: string): LatexArgumentKind | null {
   if (command === "begin" || command === "end") return "environment";
-  if (["input", "include", "subfile", "includegraphics", "bibliography", "addbibresource"].includes(command)) return "file";
+  if (fileCommands.has(command)) return "file";
+  if (command === "bibliographystyle") return "bibliographyStyle";
   if (command === "usepackage" || command === "RequirePackage") return "package";
   if (command === "documentclass") return "class";
   return classifyLatexReferenceCommand(command)?.kind ?? null;
@@ -133,6 +139,18 @@ function unfinishedMandatoryArgument(source: string, start: number, options: boo
     if (value[cursor] === "{" || value[cursor] === "}") return null;
   }
   return index + 1;
+}
+
+/** The finished first argument, when the cursor has moved on to the one after it. */
+function completedFirstArgument(source: string, start: number): { to: number; content: string } | null {
+  let index = skipLatexTrivia(source, start);
+  while (source[index] === "[") {
+    const options = readLatexBalancedArgument(source, index, "[", "]");
+    if (!options) return null;
+    index = skipLatexTrivia(source, options.to);
+  }
+  const argument = readLatexBalancedArgument(source, index, "{", "}");
+  return argument ? { to: argument.to, content: source.slice(index + 1, argument.to - 1) } : null;
 }
 
 function typedArgumentAt(state: EditorState, position: number, ancestors: readonly SyntaxNode[]): LatexCursorArgument | null {
@@ -175,9 +193,11 @@ function argumentAt(state: EditorState, position: number, tree: Tree): LatexCurs
     else if (command.kind === "label") result = findLatexLabelCompletion(source);
     else {
       const tokenEnd = command.to - command.from + (source[command.to - command.from] === "*" ? 1 : 0);
-      const start = unfinishedMandatoryArgument(source, tokenEnd, command.kind !== "environment");
+      const first = secondArgumentCommands.has(command.command) ? completedFirstArgument(source, tokenEnd) : null;
+      const start = secondArgumentCommands.has(command.command) && !first
+        ? null : unfinishedMandatoryArgument(source, first?.to ?? tokenEnd, !first && command.kind !== "environment");
       result = start === null ? null : command.kind === "package" || command.command === "bibliography" ? listItem(source, start)
-        : { from: start, query: source.slice(start) };
+        : { from: start, query: source.slice(start), ...(first ? { firstArgument: first.content } : {}) };
     }
     if (result) return { ...result, from: result.from + command.from, kind: command.kind, command: command.command, commandFrom: command.from };
   }

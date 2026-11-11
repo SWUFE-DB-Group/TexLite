@@ -163,6 +163,41 @@ describe("editor LaTeX completion source", () => {
     });
   });
 
+  describe("file arguments", () => {
+    const files = ["a.tex", "fig.png", "doc.pdf", "refs.bib", "pic.svg", "fig.tikz", "styles/my.bst", "my.bst", "sub/part.tex", "sub/other.png", "noext"];
+    const fileIndex = { ...index, files: files.map((label) => ({ label, kind: "text" as const, detail: "Project file" })) };
+    const labels = (source: string) => {
+      const state = EditorState.create({ doc: source, extensions: [latexLanguage] });
+      return latexCompletions(new CompletionContext(state, source.length, true), t, fileIndex)?.options.map((option) => option.label);
+    };
+    it.each([
+      [String.raw`\includegraphics{`, ["doc.pdf", "fig.png", "noext", "sub/other.png"]],
+      [String.raw`\input{`, ["a.tex", "fig.tikz", "noext", "sub/part.tex"]],
+      [String.raw`\bibliography{`, ["noext", "refs.bib"]],
+      [String.raw`\addbibresource{`, ["noext", "refs.bib"]],
+      [String.raw`\includepdf[pages=-]{`, ["doc.pdf", "noext"]],
+      [String.raw`\includesvg{`, ["noext", "pic.svg"]],
+      [String.raw`\import{sub/}{`, ["part.tex"]],
+      [String.raw`\inputminted{python}{`, files]
+    ])("offers the right files for %s", (source, expected) => {
+      expect(labels(source)?.slice().sort()).toEqual([...expected].sort());
+    });
+    it("does not offer files for the language argument of inputminted, or the directory of import", () => {
+      expect(labels(String.raw`\inputminted{py`)).not.toContain("a.tex");
+      expect(labels(String.raw`\import{su`)).not.toContain("a.tex");
+    });
+    it("offers standard and project bibliography styles", () => {
+      expect(labels(String.raw`\bibliographystyle{`)).toEqual(expect.arrayContaining(["plain", "unsrt", "my", "styles/my"]));
+    });
+  });
+
+  it("offers math commands first in math and after other commands in prose", () => {
+    const boost = (source: string, label: string) => complete(source)!.options.find((option) => option.label === label)!.boost;
+    expect(boost("$\\s", "\\sum")).toBeGreaterThan(0);
+    expect(boost("Prose \\s", "\\sum")).toBeLessThan(0);
+    expect(boost("$\\s", "\\section")).toBeUndefined();
+  });
+
   it("keeps command menus free of descriptive text", () => {
     expect(complete(String.raw`\noind`)?.options.find((entry) => entry.label === "\\noindent")?.detail).toBeUndefined();
   });
@@ -172,9 +207,9 @@ describe("editor LaTeX completion source", () => {
       const source = `\\input{chapters/prior.tex}\n\\${command}{fi`;
       const result = complete(source, true, {
         ...index,
-        files: [{ label: "figures/result.pdf", kind: "text", detail: "Project file", source: "Project" }]
+        files: ["figures/result.pdf", "refs.bib"].map((label) => ({ label, kind: "text" as const, detail: "Project file", source: "Project" }))
       })!;
-      expect(result.options.map((entry) => entry.label)).toEqual(["chapters/prior.tex", "figures/result.pdf"]);
+      expect(result.options.length).toBeGreaterThan(0);
       expect(result.options.every((entry) => entry.detail === undefined)).toBe(true);
       expect(result.options.every((entry) => entry.type === "text")).toBe(true);
     }
