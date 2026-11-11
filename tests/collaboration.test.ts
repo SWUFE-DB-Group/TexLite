@@ -1110,6 +1110,28 @@ describe("project collaboration", () => {
       expect(peer.connected).toBe(true);
     } finally { peer.destroy(); }
   });
+  it("copies the live collaborative text, not an older file on disk", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Live copy" } });
+    const projectId = created.json().project.id as string;
+    const user = { id: adminId, username: "admin", name: "Administrator" };
+    const writer = await TestPeer.connect(app, projectId, adminCookie, user);
+    const observer = await TestPeer.connect(app, projectId, adminCookie, user);
+    try {
+      expect((await app.inject({ method: "POST", url: `/api/projects/${projectId}/file`, headers: { cookie: adminCookie },
+        payload: { path: "draft.tex", content: "Saved draft" } })).statusCode).toBe(201);
+      await waitFor(() => writer.doc.getText("source:draft.tex").toString() === "Saved draft");
+      writer.doc.getText("source:draft.tex").insert(0, "Unsaved ");
+      // The server room has the edit once another peer receives it.
+      await waitFor(() => observer.doc.getText("source:draft.tex").toString() === "Unsaved Saved draft");
+      const copied = await app.inject({ method: "POST", url: `/api/projects/${projectId}/file/copy`, headers: { cookie: adminCookie },
+        payload: { path: "draft.tex" } });
+      expect(copied.statusCode, copied.body).toBe(201);
+      expect(copied.json()).toMatchObject({ ok: true, path: "draft (copy).tex" });
+      expect(fs.readFileSync(path.join(config.projectsDir, projectId, "source", "draft (copy).tex"), "utf8")).toBe("Unsaved Saved draft");
+      await waitFor(() => observer.doc.getText("source:draft (copy).tex").toString() === "Unsaved Saved draft");
+      expect(writer.connected && observer.connected).toBe(true);
+    } finally { writer.destroy(); observer.destroy(); }
+  });
   it("applies suggestions as a range delta to two live peers without disconnecting or replacing surrounding CRDT items", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Live suggestion" } });
     const projectId = created.json().project.id as string;

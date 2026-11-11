@@ -1,6 +1,6 @@
 import { formatBytes } from "../formatBytes";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FolderOpen, Hash, ListTree, LoaderCircle, Move, Trash2, Upload, WandSparkles, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FilePlus2, FolderOpen, Hash, ListTree, LoaderCircle, Move, Trash2, Upload, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type AnimationEvent, type ChangeEvent, type DragEvent, type RefObject } from "react";
 import { Panel, type PanelImperativeHandle } from "react-resizable-panels";
 import type { FileEntry, Project } from "../types";
@@ -13,6 +13,7 @@ import { appPath } from "../basePath";
 import { WorkspaceMobileDrawer } from "./WorkspaceMobileDrawer";
 import { WorkspaceSidebarLayout } from "./WorkspaceSidebarLayout";
 import { FileTreeActionsMenu } from "./FileTreeActionsMenu";
+import { FileEntryActionsMenu } from "./FileEntryActionsMenu";
 import { captureDeletionHeight, FILE_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
 
 const fileKey = (entry: FileEntry) => entry.path;
@@ -74,6 +75,8 @@ export interface WorkspaceFilePanelProps {
   upload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   openFile: (entry: FileEntry) => void;
   movePathToFolder: (entry: FileEntry, destinationDirectory: string) => Promise<void>;
+  /** Duplicate a file beside itself as "name (copy).ext". */
+  copyPath: (entry: FileEntry) => Promise<void>;
   onFormatFile: () => void;
   onFormatSelection: () => void;
   jumpToSource: (path: string, line: number, column: number) => void;
@@ -88,7 +91,7 @@ export function WorkspaceFilePanel({
   editorFontSize, outline, sourceCursorStore, wordCountBusy, plainWordCount, canCountFull, hasSelection, hasFormatSelection, uploadInput,
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
   setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen, tikzGalleryEnabled, setTikzGalleryOpen,
-  setQuickOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, uploadFiles, refreshFiles, upload, openFile, movePathToFolder,
+  setQuickOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, uploadFiles, refreshFiles, upload, openFile, movePathToFolder, copyPath,
   onError, onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount, onProjectSearch
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
@@ -176,8 +179,9 @@ export function WorkspaceFilePanel({
               <button type="button" className="file-entry-main" draggable={!readOnly} onDragStart={(event) => { suppressClickUntil.current = Date.now() + 500; startPathDrag(event, entry, setDraggedEntry); }} onDragEnd={clearMoveDrag} onClick={() => { if (suppressClickUntil.current > Date.now()) { suppressClickUntil.current = 0; return; } openFile(entry); }}><FileTypeIcon path={entry.path} /><span>{name}</span>{configuredMainDocument && <small>{t("editor.currentMainShort")}</small>}</button>
               {showFileSizes && typeof entry.size === "number" && <span className="file-entry-size">{formatBytes(entry.size)}</span>}
               {!readOnly && <button type="button" className="file-entry-action" title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>}
-              <a className="file-entry-action" href={appPath(`/api/projects/${project.id}/file/raw?path=${encodeURIComponent(entry.path)}&download=1`)} download={name} draggable={false} title={t("editor.downloadResource")} aria-label={t("editor.downloadResource")} onClick={(event) => event.stopPropagation()}><Download size={13} /></a>
-              {!readOnly && canDelete && <button type="button" className="file-entry-action danger-text" title={t("editor.deletePath")} aria-label={t("editor.deletePath")} onClick={() => { setDeleteEntry(entry); setFileDialogError(""); }}><Trash2 size={13} /></button>}
+              <FileEntryActionsMenu name={name ?? entry.path} downloadUrl={appPath(`/api/projects/${project.id}/file/raw?path=${encodeURIComponent(entry.path)}&download=1`)}
+                onCopy={readOnly ? undefined : () => void copyPath(entry)}
+                onDelete={!readOnly && canDelete ? () => { setDeleteEntry(entry); setFileDialogError(""); } : undefined} />
             </div>;
           })}
         </div>

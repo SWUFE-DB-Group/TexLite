@@ -1025,7 +1025,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     fileDragActive, setFileDragActive,
     uploadConflict, setUploadConflict, uploadingFiles, uploadFeedback, dismissUploadFeedback,
     directoryEntries, visibleEntries,
-    createFile, addFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, removePath
+    createFile, addFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, copyPath, removePath
   } = useProjectFiles({
     projectId,
     site,
@@ -1562,7 +1562,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         onProjectSearch={() => setProjectSearchOpen(true)}
         setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed}
         onError={setError}
-        uploadFiles={uploadFiles} refreshFiles={() => { void loadFiles().catch((error) => setNotice(errorMessage(error))); }} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder}
+        uploadFiles={uploadFiles} refreshFiles={() => { void loadFiles().catch((error) => setNotice(errorMessage(error))); }} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder} copyPath={copyPath}
         onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
         jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} syncSourceToPdf={phone ? undefined : syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
       />}

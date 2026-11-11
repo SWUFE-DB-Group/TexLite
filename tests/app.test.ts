@@ -1059,6 +1059,47 @@ fs.writeFileSync(args.find((arg) => arg.startsWith("-outdir=")).slice(8) + "/arc
     }
   }, 10_000);
 
+  it("copies a file beside itself under a free (copy) name and refuses folders and readers", async () => {
+    const project = (await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Copies" } })).json().project;
+    const copy = (filePath: string, actor = cookie) => app.inject({ method: "POST", url: `/api/projects/${project.id}/file/copy`,
+      headers: { cookie: actor }, payload: { path: filePath } });
+    const source = (relative: string) => path.join(sourceRoot(config, project.id), relative);
+    await app.inject({ method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie },
+      payload: { path: "chapters/intro.tex", content: "Introduction\n" } });
+    await app.inject({ method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
+      payload: { path: "chapters/intro.tex", startOffset: 0, endOffset: 12, content: "Stays on the original" } });
+    const first = await copy("chapters/intro.tex");
+    expect(first.statusCode, first.body).toBe(201);
+    expect(first.json()).toEqual({ ok: true, path: "chapters/intro (copy).tex" });
+    expect((await copy("chapters/intro.tex")).json().path).toBe("chapters/intro (copy 2).tex");
+    expect(fs.readFileSync(source("chapters/intro (copy 2).tex"), "utf8")).toBe("Introduction\n");
+    const copiedComments = await app.inject({ method: "GET",
+      url: `/api/projects/${project.id}/comments?path=${encodeURIComponent("chapters/intro (copy).tex")}`, headers: { cookie } });
+    expect(copiedComments.json().comments).toEqual([]);
+
+    const image = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 255]);
+    fs.writeFileSync(source("figure.png"), image);
+    expect((await copy("figure.png")).json().path).toBe("figure (copy).png");
+    expect(fs.readFileSync(source("figure (copy).png"))).toEqual(image);
+    // Copying the main document leaves the configured main document alone.
+    expect((await copy("main.tex")).json().path).toBe("main (copy).tex");
+    expect((await app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } })).json().project.mainFile).toBe("main.tex");
+    const listed = (await app.inject({ method: "GET", url: `/api/projects/${project.id}/files`, headers: { cookie } })).json().files
+      .map((entry: { path: string }) => entry.path);
+    expect(listed).toEqual(expect.arrayContaining(["chapters/intro (copy).tex", "chapters/intro (copy 2).tex", "figure (copy).png", "main (copy).tex"]));
+
+    expect((await copy("chapters")).json()).toMatchObject({ code: "FILE_NOT_FOUND" });
+    expect((await copy("missing.tex")).statusCode).toBe(404);
+    expect((await copy("../outside.tex")).statusCode).toBe(400);
+    const reader = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username: "copy-reader", displayName: "Copy Reader", password: "reader-password" } });
+    await app.inject({ method: "PUT", url: `/api/projects/${project.id}/members/${reader.json().user.id}`, headers: { cookie }, payload: { permission: "read" } });
+    const readerLogin = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username: "copy-reader", password: "reader-password" } });
+    const refused = await copy("main.tex", sessionCookie(readerLogin.headers));
+    expect(refused.json()).toMatchObject({ code: "PROJECT_EDIT_FORBIDDEN" });
+    expect(fs.existsSync(source("main (copy 2).tex"))).toBe(false);
+  });
+
   it("creates folders and moves files and directories while preserving linked paths", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Organized" } });
     const project = created.json().project;

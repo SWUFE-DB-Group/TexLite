@@ -399,6 +399,17 @@ export function useProjectFiles({
     } catch (error) { onError(errorMessage(error)); }
   };
 
+  const copyPath = async (entry: FileEntry) => {
+    try {
+      // The server copies the flushed collaborative text; saving first also
+      // covers a local draft that has not reached the room yet.
+      if (dirty && !(await save())) return;
+      // The copy appears beside the original; the open file stays selected.
+      await api(`/api/projects/${projectId}/file/copy`, { method: "POST", body: JSON.stringify({ path: entry.path }) });
+      setFiles((await api<{ files: FileEntry[] }>(`/api/projects/${projectId}/files`)).files);
+    } catch (error) { onError(errorMessage(error)); }
+  };
+
   const removePath = async () => {
     if (!deleteEntry) return;
     setFileDialogError("");
@@ -448,7 +459,7 @@ export function useProjectFiles({
     fileDragActive, setFileDragActive,
     uploadConflict, setUploadConflict, uploadingFiles, uploadFeedback, dismissUploadFeedback,
     directoryEntries, visibleEntries,
-    createFile, addFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, removePath
+    createFile, addFile, createFolder, uploadFiles, upload, openFile, movePath, movePathToFolder, copyPath, removePath
   };
 }
 

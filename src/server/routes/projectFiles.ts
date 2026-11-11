@@ -371,6 +371,38 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     }, { preflight: () => { requireEditableProject(db, id, user); } });
   });
 
+  // Duplicate a file next to itself. The server chooses the name under the
+  // write lock, so two quick copies cannot race for the same "(copy)" name.
+  app.post("/api/projects/:id/file/copy", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY");
+    const project = accessibleProject(db, id, user);
+    if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN");
+    const body = request.body as { path?: unknown };
+    const source = safeRelativePath(typeof body.path === "string" ? body.path : "");
+    return await projectMutations.runWrite(id, () => {
+      assertNoSourceSymlinks(config, id);
+      // runWrite() has flushed live Yjs edits, so the copy has the text
+      // collaborators currently see rather than an older file on disk.
+      const sourceAbsolute = resolveSourcePath(config, id, source);
+      if (!fs.existsSync(sourceAbsolute) || !fs.statSync(sourceAbsolute).isFile()) {
+        return apiError(reply, 404, "FILE_NOT_FOUND", { path: source });
+      }
+      const destination = copiedFilePath(source, (candidate) => fs.existsSync(resolveSourcePath(config, id, candidate)));
+      const destinationAbsolute = resolveSourcePath(config, id, destination);
+      fs.copyFileSync(sourceAbsolute, destinationAbsolute, fs.constants.COPYFILE_EXCL);
+      touchProject(db, id, user.id);
+      const bytes = isCollaborativeTextFile(destination) && fs.statSync(destinationAbsolute).size <= maxCollaborativeFileBytes(config)
+        ? fs.readFileSync(destinationAbsolute) : null;
+      if (bytes !== null && isTextContent(bytes)) collaboration.updateFile(id, destination, bytes.toString("utf8"), user.id);
+      else collaboration.invalidateSourceTree(id, destination);
+      recordHistory(id, user.id, "file", [destination]);
+      return reply.code(201).send({ ok: true, path: destination });
+    }, { preflight: () => { requireEditableProject(db, id, user); } });
+  });
+
   app.put("/api/projects/:id/file", async (request, reply) => {
     const user = requireUser(request, reply, db);
     if (!user) return;
@@ -539,4 +571,20 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
       }
     }
   });
+}
+
+/**
+ * Name a copy beside its source: `main.tex` becomes `main (copy).tex`, then
+ * `main (copy 2).tex`. A leading dot is part of the name, not an extension.
+ */
+export function copiedFilePath(source: string, exists: (candidate: string) => boolean): string {
+  const slash = source.lastIndexOf("/");
+  const directory = slash < 0 ? "" : source.slice(0, slash + 1);
+  const name = source.slice(slash + 1);
+  const dot = name.lastIndexOf(".");
+  const [stem, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+  for (let attempt = 1; ; attempt += 1) {
+    const candidate = `${directory}${stem} (copy${attempt === 1 ? "" : ` ${attempt}`})${extension}`;
+    if (!exists(candidate)) return candidate;
+  }
 }
