@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
-import { AlertCircle, AlertTriangle, AlignLeft, BookMarked, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, FileCheck2, Keyboard, LoaderCircle, MessageCircleQuestion, Palette, PanelsTopLeft, RefreshCw, Settings, Sigma, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, AlignLeft, BookMarked, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, FileCheck2, FileCog, Keyboard, LoaderCircle, MessageCircleQuestion, Palette, PanelsTopLeft, PencilLine, RefreshCw, Settings, Sigma, SpellCheck, SpellCheck2, Terminal, Type, WrapText, X } from "lucide-react";
 import { api, isAbortError } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
@@ -237,7 +237,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         <label>{t("projectSettings.lineHeight")}<select value={appearancePreferences.lineHeight} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineHeight: Number(event.target.value) })}><option value={1.45}>{t("projectSettings.lineHeightCompact")}</option><option value={1.65}>{t("projectSettings.lineHeightNormal")}</option><option value={1.85}>{t("projectSettings.lineHeightRelaxed")}</option></select></label>
         <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.lineWrapping} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineWrapping: event.target.checked })} /><WrapText size={15} /><span>{t("projectSettings.lineWrapping")}</span></label>
       </SettingsGroup>
-      <SettingsGroup id="settings-group-editing" icon={<Keyboard size={15} aria-hidden />} title={t("projectSettings.groupEditing")}>
+      <SettingsGroup id="settings-group-editing" icon={<PencilLine size={15} aria-hidden />} title={t("projectSettings.groupEditing")}>
         <div className="editor-preference">
           <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.openFilesInTabs} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, openFilesInTabs: event.target.checked })} /><PanelsTopLeft size={15} /><span>{t("projectSettings.openFilesInTabs")}</span></label>
         </div>
@@ -245,7 +245,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
           <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.showTooltips} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, showTooltips: event.target.checked })} /><MessageCircleQuestion size={15} /><span>{t("projectSettings.showTooltips")}</span></label>
         </div>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><span>{t("projectSettings.vimMode")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><Keyboard size={15} /><span>{t("projectSettings.vimMode")}</span></label>
           <p className="field-hint">{t("projectSettings.vimModeDescription")} <a href="https://replit-codemirror-vim.mintlify.app/" target="_blank" rel="noreferrer">{t("projectSettings.vimHelp")}</a></p>
         </div>
       </SettingsGroup>
@@ -259,7 +259,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       </SettingsGroup>
       <SettingsGroup id="settings-group-writing" icon={<SpellCheck2 size={15} aria-hidden />} title={t("projectSettings.groupWriting")}>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><span>{t("projectSettings.spellCheck")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><SpellCheck size={15} /><span>{t("projectSettings.spellCheck")}</span></label>
           <p className="field-hint">{t("projectSettings.writingCheckDescription")} <a href="https://writewithharper.com/docs/integrations/language-server" target="_blank" rel="noreferrer">Harper</a></p>
           {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.writingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("chktex.noIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
         </div>
@@ -293,7 +293,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       <label>{t(rcEnabled && rcFiles.length > 0 && site.allowProjectLatexmkrc !== false ? "projectSettings.defaultEngine" : "projectSettings.engine")}<select disabled={!canManage || savingCompiler} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
       <div className="editor-preference compiler-check-option"><label className="editor-checkbox"><input type="checkbox" disabled={!canManage || savingCompiler} checked={chktexEnabled} onChange={(event) => setChktexEnabled(event.target.checked)} /><FileCheck2 size={15} /><span>{t("chktex.enabled")}</span></label><p className="field-hint">{t("chktex.description")} <a href="https://www.nongnu.org/chktex/" target="_blank" rel="noreferrer">ChkTeX</a></p></div>
       {rcFiles.length > 0 && <div className="editor-preference latexmkrc-setting">
-        <label className="editor-checkbox"><input type="checkbox" disabled={!canManage || savingCompiler || site.allowProjectLatexmkrc === false} checked={rcEnabled && site.allowProjectLatexmkrc !== false} onChange={(event) => setRcEnabled(event.target.checked)} /><span>{t("projectSettings.enableLatexmkrc")}</span></label>
+        <label className="editor-checkbox"><input type="checkbox" disabled={!canManage || savingCompiler || site.allowProjectLatexmkrc === false} checked={rcEnabled && site.allowProjectLatexmkrc !== false} onChange={(event) => setRcEnabled(event.target.checked)} /><FileCog size={15} /><span>{t("projectSettings.enableLatexmkrc")}</span></label>
         <p className="field-hint">{t("projectSettings.latexmkrcSource", { path: selectedRcPath })}</p>
         {site.allowProjectLatexmkrc === false ? <p className="field-hint">{t("projectSettings.latexmkrcUnavailable")}</p> : <p className="field-hint latexmkrc-warning"><AlertTriangle size={14} aria-hidden="true" /><span>{t("projectSettings.latexmkrcWarning")}</span></p>}
       </div>}
