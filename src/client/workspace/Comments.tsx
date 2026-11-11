@@ -186,7 +186,8 @@ export function CommentThread({
         <button type="button" className="comment-ask-agent" disabled={!onAskAgent} aria-label={t("agents.askAboutComment")}
           data-tooltip={t("agents.askAboutComment")} data-texlite-tooltip-always
           onClick={(event) => { event.stopPropagation(); if (onAskAgent) setAgentTaskNeeded(!onAskAgent()); }}><Sparkles size={15} aria-hidden /></button>
-        <button type="button" className="resolve" disabled={toggling || submittingForm || reviewBlocksResolution} aria-busy={toggling}
+        {/* The server refuses resolution changes from read-only members. */}
+        {canEditSource && <button type="button" className="resolve" disabled={toggling || submittingForm || reviewBlocksResolution} aria-busy={toggling}
           aria-label={t(comment.resolved ? "editor.reopen" : "editor.resolve")}
           data-tooltip={t(reviewBlocksResolution ? "suggestions.reviewBeforeResolve" : comment.resolved ? "editor.reopen" : "editor.resolve")} data-texlite-tooltip-always
           onClick={(event) => {
@@ -196,7 +197,7 @@ export function CommentThread({
             void onToggle().finally(() => setToggling(false));
           }}>
           {toggling ? <LoaderCircle className="spin" size={15} aria-hidden /> : comment.resolved ? <RotateCcw size={15} aria-hidden /> : <Check size={16} aria-hidden />}
-        </button>
+        </button>}
         {comment.authorId === currentUserId && !commentEditDraft?.open && <CommentActionsMenu kind="comment"
           disabled={submittingForm || toggling}
           onSuggest={projectOwnerId && !suggestionTarget && canAttachCommentSuggestion(comment, currentUserId) ? () => {

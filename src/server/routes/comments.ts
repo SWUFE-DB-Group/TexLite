@@ -9,7 +9,7 @@ import type { DatabaseConnection } from "../db.js";
 import { resolveSourcePath, safeRelativePath } from "../files.js";
 import { apiError, httpError } from "../http.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
-import { accessibleProject } from "../projects.js";
+import { accessibleProject, canEdit } from "../projects.js";
 import { isCollaborativeTextFile } from "../collaboration.js";
 import { attachSuggestion, suggestionReviewers, suggestionRow } from "../commentSuggestions.js";
 import { registerSuggestionRoutes } from "./commentSuggestions.js";
@@ -207,7 +207,8 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     const user = requireUser(request, reply, db);
     if (!user) return;
     const { id, commentId } = request.params as { id: string; commentId: string };
-    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    const project = accessibleProject(db, id, user);
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     const comment = db.prepare("SELECT author_id, resolved, content FROM comments WHERE id = ? AND project_id = ?")
       .get(commentId, id) as { author_id: string | null; resolved: number; content: string } | undefined;
     if (!comment) return apiError(reply, 404, "COMMENT_NOT_FOUND");
@@ -220,6 +221,9 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       changed = true;
     }
     if (typeof body.resolved === "boolean") {
+      // Read-only members may discuss, but closing or reopening a thread is a
+      // review decision for people who can change the project.
+      if (!canEdit(project)) return apiError(reply, 403, "COMMENT_RESOLVE_FORBIDDEN");
       if (body.resolved) {
         const suggestion = suggestionRow(db, id, commentId);
         if (suggestion?.status === "pending" && (suggestion.apply_update

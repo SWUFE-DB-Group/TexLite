@@ -175,7 +175,7 @@ describe("comment participant highlighting", () => {
     const reply = render({ currentUserId: "reader" });
     expect(reply).toContain('aria-label="' + i18n.t("editor.replyActions") + '"');
     expect(reply).not.toContain('aria-label="' + i18n.t("editor.commentActions") + '"');
-    const viewer = render();
+    const viewer = render({ canEditSource: true });
     expect(viewer).not.toContain("comment-actions-menu-trigger");
     expect(viewer).toContain('class="resolve"');
     expect(viewer).toContain('class="reply-action"');

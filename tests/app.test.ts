@@ -1997,7 +1997,7 @@ Second version.
     expect(allowed.statusCode).toBe(201);
   });
 
-  it("records the actual resolver, preserves repeated resolves, and clears metadata on reopen", async () => {
+  it("refuses resolution changes from readers, records the actual resolver, and clears metadata on reopen", async () => {
     const reader = await app.inject({
       method: "POST", url: "/api/admin/users", headers: { cookie },
       payload: { username: "resolution-reader", displayName: "Resolution Reader", password: "reader-password" }
@@ -2008,8 +2008,9 @@ Second version.
     const readerCookie = sessionCookie(login.headers);
     const project = (await app.inject({ method: "POST", url: "/api/projects", headers: { cookie },
       payload: { name: "Resolution attribution" } })).json().project as { id: string };
-    await app.inject({ method: "PUT", url: `/api/projects/${project.id}/members/${readerId}`, headers: { cookie },
-      payload: { permission: "read" } });
+    const setPermission = (permission: "read" | "edit") => app.inject({ method: "PUT",
+      url: `/api/projects/${project.id}/members/${readerId}`, headers: { cookie }, payload: { permission } });
+    await setPermission("read");
     const created = await app.inject({ method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie },
       payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "Please review." } });
     const commentId = created.json().comment.id as string;
@@ -2018,6 +2019,21 @@ Second version.
     const update = (resolved: boolean, actor = readerCookie) => app.inject({
       method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie: actor }, payload: { resolved }
     });
+    // A read-only member can neither resolve nor reopen, even their own thread.
+    const ownComment = (await app.inject({ method: "POST", url: `/api/projects/${project.id}/comments`, headers: { cookie: readerCookie },
+      payload: { path: "main.tex", startOffset: 0, endOffset: 0, content: "My own note." } })).json().comment.id as string;
+    for (const [target, payload] of [[commentId, { resolved: true }], [ownComment, { resolved: true, content: "Should not be saved." }]] as const) {
+      const refused = await app.inject({ method: "PATCH", url: `/api/projects/${project.id}/comments/${target}`,
+        headers: { cookie: readerCookie }, payload });
+      expect(refused.statusCode).toBe(403);
+      expect(refused.json().code).toBe("COMMENT_RESOLVE_FORBIDDEN");
+    }
+    expect((await update(true, cookie)).statusCode).toBe(200);
+    expect((await update(false)).statusCode).toBe(403);
+    expect((await update(false, cookie)).statusCode).toBe(200);
+    expect(db.prepare("SELECT content, resolved FROM comments WHERE id = ?").get(ownComment)).toEqual({ content: "My own note.", resolved: 0 });
+    await app.inject({ method: "DELETE", url: `/api/projects/${project.id}/comments/${ownComment}`, headers: { cookie: readerCookie } });
+    await setPermission("edit");
     const load = async (scope = "path=main.tex") => (await app.inject({
       method: "GET", url: `/api/projects/${project.id}/comments?${scope}`, headers: { cookie }
     })).json().comments[0];

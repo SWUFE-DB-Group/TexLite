@@ -35,6 +35,7 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   CLIENT_UPDATE_REQUIRED: "目前頁面版本過舊。請先儲存修改，再重新整理頁面，以繼續寫作檢查。",
   COMMENT_DELETE_FORBIDDEN: "只能刪除自己的批註。",
   COMMENT_EDIT_FORBIDDEN: "只能編輯自己的批註。",
+  COMMENT_RESOLVE_FORBIDDEN: "只有可以編輯此專案的成員才能解決或重新開啟批註。",
   COMMENT_FILE_NOT_FOUND: "批註對應的檔案不存在。",
   COMMENT_NOT_FOUND: "批註不存在。",
   COMMENT_RANGE_INVALID: "批註的原始碼範圍無效。",

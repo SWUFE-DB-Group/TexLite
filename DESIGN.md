@@ -471,8 +471,11 @@ subscription cleanup without changing or deleting the draft.
 
 Read permission is intentionally different from edit permission: read-only
 members cannot modify source files, but can view the project and add or reply
-to source comments. Comments are anchored to source offsets and selected text,
-can be resolved, edited, deleted, and replied to. If an author is removed,
+to source comments. Only owners and edit members can resolve or reopen a
+discussion, including one a read-only member started; the server refuses the
+change with `COMMENT_RESOLVE_FORBIDDEN` and the workspace hides the button.
+Authors edit and delete their own comments. Comments are anchored to source
+offsets and selected text. If an author is removed,
 the record remains visible as “Deleted User”.
 
 The workspace Share button shows a superscript count of explicitly shared

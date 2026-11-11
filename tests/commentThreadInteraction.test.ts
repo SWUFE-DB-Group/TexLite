@@ -36,7 +36,7 @@ beforeEach(async () => {
   document.body.append(host);
   root = createRoot(host);
   props = {
-    projectId: "project", comment, currentUserId: "viewer", draftStore: new CommentDraftStore(),
+    projectId: "project", comment, canEditSource: true, currentUserId: "viewer", draftStore: new CommentDraftStore(),
     onFocus: vi.fn(), onActivate: vi.fn(), onReplyExpansionChange: vi.fn(), onToggle: vi.fn(async () => {}),
     onMarkMentionRead: async () => true, onReply: async () => true, onEdit: async () => true,
     onDelete: async () => true, onEditReply: async () => true, onDeleteReply: async () => true
@@ -56,6 +56,15 @@ describe("comment reading and actions", () => {
     await render();
     expect(host.querySelectorAll(".comment-avatar .lucide-user-x")).toHaveLength(2);
     expect([...host.querySelectorAll(".comment-author strong")].map(name => name.textContent)).toEqual(["Deleted User", "Deleted User"]);
+  });
+
+  it("offers read-only members no resolve or reopen button", async () => {
+    props.canEditSource = false;
+    await render();
+    expect(host.querySelector(".resolve")).toBeNull();
+    props.comment = { ...comment, resolved: true };
+    await render();
+    expect(host.querySelector(".resolve")).toBeNull();
   });
 
   it("allows resolving an unavailable review, still blocking available or applying suggestions and permitting reopen", async () => {

@@ -58,10 +58,10 @@ beforeEach(async () => {
 afterEach(async () => { vi.restoreAllMocks(); await app?.close(); db?.close(); fs.rmSync(root, { recursive: true, force: true }); });
 
 describe("comment suggestion workflow", () => {
-  it.each(["deleted", "disabled", "removed", "read-only"])("lets another project reader resolve a pending suggestion when its reviewer is %s", async reason => {
+  it.each(["deleted", "disabled", "removed", "read-only"])("lets another project writer resolve a pending suggestion when its reviewer is %s", async reason => {
     const comment = await suggest("writer");
     const endpoint = `/api/projects/:project/comments/${comment.id}`;
-    const blocked = await request("reader", "PATCH", endpoint, { resolved: true });
+    const blocked = await request("other", "PATCH", endpoint, { resolved: true });
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().code).toBe("SUGGESTION_PENDING");
     if (reason === "deleted") db.prepare("DELETE FROM users WHERE id = 'writer'").run();
@@ -69,9 +69,10 @@ describe("comment suggestion workflow", () => {
     if (reason === "removed") db.prepare("DELETE FROM project_members WHERE user_id = 'writer'").run();
     if (reason === "read-only") db.prepare("UPDATE project_members SET permission = 'read' WHERE user_id = 'writer'").run();
     expect((await comments())[0].suggestion?.reviewerAvailable).toBe(false);
-    const resolved = await request("reader", "PATCH", endpoint, { resolved: true });
+    expect((await request("reader", "PATCH", endpoint, { resolved: true })).statusCode).toBe(403);
+    const resolved = await request("other", "PATCH", endpoint, { resolved: true });
     expect(resolved.statusCode, resolved.body).toBe(200);
-    expect((await comments())[0]).toMatchObject({ resolved: true, resolvedById: "reader", suggestion: { status: "pending" } });
+    expect((await comments())[0]).toMatchObject({ resolved: true, resolvedById: "other", suggestion: { status: "pending" } });
     expect(source()).toBe(initial);
     expect((await request("owner", "PATCH", endpoint, { resolved: false })).statusCode).toBe(200);
     expect((await comments())[0].resolved).toBe(false);
@@ -83,7 +84,7 @@ describe("comment suggestion workflow", () => {
     const comment = await suggest("writer");
     db.prepare("DELETE FROM users WHERE id = 'writer'").run();
     db.prepare("UPDATE comment_suggestions SET apply_update = ? WHERE comment_id = ?").run(Buffer.from([0, 0]), comment.id);
-    const result = await request("reader", "PATCH", `/api/projects/:project/comments/${comment.id}`, { resolved: true });
+    const result = await request("other", "PATCH", `/api/projects/:project/comments/${comment.id}`, { resolved: true });
     expect(result.statusCode).toBe(409);
     expect(result.json().code).toBe("SUGGESTION_PENDING");
     db.prepare("UPDATE comment_suggestions SET apply_update = NULL WHERE comment_id = ?").run(comment.id);
@@ -165,7 +166,7 @@ describe("comment suggestion workflow", () => {
     expect(mentions).toHaveLength(1); expect(mentions[0]).toMatchObject({ kind: "review", commentId: comment.id });
     await request("owner", "POST", `/api/projects/:project/mentions/${mentions[0].id}/read`);
     expect((await comments())[0].suggestion?.status).toBe("pending");
-    expect((await request("reader", "PATCH", `/api/projects/:project/comments/${comment.id}`, { resolved: true })).statusCode).toBe(409);
+    expect((await request("other", "PATCH", `/api/projects/:project/comments/${comment.id}`, { resolved: true })).statusCode).toBe(409);
     expect((await review(comment, "accept", "reader")).statusCode).toBe(403);
     expect((await review(comment, "accept", "writer")).statusCode).toBe(403);
   });
@@ -204,7 +205,7 @@ describe("comment suggestion workflow", () => {
     expect(edits).toEqual([{ author_id: "writer" }]);
     expect((await request("writer", "GET", "/api/projects/:project/mentions?unread=1")).json().mentions).toEqual([]);
     expect((await review(comment, "reject", "writer")).statusCode).toBe(409);
-    expect((await request("reader", "PATCH", `/api/projects/:project/comments/${comment.id}`, { resolved: true })).statusCode).toBe(200);
+    expect((await request("other", "PATCH", `/api/projects/:project/comments/${comment.id}`, { resolved: true })).statusCode).toBe(200);
     expect((await request("reader", "DELETE", `/api/projects/:project/comments/${comment.id}`)).statusCode).toBe(200);
     expect(source()).toBe(initial.replace("prove", "suggest"));
   });

@@ -1712,6 +1712,7 @@
       "COMMENT_NOT_FOUND": "批註不存在。",
       "COMMENT_EDIT_FORBIDDEN": "只能編輯自己的批註。",
       "COMMENT_DELETE_FORBIDDEN": "只能刪除自己的批註。",
+      "COMMENT_RESOLVE_FORBIDDEN": "只有可以編輯此專案的成員才能解決或重新開啟批註。",
       "REPLY_NOT_FOUND": "回覆不存在。",
       "REPLY_EDIT_FORBIDDEN": "只能編輯自己的回覆。",
       "REPLY_DELETE_FORBIDDEN": "只能刪除自己的回覆。",
