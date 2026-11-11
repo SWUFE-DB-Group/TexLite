@@ -1871,28 +1871,33 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-tag-management-fields .tag-management-create { margin-bottom: 14px; }
 .citation-entry-list { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow: auto; padding: 1px; }
 .citation-entry-item { display: flex; flex-direction: column; gap: 6px; }
-.citation-entry-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--ui-border, #dce3de); border-radius: 8px; background: var(--ui-surface, #fbfcfb); }
+.citation-entry-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--ui-border, #dce3de) 75%, transparent); border-radius: 8px; background: var(--ui-surface, #fbfcfb); transition: border-color 120ms; }
+.citation-entry-card:not(.selected):not(.already-in-file):hover { border-color: var(--ui-border, #c8d2cb); }
 .citation-entry-card.already-in-file { border-color: var(--ui-border, #d7ddd8); background: var(--ui-subtle, #f0f2f0); filter: grayscale(.35); }
 .citation-entry-card.already-in-file .citation-entry-heading code, .citation-entry-card.already-in-file .citation-entry-main > strong, .citation-entry-card.already-in-file .citation-entry-main > p { color: var(--ui-muted, #7c867f); }
-.citation-entry-card.selected { position: relative; z-index: 1; border-color: var(--ui-accent-border, #70a982); background: var(--ui-hover, #f0f8f2); box-shadow: 0 0 0 2px #2f7a5824, 0 6px 16px #244c3520; }
+.citation-entry-card.selected { position: relative; z-index: 1; border-color: var(--ui-accent-border, #70a982); background: var(--ui-accent-bg, #f0f8f2); box-shadow: 0 0 0 1px var(--ui-accent-border, #70a982); }
 .citation-entry-card.selected .citation-entry-heading code { color: var(--ui-accent, #0f633d); }
 .citation-entry-main { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 3px; }
 .citation-entry-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .citation-entry-heading code { color: var(--ui-accent, #176b44); font: 650 11px/1.3 "SFMono-Regular", Consolas, monospace; }
 .citation-entry-heading > span { color: var(--ui-muted, #859189); font-size: 10px; }
-.citation-entry-heading > .citation-entry-venue { max-width: 22rem; overflow: hidden; border-radius: 999px; padding: 2px 6px; background: var(--ui-subtle, #edf0ff); color: var(--ui-info, #4b5ca8); font-size: 9px; font-style: italic; font-synthesis: style; text-overflow: ellipsis; white-space: nowrap; }
+.citation-entry-heading > .citation-entry-venue { max-width: 22rem; overflow: hidden; padding-right: .2em; color: var(--ui-muted, #78857c); font-size: 10px; font-style: italic; font-synthesis: style; text-overflow: ellipsis; white-space: nowrap; }
+/* The venue is plain text after the entry type, not a second badge. */
+.citation-entry-heading > .citation-entry-venue::before { content: "·"; margin-right: 6px; font-style: normal; }
 .citation-entry-heading em { display: inline-flex; align-items: center; gap: 3px; border-radius: 999px; padding: 2px 6px; background: var(--ui-subtle, #e8f2eb); color: var(--ui-accent, #26704a); font-size: 9px; font-style: normal; }
 .citation-entry-heading em.private { background: var(--ui-subtle, #edf0ee); color: var(--ui-muted, #69756d); }
 .citation-entry-main > strong { overflow: hidden; color: var(--ui-text, #2b3b31); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .citation-entry-main > p { margin: 0; overflow: hidden; color: var(--ui-muted, #718078); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .citation-entry-tags { margin-top: 3px; }
 .citation-entry-tags > .tag-marquee-track { gap: 4px; }
-.citation-tag-pill { display: inline-flex; align-items: center; gap: 4px; border: 1px solid color-mix(in srgb, var(--tag-color) 35%, transparent); border-radius: 999px; padding: 2px 6px; background: color-mix(in srgb, var(--tag-color) 12%, var(--ui-tag-base, white)); color: var(--ui-text, #526158); font-size: 9px; }
-.citation-tag-dot { width: 7px; height: 7px; flex: none; display: inline-block; border-radius: 50%; background: var(--tag-color); }
+/* Tags carry their colour in the dot alone, as in the tag filters. */
+.citation-tag-pill { display: inline-flex; align-items: center; gap: 4px; border: 1px solid color-mix(in srgb, var(--ui-border, #d5ddd7) 85%, transparent); border-radius: 999px; padding: 1px 7px 1px 6px; background: transparent; color: var(--ui-muted, #5f6e64); font-size: 10px; line-height: 1.5; }
+.citation-tag-dot { width: 6px; height: 6px; flex: none; display: inline-block; border-radius: 50%; background: var(--tag-color); }
 .citation-tag-filters .citation-tag-dot { background: var(--tag-color); }
 .citation-entry-actions { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
-.citation-entry-actions button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ui-border, #cbd5ce); border-radius: 6px; padding: 6px 8px; background: var(--ui-surface, white); color: var(--ui-muted, #52685a); font-size: 10px; white-space: nowrap; }
-.citation-entry-actions button:hover:not(:disabled) { border-color: var(--ui-border, #8eaa98); background: var(--ui-hover, #edf4ef); color: var(--ui-accent, #176b44); }
+/* Entry actions stay quiet until pointed at, so a long list is not a column of frames. */
+.citation-entry-actions button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid transparent; border-radius: 6px; padding: 6px 8px; background: transparent; color: var(--ui-muted, #5d6c62); font-size: 10px; white-space: nowrap; }
+.citation-entry-actions button:hover:not(:disabled), .citation-entry-actions button[data-state="open"] { border-color: var(--ui-border, #cbd5ce); background: var(--ui-hover, #f0f4f1); color: var(--ui-text, #2b3b31); }
 .citation-library-empty { min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: var(--ui-muted, #7b887f); text-align: center; }
 .citation-library-empty strong { color: var(--ui-text, #526158); font-size: 13px; }
 .citation-library-empty span { max-width: 360px; font-size: 11px; line-height: 1.45; }
@@ -1989,7 +1994,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .citation-entry-actions button.citation-icon-action { width: 32px; height: 32px; min-height: 32px; flex: none; justify-content: center; padding: 0; gap: 0; }
 .citation-entry-controls { display: inline-flex; align-items: center; gap: 5px; }
 .citation-entry-actions button.citation-copy-button { font-size: 11px; }
-.citation-entry-actions .citation-copy-button.is-copied > svg { color: var(--ui-info, #2563b4); }
+.citation-entry-actions .citation-copy-button.is-copied > svg { color: var(--ui-accent, #176b44); }
 .citation-entry-actions .citation-copy-button.is-error { color: var(--ui-danger, #a7312a); }
 .citation-entry-menu { z-index: 110; min-width: 168px; max-height: var(--radix-dropdown-menu-content-available-height); overflow: auto; }
 .citation-library-page .citation-library-pagination { gap: 10px; margin-top: 10px; font-size: 12px; }
