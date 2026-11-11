@@ -2,7 +2,7 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api } from "../src/client/api";
+import { ApiError, api } from "../src/client/api";
 import { HistoryDialog } from "../src/client/HistoryDialog";
 import { SelectionHistoryDialog } from "../src/client/SelectionHistoryDialog";
 import type { HistoryVersion, Project } from "../src/client/types";
@@ -70,6 +70,31 @@ describe("history author identities", () => {
     expect(api).toHaveBeenCalledTimes(requests);
   });
 
+  it("shows snapshots saved while the dialog is open and reloads a selected snapshot that grew", async () => {
+    vi.useFakeTimers();
+    try {
+      const grown = { ...version, snapshotHash: "grown", changedPaths: ["main.tex", "refs.bib"] };
+      const newer = { ...version, id: "newer", createdAt: "2026-01-01T12:05:00Z", reason: "file" as const };
+      const detail = (snapshot: HistoryVersion) => ({ version: snapshot, settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null },
+        files: [{ path: "main.tex", size: 3 }, { path: "refs.bib", size: 3 }] });
+      vi.mocked(api).mockImplementation(async (url: string) => {
+        if (url.includes("/history?")) return (vi.mocked(api).mock.calls.filter(([call]) => String(call).includes("/history?")).length > 1
+          ? { versions: [newer, grown], stats: null, nextCursor: null }
+          : { versions: [version], stats: null, nextCursor: null }) as never;
+        if (url.includes("/file?")) return { path: "main.tex", historical: "New", comparison: "Old", against: "__previous__", previousVersion: null } as never;
+        return detail(vi.mocked(api).mock.calls.filter(([call]) => String(call).endsWith("/history/snapshot")).length > 1 ? grown : version) as never;
+      });
+      await act(async () => root.render(createElement(HistoryDialog, { open: true, project, onOpenChange: () => {}, onBeforeMutation: async () => true })));
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(host.querySelectorAll(".history-timeline > button")).toHaveLength(1);
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_100); });
+      expect(host.querySelectorAll(".history-timeline > button")).toHaveLength(2);
+      // The selection stays on the snapshot the user was reading, now with its new files.
+      expect(host.querySelector(".history-timeline > button.active")?.textContent).not.toContain(i18n.t("history.reasons.file"));
+      expect([...host.querySelectorAll(".history-file-list button")].map((node) => node.textContent)).toEqual(["main.tex", "refs.bib"]);
+    } finally { vi.useRealTimers(); }
+  });
+
   it.each([0, 2])("keeps the compact edit-history clear action owner-only and disabled for an empty history (%i)", async (count) => {
     vi.mocked(api)
       .mockResolvedValueOnce({ segmentCount: count, payloadBytes: 1024, maxStorageBytes: 32 * 1048576 })
@@ -110,6 +135,57 @@ describe("history author identities", () => {
     expect(authors[0].hasAttribute("data-texlite-tooltip-always")).toBe(true);
     expect(host.textContent).not.toContain("@admin");
     expect(host.querySelector(".selection-history-clear")).toBeNull();
+  });
+
+  it("loads older edits after the shown ones and keeps the comparison chain joined", async () => {
+    await i18n.changeLanguage("en");
+    const entry = (id: string, content: string) => ({ id, filePath: "main.tex", createdAt: version.createdAt, updatedAt: version.createdAt,
+      authors: [version.author], content, contentTruncated: false });
+    vi.mocked(api)
+      .mockResolvedValueOnce({ entries: [entry("e3", "New"), entry("e2", "Mid")], baseline: { content: "Old", contentTruncated: false }, chainComplete: true, hasMore: true })
+      .mockResolvedValueOnce({ entries: [entry("e1", "Old")], baseline: { content: "First", contentTruncated: false }, chainComplete: false, hasMore: false });
+    await act(async () => root.render(createElement(SelectionHistoryDialog, {
+      open: true, project, filePath: "main.tex", selection: { selectedText: "New", startOffset: 0, endOffset: 3 },
+      currentSource: "New", onOpenChange: () => {}
+    })));
+    const more = host.querySelector<HTMLButtonElement>(".selection-history-load-more button")!;
+    expect(more.textContent).toBe("Load older edits");
+    await act(async () => more.click());
+    expect(new URL(String(vi.mocked(api).mock.calls[1]![0]), "http://x").searchParams.get("offset")).toBe("2");
+    expect([...host.querySelectorAll(".selection-history-content pre")].map((node) => node.textContent)).toEqual(["New", "Mid", "Old"]);
+    expect(host.querySelector(".selection-history-load-more")).toBeNull();
+    expect(host.querySelector(".selection-history-boundary")?.textContent).toBe(i18n.t("selectionHistory.boundary"));
+  });
+
+  it("asks once more when the server has not yet received the edits made just before opening", async () => {
+    vi.useFakeTimers();
+    try {
+      const changed = new ApiError("changed", 409, "SELECTION_HISTORY_SOURCE_CHANGED");
+      vi.mocked(api)
+        .mockRejectedValueOnce(changed)
+        .mockResolvedValueOnce({ entries: [], baseline: null, chainComplete: true, hasMore: false });
+      await act(async () => root.render(createElement(SelectionHistoryDialog, {
+        open: true, project, filePath: "main.tex", selection: { selectedText: "New", startOffset: 0, endOffset: 3 },
+        currentSource: "New", onOpenChange: () => {}
+      })));
+      expect(host.querySelector(".selection-history-message")).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+      expect(api).toHaveBeenCalledTimes(2);
+      expect(host.querySelector(".selection-history-message")).toBeNull();
+      expect(host.querySelector(".selection-history-empty")).not.toBeNull();
+
+      // A second conflict means the source really changed, so it is shown.
+      await act(async () => root.unmount());
+      root = createRoot(host);
+      vi.mocked(api).mockReset().mockRejectedValue(changed);
+      await act(async () => root.render(createElement(SelectionHistoryDialog, {
+        open: true, project, filePath: "main.tex", selection: { selectedText: "New", startOffset: 0, endOffset: 3 },
+        currentSource: "New", onOpenChange: () => {}
+      })));
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+      expect(api).toHaveBeenCalledTimes(2);
+      expect(host.querySelector(".selection-history-message")?.textContent).toBe("changed");
+    } finally { vi.useRealTimers(); }
   });
 
   it("adds Coding Agent after the authors of an edit-history entry that includes agent edits", async () => {

@@ -84,6 +84,8 @@ const MAX_AGENT_CHANGE_CHAIN_SEGMENTS = 2_000;
 /** Files whose mapped agent changes stay in memory between requests. */
 const MAX_CACHED_AGENT_CHANGE_FILES = 64;
 const DEFAULT_RESULT_LIMIT = 60;
+/** Entries a "load older" request may skip; the walk itself is bounded by retention. */
+export const MAX_SELECTION_HISTORY_OFFSET = 10_000;
 /** Edits separated by at most this pause belong to one displayed entry. */
 const EDIT_SESSION_GAP_MS = 5 * 60 * 1_000;
 /** A long continuous session is still split, so earlier states stay visible. */
@@ -186,27 +188,28 @@ export class ProjectEditHistoryService {
 
   /** Keep the newest contiguous suffix within both record and payload limits. */
   private prune(projectId: string): void {
-    const rows = this.db.prepare(`SELECT id, file_path, after_hash, updated_at, steps_bytes
+    // This runs on every saved edit batch. Removing the oldest records until
+    // both limits hold keeps exactly that suffix, and reads only the records
+    // being removed instead of sorting the project's whole history.
+    const totals = this.db.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(MAX(steps_bytes, 0)), 0) AS bytes
+      FROM project_edit_segments WHERE project_id = ?`).get(projectId) as { count: number; bytes: number };
+    let excessCount = totals.count - this.maxSegments;
+    let excessBytes = totals.bytes - this.maxStorageBytes;
+    if (excessCount <= 0 && excessBytes <= 0) return;
+    const discarded: SegmentStorageRow[] = [];
+    for (const row of this.db.prepare(`SELECT id, file_path, after_hash, updated_at, steps_bytes
       FROM project_edit_segments WHERE project_id = ?
-      ORDER BY updated_at DESC, rowid DESC`).all(projectId) as SegmentStorageRow[];
-    let retainedBytes = 0;
-    let retainedCount = 0;
-    let firstDiscard = rows.length;
-    for (let index = 0; index < rows.length; index += 1) {
-      const size = Math.max(0, Number(rows[index]!.steps_bytes) || 0);
-      if (retainedCount >= this.maxSegments || retainedBytes + size > this.maxStorageBytes) {
-        firstDiscard = index;
-        break;
-      }
-      retainedBytes += size;
-      retainedCount += 1;
+      ORDER BY updated_at ASC, rowid ASC`).iterate(projectId) as IterableIterator<SegmentStorageRow>) {
+      if (excessCount <= 0 && excessBytes <= 0) break;
+      discarded.push(row);
+      excessCount -= 1;
+      excessBytes -= Math.max(0, Number(row.steps_bytes) || 0);
     }
-    if (firstDiscard === rows.length) return;
     const remove = this.db.prepare("DELETE FROM project_edit_segments WHERE id = ?");
     const boundaryFiles = new Set<string>();
-    for (const row of rows.slice(firstDiscard)) {
-      // Rows are newest first. The first discarded row for a source file is
-      // precisely where a backward selection map must stop.
+    // The newest removed record of a source file is precisely where a
+    // backward selection map must stop.
+    for (const row of [...discarded].reverse()) {
       if (!boundaryFiles.has(row.file_path)) {
         boundaryFiles.add(row.file_path);
         this.recordRetentionBoundary(projectId, row.file_path, row.after_hash, row.updated_at);
@@ -228,7 +231,13 @@ export class ProjectEditHistoryService {
     currentSource: string,
     startInput: number,
     endInput: number,
-    resultLimit = DEFAULT_RESULT_LIMIT
+    resultLimit = DEFAULT_RESULT_LIMIT,
+    /**
+     * Entries the caller already shows. The passage can only be reconstructed
+     * by walking back from the current source, so a later page walks again
+     * and returns the entries after these.
+     */
+    offsetInput = 0
   ): SelectionHistoryResult {
     const filePath = safeRelativePath(filePathInput);
     const start = clamp(Math.min(startInput, endInput), 0, currentSource.length);
@@ -253,7 +262,8 @@ export class ProjectEditHistoryService {
     let chainComplete = true;
     let exhaustedRows = true;
     let baseline: SelectionHistoryResult["baseline"] = null;
-    const limit = clamp(resultLimit, 1, DEFAULT_RESULT_LIMIT);
+    const offset = clamp(offsetInput, 0, MAX_SELECTION_HISTORY_OFFSET);
+    const limit = offset + clamp(resultLimit, 1, DEFAULT_RESULT_LIMIT);
 
     for (const row of rows) {
       // A direct file replacement, restoration, import, or retained-history
@@ -317,7 +327,7 @@ export class ProjectEditHistoryService {
       const preview = previewPassage(passage.exact ? passage.text : null);
       baseline = { content: preview.text, contentTruncated: preview.truncated };
     }
-    return { entries, baseline, hasMore: !exhaustedRows, chainComplete };
+    return { entries: entries.slice(offset), baseline, hasMore: !exhaustedRows, chainComplete };
   }
 
   /**

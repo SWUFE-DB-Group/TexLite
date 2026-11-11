@@ -572,7 +572,7 @@
     "storageUsage_one": "Edit history: {{used}} / {{limit}} MiB · {{count}} segment", "storageUsage_other": "Edit history: {{used}} / {{limit}} MiB · {{count}} segments",
     "storageDescription": "Edit history and project snapshots have separate storage limits.",
     "clearAll": "Clear project edit history", "clearDescription": "Delete edit history for every file in this project? Source files and recovery snapshots will remain. New edits will continue to be recorded. This cannot be undone.",
-    "limited_one": "Showing the latest {{count}} editing window. Older edits are not displayed.", "limited_other": "Showing the latest {{count}} editing windows. Older edits are not displayed.", "sourceChanged": "The source changed. Wait for synchronization, then select the passage and open its history again.",
+    "loadOlder": "Load older edits", "sourceChanged": "The source changed. Wait for synchronization, then select the passage and open its history again.",
     "title": "Selection history", "description_one": "Editing windows affecting {{path}} · {{count}} selected character.", "description_other": "Editing windows affecting {{path}} · {{count}} selected characters.",
     "emptyTitle": "No saved edits for this selection", "emptyDescription": "Continue editing and saving to build its edit history.",
     "boundary": "This selection's history begins after a file replacement, restore, or older-record retention boundary.",

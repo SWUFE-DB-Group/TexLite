@@ -563,7 +563,7 @@
     "storageUsage_one": "选区历史：{{used}} / {{limit}} MiB · {{count}} 个片段", "storageUsage_other": "选区历史：{{used}} / {{limit}} MiB · {{count}} 个片段",
     "storageDescription": "编辑历史与项目快照的存储限额独立。",
     "clearAll": "清空项目选区历史", "clearDescription": "删除本项目所有文件的修改记录？源码和项目快照将保留，后续修改仍会继续记录。此操作不可撤销。",
-    "limited_one": "仅显示最近 {{count}} 个编辑窗口，更早的记录未展示。", "limited_other": "仅显示最近 {{count}} 个编辑窗口，更早的记录未展示。", "sourceChanged": "源码已发生变化。请等待同步完成，重新选择文本后再打开历史。",
+    "loadOlder": "加载更早的编辑", "sourceChanged": "源码已发生变化。请等待同步完成，重新选择文本后再打开历史。",
     "title": "选区历史", "description_one": "{{path}} 中所选 {{count}} 个字符的编辑记录。", "description_other": "{{path}} 中所选 {{count}} 个字符的编辑记录。",
     "emptyTitle": "此选区还没有已保存的编辑记录", "emptyDescription": "继续编辑并保存后，这里会显示相关的编辑记录。",
     "boundary": "由于文件替换、恢复操作或较早记录已清理，此选区的历史从这里开始。",

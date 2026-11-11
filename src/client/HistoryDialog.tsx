@@ -14,7 +14,7 @@ import { HistoryFilesManager } from "./HistoryFilesManager";
 import { formatDateTime } from "./dateTime";
 import { useSuccessNotice } from "./SuccessNotice";
 import { snapshotAttribution } from "./agentAttribution";
-import { historyTimeline, localDayKey } from "./historyTimeline";
+import { historyTimeline, localDayKey, mergeNewestHistoryPage } from "./historyTimeline";
 import { SaveButton } from "./SaveButton";
 import { errorMessage } from "./errors";
 
@@ -27,6 +27,8 @@ interface HistoryComparison {
 }
 
 const HISTORY_PAGE_SIZE = 100;
+/** Collaborators' saves and agent writes add snapshots while the dialog is open. */
+const HISTORY_REFRESH_MS = 15_000;
 
 export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }: {
   open: boolean;
@@ -70,12 +72,18 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const preserveErrorForComparisonRef = useRef(false);
   const retentionRefreshRef = useRef<number | null>(null);
 
+  const busyRef = useRef(false);
+  const detailRef = useRef<HistoryVersionDetail | null>(null);
+  const versionsRef = useRef(versions);
+  versionsRef.current = versions;
   selectedIdRef.current = selectedId;
   projectIdRef.current = project.id;
+  detailRef.current = detail;
 
   const canRestore = project.permission !== "read";
   const isOwner = project.permission === "owner";
   const controlsBusy = Boolean(busy) || loadingOlder;
+  busyRef.current = controlsBusy;
 
   useEffect(() => {
     savedNotice.clear();
@@ -268,6 +276,33 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       if (snapshotRefreshAbortRef.current === controller) snapshotRefreshAbortRef.current = null;
     }
   };
+
+  // Keep the timeline current while the dialog stays open, without moving the
+  // user's selection or dropping older pages they loaded.
+  useEffect(() => {
+    if (!open) return;
+    let request: AbortController | null = null;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || request || busyRef.current) return;
+      const controller = new AbortController();
+      request = controller;
+      void api<HistoryPage>(`/api/projects/${project.id}/history?limit=${HISTORY_PAGE_SIZE}`, { signal: controller.signal })
+        .then((page) => {
+          if (controller.signal.aborted || busyRef.current) return;
+          setStats(page.stats);
+          const merged = mergeNewestHistoryPage(versionsRef.current, page.versions, page.nextCursor);
+          setVersions(merged.versions);
+          if (merged.nextCursor !== undefined) setNextCursor(merged.nextCursor);
+          const selected = page.versions.find((version) => version.id === selectedIdRef.current);
+          if (selected && detailRef.current?.version.id === selected.id && detailRef.current.version.snapshotHash !== selected.snapshotHash) {
+            void refreshSnapshot(selected.id).catch(() => undefined);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => { if (request === controller) request = null; });
+    }, HISTORY_REFRESH_MS);
+    return () => { window.clearInterval(timer); request?.abort(); };
+  }, [open, project.id]);
 
   const saveLabel = async () => {
     if (!detail) return;

@@ -36,7 +36,6 @@ const countedNouns = [
   ["history.changedFilesHeading", "file", "files"],
   ["history.versionUsage", "snapshot", "snapshots"],
   ["selectionHistory.storageUsage", "segment", "segments"],
-  ["selectionHistory.limited", "window", "windows"],
   ["selectionHistory.description", "character", "characters"],
   ["projectSettings.writingIssues", "issue", "issues"],
   ["git.changedFiles", "file", "files"],

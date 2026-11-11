@@ -52,3 +52,22 @@ export function localDayKey(createdAt: string): string {
   const date = new Date(createdAt);
   return Number.isFinite(date.getTime()) ? `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}` : createdAt;
 }
+
+/**
+ * Merge a freshly loaded first page into the loaded list. The page replaces
+ * the versions it covers, which picks up new snapshots, coalesced autosaves
+ * and removals, while older pages the user loaded stay. `nextCursor` is
+ * `undefined` when the loaded older pages keep their own cursor.
+ */
+export function mergeNewestHistoryPage(
+  loaded: readonly HistoryVersion[],
+  fresh: readonly HistoryVersion[],
+  freshNextCursor: string | null
+): { versions: HistoryVersion[]; nextCursor: string | null | undefined } {
+  // Without a next page the fresh page holds every version there is.
+  if (!freshNextCursor || fresh.length === 0) return { versions: [...fresh], nextCursor: freshNextCursor };
+  const freshIds = new Set(fresh.map((version) => version.id));
+  const oldestFresh = fresh.at(-1)!.createdAt;
+  const older = loaded.filter((version) => !freshIds.has(version.id) && version.createdAt <= oldestFresh);
+  return { versions: [...fresh, ...older], nextCursor: older.length ? undefined : freshNextCursor };
+}

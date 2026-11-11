@@ -297,6 +297,14 @@ describe("selection edit history", () => {
     expect(result.entries).toHaveLength(60);
     expect(result.hasMore).toBe(true);
     expect(result.baseline).toEqual({ content: "version-2", contentTruncated: false });
+
+    // The next page continues where the first stopped, so the two join up.
+    const older = fixture.history.selectionHistory(fixture.projectId, "main.tex", source, 0, source.length, undefined, result.entries.length);
+    expect(older.entries.map((entry) => entry.content)).toEqual(["version-2", "version-1"]);
+    expect(older).toMatchObject({ hasMore: false, chainComplete: true, baseline: { content: "version-0", contentTruncated: false } });
+    expect([...result.entries, ...older.entries].map((entry) => entry.id)).toHaveLength(new Set([...result.entries, ...older.entries].map((entry) => entry.id)).size);
+    expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", source, 0, source.length, 1, 61).entries.map((entry) => entry.content)).toEqual(["version-1"]);
+    expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", source, 0, source.length, undefined, 500).entries).toEqual([]);
   });
   afterEach(() => {
     for (const fixture of fixtures.splice(0)) {
@@ -494,6 +502,22 @@ describe("selection edit history", () => {
 
     const result = fixture.history.selectionHistory(fixture.projectId, "main.tex", source, 0, source.length);
     expect(result.chainComplete).toBe(false);
+  });
+
+  it("keeps only the newest contiguous records, never a small older one behind a removed larger one", () => {
+    const fixture = createFixture({ editHistoryMaxStorageBytes: 3_000 });
+    const sources = ["a\n", "b\n", `${"large ".repeat(400)}\n`, "c\n", "d\n"];
+    const inputs = sources.slice(1).map((next, index) =>
+      replaceSegment("main.tex", "alice", `2026-01-01T10:0${index}:00.000Z`, sources[index]!, next, "edit"));
+    fixture.history.record(fixture.projectId, inputs);
+    const kept = (fixture.db.prepare(`SELECT after_hash FROM project_edit_segments WHERE project_id = ?
+      ORDER BY updated_at ASC, rowid ASC`).all(fixture.projectId) as Array<{ after_hash: string }>).map((row) => row.after_hash);
+    // The large replacement does not fit, so it and everything older go.
+    expect(kept).toEqual([hashText("d\n")]);
+    const boundary = fixture.db.prepare("SELECT after_hash FROM project_edit_history_boundaries WHERE project_id = ? AND file_path = 'main.tex'")
+      .get(fixture.projectId) as { after_hash: string };
+    expect(boundary.after_hash).toBe(hashText("c\n"));
+    expect(fixture.history.selectionHistory(fixture.projectId, "main.tex", "d\n", 0, 1).chainComplete).toBe(false);
   });
 });
 

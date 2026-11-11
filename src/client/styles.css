@@ -2349,6 +2349,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .history-load-more { flex: none; padding: 9px 11px 11px; border-top: 1px solid var(--ui-border, #dfe6e0); background: var(--ui-surface, #f0f4f1); }
 .history-load-more button { width: 100%; min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--ui-border, #c9d5cc); border-radius: 6px; padding: 5px 8px; background: var(--ui-surface, #fff); color: var(--ui-accent, #31523e); font-size: 10px; font-weight: 650; }
 .history-load-more button:hover:not(:disabled) { border-color: var(--ui-border, #97b2a1); background: var(--ui-hover, #f7faf7); color: var(--ui-accent, #1d5838); }
+.selection-history-load-more { padding: 10px 0 0; border-top: 0; background: transparent; }
 .history-load-more button:disabled { cursor: wait; opacity: .62; }
 .history-detail { min-width: 0; min-height: 0; height: 100%; overflow-y: auto; padding: 14px; }
 .history-detail-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 7px; }

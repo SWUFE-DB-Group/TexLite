@@ -86,10 +86,12 @@ const HISTORY_KEEP_ALL_MS = DAY_MS;
 const HISTORY_KEEP_HOURLY_MS = 7 * DAY_MS;
 /** Fixed window, from a run's first save, in which autosaves (or one user's agent writes) share a snapshot. */
 const AUTOSAVE_COALESCE_MS = 2 * 60_000;
-// Logical stored payload; SQLite pages, indexes and WAL are shared database overhead.
-function historyMetadataBytes(row: HistoryRow): number {
-  return Object.values(row).reduce<number>((sum, value) => sum + (typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0), 0);
-}
+// Logical stored payload: the UTF-8 bytes of a version row's text columns.
+// SQLite pages, indexes and WAL are shared database overhead. octet_length()
+// reads only the stored value sizes, never the manifests themselves.
+const METADATA_BYTES_SQL = `(octet_length(id) + octet_length(project_id) + COALESCE(octet_length(author_id), 0)
+  + octet_length(reason) + COALESCE(octet_length(label), 0) + octet_length(manifest_json)
+  + octet_length(changed_paths_json) + octet_length(created_at))`;
 const DEFAULT_HISTORY_PAGE_SIZE = 100;
 const MAX_HISTORY_PAGE_SIZE = 100;
 
@@ -106,6 +108,14 @@ type HistoryListRow = HistoryRow & {
 type HistoryPageRow = HistoryListRow & { history_rowid: number };
 
 type RemovableHistoryRow = Pick<HistoryRow, "id" | "manifest_json" | "changed_paths_json" | "created_at"> & { history_rowid: number };
+
+type PrunableHistoryRow = Pick<HistoryRow, "id" | "reason" | "label" | "changed_paths_json" | "created_at"> & {
+  history_rowid: number;
+  metadata_bytes: number;
+};
+
+/** What carrying changed paths needs to know about a removed version. */
+type CarriedHistoryRow = Pick<HistoryRow, "changed_paths_json" | "created_at"> & { history_rowid: number };
 
 export class ProjectHistoryService {
   constructor(private readonly config: Config, private readonly db: DatabaseConnection) {}
@@ -284,24 +294,29 @@ export class ProjectHistoryService {
   }
 
   stats(projectId: string): HistoryStats {
-    const rows = this.db.prepare(`SELECT * FROM project_history_versions
-      WHERE project_id = ? ORDER BY created_at DESC, rowid DESC`).all(projectId) as HistoryRow[];
-    const objects = new Map<string, number>();
-    const protectedObjects = new Map<string, number>();
+    const rows = this.db.prepare(`SELECT id, reason, label, ${METADATA_BYTES_SQL} AS metadata_bytes
+      FROM project_history_versions WHERE project_id = ? ORDER BY created_at DESC, rowid DESC`)
+      .all(projectId) as Array<Pick<HistoryRow, "id" | "reason" | "label"> & { metadata_bytes: number }>;
     let metadataBytes = 0;
     let protectedMetadataBytes = 0;
     let ordinaryVersionCount = 0;
     let labeledVersionCount = 0;
+    const protectedIds: string[] = [];
     for (const row of rows) {
       const protectedVersion = row === rows[0] || row.reason === "initial" || Boolean(row.label);
-      metadataBytes += historyMetadataBytes(row);
-      if (protectedVersion) protectedMetadataBytes += historyMetadataBytes(row);
+      metadataBytes += row.metadata_bytes;
+      if (protectedVersion) {
+        protectedMetadataBytes += row.metadata_bytes;
+        protectedIds.push(row.id);
+      }
       if (row.label) labeledVersionCount += 1;
       else if (row.reason !== "initial") ordinaryVersionCount += 1;
-      for (const file of Object.values(parseManifest(row.manifest_json).files)) {
-        if (!objects.has(file.digest)) objects.set(file.digest, file.size);
-        if (protectedVersion) protectedObjects.set(file.digest, file.size);
-      }
+    }
+    const objects = this.objectSizes(projectId);
+    const protectedObjects = new Map<string, number>();
+    const versionObjects = this.db.prepare("SELECT digest, size FROM project_history_version_objects WHERE version_id = ?");
+    for (const id of protectedIds) {
+      for (const object of versionObjects.all(id) as Array<{ digest: string; size: number }>) protectedObjects.set(object.digest, object.size);
     }
     const baseline = this.baseline(projectId);
     if (baseline) {
@@ -327,6 +342,13 @@ export class ProjectHistoryService {
       maxStorageBytes: this.config.historyMaxStorageBytes,
       storageLimitExceeded: objectBytes + metadataBytes > this.config.historyMaxStorageBytes
     };
+  }
+
+  /** Each stored content object any version refers to, with its size. */
+  private objectSizes(projectId: string): Map<string, number> {
+    const rows = this.db.prepare("SELECT digest, size FROM project_history_objects WHERE project_id = ?")
+      .all(projectId) as Array<{ digest: string; size: number }>;
+    return new Map(rows.map((row) => [row.digest, row.size]));
   }
 
   enforceRetention(projectId: string): void {
@@ -641,23 +663,21 @@ export class ProjectHistoryService {
   }
 
   private pruneVersions(projectId: string): void {
-    const rows = this.db.prepare(`SELECT *, rowid AS history_rowid
+    const rows = this.db.prepare(`SELECT id, reason, label, created_at, changed_paths_json, rowid AS history_rowid,
+      ${METADATA_BYTES_SQL} AS metadata_bytes
       FROM project_history_versions WHERE project_id = ?
-      ORDER BY created_at DESC, rowid DESC`).all(projectId) as Array<HistoryRow & { history_rowid: number }>;
+      ORDER BY created_at DESC, rowid DESC`).all(projectId) as PrunableHistoryRow[];
     if (!rows.length) return;
 
-    // Parse manifests and build reference counts & object size tracking in a single pass
-    const manifests = new Map<string, HistoryManifest>();
+    // Reference counts are kept by the database for each stored content, so
+    // retention never parses manifests; a version's objects are read only if
+    // that version is removed.
     const refCounts = new Map<string, number>();
     const sizeMap = new Map<string, number>();
-
-    for (const row of rows) {
-      const manifest = parseManifest(row.manifest_json);
-      manifests.set(row.id, manifest);
-      for (const file of Object.values(manifest.files)) {
-        refCounts.set(file.digest, (refCounts.get(file.digest) ?? 0) + 1);
-        if (!sizeMap.has(file.digest)) sizeMap.set(file.digest, file.size);
-      }
+    for (const row of this.db.prepare("SELECT digest, refs, size FROM project_history_objects WHERE project_id = ?")
+      .all(projectId) as Array<{ digest: string; refs: number; size: number }>) {
+      refCounts.set(row.digest, row.refs);
+      sizeMap.set(row.digest, row.size);
     }
 
     const baseline = this.baseline(projectId);
@@ -668,7 +688,7 @@ export class ProjectHistoryService {
       }
     }
 
-    let retainedBytes = rows.reduce((sum, row) => sum + historyMetadataBytes(row), 0)
+    let retainedBytes = rows.reduce((sum, row) => sum + row.metadata_bytes, 0)
       + (baseline ? Buffer.byteLength(JSON.stringify(baseline), "utf8") : 0);
     for (const [digest, count] of refCounts.entries()) {
       if (count > 0) retainedBytes += sizeMap.get(digest) ?? 0;
@@ -677,32 +697,31 @@ export class ProjectHistoryService {
     const latestId = rows[0]?.id;
     // Ordinary versions eligible for version count capping (ordered newest to oldest)
     const ordinaryDesc = rows.filter((row) => row.label === null && row.reason !== "initial");
+    const overVersionLimit = this.config.historyMaxVersions > 0 && ordinaryDesc.length > this.config.historyMaxVersions;
+    if (!overVersionLimit && retainedBytes <= this.config.historyMaxStorageBytes) return;
 
     const toDeleteIds = new Set<string>();
     const rowsById = new Map(rows.map((row) => [row.id, row]));
+    const versionObjects = this.db.prepare("SELECT digest FROM project_history_version_objects WHERE version_id = ?");
 
     const removeVersionRefs = (versionId: string) => {
       if (toDeleteIds.has(versionId)) return;
       toDeleteIds.add(versionId);
-      retainedBytes -= historyMetadataBytes(rowsById.get(versionId)!);
-      const manifest = manifests.get(versionId);
-      if (!manifest) return;
-      for (const file of Object.values(manifest.files)) {
-        const count = refCounts.get(file.digest);
-        if (count !== undefined) {
-          if (count === 1) {
-            refCounts.set(file.digest, 0);
-            retainedBytes -= sizeMap.get(file.digest) ?? 0;
-          } else if (count > 1) {
-            refCounts.set(file.digest, count - 1);
-          }
+      retainedBytes -= rowsById.get(versionId)!.metadata_bytes;
+      for (const { digest } of versionObjects.all(versionId) as Array<{ digest: string }>) {
+        const count = refCounts.get(digest);
+        if (count === 1) {
+          refCounts.set(digest, 0);
+          retainedBytes -= sizeMap.get(digest) ?? 0;
+        } else if (count !== undefined && count > 1) {
+          refCounts.set(digest, count - 1);
         }
       }
     };
 
     // 1. Cap by historyMaxVersions (prune excess ordinary versions when configured; 0 = unlimited)
     const remainingOrdinary = () => ordinaryDesc.filter((row) => !toDeleteIds.has(row.id));
-    if (this.config.historyMaxVersions > 0 && ordinaryDesc.length > this.config.historyMaxVersions) {
+    if (overVersionLimit) {
       const obsolete = ordinaryDesc.slice(this.config.historyMaxVersions);
       for (const row of obsolete) removeVersionRefs(row.id);
     }
@@ -775,7 +794,7 @@ export class ProjectHistoryService {
    * older one, so it takes over the removed versions' changes. Only files that
    * still differ from the new predecessor are kept.
    */
-  private carryChangedPaths(projectId: string, removed: readonly RemovableHistoryRow[]): void {
+  private carryChangedPaths(projectId: string, removed: readonly CarriedHistoryRow[]): void {
     if (!removed.length) return;
     const order = (left: { created_at: string; history_rowid: number }, right: { created_at: string; history_rowid: number }) =>
       left.created_at < right.created_at ? -1 : left.created_at > right.created_at ? 1 : left.history_rowid - right.history_rowid;
@@ -809,17 +828,12 @@ export class ProjectHistoryService {
 
   private removeUnreferencedObjects(projectId: string, candidates: Set<string>): void {
     if (!candidates.size) return;
-    const rows = this.db.prepare("SELECT manifest_json FROM project_history_versions WHERE project_id = ?")
-      .all(projectId) as Array<{ manifest_json: string }>;
-    for (const row of rows) {
-      for (const file of Object.values(parseManifest(row.manifest_json).files)) candidates.delete(file.digest);
-      if (!candidates.size) return;
+    const referenced = this.db.prepare("SELECT 1 FROM project_history_objects WHERE project_id = ? AND digest = ?");
+    const baselineDigests = new Set(Object.values(this.baseline(projectId)?.files ?? {}).map((file) => file.digest));
+    for (const digest of candidates) {
+      if (baselineDigests.has(digest) || referenced.get(projectId, digest)) continue;
+      fs.rmSync(this.objectPath(projectId, digest), { force: true });
     }
-    const baseline = this.baseline(projectId);
-    if (baseline) {
-      for (const file of Object.values(baseline.files)) candidates.delete(file.digest);
-    }
-    for (const digest of candidates) fs.rmSync(this.objectPath(projectId, digest), { force: true });
   }
 
   private restoreProjectTree(projectId: string, manifest: HistoryManifest): void {

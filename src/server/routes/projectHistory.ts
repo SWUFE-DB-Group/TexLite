@@ -5,7 +5,7 @@ import type { Config } from "../config.js";
 import { isCollaborativeTextFile, maxCollaborativeFileBytes } from "../collaboration.js";
 import type { DatabaseConnection } from "../db.js";
 import { normalizeAgentChangeLineEndings } from "../agentChanges.js";
-import { hashText, type ProjectEditHistoryService } from "../editHistory.js";
+import { hashText, MAX_SELECTION_HISTORY_OFFSET, type ProjectEditHistoryService } from "../editHistory.js";
 import type { HistoryReason, ProjectHistoryService } from "../history.js";
 import { HISTORY_RETENTION_DELAY_MS } from "../historyRetention.js";
 import { resolveSourcePath, safeRelativePath } from "../files.js";
@@ -75,7 +75,7 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     if (!user) return;
     const { id } = request.params as { id: string };
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const query = request.query as { path?: string; start?: string; end?: string; limit?: string; sourceHash?: string };
+    const query = request.query as { path?: string; start?: string; end?: string; limit?: string; offset?: string; sourceHash?: string };
     if (typeof query.sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(query.sourceHash)) return apiError(reply, 400, "REQUEST_INVALID");
     let filePath: string;
     try { filePath = safeRelativePath(query.path ?? ""); }
@@ -85,6 +85,8 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     const end = parseOffset(query.end);
     if (start === null || end === null || start === end) return apiError(reply, 400, "REQUEST_INVALID");
     const requestedLimit = parseOffset(query.limit);
+    const offset = query.offset === undefined ? 0 : parseOffset(query.offset);
+    if (offset === null || offset > MAX_SELECTION_HISTORY_OFFSET) return apiError(reply, 400, "REQUEST_INVALID");
     return await projectMutations.runConsistentRead(id, () => {
       const source = resolveSourcePath(config, id, filePath);
       if (!fs.existsSync(source) || !fs.statSync(source).isFile()) return apiError(reply, 404, "FILE_NOT_FOUND", { path: filePath });
@@ -92,7 +94,7 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
       const content = fs.readFileSync(source, "utf8");
       if (hashText(content) !== query.sourceHash) return apiError(reply, 409, "SELECTION_HISTORY_SOURCE_CHANGED");
       if (start > end || end > content.length) return apiError(reply, 400, "REQUEST_INVALID");
-      return editHistory.selectionHistory(id, filePath, content, start, end, requestedLimit ?? undefined);
+      return editHistory.selectionHistory(id, filePath, content, start, end, requestedLimit ?? undefined, offset);
     }, { preflight: () => {
       if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
     } });

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Clock3, HardDrive, LoaderCircle, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { api, isAbortError } from "./api";
+import { ApiError, api, isAbortError } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { generateSelectionHistoryDiff, type SelectionHistoryDiffPiece, type SelectionHistorySemanticDiff } from "./selectionHistoryDiff";
 import { sourceHash } from "./sourceHash";
@@ -14,6 +14,16 @@ interface SourceSelection {
   selectedText: string;
   startOffset: number;
   endOffset: number;
+}
+
+/** Edits typed just before opening may still be on their way to the server. */
+const SOURCE_SYNC_RETRY_MS = 800;
+
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => { window.clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); }, { once: true });
+  });
 }
 
 export interface SelectionHistoryTarget {
@@ -38,6 +48,8 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
   const [hasMore, setHasMore] = useState(false);
   const [chainComplete, setChainComplete] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const olderRequest = useRef<AbortController | null>(null);
   const [error, setError] = useState("");
   const [stats, setStats] = useState<{ segmentCount: number; payloadBytes: number; maxStorageBytes: number } | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
@@ -68,36 +80,79 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
   const [entryViews, setEntryViews] = useState<Record<string, "content" | "diff">>({});
   const selectedLength = Math.max(0, selection.endOffset - selection.startOffset);
 
+  // The server compares the inspected source with its saved copy. Wait once
+  // for edits typed just before opening to arrive before reporting a change.
+  const fetchPage = async (offset: number, signal: AbortSignal): Promise<SelectionHistoryResult> => {
+    const params = new URLSearchParams({
+      path: filePath,
+      start: String(selection.startOffset),
+      end: String(selection.endOffset),
+      offset: String(offset),
+      sourceHash: sourceHash(source)
+    });
+    const url = `/api/projects/${project.id}/edit-history?${params}`;
+    try { return await api<SelectionHistoryResult>(url, { signal }); }
+    catch (reason) {
+      if (!(reason instanceof ApiError && reason.code === "SELECTION_HISTORY_SOURCE_CHANGED")) throw reason;
+      await wait(SOURCE_SYNC_RETRY_MS, signal);
+      return await api<SelectionHistoryResult>(url, { signal });
+    }
+  };
+
   useEffect(() => {
     if (!open || !filePath || selectedLength <= 0) return;
     const controller = new AbortController();
+    olderRequest.current?.abort();
+    setLoadingOlder(false);
     setBusy(true); setError(""); setEntries([]); setChainComplete(true); setEntryViews({});
     setBaseline(null); setHasMore(false);
     if (source.slice(selection.startOffset, selection.endOffset) !== selection.selectedText) {
       setError(t("selectionHistory.sourceChanged")); setBusy(false);
       return;
     }
-    const params = new URLSearchParams({
-      path: filePath,
-      start: String(selection.startOffset),
-      end: String(selection.endOffset),
-      sourceHash: sourceHash(source)
-    });
-    void api<SelectionHistoryResult>(`/api/projects/${project.id}/edit-history?${params}`, { signal: controller.signal })
+    void fetchPage(0, controller.signal)
       .then((result) => {
+        if (controller.signal.aborted) return;
         setEntries(result.entries);
         setChainComplete(result.chainComplete);
         setBaseline(result.baseline);
         setHasMore(result.hasMore);
       })
       .catch((reason) => {
-        if (!isAbortError(reason)) setError(errorMessage(reason));
+        if (!controller.signal.aborted && !isAbortError(reason)) setError(errorMessage(reason));
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
   }, [open, project.id, filePath, selection, selectedLength, source, t]);
+
+  useEffect(() => () => olderRequest.current?.abort(), []);
+
+  const loadOlder = async () => {
+    if (loadingOlder || busy) return;
+    const controller = new AbortController();
+    olderRequest.current = controller;
+    setLoadingOlder(true); setError("");
+    try {
+      const result = await fetchPage(entries.length, controller.signal);
+      if (controller.signal.aborted) return;
+      setEntries((current) => {
+        const shown = new Set(current.map((entry) => entry.id));
+        return [...current, ...result.entries.filter((entry) => !shown.has(entry.id))];
+      });
+      setChainComplete(result.chainComplete);
+      setBaseline(result.baseline);
+      setHasMore(result.hasMore);
+    } catch (reason) {
+      if (!controller.signal.aborted && !isAbortError(reason)) setError(errorMessage(reason));
+    } finally {
+      if (olderRequest.current === controller) {
+        olderRequest.current = null;
+        setLoadingOlder(false);
+      }
+    }
+  };
 
   const description = useMemo(() => t("selectionHistory.description", {
     path: filePath,
@@ -118,7 +173,6 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
       {error && <p className="error selection-history-message">{error}</p>}
       {busy ? <div className="selection-history-loading"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div> : <>
         {!chainComplete && <p className="selection-history-boundary">{t("selectionHistory.boundary")}</p>}
-        {hasMore && <p className="selection-history-boundary">{t("selectionHistory.limited", { count: entries.length })}</p>}
         {entries.length === 0 && !error
           ? <div className="selection-history-empty"><Clock3 size={28} /><strong>{t("selectionHistory.emptyTitle")}</strong><span>{t("selectionHistory.emptyDescription")}</span></div>
           : <ol className="selection-history-list">{entries.map((entry, index) => {
@@ -172,6 +226,12 @@ export function SelectionHistoryDialog({ open, project, filePath: inputFilePath,
                 </div>}
             </article>
           </li>})}</ol>}
+        {hasMore && <div className="history-load-more selection-history-load-more">
+          <button type="button" disabled={loadingOlder} aria-busy={loadingOlder} onClick={() => void loadOlder()}>
+            {loadingOlder ? <LoaderCircle className="spin" size={13} /> : <Clock3 size={13} />}
+            {loadingOlder ? t("common.loading") : t("selectionHistory.loadOlder")}
+          </button>
+        </div>}
       </>}
     </div>
   </Modal>;

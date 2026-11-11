@@ -954,7 +954,13 @@ the requested display windows are complete, rather than loading all retained
 payloads at once. This budget never shares or
 reduces the 128 MB recovery-snapshot budget. A too-large individual edit burst
 is omitted, and retention removes the oldest records; both deliberately create
-a visible history boundary rather than presenting an unsafe attribution. When selection history is viewed,
+a visible history boundary rather than presenting an unsafe attribution.
+Retention runs with every saved edit batch, so it first compares the project's
+record count and payload total with the limits and, only when one is exceeded,
+reads the oldest records in age order (migration 24 indexes
+`project_edit_segments(project_id, updated_at)`) and removes them until both
+limits hold. That leaves the same newest contiguous suffix as a newest-first
+scan without sorting the whole retained history. When selection history is viewed,
 adjacent records affecting the selection are consolidated into one editing
 session while no pause between them exceeds five minutes, up to a 30-minute
 span; a longer continuous session is split so earlier states stay visible.
@@ -1521,7 +1527,14 @@ with a retryable conflict instead of inspecting a different passage. The
 dialog keeps its inspected selection fixed while collaborators keep editing.
 Responses include the earliest reconstructed baseline for diffing, and an
 explicit `hasMore` flag when the 60-window display limit is reached. This
-display limit is separate from missing or pruned history boundaries.
+display limit is separate from missing or pruned history boundaries. "Load
+older edits" asks for the next 60 windows with an `offset` of the windows
+already shown. A passage can only be reconstructed by walking back from the
+current source, so the server walks again and returns the windows after that
+offset; the pages join, and the new response's baseline replaces the old one.
+The dialog retries once, after a short pause, when its first or a later request
+meets the source-changed conflict, because edits typed just before opening may
+still be reaching the server; a second conflict is reported.
 
 Project snapshots record initial state, acknowledged collaborative saves,
 file/source operations, compiler settings, Git operations, checkpoints, and
@@ -1562,7 +1575,16 @@ directly. Because coalescing never crosses the flag, a flagged snapshot holds
 agent changes; it can still include human text the agent sync merged. Rows
 written before the migration cannot be classified and stay unflagged. File
 contents are complete SHA-256-addressed objects; unchanged files are reused
-across manifests. Under the storage budget nothing is removed. Over it,
+across manifests. Migration 23 indexes which objects each version uses
+(`project_history_version_objects`) and how many versions use each object
+(`project_history_objects`). Database triggers on version inserts, manifest
+updates and cascading deletes keep both in step, so storage statistics,
+retention and object clean-up aggregate them instead of parsing every
+manifest; metadata size comes from SQLite's `octet_length` of the stored text.
+The snapshot dialog reloads its first page every 15 seconds while it is open
+and visible, so collaborators' saves and agent writes appear. The refreshed
+page replaces the versions it covers and keeps older pages already loaded; a
+selected snapshot whose manifest changed reloads its details. Under the storage budget nothing is removed. Over it,
 retention first thins older history so the budget covers a longer period:
 every version from the last 24 hours is kept, then the newest version of each
 server-local hour for the last week, then the newest of each server-local day;
