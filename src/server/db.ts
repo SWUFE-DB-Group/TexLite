@@ -252,54 +252,68 @@ const databaseMigrations: readonly DatabaseMigration[] = [
   // each content. Retention and storage statistics read these instead of
   // parsing every manifest. Triggers keep both in step with the manifests;
   // deleting a snapshot cascades and releases its references.
-  { version: 23, name: "add_history_version_objects", apply: (db) => {
-    const insertObjects = (version: string) => `INSERT OR IGNORE INTO project_history_version_objects (version_id, project_id, digest, size)
-      SELECT ${version}.id, ${version}.project_id, json_extract(file.value, '$.digest'), json_extract(file.value, '$.size')
-      FROM json_each(${version}.manifest_json, '$.files') AS file`;
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS project_history_version_objects (
-        version_id TEXT NOT NULL REFERENCES project_history_versions(id) ON DELETE CASCADE,
-        project_id TEXT NOT NULL,
-        digest TEXT NOT NULL,
-        size INTEGER NOT NULL,
-        PRIMARY KEY (version_id, digest)
-      ) WITHOUT ROWID;
-      CREATE TABLE IF NOT EXISTS project_history_objects (
-        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        digest TEXT NOT NULL,
-        size INTEGER NOT NULL,
-        refs INTEGER NOT NULL,
-        PRIMARY KEY (project_id, digest)
-      ) WITHOUT ROWID;
-      CREATE TRIGGER IF NOT EXISTS project_history_version_objects_insert
-        AFTER INSERT ON project_history_version_objects BEGIN
-          INSERT INTO project_history_objects (project_id, digest, size, refs) VALUES (NEW.project_id, NEW.digest, NEW.size, 1)
-            ON CONFLICT(project_id, digest) DO UPDATE SET refs = refs + 1;
-        END;
-      CREATE TRIGGER IF NOT EXISTS project_history_version_objects_delete
-        AFTER DELETE ON project_history_version_objects BEGIN
-          UPDATE project_history_objects SET refs = refs - 1 WHERE project_id = OLD.project_id AND digest = OLD.digest;
-          DELETE FROM project_history_objects WHERE project_id = OLD.project_id AND digest = OLD.digest AND refs <= 0;
-        END;
-      CREATE TRIGGER IF NOT EXISTS project_history_versions_objects_insert
-        AFTER INSERT ON project_history_versions BEGIN
-          ${insertObjects("NEW")};
-        END;
-      CREATE TRIGGER IF NOT EXISTS project_history_versions_objects_update
-        AFTER UPDATE OF manifest_json ON project_history_versions BEGIN
-          DELETE FROM project_history_version_objects WHERE version_id = OLD.id;
-          ${insertObjects("NEW")};
-        END;
-      ${insertObjects("history").replace("FROM json_each(history.manifest_json", "FROM project_history_versions AS history, json_each(history.manifest_json")};
-    `);
-  } },
+  { version: 23, name: "add_history_version_objects", apply: createHistoryObjectIndex },
   // Edit-history retention removes the oldest records first. This order lets
   // it read just those rows instead of sorting the project's whole history.
   { version: 24, name: "add_edit_segment_age_index", apply: (db) => {
     db.exec(`CREATE INDEX IF NOT EXISTS project_edit_segments_project_updated
       ON project_edit_segments(project_id, updated_at)`);
+  } },
+  // Development databases may have applied an unreleased draft of migration
+  // 23 that had only the per-snapshot rows. Complete the index and rebuild the
+  // reference counts from those rows; on any other database this is a no-op
+  // apart from recounting.
+  { version: 25, name: "complete_history_object_index", apply: (db) => {
+    createHistoryObjectIndex(db);
+    db.exec(`DROP INDEX IF EXISTS project_history_version_objects_digest;
+      DELETE FROM project_history_objects;
+      INSERT INTO project_history_objects (project_id, digest, size, refs)
+        SELECT project_id, digest, MAX(size), COUNT(*) FROM project_history_version_objects GROUP BY project_id, digest;`);
   } }
 ];
+
+/** Create the snapshot object index and its triggers, and index existing snapshots. */
+function createHistoryObjectIndex(db: DatabaseConnection): void {
+  const insertObjects = (version: string) => `INSERT OR IGNORE INTO project_history_version_objects (version_id, project_id, digest, size)
+    SELECT ${version}.id, ${version}.project_id, json_extract(file.value, '$.digest'), json_extract(file.value, '$.size')
+    FROM json_each(${version}.manifest_json, '$.files') AS file`;
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_history_version_objects (
+      version_id TEXT NOT NULL REFERENCES project_history_versions(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL,
+      digest TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      PRIMARY KEY (version_id, digest)
+    ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS project_history_objects (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      digest TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      refs INTEGER NOT NULL,
+      PRIMARY KEY (project_id, digest)
+    ) WITHOUT ROWID;
+    CREATE TRIGGER IF NOT EXISTS project_history_version_objects_insert
+      AFTER INSERT ON project_history_version_objects BEGIN
+        INSERT INTO project_history_objects (project_id, digest, size, refs) VALUES (NEW.project_id, NEW.digest, NEW.size, 1)
+          ON CONFLICT(project_id, digest) DO UPDATE SET refs = refs + 1;
+      END;
+    CREATE TRIGGER IF NOT EXISTS project_history_version_objects_delete
+      AFTER DELETE ON project_history_version_objects BEGIN
+        UPDATE project_history_objects SET refs = refs - 1 WHERE project_id = OLD.project_id AND digest = OLD.digest;
+        DELETE FROM project_history_objects WHERE project_id = OLD.project_id AND digest = OLD.digest AND refs <= 0;
+      END;
+    CREATE TRIGGER IF NOT EXISTS project_history_versions_objects_insert
+      AFTER INSERT ON project_history_versions BEGIN
+        ${insertObjects("NEW")};
+      END;
+    CREATE TRIGGER IF NOT EXISTS project_history_versions_objects_update
+      AFTER UPDATE OF manifest_json ON project_history_versions BEGIN
+        DELETE FROM project_history_version_objects WHERE version_id = OLD.id;
+        ${insertObjects("NEW")};
+      END;
+    ${insertObjects("history").replace("FROM json_each(history.manifest_json", "FROM project_history_versions AS history, json_each(history.manifest_json")};
+  `);
+}
 
 function migrateGitHubTokensToUsers(db: DatabaseConnection): void {
   db.exec(`

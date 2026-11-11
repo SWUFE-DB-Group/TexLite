@@ -129,6 +129,42 @@ describe("database migrations", () => {
     } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
   });
 
+  it("completes the object index of a database that applied the unreleased draft of migration 23", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-history-objects-draft-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    const manifest = (files: Record<string, string>) => JSON.stringify({ version: 1, settings: {},
+      files: Object.fromEntries(Object.entries(files).map(([filePath, digest]) => [filePath, { digest, size: digest.length }])) });
+    const counts = () => database.prepare("SELECT project_id, digest, size, refs FROM project_history_objects ORDER BY digest").all();
+    try {
+      database.exec(`INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES ('owner', 'owner', 'Owner', 'hash', 'user', '2026-11-03');
+        INSERT INTO projects (id, owner_id, name, main_file, engine, created_at, updated_at) VALUES ('p', 'owner', 'Paper', 'main.tex', 'pdflatex', '2026-11-03', '2026-11-03');`);
+      const insert = (id: string, json: string) => database.prepare(`INSERT INTO project_history_versions
+        (id, project_id, author_id, reason, manifest_json, changed_paths_json, created_at)
+        VALUES (?, 'p', 'owner', 'autosave', ?, '["main.tex"]', '2026-11-03')`).run(id, json);
+      // The draft had the per-snapshot rows and their triggers, but no
+      // reference counts, and a digest index the final version dropped.
+      database.exec(`DROP TRIGGER project_history_version_objects_insert;
+        DROP TRIGGER project_history_version_objects_delete;
+        DROP TABLE project_history_objects;
+        CREATE INDEX project_history_version_objects_digest ON project_history_version_objects(project_id, digest, size);
+        DELETE FROM texlite_schema_migrations WHERE version >= 25;`);
+      insert("one", manifest({ "main.tex": "aa", "refs.bib": "bbb" }));
+      insert("two", manifest({ "main.tex": "aa" }));
+      database.close(); database = openDatabase(config);
+      expect(counts()).toEqual([{ project_id: "p", digest: "aa", size: 2, refs: 2 }, { project_id: "p", digest: "bbb", size: 3, refs: 1 }]);
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE name = 'project_history_version_objects_digest'").get()).toBeUndefined();
+      // The completed triggers keep counting.
+      database.prepare("DELETE FROM project_history_versions WHERE id = 'one'").run();
+      insert("three", manifest({ "main.tex": "cccc" }));
+      expect(counts()).toEqual([{ project_id: "p", digest: "aa", size: 2, refs: 1 }, { project_id: "p", digest: "cccc", size: 4, refs: 1 }]);
+      const applied = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 25").get();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 25").get()).toEqual(applied);
+      expect(counts()).toEqual([{ project_id: "p", digest: "aa", size: 2, refs: 1 }, { project_id: "p", digest: "cccc", size: 4, refs: 1 }]);
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("automatically adds citation folders without changing existing references and retains folders across restarts", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-citation-folders-migration-"));
     const config = migrationConfig(root, path.join(root, "texlite.db"));
@@ -505,7 +541,8 @@ describe("database migrations", () => {
           { version: 21, name: "add_citation_venue" },
           { version: 22, name: "add_agent_history_flags" },
           { version: 23, name: "add_history_version_objects" },
-          { version: 24, name: "add_edit_segment_age_index" }
+          { version: 24, name: "add_edit_segment_age_index" },
+          { version: 25, name: "complete_history_object_index" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -540,7 +577,8 @@ describe("database migrations", () => {
           { version: 21, name: "add_citation_venue" },
           { version: 22, name: "add_agent_history_flags" },
           { version: 23, name: "add_history_version_objects" },
-          { version: 24, name: "add_edit_segment_age_index" }
+          { version: 24, name: "add_edit_segment_age_index" },
+          { version: 25, name: "complete_history_object_index" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -580,7 +618,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }, { version: 23 }, { version: 24 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }, { version: 23 }, { version: 24 }, { version: 25 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -709,7 +747,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }, { version: 23 }, { version: 24 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }, { version: 23 }, { version: 24 }, { version: 25 }]);
       } finally {
         migrated.close();
       }

@@ -1581,6 +1581,8 @@ across manifests. Migration 23 indexes which objects each version uses
 updates and cascading deletes keep both in step, so storage statistics,
 retention and object clean-up aggregate them instead of parsing every
 manifest; metadata size comes from SQLite's `octet_length` of the stored text.
+Migration 25 completes that index and recounts references on databases that
+ran an unreleased development draft of migration 23 without the counts.
 The snapshot dialog reloads its first page every 15 seconds while it is open
 and visible, so collaborators' saves and agent writes appear. The refreshed
 page replaces the versions it covers and keeps older pages already loaded; a
