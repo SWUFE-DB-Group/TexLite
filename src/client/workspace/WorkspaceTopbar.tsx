@@ -59,12 +59,13 @@ export function WorkspaceTopbar({
 }: WorkspaceTopbarProps) {
   const { t } = useTranslation();
   const { showExecutionReminder } = useTerminalPreferences();
-  return <WorkspaceTopbarFrame siteName={site.siteName} projectName={project.name} subtitle={<>{activeFile} · {saveStateLabel}</>} onBack={onBack} accessory={<>
+  return <WorkspaceTopbarFrame siteName={site.siteName} projectName={project.name} subtitle={<>{activeFile} · {saveStateLabel}</>} onBack={onBack}
+    leading={showEditor && <button className={`files-action${!filesCollapsed ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
+    accessory={<>
     {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
     <CollaborationPresence sessions={activeSessions} status={collaborationStatus} />
     {collaborationStatus === "disconnected" && !protocolUpgradeRequired && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
     </>}>
-      {showEditor && <button className={`files-action${!filesCollapsed ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
       <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} workspacePrimary previewLabel={isMarkdownPath(activeFile) ? t("editor.mobilePreview") : undefined} />
       <button type="button" className="share-action" title={t("projectSettings.share")} aria-label={project.sharedMemberCount ? `${t("projectSettings.share")} (${project.sharedMemberCount})` : t("projectSettings.share")} onClick={onShare}>
         <Users size={15} /><span className="workspace-action-label">{t("projectSettings.share")}</span>

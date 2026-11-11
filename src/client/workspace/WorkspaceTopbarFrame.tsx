@@ -1,6 +1,6 @@
 import { Children, cloneElement, isValidElement, useState, type MouseEventHandler, type ReactNode } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowLeft, Ellipsis } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { appPath } from "../basePath";
 import { SiteLogo } from "../pages/SiteChrome";
@@ -8,8 +8,10 @@ import { WorkspaceProjectTitle } from "./WorkspaceProjectTitle";
 import { usePhoneWorkspace, usePhoneWorkspaceHeight } from "./usePhoneWorkspace";
 
 /** Shared workspace chrome only: no account, collaboration or tool lifecycle. */
-export function WorkspaceTopbarFrame({ siteName, projectName, subtitle, onBack, titleAccessory, accessory, children }: {
+export function WorkspaceTopbarFrame({ siteName, projectName, subtitle, onBack, leading, titleAccessory, accessory, children }: {
   siteName: string; projectName: string; subtitle: ReactNode; onBack?: () => void;
+  /** Shown at the far left, before the logo, at every width. */
+  leading?: ReactNode;
   titleAccessory?: ReactNode; accessory?: ReactNode; children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -20,9 +22,12 @@ export function WorkspaceTopbarFrame({ siteName, projectName, subtitle, onBack, 
   const primary = (node: ReactNode) => isValidElement<{ className?: string; workspacePrimary?: boolean }>(node)
     && (node.props.workspacePrimary || /(?:^| )(?:compile|comments-action|files-action)(?: |$)/.test(node.props.className ?? ""));
   return <header className="editor-topbar">
-    {onBack ? <button className="back" title={t("editor.backToProjects")} aria-label={t("editor.backToProjects")} onClick={onBack}><ArrowLeft size={18} /></button>
-      : <a className="back" href={appPath("/")} aria-label={t("editor.backToProjects")}><ArrowLeft size={18} /></a>}
-    <a className="brand-link compact-brand-link" href={appPath("/")} aria-label={siteName} onClick={onBack ? (event) => { event.preventDefault(); onBack(); } : undefined}><SiteLogo siteName={siteName} compact /></a>
+    <div className="editor-topbar-start">
+      {leading && <div className="editor-actions editor-leading-actions">{leading}</div>}
+      {/* The logo is the way back to the project list at every width. */}
+      <a className="brand-link compact-brand-link" href={appPath("/")} title={t("editor.backToProjects")} aria-label={`${siteName}: ${t("editor.backToProjects")}`}
+        onClick={onBack ? (event) => { event.preventDefault(); onBack(); } : undefined}><SiteLogo siteName={siteName} compact /></a>
+    </div>
     <div className="project-heading">
       {titleAccessory ? <div className="workspace-project-title-row"><WorkspaceProjectTitle name={projectName} />{titleAccessory}</div>
         : <WorkspaceProjectTitle name={projectName} />}

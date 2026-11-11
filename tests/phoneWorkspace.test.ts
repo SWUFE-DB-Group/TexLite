@@ -10,6 +10,8 @@ import { WorkspaceLayoutMenu } from "../src/client/workspace/WorkspaceChrome";
 import { WorkspaceMobileDrawer } from "../src/client/workspace/WorkspaceMobileDrawer";
 
 let root: Root, host: HTMLDivElement, phone: boolean;
+const back = vi.fn();
+const actionRow = () => host.querySelector(".editor-actions:not(.editor-leading-actions)");
 const listeners = new Set<() => void>();
 const selected = vi.fn();
 const render = (node: React.ReactNode) => act(async () => root.render(node));
@@ -33,8 +35,8 @@ function Layout() {
 }
 function Toolbar() {
   const { workspaceLayout, setWorkspaceLayout } = useWorkspaceLayout("writer", "paper");
-  return createElement(WorkspaceTopbarFrame, { siteName: "TexLite", projectName: "My paper", subtitle: "main.tex · Saved", onBack() {}, children: [
-    createElement("button", { className: "files-action" }, "Files"),
+  return createElement(WorkspaceTopbarFrame, { siteName: "TexLite", projectName: "My paper", subtitle: "main.tex · Saved", onBack: back,
+    leading: createElement("button", { className: "files-action" }, "Files"), children: [
     createElement(WorkspaceLayoutMenu, { value: workspaceLayout, onChange: setWorkspaceLayout, workspacePrimary: true }),
     createElement("button", { className: "comments-action" }, "Comments"),
     createElement("button", { className: "compile" }, "Compile"),
@@ -59,7 +61,7 @@ describe("phone workspace", () => {
   });
   it("keeps primary actions visible and puts secondary actions in an accessible popover", async () => {
     await render(createElement(Toolbar));
-    expect(host.querySelector(".editor-actions")?.textContent).toBe("FilesSourcePDFCommentsCompile");
+    expect(actionRow()?.textContent).toBe("SourcePDFCommentsCompile");
     expect(document.querySelector(".workspace-overflow-menu")).toBeNull();
     await click(host.querySelector<HTMLButtonElement>(".workspace-more-trigger")!);
     const menu = document.querySelector(".workspace-overflow-menu")!;
@@ -70,7 +72,26 @@ describe("phone workspace", () => {
     expect(document.querySelector(".workspace-overflow-menu")).toBeNull();
     await resize(false);
     expect(host.querySelector(".workspace-more-trigger")).toBeNull();
-    expect(host.querySelector(".editor-actions")?.textContent).toContain("SettingsGit");
+    expect(actionRow()?.textContent).toContain("SettingsGit");
+  });
+  it("starts the bar with the files toggle and goes back to the projects through the logo", async () => {
+    for (const width of [true, false]) {
+      phone = width;
+      back.mockClear();
+      await render(createElement(Toolbar));
+      const header = host.querySelector(".editor-topbar")!;
+      const start = header.firstElementChild!;
+      expect(start.className).toBe("editor-topbar-start");
+      expect([...start.children].map((node) => node.className)).toEqual(["editor-actions editor-leading-actions", "brand-link compact-brand-link"]);
+      expect(start.querySelector(".files-action")?.textContent).toBe("Files");
+      expect(header.querySelector(".back")).toBeNull();
+      const logo = start.querySelector<HTMLAnchorElement>(".brand-link")!;
+      expect(logo.getAttribute("aria-label")).toBe("TexLite: Back to projects");
+      await click(logo);
+      expect(back).toHaveBeenCalledOnce();
+      await act(async () => root.unmount());
+      root = createRoot(host);
+    }
   });
   it("opens utilities without occupying a source panel and restores focus when closed", async () => {
     function Drawer() {

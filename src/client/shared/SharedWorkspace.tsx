@@ -41,13 +41,13 @@ function ReaderSettings() {
   </Popover.Root>;
 }
 
-export function SharedWorkspaceTopbar({ data, path = "", loading, onRefresh, children }: {
-  data?: SharedProjectData; path?: string; loading: boolean; onRefresh: () => void; children?: ReactNode;
+export function SharedWorkspaceTopbar({ data, path = "", loading, onRefresh, leading, children }: {
+  data?: SharedProjectData; path?: string; loading: boolean; onRefresh: () => void; leading?: ReactNode; children?: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
   const expiry = data?.expiresAt ? t("viewLinks.expires", { time: formatDateTime(data.expiresAt, i18n.resolvedLanguage) }) : t("viewLinks.readOnly");
   return <WorkspaceTopbarFrame siteName={data?.siteName ?? "TexLite"} projectName={data?.project.name ?? "TexLite"}
-    subtitle={path || t("viewLinks.readOnly")}
+    subtitle={path || t("viewLinks.readOnly")} leading={leading}
     titleAccessory={data && <span className="shared-reader-access" tabIndex={0} title={expiry} data-texlite-tooltip-always><LockKeyhole size={13} aria-hidden />{t("viewLinks.readOnly")}</span>}>
     {children}
     {data && <>
@@ -105,11 +105,11 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
   const compiledAt = data.pdf?.compiledAt ?? null;
   const compiledLabel = compiledAt ? formatDateTime(compiledAt, i18n.resolvedLanguage, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
   return <>
-    <SharedWorkspaceTopbar data={data} path={path} loading={loading} onRefresh={onRefresh}>
-      {showEditor && <button type="button" className={`files-action${(phone ? phoneFilesOpen : !filesCollapsed) ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={phone ? phoneFilesOpen : !filesCollapsed} onClick={() => {
+    <SharedWorkspaceTopbar data={data} path={path} loading={loading} onRefresh={onRefresh}
+      leading={showEditor && <button type="button" className={`files-action${(phone ? phoneFilesOpen : !filesCollapsed) ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={phone ? phoneFilesOpen : !filesCollapsed} onClick={() => {
         if (phone) { setPhoneFilesOpen((value) => !value); return; }
         if (filesPanel.current?.isCollapsed()) filesPanel.current.expand(); else filesPanel.current?.collapse();
-      }}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
+      }}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}>
       <WorkspaceLayoutMenu value={layout} onChange={setLayout} workspacePrimary />
     </SharedWorkspaceTopbar>
     {error && <div className="shared-reader-error error" role="alert">{error}</div>}

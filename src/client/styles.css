@@ -599,9 +599,17 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 
 .workspace { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 .editor-topbar { height: 56px; padding: 0 14px; flex: none; }
-.back { color: inherit; border: 0; background: #ffffff08; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; }
-.back:hover { background: #ffffff12; }
-.back:focus-visible { outline: 2px solid var(--ui-header-focus, #bed2c5); outline-offset: 2px; }
+.editor-topbar-start { flex: none; display: flex; align-items: center; gap: 10px; margin-right: 14px; }
+.editor-topbar-start .site-logo.compact { margin: 0; }
+.editor-topbar .editor-actions.editor-leading-actions { flex: none; width: auto; }
+/* The files toggle is a bare icon: its open and closed icons show the state.
+   Sizes still come from the action rules, so touch targets stay large. */
+.editor-topbar .editor-leading-actions > .files-action,
+.editor-topbar .editor-leading-actions > .files-action.active,
+.editor-topbar .editor-leading-actions > .files-action:hover:not(:disabled) { border-color: transparent; background: transparent; box-shadow: none; color: var(--ui-header-muted, #bac4bd); }
+.editor-topbar .editor-leading-actions > .files-action:hover:not(:disabled) { color: var(--ui-header-text, #f0f2ee); }
+.editor-topbar .editor-leading-actions > .files-action > svg { width: 18px; height: 18px; }
+.editor-topbar .editor-leading-actions > .files-action > .workspace-action-label { display: none; }
 .project-heading { display: flex; flex: 0 1 200px; flex-direction: column; min-width: 0; max-width: 200px; margin-right: auto; }
 .project-heading small { overflow: hidden; color: var(--ui-header-muted, #bac4bd); font-size: 11px; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-project-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -2458,7 +2466,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 
 @media (max-width: 1440px) {
   .editor-topbar { gap: 8px; }
-  .editor-topbar > .back { flex: none; }
   .editor-actions { flex: none; gap: 6px; }
   .editor-actions > button, .editor-actions .layout-trigger { min-width: 44px; min-height: 44px; justify-content: center; padding: 8px; }
   .editor-actions .layout-trigger { min-width: 138px; justify-content: flex-start; padding-inline: 10px; }
@@ -2468,7 +2475,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 
 @media (max-width: 1100px) {
   .editor-topbar { height: auto; min-height: 56px; flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
-  .editor-topbar > .compact-brand-link { display: none; }
   .editor-topbar .project-heading { flex: 1 1 80px; min-width: 80px; max-width: 160px; }
   .editor-topbar .collaboration-presence { gap: 4px; padding-left: 0; }
   .editor-topbar .collaboration-avatar { width: 24px; height: 24px; margin-left: -12px; font-size: 10px; }
@@ -2602,8 +2608,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 
 @media (max-width: 600px) {
   .workspace { height: var(--workspace-height, 100dvh); }
-  .editor-topbar { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto 38px; gap: 5px 7px; padding: calc(env(safe-area-inset-top) + 5px) calc(env(safe-area-inset-right) + 8px) 6px calc(env(safe-area-inset-left) + 8px); }
-  .editor-topbar > .back { grid-column: 1; grid-row: 1; }
+  .editor-topbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto 38px; gap: 5px 7px; padding: calc(env(safe-area-inset-top) + 5px) calc(env(safe-area-inset-right) + 8px) 6px calc(env(safe-area-inset-left) + 8px); }
+  .editor-topbar > .editor-topbar-start { grid-column: 1; grid-row: 1; gap: 7px; margin: 0; }
+  .editor-topbar-start .site-logo.compact { width: 32px; height: 32px; }
   .editor-topbar .project-heading { grid-column: 2; grid-row: 1; min-width: 0; max-width: none; margin: 0; }
   .editor-topbar .workspace-project-title { font-size: 14px; }
   .editor-topbar .project-heading small { font-size: 10px; }
