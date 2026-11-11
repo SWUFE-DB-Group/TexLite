@@ -56,7 +56,20 @@ export interface HistoryRecordOptions {
    * that have the same flag.
    */
   hasAgent?: boolean;
+  /**
+   * Record a version when only the project settings differ from the newest
+   * snapshot. A whole-project restore replaces the settings, so its safety
+   * checkpoint must keep them even when no file changed.
+   */
+  keepSettingsChange?: boolean;
 }
+
+/**
+ * Versions shown in the timeline and used as "previous" comparisons. Older
+ * settings-only rows are hidden; a settings-only safety checkpoint is shown.
+ */
+const VISIBLE_VERSION_SQL = "(json_array_length(%.changed_paths_json) > 0 OR %.reason = 'checkpoint')";
+const visibleVersion = (alias: string) => VISIBLE_VERSION_SQL.replaceAll("%", alias);
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -92,6 +105,8 @@ type HistoryListRow = HistoryRow & {
 
 type HistoryPageRow = HistoryListRow & { history_rowid: number };
 
+type RemovableHistoryRow = Pick<HistoryRow, "id" | "manifest_json" | "changed_paths_json" | "created_at"> & { history_rowid: number };
+
 export class ProjectHistoryService {
   constructor(private readonly config: Config, private readonly db: DatabaseConnection) {}
 
@@ -115,6 +130,17 @@ export class ProjectHistoryService {
     const manifest = comparable ? cloneManifest(comparable) : this.emptyManifest(project);
     manifest.tracking = tracking;
     manifest.settings = settings(project);
+    // The baseline assembles the new manifest, because files outside the
+    // changed roots are copied from it. Changes are reported against the
+    // newest stored version instead: the two differ after that version was
+    // deleted, and the timeline must show what changed since the snapshot a
+    // user can still see and restore.
+    const latestManifest = previous ? parseManifest(previous.manifest_json) : null;
+    const reference = latestManifest
+      ? JSON.stringify(latestManifest.tracking) === JSON.stringify(tracking)
+        ? latestManifest
+        : { ...latestManifest, files: this.filterTrackedObjects(projectId, latestManifest.files, tracking) }
+      : comparable;
 
     if (!previousManifest || policyChanged || changedRoots === undefined) {
       manifest.files = this.snapshotAllFiles(projectId, tracking);
@@ -128,10 +154,11 @@ export class ProjectHistoryService {
       }
     }
 
-    const changedPaths = comparable ? changedManifestPaths(comparable, manifest) : Object.keys(manifest.files).sort();
+    const changedPaths = reference ? changedManifestPaths(reference, manifest) : Object.keys(manifest.files).sort();
+    const keepSettings = Boolean(options.keepSettingsChange && reference && !sameSettings(reference.settings, manifest.settings));
     // Settings alone do not create a file-history entry. Keep the baseline
     // current so the next real file change captures the effective settings.
-    if (changedPaths.length === 0) {
+    if (changedPaths.length === 0 && !keepSettings) {
       this.saveBaseline(projectId, manifest);
       return null;
     }
@@ -149,7 +176,21 @@ export class ProjectHistoryService {
     if (!policyChanged && sameRun && previous && !previous.label
       && JSON.stringify(parseManifest(previous.manifest_json).tracking) === JSON.stringify(tracking)
       && Date.parse(createdAt) - Date.parse(previous.created_at) < AUTOSAVE_COALESCE_MS) {
-      const merged = [...new Set([...parseStringArray(previous.changed_paths_json), ...changedPaths])].sort();
+      // Report the run's net change against the version before it, so a file
+      // edited and then changed back is not listed as changed.
+      const beforeRun = this.previousVersion(projectId, previous.id);
+      const beforeRunFiles = beforeRun ? this.manifest(projectId, beforeRun.id)?.files ?? {} : {};
+      const merged = [...new Set([...parseStringArray(previous.changed_paths_json), ...changedPaths])]
+        .filter((filePath) => beforeRunFiles[filePath]?.digest !== manifest.files[filePath]?.digest).sort();
+      const runDigests = new Set(Object.values(parseManifest(previous.manifest_json).files).map((file) => file.digest));
+      if (merged.length === 0) {
+        // The run left every file as the previous version had it, so it is
+        // not a restore point of its own.
+        this.db.prepare("DELETE FROM project_history_versions WHERE id = ? AND project_id = ?").run(previous.id, projectId);
+        this.saveBaseline(projectId, manifest);
+        if (!options.deferRetention) this.removeUnreferencedObjects(projectId, runDigests);
+        return null;
+      }
       this.db.prepare(`UPDATE project_history_versions
         SET manifest_json = ?, changed_paths_json = ?, author_id = ? WHERE id = ?`)
         .run(JSON.stringify(manifest), JSON.stringify(merged), previous.author_id === authorId ? authorId : null, previous.id);
@@ -176,7 +217,7 @@ export class ProjectHistoryService {
   list(projectId: string, limit = 100): HistoryVersion[] {
     const rows = this.db.prepare(`SELECT history.*, user.username AS author_username, user.display_name AS author_name
       FROM project_history_versions history LEFT JOIN users user ON user.id = history.author_id
-      WHERE history.project_id = ? AND json_array_length(history.changed_paths_json) > 0
+      WHERE history.project_id = ? AND ${visibleVersion("history")}
       ORDER BY history.created_at DESC, history.rowid DESC LIMIT ?`)
       .all(projectId, Math.min(200, Math.max(1, limit))) as HistoryListRow[];
     return rows.map((row) => versionJson(row));
@@ -232,7 +273,7 @@ export class ProjectHistoryService {
     const rows = this.db.prepare(`SELECT history.*, history.rowid AS history_rowid,
       user.username AS author_username, user.display_name AS author_name
       FROM project_history_versions history LEFT JOIN users user ON user.id = history.author_id
-      WHERE history.project_id = ? AND json_array_length(history.changed_paths_json) > 0 ${cursorFilter}
+      WHERE history.project_id = ? AND ${visibleVersion("history")} ${cursorFilter}
       ORDER BY history.created_at DESC, history.rowid DESC LIMIT ?`)
       .all(...values) as HistoryPageRow[];
     const pageRows = rows.slice(0, limitValue);
@@ -298,8 +339,9 @@ export class ProjectHistoryService {
   }
 
   deleteVersion(projectId: string, versionId: string): boolean {
-    const row = this.db.prepare("SELECT id, manifest_json FROM project_history_versions WHERE id = ? AND project_id = ?")
-      .get(versionId, projectId) as { id: string; manifest_json: string } | undefined;
+    const row = this.db.prepare(`SELECT id, manifest_json, changed_paths_json, created_at, rowid AS history_rowid
+      FROM project_history_versions WHERE id = ? AND project_id = ?`)
+      .get(versionId, projectId) as RemovableHistoryRow | undefined;
     if (!row) return false;
     this.saveBaseline(projectId, this.snapshotCurrent(projectId));
     this.deleteVersions(projectId, [row]);
@@ -365,7 +407,7 @@ export class ProjectHistoryService {
   previousVersion(projectId: string, versionId: string): HistoryVersion | null {
     const row = this.db.prepare(`SELECT older.id FROM project_history_versions older
       JOIN project_history_versions selected ON selected.id = ? AND selected.project_id = older.project_id
-      WHERE older.project_id = ? AND json_array_length(older.changed_paths_json) > 0
+      WHERE older.project_id = ? AND ${visibleVersion("older")}
         AND (older.created_at < selected.created_at
         OR (older.created_at = selected.created_at AND older.rowid < selected.rowid))
       ORDER BY older.created_at DESC, older.rowid DESC LIMIT 1`).get(versionId, projectId) as { id: string } | undefined;
@@ -441,7 +483,7 @@ export class ProjectHistoryService {
     }
     // This policy belongs only to the safety checkpoint, not project settings.
     // Even a legacy restore or a single excluded file must remain reversible.
-    return this.record(projectId, authorId, "checkpoint", undefined, { tracking });
+    return this.record(projectId, authorId, "checkpoint", undefined, { tracking, keepSettingsChange: selected === null });
   }
 
   private assertRestoreTargetIsFile(projectId: string, filePath: string): void {
@@ -599,9 +641,9 @@ export class ProjectHistoryService {
   }
 
   private pruneVersions(projectId: string): void {
-    const rows = this.db.prepare(`SELECT *
+    const rows = this.db.prepare(`SELECT *, rowid AS history_rowid
       FROM project_history_versions WHERE project_id = ?
-      ORDER BY created_at DESC, rowid DESC`).all(projectId) as HistoryRow[];
+      ORDER BY created_at DESC, rowid DESC`).all(projectId) as Array<HistoryRow & { history_rowid: number }>;
     if (!rows.length) return;
 
     // Parse manifests and build reference counts & object size tracking in a single pass
@@ -704,6 +746,7 @@ export class ProjectHistoryService {
     const remove = this.db.prepare("DELETE FROM project_history_versions WHERE id = ? AND project_id = ?");
     this.db.transaction(() => {
       for (const id of toDeleteIds) remove.run(id, projectId);
+      this.carryChangedPaths(projectId, rows.filter((row) => toDeleteIds.has(row.id)));
     })();
 
     // 5. Remove unreferenced CAS objects on disk
@@ -712,15 +755,56 @@ export class ProjectHistoryService {
     }
   }
 
-  private deleteVersions(projectId: string, rows: Array<{ id: string; manifest_json: string }>): void {
+  private deleteVersions(projectId: string, rows: RemovableHistoryRow[]): void {
     if (!rows.length) return;
     const candidates = new Set<string>();
     for (const row of rows) {
       for (const file of Object.values(parseManifest(row.manifest_json).files)) candidates.add(file.digest);
     }
     const remove = this.db.prepare("DELETE FROM project_history_versions WHERE id = ? AND project_id = ?");
-    this.db.transaction(() => { for (const row of rows) remove.run(row.id, projectId); })();
+    this.db.transaction(() => {
+      for (const row of rows) remove.run(row.id, projectId);
+      this.carryChangedPaths(projectId, rows);
+    })();
     this.removeUnreferencedObjects(projectId, candidates);
+  }
+
+  /**
+   * Each version lists the files changed since the version before it. When
+   * versions are removed, the next remaining version is now compared with an
+   * older one, so it takes over the removed versions' changes. Only files that
+   * still differ from the new predecessor are kept.
+   */
+  private carryChangedPaths(projectId: string, removed: readonly RemovableHistoryRow[]): void {
+    if (!removed.length) return;
+    const order = (left: { created_at: string; history_rowid: number }, right: { created_at: string; history_rowid: number }) =>
+      left.created_at < right.created_at ? -1 : left.created_at > right.created_at ? 1 : left.history_rowid - right.history_rowid;
+    const pending = [...removed].sort(order);
+    const survivors = this.db.prepare(`SELECT id, rowid AS history_rowid, created_at, changed_paths_json
+      FROM project_history_versions history WHERE project_id = ? AND ${visibleVersion("history")}
+      ORDER BY created_at ASC, rowid ASC`).all(projectId) as Array<{ id: string; history_rowid: number; created_at: string; changed_paths_json: string }>;
+    const update = this.db.prepare("UPDATE project_history_versions SET changed_paths_json = ? WHERE id = ? AND project_id = ?");
+    let next = 0;
+    let previousId: string | null = null;
+    for (const survivor of survivors) {
+      const carried = new Set<string>();
+      while (next < pending.length && order(pending[next]!, survivor) < 0) {
+        for (const filePath of parseStringArray(pending[next]!.changed_paths_json)) carried.add(filePath);
+        next += 1;
+      }
+      if (carried.size) {
+        const own = parseStringArray(survivor.changed_paths_json);
+        const files = this.manifest(projectId, survivor.id)!.files;
+        const before = previousId ? this.manifest(projectId, previousId)!.files : {};
+        const differing = [...new Set([...own, ...carried])].filter((filePath) => before[filePath]?.digest !== files[filePath]?.digest).sort();
+        // An identical version keeps its old list rather than vanishing from
+        // the timeline, which hides versions without changed files.
+        const combined = differing.length ? differing : [...own].sort();
+        if (JSON.stringify(combined) !== survivor.changed_paths_json) update.run(JSON.stringify(combined), survivor.id, projectId);
+      }
+      previousId = survivor.id;
+      if (next >= pending.length) break;
+    }
   }
 
   private removeUnreferencedObjects(projectId: string, candidates: Set<string>): void {
@@ -750,9 +834,17 @@ export class ProjectHistoryService {
     let gitMoved = false;
     try {
       if (manifest.tracking) {
+        const entries = listProjectFiles(this.config, projectId);
+        // An empty folder holds nothing a snapshot records, so like other
+        // content outside the snapshot's scope it survives the restore.
+        const files = entries.filter((entry) => entry.type === "file").map((entry) => entry.path);
+        for (const folder of entries) {
+          if (folder.type !== "directory" || files.some((filePath) => filePath.startsWith(`${folder.path}/`))) continue;
+          fs.mkdirSync(path.join(temporary, safeRelativePath(folder.path)), { recursive: true, mode: 0o700 });
+        }
         // Files outside this snapshot's scope survive a project restore. Stage
         // them before swapping trees so a copy/conflict failure is harmless.
-        for (const file of listProjectFiles(this.config, projectId)) {
+        for (const file of entries) {
           if (file.type !== "file" || manifest.files[file.path]) continue;
           const source = resolveSourcePath(this.config, projectId, file.path);
           if (this.tracksFile(projectId, file.path, manifest.tracking)) continue;
@@ -795,6 +887,11 @@ export class ProjectHistoryService {
 
 function settings(project: ProjectRow): HistoryManifest["settings"] {
   return { mainFile: project.main_file, engine: project.engine, latexmkrc: project.latexmkrc, chktexEnabled: Boolean(project.chktex_enabled) };
+}
+
+function sameSettings(left: HistoryManifest["settings"], right: HistoryManifest["settings"]): boolean {
+  return left.mainFile === right.mainFile && left.engine === right.engine && left.latexmkrc === right.latexmkrc
+    && Boolean(left.chktexEnabled) === Boolean(right.chktexEnabled);
 }
 
 function cloneManifest(manifest: HistoryManifest): HistoryManifest {

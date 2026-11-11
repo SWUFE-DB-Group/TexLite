@@ -892,8 +892,21 @@ as one token, allowing coarser but lossless comparisons of unusually large files
 Recovery snapshots are created only for actual file additions, changes, or
 deletions. Settings-only changes update the persistence baseline without adding
 a timeline entry; effective compiler settings are captured with the next file
-change. Older zero-file-change entries are excluded from timeline pagination and
-previous-version comparisons, but are not automatically purged. New snapshots
+change. The one exception is the safety checkpoint of a whole-project restore:
+the restore replaces the settings, so the checkpoint is recorded, and shown,
+when only the settings differ from the newest snapshot. Older zero-file-change
+entries are excluded from timeline pagination and previous-version comparisons,
+but are not automatically purged.
+
+A version lists the files changed since the newest version that still exists,
+not since the internal persistence baseline. The two differ after an owner
+deletes the newest version; reporting against the remaining version keeps the
+timeline and the pre-restore checkpoint from missing work saved since then.
+When versions are deleted or thinned by retention, the next remaining version
+takes over their changed paths, keeping only files that still differ from its
+new predecessor. An autosave run reports its net change against the version
+before the run, and a run that ends where it started is removed rather than
+kept as an identical restore point. New snapshots
 record UTF-8 text by default; PDFs, images, archives, fonts and other binary
 attachments are excluded. Known resource types are skipped without reading their
 contents; other files must pass the existing UTF-8/text-content check. Writers
@@ -904,8 +917,8 @@ a file does not create a deletion entry or remove existing recovery data.
 Missing paths with overrides remain visible so their choices can be reset.
 
 Each new manifest captures its tracking policy. Whole-project restoration keeps
-current files outside that snapshot's scope, restores its managed files and
-removes managed files created later. The replacement tree is fully staged before
+current files outside that snapshot's scope and currently empty folders,
+restores its managed files and removes managed files created later. The replacement tree is fully staged before
 the live source tree is swapped. Legacy manifests without a tracking policy
 retain their full-tree restoration behavior and historical binary contents;
 upgrading does not rewrite or discard old snapshots. Before a restore, its safety

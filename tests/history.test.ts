@@ -648,6 +648,118 @@ describe("project history retention", () => {
       .map((row) => row.created_at.slice(0, 16))).toEqual(["2026-01-02T10:00", "2026-01-02T10:10", "2026-01-09T10:00"]);
   });
 
+  it("keeps the current work in a checkpoint after the newest snapshot was deleted", () => {
+    const fixture = createFixture();
+    const { history, projectId } = fixture;
+    const initial = history.record(projectId, "user-1", "initial")!;
+    writeSource(fixture, "main.tex", "current work");
+    const newest = history.record(projectId, "user-1", "file", ["main.tex"])!;
+    expect(history.deleteVersion(projectId, newest.id)).toBe(true);
+    const checkpoint = history.checkpointForRestore(projectId, "user-1", initial.id);
+    expect(checkpoint).toMatchObject({ reason: "checkpoint", changedPaths: ["main.tex"] });
+    history.restore(projectId, initial.id);
+    expect(readSource(fixture, "main.tex")).toBe("A");
+    expect(history.readTextFile(projectId, checkpoint!.id, "main.tex")).toBe("current work");
+  });
+
+  it("reports the next snapshot's changes against the version left after deleting the newest one", () => {
+    const fixture = createFixture();
+    const { history, projectId } = fixture;
+    history.record(projectId, "user-1", "initial");
+    writeSource(fixture, "main.tex", "B");
+    const newest = history.record(projectId, "user-1", "file", ["main.tex"])!;
+    history.deleteVersion(projectId, newest.id);
+    writeSource(fixture, "chapters/intro.tex", "X");
+    expect(history.record(projectId, "user-1", "file", ["chapters/intro.tex"])!.changedPaths).toEqual(["chapters/intro.tex", "main.tex"]);
+  });
+
+  it("moves a removed version's changes to the next version, keeping only files that still differ", () => {
+    const fixture = createFixture();
+    const { history, projectId } = fixture;
+    history.record(projectId, "user-1", "initial");
+    writeSource(fixture, "chapters/intro.tex", "X");
+    const middle = history.record(projectId, "user-1", "file", ["chapters/intro.tex"])!;
+    writeSource(fixture, "main.tex", "B");
+    const later = history.record(projectId, "user-1", "file", ["main.tex"])!;
+    history.deleteVersion(projectId, middle.id);
+    expect(history.version(later.id, projectId)!.changedPaths).toEqual(["chapters/intro.tex", "main.tex"]);
+
+    // A file changed and changed back across the removed version is not listed.
+    writeSource(fixture, "chapters/intro.tex", "keep");
+    const revert = history.record(projectId, "user-1", "file", ["chapters/intro.tex"])!;
+    writeSource(fixture, "main.tex", "C");
+    const last = history.record(projectId, "user-1", "file", ["main.tex"])!;
+    history.deleteVersion(projectId, revert.id);
+    history.deleteVersion(projectId, later.id);
+    expect(history.version(last.id, projectId)!.changedPaths).toEqual(["main.tex"]);
+  });
+
+  it("carries changes over when retention removes versions", () => {
+    const fixture = createFixture({ maxVersions: 1 });
+    const { history, projectId } = fixture;
+    history.record(projectId, "user-1", "initial");
+    writeSource(fixture, "chapters/intro.tex", "X");
+    history.record(projectId, "user-1", "file", ["chapters/intro.tex"]);
+    writeSource(fixture, "main.tex", "B");
+    const newest = history.record(projectId, "user-1", "file", ["main.tex"])!;
+    expect(history.list(projectId).map((version) => version.reason)).toEqual(["file", "initial"]);
+    expect(history.version(newest.id, projectId)!.changedPaths).toEqual(["chapters/intro.tex", "main.tex"]);
+  });
+
+  it("keeps empty folders through a whole-project restore", () => {
+    const fixture = createFixture();
+    const { history, projectId } = fixture;
+    const initial = history.record(projectId, "user-1", "initial")!;
+    fs.mkdirSync(path.join(sourceRoot(fixture.config, projectId), "figures", "drafts"), { recursive: true });
+    writeSource(fixture, "notes/later.tex", "created after the snapshot");
+    history.record(projectId, "user-1", "file", ["notes/later.tex"]);
+    history.restore(projectId, initial.id);
+    expect(fs.statSync(path.join(sourceRoot(fixture.config, projectId), "figures", "drafts")).isDirectory()).toBe(true);
+    // A folder whose only files the restore removes is not kept.
+    expect(fs.existsSync(path.join(sourceRoot(fixture.config, projectId), "notes"))).toBe(false);
+  });
+
+  it("keeps settings changed since the newest snapshot in the checkpoint of a whole-project restore", () => {
+    const fixture = createFixture();
+    const { db, history, projectId } = fixture;
+    const initial = history.record(projectId, "user-1", "initial")!;
+    db.prepare("UPDATE projects SET engine = 'lualatex' WHERE id = ?").run(projectId);
+    expect(history.record(projectId, "user-1", "file", ["main.tex"])).toBeNull();
+    // A single-file restore leaves settings alone and needs no checkpoint.
+    expect(history.checkpointForRestore(projectId, "user-1", initial.id, "main.tex")).toBeNull();
+    const checkpoint = history.checkpointForRestore(projectId, "user-1", initial.id)!;
+    expect(checkpoint).toMatchObject({ reason: "checkpoint", changedPaths: [] });
+    expect(history.list(projectId).map((version) => version.id)).toContain(checkpoint.id);
+    expect(history.manifest(projectId, checkpoint.id)!.settings.engine).toBe("lualatex");
+    history.restore(projectId, initial.id);
+    expect(db.prepare("SELECT engine FROM projects WHERE id = ?").get(projectId)).toEqual({ engine: "xelatex" });
+    history.restore(projectId, checkpoint.id);
+    expect(db.prepare("SELECT engine FROM projects WHERE id = ?").get(projectId)).toEqual({ engine: "lualatex" });
+  });
+
+  it("drops an autosave run that ends where it started and lists only net changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const fixture = createFixture();
+    const { history, projectId } = fixture;
+    const initial = history.record(projectId, "user-1", "initial")!;
+    writeSource(fixture, "main.tex", "typo");
+    const run = history.record(projectId, "user-1", "autosave", ["main.tex"])!;
+    vi.setSystemTime(new Date("2026-01-01T00:00:30.000Z"));
+    writeSource(fixture, "chapters/intro.tex", "edited");
+    history.record(projectId, "user-1", "autosave", ["chapters/intro.tex"]);
+    vi.setSystemTime(new Date("2026-01-01T00:01:00.000Z"));
+    writeSource(fixture, "main.tex", "A");
+    expect(history.record(projectId, "user-1", "autosave", ["main.tex"])).toMatchObject({ id: run.id, changedPaths: ["chapters/intro.tex"] });
+    vi.setSystemTime(new Date("2026-01-01T00:01:30.000Z"));
+    writeSource(fixture, "chapters/intro.tex", "keep");
+    expect(history.record(projectId, "user-1", "autosave", ["chapters/intro.tex"])).toBeNull();
+    expect(history.list(projectId).map((version) => version.id)).toEqual([initial.id]);
+    // The next change starts a new snapshot against the remaining version.
+    writeSource(fixture, "main.tex", "B");
+    expect(history.record(projectId, "user-1", "autosave", ["main.tex"])).toMatchObject({ changedPaths: ["main.tex"] });
+  });
+
   function createFixture(options: { maxVersions?: number; maxStorageBytes?: number } = {}): HistoryFixture {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-history-"));
     const config: Config = createTestConfig(root, { siteName: "History Test", historyMaxVersions: options.maxVersions ?? 200, historyMaxStorageBytes: options.maxStorageBytes ?? 512 * 1024 * 1024 });
@@ -667,6 +779,10 @@ describe("project history retention", () => {
     return fixture;
   }
 });
+
+function readSource(fixture: Pick<HistoryFixture, "config" | "projectId">, relative: string): string {
+  return fs.readFileSync(path.join(sourceRoot(fixture.config, fixture.projectId), relative), "utf8");
+}
 
 function writeSource(fixture: Pick<HistoryFixture, "config" | "projectId">, relative: string, content: string): void {
   const target = path.join(sourceRoot(fixture.config, fixture.projectId), relative);
