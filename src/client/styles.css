@@ -1503,8 +1503,13 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .settings { display: flex; flex-direction: column; gap: 14px; }
 .project-settings { container: workspace-settings / inline-size; }
 .settings > section { display: flex; flex-direction: column; gap: 14px; }
-.settings-project-name { display: grid; gap: 7px; margin: 0; font-size: 13px; font-weight: 650; }
-.settings-project-name dd { min-width: 0; margin: 0; color: var(--ui-text, #263b2e); font-size: 12px; font-weight: 600; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.settings-project-name { display: grid; gap: 5px; margin: 0; color: var(--ui-text, #263b2e); font-size: 12px; font-weight: 600; }
+.settings-project-name dd { min-width: 0; margin: 0; color: var(--ui-text, #263b2e); font-size: var(--ui-control-font-size); font-weight: 400; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Settings use the workspace control scale: group titles lead, field labels
+   follow, and the values inside controls read as ordinary text. */
+.settings label { gap: 5px; color: var(--ui-text, #263b2e); font-size: 12px; font-weight: 600; }
+.settings :is(input:not([type="checkbox"]), select, textarea) { min-height: var(--ui-control-height); padding: 5px 9px; border-radius: var(--ui-control-radius); color: var(--ui-text, #263b2e); font-size: var(--ui-control-font-size); font-weight: 400; line-height: 1.4; }
+.settings .field-hint a, .settings-description a { color: var(--ui-accent, #176b44); }
 .settings button { border: 1px solid var(--ui-border, #c9d0ca); background: var(--ui-surface, white); border-radius: 6px; padding: 7px 9px; font-size: 12px; }
 .settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--ui-border, #d7ded8); border-radius: 9px; background: var(--ui-surface, #f4f7f4); }
 .settings-tab { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px solid transparent !important; border-radius: 7px !important; background: transparent !important; color: var(--ui-muted, #66716a); font-weight: 650; }
@@ -1563,8 +1568,12 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .browser-tool-reload:hover { border-color: var(--ui-danger-border, #bf7770); background: var(--ui-hover, #fff8f7); }
 .settings .editor-preference { display: flex; flex-direction: column; gap: 4px; }
 .settings .editor-preference .field-hint { margin: 0 9px; line-height: 1.4; }
-.settings .editor-checkbox { flex-direction: row; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--ui-border, #d9ded9); border-radius: 7px; font-weight: 500; }
+.settings .editor-checkbox { flex-direction: row; align-items: center; gap: 7px; min-height: var(--ui-control-height); padding: 6px 9px; border: 1px solid var(--ui-border, #d9ded9); border-radius: 7px; font-size: 12px; font-weight: 400; }
 .settings .editor-checkbox input { width: auto; margin: 0; accent-color: var(--ui-accent, #176b44); }
+/* After the compact sizes above, so touch screens keep full-size targets. */
+@media (pointer: coarse) {
+  .settings :is(input:not([type="checkbox"]), select), .settings .editor-checkbox { min-height: var(--ui-touch-target); }
+}
 .spell-check-result { display: inline-flex; align-items: center; gap: 6px; color: var(--ui-muted, #66716a); font-size: 11px; }
 .spell-check-result.has-issues { color: var(--ui-danger, #a3342c); font-weight: 650; }
 .settings .editor-preference .spell-check-result { margin: 4px 9px 0; flex-wrap: wrap; }
