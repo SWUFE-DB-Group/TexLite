@@ -1,6 +1,6 @@
 import { Children, cloneElement, isValidElement, useState, type MouseEventHandler, type ReactNode } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Ellipsis } from "lucide-react";
+import { Ellipsis, House } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { appPath } from "../basePath";
 import { SiteLogo } from "../pages/SiteChrome";
@@ -26,7 +26,7 @@ export function WorkspaceTopbarFrame({ siteName, projectName, subtitle, onBack, 
       {leading && <div className="editor-actions editor-leading-actions">{leading}</div>}
       {/* The logo is the way back to the project list at every width. */}
       <a className="brand-link compact-brand-link" href={appPath("/")} title={t("editor.backToProjects")} aria-label={`${siteName}: ${t("editor.backToProjects")}`}
-        onClick={onBack ? (event) => { event.preventDefault(); onBack(); } : undefined}><SiteLogo siteName={siteName} compact /></a>
+        onClick={onBack ? (event) => { event.preventDefault(); onBack(); } : undefined}><span className="workspace-home-mark" aria-hidden="true"><SiteLogo siteName={siteName} compact /><span className="workspace-home-icon"><House size={22} /></span></span></a>
     </div>
     <div className="project-heading">
       {titleAccessory ? <div className="workspace-project-title-row"><WorkspaceProjectTitle name={projectName} />{titleAccessory}</div>

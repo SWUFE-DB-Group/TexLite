@@ -601,6 +601,12 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .editor-topbar { height: 56px; padding: 0 14px; flex: none; }
 .editor-topbar-start { flex: none; display: flex; align-items: center; gap: 10px; margin-right: 14px; }
 .editor-topbar-start .site-logo.compact { margin: 0; }
+.workspace-home-mark { position: relative; display: inline-flex; }
+.workspace-home-icon { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 23.4375%; background: #e9f5ee; color: #133d2b; opacity: 0; }
+.compact-brand-link:focus-visible .workspace-home-icon { opacity: 1; }
+@media (hover: hover) {
+  .compact-brand-link:hover .workspace-home-icon { opacity: 1; }
+}
 .editor-topbar .editor-actions.editor-leading-actions { flex: none; width: auto; }
 /* The files toggle is a bare icon: its open and closed icons show the state.
    Sizes still come from the action rules, so touch targets stay large. */
