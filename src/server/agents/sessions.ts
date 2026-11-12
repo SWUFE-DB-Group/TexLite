@@ -65,7 +65,7 @@ export class AgentService {
       if (!fs.existsSync(this.executionFile(row.id))) continue;
       this.db.prepare("UPDATE agent_tasks SET state = 'stopping', error_code = 'AGENT_RECOVERY_FAILED' WHERE id = ?").run(row.id);
       this.activeProjects.set(row.project_id, row.id);
-      const releaseWriter = this.context.projectMutations.registerExternalWriter(row.project_id, async () => { await this.stop(row.id); });
+      const releaseWriter = this.context.projectMutations.registerExternalWriter(row.project_id, async () => { await this.stop(row.id, undefined, false, "AGENT_STOPPED_BY_PROJECT_OPERATION"); });
       this.recoveries.set(row.id, () => {
         if (this.activeProjects.get(row.project_id) === row.id) this.activeProjects.delete(row.project_id);
         releaseWriter?.();
@@ -180,7 +180,7 @@ export class AgentService {
       // Claim synchronously before discovery/credential preparation can yield.
       // This applies to all users, agents and tasks in this project.
       if (this.activeProjects.has(row.project_id)) throw httpError(409, "AGENT_PROJECT_BUSY");
-      const releaseWriter = this.context.projectMutations.registerExternalWriter(row.project_id, async () => { await this.stop(id); });
+      const releaseWriter = this.context.projectMutations.registerExternalWriter(row.project_id, async () => { await this.stop(id, undefined, false, "AGENT_STOPPED_BY_PROJECT_OPERATION"); });
       if (!releaseWriter) throw httpError(409, "AGENT_PROJECT_BUSY");
       this.activeProjects.set(row.project_id, id);
       const releaseProject = () => {
@@ -252,10 +252,13 @@ export class AgentService {
     });
   }
 
-  async stop(id: string, user?: TaskActor, administration = false): Promise<AgentTask | null> {
+  async stop(id: string, user?: TaskActor, administration = false, reason?: "AGENT_STOPPED_BY_PROJECT_OPERATION"): Promise<AgentTask | null> {
     return this.withTask(id, async () => {
       if (user) this.owned(id, user, administration);
-      await this.stopExecution(id);
+      if (reason && (this.executions.has(id) || this.recoveries.has(id))) {
+        this.db.prepare("UPDATE agent_tasks SET error_code = ? WHERE id = ? AND error_code IS NULL").run(reason, id);
+      }
+      await this.stopExecution(id, reason);
       await this.captureContext(id);
       const row = this.row(id);
       if (user && row) this.audit(id, user.id, "stop", "ok");
@@ -371,8 +374,8 @@ export class AgentService {
     return native;
   }
 
-  private async stopExecution(id: string): Promise<void> {
-    if (this.recoveries.has(id)) { await this.recoverExecution(id, "stopped"); return; }
+  private async stopExecution(id: string, reason?: "AGENT_STOPPED_BY_PROJECT_OPERATION"): Promise<void> {
+    if (this.recoveries.has(id)) { await this.recoverExecution(id, "stopped", reason); return; }
     const execution = this.executions.get(id);
     if (!execution) return;
     return this.terminate(id, execution, "stopped");
@@ -471,7 +474,7 @@ export class AgentService {
     }));
   }
 
-  private async recoverExecution(id: string, state: "interrupted" | "stopped"): Promise<void> {
+  private async recoverExecution(id: string, state: "interrupted" | "stopped", reason: string | null = null): Promise<void> {
     try {
       await recoverAgentExecution(this.executionFile(id));
       const row = this.row(id);
@@ -481,7 +484,7 @@ export class AgentService {
         const author = this.db.prepare("SELECT 1 FROM users WHERE id = ?").get(row.user_id) ? row.user_id : null;
         this.context.recordHistory(row.project_id, author, "file", undefined, { hasAgent: true });
       }
-      this.db.prepare("UPDATE agent_tasks SET state = ?, error_code = NULL, ended_at = ?, updated_at = ? WHERE id = ?").run(state, now(), now(), id);
+      this.db.prepare("UPDATE agent_tasks SET state = ?, error_code = ?, ended_at = ?, updated_at = ? WHERE id = ?").run(state, reason, now(), now(), id);
       this.recoveries.get(id)?.();
       this.recoveries.delete(id);
     } catch (error) {

@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { EventEmitter } from "node:events";
 import { Socket } from "node:net";
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import type { WebSocket } from "ws";
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,7 +19,7 @@ import { agentMessages } from "../src/shared/agentMessages.js";
 import { agentUiMessages } from "../src/client/agents/messages.js";
 import { agentTaskRoot, mergeAgentText } from "../src/server/agents/workspaces.js";
 import { loadAgentPty, type AgentPty, type AgentPtyFactory } from "../src/server/agents/terminal.js";
-import { CollaborationService } from "../src/server/collaboration.js";
+import { CollaborationService, collaborationStatePath } from "../src/server/collaboration.js";
 import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
 import { openDatabase, type DatabaseConnection, type UserRow } from "../src/server/db.js";
 import { loadConfig, type Config } from "../src/server/config.js";
@@ -1116,8 +1117,46 @@ describe("agent direct project editing", () => {
     fs.writeFileSync(workingFile(task, "last.txt"), "Last agent write");
     await coordinator.runExclusive(projectId, "test restore", () => {
       expect(service.task(task.id, owner).state).toBe("stopped");
+      expect(service.task(task.id, owner).errorCode).toBe("AGENT_STOPPED_BY_PROJECT_OPERATION");
       expect(fs.readFileSync(workingFile(task, "last.txt"), "utf8")).toBe("Last agent write");
     });
+    await service.start(task.id, owner);
+    expect(service.task(task.id, owner).errorCode).toBeNull();
+  });
+
+  it("skips unchanged recovery-state writes, persists CRDT-only updates and retries failed writes", async () => {
+    const room = await liveRoom();
+    const statePath = collaborationStatePath(config, projectId);
+    collaboration.flushProject(projectId);
+    const original = fs.writeFileSync.bind(fs);
+    const writes = vi.spyOn(fs, "writeFileSync");
+    const stateWrites = () => writes.mock.calls.filter(([file]) => String(file) === `${statePath}.tmp`).length;
+    try {
+      collaboration.flushProject(projectId);
+      collaboration.flushProject(projectId);
+      expect(stateWrites()).toBe(0);
+      room.doc.getMap("test:durable").set("value", "state-only");
+      collaboration.flushProject(projectId);
+      expect(stateWrites()).toBe(1);
+      const recovered = new Y.Doc();
+      try {
+        Y.applyUpdate(recovered, fs.readFileSync(statePath));
+        expect(recovered.getMap("test:durable").get("value")).toBe("state-only");
+      } finally { recovered.destroy(); }
+      collaboration.signalComments(projectId);
+      collaboration.flushProject(projectId);
+      expect(stateWrites()).toBe(1);
+      const text = room.doc.getText("source:main.tex");
+      room.doc.transact(() => text.insert(text.length, "\nRetry me\n"), { externalUserId: owner.id });
+      writes.mockImplementationOnce(() => { throw new Error("temporary write failure"); });
+      expect(() => collaboration.flushProject(projectId)).toThrow("temporary write failure");
+      writes.mockImplementation(original);
+      collaboration.flushProject(projectId);
+      expect(fs.readFileSync(workingFile({ projectId } as AgentTask), "utf8")).toContain("Retry me");
+      const persisted = fs.readFileSync(statePath);
+      collaboration.flushProject(projectId);
+      expect(fs.readFileSync(statePath)).toEqual(persisted);
+    } finally { writes.mockRestore(); }
   });
 
   it("does not attribute ordinary directory moves to the agent", async () => {
@@ -1211,6 +1250,24 @@ describe("agent HTTP and WebSocket permissions", () => {
     };
     return { ownerCookie: await login(owner), adminCookie: await login(admin), readerCookie: await login(reader), editorCookie: await login(editor) };
   }
+
+  it("keeps an agent running and collaborators out of maintenance during a Git commit", async () => {
+    const cookies = await httpApp();
+    db.prepare("UPDATE agent_policy SET allowed = '[\"codex\"]' WHERE id = 1").run();
+    execFileSync(config.git, ["init"], { cwd: sourceRoot(config, projectId), stdio: "ignore" });
+    const created = await app!.inject({ method: "POST", url: `/api/projects/${projectId}/agent-tasks`,
+      headers: { cookie: cookies.ownerCookie }, payload: { agentId: "codex" } });
+    const task = created.json().task as AgentTask;
+    expect((await app!.inject({ method: "POST", url: `/api/agent-tasks/${task.id}/start`, headers: { cookie: cookies.ownerCookie } })).statusCode).toBe(200);
+    const maintenance = vi.spyOn(CollaborationService.prototype, "beginMaintenance");
+    try {
+      const committed = await app!.inject({ method: "POST", url: `/api/projects/${projectId}/git/commit`,
+        headers: { cookie: cookies.ownerCookie }, payload: { message: "Keep the agent running" } });
+      expect(committed.statusCode, committed.body).toBe(201);
+      expect(db.prepare("SELECT state, error_code FROM agent_tasks WHERE id = ?").get(task.id)).toEqual({ state: "running", error_code: null });
+      expect(maintenance).not.toHaveBeenCalled();
+    } finally { maintenance.mockRestore(); }
+  });
 
   it("counts only the caller's active tasks, independent of task pages and administrator visibility", async () => {
     const cookies = await httpApp();

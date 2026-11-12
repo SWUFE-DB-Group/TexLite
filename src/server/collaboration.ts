@@ -131,6 +131,8 @@ interface Room {
   textObservers: Map<string, (event: Y.YTextEvent, transaction: Y.Transaction) => void>;
   saveTimer: NodeJS.Timeout | null;
   stateSaveTimer: NodeJS.Timeout | null;
+  /** CRDT updates not yet saved to the recovery state file. */
+  stateDirty: boolean;
   cleanupTimer: NodeJS.Timeout | null;
   lastModifiedUserId: string | null;
   epoch: string;
@@ -940,6 +942,7 @@ export class CollaborationService {
       textObservers: new Map(),
       saveTimer: null,
       stateSaveTimer: null,
+      stateDirty: true,
       cleanupTimer: null,
       lastModifiedUserId: null,
       epoch: bootstrap.epoch,
@@ -1592,6 +1595,7 @@ export class CollaborationService {
   }
 
   private scheduleStateSave(room: Room): void {
+    room.stateDirty = true;
     if (room.stateSaveTimer) clearTimeout(room.stateSaveTimer);
     room.stateSaveTimer = setTimeout(() => {
       try { this.persistRoomState(room); }
@@ -1603,11 +1607,13 @@ export class CollaborationService {
     if (room.stateSaveTimer) clearTimeout(room.stateSaveTimer);
     room.stateSaveTimer = null;
     this.rejectOversizedTexts(room);
+    if (!room.stateDirty) return;
     const target = collaborationStatePath(this.config, room.projectId);
     const temporary = `${target}.tmp`;
     fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
     fs.writeFileSync(temporary, Y.encodeStateAsUpdate(room.doc), { mode: 0o600 });
     fs.renameSync(temporary, target);
+    room.stateDirty = false;
   }
 
   private flushRoom(room: Room): CollaborationSaveReceipt {

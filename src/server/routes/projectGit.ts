@@ -93,7 +93,7 @@ export function registerProjectGitRoutes(app: FastifyInstance, context: ProjectG
     const { id } = request.params as { id: string };
     if (collaboration.isMaintaining(id)) return apiError(reply, 409, "PROJECT_BUSY");
     const body = request.body as { message?: unknown };
-    return await projectMutations.runExclusive(id, "Git commit", async () => {
+    return await projectMutations.runConsistentRead(id, async () => {
       const project = requireGitOwner(id, user);
       const commit = await projectGit.commit(project, user, typeof body.message === "string" ? body.message : "");
       return reply.code(201).send({ commit, status: await projectGit.status(project) });
