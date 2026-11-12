@@ -14,6 +14,7 @@ import { sourceRoot } from "../files.js";
 import { loadAgentPty, stopAgentPty, type AgentPty, type AgentPtyFactory } from "./terminal.js";
 import type { NativeSessionInspection } from "./adapters/types.js";
 import { clearAgentExecution, recoverAgentExecution } from "./execution.js";
+import { AgentOutputBuffer } from "./outputBuffer.js";
 
 interface TaskRow {
   id: string; project_id: string; user_id: string; project_name: string; user_name: string;
@@ -26,7 +27,8 @@ interface Attachment { socket: WebSocket; authorized: () => boolean }
 type TaskActor = Pick<UserRow, "id" | "role">;
 interface Execution {
   pty: AgentPty; attachments: Set<Attachment>; controller: Attachment | null;
-  output: string; stopping: boolean; finished: Promise<void>; finish: () => void;
+  output: AgentOutputBuffer; permissionsCheckedAt: number; cols: number; rows: number;
+  stopping: boolean; finished: Promise<void>; finish: () => void;
   subscriptions: Array<{ dispose(): void }>;
   termination: Promise<void> | null;
   exitCode: number | null;
@@ -223,7 +225,7 @@ export class AgentService {
             executionFile: this.executionFile(id),
             beforeStart: () => { this.db.prepare("UPDATE agent_tasks SET ever_started = 1 WHERE id = ?").run(id); } });
           let finish!: () => void;
-          const execution: Execution = { pty, attachments: new Set(), controller: null, output: "", stopping: false, termination: null, exitCode: null,
+          const execution: Execution = { pty, attachments: new Set(), controller: null, output: new AgentOutputBuffer(), permissionsCheckedAt: -Infinity, cols: 100, rows: 24, stopping: false, termination: null, exitCode: null,
             finished: new Promise<void>((resolve) => { finish = resolve; }), finish: () => finish(), subscriptions: [], source, releaseProject };
           this.executions.set(id, execution);
           execution.subscriptions.push(pty.onData((data) => this.output(id, execution, data)));
@@ -310,7 +312,9 @@ export class AgentService {
     execution.attachments.add(attachment);
     if (!execution.controller) execution.controller = attachment;
     this.send(socket, { type: "state", task: this.json(row) });
-    if (execution.output) this.send(socket, { type: "output", data: execution.output });
+    this.send(socket, { type: "size", cols: execution.cols, rows: execution.rows });
+    const replay = execution.output.replay();
+    if (replay) this.send(socket, { type: "output", data: replay });
     this.controls(execution);
     socket.on("message", (raw) => {
       if (!authorized()) { socket.close(1008, "Authentication expired"); return; }
@@ -323,6 +327,8 @@ export class AgentService {
       if (message.type === "input") execution.pty.write(message.data);
       if (message.type === "resize") {
         execution.pty.resize(message.cols, message.rows);
+        execution.cols = message.cols; execution.rows = message.rows;
+        for (const peer of execution.attachments) this.send(peer.socket, { type: "size", cols: message.cols, rows: message.rows });
       }
     });
     socket.on("close", () => {
@@ -422,9 +428,14 @@ export class AgentService {
   }
 
   private output(id: string, execution: Execution, data: string): void {
-    const row = this.row(id);
-    if (!row || !this.editable(row)) { void this.stop(id).catch((error) => this.options.onError?.(error)); return; }
-    execution.output = (execution.output + data).slice(-256 * 1024);
+    if (execution.stopping) return;
+    const checkedAt = performance.now();
+    if (checkedAt - execution.permissionsCheckedAt >= 1000) {
+      const row = this.row(id);
+      if (!row || !this.editable(row)) { void this.stop(id).catch((error) => this.options.onError?.(error)); return; }
+      execution.permissionsCheckedAt = checkedAt;
+    }
+    execution.output.append(data);
     for (const attachment of execution.attachments) {
       if (!attachment.authorized()) { attachment.socket.close(1008, "Authentication expired"); continue; }
       if (attachment.socket.bufferedAmount > 512 * 1024) { attachment.socket.close(1013, "Reconnect to redraw terminal"); continue; }

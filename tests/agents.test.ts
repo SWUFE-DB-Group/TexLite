@@ -466,9 +466,11 @@ describe("external agent tasks", () => {
     first.input({ type: "input", data: "hello" }); expect(processes[0].write).toHaveBeenCalledWith("hello");
     second.input({ type: "takeControl" }); second.input({ type: "resize", cols: 120, rows: 35 });
     expect(processes[0].resize).toHaveBeenCalledWith(120, 35);
+    expect(first.messages).toContainEqual({ type: "size", cols: 120, rows: 35 });
     first.close(); processes[0].output("output\r\n");
     expect(second.messages.at(-1)).toEqual({ type: "output", data: "output\r\n" });
     const reconnect = new FakeSocket(); service.attach(task.id, owner, reconnect.ws, () => true);
+    expect(reconnect.messages).toContainEqual({ type: "size", cols: 120, rows: 35 });
     expect(reconnect.messages).toContainEqual({ type: "output", data: "output\r\n" });
     second.input({ type: "resize", cols: -1, rows: 35 }); expect(second.close).toHaveBeenCalledWith(1008, "Invalid terminal message");
   });
@@ -481,6 +483,17 @@ describe("external agent tasks", () => {
     expect(slow.close).toHaveBeenCalledWith(1013, expect.any(String));
     expect(expired.close).toHaveBeenCalledWith(1008, expect.any(String));
     expect(service.task(task.id, owner).state).toBe("running");
+  });
+
+  it("does not requery project permissions for every output chunk", async () => {
+    const task = await create(); await service.start(task.id, owner);
+    const socket = new FakeSocket(); service.attach(task.id, owner, socket.ws, () => true);
+    const prepare = vi.spyOn(db, "prepare");
+    try {
+      for (let i = 0; i < 100; i++) processes[0].output("progress");
+      expect(prepare.mock.calls.filter(([sql]) => sql === "SELECT * FROM agent_tasks WHERE id = ?")).toHaveLength(1);
+      expect(socket.messages.filter(message => message.type === "output")).toHaveLength(100);
+    } finally { prepare.mockRestore(); }
   });
 
   it("stops executions when access is revoked, but preserves the task for cleanup", async () => {

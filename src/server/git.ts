@@ -13,6 +13,8 @@ export type { GitCommit, GitIdentity, ProjectGitStatus } from "../shared/gitProt
 
 const MAX_COMMAND_OUTPUT = 8 * 1024 * 1024;
 const MAX_DIFF_OUTPUT = 1024 * 1024;
+// Conflict recovery copies are local safety artifacts, never backup content.
+const backupPaths = [".", ":(top,exclude).texlite-agent-conflicts"];
 
 interface GitSettingsRow {
   project_id: string;
@@ -90,7 +92,7 @@ export class ProjectGitService {
       commitIdentity
     };
     const root = sourceRoot(this.config, project.id);
-    const porcelain = (await this.git(root, ["status", "--porcelain=v1"])).stdout.trim();
+    const porcelain = (await this.git(root, ["status", "--porcelain=v1", "--", ...backupPaths])).stdout.trim();
     const branchResult = await this.git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"], [1]);
     const branch = branchResult.code === 0 ? branchResult.stdout.trim() : null;
     const remoteResult = await this.git(root, ["remote", "get-url", "origin"], [2]);
@@ -210,8 +212,8 @@ export class ProjectGitService {
     assertNoSourceSymlinks(this.config, project.id);
     const branch = await this.git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"], [1]);
     if (branch.code !== 0) throw httpError(409, "GIT_DETACHED_HEAD");
-    await this.git(root, ["add", "--all"]);
-    const staged = await this.git(root, ["diff", "--cached", "--quiet"], [1]);
+    await this.git(root, ["add", "--all", "--", ...backupPaths]);
+    const staged = await this.git(root, ["diff", "--cached", "--quiet", "--", ...backupPaths], [1]);
     if (staged.code === 0) throw httpError(409, "GIT_NO_CHANGES");
     const identity = this.identityForUser(owner.id);
     // GIT_AUTHOR_* / GIT_COMMITTER_* take precedence over -c configuration.
@@ -229,7 +231,7 @@ export class ProjectGitService {
       "-c", `user.email=${identity.email}`,
       "-c", "commit.gpgSign=false",
       "-c", "core.hooksPath=/dev/null",
-      "commit", "-m", message
+      "commit", "--only", "-m", message, "--", ...backupPaths
     ], [], identityEnvironment);
     const result = await this.git(root, ["log", "-1", "--format=%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s"]);
     return parseCommit(result.stdout.trim());
@@ -269,8 +271,8 @@ export class ProjectGitService {
       output = (await this.git(root, ["show", "--no-ext-diff", "--format=fuller", "--unified=3", sha, "--"])).stdout;
     } else {
       const hasHead = (await this.git(root, ["rev-parse", "--verify", "HEAD"], [128])).code === 0;
-      if (hasHead) output = (await this.git(root, ["diff", "--no-ext-diff", "--unified=3", "HEAD", "--"])).stdout;
-      const untracked = (await this.git(root, ["ls-files", "--others", "--exclude-standard", "-z"])).stdout
+      if (hasHead) output = (await this.git(root, ["diff", "--no-ext-diff", "--unified=3", "HEAD", "--", ...backupPaths])).stdout;
+      const untracked = (await this.git(root, ["ls-files", "--others", "--exclude-standard", "-z", "--", ...backupPaths])).stdout
         .split("\0").filter(Boolean).slice(0, 100);
       for (const file of untracked) {
         const addition = await this.git(root, ["diff", "--no-index", "--", "/dev/null", file], [1]);
@@ -306,7 +308,7 @@ export class ProjectGitService {
     const head = await this.git(root, ["rev-parse", "--verify", "HEAD"], [128]);
     if (head.code !== 0) throw httpError(409, "GIT_NO_COMMIT");
     await this.assertRevisionHasNoSymlinks(root, head.stdout.trim());
-    await this.git(root, ["restore", "--source=HEAD", "--staged", "--worktree", "--", "."]);
+    await this.git(root, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ...backupPaths]);
     assertNoSourceSymlinks(this.config, project.id);
   }
 

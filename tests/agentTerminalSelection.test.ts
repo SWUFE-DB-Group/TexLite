@@ -4,10 +4,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentTask } from "../src/shared/agentProtocol";
 
-const terminal = vi.hoisted(() => ({ selected: false }));
+const terminal = vi.hoisted(() => ({ selected: false, fit: vi.fn(), resize: vi.fn() }));
+let latestSocket: WebSocket;
+let notifyResize: ResizeObserverCallback;
 
 vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} } }));
+vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() { terminal.fit(); } } }));
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     options = {}; cols = 80; rows = 24;
@@ -16,6 +18,7 @@ vi.mock("@xterm/xterm", () => ({
     attachCustomKeyEventHandler() {}
     onData() { return { dispose() {} }; }
     onResize() { return { dispose() {} }; }
+    resize(cols: number, rows: number) { this.cols = cols; this.rows = rows; terminal.resize(cols, rows); }
     hasSelection() { return terminal.selected; }
     getSelection() { return terminal.selected ? "picked text" : ""; }
     refresh() {} reset() {} write() {} focus() {} dispose() {}
@@ -29,8 +32,9 @@ describe("agent terminal right click", () => {
   let root: Root;
   beforeEach(async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
-    vi.stubGlobal("WebSocket", class { static OPEN = 1; readyState = 0; close() {} send() {} });
+    terminal.fit.mockClear(); terminal.resize.mockClear();
+    vi.stubGlobal("ResizeObserver", class { constructor(callback: ResizeObserverCallback) { notifyResize = callback; } observe() {} disconnect() {} });
+    vi.stubGlobal("WebSocket", class { static OPEN = 1; readyState = 1; constructor() { latestSocket = this as unknown as WebSocket; } close() {} send() {} });
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -50,6 +54,22 @@ describe("agent terminal right click", () => {
     return listener.mock.calls.length > 0;
   };
   const reachesTerminal = (button: number) => reaches("mousedown", { button });
+
+  it("follows PTY dimensions while viewing and only fits locally after taking control", async () => {
+    const receive = (data: unknown) => act(async () => latestSocket.onmessage?.call(latestSocket, new MessageEvent("message", { data: JSON.stringify(data) })));
+    await receive({ type: "size", cols: 120, rows: 35 });
+    expect(terminal.resize).toHaveBeenLastCalledWith(120, 35);
+    const fitted = terminal.fit.mock.calls.length;
+    await act(async () => notifyResize([], {} as ResizeObserver));
+    expect(terminal.fit).toHaveBeenCalledTimes(fitted);
+    await receive({ type: "control", writable: true });
+    expect(terminal.fit.mock.calls.length).toBeGreaterThan(fitted);
+    await receive({ type: "size", cols: 100, rows: 20 });
+    expect(terminal.resize).toHaveBeenCalledTimes(1);
+    await receive({ type: "control", writable: false });
+    await receive({ type: "size", cols: 100, rows: 20 });
+    expect(terminal.resize).toHaveBeenLastCalledWith(100, 20);
+  });
 
   it("keeps a right click on a selection away from mouse reporting", () => {
     terminal.selected = true;

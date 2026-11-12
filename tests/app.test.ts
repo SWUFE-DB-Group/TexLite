@@ -1828,6 +1828,12 @@ Another UniqueTerm appears here.
     expect(repository.statusCode).toBe(200);
     expect(repository.json().status).toMatchObject({ repositoryName: "git-backup-paper", defaultBranch: "main" });
 
+    const conflictDirectory = path.join(sourceRoot(config, projectId), ".texlite-agent-conflicts", "task");
+    fs.mkdirSync(conflictDirectory, { recursive: true });
+    fs.writeFileSync(path.join(conflictDirectory, "main.tex"), "Recovery copy, not backup content");
+    // Even a copy staged by an external CLI must stay out of a UI commit.
+    await execFileAsync("git", ["add", "--all"], { cwd: sourceRoot(config, projectId) });
+
     const firstCommit = await app.inject({
       method: "POST", url: `/api/projects/${projectId}/git/commit`, headers: { cookie }, payload: { message: "Initial backup" }
     });
@@ -1835,6 +1841,10 @@ Another UniqueTerm appears here.
     expect(firstCommit.json().commit).toMatchObject({ authorName: "admin", authorEmail: "admin@texlite.com", message: "Initial backup" });
     expect(firstCommit.json().status.ahead).toBe(1);
     const firstSha = firstCommit.json().commit.sha as string;
+    const committedFiles = await execFileAsync("git", ["ls-tree", "-r", "--name-only", "HEAD"], { cwd: sourceRoot(config, projectId) });
+    expect(committedFiles.stdout).not.toContain(".texlite-agent-conflicts");
+    expect(fs.readFileSync(path.join(conflictDirectory, "main.tex"), "utf8")).toBe("Recovery copy, not backup content");
+    expect(firstCommit.json().status.dirty).toBe(false);
 
     const changedSource = String.raw`\documentclass{article}
 \begin{document}
@@ -1889,8 +1899,12 @@ Second version.
     await app.inject({
       method: "PUT", url: `/api/projects/${projectId}/file`, headers: { cookie }, payload: { path: "untracked.txt", content: "keep me" }
     });
+    fs.mkdirSync(conflictDirectory, { recursive: true });
+    fs.writeFileSync(path.join(conflictDirectory, "main.tex"), "Keep recovery on discard");
+    await execFileAsync("git", ["add", "--", ".texlite-agent-conflicts"], { cwd: sourceRoot(config, projectId) });
     const discarded = await app.inject({ method: "POST", url: `/api/projects/${projectId}/git/discard`, headers: { cookie } });
     expect(discarded.statusCode).toBe(200);
+    expect(fs.readFileSync(path.join(conflictDirectory, "main.tex"), "utf8")).toBe("Keep recovery on discard");
     expect(discarded.json().status).toMatchObject({ dirty: true, restorable: false });
     const restoredFile = await app.inject({ method: "GET", url: `/api/projects/${projectId}/file?path=main.tex`, headers: { cookie } });
     expect(restoredFile.json().content).toContain("Second version.");

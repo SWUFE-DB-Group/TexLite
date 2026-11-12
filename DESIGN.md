@@ -1943,6 +1943,15 @@ display replay is bounded, slow sockets disconnect without stopping the task,
 and full transcripts are not persisted by TexLite. Native CLI history can still
 exist in task-local or shared host state. Raw terminal replay is a bounded recent stream, not a
 complete saved terminal screen; very long full-screen sessions may need a redraw.
+Replay uses bounded chunks and separately retains common input modes (including
+bracketed paste and mouse reporting) across truncation. Project permissions are
+rechecked at most once per second of output and immediately by mutation-driven
+reconciliation; terminal input and attachment session validity remain checked
+on each message. View-only attachments follow the PTY's authoritative dimensions
+instead of fitting to their own panel; narrower panels can scroll horizontally.
+Git backup status, working diffs, UI commits and ordinary discard exclude the
+local `.texlite-agent-conflicts/` recovery directory, even if a CLI stages its
+files. Explicit forced checkout still discards untracked files as documented.
 
 xterm clears its selection on input, and a CLI with mouse reporting receives
 clicks and pointer movement as input. While text is selected, the surface

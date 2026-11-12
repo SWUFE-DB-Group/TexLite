@@ -60,7 +60,7 @@ export function AgentTerminalSurface({ task, onTask, pasteRequest = null, onPast
     });
     const input = term.onData((data) => { if (writableRef.current) send({ type: "input", data }); });
     const resize = term.onResize(({ cols, rows }) => { if (writableRef.current) send({ type: "resize", cols, rows }); });
-    const observer = new ResizeObserver(() => { try { fit.fit(); } catch { /* Hidden panel. */ } });
+    const observer = new ResizeObserver(() => { if (writableRef.current) try { fit.fit(); } catch { /* Hidden panel. */ } });
     observer.observe(element);
     fit.fit();
     // xterm clears its selection on input, and a CLI with mouse reporting receives
@@ -97,7 +97,7 @@ export function AgentTerminalSurface({ task, onTask, pasteRequest = null, onPast
     const apply = () => {
       if (cancelled) return;
       Object.assign(term.options, { fontFamily, fontSize: preferences.fontSize });
-      try { fit.fit(); } catch { /* Hidden panel. */ }
+      if (writableRef.current) try { fit.fit(); } catch { /* Hidden panel. */ }
       term.refresh(0, term.rows - 1);
     };
     if (document.fonts?.load) {
@@ -122,9 +122,13 @@ export function AgentTerminalSurface({ task, onTask, pasteRequest = null, onPast
         let message: AgentServerMessage;
         try { message = JSON.parse(String(event.data)) as AgentServerMessage; } catch { return; }
         if (message.type === "output") terminal.current?.write(message.data);
+        if (message.type === "size" && !writableRef.current) terminal.current?.resize(message.cols, message.rows);
         if (message.type === "state") onTaskRef.current(message.task);
         if (message.type === "error") setErrorCode(message.code);
         if (message.type === "control") {
+          // Fit first without emitting a second resize from xterm's callback.
+          writableRef.current = false;
+          if (message.writable) try { fitAddon.current?.fit(); } catch { /* Hidden panel. */ }
           writableRef.current = message.writable; setWritable(message.writable);
           if (message.writable && terminal.current) {
             send({ type: "resize", cols: terminal.current.cols, rows: terminal.current.rows });

@@ -44,6 +44,7 @@ export type AgentClientMessage =
   | { type: "resize"; cols: number; rows: number }
   | { type: "takeControl" };
 export type AgentServerMessage =
+  | { type: "size"; cols: number; rows: number }
   | { type: "output"; data: string }
   | { type: "state"; task: AgentTask }
   | { type: "control"; writable: boolean }
