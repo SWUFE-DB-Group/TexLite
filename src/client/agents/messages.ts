@@ -1,9 +1,9 @@
 const en = {
   title: "Coding Agent CLI", tasks: "Agent tasks", terminal: "Terminal", back: "Back to projects",
-  description: "Manage coding agent CLIs installed on this server and their project task sessions.",
+  description: "Manage host-installed coding agent CLIs and project tasks.",
   personalDescription: "Your tasks across projects. Hiding a terminal keeps its execution running.",
   allowedAgents: "Allowed coding agent CLIs", allowed: "Allowed", installed: "Installed", notInstalled: "Not installed",
-  usageHint: "Users with project write access can use agents and share account quotas. Administrators should configure models on the host in advance.",
+  usageHint: "Project editors can use agents with shared account quotas. Administrators should configure models on the host first.",
   disabled: "Disabled by administrator", unknown: "Unknown", detection: "Refresh detection",
   sessionManagementHint: "Avoid /new, /clear and similar commands that start a new session with an empty context; TexLite may not track the new session.",
   ptyUnavailable: "Terminal support is unavailable (node-pty).",
@@ -36,13 +36,13 @@ const en = {
   contentTab: "New content", diffTab: "Diff", openReview: "Open in agent review",
   askAboutComment: "Ask Agent about this comment",
   commentAgentUnavailable: "Start a Coding Agent task first.",
-  commentAgentTimedOut: "Could not paste into the Coding Agent terminal. Check that the task is running and try again."
+  commentAgentTimedOut: "Could not paste into the terminal. Check that the task is running and retry."
 };
 const zh: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任务", terminal: "终端", back: "返回项目",
-  description: "管理安装在服务器上的 Coding Agent CLI 及其项目任务会话。", personalDescription: "查看各项目中你的任务。收起终端不会结束运行。",
+  description: "管理主机上的 Coding Agent CLI 和项目任务。", personalDescription: "查看各项目中你的任务。收起终端不会结束运行。",
   allowedAgents: "允许使用的 Coding Agent CLI", allowed: "允许使用", installed: "已安装", notInstalled: "未安装", disabled: "管理员未启用", unknown: "未知", detection: "重新检测",
-  usageHint: "有项目写入权限的用户可使用 Agent，共享账号额度。建议管理员提前在主机上配置模型。",
+  usageHint: "有项目写权限的用户可使用 Agent，额度共享。建议管理员先在主机上配置模型。",
   sessionManagementHint: "请勿在 Agent 内使用 /new、/clear 等新建空上下文会话的命令，以免新会话脱离 TexLite 管理。",
   ptyUnavailable: "终端支持不可用（node-pty）。",
   all: "全部任务", running: "运行中", cleanup: "清理未完成", project: "项目", user: "用户", agent: "Agent", task: "任务", state: "状态", actions: "操作",
@@ -68,13 +68,13 @@ const zh: Record<keyof typeof en, string> = {
   contentTab: "新内容", diffTab: "差异", openReview: "在 Agent 审阅中查看",
   askAboutComment: "让 Agent 分析批注",
   commentAgentUnavailable: "请先启动 Coding Agent 任务",
-  commentAgentTimedOut: "未能粘贴到 Coding Agent 终端，请确认任务正在运行后重试"
+  commentAgentTimedOut: "未能粘贴到终端，请确认任务正在运行后重试"
 };
 const zhHant: Record<keyof typeof en, string> = {
   title: "Coding Agent CLI", tasks: "Agent 任務", terminal: "終端機", back: "返回專案",
-  description: "管理安裝在伺服器上的 Coding Agent CLI 與其專案任務工作階段。", personalDescription: "檢視各專案中你的任務。收起終端機不會結束執行。",
+  description: "管理主機上的 Coding Agent CLI 與專案任務。", personalDescription: "檢視各專案中你的任務。收起終端機不會結束執行。",
   allowedAgents: "允許使用的 Coding Agent CLI", allowed: "允許使用", installed: "已安裝", notInstalled: "未安裝", disabled: "管理員尚未啟用", unknown: "未知", detection: "重新偵測",
-  usageHint: "有專案寫入權限的使用者可使用 Agent，共用帳號額度。建議管理員事先在主機上設定模型。",
+  usageHint: "有專案寫入權限的使用者可使用 Agent，額度共用。建議管理員先在主機上設定模型。",
   sessionManagementHint: "請勿在 Agent 內使用 /new、/clear 等建立空白上下文工作階段的指令，以免新工作階段脫離 TexLite 管理。",
   ptyUnavailable: "終端機支援無法使用（node-pty）。",
   all: "全部任務", running: "執行中", cleanup: "清理未完成", project: "專案", user: "使用者", agent: "Agent", task: "任務", state: "狀態", actions: "操作",
@@ -100,6 +100,6 @@ const zhHant: Record<keyof typeof en, string> = {
   contentTab: "新內容", diffTab: "差異", openReview: "在 Agent 審閱中查看",
   askAboutComment: "讓 Agent 分析批註",
   commentAgentUnavailable: "請先啟動 Coding Agent 任務",
-  commentAgentTimedOut: "無法貼上至 Coding Agent 終端機，請確認任務正在執行後重試"
+  commentAgentTimedOut: "無法貼上至終端機，請確認任務正在執行後重試"
 };
 export const agentUiMessages = { en, zh, "zh-Hant": zhHant };
