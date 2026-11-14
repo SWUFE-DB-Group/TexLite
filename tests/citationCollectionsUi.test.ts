@@ -306,7 +306,7 @@ describe("citation folder workflows", () => {
     expect(host.querySelector(".citation-library-scope-heading a")).toBeNull();
     await menu(folder("Renamed").parentElement!.querySelector<HTMLElement>(".citation-collection-menu-trigger")!, "Delete folder");
     expect(document.querySelector<HTMLInputElement>(".citation-folder-delete-option input")?.checked).toBe(false);
-    expect(document.body.textContent).toContain("The references inside will remain in your library");
+    expect(document.body.textContent).toContain(i18n.t("citationFolders.deleteDescription", { name: "Renamed" }));
     expect(vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(0);
     await click(named("Delete", ".dialog-footer button")); await settle();
     expect(folder("Renamed")).toBeUndefined();

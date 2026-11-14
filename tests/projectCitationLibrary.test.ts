@@ -72,7 +72,7 @@ describe("minimal project bibliography workflow", () => {
     expect(currentTab().getAttribute("aria-selected")).toBe("true");
     expect(vi.mocked(api).mock.calls.some(([url]) => url.startsWith("/api/citations?"))).toBe(false);
     const intro = () => document.querySelector(".citation-project-intro")?.textContent;
-    expect(intro()).toBe("Save entries from this file that are not in your private library yet into the folder you choose.");
+    expect(intro()).toBe(i18n.t("citationProject.introCurrent"));
     await openLibrary();
     expect(intro()).toBe("Import entries from your private library into this BibTeX file.");
     await act(async () => root.unmount()); root = createRoot(host);

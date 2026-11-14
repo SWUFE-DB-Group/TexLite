@@ -192,6 +192,12 @@
     "githubEncryption": "The token is verified with GitHub, stored encrypted and never shown again."
   },
   "projects": {
+    "projectType": "Project type",
+    "blankProject": "Blank project",
+    "templateProject": "Template project",
+    "templateZipUrl": "Template ZIP link",
+    "templateZipHelp": "Use a ZIP download link that needs no sign-in, not a webpage. Maximum size: {{size}} MB.",
+    "downloadingTemplate": "Importing template…",
     "byUserInline": "by {{user}}",
     "ownedBy": "(owned by <user>{{user}}</user>)",
     "createdAt": "Created at {{time}}",

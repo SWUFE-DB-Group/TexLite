@@ -139,7 +139,7 @@ describe("suggestions as comment attachments", () => {
     const select = host.querySelector<HTMLSelectElement>("select")!;
     expect(select.disabled).toBe(true); expect(select.value).toBe("");
     expect([...select.options].map((option) => option.value)).toEqual([""]);
-    expect(host.textContent).toContain("No other project members have write access");
+    expect(host.textContent).toContain(i18n.t("suggestions.noReviewers"));
   });
 
   it("blocks self-review from stale data without exposing a change-reviewer control", async () => {

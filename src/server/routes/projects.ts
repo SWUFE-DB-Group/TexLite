@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { requireUser } from "../auth.js";
+import { currentUser, requireUser } from "../auth.js";
 import { maxCollaborativeFileBytes, type CollaborationService } from "../collaboration.js";
 import type { Config } from "../config.js";
-import type { DatabaseConnection, ProjectRow } from "../db.js";
+import type { DatabaseConnection, ProjectRow, UserRow } from "../db.js";
 import {
   createProjectFiles,
   duplicateProjectFiles,
@@ -26,6 +26,7 @@ import { accessibleProject, canEdit } from "../projects.js";
 import { ProjectPreviewService } from "../projectPreview.js";
 import { writeProjectArchive } from "../archive.js";
 import { extractProjectZip, ZipValidationError } from "../zip.js";
+import { ProjectTemplateCache } from "../projectTemplateCache.js";
 import { HarperLintSupersededError, HarperUnavailableError, type HarperService } from "../harper.js";
 import { ChktexLintSupersededError, ChktexUnavailableError, type ChktexService } from "../chktex.js";
 import { supportsChktexChecks, supportsWritingChecks } from "../../shared/writingChecks.js";
@@ -64,6 +65,29 @@ const clientIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 export function registerProjectCatalogRoutes(app: FastifyInstance, context: ProjectCatalogRouteContext): void {
   const { config, db, collaboration, projectMutations, latexCompletions, projectOutlines, harper, chktex, recordHistory } = context;
   const projectPreviews = new ProjectPreviewService(config);
+  const templateCache = new ProjectTemplateCache(path.join(config.dataDir, "tmp", "template-cache"), config.maxUploadBytes);
+
+  /** Both uploaded archives and template URLs use the same project import. */
+  const importArchive = async (user: UserRow, name: string, archive: Buffer): Promise<ProjectRow> => {
+    const project: ProjectRow = {
+      id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(name, 120),
+      main_file: "", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, created_at: now(), updated_at: now()
+    };
+    try {
+      fs.mkdirSync(sourceRoot(config, project.id), { recursive: true, mode: 0o700 });
+      fs.mkdirSync(outputRoot(config, project.id), { recursive: true, mode: 0o700 });
+      const extracted = await extractProjectZip(archive, sourceRoot(config, project.id), config.maxUploadBytes);
+      project.main_file = extracted.mainFile;
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.engine, project.chktex_enabled, project.created_at, project.updated_at);
+    } catch (error) {
+      removeProjectDirectory(config, project.id);
+      throw error;
+    }
+    recordHistory(project.id, user.id, "initial");
+    return project;
+  };
 
   // Advanced project icons are served as cacheable SVG masks. The browser
   // therefore does not have to bundle Lucide's entire icon catalogue merely
@@ -244,6 +268,32 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       return apiError(reply, 403, "PROJECT_CREATE_FORBIDDEN");
     }
     const body = request.body as Record<string, unknown>;
+    if (body?.templateUrl !== undefined) {
+      // Validate the name before starting a potentially slow download.
+      const name = text(body.name, 120);
+      const controller = new AbortController();
+      const disconnect = () => { if (!reply.raw.writableEnded) controller.abort(); };
+      reply.raw.on("close", disconnect);
+      const template = await templateCache.download(body.templateUrl, controller.signal)
+        .finally(() => reply.raw.off("close", disconnect));
+      if (controller.signal.aborted) return;
+      // Downloading may take time; do not create after access was revoked.
+      const creator = currentUser(request, db, true);
+      if (!creator) return apiError(reply, 401, "AUTH_REQUIRED");
+      if (creator.must_change_password) return apiError(reply, 403, "PASSWORD_CHANGE_REQUIRED");
+      if (creator.role !== "admin" && !creator.can_create_projects) return apiError(reply, 403, "PROJECT_CREATE_FORBIDDEN");
+      let project: ProjectRow;
+      try { project = await importArchive(creator, name, template.archive); }
+      catch (error) {
+        if (error instanceof ZipValidationError) return apiError(reply, 400, error.code, error.details);
+        return apiError(reply, 400, "ZIP_INVALID");
+      }
+      if (!template.cached) await templateCache.store(body.templateUrl, template.archive);
+      return reply.code(201).send({ project: projectJson({
+        ...project, permission: "owner", owner_username: creator.username, owner_display_name: creator.display_name,
+        last_modified_username: creator.username, last_modified_display_name: creator.display_name
+      }) });
+    }
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(body?.name, 120),
       main_file: "main.tex", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, created_at: now(), updated_at: now()
@@ -275,24 +325,14 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     }
     const query = request.query as { name?: string };
     const fallbackName = path.basename(part.filename, path.extname(part.filename));
-    const project: ProjectRow = {
-      id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(query.name || fallbackName, 120),
-      main_file: "", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, created_at: now(), updated_at: now()
-    };
-    fs.mkdirSync(sourceRoot(config, project.id), { recursive: true, mode: 0o700 });
-    fs.mkdirSync(outputRoot(config, project.id), { recursive: true, mode: 0o700 });
+    const name = text(query.name || fallbackName, 120);
+    let project: ProjectRow;
     try {
-      const extracted = await extractProjectZip(await part.toBuffer(), sourceRoot(config, project.id), config.maxUploadBytes);
-      project.main_file = extracted.mainFile;
-      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`)
-        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.engine, project.chktex_enabled, project.created_at, project.updated_at);
+      project = await importArchive(user, name, await part.toBuffer());
     } catch (error) {
-      removeProjectDirectory(config, project.id);
       if (error instanceof ZipValidationError) return apiError(reply, 400, error.code, error.details);
       return apiError(reply, 400, "ZIP_INVALID");
     }
-    recordHistory(project.id, user.id, "initial");
     return reply.code(201).send({ project: projectJson({
       ...project, permission: "owner", owner_username: user.username, owner_display_name: user.display_name,
       last_modified_username: user.username, last_modified_display_name: user.display_name

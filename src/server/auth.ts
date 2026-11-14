@@ -31,8 +31,9 @@ export function publicUser(user: UserRow): PublicUser {
 
 const requestUserCache = new WeakMap<FastifyRequest, UserRow | null>();
 
-export function currentUser(request: FastifyRequest, db: DatabaseConnection): UserRow | null {
-  if (requestUserCache.has(request)) {
+/** Refresh after a long operation when authorization may have changed meanwhile. */
+export function currentUser(request: FastifyRequest, db: DatabaseConnection, refresh = false): UserRow | null {
+  if (!refresh && requestUserCache.has(request)) {
     return requestUserCache.get(request) ?? null;
   }
   const token = request.cookies.texlite_session;

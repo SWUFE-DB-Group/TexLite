@@ -1612,6 +1612,25 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .share-scope-tabs { display: flex; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--ui-border, #dce3dd); }
 .share-scope-tabs button { border: 0; border-radius: 6px; padding: 7px 12px; color: var(--ui-muted, #727b75); background: transparent; font-size: 12px; }
 .share-scope-tabs button[aria-selected="true"] { background: var(--ui-accent-bg, #e6f1e9); color: var(--ui-accent, #216345); font-weight: 600; }
+.new-project-form { display: flex; flex-direction: column; gap: 16px; }
+.new-project-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 1; min-width: 0; }
+.new-project-url-label, .new-project-url-label > label { display: inline-flex; align-items: center; gap: 5px; }
+.new-project-tabs button:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: -2px; }
+.new-project-modal { transition: box-shadow .25s ease; }
+.new-project-modal.importing-template { box-shadow: 0 25px 80px #0004, 0 0 0 1px color-mix(in srgb, var(--ui-accent, #176b44) 45%, transparent), 0 0 0 5px color-mix(in srgb, var(--ui-accent, #176b44) 8%, transparent); }
+.new-project-modal.importing-template .dialog-header { background: color-mix(in srgb, var(--ui-accent, #176b44) 5%, var(--ui-raised, white)); }
+.new-project-modal.importing-template .dialog-close { visibility: hidden; }
+.new-project-modal.importing-template input:disabled { opacity: 1; outline: none; box-shadow: none; border-color: var(--ui-border, #d1d9d3); color: var(--ui-muted, #66736b); background: var(--ui-surface, #f4f7f4); }
+.new-project-modal.importing-template .dialog-footer .primary:disabled { opacity: 1; cursor: progress; }
+.new-project-import-progress { position: absolute; top: 0; right: 0; left: 0; height: 3px; overflow: hidden; border-radius: 12px 12px 0 0; background: color-mix(in srgb, var(--ui-accent, #176b44) 10%, transparent); pointer-events: none; }
+.new-project-import-progress > span { display: block; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, var(--ui-accent, #176b44), transparent); animation: template-import-progress 2s ease-in-out infinite; }
+@keyframes template-import-progress { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+@media (prefers-reduced-motion: reduce) {
+  .new-project-modal { transition: none; }
+  .new-project-import-progress > span { width: 100%; opacity: .6; background: var(--ui-accent, #176b44); animation: none; }
+  .new-project-modal.importing-template .spin { animation: none; }
+}
+@media (pointer: coarse) { .new-project-tabs button { min-height: var(--ui-touch-target, 44px); } }
 .view-link-manager { display: flex; flex-direction: column; gap: 16px; }
 .view-link-description { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 12px; line-height: 1.6; color: var(--ui-muted, #727b75); }
 .view-link-description svg { flex: none; margin-top: 2px; color: var(--ui-accent, #216345); }

@@ -190,6 +190,12 @@
     "githubEncryption": "token 经 GitHub 验证后加密保存，不再显示明文。"
   },
   "projects": {
+    "projectType": "项目类型",
+    "blankProject": "空白项目",
+    "templateProject": "模板项目",
+    "templateZipUrl": "模板 ZIP 链接",
+    "templateZipHelp": "输入无需登录的 ZIP 下载链接，而非网页地址。最大 {{size}} MB。",
+    "downloadingTemplate": "正在导入模板…",
     "byUserInline": "由 {{user}} 修改",
     "ownedBy": "（拥有者：<user>{{user}}</user>）",
     "createdAt": "创建于 {{time}}",

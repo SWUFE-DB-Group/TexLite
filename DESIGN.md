@@ -1055,6 +1055,20 @@ The uploaded compressed ZIP remains in memory, while expanded files go directly
 to disk. Exports exclude `.git`, preserve empty folders, and finish in a private
 temporary ZIP under the consistent-read barrier before the HTTP download starts.
 
+New projects can also import an HTTP(S) ZIP URL without sign-in credentials.
+DNS resolution and destination reachability follow the host network policy;
+TexLite does not restrict destination IP ranges. Deployers control network
+access, including access to internal services, for users allowed to create
+projects. Downloads have a 30-second overall deadline, a five-redirect limit
+and the configured upload-size limit.
+Downloaded archives pass through the same ZIP import checks; project latexmkrc
+remains disabled. Successfully imported archives are cached by normalized URL
+under `tmp/template-cache` for seven days, with content hashes checked on reuse.
+Cache reads do not extend expiry or check the remote URL for changes. Expired
+entries are cleaned lazily during subsequent imports, at most once per hour.
+Cache publication failures do not prevent project creation, and existing
+projects never share writable source files with the cache.
+
 ## Editor, files, and navigation
 
 The file-tree overflow menu opens project-wide search in a lazy-loaded modal.

@@ -13,6 +13,7 @@ import { UpdateNotification } from "../UpdateNotification";
 import { ProjectListRow } from "./ProjectListRow";
 import { ProjectOwnershipTabs } from "./ProjectOwnershipTabs";
 import { ProjectGridCard } from "./ProjectGridCard";
+import { NewProjectDialog } from "./NewProjectDialog";
 import { LazyModal, LazyPage } from "../LazyLoadBoundary";
 import { appPath, scopedStorageKey } from "../basePath";
 import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
@@ -71,14 +72,11 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [githubAccountOpen, setGitHubAccountOpen] = useState(false);
   const [error, setError] = useState("");
-  const [createError, setCreateError] = useState("");
   const [tagAssignmentError, setTagAssignmentError] = useState("");
   const [renameError, setRenameError] = useState("");
   const [duplicateError, setDuplicateError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
-  const [creating, setCreating] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importName, setImportName] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -180,17 +178,6 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   };
   const changeScope = (archived: boolean) => { setShowArchived(archived); setPage(1); };
   const changeTagFilter = (next: string) => { setTagFilter(next); setPage(1); };
-  const createProject = async () => {
-    if (!newProjectName.trim() || creating) return;
-    setCreating(true);
-    setCreateError("");
-    try {
-      const { project } = await api<{ project: Project }>("/api/projects", { method: "POST", body: JSON.stringify({ name: newProjectName }) });
-      setCreateOpen(false); setNewProjectName("");
-      onOpenProject(project.id);
-    } catch (e) { setCreateError(errorMessage(e)); }
-    finally { setCreating(false); }
-  };
   const importProject = async () => {
     if (!importFile) return;
     const file = importFile;
@@ -414,7 +401,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     {agentsOpen ? <main className="dashboard"><LazyPage onClose={() => setAgentsOpen(false)}><AgentManagement user={user} onBack={() => setAgentsOpen(false)} /></LazyPage></main> : adminOpen ? <main className="dashboard"><LazyPage onClose={() => setAdminOpen(false)}><AdminUsers currentUser={user} minPasswordLength={site.minPasswordLength} onBack={() => setAdminOpen(false)} /></LazyPage></main> : citationLibraryOpen ? <main className="dashboard">
       <LazyPage onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog page open onOpenChange={setCitationLibraryOpen} onBack={() => setCitationLibraryOpen(false)} currentUserId={user.id} maxBibtexBytes={site.maxCitationBibtexBytes} /></LazyPage>
     </main> : <main className="dashboard">
-      <div className="section-title project-catalog-heading"><div><h1><FolderKanban aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button {...actionTooltipProps} aria-label={t("tags.manage")} data-tooltip={t("tags.manage")} onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} /><span className="project-action-label">{t("tags.manage")}</span></button>{user.canCreateProjects && <><button {...actionTooltipProps} aria-label={t("projects.upload")} data-tooltip={t("projects.upload")} onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} /><span className="project-action-label">{t("projects.upload")}</span></button><button {...actionTooltipProps} className="primary" aria-label={t("projects.new")} data-tooltip={t("projects.new")} onClick={() => { setCreateError(""); setCreateOpen(true); }}><FolderPlus aria-hidden size={15} /><span className="project-action-label">{t("projects.new")}</span></button></>}</div></div>
+      <div className="section-title project-catalog-heading"><div><h1><FolderKanban aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button {...actionTooltipProps} aria-label={t("tags.manage")} data-tooltip={t("tags.manage")} onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} /><span className="project-action-label">{t("tags.manage")}</span></button>{user.canCreateProjects && <><button {...actionTooltipProps} aria-label={t("projects.upload")} data-tooltip={t("projects.upload")} onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} /><span className="project-action-label">{t("projects.upload")}</span></button><button {...actionTooltipProps} className="primary" aria-label={t("projects.new")} data-tooltip={t("projects.new")} onClick={() => setCreateOpen(true)}><FolderPlus aria-hidden size={15} /><span className="project-action-label">{t("projects.new")}</span></button></>}</div></div>
       <ProjectOwnershipTabs value={ownership} counts={counts} onChange={changeOwnership} />
       {error && <p className="error">{error}</p>}
       <div className="project-catalog-layout">
@@ -515,9 +502,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
           </section>
         </div>
       </div>
-      <Modal className="management-dialog" open={createOpen} title={t("projects.new")} description={t("projects.newDescription")} onOpenChange={(open) => { if (!open && creating) return; setCreateOpen(open); if (!open) setCreateError(""); }} footer={<><button disabled={creating} onClick={() => setCreateOpen(false)}>{t("common.cancel")}</button><button className="primary" disabled={creating || !newProjectName.trim()} aria-busy={creating} onClick={() => void createProject()}>{creating && <LoaderCircle className="spin" size={14} />}{creating ? t("common.loading") : t("common.create")}</button></>}>
-        <>{createError && <p className="error dialog-error">{createError}</p>}<label className="form-field">{t("projects.name")}<input autoFocus value={newProjectName} onChange={(event) => { setNewProjectName(event.target.value); setCreateError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void createProject(); }} /></label></>
-      </Modal>
+      <NewProjectDialog open={createOpen} maxUploadSizeMB={site.maxUploadSizeMB} onOpenChange={setCreateOpen} onCreated={onOpenProject} />
       <Modal className="management-dialog" open={importOpen} title={t("projects.upload")} description={t("projects.uploadDescription", { size: site.maxUploadSizeMB })} onOpenChange={(open) => { if (!open && importing) return; setImportOpen(open); if (!open) setImportError(""); }} footer={<><button disabled={importing} onClick={() => { setImportOpen(false); setImportError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={!importFile || importing} aria-busy={importing} onClick={() => void importProject()}>{importing && <LoaderCircle className="spin" size={14} />}{importing ? t(importPhase === "processing" ? "projects.processing" : "projects.uploading") : t("projects.import")}</button></>}>
         <div className="form-stack">
           {importError && <p className="error import-error">{importError}</p>}
