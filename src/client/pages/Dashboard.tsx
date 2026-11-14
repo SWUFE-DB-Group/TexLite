@@ -14,6 +14,7 @@ import { ProjectListRow } from "./ProjectListRow";
 import { ProjectOwnershipTabs } from "./ProjectOwnershipTabs";
 import { ProjectGridCard } from "./ProjectGridCard";
 import { NewProjectDialog } from "./NewProjectDialog";
+import { ProjectImportActivity } from "./ProjectImportActivity";
 import { LazyModal, LazyPage } from "../LazyLoadBoundary";
 import { appPath, scopedStorageKey } from "../basePath";
 import { formatRelativeTime, useRelativeTimeNow } from "../relativeTime";
@@ -503,9 +504,10 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
         </div>
       </div>
       <NewProjectDialog open={createOpen} maxUploadSizeMB={site.maxUploadSizeMB} onOpenChange={setCreateOpen} onCreated={onOpenProject} />
-      <Modal className="management-dialog" open={importOpen} title={t("projects.upload")} description={t("projects.uploadDescription", { size: site.maxUploadSizeMB })} onOpenChange={(open) => { if (!open && importing) return; setImportOpen(open); if (!open) setImportError(""); }} footer={<><button disabled={importing} onClick={() => { setImportOpen(false); setImportError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={!importFile || importing} aria-busy={importing} onClick={() => void importProject()}>{importing && <LoaderCircle className="spin" size={14} />}{importing ? t(importPhase === "processing" ? "projects.processing" : "projects.uploading") : t("projects.import")}</button></>}>
-        <div className="form-stack">
-          {importError && <p className="error import-error">{importError}</p>}
+      <Modal className={`management-dialog project-import-modal${importing ? " is-importing" : ""}`} open={importOpen} title={t("projects.upload")} description={t("projects.uploadDescription", { size: site.maxUploadSizeMB })} onOpenChange={(open) => { if (!open && importing) return; setImportOpen(open); if (!open) setImportError(""); }} footer={<><button disabled={importing} onClick={() => { setImportOpen(false); setImportError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={!importFile || importing} aria-busy={importing} onClick={() => void importProject()}>{importing && <LoaderCircle className="spin" size={14} aria-hidden />}{importing ? t(importPhase === "processing" ? "projects.processing" : "projects.uploading") : t("projects.import")}</button></>}>
+        {importing && <ProjectImportActivity />}
+        <div className="form-stack" aria-busy={importing}>
+          {importError && <p className="error import-error" role="alert">{importError}</p>}
           <div className={`upload-picker${importFile ? " has-file" : ""}${importing ? " is-disabled" : ""}`} onDragOver={(event) => { event.preventDefault(); if (!importing) event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); if (!importing) selectImportFile(event.dataTransfer.files[0] ?? null); }}>
             <input ref={importInput} className="sr-only" type="file" accept=".zip,application/zip" disabled={importing} onChange={(event) => selectImportFile(event.target.files?.[0] ?? null)} />
             <FileArchive size={34} />

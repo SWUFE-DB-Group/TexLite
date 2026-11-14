@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api, isAbortError } from "../api";
 import { Modal } from "../Dialog";
 import { InfoPopover } from "../InfoPopover";
+import { ProjectImportActivity } from "./ProjectImportActivity";
 import { errorMessage } from "../errors";
 import type { Project } from "../types";
 
@@ -47,14 +48,14 @@ export function NewProjectDialog({ open, maxUploadSizeMB, onOpenChange, onCreate
     const next = event.key === "Home" ? "blank" : event.key === "End" ? "template" : mode === "blank" ? "template" : "blank";
     switchTab(next); document.getElementById(`${id}-${next}`)?.focus();
   };
-  return <Modal open={open} className={`management-dialog new-project-modal${importing ? " importing-template" : ""}`} title={t("projects.new")}
+  return <Modal open={open} className={`management-dialog project-import-modal${importing ? " is-importing" : ""}`} title={t("projects.new")}
     description={t("projects.newDescription")}
     onOpenChange={(next) => { if (!creating) { setError(""); onOpenChange(next); } }}
     footer={<><button disabled={creating} onClick={() => onOpenChange(false)}>{t("common.cancel")}</button>
       <button type="submit" form={`${id}-form`} className="primary" disabled={creating || !name.trim() || (mode === "template" && !url.trim())} aria-busy={creating}>
         {creating && <LoaderCircle className="spin" size={14} aria-hidden />}<span role="status">{t(creating ? mode === "template" ? "projects.downloadingTemplate" : "common.loading" : "common.create")}</span>
       </button></>}>
-    {importing && <div className="new-project-import-progress" role="progressbar" aria-label={t("projects.downloadingTemplate")}><span /></div>}
+    {importing && <ProjectImportActivity label={t("projects.downloadingTemplate")} />}
     <form id={`${id}-form`} className="new-project-form" aria-busy={creating} onSubmit={(event) => { event.preventDefault(); void create(); }}>
       <div className="share-scope-tabs new-project-tabs" role="tablist" aria-label={t("projects.projectType")}>
         {(["blank", "template"] as const).map((value) => {

@@ -1616,19 +1616,19 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .new-project-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 1; min-width: 0; }
 .new-project-url-label, .new-project-url-label > label { display: inline-flex; align-items: center; gap: 5px; }
 .new-project-tabs button:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: -2px; }
-.new-project-modal { transition: box-shadow .25s ease; }
-.new-project-modal.importing-template { box-shadow: 0 25px 80px #0004, 0 0 0 1px color-mix(in srgb, var(--ui-accent, #176b44) 45%, transparent), 0 0 0 5px color-mix(in srgb, var(--ui-accent, #176b44) 8%, transparent); }
-.new-project-modal.importing-template .dialog-header { background: color-mix(in srgb, var(--ui-accent, #176b44) 5%, var(--ui-raised, white)); }
-.new-project-modal.importing-template .dialog-close { visibility: hidden; }
-.new-project-modal.importing-template input:disabled { opacity: 1; outline: none; box-shadow: none; border-color: var(--ui-border, #d1d9d3); color: var(--ui-muted, #66736b); background: var(--ui-surface, #f4f7f4); }
-.new-project-modal.importing-template .dialog-footer .primary:disabled { opacity: 1; cursor: progress; }
-.new-project-import-progress { position: absolute; top: 0; right: 0; left: 0; height: 3px; overflow: hidden; border-radius: 12px 12px 0 0; background: color-mix(in srgb, var(--ui-accent, #176b44) 10%, transparent); pointer-events: none; }
-.new-project-import-progress > span { display: block; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, var(--ui-accent, #176b44), transparent); animation: template-import-progress 2s ease-in-out infinite; }
-@keyframes template-import-progress { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+.project-import-modal { transition: box-shadow .25s ease; }
+.project-import-modal.is-importing { outline: none; box-shadow: 0 25px 80px #0004, 0 0 0 1px color-mix(in srgb, var(--ui-accent, #176b44) 45%, transparent), 0 0 0 5px color-mix(in srgb, var(--ui-accent, #176b44) 8%, transparent); }
+.project-import-modal.is-importing .dialog-header { background: color-mix(in srgb, var(--ui-accent, #176b44) 5%, var(--ui-raised, white)); }
+.project-import-modal.is-importing .dialog-close { visibility: hidden; }
+.project-import-modal.is-importing input:disabled { opacity: 1; outline: none; box-shadow: none; border-color: var(--ui-border, #d1d9d3); color: var(--ui-muted, #66736b); background: var(--ui-surface, #f4f7f4); }
+.project-import-modal.is-importing .dialog-footer .primary:disabled { opacity: 1; cursor: progress; }
+.project-import-activity { position: absolute; top: 0; right: 0; left: 0; height: 3px; overflow: hidden; border-radius: 12px 12px 0 0; background: color-mix(in srgb, var(--ui-accent, #176b44) 10%, transparent); pointer-events: none; }
+.project-import-activity > span { display: block; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, var(--ui-accent, #176b44), transparent); animation: project-import-sweep 2s ease-in-out infinite; }
+@keyframes project-import-sweep { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
 @media (prefers-reduced-motion: reduce) {
-  .new-project-modal { transition: none; }
-  .new-project-import-progress > span { width: 100%; opacity: .6; background: var(--ui-accent, #176b44); animation: none; }
-  .new-project-modal.importing-template .spin { animation: none; }
+  .project-import-modal { transition: none; }
+  .project-import-activity > span { width: 100%; opacity: .6; background: var(--ui-accent, #176b44); animation: none; }
+  .project-import-modal.is-importing .spin { animation: none; }
 }
 @media (pointer: coarse) { .new-project-tabs button { min-height: var(--ui-touch-target, 44px); } }
 .view-link-manager { display: flex; flex-direction: column; gap: 16px; }
@@ -2060,10 +2060,18 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .project-import-progress-label { display: contents; }
 .project-import-progress-label > span { grid-column: 1; align-self: center; line-height: 1.4; }
 .project-import-progress-label > small { grid-column: 2; grid-row: 1; align-self: center; color: var(--ui-accent, #176b44); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 650; }
-.project-import-progress progress { grid-column: 1 / -1; width: 100%; height: 8px; overflow: hidden; border: 0; border-radius: 999px; background: var(--ui-subtle, #e2ebe5); accent-color: var(--ui-accent, #176b44); }
+.project-import-progress progress { appearance: none; grid-column: 1 / -1; width: 100%; height: 8px; overflow: hidden; border: 0; border-radius: 999px; background: var(--ui-subtle, #e2ebe5); accent-color: var(--ui-accent, #176b44); }
 .project-import-progress progress::-webkit-progress-bar { border-radius: 999px; background: var(--ui-subtle, #e2ebe5); }
-.project-import-progress progress::-webkit-progress-value { border-radius: 999px; background: #27804f; transition: width .12s ease-out; }
-.project-import-progress progress::-moz-progress-bar { border-radius: 999px; background: #27804f; }
+.project-import-progress progress::-webkit-progress-value { border-radius: 999px; background: var(--ui-accent, #27804f); transition: width .12s ease-out; }
+.project-import-progress progress::-moz-progress-bar { border-radius: 999px; background: var(--ui-accent, #27804f); }
+.project-import-progress progress:indeterminate { background: linear-gradient(90deg, var(--ui-subtle, #e2ebe5) 25%, var(--ui-accent, #27804f) 50%, var(--ui-subtle, #e2ebe5) 75%); background-size: 200% 100%; animation: project-import-processing 2s linear infinite; }
+.project-import-progress progress:indeterminate::-webkit-progress-bar { background: transparent; }
+.project-import-progress progress:indeterminate::-moz-progress-bar { background: transparent; }
+@keyframes project-import-processing { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .project-import-progress progress::-webkit-progress-value { transition: none; }
+  .project-import-progress progress:indeterminate { animation: none; }
+}
 .project-import-progress .import-progress-hint { grid-column: 1 / -1; color: var(--ui-muted, #68786e); font-size: 11px; font-weight: 450; line-height: 1.45; }
 .choice-group { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--ui-border, #dfe3df); border-radius: 8px; padding: 14px; }
 .choice-group legend { padding: 0 5px; font-size: 12px; color: var(--ui-muted, #69716b); }
