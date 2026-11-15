@@ -232,7 +232,7 @@
     "blankProject": "空白專案",
     "templateProject": "範本專案",
     "templateZipUrl": "範本 ZIP 連結",
-    "templateZipHelp": "輸入無需登入的 ZIP 下載連結，而非網頁位址。最大 {{size}} MB。",
+    "templateZipHelp": "輸入 ZIP 下載連結，而非網頁位址。最大 {{size}} MB。",
     "downloadingTemplate": "正在匯入範本…",
     "byUserInline": "由 {{user}} 修改",
     "ownedBy": "（擁有者：<user>{{user}}</user>）",
