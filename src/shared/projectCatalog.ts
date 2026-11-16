@@ -8,5 +8,5 @@ export interface ProjectSourcePreview {
   abstract: string;
 }
 
-/** Counts across active and archived projects, before ownership filtering or pagination. */
+/** Counts per ownership scope, before ownership filtering or pagination. */
 export type ProjectCatalogCounts = Record<ProjectOwnershipScope, number>;

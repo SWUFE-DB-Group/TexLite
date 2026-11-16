@@ -200,13 +200,17 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const search = typeof query.search === "string" ? query.search.trim() : "";
     const tagId = typeof query.tag === "string" ? query.tag.trim() : "";
     const sortColumn = query.sort === "created" ? "p.created_at" : "p.updated_at";
-    const archiveCondition = archivedOnly
-      ? "EXISTS (SELECT 1 FROM user_project_archives archive WHERE archive.project_id = p.id AND archive.user_id = :userId)"
-      : "NOT EXISTS (SELECT 1 FROM user_project_archives archive WHERE archive.project_id = p.id AND archive.user_id = :userId)";
+    const isArchived = "EXISTS (SELECT 1 FROM user_project_archives archive WHERE archive.project_id = p.id AND archive.user_id = :userId)";
+    const archiveCondition = archivedOnly ? isArchived : `NOT ${isArchived}`;
     const from = `FROM projects p JOIN users owner ON owner.id = p.owner_id
       LEFT JOIN users modifier ON modifier.id = p.last_modified_by
       LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = :userId`;
     const conditions = ["(p.owner_id = :userId OR pm.user_id = :userId)"];
+    // Archive badges describe the whole category, not the filtered result set.
+    const archivedCounts = db.prepare(`SELECT COUNT(DISTINCT p.id) AS "all",
+      COUNT(DISTINCT CASE WHEN p.owner_id = :userId THEN p.id END) AS owned,
+      COUNT(DISTINCT CASE WHEN p.owner_id <> :userId THEN p.id END) AS shared
+      ${from} WHERE ${conditions[0]} AND ${isArchived}`).get({ userId: user.id }) as ProjectCatalogCounts;
     const params: Record<string, string | number> = { userId: user.id };
     if (search) {
       conditions.push("(p.name LIKE :search ESCAPE '\\' OR owner.username LIKE :search ESCAPE '\\' OR owner.display_name LIKE :search ESCAPE '\\')");
@@ -257,7 +261,8 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
         unreadMentionCounts.get(project.id) ?? 0
       ), ...(previews.has(project.id) ? { preview: previews.get(project.id) } : {}) })),
       pagination: { page: currentPage, pageSize, total, totalPages },
-      counts
+      counts,
+      archivedCounts
     };
   });
 

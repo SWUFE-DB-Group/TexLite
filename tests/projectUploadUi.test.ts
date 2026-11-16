@@ -23,11 +23,11 @@ const progress = () => dialog().querySelector<HTMLProgressElement>("progress")!;
 
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); await i18n.changeLanguage("en"); opened.mockReset();
-  vi.mocked(api).mockReset().mockImplementation(async (url) => (url === "/api/tags" ? { tags: [] } : { projects: [], pagination, counts }) as never);
+  vi.mocked(api).mockReset().mockImplementation(async (url) => (url === "/api/tags" ? { tags: [] } : { projects: [], pagination, counts, archivedCounts: counts }) as never);
   vi.mocked(apiUpload).mockReset();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root.render(createElement(Dashboard, { site, user,
-    initialData: { projects: [], tags: [], pagination, counts, filters: { ownership: "all", archived: false, search: "", tag: "", sort: "updated" } },
+    initialData: { projects: [], tags: [], pagination, counts, archivedCounts: counts, filters: { ownership: "all", archived: false, search: "", tag: "", sort: "updated" } },
     onDataChange: () => {}, onUser: () => {}, onOpenProject: opened })));
   await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${i18n.t("projects.upload")}"]`)!.click());
   const input = dialog().querySelector<HTMLInputElement>('input[type="file"]')!;

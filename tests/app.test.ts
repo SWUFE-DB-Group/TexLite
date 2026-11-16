@@ -1332,12 +1332,17 @@ fs.writeFileSync(args.find((arg) => arg.startsWith("-outdir=")).slice(8) + "/arc
         if (scope === "shared") expect(result.projects.map((project: { id: string }) => project.id).sort()).toEqual([...shared].sort());
       }
       expect((await list("&search=no-such-project")).counts).toEqual({ all: 0, owned: 0, shared: 0 });
+      const previousArchived = (await list()).archivedCounts;
       const archive = db.prepare("INSERT INTO user_project_archives (project_id, user_id, archived_at) VALUES (?, ?, ?)");
       archive.run(owned[0], ownerId, timestamp); archive.run(shared[0], ownerId, timestamp);
+      // Inaccessible projects and another user's archive choices must not count.
+      archive.run(hidden, ownerId, timestamp); archive.run(owned[1], otherId, timestamp);
+      const expectedArchived = { all: previousArchived.all + 2, owned: previousArchived.owned + 1, shared: previousArchived.shared + 1 };
       for (const scope of ["all", "owned", "shared"]) {
         for (const archived of [false, true]) {
           const result = await list(`&scope=${scope}&archived=${archived ? "1" : "0"}&page=99`);
           expect(result.counts).toEqual({ all: 33, owned: 31, shared: 2 });
+          expect(result.archivedCounts).toEqual(expectedArchived);
           const total = archived ? scope === "all" ? 2 : 1 : scope === "all" ? 31 : scope === "owned" ? 30 : 1;
           const lastPage = Math.ceil(total / pageSize);
           expect(result.pagination).toMatchObject({ total, page: lastPage, totalPages: lastPage });
@@ -1350,6 +1355,15 @@ fs.writeFileSync(args.find((arg) => arg.startsWith("-outdir=")).slice(8) + "/arc
       for (const id of [owned[0], shared[1], hidden]) tagLink.run(id, tagId, timestamp);
       expect((await list(`&tag=${tagId}&scope=owned`))).toMatchObject({ counts: { all: 2, owned: 1, shared: 1 }, projects: [], pagination: { total: 0 } });
       expect((await list(`&tag=${tagId}&archived=1`))).toMatchObject({ counts: { all: 2, owned: 1, shared: 1 }, pagination: { total: 1 } });
+      expect((await list(`&tag=${tagId}&search=no-such-project&page=99`))).toMatchObject({
+        archivedCounts: expectedArchived, projects: [], pagination: { total: 0 }
+      });
+      const unarchived = await app.inject({ method: "DELETE", url: `/api/projects/${shared[0]}/archive`, headers: { cookie } });
+      expect(unarchived.statusCode).toBe(200);
+      expect((await list("&scope=shared")).archivedCounts).toEqual({ ...expectedArchived,
+        all: expectedArchived.all - 1, shared: expectedArchived.shared - 1 });
+      db.prepare("DELETE FROM projects WHERE id = ?").run(owned[0]);
+      expect((await list("&scope=owned")).archivedCounts).toEqual(previousArchived);
     } finally {
       for (const id of [...owned, ...shared, hidden]) db.prepare("DELETE FROM projects WHERE id = ?").run(id);
       db.prepare("DELETE FROM user_tags WHERE id = ?").run(tagId);

@@ -42,7 +42,7 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
   vi.mocked(api).mockReset().mockImplementation(async (url) => (url === "/api/tags" ? { tags: [] }
-    : { projects: [], pagination, counts }) as never);
+    : { projects: [], pagination, counts, archivedCounts: counts }) as never);
   vi.mocked(useAgentAccess).mockReset().mockReturnValue({ visible: true, activeCount: 2, enabled: true });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
@@ -64,7 +64,7 @@ describe("active task entry badges", () => {
     const user: User = { id: "admin", username: "admin", displayName: "Admin", role: "admin",
       disabled: false, mustChangePassword: false, canCreateProjects: true, createdAt: "2026-10-26" };
     await act(async () => root.render(createElement(Fragment, null, createElement(Dashboard, { site, user,
-      initialData: { projects: [], tags: [], pagination, counts, filters }, onDataChange: noop, onUser: noop, onOpenProject: noop }), createElement(GlobalTooltip))));
+      initialData: { projects: [], tags: [], pagination, counts, archivedCounts: counts, filters }, onDataChange: noop, onUser: noop, onOpenProject: noop }), createElement(GlobalTooltip))));
     const actions = [...host.querySelectorAll<HTMLButtonElement>(".top-actions > .ghost, .project-catalog-heading .section-actions > button")];
     const buttons = ["metrics.title", "users.manage", "citationLibrary.title", "agents.title",
       "tags.manage", "projects.upload", "projects.new"].map((key) => {
@@ -101,7 +101,7 @@ describe("active task entry badges", () => {
     const user: User = { id: `viewer-${role}`, username: role, displayName: role, role,
       disabled: false, mustChangePassword: false, canCreateProjects: true, createdAt: "2026-10-26" };
     const render = () => act(async () => root.render(createElement(Dashboard, { site, user,
-      initialData: { projects: [], tags: [], pagination, counts, filters }, onDataChange: noop, onUser: noop, onOpenProject: noop })));
+      initialData: { projects: [], tags: [], pagination, counts, archivedCounts: counts, filters }, onDataChange: noop, onUser: noop, onOpenProject: noop })));
     await render();
     expect(useAgentAccess).toHaveBeenCalledWith(user.id);
     const badge = host.querySelector(".top-actions sup");

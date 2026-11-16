@@ -35,13 +35,16 @@ function response(url: string) {
     && (!params.get("tag") || project.tags.some((tag) => tag.id === params.get("tag"))));
   const counts = { all: matching.length, owned: matching.filter((project) => project.ownerId === user.id).length,
     shared: matching.filter((project) => project.ownerId !== user.id).length };
+  const archivedProjects = projects.filter((project) => archived.has(project.id));
+  const archivedCounts = { all: archivedProjects.length, owned: archivedProjects.filter((project) => project.ownerId === user.id).length,
+    shared: archivedProjects.filter((project) => project.ownerId !== user.id).length };
   const scoped = matching.filter((project) => archived.has(project.id) === (params.get("archived") === "1"))
     .filter((project) => params.get("scope") === "owned" ? project.ownerId === user.id
       : params.get("scope") === "shared" ? project.ownerId !== user.id : true);
   const pageSize = Number(params.get("pageSize") ?? 32);
   const totalPages = Math.ceil(scoped.length / pageSize);
   const page = Math.max(1, Math.min(Number(params.get("page") ?? 1), totalPages));
-  return { projects: scoped.slice((page - 1) * pageSize, page * pageSize), counts,
+  return { projects: scoped.slice((page - 1) * pageSize, page * pageSize), counts, archivedCounts,
     pagination: { page, pageSize, total: scoped.length, totalPages } };
 }
 const projectCalls = () => apiMock.mock.calls.filter(([url]) => String(url).startsWith("/api/projects?"));
@@ -182,6 +185,55 @@ describe("project ownership tabs", () => {
     expect(host.querySelector('.project-empty-archived')).toBeNull();
   });
 
+  it("counts archived projects across pages and filters within each ownership category, including cached data", async () => {
+    projects = [...Array.from({ length: 70 }, (_, index) => makeProject(true, index)), makeProject(false, 0)];
+    projects.slice(0, 35).forEach((project) => archived.add(project.id));
+    archived.add("shared-0");
+    const badge = () => host.querySelector(".project-scope button:last-child sup")?.textContent;
+    await render();
+    expect(badge()).toBe("36");
+    expect(host.querySelector(".project-scope button:first-child sup")).toBeNull();
+    await click('.project-pagination button:last-child');
+    expect(badge()).toBe("36");
+    await click('#project-tab-owned');
+    expect(badge()).toBe("35");
+    await click('.project-scope button:last-child');
+    await click('.project-pagination button:last-child');
+    expect(names()).toHaveLength(3);
+    expect(badge()).toBe("35");
+    await changeSearch("Not found");
+    await click('.project-tag-toggle'); await click('.project-tag-filters button:last-child');
+    expect(names()).toEqual([]);
+    expect(badge()).toBe("35");
+    await click('#project-tab-shared');
+    expect(badge()).toBe("1");
+    const cached = onDataChange.mock.lastCall![0];
+    await act(async () => root.render(null));
+    // Retain the badge even before the refresh returns when reopening the dashboard.
+    let finish!: (result: ReturnType<typeof response>) => void;
+    apiMock.mockImplementation((url: string) => url === "/api/tags" ? Promise.resolve({ tags: [tag] })
+      : new Promise((resolve) => { finish = resolve; }));
+    await render(cached);
+    expect(badge()).toBe("1");
+    await act(async () => finish(response("/api/projects?scope=shared&archived=1&search=Not+found")));
+    expect(badge()).toBe("1");
+  });
+
+  it("removes the archive badge when the last archived project is deleted", async () => {
+    projects = [makeProject(true, 0)]; archived.add(projects[0].id);
+    const normal = apiMock.getMockImplementation()!;
+    apiMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === "DELETE") { projects = []; return { ok: true }; }
+      return normal(url, options);
+    });
+    await render(); await click('.project-scope button:last-child');
+    expect(host.querySelector('.project-scope sup')?.textContent).toBe("1");
+    await click('.project-action-menu-trigger'); await click('.project-action-menu .danger');
+    await act(async () => document.querySelector<HTMLButtonElement>('.dialog-footer .danger')!.click());
+    expect(host.querySelector('.project-scope sup')).toBeNull();
+    expect(onDataChange.mock.lastCall![0].archivedCounts).toEqual({ all: 0, owned: 0, shared: 0 });
+  });
+
   it("rejects obsolete responses and never displays the previous category's rows while loading", async () => {
     await render();
     const pending = new Map<string, { resolve: (result: ReturnType<typeof response>) => void; signal: AbortSignal }>();
@@ -218,6 +270,7 @@ describe("project ownership tabs", () => {
 
   it("supports arrow-key category changes and preserves counts when archiving or unarchiving", async () => {
     await render();
+    expect(host.querySelector('.project-scope sup')).toBeNull();
     await act(async () => {
       tab("all").focus(); tab("all").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     });
@@ -235,6 +288,8 @@ describe("project ownership tabs", () => {
     expect(tab("owned").querySelector("sup")?.textContent).toBe("23");
     expect(tab("shared").querySelector("sup")?.textContent).toBe("24");
     expect(onDataChange.mock.lastCall![0].pagination.total).toBe(22);
+    expect(host.querySelector('.project-scope sup')?.textContent).toBe("1");
+    expect(onDataChange.mock.lastCall![0].archivedCounts).toEqual({ all: 1, owned: 1, shared: 0 });
     await click('.project-scope button:last-child');
     expect(names()).toHaveLength(1);
     await click('.project-action-menu-trigger');
@@ -242,6 +297,8 @@ describe("project ownership tabs", () => {
     await act(async () => unarchiveButton.click());
     expect(names()).toHaveLength(0);
     expect(onDataChange.mock.lastCall![0].pagination.total).toBe(0);
+    expect(host.querySelector('.project-scope sup')).toBeNull();
+    expect(onDataChange.mock.lastCall![0].archivedCounts).toEqual({ all: 0, owned: 0, shared: 0 });
     // Includes optimistic updates, not just the final server response.
     expect(onDataChange.mock.calls.every(([data]) => data.counts.all === 47 && data.counts.owned === 23 && data.counts.shared === 24)).toBe(true);
   });

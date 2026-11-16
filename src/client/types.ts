@@ -98,6 +98,8 @@ export interface DashboardData {
   tags: ProjectTag[];
   pagination: ProjectListPagination;
   counts: ProjectCatalogCounts;
+  /** Accessible archived projects per ownership scope, independent of search and tags. */
+  archivedCounts: ProjectCatalogCounts;
   filters: ProjectCatalogFilters;
 }
 

@@ -17,6 +17,7 @@ const project = (id: string): Project => ({ id, ownerId: "owner", ownerDisplayNa
   mainFile: "main.tex", lastModifiedBy: "owner", latexmkrc: null, engine: "pdflatex", icon: null,
   chktexEnabled: false, permission: "owner", tags: [], createdAt: "2026-01-01", updatedAt: "2026-01-01" });
 const filters = { ownership: "all", archived: false, search: "", tag: "", sort: "updated" } as const;
+const archivedCounts = { all: 0, owned: 0, shared: 0 };
 
 let host: HTMLDivElement;
 let root: Root;
@@ -44,9 +45,9 @@ describe("project deletion feedback", () => {
     const item = { ...project("named"), name: "<em>Vis-Poison & co.</em>" };
     const pagination = { page: 1, pageSize: 30, total: 1, totalPages: 1 };
     const counts = { all: 1, owned: 1, shared: 0 };
-    apiMock.mockImplementation(async (url: string) => url === "/api/tags" ? { tags: [] } : { projects: [item], pagination, counts });
+    apiMock.mockImplementation(async (url: string) => url === "/api/tags" ? { tags: [] } : { projects: [item], pagination, counts, archivedCounts });
     await act(async () => root.render(createElement(Dashboard, { site, user,
-      initialData: { projects: [item], tags: [], pagination, counts, filters }, onDataChange: vi.fn(), onUser: vi.fn(), onOpenProject: vi.fn() })));
+      initialData: { projects: [item], tags: [], pagination, counts, archivedCounts, filters }, onDataChange: vi.fn(), onUser: vi.fn(), onOpenProject: vi.fn() })));
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu-trigger")!.click());
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu .danger")!.click());
     const description = document.querySelector<HTMLElement>(".dialog-header p")!;
@@ -67,12 +68,12 @@ describe("project deletion feedback", () => {
         projects = projects.filter((item) => item.id !== "first");
         return {};
       }
-      return url === "/api/tags" ? { tags: [] } : { projects, pagination: pagination(), counts: counts() };
+      return url === "/api/tags" ? { tags: [] } : { projects, pagination: pagination(), counts: counts(), archivedCounts };
     });
     localStorage.setItem(scopedStorageKey("texlite-project-view"), view);
     const onDataChange = vi.fn();
     await act(async () => root.render(createElement(Dashboard, { site, user,
-      initialData: { projects, tags: [], pagination: pagination(), counts: counts(), filters }, onDataChange, onUser: vi.fn(), onOpenProject: vi.fn() })));
+      initialData: { projects, tags: [], pagination: pagination(), counts: counts(), archivedCounts, filters }, onDataChange, onUser: vi.fn(), onOpenProject: vi.fn() })));
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu-trigger")!.click());
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu .danger")!.click());
     const confirm = document.querySelector<HTMLButtonElement>(".dialog-footer .danger")!;
@@ -99,10 +100,10 @@ describe("project deletion feedback", () => {
     const counts = { all: 1, owned: 1, shared: 0 };
     apiMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") throw new Error("Unable to delete");
-      return url === "/api/tags" ? { tags: [] } : { projects, pagination, counts };
+      return url === "/api/tags" ? { tags: [] } : { projects, pagination, counts, archivedCounts };
     });
     await act(async () => root.render(createElement(Dashboard, { site, user,
-      initialData: { projects, tags: [], pagination, counts, filters }, onDataChange: vi.fn(), onUser: vi.fn(), onOpenProject: vi.fn() })));
+      initialData: { projects, tags: [], pagination, counts, archivedCounts, filters }, onDataChange: vi.fn(), onUser: vi.fn(), onOpenProject: vi.fn() })));
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu-trigger")!.click());
     await act(async () => host.querySelector<HTMLButtonElement>(".project-action-menu .danger")!.click());
     await act(async () => document.querySelector<HTMLButtonElement>(".dialog-footer .danger")!.click());

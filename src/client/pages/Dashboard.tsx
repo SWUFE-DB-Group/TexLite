@@ -64,6 +64,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     page: 1, pageSize: DEFAULT_PROJECT_PAGE_SIZE, total: initialData?.projects.length ?? 0, totalPages: initialData?.projects.length ? 1 : 0
   });
   const [counts, setCounts] = useState<ProjectCatalogCounts>(() => initialData?.counts ?? { all: 0, owned: 0, shared: 0 });
+  const [archivedCounts, setArchivedCounts] = useState<ProjectCatalogCounts>(() => initialData?.archivedCounts ?? { all: 0, owned: 0, shared: 0 });
   const [ownership, setOwnership] = useState<ProjectOwnershipScope>(() => initialData?.filters.ownership ?? "all");
   const [adminOpen, setAdminOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -138,12 +139,13 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     const controller = new AbortController();
     loadController.current = controller;
     return Promise.all([
-      api<{ projects: Project[]; pagination: ProjectListPagination; counts: ProjectCatalogCounts }>(`/api/projects?${params.toString()}`, { signal: controller.signal }),
+      api<{ projects: Project[]; pagination: ProjectListPagination; counts: ProjectCatalogCounts; archivedCounts: ProjectCatalogCounts }>(`/api/projects?${params.toString()}`, { signal: controller.signal }),
       api<{ tags: ProjectTag[] }>("/api/tags", { signal: controller.signal })
     ]).then(([projectResult, tagResult]) => {
       if (sequence !== requestSequence.current) return;
       setProjects(projectResult.projects); setTags(tagResult.tags); setPagination(projectResult.pagination); setPage(projectResult.pagination.page);
       setCounts(projectResult.counts);
+      setArchivedCounts(projectResult.archivedCounts);
       setLoadedKey(requestKey(scope, archived, projectResult.pagination.page, search, tag, order));
     }).catch((e) => { if (!isAbortError(e) && sequence === requestSequence.current) setError(errorMessage(e)); })
       .finally(() => { if (loadController.current === controller) loadController.current = null; });
@@ -153,9 +155,9 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
     return () => loadController.current?.abort();
   }, [ownership, showArchived, page, query, tagFilter, sort, refreshVersion, view]);
   useEffect(() => {
-    if (resultsCurrent) onDataChange({ projects, tags, pagination, counts,
+    if (resultsCurrent) onDataChange({ projects, tags, pagination, counts, archivedCounts,
       filters: { ownership, archived: showArchived, search: query, tag: tagFilter, sort } });
-  }, [projects, tags, pagination, counts, loadedKey, currentRequestKey]);
+  }, [projects, tags, pagination, counts, archivedCounts, loadedKey, currentRequestKey]);
   useEffect(() => {
     if (!tagFiltersOpen) return;
     const closeWhenOutside = (event: PointerEvent) => {
@@ -343,6 +345,12 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
 
   const removeFromCatalog = (project: Project, action: "delete" | "archive") => {
     setProjects((current) => current.filter((item) => item.id !== project.id));
+    if (action === "archive" || showArchived) {
+      const delta = showArchived ? -1 : 1;
+      const scope = project.ownerId === user.id ? "owned" : "shared";
+      setArchivedCounts((current) => ({ ...current, all: Math.max(0, current.all + delta),
+        [scope]: Math.max(0, current[scope] + delta) }));
+    }
     if (action === "delete") setCounts((current) => ({ ...current, all: Math.max(0, current.all - 1),
       [project.ownerId === user.id ? "owned" : "shared"]: Math.max(0, current[project.ownerId === user.id ? "owned" : "shared"] - 1) }));
     const nextTotal = Math.max(0, pagination.total - 1);
@@ -428,7 +436,14 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
         </aside>
         <div className="project-catalog-content">
           <section id="project-catalog-panel" role="tabpanel" aria-labelledby={`project-tab-${ownership}`} aria-busy={!resultsCurrent && !error}>
-          <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="project-scope" role="group" aria-label={t("projects.scope")}><button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} aria-pressed={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button><button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} aria-pressed={showArchived}><Archive size={14} />{t("projects.archived")}</button></div><label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
+          <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
+            <div className="project-scope" role="group" aria-label={t("projects.scope")}>
+              <button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} aria-pressed={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button>
+              <button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} aria-pressed={showArchived}>
+                <Archive size={14} />{t("projects.archived")}{archivedCounts[ownership] > 0 && <sup>{archivedCounts[ownership]}</sup>}
+              </button>
+            </div>
+            <label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
       {!resultsCurrent && !error && <div className="project-catalog-loading" role="status"><LoaderCircle className="spin" size={17} aria-hidden />{t("common.loading")}</div>}
       <div className={`project-grid ${view === "list" ? "list-view" : ""}${projectMenuId ? " project-list-menu-active" : ""}`}>
         {view === "list" && displayedProjects.length > 0 && <div className="project-list-header" aria-hidden="true">
