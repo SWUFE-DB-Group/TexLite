@@ -1,31 +1,37 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, CaseSensitive, Check, Info, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { PdfFontsResponse } from "../../shared/pdfFonts";
+import type { PdfFontInspection } from "../../shared/pdfFonts";
 import { api, ApiError, isAbortError } from "../api";
 import { errorMessage } from "../errors";
 import { InfoPopover } from "../InfoPopover";
 
-export function PdfFontsPanel({ projectId, mainFile, pdfUrl }: { projectId: string; mainFile: string; pdfUrl: string }) {
+type PdfFontsPanelProps = { projectId: string } & (
+  { mainFile: string; pdfUrl: string; filePath?: never } |
+  { filePath: string; mainFile?: never; pdfUrl?: never }
+);
+
+export function PdfFontsPanel({ projectId, mainFile, pdfUrl, filePath }: PdfFontsPanelProps) {
   const { t } = useTranslation();
   const runId = pdfUrl ? new URL(pdfUrl, "https://texlite.invalid/").searchParams.get("run") : null;
-  const [result, setResult] = useState<PdfFontsResponse | null>(null);
+  const endpoint = filePath ? `/api/projects/${projectId}/file/fonts?${new URLSearchParams({ path: filePath })}`
+    : runId && mainFile ? `/api/projects/${projectId}/compile/fonts?${new URLSearchParams({ mainFile, run: runId })}` : null;
+  const [result, setResult] = useState<PdfFontInspection | null>(null);
   const [failure, setFailure] = useState<{ message: string; unavailable: boolean } | null>(null);
-  const [loading, setLoading] = useState(Boolean(runId));
+  const [loading, setLoading] = useState(Boolean(endpoint));
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    if (!runId) return;
+    if (!endpoint) return;
     const controller = new AbortController();
     setLoading(true); setFailure(null); setResult(null);
-    const params = new URLSearchParams({ mainFile, run: runId });
-    void api<PdfFontsResponse>(`/api/projects/${projectId}/compile/fonts?${params}`, { signal: controller.signal })
+    void api<PdfFontInspection>(endpoint, { signal: controller.signal })
       .then((response) => { if (!controller.signal.aborted) setResult(response); })
       .catch((error) => {
         if (!controller.signal.aborted && !isAbortError(error)) setFailure({ message: errorMessage(error),
           unavailable: error instanceof ApiError && error.code === "PDF_FONTS_UNAVAILABLE" });
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [projectId, mainFile, runId, retry]);
+  }, [endpoint, retry]);
   const type3 = result?.fonts.filter((font) => font.type === "Type 3").length ?? 0;
   const notEmbedded = result?.fonts.filter((font) => !font.embedded).length ?? 0;
   const flag = (value: boolean, warning = false) => <span className={`pdf-font-flag${warning ? " warning" : ""}`}>
@@ -41,10 +47,10 @@ export function PdfFontsPanel({ projectId, mainFile, pdfUrl }: { projectId: stri
         <li>{t("editor.pdfFonts.helpEmbedded")}</li>
         <li>{t("editor.pdfFonts.helpUnicode")}</li>
       </ul>} />
-    </div>{runId && <button className="pdf-fonts-refresh" disabled={loading} onClick={() => setRetry((value) => value + 1)}>
+    </div>{endpoint && <button className="pdf-fonts-refresh" disabled={loading} onClick={() => setRetry((value) => value + 1)}>
       <RefreshCw size={13} aria-hidden />{t(result ? "editor.pdfFonts.refresh" : "common.retry")}</button>}</header>
-    <p className="pdf-fonts-source">{mainFile.replace(/\.tex$/i, ".pdf")}</p>
-    {!runId ? <div className="pdf-fonts-state"><CaseSensitive size={25} aria-hidden /><p>{t("editor.pdfFonts.noPdf")}</p></div>
+    <p className="pdf-fonts-source">{filePath ?? mainFile?.replace(/\.tex$/i, ".pdf")}</p>
+    {!endpoint ? <div className="pdf-fonts-state"><CaseSensitive size={25} aria-hidden /><p>{t("editor.pdfFonts.noPdf")}</p></div>
       : loading ? <div className="pdf-fonts-state" role="status"><LoaderCircle className="spin" size={23} aria-hidden /><p>{t("editor.pdfFonts.loading")}</p></div>
         : failure ? <div className="pdf-fonts-state" role={failure.unavailable ? "status" : "alert"}>
           {failure.unavailable ? <Info size={23} aria-hidden /> : <AlertTriangle size={23} aria-hidden />}<p>{failure.message}</p>

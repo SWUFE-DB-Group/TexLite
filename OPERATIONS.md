@@ -43,8 +43,9 @@ for host diagnosis and external editor integrations; TexLite itself invokes
 `harper-cli`.
 
 PDF font inspection is optional. Install Poppler's `pdffonts` command on the
-server and make it available on `PATH` to use **Compile output → Fonts**.
-TexLite runs it only when that tab is opened, against the selected PDF run;
+server and make it available on `PATH` to use **Compile output → Fonts** or
+**PDF file menu → Inspect fonts** in the file tree.
+TexLite runs it on demand, against the selected PDF run or a source PDF copy;
 missing tools do not prevent startup or compilation. Type 3 and non-embedded
 fonts are highlighted for review, not automatically repaired.
 

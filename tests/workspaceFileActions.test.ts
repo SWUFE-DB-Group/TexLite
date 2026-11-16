@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceFilePanel, type WorkspaceFilePanelProps } from "../src/client/workspace/WorkspaceFilePanel";
 import { createSourceCursorStore } from "../src/client/workspace/sourceCursorStore";
 import i18n from "../src/client/i18n";
+import { api } from "../src/client/api";
+
+vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 
 vi.mock("react-resizable-panels", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-resizable-panels")>(),
@@ -45,14 +48,17 @@ function render(readOnly = false): string {
   return renderToStaticMarkup(createElement(WorkspaceFilePanel, panelProps(readOnly)));
 }
 
-async function openMenu(readOnly: boolean, fileName: string) {
+async function openMenu(readOnly: boolean, fileName: string, pdf = false, phone = false) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  await act(async () => root.render(createElement(WorkspaceFilePanel, panelProps(readOnly))));
-  const trigger = host.querySelector<HTMLButtonElement>(`[aria-label="${i18n.t("editor.fileActions", { name: fileName })}"]`)!;
+  const props = panelProps(readOnly);
+  if (pdf) props.visibleEntries.push({ path: `data/${fileName}`, type: "file" });
+  if (phone) props.phoneDrawer = { open: true, onClose: vi.fn() };
+  await act(async () => root.render(createElement(WorkspaceFilePanel, props)));
+  const trigger = document.querySelector<HTMLButtonElement>(`[aria-label="${i18n.t("editor.fileActions", { name: fileName })}"]`)!;
   await act(async () => { trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
   const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
   cleanups.push(async () => { await act(async () => root.unmount()); host.remove(); });
@@ -64,6 +70,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   copyPath.mockClear();
   setDeleteEntry.mockClear();
+  vi.mocked(api).mockReset();
   vi.unstubAllGlobals();
 });
 
@@ -108,5 +115,20 @@ describe("file tree row actions", () => {
     expect(html).not.toContain("lucide-move");
     expect(html).not.toContain("lucide-trash");
     expect((await openMenu(true, "main.tex")).map((item) => item.textContent)).toEqual([i18n.t("editor.downloadResource")]);
+  });
+
+  it.each([false, true])("opens named PDF font diagnostics for read-only members (phone: %s)", async (phone) => {
+    vi.mocked(api).mockResolvedValue({ fonts: [], hasWarnings: false });
+    const items = await openMenu(true, "字体.PDF", true, phone);
+    expect(items.map((item) => item.textContent)).toEqual([i18n.t("editor.downloadResource"), i18n.t("editor.pdfFonts.inspect")]);
+    expect(api).not.toHaveBeenCalled();
+    await act(async () => items[1].click());
+    const dialog = document.querySelector(".pdf-fonts-dialog")!;
+    expect(dialog.querySelector("h2")?.textContent).toBe(i18n.t("editor.pdfFonts.fileTitle", { file: "data/字体.PDF" }));
+    expect(api).toHaveBeenCalledTimes(1);
+    const signal = vi.mocked(api).mock.calls[0][1]!.signal!;
+    await act(async () => dialog.querySelector<HTMLButtonElement>(".dialog-close")!.click());
+    expect(document.querySelector(".pdf-fonts-dialog")).toBeNull();
+    expect(signal.aborted).toBe(true);
   });
 });

@@ -7,12 +7,15 @@ export interface PdfFont {
   unicode: boolean;
 }
 
-export interface PdfFontsResponse {
-  mainFile: string;
-  runId: string;
+export interface PdfFontInspection {
   fonts: PdfFont[];
   /** Poppler reported PDF warnings; do not expose raw diagnostics or host paths. */
   hasWarnings: boolean;
+}
+
+export interface PdfFontsResponse extends PdfFontInspection {
+  mainFile: string;
+  runId: string;
 }
 
 export const pdfFontMessages = {

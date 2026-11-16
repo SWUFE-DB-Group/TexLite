@@ -1,12 +1,14 @@
 import { useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Copy, Download, MoreHorizontal, Trash2 } from "lucide-react";
+import { CaseSensitive, Copy, Download, MoreHorizontal, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-/** The less frequent actions on one file-tree row: download, copy and delete. */
-export function FileEntryActionsMenu({ name, downloadUrl, onCopy, onDelete }: {
+/** The less frequent actions on one file-tree row. */
+export function FileEntryActionsMenu({ name, downloadUrl, onCopy, onDelete, onInspectFonts }: {
   name: string;
   downloadUrl: string;
+  /** PDF files only; also available to read-only members. */
+  onInspectFonts?: () => void;
   /** Absent for read-only members. */
   onCopy?: () => void;
   /** Absent for read-only members and for the configured main document. */
@@ -29,13 +31,16 @@ export function FileEntryActionsMenu({ name, downloadUrl, onCopy, onDelete }: {
     <DropdownMenu.Portal container={dialog ?? undefined}>
       <DropdownMenu.Content className="file-actions-menu" align="end" sideOffset={4} collisionPadding={8}
         onCloseAutoFocus={(event) => {
-          // The delete confirmation owns focus after it opens.
+          // A newly opened dialog owns focus after selecting its action.
           if (selecting.current) event.preventDefault();
           selecting.current = false;
         }}>
         <DropdownMenu.Item asChild>
           <a href={downloadUrl} download={name} draggable={false}><Download size={14} aria-hidden />{t("editor.downloadResource")}</a>
         </DropdownMenu.Item>
+        {onInspectFonts && <DropdownMenu.Item onSelect={() => { selecting.current = true; onInspectFonts(); }}>
+          <CaseSensitive size={14} aria-hidden />{t("editor.pdfFonts.inspect")}
+        </DropdownMenu.Item>}
         {onCopy && <DropdownMenu.Item onSelect={onCopy}><Copy size={14} aria-hidden />{t("editor.copyFile")}</DropdownMenu.Item>}
         {onDelete && <DropdownMenu.Item className="danger-text" onSelect={() => { selecting.current = true; onDelete(); }}>
           <Trash2 size={14} aria-hidden />{t("editor.deleteFile")}

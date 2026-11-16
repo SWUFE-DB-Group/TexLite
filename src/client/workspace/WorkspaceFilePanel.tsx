@@ -14,6 +14,8 @@ import { WorkspaceMobileDrawer } from "./WorkspaceMobileDrawer";
 import { WorkspaceSidebarLayout } from "./WorkspaceSidebarLayout";
 import { FileTreeActionsMenu } from "./FileTreeActionsMenu";
 import { FileEntryActionsMenu } from "./FileEntryActionsMenu";
+import { Modal } from "../Dialog";
+import { PdfFontsPanel } from "./PdfFontsPanel";
 import { captureDeletionHeight, FILE_DELETION_DURATION_MS, useDeletionTransitions } from "../useDeletionTransitions";
 
 const fileKey = (entry: FileEntry) => entry.path;
@@ -96,6 +98,7 @@ export function WorkspaceFilePanel({
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
   const [showFileSizes, setShowFileSizes] = useState(false);
+  const [fontFile, setFontFile] = useState<{ projectId: string; path: string } | null>(null);
   const [draggedEntry, setDraggedEntry] = useState<FileEntry | null>(null);
   const [dropTargetFolder, setDropTargetFolder] = useState<string | null>(null);
   const { entries: displayedEntries, finishExit } = useDeletionTransitions(visibleEntries, {
@@ -181,6 +184,7 @@ export function WorkspaceFilePanel({
               {showFileSizes && typeof entry.size === "number" && <span className="file-entry-size">{formatBytes(entry.size)}</span>}
               {!readOnly && <button type="button" className="file-entry-action" title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>}
               <FileEntryActionsMenu name={name ?? entry.path} downloadUrl={appPath(`/api/projects/${project.id}/file/raw?path=${encodeURIComponent(entry.path)}&download=1`)}
+                onInspectFonts={/\.pdf$/i.test(entry.path) ? () => setFontFile({ projectId: project.id, path: entry.path }) : undefined}
                 onCopy={readOnly ? undefined : () => void copyPath(entry)}
                 onDelete={!readOnly && canDelete ? () => { setDeleteEntry(entry); setFileDialogError(""); } : undefined} />
             </div>;
@@ -196,10 +200,13 @@ export function WorkspaceFilePanel({
       </section>} outline={
       <WorkspaceOutlinePanel outline={outline} activeFile={activeFile} activeMainFile={activeMainFile} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy} plainWordCount={plainWordCount} canCountFull={canCountFull} hasSelection={hasSelection} jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={onWordCount} />
     } />;
-  if (phoneDrawer) return <WorkspaceMobileDrawer files open={phoneDrawer.open} title={t("common.files")} onClose={phoneDrawer.onClose}>
+  const panel = phoneDrawer ? <WorkspaceMobileDrawer files open={phoneDrawer.open} title={t("common.files")} onClose={phoneDrawer.onClose}>
     <button className="workspace-mobile-files-close" type="button" aria-label={t("common.close")} onClick={phoneDrawer.onClose}><X size={18} /></button>{content}
-  </WorkspaceMobileDrawer>;
-  return <Panel id="files" panelRef={filesPanel} defaultSize="16%" minSize="12%" maxSize="30%" collapsible collapsedSize="0%" onResize={(size) => setFilesCollapsed(size.asPercentage === 0)}>{content}</Panel>;
+  </WorkspaceMobileDrawer> : <Panel id="files" panelRef={filesPanel} defaultSize="16%" minSize="12%" maxSize="30%" collapsible collapsedSize="0%" onResize={(size) => setFilesCollapsed(size.asPercentage === 0)}>{content}</Panel>;
+  return <>{panel}{fontFile?.projectId === project.id && <Modal open wide className="pdf-fonts-dialog"
+    title={t("editor.pdfFonts.fileTitle", { file: fontFile.path })} onOpenChange={(open) => { if (!open) setFontFile(null); }}>
+    <PdfFontsPanel key={`${fontFile.projectId}:${fontFile.path}`} projectId={fontFile.projectId} filePath={fontFile.path} />
+  </Modal>}</>;
 }
 
 function containsDroppedFolder(dataTransfer: DataTransfer): boolean {

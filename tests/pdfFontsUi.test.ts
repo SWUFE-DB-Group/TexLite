@@ -79,4 +79,18 @@ describe("PDF font diagnostics UI", () => {
     await act(async () => root.render(null));
     expect(pending[2].signal.aborted).toBe(true);
   });
+
+  it("reuses diagnostics for source PDFs and cancels inspection when closed", async () => {
+    let finish!: (value: PdfFontsResponse) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const filePath = "figures/字体 & figure.PDF";
+    await act(async () => root.render(createElement(PdfFontsPanel, { projectId: "project", filePath })));
+    expect(vi.mocked(api).mock.calls[0][0]).toBe(`/api/projects/project/file/fonts?path=${encodeURIComponent(filePath).replaceAll("%20", "+")}`);
+    expect(host.textContent).toContain(filePath);
+    const signal = vi.mocked(api).mock.calls[0][1]!.signal!;
+    await act(async () => root.render(null));
+    expect(signal.aborted).toBe(true);
+    await act(async () => finish(response([{ ...font, name: "Late result" }])));
+    expect(host.textContent).not.toContain("Late result");
+  });
 });

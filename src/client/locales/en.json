@@ -406,6 +406,7 @@
     "commentContent": "Comment", "backToProjects": "Back to projects", "outputTabs": "Compile output",
     "log": "Log", "warnings": "Warnings", "errors": "Errors", "artifacts": "Artifacts", "clean": "Recovery", "noLog": "Compile to see the log.",
     "pdfFonts": {
+      "inspect": "Inspect fonts", "fileTitle": "PDF fonts — {{file}}",
       "tab": "Fonts", "title": "PDF fonts", "helpLabel": "About PDF font types", "refresh": "Check again",
       "loading": "Inspecting PDF fonts…", "noPdf": "Compile to generate a PDF before checking fonts.",
       "count_one": "{{count}} font", "count_other": "{{count}} fonts", "type3Count": "Type 3: {{count}}", "notEmbeddedCount": "Not embedded: {{count}}",

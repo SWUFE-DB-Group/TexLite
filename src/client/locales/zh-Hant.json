@@ -962,6 +962,7 @@
     "backToProjects": "返回專案清單",
     "outputTabs": "編譯輸出",
     "pdfFonts": {
+      "inspect": "檢視字型", "fileTitle": "PDF 字型 — {{file}}",
       "tab": "字型", "title": "PDF 字型", "helpLabel": "PDF 字型類型說明", "refresh": "重新檢查",
       "loading": "正在檢查 PDF 字型…", "noPdf": "請先編譯產生 PDF，再檢查字型。",
       "count_one": "{{count}} 個字型", "count_other": "{{count}} 個字型", "type3Count": "Type 3：{{count}}", "notEmbeddedCount": "未嵌入：{{count}}",

@@ -23,6 +23,9 @@ describe("PDF font routes", () => {
   const config = () => createTestConfig(root, { basePath: "/texlite" });
   const request = (runId = run, mainFile = "main.tex", user = "owner", target = projectId) => app.inject({ method: "GET",
     url: `/texlite/api/projects/${target}/compile/fonts?${new URLSearchParams({ run: runId, mainFile })}`, headers: { cookie: cookies.get(user) ?? "" } });
+  const filePath = "figures/字体 & figure.PDF";
+  const requestFile = (file = filePath, user = "owner", target = projectId) => app.inject({ method: "GET",
+    url: `/texlite/api/projects/${target}/file/fonts?${new URLSearchParams({ path: file })}`, headers: { cookie: cookies.get(user) ?? "" } });
   beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-pdf-fonts-")); db = openDatabase(config());
     const time = new Date().toISOString();
@@ -42,6 +45,9 @@ describe("PDF font routes", () => {
       return id as string;
     };
     projectId = await create(); otherProjectId = await create();
+    fs.mkdirSync(path.join(sourceRoot(config(), projectId), "figures"));
+    fs.writeFileSync(path.join(sourceRoot(config(), projectId), filePath), "%PDF-1.4\nsource fixture");
+    fs.mkdirSync(path.join(sourceRoot(config(), projectId), "folder.pdf"));
     db.prepare("INSERT INTO project_members (project_id, user_id, permission, created_at) VALUES (?, 'reader', 'read', ?)").run(projectId, time);
     const publish = async (id: string, mainFile = "main.tex") => {
       const runId = randomUUID();
@@ -97,5 +103,53 @@ describe("PDF font routes", () => {
     });
     try { expect((await request(run, "main.tex", "reader")).statusCode).toBe(404); }
     finally { db.prepare("INSERT INTO project_members (project_id, user_id, permission, created_at) VALUES (?, 'reader', 'read', ?)").run(projectId, new Date().toISOString()); }
+  });
+
+  it("inspects a stable source PDF copy for read-only members and removes it afterwards", async () => {
+    let snapshot = "";
+    vi.mocked(inspectPdfFonts).mockImplementationOnce(async (file) => {
+      snapshot = file;
+      expect(fs.readFileSync(file, "utf8")).toBe("%PDF-1.4\nsource fixture");
+      fs.writeFileSync(path.join(sourceRoot(config(), projectId), filePath), "%PDF-1.4\nreplacement");
+      expect(fs.readFileSync(file, "utf8")).toBe("%PDF-1.4\nsource fixture");
+      // The long-running tool must not block the project mutation/read queue.
+      expect((await app.inject({ url: `/texlite/api/projects/${projectId}/files`, headers: { cookie: cookies.get("owner")! } })).statusCode).toBe(200);
+      return { fonts: [font], hasWarnings: false };
+    });
+    const result = await requestFile(filePath, "reader");
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toEqual({ path: filePath, fonts: [font], hasWarnings: false });
+    expect(result.headers["cache-control"]).toBe("private, no-store");
+    expect(fs.existsSync(path.dirname(snapshot))).toBe(false);
+  });
+
+  it("rejects inaccessible, invalid, missing and symlinked source paths without invoking pdffonts", async () => {
+    expect((await requestFile(filePath, "anonymous")).statusCode).toBe(401);
+    expect((await requestFile(filePath, "outsider")).statusCode).toBe(404);
+    expect((await requestFile(filePath, "reader", otherProjectId)).statusCode).toBe(404);
+    for (const file of ["../secret.pdf", "/tmp/secret.pdf", ".git/secret.pdf", "main.tex", ""]) {
+      expect((await requestFile(file)).statusCode).toBe(400);
+    }
+    for (const file of ["missing.pdf", "folder.pdf"]) expect((await requestFile(file)).statusCode).toBe(404);
+    if (process.platform !== "win32") {
+      fs.symlinkSync(path.join(sourceRoot(config(), otherProjectId), "main.tex"), path.join(sourceRoot(config(), projectId), "linked.pdf"));
+      try { expect((await requestFile("linked.pdf")).json().code).toBe("SYMLINK_FORBIDDEN"); }
+      finally { fs.unlinkSync(path.join(sourceRoot(config(), projectId), "linked.pdf")); }
+    }
+    expect(inspectPdfFonts).not.toHaveBeenCalled();
+  });
+
+  it("cleans up source PDF inspection failures and rechecks revoked access", async () => {
+    vi.mocked(inspectPdfFonts).mockRejectedValueOnce(httpError(503, "PDF_FONTS_UNAVAILABLE"));
+    expect((await requestFile()).json().code).toBe("PDF_FONTS_UNAVAILABLE");
+    const snapshot = vi.mocked(inspectPdfFonts).mock.calls[0][0];
+    await expect.poll(() => fs.existsSync(path.dirname(snapshot))).toBe(false);
+    vi.mocked(inspectPdfFonts).mockImplementationOnce(async () => {
+      db.prepare("DELETE FROM project_members WHERE project_id = ? AND user_id = 'reader'").run(projectId);
+      return { fonts: [font], hasWarnings: false };
+    });
+    try { expect((await requestFile(filePath, "reader")).statusCode).toBe(404); }
+    finally { db.prepare("INSERT INTO project_members (project_id, user_id, permission, created_at) VALUES (?, 'reader', 'read', ?)").run(projectId, new Date().toISOString()); }
+    await expect.poll(() => fs.existsSync(path.dirname(vi.mocked(inspectPdfFonts).mock.calls[1][0]))).toBe(false);
   });
 });

@@ -20,7 +20,7 @@ import {
   sourceRoot
 } from "../files.js";
 import type { HistoryReason } from "../history.js";
-import { apiError, contentDisposition, httpError } from "../http.js";
+import { apiError, contentDisposition, HttpError, httpError } from "../http.js";
 import type { LatexCompletionService } from "../latexCompletion.js";
 import type { MetricRegistry } from "../metrics.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
@@ -28,6 +28,7 @@ import type { ProjectOutlineService } from "../projectOutline.js";
 import { moveEditHistoryPaths } from "../editHistory.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { mainDocumentCandidates } from "../latexRoot.js";
+import { inspectPdfFonts } from "../pdfFonts.js";
 import { isTextContent } from "../../shared/fileTypes.js";
 import {
   commentsForFile,
@@ -259,6 +260,53 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
       recordHistory(id, user.id, "file", [source, destination]);
       return { ok: true, path: destination };
     }, { preflight: validateMove });
+  });
+
+  app.get("/api/projects/:id/file/fonts", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    const query = request.query as { path?: unknown };
+    const filePath = safeRelativePath(typeof query.path === "string" ? query.path : "");
+    if (!/\.pdf$/i.test(filePath)) return apiError(reply, 400, "REQUEST_INVALID");
+    const controller = new AbortController();
+    const cancel = () => { if (!reply.raw.writableEnded) controller.abort(); };
+    reply.raw.once("close", cancel);
+    reply.header("Cache-Control", "private, no-store");
+    let temporaryDirectory: string | undefined;
+    try {
+      const temporaryRoot = path.join(config.dataDir, "tmp");
+      await fs.promises.mkdir(temporaryRoot, { recursive: true, mode: 0o700 });
+      temporaryDirectory = await fs.promises.mkdtemp(path.join(temporaryRoot, "pdf-fonts-"));
+      const snapshot = path.join(temporaryDirectory, "document.pdf");
+      // Inspect stable bytes without holding the source-tree queue while a
+      // host process runs. Moving/replacing the original cannot change this copy.
+      await projectMutations.runFilesystemRead(id, async () => {
+        const absolute = resolveSourcePath(config, id, filePath);
+        const stat = await fs.promises.stat(absolute).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
+          throw error;
+        });
+        if (!stat?.isFile()) throw httpError(404, "FILE_NOT_FOUND", { path: filePath });
+        await fs.promises.copyFile(absolute, snapshot);
+      }, { preflight: () => {
+        if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+        if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND");
+      } });
+      const result = await inspectPdfFonts(snapshot, controller.signal);
+      if (controller.signal.aborted) return;
+      if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+      return { path: filePath, ...result };
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+      if (error instanceof HttpError) return apiError(reply, error.statusCode, error.code, error.details);
+      throw error;
+    } finally {
+      reply.raw.removeListener("close", cancel);
+      if (temporaryDirectory) await fs.promises.rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
+    }
   });
 
   app.get("/api/projects/:id/file/raw", async (request, reply) => {

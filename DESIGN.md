@@ -1457,6 +1457,11 @@ it never substitutes the latest log's run. Raw tool errors and host paths stay
 out of responses. Font types, embedding, subsetting and ToUnicode presence are
 reported separately: missing ToUnicode is not proof that text cannot be copied,
 and a font-free PDF may contain outlines or rasterized text.
+PDF files in the source tree expose the same diagnostics in a named modal via
+their row menu. The file endpoint validates read access and source paths, copies
+the PDF under a short filesystem read barrier, then runs the shared inspector on
+the temporary copy outside the project queue. Cancellation, failures and success
+all remove the copy; access is rechecked before returning results.
 
 The Vite build publishes the installed PDF.js version's predefined Adobe CMaps
 and their license under a versioned asset directory. The development server

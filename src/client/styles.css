@@ -1163,6 +1163,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .preview-clean { overflow: auto; background: var(--ui-surface, #f4f6f4); }
 .preview-fonts { overflow: auto; background: var(--ui-surface, #fff); }
 .pdf-fonts-panel { padding: 16px; color: var(--ui-text, #30453a); font-size: 12px; }
+.pdf-fonts-dialog .dialog-header h2 { overflow-wrap: anywhere; }
+.pdf-fonts-dialog .pdf-fonts-panel { padding: 0; }
+.pdf-fonts-dialog .pdf-fonts-table-scroll { max-height: min(55dvh, 480px); }
 .pdf-fonts-heading, .pdf-fonts-heading > div { display: flex; align-items: center; gap: 6px; }
 .pdf-fonts-heading { justify-content: space-between; flex-wrap: wrap; }
 .pdf-fonts-heading strong { font-size: 13px; font-weight: 600; }

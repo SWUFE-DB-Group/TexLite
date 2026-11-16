@@ -398,6 +398,7 @@
     "pointComment": "未选择文本，将在当前光标位置添加批注。", "commentContent": "批注内容", "backToProjects": "返回项目列表",
     "outputTabs": "编译输出", "log": "日志", "warnings": "警告", "errors": "错误", "artifacts": "产物", "clean": "故障恢复", "noLog": "编译后将在此显示日志。",
     "pdfFonts": {
+      "inspect": "查看字体", "fileTitle": "PDF 字体 — {{file}}",
       "tab": "字体", "title": "PDF 字体", "helpLabel": "PDF 字体类型说明", "refresh": "重新检查",
       "loading": "正在检查 PDF 字体…", "noPdf": "请先编译生成 PDF，再检查字体。",
       "count_one": "{{count}} 个字体", "count_other": "{{count}} 个字体", "type3Count": "Type 3：{{count}}", "notEmbeddedCount": "未嵌入：{{count}}",
