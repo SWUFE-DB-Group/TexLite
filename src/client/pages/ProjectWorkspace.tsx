@@ -58,6 +58,8 @@ import type { LatexReference } from "../../shared/latexReferences";
 import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
 const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
+const DrawioEditor = lazy(() => import("../workspace/DrawioEditor"));
+import type { DrawioEditorHandle } from "../workspace/DrawioEditor";
 let citationLibraryModule: Promise<typeof import("../citationLibrary")> | null = null;
 
 function loadCitationLibrary() {
@@ -129,6 +131,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const [completionIndex, setCompletionIndex] = useState<LatexCompletionIndex | null>(null);
   const [projectOutline, setProjectOutline] = useState<LoadedProjectOutline>({ mainFile: "", items: [] });
   const [activeFile, setActiveFile] = useState("");
+  const drawioEditor = useRef<DrawioEditorHandle>(null);
   const [activeMainFile, setActiveMainFile] = useState("");
   const [content, setContent] = useState("");
   const [analysisSource, setAnalysisSource] = useState<OutlineSourceSnapshot>({ filePath: "", content: "" });
@@ -1014,6 +1017,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   };
   const {
     files, setFiles, loadFiles,
+    drawioPath, setDrawioPath,
     newFileOpen, setNewFileOpen, newFilePath, setNewFilePath,
     resourcePreview, setResourcePreview, resourcePreviewLoading, setResourcePreviewLoading,
     newFolderOpen, setNewFolderOpen, newFolderName, setNewFolderName,
@@ -1035,13 +1039,23 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     onError: setError,
     onProject: setProject,
     onActiveFile: setActiveFile,
-    onActiveMainFile: setActiveMainFile
+    onActiveMainFile: setActiveMainFile,
+    beforeOpenFile: () => drawioEditor.current?.confirmClose() ?? Promise.resolve(true),
+    onDrawioOpen: () => { if (workspaceLayoutRef.current === "pdf-only") setWorkspaceLayout(phone ? "editor-only" : "editor-pdf"); }
   });
+  const navigateFromDrawio = (action: () => void) => {
+    if (!drawioEditor.current) { setDrawioPath(null); action(); return; }
+    void drawioEditor.current.confirmClose().then((confirmed) => {
+      if (confirmed) { setDrawioPath(null); action(); }
+    });
+  };
   openSourceFileRef.current = (path) => {
-    setSelectedFolder(null);
-    setSelectedFile(path);
-    setExpandedFolders((current) => new Set([...current, ...parentFolders(path)]));
-    setActiveFile(path);
+    navigateFromDrawio(() => {
+      setSelectedFolder(null);
+      setSelectedFile(path);
+      setExpandedFolders((current) => new Set([...current, ...parentFolders(path)]));
+      setActiveFile(path);
+    });
   };
 
   const applyProjectSettings = (updatedProject: Project): void => {
@@ -1316,6 +1330,13 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   // Editor-only mode has no preview to overlay, so it retains an adjacent pane.
   const panelLayout = useWorkspacePanelLayout(showEditor, showPreview, sidePanel === "settings" || sidePanel === "comments" && !showPreview, phone);
   const changeWorkspaceLayout = (next: WorkspaceLayout) => {
+    if (next === "pdf-only" && drawioEditor.current) {
+      void drawioEditor.current.confirmClose().then((confirmed) => {
+        if (!confirmed) return;
+        setDrawioPath(null); setWorkspaceLayout(next); selectPreviewTab("pdf");
+      });
+      return;
+    }
     setWorkspaceLayout(next);
     if (next === "pdf-only") selectPreviewTab("pdf");
   };
@@ -1505,11 +1526,11 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   return <div className="workspace" data-texlite-tooltips={editorPreferences.showTooltips ? "on" : "off"}>
     <WorkspaceTopbar
       agentTerminal={showEditor && agentAccess.visible && project.permission !== "read" ? { open: terminalOpen, activeCount: agentAccess.activeCount, toggle: () => setTerminalOpen((value) => !value) } : undefined}
-      site={site} project={project} activeFile={activeFile} saveStateLabel={saveStateLabel}
+      site={site} project={project} activeFile={drawioPath ?? activeFile} saveStateLabel={drawioPath ? "" : saveStateLabel}
       editorPreferences={editorPreferences} activeSessions={activeSessions} collaborationStatus={collaborationStatus}
       reconnectCollaboration={reconnectCollaboration} protocolUpgradeRequired={protocolUpgradeRequired} showEditor={showEditor} filesCollapsed={phone ? !phoneFilesOpen : filesCollapsed}
       toggleFilesPanel={toggleFilesPanel} workspaceLayout={workspaceLayout} changeWorkspaceLayout={changeWorkspaceLayout}
-      onBack={onBack} onShare={() => setShareOpen(true)} showCitationLibrary={showEditor && /\.bib$/i.test(activeFile)}
+      onBack={() => { void (drawioEditor.current?.confirmClose() ?? Promise.resolve(true)).then((confirmed) => { if (confirmed) onBack(); }); }} onShare={() => setShareOpen(true)} showCitationLibrary={showEditor && !drawioPath && /\.bib$/i.test(activeFile)}
       citationLibraryOpen={citationLibraryOpen} onCitationLibrary={() => setCitationLibraryOpen(true)}
       onHistory={() => setHistoryOpen(true)} onGit={() => setGitOpen(true)} canManageGit={project.ownerId === user.id}
       formatting={formatting} readOnly={readOnly} collaborationSynced={collaborationSynced}
@@ -1547,12 +1568,12 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         activeFile={activeFile} activeMainFile={activeMainFile} selectedFile={selectedFile}
         selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
         uploadingFiles={uploadingFiles} uploadFeedback={uploadFeedback} readOnly={readOnly} formatting={formatting}
-        canFormat={isFormattableLatexFile(activeFile)} activeFormatLease={Boolean(activeFormatLease)} collaborationSynced={collaborationSynced}
+        canFormat={!drawioPath && isFormattableLatexFile(activeFile)} activeFormatLease={Boolean(activeFormatLease)} collaborationSynced={collaborationSynced}
         editorFontSize={editorPreferences.fontSize}
         outline={outline} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy}
-        plainWordCount={plainWordCount} canCountFull={plainWordCount ? loadedFile === activeFile : Boolean(activeMainFile)}
-        hasSelection={Boolean(selection.selectedText.trim()) && (plainWordCount || /\.(?:tex|sty|cls)$/i.test(activeFile))}
-        hasFormatSelection={Boolean(selection.selectedText.trim())} uploadInput={uploadInput}
+        plainWordCount={plainWordCount} canCountFull={!drawioPath && (plainWordCount ? loadedFile === activeFile : Boolean(activeMainFile))}
+        hasSelection={!drawioPath && Boolean(selection.selectedText.trim()) && (plainWordCount || /\.(?:tex|sty|cls)$/i.test(activeFile))}
+        hasFormatSelection={!drawioPath && Boolean(selection.selectedText.trim())} uploadInput={uploadInput}
         setSelectedFolder={setSelectedFolder} setExpandedFolders={setExpandedFolders}
         setMoveEntry={setMoveEntry} setMoveName={setMoveName} setMoveDestination={setMoveDestination}
         setDeleteEntry={setDeleteEntry} setFileDialogError={setFileDialogError}
@@ -1568,7 +1589,9 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       />}
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel figurePdf={figurePdf}
-        mobileSync={phone && sidePanel !== "comments" ? markdownActive
+        alternativeEditor={drawioPath ? <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /></div>}><DrawioEditor ref={drawioEditor} key={`${projectId}:${drawioPath}`} projectId={projectId} path={drawioPath} readOnly={project.permission === "read"}
+          onClose={() => setDrawioPath(null)} onChanged={() => { void loadFiles().catch((error) => setError(errorMessage(error))); }} /></Suspense> : undefined}
+        mobileSync={!drawioPath && phone && sidePanel !== "comments" ? markdownActive
           ? { disabled: loadedFile !== activeFile, onClick: showCursorInMarkdown, label: t("editor.markdown.showInPreview") }
           : { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}
         terminal={terminalOpen ? ({ maximized, toggleMaximized }) => <Suspense fallback={<div className="agent-task-empty"><LoaderCircle className="spin" size={18} /></div>}><AgentTerminal projectId={projectId} readOnly={readOnly} onHide={() => setTerminalOpen(false)} maximized={maximized} onToggleMaximized={toggleMaximized}
@@ -1603,12 +1626,12 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         compileBusy={compileBusy} compileLog={compileLog} compileDiagnostics={compileDiagnostics}
         compileMessages={compileMessages} artifacts={artifacts}
         artifactPreview={artifactPreview} artifactLoading={artifactLoading} cleaning={cleaning}
-        readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={showEditor && showPreview}
+        readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={!drawioPath && showEditor && showPreview}
         diagnosticCount={diagnosticCount} selectPreviewTab={choosePreviewSurface} markdown={markdownPreview}
         changeWorkspaceLayout={changeWorkspaceLayout} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport} onPdfDisplayed={pdfDisplayed}
         syncVisiblePdfToSource={syncVisiblePdfToSource}
         syncCurrentSourceToPdf={syncCurrentSourceToPdf}
-        syncPdfToSource={syncPdfToSource} canSyncWithPdf={canSyncWithPdf} canSyncPdfToSource={canSyncPdfToSource} files={files}
+        syncPdfToSource={syncPdfToSource} canSyncWithPdf={!drawioPath && canSyncWithPdf} canSyncPdfToSource={!drawioPath && canSyncPdfToSource} files={files}
         jumpToSource={jumpToSource} onSetCleanMode={setCleanMode}
         viewArtifact={viewArtifact}
       />}

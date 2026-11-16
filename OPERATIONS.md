@@ -48,6 +48,35 @@ TexLite runs it only when that tab is opened, against the selected PDF run;
 missing tools do not prevent startup or compilation. Type 3 and non-embedded
 fonts are highlighted for review, not automatically repaired.
 
+### draw.io diagrams
+
+Use **Files → ⋯ → draw.io diagram**, then open the `.drawio` file to edit
+it in the editor pane with an embedded diagrams.net editor. The browser needs access to
+`https://embed.diagrams.net`; the editor is not bundled with TexLite. Diagram
+data is passed directly to the iframe, not placed in its URL. Save explicitly
+before closing or switching files. Unsaved changes require confirmation before
+leaving the diagram. Concurrent saves are checked against the version opened, so a
+stale editor cannot silently overwrite another user's changes. This is not
+real-time diagram collaboration.
+
+**Export PDF** saves the current diagram page beside the source file, replacing
+an existing PDF only after confirmation. It uses a host-installed Chromium,
+Chrome or Edge, in that order; Firefox and Safari are not export backends.
+Missing browsers do not prevent diagram editing, server startup or compilation.
+Set optional `drawio.browserPath` in `texlite.config.json` to an explicit browser
+executable (relative paths resolve from that configuration file). No browser is
+automatically downloaded. In Docker the browser and fonts must be installed
+inside the container. Chromium's sandbox stays enabled.
+
+Export runs with an isolated temporary browser profile, scripts disabled and
+network/file requests blocked. Images and custom fonts must be embedded in the
+SVG. Use fonts installed on the host for consistent output. New shapes default
+to plain text labels. This reduces formatting differences but does not guarantee
+font embedding or the absence of Type 3 fonts; inspect the resulting document in
+**Compile output → Fonts** when needed. Exports are limited to two simultaneous
+jobs per instance and 30 seconds per job, and are cancelled when the request
+ends or the server shuts down.
+
 Formatting does not require a host binary. The browser uses bundled `tex-fmt`
 WASM for `.tex`, `.cls`, and `.sty`, and browser-side `bibtex-tidy` for `.bib`.
 
@@ -240,6 +269,7 @@ preferred.
 | `siteName` | `TexLite` | Site title. |
 | `adminEmail` | empty | Optional administrator contact address. |
 | `tikzGallery.enabled` / `tikzGallery.path` | `false` / `addon/texlite-tikz` | Optional figure gallery. A relative path is resolved from the configuration file. |
+| `drawio.browserPath` | automatic detection | Optional Chromium-family executable for diagram PDF export. Relative paths resolve from the configuration file. |
 | `server.host` / `server.port` | `127.0.0.1` / `3000` | Use `0.0.0.0` to serve a trusted local network; keep localhost behind a tunnel or reverse proxy. |
 | `server.basePath` | `/` | Public URL mount point, such as `/texlite` or `/tools/texlite`. |
 | `storage.dataDir` | XDG data directory | Stores all persistent project data. |

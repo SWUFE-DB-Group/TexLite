@@ -12,12 +12,14 @@ import { citationCollectionMessages } from "../shared/citationCollections.js";
 import { projectSearchMessages } from "../shared/projectSearch.js";
 import { projectImportMessages } from "../shared/projectImport.js";
 import { pdfFontMessages } from "../shared/pdfFonts.js";
+import { drawioMessages } from "../shared/drawio.js";
 
 export type ServerLocale = AppLocale;
 
 type MessageParams = Record<string, unknown>;
 
 const enMessages = {
+    ...drawioMessages.en.errors,
     ...pdfFontMessages.en,
     ...projectImportMessages.en,
     ...projectSearchMessages.en,
@@ -177,6 +179,7 @@ const enMessages = {
 export type ServerErrorCode = keyof typeof enMessages;
 
 const zhMessages: Record<ServerErrorCode, string> = {
+    ...drawioMessages.zh.errors,
     ...pdfFontMessages.zh,
     ...projectImportMessages.zh,
     ...viewLinkMessages.zh,

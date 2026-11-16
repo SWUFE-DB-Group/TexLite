@@ -5,6 +5,7 @@ import { errorMessage } from "../errors";
 import type { FileEntry, Project, SiteConfig } from "../types";
 import { appPath } from "../basePath";
 import { isEditableTextFile, isTextContent, resourceFileKind } from "../../shared/fileTypes";
+import { EMPTY_DRAWIO, isDrawioFile } from "../../shared/drawio";
 export { isEditableTextFile } from "../../shared/fileTypes";
 
 export type ResourcePreviewKind = "image" | "pdf" | "text" | "unsupported" | "large";
@@ -61,6 +62,8 @@ export function rawFileUrl(projectId: string, filePath: string): string {
 }
 
 interface UseProjectFilesOptions {
+  beforeOpenFile?: () => Promise<boolean>;
+  onDrawioOpen?: () => void;
   projectId: string;
   site: SiteConfig;
   activeFile: string;
@@ -73,12 +76,13 @@ interface UseProjectFilesOptions {
 }
 
 export function useProjectFiles({
-  projectId, site, activeFile, dirty, save, onError, onProject, onActiveFile, onActiveMainFile
+  projectId, site, activeFile, dirty, save, onError, onProject, onActiveFile, onActiveMainFile, beforeOpenFile, onDrawioOpen
 }: UseProjectFilesOptions) {
   const { t } = useTranslation();
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [newFilePath, setNewFilePath] = useState("");
+  const [drawioPath, setDrawioPath] = useState<string | null>(null);
   const [resourcePreview, setResourcePreview] = useState<ResourcePreview | null>(null);
   const [resourcePreviewLoading, setResourcePreviewLoading] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -136,7 +140,7 @@ export function useProjectFiles({
     if (!newFilePath.trim() || newFilePath.trim().endsWith("/")) return;
     setFileDialogError("");
     try {
-      await addFile(newFilePath, "");
+      await addFile(newFilePath, isDrawioFile(newFilePath) ? EMPTY_DRAWIO : "");
       setNewFileOpen(false);
       setNewFilePath("");
     } catch (error) { setFileDialogError(errorMessage(error)); }
@@ -324,12 +328,21 @@ export function useProjectFiles({
   };
 
   const openFile = async (entry: FileEntry) => {
+    if (drawioPath === entry.path) return;
+    if (beforeOpenFile && !(await beforeOpenFile())) return;
+    setDrawioPath(null);
     resourceRequest.current?.abort();
     resourceRequest.current = null;
     setResourcePreviewLoading(false);
     setSelectedFolder(null);
     setSelectedFile(entry.path);
     const maxCollaborativeBytes = site.maxCollaborativeFileSizeMB * 1024 * 1024;
+    if (isDrawioFile(entry.path) && entry.textContent !== false && (entry.size ?? 0) <= Math.min(maxCollaborativeBytes, 5 * 1024 * 1024)) {
+      setResourcePreview(null);
+      setDrawioPath(entry.path);
+      onDrawioOpen?.();
+      return;
+    }
     if (fileOpenKind(entry, maxCollaborativeBytes) !== "editor") {
       await previewFile(entry);
       return;
@@ -448,6 +461,7 @@ export function useProjectFiles({
 
   return {
     files, setFiles, loadFiles,
+    drawioPath, setDrawioPath,
     newFileOpen, setNewFileOpen, newFilePath, setNewFilePath,
     resourcePreview, setResourcePreview, resourcePreviewLoading, setResourcePreviewLoading,
     newFolderOpen, setNewFolderOpen, newFolderName, setNewFolderName,

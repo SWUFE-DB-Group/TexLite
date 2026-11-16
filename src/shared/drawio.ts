@@ -1,0 +1,58 @@
+export const EMPTY_DRAWIO = '<mxfile><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
+export const isDrawioFile = (path: string): boolean => /\.drawio$/i.test(path);
+export const drawioPdfPath = (path: string): string => path.replace(/\.drawio$/i, ".pdf");
+export interface DrawioDocument { content: string; revision: string; pdfRevision: string | null }
+
+export const drawioMessages = {
+  en: {
+    errors: {
+      DRAWIO_INVALID: "The diagram or exported SVG is invalid or too large.",
+      DRAWIO_CONFLICT: "This file changed elsewhere. Reopen the diagram before saving or exporting again.",
+      DRAWIO_BROWSER_UNAVAILABLE: "PDF export requires Chromium, Chrome or Edge on the server. Ask your administrator to install one or configure drawio.browserPath.",
+      DRAWIO_EXPORT_FAILED: "Could not export the diagram. Check the server browser and fonts, then retry.",
+      DRAWIO_EXPORT_BUSY: "Other diagrams are being exported. Try again shortly."
+    },
+    ui: {
+      new: "draw.io diagram", title: "draw.io", export: "Export PDF", exported: "PDF saved", saved: "Saved",
+      loading: "Loading diagram editor…", unavailable: "The editor did not load. Check your connection to embed.diagrams.net and retry.",
+      help: "The editor loads from diagrams.net. PDF is generated using a server browser.",
+      discard: "Discard unsaved diagram changes?", discardDescription: "Your changes have not been saved.", discardAction: "Discard",
+      overwrite: "Replace PDF?", overwriteDescription: "Exporting will replace {{path}}.", overwriteAction: "Replace and export",
+      dirty: "Unsaved changes", readOnly: "Read-only"
+    }
+  },
+  zh: {
+    errors: {
+      DRAWIO_INVALID: "图表或导出的 SVG 无效，或文件过大。",
+      DRAWIO_CONFLICT: "文件已在其他位置修改。请重新打开图表后再保存或导出。",
+      DRAWIO_BROWSER_UNAVAILABLE: "导出 PDF 需要服务器安装 Chromium、Chrome 或 Edge。请联系管理员安装，或配置 drawio.browserPath。",
+      DRAWIO_EXPORT_FAILED: "无法导出图表。请检查服务器浏览器及字体后重试。",
+      DRAWIO_EXPORT_BUSY: "正在导出其他图表，请稍后重试。"
+    },
+    ui: {
+      new: "draw.io 图表", title: "draw.io", export: "导出 PDF", exported: "PDF 已保存", saved: "已保存",
+      loading: "正在加载图表编辑器…", unavailable: "编辑器未能加载。请检查与 embed.diagrams.net 的连接后重试。",
+      help: "编辑器从 diagrams.net 加载。PDF 使用服务器浏览器生成。",
+      discard: "放弃未保存的图表修改？", discardDescription: "当前修改尚未保存。", discardAction: "放弃修改",
+      overwrite: "替换 PDF？", overwriteDescription: "导出将替换 {{path}}。", overwriteAction: "替换并导出",
+      dirty: "未保存的修改", readOnly: "只读"
+    }
+  },
+  "zh-Hant": {
+    errors: {
+      DRAWIO_INVALID: "圖表或匯出的 SVG 無效，或檔案過大。",
+      DRAWIO_CONFLICT: "檔案已在其他位置修改。請重新開啟圖表後再儲存或匯出。",
+      DRAWIO_BROWSER_UNAVAILABLE: "匯出 PDF 需要伺服器安裝 Chromium、Chrome 或 Edge。請聯絡管理員安裝，或設定 drawio.browserPath。",
+      DRAWIO_EXPORT_FAILED: "無法匯出圖表。請檢查伺服器瀏覽器及字型後重試。",
+      DRAWIO_EXPORT_BUSY: "正在匯出其他圖表，請稍後重試。"
+    },
+    ui: {
+      new: "draw.io 圖表", title: "draw.io", export: "匯出 PDF", exported: "PDF 已儲存", saved: "已儲存",
+      loading: "正在載入圖表編輯器…", unavailable: "編輯器未能載入。請檢查與 embed.diagrams.net 的連線後重試。",
+      help: "編輯器從 diagrams.net 載入。PDF 使用伺服器瀏覽器產生。",
+      discard: "捨棄未儲存的圖表修改？", discardDescription: "目前修改尚未儲存。", discardAction: "捨棄修改",
+      overwrite: "取代 PDF？", overwriteDescription: "匯出將取代 {{path}}。", overwriteAction: "取代並匯出",
+      dirty: "未儲存的修改", readOnly: "唯讀"
+    }
+  }
+};

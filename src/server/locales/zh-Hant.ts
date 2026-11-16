@@ -6,9 +6,11 @@ import { citationCollectionMessages } from "../../shared/citationCollections.js"
 import { projectSearchMessages } from "../../shared/projectSearch.js";
 import { projectImportMessages } from "../../shared/projectImport.js";
 import { pdfFontMessages } from "../../shared/pdfFonts.js";
+import { drawioMessages } from "../../shared/drawio.js";
 
 /** Traditional Chinese API messages, using the same stable error codes. */
 export const zhHantMessages: Record<ServerErrorCode, string> = {
+  ...drawioMessages["zh-Hant"].errors,
   ...pdfFontMessages["zh-Hant"],
   ...projectImportMessages["zh-Hant"],
   ...viewLinkMessages["zh-Hant"],

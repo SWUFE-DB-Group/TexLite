@@ -1457,6 +1457,7 @@ it never substitutes the latest log's run. Raw tool errors and host paths stay
 out of responses. Font types, embedding, subsetting and ToUnicode presence are
 reported separately: missing ToUnicode is not proof that text cannot be copied,
 and a font-free PDF may contain outlines or rasterized text.
+
 The Vite build publishes the installed PDF.js version's predefined Adobe CMaps
 and their license under a versioned asset directory. The development server
 serves the same resources. PDF.js resolves this URL against the runtime base
@@ -1539,6 +1540,27 @@ read as an empty list or 404, rather than exposing a filesystem race as a 500.
 TexLite does not keep an unlimited browsable compile history: old unsuccessful
 run rows and unreferenced bundles are pruned, while the latest successful
 result for each root is retained.
+
+## draw.io diagrams
+
+`.drawio` files are XML text, shared with normal file classification and snapshot
+tracking, but opened in the editor pane using a lazy-loaded official diagrams.net
+iframe. The parent checks both message origin and source window. Only diagram
+XML is exchanged; project URLs and session cookies are not handed to the editor.
+Explicit saves use a source-content revision under the project mutation lock,
+update Yjs and file notifications, and record the saving user. Conflicts preserve
+the local editor rather than overwriting newer source. Diagram editing itself
+is not a Yjs-aware collaborative graph editor.
+
+PDF export saves the source and obtains a current-page SVG from the iframe,
+then sends it to an authenticated write-only project endpoint. The server checks
+source/output revisions before rendering and again before an atomic write next
+to the `.drawio` file. Headless `puppeteer-core` drives host Chromium/Chrome/Edge
+without downloading a browser, using an isolated temporary profile with scripts
+disabled and outbound/file requests blocked. Rendering never holds the source
+mutation lock. Each app owns bounded export jobs and aborts them on disconnect
+or shutdown. Read-only members can view diagrams, but neither they nor anonymous
+view-link visitors can save diagrams or invoke the host export process.
 
 ## History and recovery
 

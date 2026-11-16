@@ -1,5 +1,17 @@
 # Third-party notices
 
+## draw.io integration and Puppeteer
+
+The diagram editor is loaded from the external diagrams.net iframe; TexLite
+does not redistribute draw.io. The draw.io and diagrams.net names belong to
+their respective owners and do not imply endorsement.
+
+Server-side PDF export uses the separately installed `puppeteer-core` package,
+licensed under Apache-2.0, copyright Google Inc. and Puppeteer contributors.
+Its upstream license and notices are available in the
+[Puppeteer repository](https://github.com/puppeteer/puppeteer/blob/main/LICENSE).
+No Chromium, Chrome or Edge binary is bundled or downloaded by TexLite.
+
 ## Coding agent brand icons
 
 The inline SVG paths in `src/client/agents/AgentIcon.tsx` come from theSVG:

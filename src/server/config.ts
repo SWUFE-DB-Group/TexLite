@@ -69,6 +69,7 @@ export interface Config {
   clientDir: string;
   tikzGalleryEnabled: boolean;
   tikzGalleryDir: string;
+  drawioBrowserPath?: string;
   sessionDays: number;
   compileTimeoutMs: number;
   maxCompileJobs: number;
@@ -176,6 +177,8 @@ export function loadConfig(configPathOverride?: string): Config {
     clientDir,
     tikzGalleryEnabled: fileConfig.tikzGallery?.enabled ?? CONFIG_DEFAULTS.tikzGalleryEnabled,
     tikzGalleryDir: resolveConfiguredPath("tikzGallery.path", fileConfig.tikzGallery?.path ?? CONFIG_DEFAULTS.tikzGalleryPath, configDirectory),
+    drawioBrowserPath: fileConfig.drawio?.browserPath
+      ? resolveConfiguredPath("drawio.browserPath", fileConfig.drawio.browserPath, configDirectory) : undefined,
     sessionDays: integerSetting("sessionDays", process.env.TEXLITE_SESSION_DAYS, fileConfig.sessionDays, CONFIG_DEFAULTS.sessionDays, CONFIG_LIMITS.sessionDays),
     compileTimeoutMs: compileTimeoutSeconds * 1000,
     maxCompileJobs,
@@ -259,6 +262,7 @@ interface FileConfig {
   server?: { host?: string; port?: number; basePath?: string };
   storage?: { dataDir?: string };
   tikzGallery?: { enabled?: boolean; path?: string };
+  drawio?: { browserPath?: string };
   latex?: {
     latexmk?: string;
     defaultEngine?: string;
@@ -327,6 +331,8 @@ function validateFileConfig(config: FileConfig): void {
   const storage = optionalSection(config.storage, "storage");
   optionalString(storage?.dataDir, "storage.dataDir", { min: 1, max: 4_096 });
   const tikzGallery = optionalSection(config.tikzGallery, "tikzGallery");
+  const drawio = optionalSection(config.drawio, "drawio");
+  optionalString(drawio?.browserPath, "drawio.browserPath", { min: 1, max: 4_096 });
   if (tikzGallery && Object.prototype.hasOwnProperty.call(tikzGallery, "enabled") && typeof tikzGallery.enabled !== "boolean") {
     throw configurationError("tikzGallery.enabled", "must be true or false");
   }

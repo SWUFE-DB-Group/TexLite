@@ -1,4 +1,4 @@
-import { lazy, Suspense, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { lazy, Suspense, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { LoaderCircle } from "lucide-react";
 import { EditorTabs } from "./EditorTabs";
 import { TikzCompileButton } from "./TikzCompileButton";
@@ -31,6 +31,7 @@ export interface WorkspaceFigurePdf {
 }
 
 export interface WorkspaceEditorPanelProps {
+  alternativeEditor?: ReactNode;
   figurePdf?: WorkspaceFigurePdf | null;
   mobileSync?: { disabled: boolean; onClick: () => Promise<void>; label?: string };
   terminal?: TerminalPanelRenderer | null;
@@ -79,7 +80,7 @@ export function WorkspaceEditorPanel({
   editorPreferences, completionIndex, nativeSpellCheck, spellCheckIssues, spellCheckJump, sourceJump,
   collaborativeText, collaborationAwareness, undoManager, editorNotice, activateTab, closeTab,
   handleTabKeyDown, reorderTab, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync,
-  figurePdf = null, agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
+  alternativeEditor, figurePdf = null, agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: WorkspaceEditorPanelProps) {
   const { t } = useTranslation();
   // Comment offsets are meaningful only for the source document which
@@ -88,10 +89,10 @@ export function WorkspaceEditorPanel({
   const editorComments = commentsForEditorFile(comments, activeFile);
   const editorFocusComment = focusCommentForEditorFile(focusComment, activeFile, loadedFile);
   return <Panel id="source" minSize="22%">
-    <EditorTerminalLayout terminal={terminal} tabs={editorPreferences.openFilesInTabs && openTabs.length > 0 && (
+    <EditorTerminalLayout terminal={terminal} tabs={!alternativeEditor && editorPreferences.openFilesInTabs && openTabs.length > 0 && (
         <EditorTabs openTabs={openTabs} activeFile={activeFile} projectMainFile={project.mainFile} activateTab={activateTab} closeTab={closeTab} handleTabKeyDown={handleTabKeyDown} reorderTab={reorderTab} />
       )}>
-      <div id="editor-source-content" className="editor-content-container editor-content-column">
+      {alternativeEditor || <div id="editor-source-content" className="editor-content-container editor-content-column">
         {figurePdf && <div className="figure-pdf-bar"><TikzCompileButton {...figurePdf} /></div>}
         <div className="editor-content-fill">
         <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
@@ -101,7 +102,7 @@ export function WorkspaceEditorPanel({
         </div>
         {editorNotice && <div className="editor-centered-notice" role="status" aria-live="polite">{editorNotice}</div>}
         {mobileSync && <WorkspaceMobileSyncButton direction="pdf" {...mobileSync} />}
-      </div>
+      </div>}
     </EditorTerminalLayout>
   </Panel>;
 }

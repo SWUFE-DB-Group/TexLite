@@ -36,6 +36,7 @@ describe("configuration", () => {
       server: { basePath: "/tools/texlite/" },
       storage: { dataDir: "data" },
       uploads: { maxFileSizeMB: 25 },
+      drawio: { browserPath: "tools/chromium" },
       pdf: { loadingStrategy: "range", rangeThresholdMB: 7 },
       history: { maxVersions: 120, maxStorageMB: 256 },
       editHistory: { maxStorageMB: 48, maxSegments: 8000 },
@@ -51,6 +52,7 @@ describe("configuration", () => {
     expect(config.allowedEngines).toEqual(["lualatex"]);
     expect(config.allowProjectLatexmkrc).toBe(false);
     expect(config.maxUploadBytes).toBe(25 * 1024 * 1024);
+    expect(config.drawioBrowserPath).toBe(path.join(root, "tools/chromium"));
     expect(config.pdfLoadingStrategy).toBe("range");
     expect(config.pdfRangeThresholdBytes).toBe(7 * 1024 * 1024);
     expect(config.historyMaxVersions).toBe(120);

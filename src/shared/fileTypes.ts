@@ -8,7 +8,7 @@ const textExtensions = new Set([
   "c", "cc", "cpp", "cxx", "h", "hh", "hpp", "hxx", "m", "mm", "cs", "java", "js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx",
   "py", "pyw", "pyi", "r", "rmd", "qmd", "jl", "pl", "pm", "rb", "go", "rs", "lua", "php", "sh", "bash", "zsh", "ksh", "fish",
   "bashrc", "zshrc", "profile", "awk", "sed", "ps1", "psm1", "bat", "cmd", "sql", "html", "htm", "xhtml", "css", "scss", "sass", "less",
-  "xml", "xsd", "xsl", "xslt", "graphql", "gql", "proto", "cmake", "mk", "diff", "patch", "srt", "vtt", "asc", "pem"
+  "xml", "drawio", "xsd", "xsl", "xslt", "graphql", "gql", "proto", "cmake", "mk", "diff", "patch", "srt", "vtt", "asc", "pem"
 ]);
 const textNames = new Set([
   "latexmkrc", ".latexmkrc", "readme", "license", "licence", "copying", "authors", "changelog",

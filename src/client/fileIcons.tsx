@@ -1,11 +1,11 @@
 import type { LucideIcon } from "lucide-react";
-import { File, FileArchive, FileAudio, FileCode2, FileCog, FileImage, FileSpreadsheet, FileVideo, LibraryBig, NotepadText } from "lucide-react";
+import { File, FileArchive, FileAudio, FileCode2, FileCog, FileImage, FileSpreadsheet, FileVideo, LibraryBig, NotepadText, Workflow } from "lucide-react";
 import { MarkdownDocumentIcon } from "./MarkdownDocumentIcon";
 import { PdfDocumentIcon } from "./PdfDocumentIcon";
 import { TexDocumentIcon } from "./TexDocumentIcon";
 
 /** Semantic groups used by the project file tree. */
-export type FileIconKind = "pdf" | "tex" | "bib" | "latexmkrc" | "image" | "markdown" | "text" | "code" | "spreadsheet" | "archive" | "audio" | "video" | "file";
+export type FileIconKind = "drawio" | "pdf" | "tex" | "bib" | "latexmkrc" | "image" | "markdown" | "text" | "code" | "spreadsheet" | "archive" | "audio" | "video" | "file";
 
 const imageExtensions = new Set(["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp", "eps"]);
 const texExtensions = new Set(["latex", "ltx", "tex"]);
@@ -31,6 +31,7 @@ export function fileIconKind(filePath: string): FileIconKind {
   if (basename === "readme") return "markdown";
   const extension = basename.includes(".") ? basename.slice(basename.lastIndexOf(".") + 1) : "";
   if (extension === "pdf") return "pdf";
+  if (extension === "drawio") return "drawio";
   if (imageExtensions.has(extension)) return "image";
   if (extension === "md" || extension === "markdown" || extension === "mdown" || extension === "mkdn") return "markdown";
   if (texExtensions.has(extension)) return "tex";
@@ -45,6 +46,7 @@ export function fileIconKind(filePath: string): FileIconKind {
 }
 
 const icons: Record<Exclude<FileIconKind, "pdf" | "tex" | "markdown">, LucideIcon> = {
+  drawio: Workflow,
   bib: LibraryBig,
   latexmkrc: FileCog,
   image: FileImage,

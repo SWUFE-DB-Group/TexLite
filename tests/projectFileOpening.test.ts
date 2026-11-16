@@ -17,17 +17,19 @@ let host: HTMLDivElement;
 let unmounted: boolean;
 const onError = vi.fn();
 const onActiveFile = vi.fn();
+const beforeOpenFile = vi.fn(async () => true);
 
 function Harness() {
   const [activeFile, setActiveFile] = useState("main.tex");
   files = useProjectFiles({ projectId: "project", site, activeFile, dirty: false, save: async () => true,
-    onError, onProject: vi.fn(), onActiveFile: (value) => { onActiveFile(value); setActiveFile(value); }, onActiveMainFile: vi.fn() });
+    onError, onProject: vi.fn(), beforeOpenFile, onActiveFile: (value) => { onActiveFile(value); setActiveFile(value); }, onActiveMainFile: vi.fn() });
   return null;
 }
 
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.mocked(api).mockReset(); onError.mockReset(); onActiveFile.mockReset();
+  beforeOpenFile.mockReset().mockResolvedValue(true);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host); unmounted = false;
   await act(async () => root.render(createElement(Harness)));
 });
@@ -37,6 +39,28 @@ afterEach(async () => {
 });
 
 describe("opening suffix-classified project files", () => {
+  it("keeps an unsaved diagram selected until file navigation is confirmed", async () => {
+    await act(async () => files.openFile({ path: "diagram.drawio", type: "file", size: 100 }));
+    beforeOpenFile.mockResolvedValueOnce(false);
+    await act(async () => files.openFile(text));
+    expect(files.drawioPath).toBe("diagram.drawio"); expect(files.selectedFile).toBe("diagram.drawio");
+    expect(onActiveFile).not.toHaveBeenCalled(); expect(api).not.toHaveBeenCalled();
+    vi.mocked(api).mockResolvedValueOnce({ path: text.path });
+    await act(async () => files.openFile(text));
+    expect(files.drawioPath).toBeNull(); expect(onActiveFile).toHaveBeenCalledWith(text.path);
+  });
+
+  it("opens diagrams in the visual editor without switching the source file, and keeps size/binary restrictions", async () => {
+    await act(async () => files.openFile({ path: "figures/flow.drawio", type: "file", size: 100 }));
+    expect(files.drawioPath).toBe("figures/flow.drawio");
+    expect(onActiveFile).not.toHaveBeenCalled(); expect(api).not.toHaveBeenCalled();
+    await act(async () => files.setDrawioPath(null));
+    await act(async () => files.openFile({ path: "large.drawio", type: "file", size: 6 * 1024 * 1024 }));
+    expect(files.drawioPath).toBeNull(); expect(files.resourcePreview?.kind).toBe("large");
+    await act(async () => files.openFile({ path: "invalid.drawio", type: "file", size: 10, textContent: false }));
+    expect(files.drawioPath).toBeNull(); expect(files.resourcePreview?.kind).toBe("unsupported");
+  });
+
   it("validates only the selected text file before activating its shared editor", async () => {
     expect(api).not.toHaveBeenCalled();
     vi.mocked(api).mockResolvedValueOnce({ path: text.path });

@@ -59,7 +59,7 @@ export function WorkspaceTopbar({
 }: WorkspaceTopbarProps) {
   const { t } = useTranslation();
   const { showExecutionReminder } = useTerminalPreferences();
-  return <WorkspaceTopbarFrame siteName={site.siteName} projectName={project.name} subtitle={<>{activeFile} · {saveStateLabel}</>} onBack={onBack}
+  return <WorkspaceTopbarFrame siteName={site.siteName} projectName={project.name} subtitle={<>{activeFile}{saveStateLabel && <> · {saveStateLabel}</>}</>} onBack={onBack}
     leading={showEditor && <button className={`files-action${!filesCollapsed ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
     accessory={<>
     {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}
