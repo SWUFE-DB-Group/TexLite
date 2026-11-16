@@ -141,6 +141,7 @@ function optionalToolDefinitions(gitCommand: string, gitTimeoutMs: number): Envi
   return [
     gitToolDefinition(gitCommand, gitTimeoutMs),
     { id: "texcount", name: "TeXcount", command: "texcount", requirement: "optional", purpose: "Word and character statistics", versionArgs: ["-version"] },
+    { id: "pdffonts", name: "pdffonts", command: "pdffonts", requirement: "optional", purpose: "PDF font diagnostics", versionArgs: ["-v"] },
     { id: "bibtex", name: "BibTeX", command: "bibtex", requirement: "optional", purpose: "BibTeX bibliography builds" },
     { id: "biber", name: "Biber", command: "biber", requirement: "optional", purpose: "Biber bibliography builds" },
     { id: "makeindex", name: "MakeIndex", command: "makeindex", requirement: "optional", purpose: "Index generation", versionArgs: [] },

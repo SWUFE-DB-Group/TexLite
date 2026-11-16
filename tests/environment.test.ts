@@ -35,6 +35,7 @@ describe("startup environment checks", () => {
     expect(tools.find((tool) => tool.id === "node")).toMatchObject({ requirement: "required", status: "installed" });
     expect(tools.find((tool) => tool.id === "git")).toMatchObject({ requirement: "optional", status: "missing" });
     expect(tools.find((tool) => tool.id === "texcount")).toMatchObject({ requirement: "optional", purpose: "Word and character statistics" });
+    expect(tools.find((tool) => tool.id === "pdffonts")).toMatchObject({ requirement: "optional", purpose: "PDF font diagnostics" });
     expect(tools.find((tool) => tool.id === "harper-ls")).toMatchObject({ requirement: "optional" });
   });
 

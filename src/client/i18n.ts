@@ -13,6 +13,7 @@ import { projectSearchMessages } from "../shared/projectSearch";
 import { agentUiMessages } from "./agents/messages";
 import { tikzGalleryMessages } from "./tikzGallery/messages";
 import { projectImportMessages } from "../shared/projectImport";
+import { pdfFontMessages } from "../shared/pdfFonts";
 
 // Register before initialization so detected/saved languages and later switches
 // both update the page language used by browsers and assistive technology.
@@ -24,9 +25,9 @@ i18n.on("languageChanged", () => {
 
 void i18n.use(LanguageDetector).use(initReactI18next).init({
   resources: {
-    en: { translation: { ...en, agents: agentUiMessages.en, gallery: tikzGalleryMessages.en, errors: { ...en.errors, codes: { ...en.errors.codes, ...projectImportMessages.en, ...projectSearchMessages.en, ...agentMessages.en, ...suggestionMessages.en, ...viewLinkMessages.en, ...citationCollectionMessages.en } } } },
-    zh: { translation: { ...zh, agents: agentUiMessages.zh, gallery: tikzGalleryMessages.zh, errors: { ...zh.errors, codes: { ...zh.errors.codes, ...projectImportMessages.zh, ...projectSearchMessages.zh, ...agentMessages.zh, ...suggestionMessages.zh, ...viewLinkMessages.zh, ...citationCollectionMessages.zh } } } },
-    "zh-Hant": { translation: { ...zhHant, agents: agentUiMessages["zh-Hant"], gallery: tikzGalleryMessages["zh-Hant"], errors: { ...zhHant.errors, codes: { ...zhHant.errors.codes, ...projectImportMessages["zh-Hant"], ...projectSearchMessages["zh-Hant"], ...agentMessages["zh-Hant"], ...suggestionMessages["zh-Hant"], ...viewLinkMessages["zh-Hant"], ...citationCollectionMessages["zh-Hant"] } } } }
+    en: { translation: { ...en, agents: agentUiMessages.en, gallery: tikzGalleryMessages.en, errors: { ...en.errors, codes: { ...en.errors.codes, ...pdfFontMessages.en, ...projectImportMessages.en, ...projectSearchMessages.en, ...agentMessages.en, ...suggestionMessages.en, ...viewLinkMessages.en, ...citationCollectionMessages.en } } } },
+    zh: { translation: { ...zh, agents: agentUiMessages.zh, gallery: tikzGalleryMessages.zh, errors: { ...zh.errors, codes: { ...zh.errors.codes, ...pdfFontMessages.zh, ...projectImportMessages.zh, ...projectSearchMessages.zh, ...agentMessages.zh, ...suggestionMessages.zh, ...viewLinkMessages.zh, ...citationCollectionMessages.zh } } } },
+    "zh-Hant": { translation: { ...zhHant, agents: agentUiMessages["zh-Hant"], gallery: tikzGalleryMessages["zh-Hant"], errors: { ...zhHant.errors, codes: { ...zhHant.errors.codes, ...pdfFontMessages["zh-Hant"], ...projectImportMessages["zh-Hant"], ...projectSearchMessages["zh-Hant"], ...agentMessages["zh-Hant"], ...suggestionMessages["zh-Hant"], ...viewLinkMessages["zh-Hant"], ...citationCollectionMessages["zh-Hant"] } } } }
   },
   fallbackLng: "en",
   supportedLngs: [...supportedLocales],

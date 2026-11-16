@@ -42,6 +42,12 @@ Git enables GitHub backup, TeXcount enables document statistics, and
 for host diagnosis and external editor integrations; TexLite itself invokes
 `harper-cli`.
 
+PDF font inspection is optional. Install Poppler's `pdffonts` command on the
+server and make it available on `PATH` to use **Compile output → Fonts**.
+TexLite runs it only when that tab is opened, against the selected PDF run;
+missing tools do not prevent startup or compilation. Type 3 and non-embedded
+fonts are highlighted for review, not automatically repaired.
+
 Formatting does not require a host binary. The browser uses bundled `tex-fmt`
 WASM for `.tex`, `.cls`, and `.sty`, and browser-side `bibtex-tidy` for `.bib`.
 

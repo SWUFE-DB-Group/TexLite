@@ -1,5 +1,5 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import { AlertTriangle, Eraser, LoaderCircle, Logs, PackageOpen, XCircle } from "lucide-react";
+import { AlertTriangle, CaseSensitive, Eraser, LoaderCircle, Logs, PackageOpen, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Panel } from "react-resizable-panels";
 import { WorkspaceSyncSeparator } from "./WorkspaceSyncSeparator";
@@ -16,6 +16,7 @@ import type { CompileCleanMode } from "./useProjectCompilation";
 import type { CompileArtifact, DiagnosticTab, PreviewSurface, PreviewTab, WorkspaceLayout } from "./types";
 import { CompileArtifacts, CompileCleanup, CompileDiagnosticOutput, CompileOutput } from "./CompileOutput";
 import type { MarkdownPreviewHandle } from "./MarkdownPreview";
+import { PdfFontsPanel } from "./PdfFontsPanel";
 
 const PdfPreview = lazy(() => loadPdfPreview().then((module) => ({ default: module.PdfPreview })));
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
@@ -128,6 +129,7 @@ export function WorkspacePreviewPanel({
           <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{compileMessages.warnings.length}</span></button>
           <button role="tab" aria-selected={diagnosticTab === "errors"} className={diagnosticTab === "errors" ? "active" : ""} onClick={() => selectPreviewTab("errors")}><XCircle size={13} />{t("editor.errors")}<span>{compileMessages.errors.length}</span></button>
           <button role="tab" aria-selected={diagnosticTab === "artifacts"} className={diagnosticTab === "artifacts" ? "active" : ""} onClick={() => selectPreviewTab("artifacts")}><PackageOpen size={13} />{t("editor.artifacts")}<span>{artifacts.length}</span></button>
+          <button role="tab" aria-selected={diagnosticTab === "fonts"} className={diagnosticTab === "fonts" ? "active" : ""} onClick={() => selectPreviewTab("fonts")}><CaseSensitive size={13} />{t("editor.pdfFonts.tab")}</button>
           <button role="tab" aria-selected={diagnosticTab === "clean"} className={diagnosticTab === "clean" ? "active" : ""} onClick={() => selectPreviewTab("clean")}><Eraser size={13} />{t("editor.clean")}</button>
         </div>}
         <div className={`preview-content preview-${previewTab} ${previewTab === "diagnostics" ? `preview-${diagnosticTab}` : ""}`}>
@@ -148,6 +150,7 @@ export function WorkspacePreviewPanel({
           {previewTab === "diagnostics" && diagnosticTab === "warnings" && (compileDiagnostics ? <CompileDiagnosticOutput tone="warning" diagnostics={compileDiagnostics.warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} /> : <CompileOutput tone="warning" lines={compileMessages.warnings} empty={t("editor.noWarnings")} />)}
           {previewTab === "diagnostics" && diagnosticTab === "errors" && (compileDiagnostics ? <CompileDiagnosticOutput tone="error" diagnostics={compileDiagnostics.errors} files={files} empty={t("editor.noErrors")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} /> : <CompileOutput tone="error" lines={compileMessages.errors} empty={t("editor.noErrors")} />)}
           {previewTab === "diagnostics" && diagnosticTab === "artifacts" && <CompileArtifacts projectId={projectId} mainFile={activeMainFile} artifacts={artifacts} preview={artifactPreview} loading={artifactLoading} onView={(artifact) => void viewArtifact(artifact)} />}
+          {previewTab === "diagnostics" && diagnosticTab === "fonts" && <PdfFontsPanel key={`${projectId}:${activeMainFile}:${pdfUrl}`} projectId={projectId} mainFile={activeMainFile} pdfUrl={pdfUrl} />}
           {previewTab === "diagnostics" && diagnosticTab === "clean" && <CompileCleanup mainFile={activeMainFile} disabled={readOnly || !collaborationSynced || compileBusy} cleaning={cleaning} onCleanCache={() => onSetCleanMode("cache")} onCleanArtifacts={() => onSetCleanMode("artifacts")} />}
         </div>
       </section>

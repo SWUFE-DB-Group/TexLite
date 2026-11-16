@@ -1448,8 +1448,15 @@ force either mode without changing project compiler settings. The threshold is
 a size-based heuristic, not a universal latency optimum. Range mode allows
 PDF.js to combine streaming and ranged requests; it does not guarantee that
 only the visible page's bytes are downloaded. The output panel groups the PDF,
-log, warnings, errors, generated artifacts, and recovery actions; clean-cache
+log, warnings, errors, generated artifacts, PDF fonts, and recovery actions; clean-cache
 and clean-artifact actions are for recovery rather than routine compilation.
+The Fonts tab invokes optional host `pdffonts` on demand, with bounded runtime
+and output and cancellation when the panel closes. The authenticated read
+endpoint validates the project, main document and successful PDF run together;
+it never substitutes the latest log's run. Raw tool errors and host paths stay
+out of responses. Font types, embedding, subsetting and ToUnicode presence are
+reported separately: missing ToUnicode is not proof that text cannot be copied,
+and a font-free PDF may contain outlines or rasterized text.
 The Vite build publishes the installed PDF.js version's predefined Adobe CMaps
 and their license under a versioned asset directory. The development server
 serves the same resources. PDF.js resolves this URL against the runtime base

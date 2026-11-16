@@ -11,12 +11,14 @@ import { viewLinkMessages } from "../shared/projectViewLinks.js";
 import { citationCollectionMessages } from "../shared/citationCollections.js";
 import { projectSearchMessages } from "../shared/projectSearch.js";
 import { projectImportMessages } from "../shared/projectImport.js";
+import { pdfFontMessages } from "../shared/pdfFonts.js";
 
 export type ServerLocale = AppLocale;
 
 type MessageParams = Record<string, unknown>;
 
 const enMessages = {
+    ...pdfFontMessages.en,
     ...projectImportMessages.en,
     ...projectSearchMessages.en,
     ...citationCollectionMessages.en,
@@ -175,6 +177,7 @@ const enMessages = {
 export type ServerErrorCode = keyof typeof enMessages;
 
 const zhMessages: Record<ServerErrorCode, string> = {
+    ...pdfFontMessages.zh,
     ...projectImportMessages.zh,
     ...viewLinkMessages.zh,
     ...projectSearchMessages.zh,

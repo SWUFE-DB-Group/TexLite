@@ -29,6 +29,11 @@ function render(overrides: Partial<WorkspacePreviewPanelProps> = {}): string {
 }
 
 describe("uncompiled PDF preview", () => {
+  it("places on-demand font diagnostics before recovery", () => {
+    const html = render({ previewTab: "diagnostics", diagnosticTab: "fonts" });
+    expect(html.indexOf(i18n.t("editor.pdfFonts.tab"))).toBeLessThan(html.indexOf(i18n.t("editor.clean")));
+    expect(html).toContain(i18n.t("editor.pdfFonts.noPdf"));
+  });
   it("hides SyncTeX arrows while comments are open without removing the resize separator", () => {
     for (const commentsOpen of [false, true, false]) {
       const html = render({ commentsOpen, showSyncResize: true });

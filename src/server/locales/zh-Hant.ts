@@ -5,9 +5,11 @@ import { viewLinkMessages } from "../../shared/projectViewLinks.js";
 import { citationCollectionMessages } from "../../shared/citationCollections.js";
 import { projectSearchMessages } from "../../shared/projectSearch.js";
 import { projectImportMessages } from "../../shared/projectImport.js";
+import { pdfFontMessages } from "../../shared/pdfFonts.js";
 
 /** Traditional Chinese API messages, using the same stable error codes. */
 export const zhHantMessages: Record<ServerErrorCode, string> = {
+  ...pdfFontMessages["zh-Hant"],
   ...projectImportMessages["zh-Hant"],
   ...viewLinkMessages["zh-Hant"],
   ...citationCollectionMessages["zh-Hant"],

@@ -26,6 +26,7 @@ import {
 import type { CompileSnapshot } from "../compiler.js";
 import { parseCompileDiagnostics } from "../compileDiagnostics.js";
 import { pdfToSource, sourceToPdf } from "../synctex.js";
+import { inspectPdfFonts } from "../pdfFonts.js";
 import type { CollaborationService } from "../collaboration.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { MetricRegistry } from "../metrics.js";
@@ -40,7 +41,7 @@ import {
   syncArtifacts
 } from "../compileArtifacts.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "../limits.js";
-import { apiError, contentDisposition, httpError } from "../http.js";
+import { apiError, contentDisposition, httpError, HttpError } from "../http.js";
 
 interface CompileRouteContext {
   config: Config;
@@ -140,6 +141,40 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       pdfCompiledAt: publishedRun?.finished_at ?? latestSuccess?.finished_at ?? null,
       ...pdfMetadata
     };
+  });
+
+  app.get("/api/projects/:id/compile/fonts", async (request, reply) => {
+    const user = requireUser(request, reply, db);
+    if (!user) return;
+    const { id } = request.params as { id: string };
+    const project = accessibleProject(db, id, user);
+    if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+    const query = request.query as { mainFile?: string; run?: string };
+    const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
+    if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
+    // Require the displayed PDF's immutable run identity, never the latest log's run.
+    if (!query.run || !/^[a-f0-9-]{36}$/i.test(query.run)) return apiError(reply, 404, "PDF_NOT_FOUND");
+    const run = db.prepare(`SELECT id FROM compile_runs
+      WHERE id = ? AND project_id = ? AND main_file = ? AND status = 'succeeded'`).get(query.run, id, mainFile);
+    const pdf = run ? compileRunPdf(config, id, mainFile, query.run) : null;
+    if (!pdf) return apiError(reply, 404, "PDF_NOT_FOUND");
+    const controller = new AbortController();
+    const cancel = () => { if (!reply.raw.writableEnded) controller.abort(); };
+    reply.raw.once("close", cancel);
+    reply.header("Cache-Control", "private, no-store");
+    try {
+      const result = await inspectPdfFonts(pdf.path, controller.signal);
+      if (controller.signal.aborted) return;
+      // Project membership can change while a host tool is running.
+      if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+      return { mainFile, runId: query.run, ...result };
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
+      if (!regularFileStat(pdf.path)) return apiError(reply, 404, "PDF_NOT_FOUND");
+      if (error instanceof HttpError) return apiError(reply, error.statusCode, error.code);
+      throw error;
+    } finally { reply.raw.removeListener("close", cancel); }
   });
 
   app.get("/api/projects/:id/compile/artifacts", async (request, reply) => {
