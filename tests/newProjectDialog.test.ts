@@ -46,7 +46,11 @@ describe("new project dialog", () => {
     const help = document.querySelector<HTMLButtonElement>(".new-project-url-label .info-popover-trigger")!;
     expect(document.querySelector(".info-popover-content")).toBeNull();
     await act(async () => help.click());
-    expect(document.querySelector(".info-popover-content")?.textContent).toBe(i18n.t("projects.templateZipHelp", { size: 100 }));
+    const popover = document.querySelector(".info-popover-content")!;
+    expect(popover.textContent).toContain("100 MB");
+    const templatesLink = popover.querySelector<HTMLAnchorElement>("a")!;
+    expect(templatesLink.href).toBe("https://latextemplates.com/");
+    expect(templatesLink.target).toBe("_blank");
     await act(async () => help.click());
     expect(document.querySelector(".info-popover-content")).toBeNull();
     await enter(name(), "My template"); await submit(); expect(api).not.toHaveBeenCalled();

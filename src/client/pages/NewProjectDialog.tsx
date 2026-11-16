@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { FileArchive, FileText, Link, LoaderCircle } from "lucide-react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { api, isAbortError } from "../api";
 import { Modal } from "../Dialog";
 import { InfoPopover } from "../InfoPopover";
@@ -71,7 +71,8 @@ export function NewProjectDialog({ open, maxUploadSizeMB, onOpenChange, onCreate
         <label className="form-field">{t("projects.name")}<input autoFocus required maxLength={120} disabled={creating} value={name} onChange={(event) => { setName(event.target.value); setError(""); }} /></label>
         {mode === "template" && <div className="form-field"><div className="new-project-url-label">
           <label htmlFor={`${id}-url`}><Link aria-hidden size={13} />{t("projects.templateZipUrl")}</label>
-          <InfoPopover label={t("projects.templateZipUrl")} content={t("projects.templateZipHelp", { size: maxUploadSizeMB })} />
+          <InfoPopover label={t("projects.templateZipUrl")} content={<p><Trans i18nKey="projects.templateZipHelp" values={{ size: maxUploadSizeMB }}
+            components={{ templates: <a href="https://latextemplates.com/" target="_blank" rel="noopener noreferrer" /> }} /></p>} />
         </div>
           <input id={`${id}-url`} required type="url" maxLength={4096} spellCheck={false} autoCapitalize="none" autoCorrect="off" disabled={creating} value={url}
             placeholder="https://example.org/template.zip" onChange={(event) => { setUrl(event.target.value); setError(""); }} />
