@@ -74,8 +74,17 @@ through generic file operations until the editing tab is closed.
 Diagrams use explicit saves, not Yjs real-time text editing, and are excluded
 from global text search/replace. They remain tracked as text in project snapshots.
 
-**Export PDF** saves the current diagram page beside the source file, replacing
-an existing PDF only after confirmation. It uses a host-installed Chromium,
+**Export PDF** saves the current diagram page beside the source file by default.
+The attached export options switch between **Current page** and **Selected
+content**, with **Content margin** from 0 to 100 px (default 4). The menu checks
+the current selection on opening and disables **Selected content** when empty.
+Settings take effect immediately, remain when the menu is closed/reopened, and
+never initiate an export; use the main **Export PDF** button to run it.
+Output is always cropped
+to content, not the drawing's paper size. Empty selections are rejected rather
+than exporting the whole page. The full `.drawio` document is saved regardless
+of export scope; selection export never replaces it with a subset. Existing PDFs
+are replaced only after confirmation. It uses a host-installed Chromium,
 Chrome or Edge, in that order; Firefox and Safari are not export backends.
 Missing browsers do not prevent diagram editing, server startup or compilation.
 Set optional `drawio.browserPath` in `texlite.config.json` to an explicit browser

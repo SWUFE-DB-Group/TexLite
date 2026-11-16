@@ -2,9 +2,10 @@
 import { act, createElement, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import DrawioEditor, { DRAWIO_ORIGIN, decodeDrawioSvg, type DrawioEditorHandle } from "../src/client/workspace/DrawioEditor";
+import DrawioEditor, { decodeDrawioSvg, type DrawioEditorHandle } from "../src/client/workspace/DrawioEditor";
 import { api, ApiError } from "../src/client/api";
-import { EMPTY_DRAWIO } from "../src/shared/drawio";
+import { DRAWIO_ORIGIN, EMPTY_DRAWIO } from "../src/shared/drawio";
+import { renderDrawioSelection } from "../src/client/workspace/drawioSelectionExport";
 import i18n from "../src/client/i18n";
 import { deflateRawSync } from "node:zlib";
 import { sameDrawioContent } from "../src/client/workspace/drawioContent";
@@ -16,6 +17,9 @@ const { lease } = vi.hoisted(() => ({ lease: {
   current: { current: { status: "owned", token: "lease-1", name: "" } as { status: string; token: string; name: string; revision?: string } }, retry: vi.fn()
 } }));
 vi.mock("../src/client/workspace/useDrawioLock", () => ({ useDrawioLock: () => lease }));
+vi.mock("../src/client/workspace/drawioSelectionExport", async (original) => ({
+  ...await original<typeof import("../src/client/workspace/drawioSelectionExport")>(), renderDrawioSelection: vi.fn()
+}));
 let root: Root, host: HTMLDivElement;
 let frame: HTMLIFrameElement;
 const changed = EMPTY_DRAWIO.replace("Page-1", "Changed");
@@ -35,6 +39,17 @@ const mount = async (readOnly = false, pdfRevision: string | null = null) => {
   await send({ event: "init" }); await send({ event: "load" }); await send({ event: "load" });
 };
 const sent = () => vi.mocked(frame.contentWindow!.postMessage).mock.calls.map(([message]) => JSON.parse(message as string));
+const configureExport = async (scope: "page" | "selection", margin = "4") => {
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!.click());
+  await send({ event: "export", format: "json", data: { pages: [{ cells: [{ id: "a" }] }] }, message: sent().at(-1) });
+  await act(async () => document.querySelector<HTMLInputElement>(`.drawio-export-options input[value="${scope}"]`)!.click());
+  await act(async () => {
+    const input = document.querySelector<HTMLInputElement>('.drawio-export-options input[type="number"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, margin);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!.click());
+};
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); await i18n.changeLanguage("en");
   // A local empty frame supplies postMessage endpoints without loading the
@@ -44,6 +59,7 @@ beforeEach(async () => {
     return name === "srcdoc" ? "" : attribute.call(this, name);
   });
   vi.mocked(api).mockReset(); onClose.mockReset(); onChanged.mockReset();
+  vi.mocked(renderDrawioSelection).mockReset();
   lease.state = { status: "owned", token: "lease-1", name: "" }; lease.current.current = lease.state; lease.retry.mockReset();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
@@ -147,7 +163,7 @@ describe("embedded draw.io editing", () => {
     await act(async () => button("Export PDF").click());
     expect(sent().at(-1).action).toBe("load");
     await act(async () => button("Replace and export").click());
-    const request = sent().at(-1); expect(request).toMatchObject({ format: "svg", embedImages: true, currentPage: true, theme: "light" });
+    const request = sent().at(-1); expect(request).toMatchObject({ format: "svg", embedImages: true, allPages: false, theme: "light", border: 4 });
     vi.mocked(api).mockResolvedValueOnce({ revision: "r2" }).mockRejectedValueOnce(new ApiError("Install a browser", 503, "DRAWIO_BROWSER_UNAVAILABLE"));
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>中文</text></svg>';
     await send({ event: "export", format: "svg", xml: changed, data: `data:image/svg+xml,${encodeURIComponent(svg)}`, message: request });
@@ -164,6 +180,111 @@ describe("embedded draw.io editing", () => {
     expect(button("Save")).toBeUndefined(); expect(button("Export PDF")).toBeUndefined();
     await send({ event: "export", format: "svg", xml: changed, message: { requestId: 1 } });
     expect(api).toHaveBeenCalledTimes(1);
+  });
+
+  it("exports selected content with custom margin but saves the complete source, never the selected XML", async () => {
+    await mount();
+    const selection = '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="selected" value="Selected" vertex="1" parent="1"/></root></mxGraphModel>';
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>Selected</text></svg>';
+    vi.mocked(renderDrawioSelection).mockResolvedValue(`data:image/svg+xml,${encodeURIComponent(svg)}`);
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r2" }).mockResolvedValueOnce({ pdfRevision: "pdf-r2" });
+    await configureExport("selection", "0");
+    await act(async () => button("Export PDF").click());
+    expect(frame.parentElement?.hasAttribute("inert")).toBe(true);
+    const selectionRequest = sent().at(-1);
+    expect(selectionRequest).toMatchObject({ format: "json", allPages: false, selection: true, includeData: true });
+    await send({ event: "export", format: "json", data: { data: selection, pages: [{ cells: [{ id: "selected" }] }] }, message: selectionRequest });
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(sent().at(-1)).toMatchObject({ format: "xml" });
+    await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
+    expect(JSON.parse(vi.mocked(api).mock.calls[1][1]!.body as string)).toMatchObject({ content: changed, revision: "r1" });
+    expect(renderDrawioSelection).toHaveBeenCalledWith(selection, 0, "en", expect.any(AbortSignal));
+    expect(JSON.parse(vi.mocked(api).mock.calls[2][1]!.body as string)).toMatchObject({ svg, revision: "r2" });
+    expect(frame.parentElement?.hasAttribute("inert")).toBe(false);
+    expect(sent().filter((message) => message.action === "load")).not.toContainEqual(expect.objectContaining({ xml: selection }));
+  });
+
+  it("checks availability on menu open, preserves settings, and never exports while configuring", async () => {
+    await mount();
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!;
+    await act(async () => toggle.click());
+    const first = sent().at(-1);
+    expect(first).toMatchObject({ format: "json", selection: true, includeData: false });
+    const selection = () => document.querySelector<HTMLInputElement>('.drawio-export-options input[value="selection"]')!;
+    expect(selection().disabled).toBe(true);
+    await send({ event: "export", format: "json", data: { pages: [{ cells: [] }] }, message: first });
+    expect(selection().disabled).toBe(true);
+    await act(async () => selection().click());
+    expect(button("Current page")).toBeDefined();
+    await act(async () => {
+      const margin = document.querySelector<HTMLInputElement>('.drawio-export-options input[type="number"]')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(margin, "12");
+      margin.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => toggle.click());
+    await act(async () => toggle.click());
+    await send({ event: "export", format: "json", data: { pages: [{ cells: [{ id: "a" }] }] }, message: sent().at(-1) });
+    expect(selection().disabled).toBe(false);
+    expect(document.querySelector<HTMLInputElement>('.drawio-export-options input[type="number"]')!.value).toBe("12");
+    await act(async () => selection().click());
+    expect(button("Selected content")).toBeDefined();
+    await act(async () => toggle.click());
+    await act(async () => toggle.click());
+    expect(selection().checked).toBe(true);
+    expect(document.querySelector<HTMLInputElement>('.drawio-export-options input[type="number"]')!.value).toBe("12");
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(renderDrawioSelection).not.toHaveBeenCalled();
+    expect(sent().filter((message) => message.action === "export").every((message) => message.format === "json" && !message.includeData)).toBe(true);
+  });
+
+  it("discards menu queries after close and does not let late selection results enable an empty selection", async () => {
+    await mount();
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!;
+    await act(async () => toggle.click()); const old = sent().at(-1);
+    await act(async () => toggle.click());
+    await act(async () => toggle.click()); const current = sent().at(-1);
+    expect(current.requestId).not.toBe(old.requestId);
+    await send({ event: "export", format: "json", data: { pages: [{ cells: [{ id: "old" }] }] }, message: old });
+    expect(document.querySelector<HTMLInputElement>('.drawio-export-options input[value="selection"]')!.disabled).toBe(true);
+    await send({ event: "export", format: "json", data: { pages: [{ cells: [] }] }, message: current });
+    expect(document.querySelector<HTMLInputElement>('.drawio-export-options input[value="selection"]')!.disabled).toBe(true);
+    expect(api).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects empty selection without saving or falling back to the full page, and allows a page export afterwards", async () => {
+    await mount(); await configureExport("selection", "16");
+    await act(async () => button("Export PDF").click());
+    await send({ event: "export", format: "json", data: { pages: [{ cells: [] }] }, message: sent().at(-1) });
+    expect(api).toHaveBeenCalledTimes(1); expect(renderDrawioSelection).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(i18n.t("drawio.emptySelection"));
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!.click());
+    await act(async () => document.querySelector<HTMLInputElement>('.drawio-export-options input[value="page"]')!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!.click());
+    await act(async () => button("Export PDF").click());
+    expect(sent().at(-1)).toMatchObject({ format: "svg", allPages: false, border: 16 });
+  });
+
+  it("disables export for invalid margin and aborts a disposable selection renderer when cancelled", async () => {
+    await mount(); await configureExport("selection", "-1");
+    expect(button("Export PDF").disabled).toBe(true);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!.click());
+    await act(async () => {
+      const input = document.querySelector<HTMLInputElement>('.drawio-export-options input[type="number"]')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "4");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!.click());
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r2" });
+    let finish!: (data: string) => void;
+    vi.mocked(renderDrawioSelection).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => button("Export PDF").click());
+    await send({ event: "export", format: "json", data: { data: "<mxGraphModel><root/></mxGraphModel>", pages: [{ cells: [{ id: "a" }] }] }, message: sent().at(-1) });
+    await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
+    const signal = vi.mocked(renderDrawioSelection).mock.calls[0][3];
+    await act(async () => button("Cancel").click()); expect(signal.aborted).toBe(true);
+    await act(async () => finish("data:image/svg+xml,%3Csvg%2F%3E"));
+    expect(api).toHaveBeenCalledTimes(2); // No PDF request from the cancelled render.
+    expect(button("Export PDF").disabled).toBe(false);
   });
 
   it("checks current XML before closing even if a recent change has not emitted autosave yet", async () => {

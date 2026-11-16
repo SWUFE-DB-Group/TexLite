@@ -2778,6 +2778,27 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .drawio-status { color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
 .drawio-actions { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .drawio-toolbar .drawio-actions button { min-height: var(--ui-control-height); padding: 5px 10px; font-size: var(--ui-control-font-size); }
+.drawio-export-button { display: inline-flex; align-items: stretch; overflow: hidden; border: 1px solid var(--ui-border, #c9d0ca); border-radius: var(--ui-control-radius); background: var(--ui-surface, #fff); }
+/* One shared outline; inner buttons never inherit standalone rounded borders. */
+:root .drawio-export-button > button { min-height: calc(var(--ui-control-height) - 2px); border: 0; border-radius: 0; background: transparent; line-height: 1.25; }
+:root .drawio-export-button > .drawio-export-trigger { display: inline-flex; align-items: center; gap: 5px; border-left: 1px solid var(--ui-border, #c9d0ca); color: var(--ui-muted, #657068); white-space: nowrap; }
+:root .drawio-export-button > button:hover:not(:disabled), :root .drawio-export-button > .drawio-export-trigger[data-state="open"] { background: var(--ui-hover, #edf2ee); color: var(--ui-text, #30453a); }
+:root .drawio-export-button > button:focus-visible { outline: 2px solid var(--ui-info, #2563b4); outline-offset: -3px; }
+.drawio-export-options { z-index: 110; width: 300px; max-width: calc(100vw - 16px); padding: 12px; border: 1px solid var(--ui-border, #d5ddd7); border-radius: 8px; background: var(--ui-raised, #fff); color: var(--ui-text, #354a3e); box-shadow: 0 8px 28px #20312726; font-size: var(--ui-menu-font-size); }
+.drawio-export-options fieldset { display: grid; gap: 2px; margin: 0 0 10px; padding: 0 0 9px; border: 0; border-bottom: 1px solid var(--ui-border, #d5ddd7); }
+.drawio-export-options legend { margin-bottom: 5px; padding: 0 6px; color: var(--ui-muted, #657068); font-size: 11px; font-weight: 500; }
+.drawio-export-options fieldset label { display: flex; align-items: center; gap: 8px; min-height: var(--ui-control-height); padding: 5px 6px; border-radius: 5px; cursor: pointer; }
+.drawio-export-options fieldset label:not(:has(:disabled)):hover { background: var(--ui-hover, #edf2ee); }
+.drawio-export-options fieldset label:has(:disabled) { color: var(--ui-muted, #657068); opacity: .55; cursor: default; }
+.drawio-export-options fieldset label svg { margin-left: auto; }
+.drawio-export-options input[type="radio"] { margin: 0; accent-color: var(--ui-accent, #176b44); }
+.drawio-export-margin { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 6px; }
+.drawio-export-margin label { min-width: 0; font-size: inherit; }
+.drawio-export-margin-value { flex: none; display: flex; align-items: center; gap: 5px; color: var(--ui-muted, #657068); }
+.drawio-export-margin input { width: 64px; min-height: var(--ui-control-height); padding: 5px 7px; border: 1px solid var(--ui-border, #cbd2cc); border-radius: var(--ui-control-radius); background: var(--ui-surface, #fff); color: var(--ui-text, #30453a); font: inherit; }
+.drawio-export-options .error { margin: 8px 6px 0; font-size: 11px; }
+.drawio-export-options input:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 2px; }
+.drawio-export-frame { position: fixed; left: -10000px; top: 0; width: 1200px; height: 900px; border: 0; opacity: 0; pointer-events: none; }
 .drawio-close { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #737a75); }
 .drawio-close:hover { background: var(--ui-hover, #e9efea); color: var(--ui-text, #202421); }
 .drawio-close:focus-visible { outline: 2px solid var(--ui-accent, #195d3b); outline-offset: 2px; }
@@ -2790,12 +2811,16 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .drawio-lock-notice > span { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
 .drawio-lock-notice button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: var(--ui-control-height); padding: 5px 8px; border: 1px solid var(--ui-border, #dfe2de); border-radius: var(--ui-control-radius); background: var(--ui-surface, #fff); color: var(--ui-text, #202421); font-size: var(--ui-control-font-size); }
 @container (max-width: 480px) {
-  .drawio-file-name { flex-basis: 100%; }
-  .drawio-status { flex: 1; }
+  .drawio-file-name { flex-basis: calc(100% - 52px); }
+  .drawio-close { order: 1; }
+  .drawio-status { order: 2; flex: 1; }
+  .drawio-toolbar > .info-popover-trigger, .drawio-actions { order: 2; }
 }
 @media (pointer: coarse) {
   .drawio-close { width: var(--ui-touch-target); height: var(--ui-touch-target); }
   .drawio-toolbar { padding: 8px; }
   .drawio-toolbar .drawio-actions button { min-height: var(--ui-touch-target); }
+  :root .drawio-export-button > button { min-height: calc(var(--ui-touch-target) - 2px); }
   .drawio-lock-notice button { min-height: var(--ui-touch-target); }
+  .drawio-export-options fieldset label, .drawio-export-margin input { min-height: var(--ui-touch-target); }
 }

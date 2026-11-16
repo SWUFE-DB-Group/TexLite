@@ -1578,7 +1578,20 @@ against the source revision supplied when ownership is granted; an existing
 local draft is never automatically replaced.
 
 PDF export saves the source and obtains a current-page SVG from the iframe,
-then sends it to an authenticated write-only project endpoint. The server checks
+then sends it to an authenticated write-only project endpoint. A split export
+button defaults to the current page, optionally exports selected content, and
+sets a 0–100 px margin (default 4). Both scopes crop to content. Selection uses
+an on-open metadata-only query to disable the selection option when nothing is
+selected. Menu queries have independent request identities and are cancelled
+on close/unmount; late results cannot change a reopened menu. Settings remain
+local to the open editor and never save source or initiate PDF export.
+Selection export uses
+the native lossless JSON/XML selection export, rejecting an empty selection;
+the complete document is captured separately for saving. A disposable read-only
+offscreen iframe renders that subset so the live editor and undo history are
+never replaced. PDF capture freezes live input until finished/cancelled; the
+temporary frame is removed on success, failure, timeout or cancellation.
+The server checks
 ownership and source/output revisions before rendering and again before an atomic write next
 to the `.drawio` file. Headless `puppeteer-core` drives host Chromium/Chrome/Edge
 without downloading a browser, using an isolated temporary profile with scripts
