@@ -6,6 +6,9 @@ import DrawioEditor, { DRAWIO_ORIGIN, decodeDrawioSvg, type DrawioEditorHandle }
 import { api, ApiError } from "../src/client/api";
 import { EMPTY_DRAWIO } from "../src/shared/drawio";
 import i18n from "../src/client/i18n";
+import { deflateRawSync } from "node:zlib";
+import { sameDrawioContent } from "../src/client/workspace/drawioContent";
+import * as drawioContent from "../src/client/workspace/drawioContent";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 const { lease } = vi.hoisted(() => ({ lease: {
@@ -16,6 +19,8 @@ vi.mock("../src/client/workspace/useDrawioLock", () => ({ useDrawioLock: () => l
 let root: Root, host: HTMLDivElement;
 let frame: HTMLIFrameElement;
 const changed = EMPTY_DRAWIO.replace("Page-1", "Changed");
+const compressed = (xml: string) => xml.replace(/<diagram([^>]*)>([\s\S]*?)<\/diagram>/g, (_match, attributes, model) =>
+  `<diagram${attributes}>${deflateRawSync(Buffer.from(encodeURIComponent(model.trim()))).toString("base64")}</diagram>`);
 const onClose = vi.fn(), onChanged = vi.fn();
 const editor = createRef<DrawioEditorHandle>();
 const send = (data: object, origin = DRAWIO_ORIGIN, source: Window | null = frame.contentWindow) => act(async () => {
@@ -82,6 +87,59 @@ describe("embedded draw.io editing", () => {
     await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
     expect(onClose).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
+  });
+
+  it.each(["save", "pdf"])("closes a saved %s without a false discard warning when export formatting/compression differs", async (kind) => {
+    await mount(); await send({ event: "autosave", xml: changed });
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r2" });
+    if (kind === "pdf") vi.mocked(api).mockResolvedValueOnce({ path: "figures/diagram.pdf", pdfRevision: "pdf-r2" });
+    await act(async () => button(kind === "pdf" ? "Export PDF" : "Save").click());
+    const request = sent().at(-1);
+    const xml = kind === "pdf" ? compressed(changed) : changed;
+    await send({ event: "export", format: kind === "pdf" ? "svg" : "xml", xml,
+      data: "data:image/svg+xml,%3Csvg%2F%3E", message: request });
+    // Native autosave and close use expanded XML, not the SVG export's data.
+    const expanded = changed.replace("<mxfile>", '<mxfile host="embed.diagrams.net" modified="later">\n ')
+      .replace("<mxGraphModel>", '<mxGraphModel dx="1200" dy="800">');
+    await send({ event: "autosave", xml: expanded });
+    await vi.waitFor(() => expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved"));
+    await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
+    await send({ event: "export", format: "xml", xml: expanded, message: sent().at(-1) });
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(api).toHaveBeenCalledTimes(kind === "pdf" ? 3 : 2);
+  });
+
+  it("still warns for a real edit after a successful compressed PDF save", async () => {
+    await mount();
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r2" }).mockResolvedValueOnce({ pdfRevision: "pdf-r2" });
+    await act(async () => button("Export PDF").click());
+    await send({ event: "export", format: "svg", xml: compressed(changed), data: "data:image/svg+xml,%3Csvg%2F%3E", message: sent().at(-1) });
+    await send({ event: "autosave", xml: changed.replace("Changed", "Newer") });
+    await vi.waitFor(() => expect(host.querySelector(".drawio-status")?.textContent).toBe("Unsaved changes"));
+    await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
+  });
+
+  it("compares full multi-page graph content while ignoring serialization and viewport metadata", async () => {
+    const xml = changed.replace("</mxfile>", '<diagram id="second" name="中文"><mxGraphModel><root><mxCell id="0" value="Label"/></root></mxGraphModel></diagram></mxfile>');
+    expect(await sameDrawioContent(xml, compressed(xml))).toBe(true);
+    expect(await sameDrawioContent(xml, compressed(xml.replace("Label", "Changed label")))).toBe(false);
+    expect(await sameDrawioContent(xml, compressed(xml.replace('id="second"', 'id="new-page"')))).toBe(false);
+    expect(await sameDrawioContent(xml, compressed(changed))).toBe(false);
+    expect(await sameDrawioContent(xml, '<mxfile><diagram>not base64!</diagram></mxfile>')).toBe(false);
+  });
+
+  it("does not let an older asynchronous content comparison clear a newer edit", async () => {
+    await mount();
+    let finish!: (unchanged: boolean) => void;
+    vi.spyOn(drawioContent, "sameDrawioContent").mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    await send({ event: "autosave", xml: `${EMPTY_DRAWIO}\n` });
+    await send({ event: "autosave", xml: changed });
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Unsaved changes");
+    await act(async () => finish(true));
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Unsaved changes");
   });
 
   it("requires confirmation before replacing a PDF, saves source first, and preserves errors for retry", async () => {

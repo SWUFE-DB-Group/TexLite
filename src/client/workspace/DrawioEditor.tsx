@@ -9,6 +9,7 @@ import { InfoPopover } from "../InfoPopover";
 import { currentTheme } from "../theme";
 import { drawioPdfPath, type DrawioDocument } from "../../shared/drawio";
 import { useDrawioLock } from "./useDrawioLock";
+import { sameDrawioContent } from "./drawioContent";
 
 export const DRAWIO_ORIGIN = "https://embed.diagrams.net";
 const maxXmlLength = 5 * 1024 * 1024;
@@ -71,6 +72,17 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
   const settleClose = (confirmed: boolean) => {
     const resolve = closeDecision.current; closeDecision.current = null; resolve?.(confirmed);
   };
+  const updateDirty = async () => {
+    const xml = currentXml.current, document = saved.current, change = changes.current;
+    if (!document) return;
+    const unchanged = await sameDrawioContent(xml, document.content);
+    // XML inflation is asynchronous. An older comparison cannot clear a
+    // newer edit or replace the result of a save that finished meanwhile.
+    if (!mounted.current || currentXml.current !== xml || saved.current !== document || changes.current !== change) return;
+    setDirty(!unchanged);
+    if (!unchanged) setFeedback(null);
+    return !unchanged;
+  };
   const confirmClose = (): Promise<boolean> => {
     if (pending.current || closeDecision.current) return Promise.resolve(false);
     return new Promise((resolve) => {
@@ -109,17 +121,25 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
     const abort = new AbortController();
     const approve = () => { approved.current = token; setApprovedToken(token); };
     if (!revision || revision === saved.current.revision) approve();
-    else if (currentXml.current !== saved.current.content) setError(t("errors.codes.DRAWIO_CONFLICT"));
     else {
       // A viewer may have been open while the previous owner saved. Refresh
       // that clean viewer, but never replace a disconnected owner's draft.
-      void api<DrawioDocument>(`/api/projects/${projectId}/drawio?${new URLSearchParams({ path })}`, { signal: abort.signal }).then((document) => {
+      void (async () => {
+        if (!(await sameDrawioContent(currentXml.current, saved.current!.content))) {
+          if (!abort.signal.aborted) setError(t("errors.codes.DRAWIO_CONFLICT"));
+          return;
+        }
+        if (abort.signal.aborted) return;
+        const document = await api<DrawioDocument>(`/api/projects/${projectId}/drawio?${new URLSearchParams({ path })}`, { signal: abort.signal });
         if (abort.signal.aborted || lock.current.current.token !== token) return;
-        if (currentXml.current !== saved.current?.content) { setError(t("errors.codes.DRAWIO_CONFLICT")); return; }
+        const xml = currentXml.current;
+        const clean = await sameDrawioContent(xml, saved.current!.content);
+        if (abort.signal.aborted || lock.current.current.token !== token) return;
+        if (!clean || currentXml.current !== xml) { setError(t("errors.codes.DRAWIO_CONFLICT")); return; }
         saved.current = document; currentXml.current = document.content; setDirty(false);
         approve();
         if (initialized.current) load();
-      }).catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) setError(errorMessage(error)); });
+      })().catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) setError(errorMessage(error)); });
     }
     return () => abort.abort();
   }, [lock.state.status, lock.state.token, ready, retry]);
@@ -163,7 +183,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
       if (message.event === "autosave" && !frameReadOnly.current && typeof message.xml === "string" && message.xml.length <= maxXmlLength) {
         changes.current += 1;
         currentXml.current = message.xml;
-        setDirty(message.xml !== saved.current?.content); setFeedback(null); return;
+        await updateDirty(); return;
       }
       if (message.event === "save" && canEdit && !pending.current) { start("save"); return; }
       const request = pending.current;
@@ -177,7 +197,12 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
         const xml = message.xml;
         if (changes.current === request.change) currentXml.current = xml;
         if (request.kind === "close") {
-          if (xml !== saved.current.content || currentXml.current !== saved.current.content) { setDirty(true); setDiscard(true); }
+          const document = saved.current;
+          const unchanged = await sameDrawioContent(xml, document.content);
+          const current = currentXml.current;
+          const currentUnchanged = await sameDrawioContent(current, document.content);
+          if (abort.signal.aborted || !mounted.current) return;
+          if (!unchanged || !currentUnchanged || saved.current !== document || currentXml.current !== current) { setDirty(true); setDiscard(true); }
           else settleClose(true);
           return;
         }
@@ -188,9 +213,10 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
         if (abort.signal.aborted || !mounted.current) return;
         saved.current = { ...saved.current, content: xml, revision: result.revision };
         // Do not clear changes made while the HTTP save was in flight.
-        setDirty(currentXml.current !== xml);
+        const stillDirty = await updateDirty();
+        if (abort.signal.aborted || !mounted.current) return;
         onChanged();
-        post({ action: "status", message: t("drawio.saved"), modified: currentXml.current !== xml });
+        post({ action: "status", message: t("drawio.saved"), modified: stillDirty ?? true });
         if (request.kind === "pdf") {
           if (lock.current.current.status !== "owned" || request.lockToken !== lock.current.current.token) throw new Error(t("errors.codes.DRAWIO_LOCK_LOST"));
           const svg = decodeDrawioSvg(message.data);
