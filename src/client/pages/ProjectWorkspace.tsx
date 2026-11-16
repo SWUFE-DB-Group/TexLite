@@ -1041,7 +1041,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     onActiveFile: setActiveFile,
     onActiveMainFile: setActiveMainFile,
     beforeOpenFile: () => drawioEditor.current?.confirmClose() ?? Promise.resolve(true),
-    onDrawioOpen: () => { if (workspaceLayoutRef.current === "pdf-only") setWorkspaceLayout(phone ? "editor-only" : "editor-pdf"); }
+    onDrawioOpen: () => setWorkspaceLayout("editor-only")
   });
   const navigateFromDrawio = (action: () => void) => {
     if (!drawioEditor.current) { setDrawioPath(null); action(); return; }
