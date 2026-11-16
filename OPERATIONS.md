@@ -76,7 +76,7 @@ from global text search/replace. They remain tracked as text in project snapshot
 
 **Export PDF** saves the current diagram page beside the source file by default.
 The attached export options switch between **Current page** and **Selected
-content**, with **Content margin** from 0 to 100 px (default 4). The menu checks
+content**, with **Content margin** from 0 to 100 px (default 0 for a tight bounding box). The menu checks
 the current selection on opening and disables **Selected content** when empty.
 Settings take effect immediately, remain when the menu is closed/reopened, and
 never initiate an export; use the main **Export PDF** button to run it.

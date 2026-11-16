@@ -39,7 +39,7 @@ const mount = async (readOnly = false, pdfRevision: string | null = null) => {
   await send({ event: "init" }); await send({ event: "load" }); await send({ event: "load" });
 };
 const sent = () => vi.mocked(frame.contentWindow!.postMessage).mock.calls.map(([message]) => JSON.parse(message as string));
-const configureExport = async (scope: "page" | "selection", margin = "4") => {
+const configureExport = async (scope: "page" | "selection", margin = "0") => {
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="PDF export options"]')!.click());
   await send({ event: "export", format: "json", data: { pages: [{ cells: [{ id: "a" }] }] }, message: sent().at(-1) });
   await act(async () => document.querySelector<HTMLInputElement>(`.drawio-export-options input[value="${scope}"]`)!.click());
@@ -163,7 +163,7 @@ describe("embedded draw.io editing", () => {
     await act(async () => button("Export PDF").click());
     expect(sent().at(-1).action).toBe("load");
     await act(async () => button("Replace and export").click());
-    const request = sent().at(-1); expect(request).toMatchObject({ format: "svg", embedImages: true, allPages: false, theme: "light", border: 4 });
+    const request = sent().at(-1); expect(request).toMatchObject({ format: "svg", embedImages: true, allPages: false, theme: "light", border: 0 });
     vi.mocked(api).mockResolvedValueOnce({ revision: "r2" }).mockRejectedValueOnce(new ApiError("Install a browser", 503, "DRAWIO_BROWSER_UNAVAILABLE"));
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>中文</text></svg>';
     await send({ event: "export", format: "svg", xml: changed, data: `data:image/svg+xml,${encodeURIComponent(svg)}`, message: request });
@@ -210,6 +210,7 @@ describe("embedded draw.io editing", () => {
     await act(async () => toggle.click());
     const first = sent().at(-1);
     expect(first).toMatchObject({ format: "json", selection: true, includeData: false });
+    expect(document.querySelector<HTMLInputElement>('.drawio-export-options input[type="number"]')!.value).toBe("0");
     const selection = () => document.querySelector<HTMLInputElement>('.drawio-export-options input[value="selection"]')!;
     expect(selection().disabled).toBe(true);
     await send({ event: "export", format: "json", data: { pages: [{ cells: [] }] }, message: first });

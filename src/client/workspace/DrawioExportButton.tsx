@@ -12,7 +12,7 @@ export function DrawioExportButton({ disabled, saving, feedback, onExport, check
   const { t } = useTranslation();
   const id = useId();
   const [scope, setScope] = useState<DrawioExportOptions["scope"]>("page");
-  const [margin, setMargin] = useState("4");
+  const [margin, setMargin] = useState("0");
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<boolean | null>(null);
   const [checkFailed, setCheckFailed] = useState(false);

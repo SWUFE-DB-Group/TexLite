@@ -1580,7 +1580,7 @@ local draft is never automatically replaced.
 PDF export saves the source and obtains a current-page SVG from the iframe,
 then sends it to an authenticated write-only project endpoint. A split export
 button defaults to the current page, optionally exports selected content, and
-sets a 0–100 px margin (default 4). Both scopes crop to content. Selection uses
+sets a 0–100 px margin (default 0 for a tight bounding box). Both scopes crop to content. Selection uses
 an on-open metadata-only query to disable the selection option when nothing is
 selected. Menu queries have independent request identities and are cancelled
 on close/unmount; late results cannot change a reopened menu. Settings remain

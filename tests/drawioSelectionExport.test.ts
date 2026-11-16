@@ -6,7 +6,7 @@ import { renderDrawioSelection, selectedDrawioXml } from "../src/client/workspac
 let controller: AbortController;
 let frame: HTMLIFrameElement;
 const xml = '<mxGraphModel><root><mxCell id="0"/><mxCell id="selected" value="中文" vertex="1" parent="0"/></root></mxGraphModel>';
-const start = (margin = 4) => {
+const start = (margin = 0) => {
   const result = renderDrawioSelection(xml, margin, "zh", controller.signal);
   frame = document.querySelector(".drawio-export-frame")!;
   vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});

@@ -296,7 +296,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
       phase: selection ? "selection" : "source" };
     post(selection ? { action: "export", format: "json", requestId: id, selection: true, allPages: false, includeData: true, compressed: false }
       : { action: "export", format: kind === "pdf" ? "svg" : "xml", requestId: id,
-        allPages: false, embedImages: true, embedFonts: true, border: options?.margin ?? 4, background: "#ffffff", theme: "light" });
+        allPages: false, embedImages: true, embedFonts: true, border: options?.margin ?? 0, background: "#ffffff", theme: "light" });
   };
   const lang = useRef(i18n.resolvedLanguage === "zh-Hant" ? "zh-tw" : i18n.resolvedLanguage === "zh" ? "zh" : "en").current;
   const appearance = useRef({ ui: window.innerWidth <= 600 ? "simple" : currentTheme() === "dark" ? "dark" : "kennedy",
