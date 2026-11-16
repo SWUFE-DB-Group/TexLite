@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { isTextContent, resourceFileKind } from "../shared/fileTypes.js";
+import { isDrawioFile } from "../shared/drawio.js";
 import { PROJECT_SEARCH_MAX_MATCHES, type ProjectSearchOptions, type ProjectSearchResult } from "../shared/projectSearch.js";
 import type { Config } from "./config.js";
 import { maxCollaborativeFileBytes } from "./collaboration.js";
@@ -19,7 +20,7 @@ export function searchPattern(options: ProjectSearchOptions): RegExp {
 /** The caller holds a consistent-read barrier so collaborative buffers are flushed first. */
 export async function searchProject(config: Config, projectId: string, options: ProjectSearchOptions): Promise<ProjectSearchResult> {
   const candidates = (await listProjectFilesAsync(config, projectId))
-    .filter((entry) => entry.type === "file" && resourceFileKind(entry.path) === "text")
+    .filter((entry) => entry.type === "file" && resourceFileKind(entry.path) === "text" && !isDrawioFile(entry.path))
     .sort((a, b) => a.path.localeCompare(b.path));
   const result: ProjectSearchResult = { matches: [], limited: candidates.length > maxFiles };
   const pattern = searchPattern(options);

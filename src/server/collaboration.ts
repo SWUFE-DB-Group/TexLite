@@ -29,6 +29,7 @@ import { finishSuggestionApplications, hasPendingSuggestionApplication, prepareS
 import { httpError, SourceFlushError } from "./http.js";
 import { createEditHistorySpan, hashText, type EditHistorySegmentInput, type EditHistorySpan, type EditHistoryStep } from "./editHistory.js";
 import { isEditableTextFile, isTextContent, MAX_TEXT_EDITOR_BYTES } from "../shared/fileTypes.js";
+import { isDrawioFile } from "../shared/drawio.js";
 import {
   COLLABORATION_PROTOCOL_VERSION,
   CollaborationMessageType,
@@ -1846,7 +1847,7 @@ export function maxCollaborativeFileBytes(config: Config): number {
 }
 
 export function isCollaborativeTextFile(filePath: string): boolean {
-  return isEditableTextFile(filePath);
+  return isEditableTextFile(filePath) && !isDrawioFile(filePath);
 }
 
 function collaborativeEntrySignature(entry: FileEntry): string {

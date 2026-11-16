@@ -8,6 +8,11 @@ import { EMPTY_DRAWIO } from "../src/shared/drawio";
 import i18n from "../src/client/i18n";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
+const { lease } = vi.hoisted(() => ({ lease: {
+  state: { status: "owned", token: "lease-1", name: "" } as { status: string; token: string; name: string; revision?: string },
+  current: { current: { status: "owned", token: "lease-1", name: "" } as { status: string; token: string; name: string; revision?: string } }, retry: vi.fn()
+} }));
+vi.mock("../src/client/workspace/useDrawioLock", () => ({ useDrawioLock: () => lease }));
 let root: Root, host: HTMLDivElement;
 let frame: HTMLIFrameElement;
 const changed = EMPTY_DRAWIO.replace("Page-1", "Changed");
@@ -22,7 +27,7 @@ const mount = async (readOnly = false, pdfRevision: string | null = null) => {
   await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly, onClose, onChanged })));
   frame = document.querySelector("iframe")!;
   vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
-  await send({ event: "init" }); await send({ event: "load" });
+  await send({ event: "init" }); await send({ event: "load" }); await send({ event: "load" });
 };
 const sent = () => vi.mocked(frame.contentWindow!.postMessage).mock.calls.map(([message]) => JSON.parse(message as string));
 beforeEach(async () => {
@@ -34,6 +39,7 @@ beforeEach(async () => {
     return name === "srcdoc" ? "" : attribute.call(this, name);
   });
   vi.mocked(api).mockReset(); onClose.mockReset(); onChanged.mockReset();
+  lease.state = { status: "owned", token: "lease-1", name: "" }; lease.current.current = lease.state; lease.retry.mockReset();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -45,7 +51,8 @@ describe("embedded draw.io editing", () => {
     expect(host.querySelector(".drawio-editor iframe")).toBe(frame);
     expect(vi.mocked(api).mock.calls[0][0]).toBe("/api/projects/p1/drawio?path=figures%2Fdiagram.drawio");
     expect(frame.src).not.toContain("p1"); expect(frame.src).not.toContain(EMPTY_DRAWIO);
-    expect(sent()[0]).toMatchObject({ action: "load", xml: EMPTY_DRAWIO, autosave: 1 });
+    expect(sent()[0]).toMatchObject({ action: "load", xml: EMPTY_DRAWIO, autosave: 0 });
+    expect(sent().filter((message) => message.action === "load").at(-1)).toMatchObject({ readOnly: false, autosave: 1 });
     await send({ event: "autosave", xml: changed }, "https://evil.test");
     await send({ event: "autosave", xml: changed }, DRAWIO_ORIGIN, window);
     expect(button("Save").disabled).toBe(true);
@@ -67,7 +74,7 @@ describe("embedded draw.io editing", () => {
     await saving;
     await send({ event: "export", format: "xml", xml: changed, message: request });
     expect(api).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(vi.mocked(api).mock.calls[1][1]!.body as string)).toEqual({ path: "figures/diagram.drawio", content: changed, revision: "r1" });
+    expect(JSON.parse(vi.mocked(api).mock.calls[1][1]!.body as string)).toEqual({ path: "figures/diagram.drawio", content: changed, revision: "r1", lockToken: "lease-1" });
     const newer = changed.replace("Changed", "Newer"); await send({ event: "autosave", xml: newer });
     await act(async () => resolve({ revision: "r2" }));
     expect(button("Saved").disabled).toBe(false);
@@ -88,7 +95,7 @@ describe("embedded draw.io editing", () => {
     await send({ event: "export", format: "svg", xml: changed, data: `data:image/svg+xml,${encodeURIComponent(svg)}`, message: request });
     const calls = vi.mocked(api).mock.calls;
     expect(calls[1][1]?.method).toBe("PUT"); expect(calls[2][1]?.method).toBe("POST");
-    expect(JSON.parse(calls[2][1]!.body as string)).toEqual({ path: "figures/diagram.drawio", svg, revision: "r2", pdfRevision: "pdf-r1" });
+    expect(JSON.parse(calls[2][1]!.body as string)).toEqual({ path: "figures/diagram.drawio", svg, revision: "r2", pdfRevision: "pdf-r1", lockToken: "lease-1" });
     expect(document.querySelector('[role="alert"]')?.textContent).toBe("Install a browser");
     expect(button("Export PDF").disabled).toBe(false);
   });
@@ -135,6 +142,47 @@ describe("embedded draw.io editing", () => {
     await act(async () => button("Discard").click());
     await expect(decision).resolves.toBe(true);
     expect(onClose).not.toHaveBeenCalled(); // The caller now owns switching files.
+  });
+
+  it("opens other editors read-only and preserves a local draft when ownership is lost", async () => {
+    lease.state = { status: "busy", token: "", name: "Other writer" }; lease.current.current = lease.state;
+    await mount();
+    expect(sent()[0]).toMatchObject({ readOnly: true, autosave: 0 });
+    expect(button("Export PDF").disabled).toBe(true);
+    expect(document.body.textContent).toContain("Other writer is editing this diagram");
+    const rerender = () => act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged })));
+    lease.state = { status: "owned", token: "lease-2", name: "" }; lease.current.current = lease.state;
+    await rerender();
+    expect(sent().at(-1)).toMatchObject({ action: "load", readOnly: false });
+    await send({ event: "autosave", xml: changed });
+    const count = sent().length;
+    lease.state = { status: "lost", token: "", name: "" }; lease.current.current = lease.state;
+    await rerender();
+    expect(sent()).toHaveLength(count); // Do not reload and erase the draft.
+    expect(frame.parentElement?.hasAttribute("inert")).toBe(true);
+    expect(button("Save").disabled).toBe(true);
+    await send({ event: "save", xml: changed });
+    expect(api).toHaveBeenCalledTimes(1);
+    await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
+    expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
+  });
+
+  it("refreshes a stale clean viewer on acquisition, but never overwrites a disconnected owner's draft", async () => {
+    lease.state = { status: "busy", token: "", name: "Writer" }; lease.current.current = lease.state;
+    await mount();
+    const rerender = () => act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged })));
+    vi.mocked(api).mockResolvedValueOnce({ content: changed, revision: "r2", pdfRevision: null });
+    lease.state = { status: "owned", token: "new-owner", name: "", revision: "r2" }; lease.current.current = lease.state;
+    await rerender();
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(sent().at(-1)).toMatchObject({ action: "load", xml: changed, readOnly: false });
+    await send({ event: "autosave", xml: changed.replace("Changed", "Unsaved") });
+    lease.state = { status: "lost", token: "", name: "" }; lease.current.current = lease.state; await rerender();
+    lease.state = { status: "owned", token: "third-owner", name: "", revision: "r3" }; lease.current.current = lease.state; await rerender();
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("changed elsewhere");
+    expect(button("Save").disabled).toBe(true);
+    expect(frame.parentElement?.hasAttribute("inert")).toBe(true);
   });
 
   it("decodes Unicode SVG exports without fetching arbitrary URLs", () => {

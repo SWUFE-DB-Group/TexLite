@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { FileDown, LoaderCircle, RefreshCw, Workflow, X } from "lucide-react";
+import { FileDown, LoaderCircle, LockKeyhole, RefreshCw, Workflow, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, isAbortError } from "../api";
 import { errorMessage } from "../errors";
@@ -8,6 +8,7 @@ import { SaveButton } from "../SaveButton";
 import { InfoPopover } from "../InfoPopover";
 import { currentTheme } from "../theme";
 import { drawioPdfPath, type DrawioDocument } from "../../shared/drawio";
+import { useDrawioLock } from "./useDrawioLock";
 
 export const DRAWIO_ORIGIN = "https://embed.diagrams.net";
 const maxXmlLength = 5 * 1024 * 1024;
@@ -21,7 +22,7 @@ export function decodeDrawioSvg(value: unknown): string {
     : decodeURIComponent(match[2]);
 }
 
-type Request = { id: number; kind: "save" | "pdf" | "close"; timer: number; change: number };
+type Request = { id: number; kind: "save" | "pdf" | "close"; timer: number; change: number; lockToken: string };
 
 export interface DrawioEditorHandle { confirmClose: () => Promise<boolean> }
 
@@ -29,6 +30,11 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
   projectId: string; path: string; readOnly: boolean; onClose: () => void; onChanged: () => void; ref?: Ref<DrawioEditorHandle>;
 }) {
   const { t, i18n } = useTranslation();
+  const lock = useDrawioLock(projectId, path, readOnly);
+  const [approvedToken, setApprovedToken] = useState("");
+  const approved = useRef("");
+  const canEdit = !readOnly && lock.state.status === "owned" && approvedToken === lock.state.token;
+  const frameReadOnly = useRef(true);
   const frame = useRef<HTMLIFrameElement>(null);
   const saved = useRef<DrawioDocument | null>(null);
   const currentXml = useRef("");
@@ -51,8 +57,11 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
   const [overwrite, setOverwrite] = useState(false);
   const post = (message: object) => frame.current?.contentWindow?.postMessage(JSON.stringify(message), DRAWIO_ORIGIN);
   const load = () => {
-    if (initialized.current && saved.current) post({ action: "load", xml: saved.current.content, title: path,
-      autosave: readOnly ? 0 : 1, readOnly, saveAndExit: "0", noSaveBtn: "1", noExitBtn: "1" });
+    if (!initialized.current || !saved.current) return;
+    readyRef.current = false; setReady(false);
+    frameReadOnly.current = readOnly || lock.current.current.status !== "owned" || approved.current !== lock.current.current.token;
+    post({ action: "load", xml: currentXml.current, title: path,
+      autosave: frameReadOnly.current ? 0 : 1, readOnly: frameReadOnly.current, saveAndExit: "0", noSaveBtn: "1", noExitBtn: "1" });
   };
   const finish = () => {
     if (pending.current) window.clearTimeout(pending.current.timer);
@@ -67,7 +76,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
     return new Promise((resolve) => {
       closeDecision.current = resolve;
       if (dirty) setDiscard(true);
-      else if (ready && !readOnly) start("close"); // Include edits not yet reported by the iframe's autosave debounce.
+      else if (ready && !frameReadOnly.current) start("close"); // Include edits not yet reported by the iframe's autosave debounce.
       else settleClose(true);
     });
   };
@@ -91,6 +100,35 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
     // The parent keys this component by project/path. Retry replaces the iframe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, path, retry]);
+
+  useEffect(() => {
+    if (lock.state.status !== "owned") { approved.current = ""; setApprovedToken(""); return; }
+    if (!saved.current) return; // The initial read-only load will trigger `ready`.
+    const token = lock.state.token, revision = lock.state.revision;
+    if (approved.current === token) return;
+    const abort = new AbortController();
+    const approve = () => { approved.current = token; setApprovedToken(token); };
+    if (!revision || revision === saved.current.revision) approve();
+    else if (currentXml.current !== saved.current.content) setError(t("errors.codes.DRAWIO_CONFLICT"));
+    else {
+      // A viewer may have been open while the previous owner saved. Refresh
+      // that clean viewer, but never replace a disconnected owner's draft.
+      void api<DrawioDocument>(`/api/projects/${projectId}/drawio?${new URLSearchParams({ path })}`, { signal: abort.signal }).then((document) => {
+        if (abort.signal.aborted || lock.current.current.token !== token) return;
+        if (currentXml.current !== saved.current?.content) { setError(t("errors.codes.DRAWIO_CONFLICT")); return; }
+        saved.current = document; currentXml.current = document.content; setDirty(false);
+        approve();
+        if (initialized.current) load();
+      }).catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) setError(errorMessage(error)); });
+    }
+    return () => abort.abort();
+  }, [lock.state.status, lock.state.token, ready, retry]);
+
+  useEffect(() => {
+    // Viewers become editable only after ownership is acquired. On lock loss,
+    // freeze the existing frame instead of reloading and erasing its draft.
+    if (canEdit && readyRef.current && frameReadOnly.current) load();
+  }, [canEdit, ready]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -122,15 +160,15 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
         if (message.error) { setError(t("errors.codes.DRAWIO_INVALID")); return; }
         readyRef.current = true; setReady(true); setLoadingFailed(false); return;
       }
-      if (message.event === "autosave" && !readOnly && typeof message.xml === "string" && message.xml.length <= maxXmlLength) {
+      if (message.event === "autosave" && !frameReadOnly.current && typeof message.xml === "string" && message.xml.length <= maxXmlLength) {
         changes.current += 1;
         currentXml.current = message.xml;
         setDirty(message.xml !== saved.current?.content); setFeedback(null); return;
       }
-      if (message.event === "save" && !readOnly && !pending.current) { start("save"); return; }
+      if (message.event === "save" && canEdit && !pending.current) { start("save"); return; }
       const request = pending.current;
       const echoed = message.message as { requestId?: unknown } | undefined;
-      if (!request || controller.current || message.event !== "export" || echoed?.requestId !== request.id || !saved.current || readOnly) return;
+      if (!request || controller.current || message.event !== "export" || echoed?.requestId !== request.id || !saved.current || readOnly && request.kind !== "close") return;
       if ((request.kind === "pdf" ? message.format !== "svg" : message.format !== "xml")) return;
       window.clearTimeout(request.timer);
       const abort = new AbortController(); controller.current = abort;
@@ -143,8 +181,9 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
           else settleClose(true);
           return;
         }
+        if (lock.current.current.status !== "owned" || request.lockToken !== lock.current.current.token) throw new Error(t("errors.codes.DRAWIO_LOCK_LOST"));
         const result = await api<{ revision: string }>(`/api/projects/${projectId}/drawio`, {
-          method: "PUT", signal: abort.signal, body: JSON.stringify({ path, content: xml, revision: saved.current.revision })
+          method: "PUT", signal: abort.signal, body: JSON.stringify({ path, content: xml, revision: saved.current.revision, lockToken: request.lockToken })
         });
         if (abort.signal.aborted || !mounted.current) return;
         saved.current = { ...saved.current, content: xml, revision: result.revision };
@@ -153,9 +192,10 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
         onChanged();
         post({ action: "status", message: t("drawio.saved"), modified: currentXml.current !== xml });
         if (request.kind === "pdf") {
+          if (lock.current.current.status !== "owned" || request.lockToken !== lock.current.current.token) throw new Error(t("errors.codes.DRAWIO_LOCK_LOST"));
           const svg = decodeDrawioSvg(message.data);
           const result = await api<{ path: string; pdfRevision: string }>(`/api/projects/${projectId}/drawio/pdf`, {
-            method: "POST", signal: abort.signal, body: JSON.stringify({ path, svg, revision: saved.current.revision, pdfRevision: saved.current.pdfRevision })
+            method: "POST", signal: abort.signal, body: JSON.stringify({ path, svg, revision: saved.current.revision, pdfRevision: saved.current.pdfRevision, lockToken: request.lockToken })
           });
           if (abort.signal.aborted || !mounted.current) return;
           saved.current.pdfRevision = result.pdfRevision;
@@ -172,11 +212,12 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
   });
 
   const start = (kind: Request["kind"]) => {
-    if (pending.current || !ready || !saved.current || readOnly) return;
+    if (pending.current || !ready || !saved.current || readOnly && kind !== "close") return;
+    if (kind !== "close" && (closeDecision.current || lock.current.current.status !== "owned" || approved.current !== lock.current.current.token)) return;
     const id = ++sequence.current;
     setError(""); setFeedback(null); setBusy(kind);
     const timer = window.setTimeout(() => { finish(); settleClose(false); setError(t("errors.codes.DRAWIO_EXPORT_FAILED")); }, 30_000);
-    pending.current = { id, kind, timer, change: changes.current };
+    pending.current = { id, kind, timer, change: changes.current, lockToken: lock.current.current.token };
     post({ action: "export", format: kind === "pdf" ? "svg" : "xml", requestId: id,
       currentPage: true, embedImages: true, embedFonts: true, border: 4, background: "#ffffff", theme: "light" });
   };
@@ -190,18 +231,22 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
     <section className="drawio-editor" aria-label={path}>
       <div className="drawio-toolbar">
         <span className="drawio-file-name"><Workflow size={14} aria-hidden /><span>{path}</span></span>
-        <span className="drawio-status" role="status">{readOnly ? t("drawio.readOnly") : dirty ? t("drawio.dirty") : ready ? t("drawio.saved") : t("drawio.loading")}</span>
+        <span className="drawio-status" role="status">{readOnly || !canEdit && lock.state.status !== "connecting" ? t("drawio.readOnly") : lock.state.status === "connecting" ? t("drawio.connecting") : dirty ? t("drawio.dirty") : ready ? t("drawio.saved") : t("drawio.loading")}</span>
         <InfoPopover content={t("drawio.help")} />
         {!readOnly && <div className="drawio-actions">
-          <SaveButton saving={busy === "save"} disabled={!ready || !dirty || Boolean(busy)} feedback={feedback === "save" ? t("drawio.saved") : ""} onClick={() => start("save")}>{t("common.save")}</SaveButton>
-          <SaveButton saving={busy === "pdf"} disabled={!ready || Boolean(busy)} icon={<FileDown size={14} aria-hidden />} feedback={feedback === "pdf" ? t("drawio.exported") : ""}
+          <SaveButton saving={busy === "save"} disabled={!canEdit || !ready || !dirty || Boolean(busy)} feedback={feedback === "save" ? t("drawio.saved") : ""} onClick={() => start("save")}>{t("common.save")}</SaveButton>
+          <SaveButton saving={busy === "pdf"} disabled={!canEdit || !ready || Boolean(busy)} icon={<FileDown size={14} aria-hidden />} feedback={feedback === "pdf" ? t("drawio.exported") : ""}
             onClick={() => { if (saved.current?.pdfRevision) setOverwrite(true); else start("pdf"); }}>{t("drawio.export")}</SaveButton>
           {busy && <button type="button" onClick={() => { const active = controller.current; controller.current = null; active?.abort(); finish(); settleClose(false); }}>{t("common.cancel")}</button>}
         </div>}
         <button type="button" className="drawio-close" aria-label={t("common.close")} title={t("common.close")} onClick={() => { void confirmClose().then((confirmed) => { if (confirmed) onClose(); }); }}><X size={14} aria-hidden /></button>
       </div>
+      {(lock.state.status === "busy" || lock.state.status === "lost") && <div className="drawio-lock-notice" role="status"><LockKeyhole size={14} aria-hidden />
+        <span>{lock.state.status === "busy" ? t("drawio.lockedBy", { name: lock.state.name }) : t("drawio.lockLost")}</span>
+        <button type="button" disabled={Boolean(busy)} onClick={lock.retry}><RefreshCw size={13} aria-hidden />{t("drawio.retryEdit")}</button>
+      </div>}
       {error && <p className="error drawio-error" role="alert">{error}</p>}
-      <div className="drawio-frame-wrap">
+      <div className="drawio-frame-wrap" inert={!canEdit && !frameReadOnly.current}>
         {!ready && <div className="drawio-loading" role="status">{loadingFailed ? <><span>{t("drawio.unavailable")}</span><button onClick={() => setRetry((value) => value + 1)}><RefreshCw size={14} />{t("common.retry")}</button></> : <><LoaderCircle size={20} className="spin" /><span>{t("drawio.loading")}</span></>}</div>}
         <iframe key={retry} ref={frame} src={url} title={t("drawio.title")} referrerPolicy="no-referrer"
           onError={() => setLoadingFailed(true)}

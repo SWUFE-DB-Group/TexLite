@@ -150,6 +150,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     return await projectMutations.runWrite(id, () => {
       const absolute = resolveSourcePath(config, id, folderPath);
       if (fs.existsSync(absolute)) return apiError(reply, 409, "PATH_EXISTS", { path: folderPath });
+      projectMutations.drawioLocks.assertUnlocked(id, [folderPath]);
       fs.mkdirSync(absolute, { recursive: true, mode: 0o700 });
       touchProject(db, id, user.id);
       // Empty folders have no file entry to trigger a refresh on their own.
@@ -202,6 +203,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     let currentProject = project;
     const validateMove = (): void => {
       currentProject = requireEditableProject(db, id, user);
+      projectMutations.drawioLocks.assertUnlocked(id, [source, destination]);
       assertNoSourceSymlinks(config, id);
       if (source === currentProject.main_file && !/\.tex$/i.test(destination)) {
         throw httpError(400, "MAIN_DOCUMENT_INVALID");
@@ -348,6 +350,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     }
     return await projectMutations.runWrite(id, () => {
       const absolute = resolveSourcePath(config, id, filePath);
+      projectMutations.drawioLocks.assertUnlocked(id, [filePath]);
       try {
         fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
       } catch (error) {
@@ -365,7 +368,8 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
         throw error;
       }
       touchProject(db, id, user.id);
-      collaboration.updateFile(id, filePath, content, user.id);
+      if (isCollaborativeTextFile(filePath)) collaboration.updateFile(id, filePath, content, user.id);
+      else collaboration.invalidateSourceTree(id, filePath);
       recordHistory(id, user.id, "file", [filePath]);
       return reply.code(201).send({ ok: true, path: filePath, comments: commentsForFile(db, config, id, filePath) });
     }, { preflight: () => { requireEditableProject(db, id, user); } });
@@ -450,6 +454,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN");
     return await projectMutations.runWrite(id, () => {
       const currentProject = requireEditableProject(db, id, user);
+      projectMutations.drawioLocks.assertUnlocked(id, [relative]);
       if (relative === currentProject.main_file || currentProject.main_file.startsWith(`${relative}/`)) {
         return apiError(reply, 400, "MAIN_FILE_DELETE_FORBIDDEN", { path: relative });
       }
@@ -513,6 +518,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     }
     try {
       return await projectMutations.runWrite(id, () => {
+        projectMutations.drawioLocks.assertUnlocked(id, [relative]);
         const absolute = resolveSourcePath(config, id, relative);
         try {
           fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });

@@ -1,5 +1,6 @@
 import type { CollaborationSaveReceipt, CollaborationService } from "./collaboration.js";
 import { SourceFlushError } from "./http.js";
+import { DrawioLocks } from "./drawioLocks.js";
 
 interface ProjectQueue {
   tail: Promise<void>;
@@ -39,6 +40,7 @@ type ProjectReadOptions = Pick<ProjectMutationOptions, "preflight">;
  * completion so clients cannot replay edits made against the replaced tree.
  */
 export class ProjectMutationCoordinator {
+  readonly drawioLocks = new DrawioLocks();
   private readonly externalWriters = new Map<string, () => Promise<void>>();
   private readonly exclusivePending = new Map<string, number>();
 
@@ -95,6 +97,7 @@ export class ProjectMutationCoordinator {
       try {
         await this.collaboration.waitForReady?.(projectId);
         options.preflight?.();
+        this.drawioLocks.revokeProject(projectId);
         // This call is synchronous. No WebSocket event can interleave between
         // the final flush and the maintenance flag being installed.
         if (options.flush !== false) this.flushProject(projectId);

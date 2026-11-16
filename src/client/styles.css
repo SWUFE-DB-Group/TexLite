@@ -2783,6 +2783,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .drawio-loading { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--ui-surface, #fff); color: var(--ui-muted, #737a75); padding: 24px; text-align: center; font-size: 13px; }
 .drawio-loading button { display: inline-flex; align-items: center; gap: 6px; }
 .drawio-error { flex: none; margin: 0; padding: 8px 14px; font-size: 12px; }
+.drawio-lock-notice { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; background: var(--ui-warning-bg, #fff8e9); color: var(--ui-warning, #805a24); border-bottom: 1px solid var(--ui-warning-border, #e4cf91); font-size: 12px; }
+.drawio-lock-notice > span { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+.drawio-lock-notice button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: var(--ui-control-height); padding: 5px 8px; border: 1px solid var(--ui-border, #dfe2de); border-radius: var(--ui-control-radius); background: var(--ui-surface, #fff); color: var(--ui-text, #202421); font-size: var(--ui-control-font-size); }
 @container (max-width: 480px) {
   .drawio-file-name { flex-basis: 100%; }
   .drawio-status { flex: 1; }
@@ -2791,4 +2794,5 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .drawio-close { width: var(--ui-touch-target); height: var(--ui-touch-target); }
   .drawio-toolbar { padding: 8px; }
   .drawio-toolbar .drawio-actions button { min-height: var(--ui-touch-target); }
+  .drawio-lock-notice button { min-height: var(--ui-touch-target); }
 }

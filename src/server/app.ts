@@ -165,6 +165,7 @@ export async function buildApp(
     metrics.record("collaboration.persist", durationMs + performance.now() - started);
   });
   const projectMutations = new ProjectMutationCoordinator(collaboration);
+  app.addHook("preClose", async () => { projectMutations.drawioLocks.close(); });
   const agents = new AgentService({ config, db, collaboration, projectMutations, recordHistory,
     recordEdits: (id, edits) => editRetry.save(id, edits)
   }, { onError: (error) => app.log.error({ err: error }, "External agent operation failed"), ...options.agents });

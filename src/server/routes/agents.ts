@@ -1,4 +1,5 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
+import { browserOriginAllowed } from "../browserOrigin.js";
 import { currentUser, requireAdmin, requireUser } from "../auth.js";
 import type { DatabaseConnection } from "../db.js";
 import type { AgentService } from "../agents/sessions.js";
@@ -10,17 +11,6 @@ function title(value: unknown, optional = false): string {
   if (optional && value === undefined) return "";
   if (typeof value !== "string" || (!optional && !value.trim()) || value.length > 160) throw httpError(400, "REQUEST_INVALID");
   return value.trim();
-}
-
-function terminalOriginAllowed(request: FastifyRequest): boolean {
-  const origin = request.headers.origin;
-  if (!origin) return false;
-  try {
-    const parsed = new URL(origin);
-    const forwarded = request.headers["x-forwarded-proto"];
-    const protocol = forwarded === "https" || forwarded === "http" ? forwarded : request.protocol;
-    return parsed.host === request.headers.host && parsed.protocol === `${protocol}:` && parsed.origin === origin;
-  } catch { return false; }
 }
 
 /** Task owners get terminal access; administrators get separate metadata/cleanup routes. */
@@ -98,7 +88,7 @@ export function registerAgentRoutes(app: FastifyInstance, { db, agents }: { db: 
   });
   app.get("/api/agent-tasks/:taskId/terminal", { websocket: true }, (socket, request) => {
     const user = currentUser(request, db);
-    if (!user || !terminalOriginAllowed(request)) { socket.close(1008, "Access denied"); return; }
+    if (!user || !browserOriginAllowed(request)) { socket.close(1008, "Access denied"); return; }
     const token = digestToken(request.cookies.texlite_session!);
     // currentUser intentionally caches one HTTP request. A WebSocket outlives
     // that request, so recheck its actual session row instead of that cache.

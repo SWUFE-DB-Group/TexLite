@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
 
 describe("project mutation coordination", () => {
@@ -38,6 +38,7 @@ describe("project mutation coordination", () => {
       endMaintenance: (projectId: string) => events.push(`end:${projectId}`)
     } as never;
     const coordinator = new ProjectMutationCoordinator(collaboration);
+    const revokeDiagrams = vi.spyOn(coordinator.drawioLocks, "revokeProject");
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const first = coordinator.runExclusive("project-1", "restore", async () => {
@@ -56,6 +57,8 @@ describe("project mutation coordination", () => {
     release();
     await expect(first).resolves.toBe("first");
     await expect(second).resolves.toBe("second");
+    expect(revokeDiagrams).toHaveBeenCalledTimes(2);
+    expect(revokeDiagrams).toHaveBeenCalledWith("project-1");
     expect(events).toEqual([
       "flush:project-1", "begin:project-1:restore", "first:start", "first:end", "end:project-1",
       "flush:project-1", "begin:project-1:checkout", "second:run", "end:project-1"

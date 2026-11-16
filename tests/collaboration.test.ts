@@ -194,6 +194,7 @@ describe("project collaboration", () => {
     fs.writeFileSync(path.join(source, "settings.json"), '{"name":"论文"}\n');
     fs.writeFileSync(path.join(source, "LICENSE"), "Original license\n");
     fs.writeFileSync(path.join(source, "binary.unknown"), Buffer.from([0, 1, 255]));
+    fs.writeFileSync(path.join(source, "figure.drawio"), "<mxfile/>\n");
     const owner = await TestPeer.connect(app, id, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
     const other = await TestPeer.connect(app, id, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
     try {
@@ -206,6 +207,10 @@ describe("project collaboration", () => {
       expect(fs.readFileSync(path.join(source, "settings.json"), "utf8")).toBe(text.toString());
       expect(fs.readFileSync(path.join(source, "LICENSE"), "utf8")).toBe("Updated: Original license\n");
       expect(owner.doc.share.has("source:binary.unknown")).toBe(false);
+      expect(owner.doc.share.has("source:figure.drawio")).toBe(false);
+      owner.doc.getText("source:figure.drawio").insert(0, "Bypass diagram lock");
+      expect((await owner.flush()).ok).toBe(true);
+      expect(fs.readFileSync(path.join(source, "figure.drawio"), "utf8")).toBe("<mxfile/>\n");
     } finally { owner.destroy(); other.destroy(); }
   });
 

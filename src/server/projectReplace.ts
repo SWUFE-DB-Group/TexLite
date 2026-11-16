@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { createHash } from "node:crypto";
 import { isTextContent, resourceFileKind } from "../shared/fileTypes.js";
 import { PROJECT_SEARCH_MAX_MATCHES, type ProjectReplaceTarget, type ProjectSearchOptions } from "../shared/projectSearch.js";
-import { maxCollaborativeFileBytes } from "./collaboration.js";
+import { isCollaborativeTextFile, maxCollaborativeFileBytes } from "./collaboration.js";
 import type { Config } from "./config.js";
 import { resolveSourcePath } from "./files.js";
 import { httpError } from "./http.js";
@@ -14,7 +14,7 @@ export function prepareProjectReplacement(config: Config, projectId: string, opt
   let replaced = 0;
   let totalBytes = 0;
   const files = targets.map((target) => {
-    if (resourceFileKind(target.path) !== "text") throw httpError(400, "FILE_CONTENT_INVALID");
+    if (resourceFileKind(target.path) !== "text" || !isCollaborativeTextFile(target.path)) throw httpError(400, "FILE_CONTENT_INVALID");
     const absolute = resolveSourcePath(config, projectId, target.path);
     let bytes: Buffer;
     try {

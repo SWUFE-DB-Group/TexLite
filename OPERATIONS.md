@@ -55,9 +55,23 @@ it in the editor pane with an embedded diagrams.net editor. The browser needs ac
 `https://embed.diagrams.net`; the editor is not bundled with TexLite. Diagram
 data is passed directly to the iframe, not placed in its URL. Save explicitly
 before closing or switching files. Unsaved changes require confirmation before
-leaving the diagram. Concurrent saves are checked against the version opened, so a
-stale editor cannot silently overwrite another user's changes. This is not
-real-time diagram collaboration.
+leaving the diagram. Each file allows one editing browser tab at a time, even
+for the same account. Other tabs are read-only and can use **Try editing** once
+the owner closes the diagram. Different diagram files are independent.
+
+Closing, switching files or leaving the page releases ownership. The server
+sends WebSocket pings every 20 seconds; the browser's native pong renews a
+60-second lease without
+depending on background-tab JavaScript timers. Disconnects, revoked access,
+project restore/deletion, and server shutdown release the lock. A restart never
+restores locks, and old connection tokens cannot save or export. On connection
+loss, the editor freezes but retains its local draft. Reacquiring a lock does
+not bypass the source-version check: external host edits can still cause a save
+conflict. Locked diagrams and their PDFs cannot be moved, deleted or replaced
+through generic file operations until the editing tab is closed.
+
+Diagrams use explicit saves, not Yjs real-time text editing, and are excluded
+from global text search/replace. They remain tracked as text in project snapshots.
 
 **Export PDF** saves the current diagram page beside the source file, replacing
 an existing PDF only after confirmation. It uses a host-installed Chromium,

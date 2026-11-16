@@ -2,14 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { requireUser } from "../auth.js";
+import { currentUser, requireUser } from "../auth.js";
+import { browserOriginAllowed } from "../browserOrigin.js";
 import type { Config } from "../config.js";
 import type { DatabaseConnection } from "../db.js";
 import type { CollaborationService } from "../collaboration.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { HistoryReason } from "../history.js";
 import { resolveSourcePath, safeRelativePath } from "../files.js";
-import { accessibleProject } from "../projects.js";
+import { accessibleProject, canEdit } from "../projects.js";
 import { apiError, HttpError, httpError } from "../http.js";
 import { requireEditableProject, touchProject } from "./projectShared.js";
 import { reanchorFileComments } from "../anchors.js";
@@ -57,7 +58,30 @@ export function registerDrawioRoutes(app: FastifyInstance, { config, db, collabo
   recordHistory: (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => unknown;
 }): void {
   const renderer = new DrawioPdfRenderer();
+  const locks = projectMutations.drawioLocks;
   app.addHook("onClose", async () => { await renderer.close(); });
+
+  app.get("/api/projects/:id/drawio/lock", { websocket: true }, (socket, request) => {
+    const user = currentUser(request, db);
+    if (!user || user.must_change_password || !browserOriginAllowed(request)) { socket.close(1008, "Access denied"); return; }
+    const { id } = request.params as { id: string };
+    const valid = () => {
+      const current = currentUser(request, db, true);
+      const project = current && !current.must_change_password ? accessibleProject(db, id, current) : null;
+      return Boolean(project && canEdit(project));
+    };
+    socket.on("error", () => {});
+    let relative: string;
+    try { relative = diagramPath((request.query as { path?: unknown }).path); }
+    catch { socket.close(1008, "Invalid diagram"); return; }
+    void projectMutations.runFilesystemRead(id, () => {
+      if (socket.readyState !== 1) return;
+      const content = readDiagram(resolveSourcePath(config, id, relative));
+      validateXml(content, maxDiagramBytes);
+      locks.acquire(id, relative, user.id, user.display_name, socket, valid, hash(content));
+    }, { preflight: () => { if (!valid()) throw httpError(403, "PROJECT_EDIT_FORBIDDEN"); } })
+      .catch(() => { socket.close(1008, "Diagram unavailable"); });
+  });
 
   app.get("/api/projects/:id/drawio", async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
@@ -76,35 +100,37 @@ export function registerDrawioRoutes(app: FastifyInstance, { config, db, collabo
     const user = requireUser(request, reply, db); if (!user) return;
     const { id } = request.params as { id: string };
     requireEditableProject(db, id, user);
-    const body = request.body as { path?: unknown; content?: unknown; revision?: unknown };
+    const body = request.body as { path?: unknown; content?: unknown; revision?: unknown; lockToken?: unknown };
     const relative = diagramPath(body.path);
     validateXml(body.content, Math.min(maxDiagramBytes, config.maxUploadBytes));
     const content = body.content;
     return projectMutations.runWrite(id, () => {
+      locks.assertOwned(id, relative, body.lockToken, user.id);
       const absolute = resolveSourcePath(config, id, relative);
       const previous = readDiagram(absolute);
       if (hash(previous) !== body.revision) throw httpError(409, "DRAWIO_CONFLICT");
       if (previous !== content) {
         writeAtomic(absolute, content);
         reanchorFileComments(db, id, relative, previous, content);
-        collaboration.updateFile(id, relative, content, user.id);
+        collaboration.invalidateSourceTree(id, relative);
         touchProject(db, id, user.id);
         recordHistory(id, user.id, "file", [relative]);
       }
       return { revision: hash(content) };
-    }, { preflight: () => { requireEditableProject(db, id, user); } });
+    }, { preflight: () => { requireEditableProject(db, id, user); locks.assertOwned(id, relative, body.lockToken, user.id); } });
   });
 
   app.post("/api/projects/:id/drawio/pdf", { bodyLimit: 12 * 1024 * 1024 }, async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
     const { id } = request.params as { id: string };
     requireEditableProject(db, id, user);
-    const body = request.body as { path?: unknown; svg?: unknown; revision?: unknown; pdfRevision?: unknown };
+    const body = request.body as { path?: unknown; svg?: unknown; revision?: unknown; pdfRevision?: unknown; lockToken?: unknown };
     const relative = diagramPath(body.path), output = drawioPdfPath(relative);
     if (typeof body.svg !== "string" || Buffer.byteLength(body.svg) > 10 * 1024 * 1024
       || !/^\s*(?:<\?xml[^>]*>\s*)?(?:<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(body.svg)) return apiError(reply, 400, "DRAWIO_INVALID");
     const validate = () => {
       requireEditableProject(db, id, user);
+      locks.assertOwned(id, relative, body.lockToken, user.id);
       if (hash(readDiagram(resolveSourcePath(config, id, relative))) !== body.revision
         || pdfRevision(resolveSourcePath(config, id, output)) !== body.pdfRevision) throw httpError(409, "DRAWIO_CONFLICT");
     };
