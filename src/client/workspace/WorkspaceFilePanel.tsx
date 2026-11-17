@@ -125,7 +125,7 @@ export function WorkspaceFilePanel({
               <input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} />
             </>}
             <FileTreeActionsMenu onQuickOpen={() => setQuickOpen(true)} onProjectSearch={onProjectSearch} onNewFolder={readOnly ? undefined : () => { setNewFolderName(""); setNewFolderOpen(true); }} onTikzGallery={readOnly || !tikzGalleryEnabled ? undefined : () => setTikzGalleryOpen(true)}
-              onNewDrawio={readOnly ? undefined : () => { setFileDialogError(""); setNewFilePath(selectedFolder ? `${selectedFolder}/diagram.drawio` : "diagram.drawio"); setNewFileOpen(true); }} />
+              onNewDrawio={readOnly ? undefined : () => { setFileDialogError(""); setNewFilePath(`${selectedFolder ?? "figures"}/diagram.drawio`); setNewFileOpen(true); }} />
           </span>
         </div>
         {uploadFeedback && <div className={`file-upload-feedback ${uploadFeedback.kind}`} role={uploadFeedback.kind === "error" ? "alert" : "status"} aria-live={uploadFeedback.kind === "error" ? "assertive" : "polite"} aria-busy={uploadFeedback.kind === "uploading"}>

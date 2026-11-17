@@ -66,7 +66,7 @@ describe("draw.io project files and PDF export", () => {
     for (const [user, permission] of [["reader", "read"], ["writer", "edit"]]) {
       db.prepare("INSERT INTO project_members (project_id, user_id, permission, created_at) VALUES (?, ?, ?, ?)").run(id, user, permission, time);
     }
-    fs.mkdirSync(path.dirname(absolute()), { recursive: true });
+    // The normal creation route must also create the missing figures/ directory.
   });
   beforeEach(async () => {
     await release();

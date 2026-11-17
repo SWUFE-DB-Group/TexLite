@@ -78,6 +78,22 @@ afterEach(async () => {
 });
 
 describe("file tree row actions", () => {
+  it.each([null, "assets/diagrams"])("creates diagrams in the selected folder (%s), defaulting to figures/", async (selectedFolder) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    await i18n.changeLanguage("en");
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host), props = panelProps(false);
+    props.selectedFolder = selectedFolder;
+    props.setNewFilePath = vi.fn(); props.setNewFileOpen = vi.fn();
+    cleanups.push(async () => { await act(async () => root.unmount()); host.remove(); });
+    await act(async () => root.render(createElement(WorkspaceFilePanel, props)));
+    await act(async () => host.querySelector<HTMLButtonElement>(".file-tools-more")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === i18n.t("drawio.new"))!;
+    await act(async () => item.click());
+    expect(props.setNewFilePath).toHaveBeenCalledWith(`${selectedFolder ?? "figures"}/diagram.drawio`);
+    expect(props.setNewFileOpen).toHaveBeenCalledWith(true);
+  });
+
   it("prepares diagrams on pointer, keyboard or touch intent, but not when merely listing files", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const host = document.createElement("div"); document.body.append(host);
