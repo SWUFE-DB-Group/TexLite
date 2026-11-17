@@ -2772,11 +2772,11 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .cm-agent-review-button:focus-visible { outline: 2px solid var(--tl-focus); outline-offset: 1px; }
 .drawio-editor { min-height: 0; min-width: 0; flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; container-type: inline-size; }
 .drawio-toolbar { display: flex; align-items: center; flex-wrap: wrap; flex: none; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--ui-border, #dfe2de); background: var(--ui-surface, #fff); }
-.drawio-file-name { min-width: 0; display: inline-flex; align-items: center; gap: 6px; flex: 1 1 140px; color: var(--ui-accent, #195d3b); font-size: 12px; font-weight: 600; }
+.drawio-file-name { min-width: 0; display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; max-width: min(40%, 320px); color: var(--ui-accent, #195d3b); font-size: 12px; font-weight: 600; }
 .drawio-file-name > svg { flex: none; }
 .drawio-file-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.drawio-status { color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
-.drawio-actions { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.drawio-status { margin-left: auto; color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
+.drawio-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .drawio-toolbar .drawio-actions button { min-height: var(--ui-control-height); padding: 5px 10px; font-size: var(--ui-control-font-size); }
 .drawio-export-button { display: inline-flex; align-items: stretch; overflow: hidden; border: 1px solid var(--ui-border, #c9d0ca); border-radius: var(--ui-control-radius); background: var(--ui-surface, #fff); }
 /* One shared outline; inner buttons never inherit standalone rounded borders. */
@@ -2799,9 +2799,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .drawio-export-options .error { margin: 8px 6px 0; font-size: 11px; }
 .drawio-export-options input:focus-visible { outline: 2px solid var(--ui-accent, #176b44); outline-offset: 2px; }
 .drawio-export-frame { position: fixed; left: -10000px; top: 0; width: 1200px; height: 900px; border: 0; opacity: 0; pointer-events: none; }
-.drawio-close { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted, #737a75); }
-.drawio-close:hover { background: var(--ui-hover, #e9efea); color: var(--ui-text, #202421); }
-.drawio-close:focus-visible { outline: 2px solid var(--ui-accent, #195d3b); outline-offset: 2px; }
 .drawio-frame-wrap { flex: 1; position: relative; min-height: 0; }
 .drawio-frame-wrap iframe { border: 0; display: block; width: 100%; height: 100%; background: white; }
 .drawio-loading { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--ui-surface, #fff); color: var(--ui-muted, #737a75); padding: 24px; text-align: center; font-size: 13px; }
@@ -2811,13 +2808,10 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .drawio-lock-notice > span { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
 .drawio-lock-notice button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: var(--ui-control-height); padding: 5px 8px; border: 1px solid var(--ui-border, #dfe2de); border-radius: var(--ui-control-radius); background: var(--ui-surface, #fff); color: var(--ui-text, #202421); font-size: var(--ui-control-font-size); }
 @container (max-width: 480px) {
-  .drawio-file-name { flex-basis: calc(100% - 52px); }
-  .drawio-close { order: 1; }
-  .drawio-status { order: 2; flex: 1; }
-  .drawio-toolbar > .info-popover-trigger, .drawio-actions { order: 2; }
+  .drawio-file-name { flex: 1 1 120px; max-width: none; }
+  .drawio-actions { order: 1; flex-basis: 100%; }
 }
 @media (pointer: coarse) {
-  .drawio-close { width: var(--ui-touch-target); height: var(--ui-touch-target); }
   .drawio-toolbar { padding: 8px; }
   .drawio-toolbar .drawio-actions button { min-height: var(--ui-touch-target); }
   :root .drawio-export-button > button { min-height: calc(var(--ui-touch-target) - 2px); }

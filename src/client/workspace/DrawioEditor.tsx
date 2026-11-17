@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { LoaderCircle, LockKeyhole, RefreshCw, Workflow, X } from "lucide-react";
+import { LoaderCircle, LockKeyhole, RefreshCw, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, isAbortError } from "../api";
 import { errorMessage } from "../errors";
@@ -29,8 +29,8 @@ type Request = { id: number; kind: "save" | "pdf" | "close"; timer: number; chan
 
 export interface DrawioEditorHandle { confirmClose: () => Promise<boolean> }
 
-export default function DrawioEditor({ projectId, path, readOnly, onClose, onChanged, ref }: {
-  projectId: string; path: string; readOnly: boolean; onClose: () => void; onChanged: () => void; ref?: Ref<DrawioEditorHandle>;
+export default function DrawioEditor({ projectId, path, readOnly, onChanged, ref }: {
+  projectId: string; path: string; readOnly: boolean; onChanged: () => void; ref?: Ref<DrawioEditorHandle>;
 }) {
   const { t, i18n } = useTranslation();
   const lock = useDrawioLock(projectId, path, readOnly);
@@ -319,15 +319,14 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
     <section className="drawio-editor" aria-label={path}>
       <div className="drawio-toolbar">
         <span className="drawio-file-name"><Workflow size={14} aria-hidden /><span>{path}</span></span>
-        <span className="drawio-status" role="status">{readOnly || !canEdit && lock.state.status !== "connecting" ? t("drawio.readOnly") : lock.state.status === "connecting" ? t("drawio.connecting") : dirty ? t("drawio.dirty") : ready ? t("drawio.saved") : t("drawio.loading")}</span>
-        <InfoPopover content={t("drawio.help")} />
         {!readOnly && <div className="drawio-actions">
           <SaveButton saving={busy === "save"} disabled={!canEdit || !ready || !dirty || Boolean(busy)} feedback={feedback === "save" ? t("drawio.saved") : ""} onClick={() => start("save")}>{t("common.save")}</SaveButton>
           <DrawioExportButton saving={busy === "pdf"} disabled={!canEdit || !ready || Boolean(busy)} feedback={feedback === "pdf" ? t("drawio.exported") : ""} checkSelection={checkSelection}
             onExport={(options) => { if (saved.current?.pdfRevision) setOverwrite(options); else start("pdf", options); }} />
           {busy && <button type="button" onClick={() => { const active = controller.current; controller.current = null; active?.abort(); finish(); settleClose(false); }}>{t("common.cancel")}</button>}
         </div>}
-        <button type="button" className="drawio-close" aria-label={t("common.close")} title={t("common.close")} onClick={() => { void confirmClose().then((confirmed) => { if (confirmed) onClose(); }); }}><X size={14} aria-hidden /></button>
+        <span className="drawio-status" role="status">{readOnly || !canEdit && lock.state.status !== "connecting" ? t("drawio.readOnly") : lock.state.status === "connecting" ? t("drawio.connecting") : dirty ? t("drawio.dirty") : ready ? t("drawio.saved") : t("drawio.loading")}</span>
+        <InfoPopover content={t("drawio.help")} />
       </div>
       {(lock.state.status === "busy" || lock.state.status === "lost") && <div className="drawio-lock-notice" role="status"><LockKeyhole size={14} aria-hidden />
         <span>{lock.state.status === "busy" ? t("drawio.lockedBy", { name: lock.state.name }) : t("drawio.lockLost")}</span>

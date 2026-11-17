@@ -27,13 +27,17 @@ const compressed = (xml: string) => xml.replace(/<diagram([^>]*)>([\s\S]*?)<\/di
   `<diagram${attributes}>${deflateRawSync(Buffer.from(encodeURIComponent(model.trim()))).toString("base64")}</diagram>`);
 const onClose = vi.fn(), onChanged = vi.fn();
 const editor = createRef<DrawioEditorHandle>();
+// File navigation/back actions own closing; the embedded toolbar has no close button.
+const requestClose = () => act(async () => {
+  void editor.current!.confirmClose().then((confirmed) => { if (confirmed) onClose(); });
+});
 const send = (data: object, origin = DRAWIO_ORIGIN, source: Window | null = frame.contentWindow) => act(async () => {
   window.dispatchEvent(new MessageEvent("message", { origin, source, data: JSON.stringify(data) }));
 });
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!;
 const mount = async (readOnly = false, pdfRevision: string | null = null) => {
   vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision });
-  await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly, onClose, onChanged })));
+  await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly, onChanged })));
   frame = document.querySelector("iframe")!;
   vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
   await send({ event: "init" }); await send({ event: "load" });
@@ -75,7 +79,7 @@ describe("embedded draw.io editing", () => {
     let resolve!: (document: DrawioDocument) => void;
     vi.mocked(api).mockReturnValueOnce(new Promise<DrawioDocument>((done) => { resolve = done; }));
     const rerender = () => act(async () => root.render(createElement(DrawioEditor, {
-      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged
+      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onChanged
     })));
     await rerender();
     frame = document.querySelector("iframe")!;
@@ -99,7 +103,7 @@ describe("embedded draw.io editing", () => {
     lease.state = { status: "busy", token: "", name: "Writer" }; lease.current.current = lease.state;
     vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision: null });
     const rerender = () => act(async () => root.render(createElement(DrawioEditor, {
-      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged
+      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onChanged
     })));
     await rerender();
     frame = document.querySelector("iframe")!;
@@ -121,7 +125,7 @@ describe("embedded draw.io editing", () => {
     vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision: null })
       .mockReturnValueOnce(new Promise<DrawioDocument>((resolve) => { refresh = resolve; }));
     await act(async () => root.render(createElement(DrawioEditor, {
-      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged
+      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onChanged
     })));
     frame = document.querySelector("iframe")!;
     vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
@@ -164,7 +168,7 @@ describe("embedded draw.io editing", () => {
     await act(async () => resolve({ revision: "r2" }));
     expect(button("Saved").disabled).toBe(false);
     expect(document.body.textContent).toContain("Unsaved changes");
-    await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
+    await requestClose();
     expect(onClose).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
   });
@@ -183,7 +187,7 @@ describe("embedded draw.io editing", () => {
       .replace("<mxGraphModel>", '<mxGraphModel dx="1200" dy="800">');
     await send({ event: "autosave", xml: expanded });
     await vi.waitFor(() => expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved"));
-    await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
+    await requestClose();
     await send({ event: "export", format: "xml", xml: expanded, message: sent().at(-1) });
     await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -197,7 +201,7 @@ describe("embedded draw.io editing", () => {
     await send({ event: "export", format: "svg", xml: compressed(changed), data: "data:image/svg+xml,%3Csvg%2F%3E", message: sent().at(-1) });
     await send({ event: "autosave", xml: changed.replace("Changed", "Newer") });
     await vi.waitFor(() => expect(host.querySelector(".drawio-status")?.textContent).toBe("Unsaved changes"));
-    await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
+    await requestClose();
     expect(onClose).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
   });
@@ -354,7 +358,7 @@ describe("embedded draw.io editing", () => {
 
   it("checks current XML before closing even if a recent change has not emitted autosave yet", async () => {
     await mount();
-    await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
+    await requestClose();
     expect(onClose).not.toHaveBeenCalled();
     const request = sent().at(-1); expect(request.format).toBe("xml");
     await send({ event: "export", format: "xml", xml: changed, message: request });
@@ -394,7 +398,7 @@ describe("embedded draw.io editing", () => {
     expect(sent()[0]).toMatchObject({ readOnly: true, autosave: 0 });
     expect(button("Export PDF").disabled).toBe(true);
     expect(document.body.textContent).toContain("Other writer is editing this diagram");
-    const rerender = () => act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged })));
+    const rerender = () => act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onChanged })));
     lease.state = { status: "owned", token: "lease-2", name: "" }; lease.current.current = lease.state;
     await rerender();
     expect(sent().at(-1)).toMatchObject({ action: "load", readOnly: false });
@@ -407,14 +411,14 @@ describe("embedded draw.io editing", () => {
     expect(button("Save").disabled).toBe(true);
     await send({ event: "save", xml: changed });
     expect(api).toHaveBeenCalledTimes(1);
-    await act(async () => document.querySelector<HTMLButtonElement>(".drawio-close")!.click());
+    await requestClose();
     expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
   });
 
   it("refreshes a stale clean viewer on acquisition, but never overwrites a disconnected owner's draft", async () => {
     lease.state = { status: "busy", token: "", name: "Writer" }; lease.current.current = lease.state;
     await mount();
-    const rerender = () => act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged })));
+    const rerender = () => act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onChanged })));
     vi.mocked(api).mockResolvedValueOnce({ content: changed, revision: "r2", pdfRevision: null });
     lease.state = { status: "owned", token: "new-owner", name: "", revision: "r2" }; lease.current.current = lease.state;
     await rerender();

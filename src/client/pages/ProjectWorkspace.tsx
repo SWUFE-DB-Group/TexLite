@@ -1592,7 +1592,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel figurePdf={figurePdf}
         alternativeEditor={drawioPath ? <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /></div>}><DrawioEditor ref={drawioEditor} key={`${projectId}:${drawioPath}`} projectId={projectId} path={drawioPath} readOnly={project.permission === "read"}
-          onClose={() => setDrawioPath(null)} onChanged={() => { void loadFiles().catch((error) => setError(errorMessage(error))); }} /></Suspense> : undefined}
+          onChanged={() => { void loadFiles().catch((error) => setError(errorMessage(error))); }} /></Suspense> : undefined}
         mobileSync={!drawioPath && phone && sidePanel !== "comments" ? markdownActive
           ? { disabled: loadedFile !== activeFile, onClick: showCursorInMarkdown, label: t("editor.markdown.showInPreview") }
           : { disabled: !pdfUrl || !canSyncWithPdf, onClick: syncCurrentSourceToPdf } : undefined}

@@ -43,6 +43,41 @@ afterEach(async () => {
 });
 
 describe("opening suffix-classified project files", () => {
+  it("keeps the diagram and its close guard untouched while previewing resources", async () => {
+    await act(async () => files.openFile({ path: "diagram.drawio", type: "file", size: 100 }));
+    beforeOpenFile.mockClear();
+    for (const path of ["figure.pdf", "image.png", "archive.zip", "custom.unknown", "large.txt"]) {
+      await act(async () => files.openFile({ path, type: "file", size: path === "large.txt" ? 6 * 1024 * 1024 : 100 }));
+      expect(files.drawioPath).toBe("diagram.drawio");
+      expect(files.resourcePreview?.path).toBe(path);
+      expect(files.selectedFile).toBe(path);
+      await act(async () => files.setResourcePreview(null));
+      expect(files.drawioPath).toBe("diagram.drawio");
+      await act(async () => files.openFile({ path: "diagram.drawio", type: "file", size: 100 }));
+      expect(files.selectedFile).toBe("diagram.drawio");
+    }
+    expect(beforeOpenFile).not.toHaveBeenCalled();
+    expect(onActiveFile).not.toHaveBeenCalled();
+  });
+
+  it("retains the diagram when a candidate text file fails validation or turns out to be binary", async () => {
+    await act(async () => files.openFile({ path: "diagram.drawio", type: "file", size: 100 }));
+    vi.mocked(api).mockRejectedValueOnce(new ApiError("Not text", 400, "FILE_CONTENT_INVALID"));
+    await act(async () => files.openFile(text));
+    expect(files.drawioPath).toBe("diagram.drawio");
+    expect(files.resourcePreview?.kind).toBe("unsupported");
+    expect(onActiveFile).not.toHaveBeenCalled();
+    vi.mocked(api).mockRejectedValueOnce(new ApiError("Unavailable", 503));
+    await act(async () => files.openFile(text));
+    expect(files.drawioPath).toBe("diagram.drawio");
+    expect(onError).toHaveBeenCalled();
+    vi.mocked(api).mockResolvedValueOnce({ path: text.path });
+    await act(async () => files.openFile(text));
+    expect(files.drawioPath).toBeNull();
+    expect(files.resourcePreview).toBeNull();
+    expect(onActiveFile).toHaveBeenCalledWith(text.path);
+  });
+
   it("keeps an unsaved diagram selected until file navigation is confirmed", async () => {
     await act(async () => files.openFile({ path: "diagram.drawio", type: "file", size: 100 }));
     beforeOpenFile.mockResolvedValueOnce(false);

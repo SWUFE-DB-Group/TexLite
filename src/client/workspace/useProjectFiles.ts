@@ -329,24 +329,29 @@ export function useProjectFiles({
   };
 
   const openFile = async (entry: FileEntry) => {
-    if (drawioPath === entry.path) return;
+    if (drawioPath === entry.path) {
+      setSelectedFolder(null); setSelectedFile(entry.path); setResourcePreview(null);
+      return;
+    }
+    const maxCollaborativeBytes = site.maxCollaborativeFileSizeMB * 1024 * 1024;
+    const diagram = isDrawioFile(entry.path) && entry.textContent !== false && (entry.size ?? 0) <= Math.min(maxCollaborativeBytes, 5 * 1024 * 1024);
+    // Resource dialogs do not replace the editor or release its diagram lease.
+    if (!diagram && fileOpenKind(entry, maxCollaborativeBytes) !== "editor") {
+      setSelectedFolder(null); setSelectedFile(entry.path);
+      await previewFile(entry);
+      return;
+    }
     if (beforeOpenFile && !(await beforeOpenFile())) return;
-    setDrawioPath(null);
     resourceRequest.current?.abort();
     resourceRequest.current = null;
     setResourcePreviewLoading(false);
     setSelectedFolder(null);
     setSelectedFile(entry.path);
-    const maxCollaborativeBytes = site.maxCollaborativeFileSizeMB * 1024 * 1024;
-    if (isDrawioFile(entry.path) && entry.textContent !== false && (entry.size ?? 0) <= Math.min(maxCollaborativeBytes, 5 * 1024 * 1024)) {
+    if (diagram) {
       prepareDrawioEditor();
       setResourcePreview(null);
       setDrawioPath(entry.path);
       onDrawioOpen?.();
-      return;
-    }
-    if (fileOpenKind(entry, maxCollaborativeBytes) !== "editor") {
-      await previewFile(entry);
       return;
     }
     const controller = new AbortController();
@@ -359,6 +364,8 @@ export function useProjectFiles({
         signal: controller.signal
       });
       if (controller.signal.aborted || resourceRequest.current !== controller) return;
+      setResourcePreview(null);
+      setDrawioPath(null);
       onActiveFile(entry.path);
     } catch (error) {
       if (controller.signal.aborted || resourceRequest.current !== controller || isAbortError(error)) return;
