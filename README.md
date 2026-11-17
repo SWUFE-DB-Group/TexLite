@@ -161,8 +161,7 @@ its own login still protects every project.
 <details>
 <summary><b>TexLite Share</b>: the simplest HTTPS link for TexLite</summary>
 
-[TexLite Share](https://share.zhongpu.info/) is currently hosted in Hong Kong,
-so access from mainland China or regions outside Southeast Asia may be slower.
+[TexLite Share](https://share.zhongpu.info/) is currently hosted in New York State, USA.
 With TexLite running locally on its default port, install and launch the tunnel
 client:
 

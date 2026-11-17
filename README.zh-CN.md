@@ -144,8 +144,8 @@ TexLite 是面向小型可信团队的单宿主机应用。账号由管理员创
 <details>
 <summary><b>TexLite Share</b>：为 TexLite 提供最简单的 HTTPS 链接</summary>
 
-[TexLite Share](https://share.zhongpu.info/) 目前部署在香港，来自中国大陆或东南亚以外
-地区的访问可能较慢。确保 TexLite 已在默认端口启动，然后安装并运行隧道客户端：
+[TexLite Share](https://share.zhongpu.info/) 目前部署在美国纽约州。
+确保 TexLite 已在默认端口启动，然后安装并运行隧道客户端：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ChenZhongPu/TexLite-Share/main/install-client.sh | bash
