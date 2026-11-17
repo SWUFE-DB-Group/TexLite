@@ -89,7 +89,9 @@ export function registerDrawioRoutes(app: FastifyInstance, { config, db, collabo
     if (!accessibleProject(db, id, user)) return apiError(reply, 404, "PROJECT_NOT_FOUND");
     const relative = diagramPath((request.query as { path?: unknown }).path);
     reply.header("Cache-Control", "private, no-store");
-    return projectMutations.runConsistentRead(id, () => {
+    // Diagrams are not Yjs documents. Keep the filesystem mutation barrier,
+    // without making the editor wait for unrelated room hydration.
+    return projectMutations.runFilesystemRead(id, () => {
       const content = readDiagram(resolveSourcePath(config, id, relative));
       validateXml(content, maxDiagramBytes);
       return { content, revision: hash(content), pdfRevision: pdfRevision(resolveSourcePath(config, id, drawioPdfPath(relative))) };

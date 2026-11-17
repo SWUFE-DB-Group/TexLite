@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DrawioEditor, { decodeDrawioSvg, type DrawioEditorHandle } from "../src/client/workspace/DrawioEditor";
 import { api, ApiError } from "../src/client/api";
-import { DRAWIO_ORIGIN, EMPTY_DRAWIO } from "../src/shared/drawio";
+import { DRAWIO_ORIGIN, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
 import { renderDrawioSelection } from "../src/client/workspace/drawioSelectionExport";
 import i18n from "../src/client/i18n";
 import { deflateRawSync } from "node:zlib";
@@ -36,7 +36,7 @@ const mount = async (readOnly = false, pdfRevision: string | null = null) => {
   await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly, onClose, onChanged })));
   frame = document.querySelector("iframe")!;
   vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
-  await send({ event: "init" }); await send({ event: "load" }); await send({ event: "load" });
+  await send({ event: "init" }); await send({ event: "load" });
 };
 const sent = () => vi.mocked(frame.contentWindow!.postMessage).mock.calls.map(([message]) => JSON.parse(message as string));
 const configureExport = async (scope: "page" | "selection", margin = "0") => {
@@ -66,14 +66,78 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("embedded draw.io editing", () => {
+  it.each([
+    ["source", "lock", "init"], ["source", "init", "lock"],
+    ["lock", "source", "init"], ["lock", "init", "source"],
+    ["init", "source", "lock"], ["init", "lock", "source"]
+  ])("loads one editable graph when startup completes in order %s → %s → %s", async (...order) => {
+    lease.state = { status: "connecting", token: "", name: "" }; lease.current.current = lease.state;
+    let resolve!: (document: DrawioDocument) => void;
+    vi.mocked(api).mockReturnValueOnce(new Promise<DrawioDocument>((done) => { resolve = done; }));
+    const rerender = () => act(async () => root.render(createElement(DrawioEditor, {
+      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged
+    })));
+    await rerender();
+    frame = document.querySelector("iframe")!;
+    vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+    for (const [index, phase] of order.entries()) {
+      if (phase === "source") await act(async () => resolve({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision: null }));
+      if (phase === "lock") {
+        lease.state = { status: "owned", token: "lease-1", name: "", revision: "r1" }; lease.current.current = lease.state;
+        await rerender();
+      }
+      if (phase === "init") await send({ event: "init" });
+      expect(sent()).toHaveLength(index === 2 ? 1 : 0);
+    }
+    expect(sent()[0]).toMatchObject({ action: "load", xml: EMPTY_DRAWIO, readOnly: false, autosave: 1 });
+    await send({ event: "load" });
+    expect(sent()).toHaveLength(1);
+    expect(button("Export PDF").disabled).toBe(false);
+  });
+
+  it("waits for a pending read-only load before upgrading it to editable", async () => {
+    lease.state = { status: "busy", token: "", name: "Writer" }; lease.current.current = lease.state;
+    vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision: null });
+    const rerender = () => act(async () => root.render(createElement(DrawioEditor, {
+      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged
+    })));
+    await rerender();
+    frame = document.querySelector("iframe")!;
+    vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+    await send({ event: "init" });
+    expect(sent()).toEqual([expect.objectContaining({ readOnly: true })]);
+    lease.state = { status: "owned", token: "lease-2", name: "", revision: "r1" }; lease.current.current = lease.state;
+    await rerender();
+    expect(sent()).toHaveLength(1);
+    await send({ event: "load" });
+    expect(sent()).toEqual([expect.objectContaining({ readOnly: true }), expect.objectContaining({ readOnly: false })]);
+    await send({ event: "load" });
+    expect(sent()).toHaveLength(2);
+  });
+
+  it("does not bootstrap stale source while the initial lease revision is being reconciled", async () => {
+    lease.state = { status: "owned", token: "lease-1", name: "", revision: "r2" }; lease.current.current = lease.state;
+    let refresh!: (document: DrawioDocument) => void;
+    vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision: null })
+      .mockReturnValueOnce(new Promise<DrawioDocument>((resolve) => { refresh = resolve; }));
+    await act(async () => root.render(createElement(DrawioEditor, {
+      projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onClose, onChanged
+    })));
+    frame = document.querySelector("iframe")!;
+    vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+    await send({ event: "init" });
+    expect(sent()).toHaveLength(0);
+    await act(async () => refresh({ content: changed, revision: "r2", pdfRevision: null }));
+    expect(sent()).toEqual([expect.objectContaining({ action: "load", xml: changed, readOnly: false })]);
+  });
+
   it("accepts only the iframe's exact origin/source, and configures plain text without exposing project URLs", async () => {
     await mount();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(host.querySelector(".drawio-editor iframe")).toBe(frame);
     expect(vi.mocked(api).mock.calls[0][0]).toBe("/api/projects/p1/drawio?path=figures%2Fdiagram.drawio");
     expect(frame.src).not.toContain("p1"); expect(frame.src).not.toContain(EMPTY_DRAWIO);
-    expect(sent()[0]).toMatchObject({ action: "load", xml: EMPTY_DRAWIO, autosave: 0 });
-    expect(sent().filter((message) => message.action === "load").at(-1)).toMatchObject({ readOnly: false, autosave: 1 });
+    expect(sent()).toEqual([expect.objectContaining({ action: "load", xml: EMPTY_DRAWIO, readOnly: false, autosave: 1 })]);
     await send({ event: "autosave", xml: changed }, "https://evil.test");
     await send({ event: "autosave", xml: changed }, DRAWIO_ORIGIN, window);
     expect(button("Save").disabled).toBe(true);

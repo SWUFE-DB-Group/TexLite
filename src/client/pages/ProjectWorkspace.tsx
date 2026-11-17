@@ -57,9 +57,11 @@ const AgentTerminal = lazy(() => import("../workspace/AgentTerminal").then((modu
 import type { LatexReference } from "../../shared/latexReferences";
 import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
-const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
-const DrawioEditor = lazy(() => import("../workspace/DrawioEditor"));
 import type { DrawioEditorHandle } from "../workspace/DrawioEditor";
+import { loadDrawioEditor } from "../workspace/drawioLoader";
+
+const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
+const DrawioEditor = lazy(loadDrawioEditor);
 let citationLibraryModule: Promise<typeof import("../citationLibrary")> | null = null;
 
 function loadCitationLibrary() {

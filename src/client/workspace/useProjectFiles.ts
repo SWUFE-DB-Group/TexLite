@@ -6,6 +6,7 @@ import type { FileEntry, Project, SiteConfig } from "../types";
 import { appPath } from "../basePath";
 import { isEditableTextFile, isTextContent, resourceFileKind } from "../../shared/fileTypes";
 import { EMPTY_DRAWIO, isDrawioFile } from "../../shared/drawio";
+import { prepareDrawioEditor } from "./drawioLoader";
 export { isEditableTextFile } from "../../shared/fileTypes";
 
 export type ResourcePreviewKind = "image" | "pdf" | "text" | "unsupported" | "large";
@@ -338,6 +339,7 @@ export function useProjectFiles({
     setSelectedFile(entry.path);
     const maxCollaborativeBytes = site.maxCollaborativeFileSizeMB * 1024 * 1024;
     if (isDrawioFile(entry.path) && entry.textContent !== false && (entry.size ?? 0) <= Math.min(maxCollaborativeBytes, 5 * 1024 * 1024)) {
+      prepareDrawioEditor();
       setResourcePreview(null);
       setDrawioPath(entry.path);
       onDrawioOpen?.();

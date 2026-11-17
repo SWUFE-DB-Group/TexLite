@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { FileSearch, FolderPlus, LayoutGrid, MoreHorizontal, Search, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { prepareDrawioEditor } from "./drawioLoader";
 
 export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch, onTikzGallery, onNewDrawio }: {
   onQuickOpen: () => void;
@@ -33,7 +34,8 @@ export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch,
         <DropdownMenu.Item onSelect={() => select(onQuickOpen)}><FileSearch size={14} aria-hidden />{t("navigation.quickOpen")}</DropdownMenu.Item>
         {onProjectSearch && <DropdownMenu.Item onSelect={() => select(onProjectSearch)}><Search size={14} aria-hidden />{t("projectSearch.title")}</DropdownMenu.Item>}
         {onNewFolder && <DropdownMenu.Item onSelect={() => select(onNewFolder)}><FolderPlus size={14} aria-hidden />{t("editor.newFolder")}</DropdownMenu.Item>}
-        {onNewDrawio && <DropdownMenu.Item onSelect={() => select(onNewDrawio)}><Workflow size={14} aria-hidden />{t("drawio.new")}</DropdownMenu.Item>}
+        {onNewDrawio && <DropdownMenu.Item onFocus={prepareDrawioEditor} onPointerEnter={prepareDrawioEditor}
+          onSelect={() => { prepareDrawioEditor(); select(onNewDrawio); }}><Workflow size={14} aria-hidden />{t("drawio.new")}</DropdownMenu.Item>}
         {onTikzGallery && <DropdownMenu.Item onSelect={() => select(onTikzGallery)}><LayoutGrid size={14} aria-hidden />{t("gallery.title")}</DropdownMenu.Item>}
       </DropdownMenu.Content>
     </DropdownMenu.Portal>

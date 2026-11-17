@@ -42,6 +42,8 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
   const saved = useRef<DrawioDocument | null>(null);
   const currentXml = useRef("");
   const initialized = useRef(false);
+  const loadPosted = useRef(false);
+  const [sourceLoaded, setSourceLoaded] = useState(false);
   const readyRef = useRef(false);
   const pending = useRef<Request | null>(null);
   const selectionQuery = useRef<{ id: number; finish: (error?: Error, selected?: boolean) => void } | null>(null);
@@ -83,6 +85,14 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
   }, []);
   const load = () => {
     if (!initialized.current || !saved.current) return;
+    const ownership = lock.current.current;
+    // Resolve the first lease before loading, rather than bootstrapping a
+    // read-only graph only to reload it immediately with editing enabled.
+    if (!readOnly && (ownership.status === "connecting" || ownership.status === "owned" && approved.current !== ownership.token)) return;
+    // A read-only load may still be in flight when ownership changes. Wait
+    // for its acknowledgement before sending the editable replacement.
+    if (loadPosted.current && !readyRef.current) return;
+    loadPosted.current = true;
     readyRef.current = false; setReady(false);
     frameReadOnly.current = readOnly || lock.current.current.status !== "owned" || approved.current !== lock.current.current.token;
     post({ action: "load", xml: currentXml.current, title: path,
@@ -121,13 +131,14 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
   useEffect(() => {
     mounted.current = true;
     const abort = new AbortController();
-    saved.current = null; initialized.current = false; readyRef.current = false;
+    saved.current = null; initialized.current = false; readyRef.current = false; loadPosted.current = false;
+    approved.current = ""; setApprovedToken(""); setSourceLoaded(false);
     setReady(false); setLoadingFailed(false); setError("");
     const timeout = window.setTimeout(() => { if (!readyRef.current) setLoadingFailed(true); }, 30_000);
     void api<DrawioDocument>(`/api/projects/${projectId}/drawio?${new URLSearchParams({ path })}`, { signal: abort.signal })
       .then((document) => {
         if (abort.signal.aborted) return;
-        saved.current = document; currentXml.current = document.content; load();
+        saved.current = document; currentXml.current = document.content; setSourceLoaded(true);
       }).catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) { setError(errorMessage(error)); setLoadingFailed(true); } });
     return () => {
       mounted.current = false; abort.abort(); controller.current?.abort();
@@ -140,7 +151,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
 
   useEffect(() => {
     if (lock.state.status !== "owned") { approved.current = ""; setApprovedToken(""); return; }
-    if (!saved.current) return; // The initial read-only load will trigger `ready`.
+    if (!sourceLoaded || !saved.current) return;
     const token = lock.state.token, revision = lock.state.revision;
     if (approved.current === token) return;
     const abort = new AbortController();
@@ -167,13 +178,13 @@ export default function DrawioEditor({ projectId, path, readOnly, onClose, onCha
       })().catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) setError(errorMessage(error)); });
     }
     return () => abort.abort();
-  }, [lock.state.status, lock.state.token, ready, retry]);
+  }, [lock.state.status, lock.state.token, lock.state.revision, sourceLoaded, retry]);
 
   useEffect(() => {
     // Viewers become editable only after ownership is acquired. On lock loss,
     // freeze the existing frame instead of reloading and erasing its draft.
-    if (canEdit && readyRef.current && frameReadOnly.current) load();
-  }, [canEdit, ready]);
+    if (!loadPosted.current || canEdit && readyRef.current && frameReadOnly.current) load();
+  }, [canEdit, ready, sourceLoaded, lock.state.status, retry]);
 
   useEffect(() => {
     if (!dirty) return;

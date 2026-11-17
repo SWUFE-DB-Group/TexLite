@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/server/app";
+import { CollaborationService } from "../src/server/collaboration";
 import { openDatabase, type DatabaseConnection } from "../src/server/db";
 import { createSessionToken } from "../src/server/security";
 import { sourceRoot } from "../src/server/files";
@@ -94,6 +95,18 @@ describe("draw.io project files and PDF export", () => {
     expect(result.statusCode).toBe(200); expect(result.json().revision).not.toBe(before.revision);
     expect(fs.readFileSync(absolute(), "utf8")).toBe(changed);
     expect(db.prepare("SELECT last_modified_by FROM projects WHERE id = ?").get(id)).toEqual({ last_modified_by: "writer" });
+  });
+
+  it("reads diagrams behind the filesystem barrier without waiting for Yjs hydration", async () => {
+    const hydration = vi.spyOn(CollaborationService.prototype, "waitForReady").mockRejectedValue(new Error("Room is still loading"));
+    const flush = vi.spyOn(CollaborationService.prototype, "flushProject");
+    try {
+      const response = await request("GET", "", undefined, "reader");
+      expect(response.statusCode).toBe(200);
+      expect(response.json().content).toBe(EMPTY_DRAWIO);
+      expect(hydration).not.toHaveBeenCalled();
+      expect(flush).toHaveBeenCalledWith(id);
+    } finally { hydration.mockRestore(); flush.mockRestore(); }
   });
 
   it("rejects stale saves and never recreates a deleted diagram", async () => {

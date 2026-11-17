@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError } from "../src/client/api";
 import type { FileEntry, SiteConfig } from "../src/client/types";
 import { useProjectFiles } from "../src/client/workspace/useProjectFiles";
+import { prepareDrawioEditor } from "../src/client/workspace/drawioLoader";
 import "../src/client/i18n";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
+vi.mock("../src/client/workspace/drawioLoader", () => ({ prepareDrawioEditor: vi.fn() }));
 
 const site = { maxUploadSizeMB: 50, maxCollaborativeFileSizeMB: 5 } as SiteConfig;
 const text: FileEntry = { path: "notes.txt", type: "file", size: 100 };
@@ -31,6 +33,7 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.mocked(api).mockReset(); onError.mockReset(); onActiveFile.mockReset(); onDrawioOpen.mockReset();
   beforeOpenFile.mockReset().mockResolvedValue(true);
+  vi.mocked(prepareDrawioEditor).mockClear();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host); unmounted = false;
   await act(async () => root.render(createElement(Harness)));
 });
@@ -55,9 +58,11 @@ describe("opening suffix-classified project files", () => {
     beforeOpenFile.mockResolvedValueOnce(false);
     await act(async () => files.openFile({ path: "figures/flow.drawio", type: "file", size: 100 }));
     expect(files.drawioPath).toBeNull(); expect(onDrawioOpen).not.toHaveBeenCalled();
+    expect(prepareDrawioEditor).not.toHaveBeenCalled();
     await act(async () => files.openFile({ path: "figures/flow.drawio", type: "file", size: 100 }));
     expect(files.drawioPath).toBe("figures/flow.drawio");
     expect(onDrawioOpen).toHaveBeenCalledOnce();
+    expect(prepareDrawioEditor).toHaveBeenCalledOnce();
     expect(onActiveFile).not.toHaveBeenCalled(); expect(api).not.toHaveBeenCalled();
     await act(async () => files.setDrawioPath(null));
     await act(async () => files.openFile({ path: "large.drawio", type: "file", size: 6 * 1024 * 1024 }));
@@ -65,6 +70,7 @@ describe("opening suffix-classified project files", () => {
     await act(async () => files.openFile({ path: "invalid.drawio", type: "file", size: 10, textContent: false }));
     expect(files.drawioPath).toBeNull(); expect(files.resourcePreview?.kind).toBe("unsupported");
     expect(onDrawioOpen).toHaveBeenCalledOnce();
+    expect(prepareDrawioEditor).toHaveBeenCalledOnce();
   });
 
   it("validates only the selected text file before activating its shared editor", async () => {

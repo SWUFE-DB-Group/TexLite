@@ -7,8 +7,10 @@ import { WorkspaceFilePanel, type WorkspaceFilePanelProps } from "../src/client/
 import { createSourceCursorStore } from "../src/client/workspace/sourceCursorStore";
 import i18n from "../src/client/i18n";
 import { api } from "../src/client/api";
+import { prepareDrawioEditor } from "../src/client/workspace/drawioLoader";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
+vi.mock("../src/client/workspace/drawioLoader", () => ({ prepareDrawioEditor: vi.fn() }));
 
 vi.mock("react-resizable-panels", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-resizable-panels")>(),
@@ -69,12 +71,30 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   copyPath.mockClear();
+  vi.mocked(prepareDrawioEditor).mockClear();
   setDeleteEntry.mockClear();
   vi.mocked(api).mockReset();
   vi.unstubAllGlobals();
 });
 
 describe("file tree row actions", () => {
+  it("prepares diagrams on pointer, keyboard or touch intent, but not when merely listing files", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host), props = panelProps(false);
+    props.visibleEntries.push({ path: "flow.drawio", type: "file", size: 100 });
+    await act(async () => root.render(createElement(WorkspaceFilePanel, props)));
+    cleanups.push(async () => { await act(async () => root.unmount()); host.remove(); });
+    expect(prepareDrawioEditor).not.toHaveBeenCalled();
+    const row = (path: string) => [...host.querySelectorAll<HTMLButtonElement>(".file-entry-main")].find((button) => button.textContent?.includes(path))!;
+    await act(async () => row("main.tex").dispatchEvent(new Event("pointerover", { bubbles: true })));
+    expect(prepareDrawioEditor).not.toHaveBeenCalled();
+    for (const type of ["pointerover", "focusin", "pointerdown"]) {
+      await act(async () => row("flow.drawio").dispatchEvent(new Event(type, { bubbles: true })));
+    }
+    expect(prepareDrawioEditor).toHaveBeenCalledTimes(3);
+  });
+
   it("lets file and folder move tooltips follow the workspace preference", () => {
     const moveButtons = [...render().matchAll(/<button\b[^>]*>.*?<\/button>/g)]
       .map(([button]) => button).filter((button) => button.includes("lucide-move"));
