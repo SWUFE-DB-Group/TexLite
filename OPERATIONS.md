@@ -20,6 +20,10 @@ Windows deployment: older running records without job ownership cannot be
 recovered automatically. TexLite keeps those projects reserved instead of
 starting another task on top of a potentially surviving process.
 
+ZIP imports on Windows reject conflicting or invalid paths. For example, an
+archive cannot contain both `Main.tex` and `main.tex`, or a filename with a
+trailing dot or a reserved device name.
+
 Check a host before initialization:
 
 ~~~bash

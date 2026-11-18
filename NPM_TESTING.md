@@ -19,6 +19,17 @@ The dry run lists the files that would be published. Check that it contains the
 compiled server and `dist/client`, and does not contain local databases,
 projects, credentials, or development-only files.
 
+After building, run the same automated package smoke test as Windows CI:
+
+~~~text
+npm run test:package-smoke
+~~~
+
+It packs the existing build, installs it into a temporary npm prefix, checks
+the installed command, then verifies initialization, HTTP health, login and
+clean shutdown on a temporary loopback port and data directory. TeX version
+probes use local fixtures; this does not test real TeX compilation or PM2.
+
 ## Install the tarball into an isolated prefix
 
 Create a temporary directory, pack the current version, and install it without

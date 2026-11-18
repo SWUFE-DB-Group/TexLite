@@ -85,6 +85,41 @@ describe("project ZIP import and export", () => {
     expect(fs.existsSync(destination)).toBe(false);
   });
 
+  it.each([
+    ["paper/Main.tex", "paper/main.tex"],
+    ["Figures/one.png", "figures/two.png"],
+    ["figures/", "Figures/one.png"],
+    ["figures", "figures/one.png"],
+    ["figures/one.png", "figures"]
+  ])("rejects Windows ZIP path conflicts before writing: %s and %s", async (first, second) => {
+    const zip = makeZip([{ name: first, content: MAIN }, { name: second, content: "" }]);
+    await expect(extractProjectZip(zip, destination, MB, "win32"))
+      .rejects.toMatchObject({ code: "ZIP_PATH_CONFLICT", details: { path: second } });
+    expect(fs.existsSync(destination)).toBe(false);
+  });
+
+  it("rejects an invalid Windows filename before extracting earlier valid entries", async () => {
+    const zip = makeZip([{ name: "main.tex", content: MAIN }, { name: "images/NUL.png", content: "" }]);
+    await expect(extractProjectZip(zip, destination, MB, "win32")).rejects.toMatchObject({ code: "ZIP_INVALID_PATH" });
+    expect(fs.existsSync(destination)).toBe(false);
+  });
+
+  it("does not overwrite an existing file during Windows extraction", async () => {
+    fs.mkdirSync(destination);
+    const existing = path.join(destination, "main.tex");
+    fs.writeFileSync(existing, "Keep this");
+    const zip = makeZip([{ name: "main.tex", content: MAIN }]);
+    await expect(extractProjectZip(zip, destination, MB, "win32")).rejects.toMatchObject({ code: "ZIP_PATH_CONFLICT" });
+    expect(fs.readFileSync(existing, "utf8")).toBe("Keep this");
+  });
+
+  it.runIf(process.platform === "linux")("preserves distinct case-sensitive paths on Linux", async () => {
+    const zip = makeZip([{ name: "Main.tex", content: MAIN }, { name: "main.tex", content: "fragment" }]);
+    expect((await extractProjectZip(zip, destination, MB)).files).toEqual(["Main.tex", "main.tex"]);
+    expect(fs.readFileSync(path.join(destination, "Main.tex"), "utf8")).toBe(MAIN);
+    expect(fs.readFileSync(path.join(destination, "main.tex"), "utf8")).toBe("fragment");
+  });
+
   it("rejects Unix symlink entries", async () => {
     const zip = makeZip([{ name: "main.tex", content: "/etc/passwd", mode: 0o120777 }]);
     await expect(extractProjectZip(zip, destination, MB)).rejects.toMatchObject({ code: "ZIP_SYMLINK_FORBIDDEN" });

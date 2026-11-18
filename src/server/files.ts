@@ -64,15 +64,23 @@ export async function duplicateProjectFiles(config: Config, sourceProjectId: str
   await fs.promises.mkdir(outputRoot(config, targetProjectId), { recursive: true, mode: 0o700 });
 }
 
-export function safeRelativePath(input: string): string {
-  if (!input || input.includes("\0") || path.isAbsolute(input)) {
+const windowsDeviceName = /^(?:con|prn|aux|nul|conin\$|conout\$|(?:com|lpt)[1-9¹²³])$/i;
+
+export function safeRelativePath(input: string, platform: NodeJS.Platform = process.platform): string {
+  const windows = platform === "win32";
+  if (!input || input.includes("\0") || (windows ? path.win32 : path.posix).isAbsolute(input)) {
     throw httpError(400, "INVALID_PATH");
   }
   const normalized = path.posix.normalize(input.replaceAll("\\", "/"));
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw httpError(400, "INVALID_PATH");
   }
-  if (normalized.split("/").some((segment) => segment.toLocaleLowerCase() === ".git")) {
+  const segments = normalized.split("/");
+  if (windows && segments.some((segment) => /^ |[\x00-\x1f<>:"|?*]|[. ]$/.test(segment)
+    || windowsDeviceName.test(segment.split(".", 1)[0].replace(/ +$/, "")))) {
+    throw httpError(400, "INVALID_PATH");
+  }
+  if (segments.some((segment) => (windows ? segment.toLowerCase() : segment.toLocaleLowerCase()) === ".git")) {
     throw httpError(400, "RESERVED_PATH");
   }
   return normalized;
@@ -80,8 +88,9 @@ export function safeRelativePath(input: string): string {
 
 /** Validate a user-provided file or directory name used within one folder. */
 export function safePathSegment(input: string): string {
-  const name = input.trim();
-  if (!name || name.includes("\0") || name.includes("/") || name.includes("\\")) {
+  const trimmed = input.trim();
+  const name = process.platform === "win32" ? input : trimmed;
+  if (!trimmed || name.includes("\0") || name.includes("/") || name.includes("\\")) {
     throw httpError(400, "INVALID_PATH");
   }
   return safeRelativePath(name);

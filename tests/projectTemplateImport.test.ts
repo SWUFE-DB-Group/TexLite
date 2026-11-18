@@ -85,6 +85,20 @@ describe("creating projects from template URLs", () => {
     expect((await create()).statusCode).toBe(201);
   });
 
+  it.runIf(process.platform === "win32")("rejects case-colliding template files without leaving a project behind", async () => {
+    const directories = fs.readdirSync(configRoot().projectsDir);
+    const projects = db.prepare("SELECT COUNT(*) AS count FROM projects").get();
+    const writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false });
+    await writer.add("Main.tex", new TextReader("first"));
+    await writer.add("main.tex", new TextReader("second"));
+    vi.mocked(downloadProjectTemplate).mockResolvedValueOnce(Buffer.from(await writer.close()));
+    const response = await create();
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "ZIP_PATH_CONFLICT", path: "main.tex" });
+    expect(db.prepare("SELECT COUNT(*) AS count FROM projects").get()).toEqual(projects);
+    expect(fs.readdirSync(configRoot().projectsDir)).toEqual(directories);
+  });
+
   it("rechecks permission after the download rather than using the cached authenticated user", async () => {
     db.prepare("UPDATE users SET can_create_projects = 1 WHERE username = 'member'").run();
     vi.mocked(downloadProjectTemplate).mockImplementationOnce(async () => {

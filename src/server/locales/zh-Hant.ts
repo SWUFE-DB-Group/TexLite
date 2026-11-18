@@ -144,6 +144,7 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   WORD_COUNT_SOURCE_TOO_LARGE: "所選原始碼過大，無法統計。",
   WORD_COUNT_UNAVAILABLE: "伺服器尚未安裝 TeX Live 的 texcount 套件，請安裝後再試一次。",
   ZIP_DUPLICATE_ENTRY: "ZIP 壓縮檔包含重複檔名：{{path}}。",
+  ZIP_PATH_CONFLICT: "ZIP 壓縮檔中的路徑在 Windows 上發生衝突：{{path}}。",
   ZIP_ENTRY_READ_FAILED: "無法讀取 ZIP 壓縮檔中的檔案。",
   ZIP_ENTRY_TOO_LARGE: "ZIP 壓縮檔中存在超過限制的檔案。",
   ZIP_INVALID: "無法匯入 ZIP 壓縮檔。",

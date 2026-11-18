@@ -74,7 +74,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
-      - name: Exercise process trees and Agent lifecycle with local fixtures
+      - name: Exercise Windows process trees, Agent lifecycle, and project paths
         run: >-
           npm test --
           tests/windowsProcessTree.test.ts
@@ -82,5 +82,9 @@ jobs:
           tests/agentExecutionRecovery.test.ts
           tests/agentTerminalLifecycle.test.ts
           tests/agentProcessIdentity.test.ts
+          tests/projectPaths.test.ts
+          tests/zip.test.ts
+          tests/projectTemplateImport.test.ts
       - run: npm run build
-      - run: npm pack --dry-run --ignore-scripts
+      - name: Install and start the packed npm artifact
+        run: npm run test:package-smoke
