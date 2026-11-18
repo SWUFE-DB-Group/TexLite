@@ -108,7 +108,9 @@ export async function buildApp(
   const metrics = new MetricRegistry(200);
   const eventLoopDelay = monitorEventLoopDelay({ resolution: EVENT_LOOP_DELAY_RESOLUTION_MS });
   eventLoopDelay.enable();
-  const history = new ProjectHistoryService(config, db);
+  const history = new ProjectHistoryService(config, db, (error, directory) => {
+    app.log.warn({ err: error, directory }, "Could not clean up a snapshot restore directory");
+  });
   const editHistory = new ProjectEditHistoryService(db, config.editHistoryMaxStorageBytes, config.editHistoryMaxSegments);
   const historyRetention = new HistoryRetentionScheduler(history, {
     onError: (error, projectId) => app.log.error({ err: error, projectId }, "Failed to enforce project history retention")
@@ -215,6 +217,7 @@ export async function buildApp(
   // freshly started server never races a stale trash/tmp removal.
   await pruneTrashDirectory(config);
   for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
+    history.pruneRestoreBackups(row.id);
     history.enforceRetention(row.id);
     editHistory.enforceRetention(row.id);
     pruneCompileRuns(row.id);

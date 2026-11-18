@@ -272,6 +272,60 @@ describe("project history retention", () => {
       .some((entry) => entry.startsWith(".history-restore-") || entry.startsWith(".history-backup-"))).toBe(false);
   });
 
+  it("keeps restored files, untracked files and Git data when old backup cleanup partially fails", () => {
+    const fixture = createFixture();
+    const { history, projectId } = fixture;
+    const initial = history.record(projectId, "user-1", "initial")!;
+    writeSource(fixture, "main.tex", "current source");
+    writeSource(fixture, "figure.pdf", "untracked current figure");
+    writeSource(fixture, ".git/config", "git fixture");
+    fixture.db.prepare("UPDATE projects SET engine = 'lualatex' WHERE id = ?").run(projectId);
+    const remove = fs.rmSync;
+    let pendingCleanup = "";
+    const cleanup = vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+      if (typeof target === "string" && /^\.history-(?:backup|cleanup)-/.test(path.basename(target))) {
+        pendingCleanup = target;
+        remove(path.join(target, "figure.pdf"));
+        throw Object.assign(new Error("Backup cleanup was interrupted"), { code: "EBUSY" });
+      }
+      remove(target, options);
+    });
+    try {
+      expect(history.restore(projectId, initial.id).restoredPaths).toContain("main.tex");
+    } finally {
+      cleanup.mockRestore();
+    }
+    expect(readSource(fixture, "main.tex")).toBe("A");
+    expect(readSource(fixture, "figure.pdf")).toBe("untracked current figure");
+    expect(readSource(fixture, ".git/config")).toBe("git fixture");
+    expect(fixture.db.prepare("SELECT engine FROM projects WHERE id = ?").get(projectId)).toEqual({ engine: "xelatex" });
+    expect(pendingCleanup).not.toBe("");
+    expect(fs.existsSync(pendingCleanup)).toBe(true);
+
+    const recoveryBackup = path.join(path.dirname(pendingCleanup), path.basename(pendingCleanup).replace(".history-cleanup-", ".history-backup-"));
+    fs.mkdirSync(recoveryBackup);
+    history.pruneRestoreBackups(projectId);
+    expect(fs.existsSync(pendingCleanup)).toBe(false);
+    expect(fs.existsSync(recoveryBackup)).toBe(true);
+  });
+
+  it("rolls back the source and Git data if saving the restored settings fails", () => {
+    const fixture = createFixture();
+    const { history, projectId } = fixture;
+    const initial = history.record(projectId, "user-1", "initial")!;
+    writeSource(fixture, "main.tex", "current source");
+    writeSource(fixture, "figure.pdf", "untracked current figure");
+    writeSource(fixture, ".git/config", "git fixture");
+    fixture.db.prepare("UPDATE projects SET engine = 'lualatex' WHERE id = ?").run(projectId);
+    fixture.db.exec(`CREATE TRIGGER block_restore_settings BEFORE UPDATE OF engine ON projects
+      BEGIN SELECT RAISE(ABORT, 'test settings failure'); END`);
+    expect(() => history.restore(projectId, initial.id)).toThrow("test settings failure");
+    expect(readSource(fixture, "main.tex")).toBe("current source");
+    expect(readSource(fixture, "figure.pdf")).toBe("untracked current figure");
+    expect(readSource(fixture, ".git/config")).toBe("git fixture");
+    expect(fixture.db.prepare("SELECT engine FROM projects WHERE id = ?").get(projectId)).toEqual({ engine: "lualatex" });
+  });
+
   it("batch-prunes multiple obsolete versions in a single pass when storage limit is exceeded", () => {
     const fixture = createFixture({ maxVersions: 10, maxStorageBytes: 3_000 });
     fixture.history.record(fixture.projectId, "user-1", "initial");

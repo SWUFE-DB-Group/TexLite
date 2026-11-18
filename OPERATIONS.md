@@ -723,6 +723,11 @@ but the owner must delete the link and create a new one to regain copying.
 For an online copy of SQLite, include WAL files or use a SQLite-aware backup
 method.
 
+If old files cannot be cleaned up after a successful snapshot restore, TexLite
+keeps the restored project live and retries cleanup of `.history-cleanup-*`
+directories at startup. Do not automatically delete `.history-backup-*`
+directories; they may contain the original files from an interrupted restore.
+
 TexLite is designed for trusted users on localhost. Shell escape is disabled by
 default and compile jobs have timeouts and concurrency limits, but LaTeX itself
 is not a security boundary. Before exposing it to an untrusted network, add an

@@ -94,6 +94,7 @@ const METADATA_BYTES_SQL = `(octet_length(id) + octet_length(project_id) + COALE
   + octet_length(changed_paths_json) + octet_length(created_at))`;
 const DEFAULT_HISTORY_PAGE_SIZE = 100;
 const MAX_HISTORY_PAGE_SIZE = 100;
+const restoreCleanupPattern = /^\.history-cleanup-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
 interface HistoryCursor {
   createdAt: string;
@@ -118,7 +119,11 @@ type PrunableHistoryRow = Pick<HistoryRow, "id" | "reason" | "label" | "changed_
 type CarriedHistoryRow = Pick<HistoryRow, "changed_paths_json" | "created_at"> & { history_rowid: number };
 
 export class ProjectHistoryService {
-  constructor(private readonly config: Config, private readonly db: DatabaseConnection) {}
+  constructor(
+    private readonly config: Config,
+    private readonly db: DatabaseConnection,
+    private readonly onRestoreCleanupError: (error: unknown, directory: string) => void = () => undefined
+  ) {}
 
   record(
     projectId: string,
@@ -486,8 +491,6 @@ export class ProjectHistoryService {
       return { restoredPaths: [filePath], manifest };
     }
     this.restoreProjectTree(projectId, manifest);
-    this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ?, chktex_enabled = ? WHERE id = ?")
-      .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, manifest.settings.chktexEnabled ? 1 : 0, projectId);
     return { restoredPaths: Object.keys(manifest.files).sort(), manifest };
   }
 
@@ -836,12 +839,37 @@ export class ProjectHistoryService {
     }
   }
 
+  /** Called at startup, before any restore can run. Unmarked backups may
+   * belong to an interrupted restore and must never be deleted here. */
+  pruneRestoreBackups(projectId: string): void {
+    const root = projectRoot(this.config, projectId);
+    let entries: fs.Dirent[];
+    try {
+      if (!fs.lstatSync(root).isDirectory()) return;
+      entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") this.onRestoreCleanupError(error, root);
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && restoreCleanupPattern.test(entry.name)) {
+        this.removeRestoreDirectory(path.join(root, entry.name));
+      }
+    }
+  }
+
+  private removeRestoreDirectory(directory: string): void {
+    try { fs.rmSync(directory, { recursive: true, force: true }); }
+    catch (error) { this.onRestoreCleanupError(error, directory); }
+  }
+
   private restoreProjectTree(projectId: string, manifest: HistoryManifest): void {
     assertNoSourceSymlinks(this.config, projectId);
     const root = projectRoot(this.config, projectId);
     const live = sourceRoot(this.config, projectId);
-    const temporary = path.join(root, `.history-restore-${randomUUID()}`);
-    const backup = path.join(root, `.history-backup-${randomUUID()}`);
+    const restoreId = randomUUID();
+    const temporary = path.join(root, `.history-restore-${restoreId}`);
+    const backup = path.join(root, `.history-backup-${restoreId}`);
     fs.mkdirSync(temporary, { recursive: true, mode: 0o700 });
     let liveMoved = false;
     let replacementInstalled = false;
@@ -882,20 +910,33 @@ export class ProjectHistoryService {
         fs.renameSync(git, path.join(live, ".git"));
         gitMoved = true;
       }
-      fs.rmSync(backup, { recursive: true, force: true });
+      this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ?, chktex_enabled = ? WHERE id = ?")
+        .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, manifest.settings.chktexEnabled ? 1 : 0, projectId);
     } catch (error) {
-      // A failed restore must leave the original tree, including its Git data,
-      // intact. The replacement is entirely reconstructible from history.
-      if (replacementInstalled && fs.existsSync(live)) {
-        if (gitMoved && fs.existsSync(path.join(live, ".git"))) {
-          fs.renameSync(path.join(live, ".git"), path.join(backup, ".git"));
+      // The backup is still intact. Swap the replacement out before deleting
+      // anything, so another cleanup failure cannot strand the live tree.
+      try {
+        if (replacementInstalled) {
+          if (gitMoved) fs.renameSync(path.join(live, ".git"), path.join(backup, ".git"));
+          fs.renameSync(live, temporary);
         }
-        fs.rmSync(live, { recursive: true, force: true });
+        if (liveMoved) fs.renameSync(backup, live);
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], "Could not roll back project snapshot restore");
       }
-      if (liveMoved && fs.existsSync(backup)) fs.renameSync(backup, live);
-      fs.rmSync(temporary, { recursive: true, force: true });
+      this.removeRestoreDirectory(temporary);
       throw error;
     }
+
+    // Both the source swap and the settings update succeeded. Mark this
+    // backup as disposable before attempting any non-atomic deletion.
+    const cleanup = path.join(root, `.history-cleanup-${restoreId}`);
+    try { fs.renameSync(backup, cleanup); }
+    catch (error) {
+      this.onRestoreCleanupError(error, backup);
+      return;
+    }
+    this.removeRestoreDirectory(cleanup);
   }
 }
 
