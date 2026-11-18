@@ -77,6 +77,19 @@ describe("uncompiled PDF preview", () => {
   });
 });
 
+it("links a Windows diagnostic to the most specific project file despite differing case", () => {
+  const html = render({
+    previewTab: "diagnostics", diagnosticTab: "errors",
+    files: [{ path: "Part One.tex", type: "file" }, { path: "Chapters/Part One.tex", type: "file" }],
+    compileDiagnostics: { warnings: [], errors: [{
+      phase: "xelatex", severity: "error", file: "C:/TexLite/source/CHAPTERS/part one.tex",
+      line: 12, message: "Undefined control sequence.", raw: ""
+    }] }
+  });
+  expect(html).toContain('class="compile-diagnostic-row"');
+  expect(html).toContain("Chapters/Part One.tex:12");
+});
+
 describe("Markdown preview surface", () => {
   const markdown = { path: "docs/README.md", source: null, reveal: null, onOpenPath: () => {}, onShowLine: () => {}, onShowCursor: () => {} };
   it("adds a Markdown tab for the active Markdown file and uses line alignment instead of SyncTeX", async () => {

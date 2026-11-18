@@ -19,6 +19,27 @@ describe("structured compile diagnostics", () => {
     expect(result.errors.every((item) => item.raw)).toBe(true);
   });
 
+  it("retains Windows drive paths and locates TeX errors without an Error prefix", () => {
+    const log = [
+      "Running 'xelatex -file-line-error main.tex'",
+      String.raw`C:\TexLite 项目\chapters\Part One.tex:12: Undefined control sequence.`,
+      "c:/TexLite 项目/main.tex:21:3: LaTeX Error: Missing }.",
+      String.raw`C:\TexLite 项目\main.tex:28: Overfull \hbox (1pt too wide)`,
+      "Latexmk: Errors, so I did not complete making targets"
+    ].join("\r\n");
+    const result = parseCompileDiagnostics(log, "failed");
+
+    expect(result.errors).toMatchObject([
+      { phase: "xelatex", file: "C:/TexLite 项目/chapters/Part One.tex", line: 12, message: "Undefined control sequence." },
+      { phase: "xelatex", file: "c:/TexLite 项目/main.tex", line: 21, column: 3, message: "Missing }." },
+      { phase: "latexmk" }
+    ]);
+    expect(result.warnings).toMatchObject([
+      { file: "C:/TexLite 项目/main.tex", line: 28, message: expect.stringContaining("Overfull") }
+    ]);
+    expect(parseCompileDiagnostics(log, "succeeded").errors).toEqual([]);
+  });
+
   it("does not expose an intermediate BibTeX error after a successful PDF", () => {
     const result = parseCompileDiagnostics([
       "Running 'pdflatex -file-line-error main.tex'",

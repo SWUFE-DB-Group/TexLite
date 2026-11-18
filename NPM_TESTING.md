@@ -42,6 +42,27 @@ npm test -- tests/nativeHostTools.test.ts
 Remove-Item Env:TEXLITE_TEST_NATIVE_HOST_TOOLS
 ~~~
 
+## Verify native TeX Live compilation
+
+On a host with `latexmk`, `pdflatex`, `xelatex`, `lualatex` and `synctex` on
+`PATH`, run the opt-in compilation tests. They use temporary projects with
+spaces and non-ASCII names and verify cache reuse, SyncTeX in both directions,
+error locations, and cancellation. Standard CI still does not install TeX Live.
+
+PowerShell:
+
+~~~powershell
+$env:TEXLITE_TEST_NATIVE_TEXLIVE = '1'
+npm test -- tests/nativeTexLive.test.ts
+Remove-Item Env:TEXLITE_TEST_NATIVE_TEXLIVE
+~~~
+
+POSIX shell:
+
+~~~bash
+TEXLITE_TEST_NATIVE_TEXLIVE=1 npm test -- tests/nativeTexLive.test.ts
+~~~
+
 ## Install the tarball into an isolated prefix
 
 Create a temporary directory, pack the current version, and install it without

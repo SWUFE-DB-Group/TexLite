@@ -33,7 +33,7 @@ interface MutableDiagnostic extends CompileDiagnostic {
 }
 
 const commandPattern = /\b(pdflatex|xelatex|lualatex|bibtex|biber)\b/i;
-const locationPattern = /^(?<file>[^:\n]+):(?<line>\d+)(?::(?<column>\d+))?:\s*(?<rest>.*)$/;
+const locationPattern = /^(?<file>(?:[A-Za-z]:[\\/])?[^:\r\n]+):(?<line>\d+)(?::(?<column>\d+))?:\s*(?<rest>.*)$/;
 const inputLinePattern = /\bon input line (?<line>\d+)\b/i;
 const latexLinePattern = /^l\.(?<line>\d+)\b/;
 
@@ -64,15 +64,20 @@ export function parseCompileDiagnostics(log: string, outcome: CompileDiagnosticO
 
     const located = parseLocatedLine(line);
     if (located) {
-      currentFile = located.file ?? currentFile;
-      const severity = located.severity;
+      currentFile = located.file;
+      // With -file-line-error, TeX errors such as "Undefined control sequence."
+      // have a location but no Error: prefix. Infer severity only on a failed pass.
+      const severity = located.severity ?? (
+        resolvedOutcome === "failed" && isLatexPhase(phase) && /\.[a-z0-9]+$/i.test(located.file) && located.message
+          ? "error" : undefined
+      );
       if (severity) {
         addDiagnostic(diagnostics, {
           severity,
           phase,
           message: located.message,
           raw: line,
-          file: located.file ?? currentFile,
+          file: located.file,
           line: located.line,
           column: located.column,
           latexPass: isLatexPhase(phase) ? latexPass : undefined
@@ -180,8 +185,8 @@ function hasSuccessfulLatexmkResult(log: string): boolean {
 }
 
 function parseLocatedLine(line: string): {
-  file?: string;
-  line?: number;
+  file: string;
+  line: number;
   column?: number;
   severity?: CompileDiagnosticSeverity;
   message: string;
@@ -189,14 +194,16 @@ function parseLocatedLine(line: string): {
   const match = line.match(locationPattern);
   if (!match?.groups) return null;
   const rest = match.groups.rest;
-  const marker = rest.match(/\b(?:LaTeX(?:\s+[^:]+)?|Package|Class|pdfTeX|XeTeX|LuaTeX)\s+(?<severity>Error|Warning):\s*(?<message>.*)$/i);
-  if (!marker?.groups) return { file: match.groups.file, line: Number(match.groups.line), column: match.groups.column ? Number(match.groups.column) : undefined, message: rest };
+  const marker = rest.match(/^(?<severity>Error|Warning):\s*(?<message>.*)$/i)?.groups
+    ?? rest.match(/\b(?:LaTeX(?:\s+[^:]+)?|Package|Class|pdfTeX|XeTeX|LuaTeX)\s+(?<severity>Error|Warning):\s*(?<message>.*)$/i)?.groups;
+  const diagnostic = marker
+    ? { severity: marker.severity.toLowerCase() as CompileDiagnosticSeverity, message: marker.message.trim() }
+    : parseGenericWarning(rest) ?? { message: rest };
   return {
     file: match.groups.file.replaceAll("\\", "/"),
     line: Number(match.groups.line),
     column: match.groups.column ? Number(match.groups.column) : undefined,
-    severity: marker.groups.severity.toLowerCase() as CompileDiagnosticSeverity,
-    message: marker.groups.message.trim()
+    ...diagnostic
   };
 }
 

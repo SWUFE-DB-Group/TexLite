@@ -29,6 +29,23 @@ export class SyncTeXError extends Error {
   }
 }
 
+/** Rebase only absolute project inputs; relative inputs already use the snapshot cwd. */
+export function relocateSyncTeXInputs(
+  content: string,
+  cacheSource: string,
+  snapshotSource: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  const paths = platform === "win32" ? path.win32 : path.posix;
+  const cacheRoot = paths.resolve(cacheSource);
+  return content.replace(/^(Input:\d+:)([^\r\n]+)$/gm, (record, prefix: string, input: string) => {
+    if (!paths.isAbsolute(input)) return record;
+    const relative = paths.relative(cacheRoot, input);
+    if (!relative || relative === ".." || relative.startsWith(`..${paths.sep}`) || paths.isAbsolute(relative)) return record;
+    return prefix + paths.join(snapshotSource, relative);
+  });
+}
+
 async function runSynctex(args: string[], cwd: string): Promise<string> {
   try {
     const { stdout } = await runFile("synctex", args, {
@@ -52,9 +69,12 @@ export async function sourceToPdf(
   line: number,
   column: number
 ): Promise<PdfSyncLocation | null> {
-  const output = await runSynctex([
-    "view", "-i", `${line}:${column}:${sourcePath}`, "-o", pdfPath
-  ], sourceDirectory);
+  const view = (input: string) => runSynctex(["view", "-i", `${line}:${column}:${input}`, "-o", pdfPath], sourceDirectory);
+  // TeX Live can record absolute names even for relative \input paths. The
+  // SyncTeX CLI may not match a relative query against those records.
+  const absoluteInput = path.resolve(sourceDirectory, sourcePath);
+  let output = await view(absoluteInput);
+  if (absoluteInput !== sourcePath && numericField(output, "Page") === null) output = await view(sourcePath);
   const page = numericField(output, "Page");
   const x = numericField(output, "x");
   const y = numericField(output, "y");

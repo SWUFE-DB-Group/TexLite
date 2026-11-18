@@ -74,7 +74,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
-      - name: Exercise Windows process trees, Agent lifecycle, and project paths
+      - name: Exercise Windows process trees, Agent lifecycle, and file paths
         run: >-
           npm test --
           tests/windowsProcessTree.test.ts
@@ -84,6 +84,8 @@ jobs:
           tests/agentProcessIdentity.test.ts
           tests/claudeAdapter.test.ts
           tests/projectPaths.test.ts
+          tests/compileDiagnostics.test.ts
+          tests/synctex.test.ts
           tests/zip.test.ts
           tests/projectTemplateImport.test.ts
       - run: npm run build

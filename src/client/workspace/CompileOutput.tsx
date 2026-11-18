@@ -91,6 +91,14 @@ function resolveDiagnosticPath(input: string | undefined, files: FileEntry[]): s
   const filePaths = files.filter((entry) => entry.type === "file").map((entry) => entry.path);
   const normalized = input.replaceAll("\\", "/").replace(/^\.\//, "");
   if (filePaths.includes(normalized)) return normalized;
+  if (/^(?:[A-Za-z]:\/|\/\/)/.test(normalized)) {
+    // A Windows tool may change the case of a path. Prefer the most specific
+    // project suffix over a same-named file at the project root.
+    const absolute = normalized.toLowerCase();
+    const matches = filePaths.filter((file) => absolute.endsWith(`/${file.toLowerCase()}`))
+      .sort((a, b) => b.length - a.length);
+    if (matches.length) return matches[0].length > (matches[1]?.length ?? 0) ? matches[0] : null;
+  }
   const suffixMatches = filePaths.filter((filePath) => normalized.endsWith(`/${filePath}`));
   if (suffixMatches.length === 1) return suffixMatches[0];
   const basename = normalized.split("/").at(-1);

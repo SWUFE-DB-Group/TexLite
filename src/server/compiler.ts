@@ -11,6 +11,7 @@ import type { DatabaseConnection } from "./db.js";
 import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, texFileStem } from "./files.js";
 import { parseCompileDiagnostics, type CompileDiagnostics } from "./compileDiagnostics.js";
 import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
+import { relocateSyncTeXInputs } from "./synctex.js";
 
 export interface CompileTimings {
   cacheSyncMs: number;
@@ -753,7 +754,7 @@ function copyCompileArtifacts(source: string, destination: string): void {
 
 function rewriteSynctexSource(synctexPath: string, cacheSource: string, snapshotSource: string): void {
   const original = gunzipSync(fs.readFileSync(synctexPath)).toString("utf8");
-  const rewritten = original.replaceAll(path.resolve(cacheSource), path.resolve(snapshotSource));
+  const rewritten = relocateSyncTeXInputs(original, cacheSource, snapshotSource);
   if (rewritten !== original) fs.writeFileSync(synctexPath, gzipSync(Buffer.from(rewritten)), { mode: 0o600 });
 }
 
@@ -817,12 +818,12 @@ export async function compileProject(
     let log = "";
     let cancelled = false;
     let timedOut = false;
-    const append = (chunk: Buffer): void => {
-      log += chunk.toString("utf8");
+    const append = (chunk: string): void => {
+      log += chunk;
       if (log.length > 2_000_000) log = log.slice(-2_000_000);
     };
-    child.stdout.on("data", append);
-    child.stderr.on("data", append);
+    child.stdout.setEncoding("utf8").on("data", append);
+    child.stderr.setEncoding("utf8").on("data", append);
 
     let timeout: ReturnType<typeof setTimeout> | null = null;
     const cancel = () => {
