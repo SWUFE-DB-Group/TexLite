@@ -48,7 +48,7 @@ import { WorkspaceDialogs } from "../workspace/WorkspaceDialogs";
 import { WorkspaceContextPanel } from "../workspace/WorkspaceContextPanel";
 import { moveTab } from "../workspace/editorTabOrder";
 import { createSourceCursorStore, type SourceCursorStore } from "../workspace/sourceCursorStore";
-import { displayedPreviewSurface, isMarkdownPath } from "../workspace/markdownPreview";
+import { displayedPreviewSurface, isMarkdownPath } from "../workspace/markdownPreviewUtils";
 import { useMarkdownPreviewPreference } from "../workspace/useMarkdownPreviewPreference";
 import type { DiagnosticTab, PreviewSurface, PreviewTab, ProjectOutlineItem } from "../workspace/types";
 import { workspaceOutlineForMainFile, type LoadedProjectOutline, type OutlineSourceSnapshot } from "../workspace/outlineState";

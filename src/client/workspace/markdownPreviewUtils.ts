@@ -1,6 +1,6 @@
 import type { PreviewSurface } from "./types";
 
-/** Files the workspace can show as rendered Markdown beside the source. */
+/** Whether the workspace can show the file as rendered Markdown beside the source. */
 export function isMarkdownPath(path: string): boolean {
   return /\.(?:md|markdown|mdown|mkdn)$/i.test(path);
 }

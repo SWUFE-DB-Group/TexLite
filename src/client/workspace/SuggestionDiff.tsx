@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { makeSuggestionDiff } from "./suggestionDiff";
+import { makeSuggestionDiff } from "./suggestionWordDiff";
 
 /** Inline source diff; compact only unchanged context, never the actual edits. */
 export function SuggestionDiff({ original, replacement }: { original: string; replacement: string }) {

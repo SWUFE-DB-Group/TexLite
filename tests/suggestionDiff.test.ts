@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeSuggestionDiff } from "../src/client/workspace/suggestionDiff";
+import { makeSuggestionDiff } from "../src/client/workspace/suggestionWordDiff";
 
 describe("word-level suggestion previews", () => {
   it("shows complete changed words instead of highlighting only a suffix", () => {

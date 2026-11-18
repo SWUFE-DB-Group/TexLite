@@ -3,7 +3,7 @@ import type { Components } from "react-markdown";
 import { FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import MarkdownContent from "../MarkdownContent";
-import { headingSlugs, resolveMarkdownTarget } from "./markdownPreview";
+import { headingSlugs, resolveMarkdownTarget } from "./markdownPreviewUtils";
 import { rawFileUrl } from "./useProjectFiles";
 
 export interface MarkdownPreviewHandle {

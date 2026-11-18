@@ -5,7 +5,7 @@ const SURROGATE_START = 0xd800;
 const SURROGATE_COUNT = 0x800;
 const MAX_TOKEN_ID = 0xffff - SURROGATE_COUNT;
 
-/** Preview-only word diff. It never supplies offsets or patches to acceptance. */
+/** Word-level diff for display only. Never use it to apply a suggestion. */
 export function makeSuggestionDiff(original: string, replacement: string): Diff[] {
   if (original === replacement) return original ? [[0, original]] : [];
   const vocabulary = [""];

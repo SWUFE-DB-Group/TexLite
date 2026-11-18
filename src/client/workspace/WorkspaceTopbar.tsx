@@ -7,7 +7,7 @@ import type { WorkspaceLayout } from "./types";
 import { CollaborationPresence, WorkspaceLayoutMenu } from "./WorkspaceChrome";
 import { useTerminalPreferences } from "../terminalPreferences";
 import { WorkspaceTopbarFrame } from "./WorkspaceTopbarFrame";
-import { isMarkdownPath } from "./markdownPreview";
+import { isMarkdownPath } from "./markdownPreviewUtils";
 
 export interface WorkspaceTopbarProps {
   agentTerminal?: { open: boolean; activeCount: number; toggle: () => void };

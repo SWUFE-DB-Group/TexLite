@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "../src/client/i18n";
 import MarkdownPreview, { type MarkdownPreviewHandle } from "../src/client/workspace/MarkdownPreview";
-import { displayedPreviewSurface, headingSlugs, isMarkdownPath, resolveMarkdownTarget } from "../src/client/workspace/markdownPreview";
+import { displayedPreviewSurface, headingSlugs, isMarkdownPath, resolveMarkdownTarget } from "../src/client/workspace/markdownPreviewUtils";
 import { useMarkdownPreviewPreference } from "../src/client/workspace/useMarkdownPreviewPreference";
 
 describe("Markdown preview helpers", () => {
