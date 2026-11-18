@@ -124,6 +124,8 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   }, [projectId, files, settingsTab]);
   const displayedMainFileOptions = mainFileOptions ?? [project.mainFile];
   const invalidCurrentMainFile = mainFileOptions !== null && !mainFileOptions.includes(mainFile);
+  const engineOptions = site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"];
+  const engineAvailable = engineOptions.includes(engine);
   const saveCompilerSettings = async () => {
     if (compilerSaveRef.current) return;
     savedNotice.clear();
@@ -290,7 +292,12 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>
       <dl className="settings-project-name"><dt>{t("projects.name")}</dt><dd>{project.name}</dd></dl>
       <label>{t("projectSettings.mainFile")}<select disabled={!canManage || savingCompiler || mainFileOptions === null || mainFileOptions.length === 0} value={mainFile} onChange={(event) => setMainFile(event.target.value)}>{invalidCurrentMainFile && <option value={mainFile} disabled>{t("projectSettings.invalidMainFileOption", { path: mainFile })}</option>}{displayedMainFileOptions.map((filePath) => <option value={filePath} key={filePath}>{filePath}</option>)}</select></label>
-      <label>{t(rcEnabled && rcFiles.length > 0 && site.allowProjectLatexmkrc !== false ? "projectSettings.defaultEngine" : "projectSettings.engine")}<select disabled={!canManage || savingCompiler} value={engine} onChange={(event) => setEngine(event.target.value as Project["engine"])}>{(site.allowedEngines ?? ["pdflatex", "xelatex", "lualatex"]).map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label>{t(rcEnabled && rcFiles.length > 0 && site.allowProjectLatexmkrc !== false ? "projectSettings.defaultEngine" : "projectSettings.engine")}
+        <select disabled={!canManage || savingCompiler} value={engineAvailable ? engine : ""} onChange={(event) => setEngine(event.target.value as Project["engine"])}>
+          {!engineAvailable && <option value="" disabled>{engine} · {t("projectSettings.toolStatus.unavailable")}</option>}
+          {engineOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </label>
       <div className="editor-preference compiler-check-option"><label className="editor-checkbox"><input type="checkbox" disabled={!canManage || savingCompiler} checked={chktexEnabled} onChange={(event) => setChktexEnabled(event.target.checked)} /><FileCheck2 size={15} /><span>{t("chktex.enabled")}</span></label><p className="field-hint">{t("chktex.description")} <a href="https://www.nongnu.org/chktex/" target="_blank" rel="noreferrer">ChkTeX</a></p></div>
       {rcFiles.length > 0 && <div className="editor-preference latexmkrc-setting">
         <label className="editor-checkbox"><input type="checkbox" disabled={!canManage || savingCompiler || site.allowProjectLatexmkrc === false} checked={rcEnabled && site.allowProjectLatexmkrc !== false} onChange={(event) => setRcEnabled(event.target.checked)} /><FileCog size={15} /><span>{t("projectSettings.enableLatexmkrc")}</span></label>

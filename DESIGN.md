@@ -330,7 +330,9 @@ listener. Validation covers paths, limits, engines, timeout/queue settings,
 URLs, and cross-field constraints such as the default engine being present in
 the allowed-engine list.
 
-Startup checks Node.js, `latexmk`, and every configured LaTeX engine.
+Startup requires Node.js, `latexmk`, and every engine in
+`latex.allowedEngines`. The same list controls API validation and editor
+choices. Removing an engine does not silently change existing projects.
 `texlite requirements` performs a configuration-free preflight over the
 default host commands, requiring Node.js, `latexmk`, and at least one supported
 LaTeX engine. `texlite doctor` also reports optional host tools in a

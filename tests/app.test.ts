@@ -842,6 +842,34 @@ It works.
     expect((await app.inject({ method: "GET", url: `/api/projects/${project.id}/pdf`, headers: { cookie } })).statusCode).toBe(404);
   }, 40_000);
 
+  it("keeps a saved unavailable engine but rejects using or selecting it", async () => {
+    const headers = { cookie };
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers, payload: { name: "Unavailable engine fixture" } });
+    expect(created.statusCode).toBe(201);
+    const url = "/api/projects/" + created.json().project.id;
+    const patch = (payload: Record<string, string>) => app.inject({ method: "PATCH", url, headers, payload });
+    expect((await patch({ engine: "lualatex" })).json().project.engine).toBe("lualatex");
+    const original = config.allowedEngines;
+    config.allowedEngines = ["pdflatex"];
+    try {
+      const site = await app.inject({ method: "GET", url: "/api/config" });
+      expect(site.json().allowedEngines).toEqual(["pdflatex"]);
+      const compile = await app.inject({ method: "POST", url: url + "/compile", headers });
+      expect(compile.statusCode).toBe(422);
+      expect(compile.json()).toMatchObject({ code: "LATEX_ENGINE_UNAVAILABLE", engine: "lualatex" });
+      const override = await app.inject({ method: "POST", url: url + "/compile", headers, payload: { engine: "xelatex" } });
+      expect(override.statusCode).toBe(422);
+      expect(override.json()).toMatchObject({ code: "LATEX_ENGINE_UNAVAILABLE", engine: "xelatex" });
+      const rejected = await patch({ engine: "xelatex" });
+      expect(rejected.statusCode).toBe(422);
+      expect(rejected.json()).toMatchObject({ code: "LATEX_ENGINE_UNAVAILABLE", engine: "xelatex" });
+      expect((await patch({ name: "Rename without changing engine" })).json().project.engine).toBe("lualatex");
+      expect((await patch({ engine: "pdflatex" })).json().project.engine).toBe("pdflatex");
+    } finally {
+      config.allowedEngines = original;
+    }
+  });
+
   it("compiles only the currently selected LaTeX root document", async () => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Multiple roots" }

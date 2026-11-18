@@ -51,6 +51,7 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   COMPILE_ARTIFACTS_NOT_FOUND: "尚無可用的編譯產出。",
   COMPILE_CLEAN_BUSY: "目前主文件正在編譯，請完成後再執行故障排除。",
   COMPILE_FORBIDDEN: "你沒有編譯此專案的權限。",
+  LATEX_ENGINE_UNAVAILABLE: "此伺服器上的 {{engine}} 無法使用。請在 LaTeX 設定中切換引擎，或聯絡管理員啟用。",
   TIKZ_GALLERY_DISABLED: "此伺服器未啟用 TikZ 圖庫。",
   TIKZ_GALLERY_UNAVAILABLE: "此伺服器上找不到 TikZ 圖庫外掛，請聯絡管理員安裝。",
   TIKZ_GALLERY_INCOMPATIBLE: "已安裝的 TikZ 圖庫與目前 TexLite 版本不相容，請聯絡管理員更新。",

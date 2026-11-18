@@ -41,15 +41,28 @@ function changeText(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
-async function settings(onEditorPreferences = vi.fn(), settingsProject = project) {
+async function settings(onEditorPreferences = vi.fn(), settingsProject = project, settingsSite = site) {
   const onProject = vi.fn();
-  await act(async () => root.render(createElement(ProjectSettings, { project: settingsProject, projectId: settingsProject.id, site, files: [], dictionaryWords: [],
+  await act(async () => root.render(createElement(ProjectSettings, { project: settingsProject, projectId: settingsProject.id, site: settingsSite, files: [], dictionaryWords: [],
     editorPreferences: defaultEditorPreferences, onEditorPreferences, onDictionaryChange: vi.fn(), onProject, onClose: vi.fn(),
     spellCheckCount: null, spellCheckUniqueCount: null, spellCheckIndex: 0, onSpellCheckNavigate: vi.fn() })));
   return { onProject, onEditorPreferences };
 }
 
 describe("settings save feedback", () => {
+  it("offers only available engines without silently changing the saved engine", async () => {
+    await settings(vi.fn(), { ...project, engine: "lualatex" }, { ...site, allowedEngines: ["xelatex"] });
+    await click("#settings-tab-compiler");
+    const engine = [...host.querySelectorAll<HTMLSelectElement>("#settings-panel-compiler select")].find(
+      (select) => select.parentElement?.textContent?.includes("projectSettings.engine")
+    )!;
+    expect([...engine.options].filter((option) => !option.disabled).map((option) => option.value)).toEqual(["xelatex"]);
+    expect(engine.selectedOptions[0]).toMatchObject({ disabled: true });
+    expect(engine.selectedOptions[0].textContent).toContain("lualatex");
+    await click(".drawer-settings-save");
+    expect(vi.mocked(api).mock.calls.some(([, options]) => options?.method === "PATCH")).toBe(false);
+  });
+
   it("shows the current project name as read-only text for owners and collaborators", async () => {
     const name = "A long research project name with multiple sections\nand an extended subtitle";
     for (const permission of ["owner", "edit", "read"] as const) {

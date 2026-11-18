@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { FastifyInstance } from "fastify";
-import type { Config } from "../config.js";
+import { isEngine, type Config, type LatexEngine } from "../config.js";
 import type { DatabaseConnection } from "../db.js";
 import { requireUser } from "../auth.js";
 import { accessibleProject, canEdit } from "../projects.js";
@@ -415,11 +415,16 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const initialProject = accessibleProject(db, id, user);
     if (!initialProject || !canEdit(initialProject)) return apiError(reply, 403, "COMPILE_FORBIDDEN");
     const body = (request.body ?? {}) as { mainFile?: unknown; engine?: unknown };
-    const requestedEngine = config.allowedEngines.find((engine) => engine === body.engine);
-    if (body.engine !== undefined && !requestedEngine) return apiError(reply, 400, "REQUEST_INVALID");
+    const requestedEngine = body.engine;
+    if (requestedEngine !== undefined && !isEngine(requestedEngine)) return apiError(reply, 400, "REQUEST_INVALID");
     // For this run only; part of the compile generation and cache key, so a
     // request for another engine is neither coalesced nor treated as up to date.
-    const withRequestedEngine = <T extends { engine: string }>(row: T): T => requestedEngine ? { ...row, engine: requestedEngine } : row;
+    const withRequestedEngine = <T extends { engine: LatexEngine }>(row: T): T => {
+      const engine = requestedEngine ?? row.engine;
+      if (!config.allowedEngines.includes(engine)) throw httpError(422, "LATEX_ENGINE_UNAVAILABLE", { engine });
+      return engine === row.engine ? row : { ...row, engine };
+    };
+    withRequestedEngine(initialProject);
     const requestedMainFile = typeof body.mainFile === "string" && body.mainFile ? body.mainFile : null;
     const initialMainFile = compileMainFile(config, id, initialProject.main_file, body.mainFile);
     if (!initialMainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
@@ -447,11 +452,12 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
         throw new Error("Project access changed while preparing a compile request");
       }
       const generationRevision = receipt?.revision ?? revisionBeforeFlush;
+      const project = withRequestedEngine(refreshedProject);
       const admissionResult = {
-        project: withRequestedEngine(refreshedProject),
+        project,
         mainFile: currentMainFile,
         generation: compileRequestGeneration(
-          withRequestedEngine(refreshedProject),
+          project,
           generationRevision,
           collaboration.currentGeneration(id),
           config.extraArgs

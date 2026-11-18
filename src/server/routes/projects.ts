@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { currentUser, requireUser } from "../auth.js";
 import { maxCollaborativeFileBytes, type CollaborationService } from "../collaboration.js";
-import type { Config } from "../config.js";
+import { isEngine, type Config } from "../config.js";
 import type { DatabaseConnection, ProjectRow, UserRow } from "../db.js";
 import {
   createProjectFiles,
@@ -620,8 +620,12 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
         }
         mainFile = safeRelativePath(body.mainFile);
       }
-      const engine = typeof body.engine === "string" && config.allowedEngines.includes(body.engine as typeof currentProject.engine)
-        ? body.engine as typeof currentProject.engine : currentProject.engine;
+      let engine = currentProject.engine;
+      if (body.engine !== undefined && body.engine !== engine) {
+        if (!isEngine(body.engine)) return apiError(reply, 400, "REQUEST_INVALID");
+        if (!config.allowedEngines.includes(body.engine)) return apiError(reply, 422, "LATEX_ENGINE_UNAVAILABLE", { engine: body.engine });
+        engine = body.engine;
+      }
       const chktexEnabled = typeof body.chktexEnabled === "boolean" ? body.chktexEnabled : Boolean(currentProject.chktex_enabled);
       const latexmkrc = body.latexmkrc === null || body.latexmkrc === ""
         ? null

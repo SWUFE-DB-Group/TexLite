@@ -294,7 +294,7 @@ function resolveBasePath(fileConfig: FileConfig): string {
   return basePath;
 }
 
-function isEngine(value: unknown): value is LatexEngine {
+export function isEngine(value: unknown): value is LatexEngine {
   return typeof value === "string" && (LATEX_ENGINES as readonly string[]).includes(value);
 }
 

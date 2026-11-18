@@ -67,11 +67,18 @@ harper-cli --version
 harper-ls --version
 ~~~
 
-`texlite init` and `texlite start` validate Node.js, `latexmk`, and every
-engine named in `latex.allowedEngines`. `texlite requirements` can be run
-before initialization: it checks only the default commands on `PATH`, without
-reading a configuration file or any TexLite data. It requires Node.js and
-`latexmk`, and requires at least one of the three supported LaTeX engines.
+`texlite init`, `texlite start`, and `texlite serve` require Node.js,
+`latexmk`, and every engine in `latex.allowedEngines`. The project engine
+selector uses that exact list. By default it includes `pdflatex`, `xelatex`,
+and `lualatex`. If only XeLaTeX is installed, set `latex.allowedEngines`
+to `["xelatex"]`. The configured `latex.defaultEngine` (normally `xelatex`)
+must appear in the list. If an existing project uses an engine removed from
+the list, select a different engine in the project settings before compiling.
+
+`texlite requirements` can be run before initialization: it checks commands
+on `PATH` without reading a configuration file or any TexLite data. It
+requires Node.js, `latexmk`, and at least one supported LaTeX engine. It
+does not verify the engine list in your configuration.
 `texlite doctor` presents the configured deployment checks and optional host
 tools in a table with their requirement level, installation state, and
 detected version. Missing optional tools never stop the editor:
@@ -344,7 +351,7 @@ preferred.
 | `latex.latexmk` | `latexmk` | Host command. |
 | `latex.defaultEngine` | `xelatex` | Must appear in the allowed list. |
 | `updates.enabled` | `true` | Background release checks and administrator dashboard reminders. Set to `false` for offline deployments. |
-| `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` | Engines available in the UI. |
+| `latex.allowedEngines` | `pdflatex`, `xelatex`, `lualatex` | Engines offered in the editor. All entries must be installed. |
 | `latex.extraArgs` | `[]` | Additional configured compiler arguments. |
 | `latex.compileTimeoutSeconds` | `600` | Per-job time limit. |
 | `latex.maxCompileJobs` | `10` | Global concurrent LaTeX-process limit. |

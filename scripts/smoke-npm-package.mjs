@@ -43,6 +43,9 @@ async function exerciseServer(cli, root, env, dataDir, port) {
     const health = await fetchLocal("/api/health");
     assert.equal(health.status, 200);
     assert.equal((await health.json()).pid, child.pid);
+    const site = await fetchLocal("/api/config");
+    assert.equal(site.status, 200);
+    assert.deepEqual((await site.json()).allowedEngines, ["xelatex"]);
     const page = await fetchLocal("/");
     assert.equal(page.status, 200);
     assert.match(await page.text(), /<div id="root">/);
@@ -87,7 +90,8 @@ try {
 
   const tools = path.join(root, "version fixtures");
   fs.mkdirSync(tools);
-  // These fixtures implement only the version probe; no TeX or agents run.
+  // Test initial setup with the built-in allowlist, then narrow it below.
+  // These fixtures only implement version checks; no TeX runs.
   for (const name of ["latexmk", "pdflatex", "xelatex", "lualatex"]) {
     const target = path.join(tools, name + (windows ? ".exe" : ""));
     if (windows) fs.copyFileSync(process.execPath, target);
@@ -110,8 +114,11 @@ try {
   assert.equal(JSON.parse(cliOutput(["requirements", "--json"])).ok, true);
   cliOutput(["init"]);
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  // The installed but unlisted engines must not appear in the server config.
   // Keep the smoke test offline once the tarball has been installed.
-  fs.writeFileSync(configPath, JSON.stringify({ ...config, updates: { enabled: false } }));
+  fs.writeFileSync(configPath, JSON.stringify({
+    ...config, latex: { allowedEngines: ["xelatex"] }, updates: { enabled: false }
+  }));
   await exerciseServer(cli, root, env, dataDir, port);
   console.log("Installed TexLite passed requirements, init, health, login and clean shutdown.");
 } finally {
