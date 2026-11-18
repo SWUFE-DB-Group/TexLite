@@ -6,14 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recoverAgentExecution } from "../src/server/agents/execution.js";
 import { inspectAgentProcess, agentProcessGroupAlive } from "../src/server/agents/processIdentity.js";
 import { stopAgentPty } from "../src/server/agents/terminal.js";
+import { stopWindowsAgentJob } from "../src/server/agents/windowsJob.js";
 
 vi.mock("../src/server/agents/processIdentity.js", () => ({ inspectAgentProcess: vi.fn(), agentProcessGroupAlive: vi.fn() }));
 vi.mock("../src/server/agents/terminal.js", () => ({ stopAgentPty: vi.fn(), windowsAgentCommand: vi.fn() }));
+vi.mock("../src/server/agents/windowsJob.js", () => ({ attachWindowsAgentJob: vi.fn(), stopWindowsAgentJob: vi.fn() }));
 let root: string;
 let filename: string;
 let record: { version: number; executionId: string; platform: string; pid: number | null; identity: string | null };
+const platform = () => vi.spyOn(process, "platform", "get");
 beforeEach(() => {
   vi.resetAllMocks();
+  platform().mockReturnValue("linux");
   root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-agent-recovery-"));
   filename = path.join(root, "execution.json");
   record = { version: 1, executionId: randomUUID(), platform: process.platform, pid: 4242, identity: "birth-1" };
@@ -21,9 +25,30 @@ beforeEach(() => {
   vi.mocked(inspectAgentProcess).mockResolvedValue(null);
   vi.mocked(agentProcessGroupAlive).mockResolvedValue(false);
 });
-afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); vi.useRealTimers(); });
+afterEach(() => { vi.restoreAllMocks(); fs.rmSync(root, { recursive: true, force: true }); vi.useRealTimers(); });
 
 describe("agent crash recovery", () => {
+  it("recovers a Windows execution by its job, even when its former PID is unsafe to use", async () => {
+    platform().mockReturnValue("win32");
+    fs.writeFileSync(filename, JSON.stringify({ ...record, platform: "win32", version: 2 }));
+    vi.mocked(stopWindowsAgentJob).mockRejectedValueOnce(new Error("access denied")).mockResolvedValueOnce(undefined);
+    await expect(recoverAgentExecution(filename)).rejects.toThrow("access denied");
+    expect(fs.existsSync(filename)).toBe(true);
+    await recoverAgentExecution(filename);
+    expect(stopWindowsAgentJob).toHaveBeenCalledWith(record.executionId);
+    expect(inspectAgentProcess).not.toHaveBeenCalled();
+    expect(stopAgentPty).not.toHaveBeenCalled();
+    expect(fs.existsSync(filename)).toBe(false);
+  });
+
+  it("retains an unverifiable legacy Windows lease instead of assuming its tree is empty", async () => {
+    platform().mockReturnValue("win32");
+    fs.writeFileSync(filename, JSON.stringify({ ...record, platform: "win32" }));
+    await expect(recoverAgentExecution(filename)).rejects.toMatchObject({ code: "AGENT_RECOVERY_FAILED" });
+    expect(stopAgentPty).not.toHaveBeenCalled();
+    expect(stopWindowsAgentJob).not.toHaveBeenCalled();
+    expect(fs.existsSync(filename)).toBe(true);
+  });
   it("reaps only a verified launcher and clears its lease after the whole group exits", async () => {
     const owned = { identity: "birth-1", owned: true };
     vi.mocked(inspectAgentProcess).mockResolvedValueOnce(owned).mockResolvedValueOnce(owned);

@@ -21,6 +21,13 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("agent process termination", () => {
+  it("uses the owned Windows job instead of signalling the launcher PID", async () => {
+    const stop = vi.fn(async () => {});
+    await stopAgentPty({ pid: pty.pid, stop });
+    expect(stop).toHaveBeenCalledOnce();
+    expect(process.kill).not.toHaveBeenCalled();
+    expect(execFile).not.toHaveBeenCalled();
+  });
   it("accepts an already exited Windows process without invoking taskkill", async () => {
     vi.mocked(process.kill).mockImplementation(() => { throw osError("ESRCH"); });
     await expect(stopAgentPty(pty)).resolves.toBeUndefined();

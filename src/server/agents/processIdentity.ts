@@ -50,7 +50,7 @@ export async function inspectAgentProcess(pid: number, executionId: string, io =
 
 /** A vanished leader is not proof that all members of its POSIX group exited. */
 export async function agentProcessGroupAlive(pid: number, io = systemIO): Promise<boolean> {
-  if (io.platform === "win32") return false;
+  if (io.platform === "win32") throw new Error("Windows agent groups require an owned Job Object");
   const output = await io.command("ps", ["-axo", "pgid=,stat="]);
   return output.split("\n").some((line) => {
     const [group, state] = line.trim().split(/\s+/);

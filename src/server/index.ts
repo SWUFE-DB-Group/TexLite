@@ -66,16 +66,20 @@ export async function startServer(configPath?: string): Promise<RunningServer> {
 
 export async function serve(configPath?: string): Promise<void> {
   const running = await startServer(configPath);
+  const windowsIpc = process.platform === "win32" && Boolean(process.send);
   let closed = false;
-  const shutdown = async (): Promise<void> => {
-    if (closed) return;
-    closed = true;
-    await running.close();
-  };
-  await new Promise<void>((resolve) => {
-    const complete = () => { void shutdown().finally(resolve); };
+  await new Promise<void>((resolve, reject) => {
+    const complete = () => {
+      if (closed) return;
+      closed = true;
+      if (windowsIpc) process.off("message", onMessage);
+      void running.close().then(resolve, reject);
+    };
+    const onMessage = (message: unknown) => { if (message === "shutdown") complete(); };
     process.once("SIGINT", complete);
     process.once("SIGTERM", complete);
+    // PM2 cannot deliver a graceful POSIX signal on native Windows.
+    if (windowsIpc) process.on("message", onMessage);
   });
 }
 

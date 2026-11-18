@@ -131,7 +131,8 @@ function startOptions(config: Config): StartOptions {
     max_restarts: 5,
     restart_delay: 500,
     max_memory_restart: "512M",
-    kill_timeout: 10_000,
+    kill_timeout: process.platform === "win32" ? 20_000 : 10_000,
+    ...(process.platform === "win32" ? { shutdown_with_message: true } : {}),
     env: environment
   };
 }

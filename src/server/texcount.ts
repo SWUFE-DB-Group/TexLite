@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
+import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
 
 /** TeXcount is an optional host command supplied by TeX Live. */
 export const TEXCOUNT_COMMAND = "texcount";
@@ -86,7 +86,9 @@ export class TexcountService {
 
   async dispose(): Promise<void> {
     this.disposed = true;
-    for (const child of this.activeChildren) killProcessGroup(child, "SIGTERM");
+    const children = [...this.activeChildren];
+    if (process.platform === "win32") await Promise.allSettled(children.map((child) => stopProcessTree(child)));
+    else for (const child of children) void stopProcessTree(child, "SIGTERM");
     this.activeChildren.clear();
     await this.probePromise?.catch(() => undefined);
     this.probePromise = null;
@@ -179,10 +181,10 @@ export class TexcountService {
       let outputBytes = 0;
       let settled = false;
       let timedOut = false;
-      let outputTooLarge = false;
+      let terminationError: Error | undefined;
       const timer = setTimeout(() => {
         timedOut = true;
-        killProcessGroup(child);
+        void stopProcessTree(child).catch((error) => finish(() => reject(error)));
       }, timeoutMs);
       const finish = (callback: () => void): void => {
         if (settled) return;
@@ -192,13 +194,13 @@ export class TexcountService {
         callback();
       };
       const terminateWithError = (error: Error): void => {
-        killProcessGroup(child);
-        finish(() => reject(error));
+        if (terminationError || settled) return;
+        terminationError = error;
+        void stopProcessTree(child).then(() => finish(() => reject(error)), (failure: unknown) => finish(() => reject(failure)));
       };
       const collect = (target: Buffer[]) => (chunk: Buffer): void => {
         outputBytes += chunk.length;
         if (outputBytes > outputLimit) {
-          outputTooLarge = true;
           terminateWithError(new TexcountExecutionError(`${this.command} produced too much output.`));
           return;
         }
@@ -218,21 +220,18 @@ export class TexcountService {
         }
         reject(error);
       }));
-      child.once("close", (code) => finish(() => {
-        if (timedOut) {
-          reject(new TexcountExecutionError(`${this.command} timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`));
-          return;
-        }
-        if (outputTooLarge) {
-          reject(new TexcountExecutionError(`${this.command} produced too much output.`));
-          return;
-        }
-        resolve({
-          code,
-          stdout: Buffer.concat(stdout).toString("utf8"),
-          stderr: Buffer.concat(stderr).toString("utf8")
-        });
-      }));
+      child.once("close", (code) => {
+        clearTimeout(timer);
+        afterProcessStop(child, () => finish(() => {
+          if (terminationError) return reject(terminationError);
+          if (timedOut) return reject(new TexcountExecutionError(`${this.command} timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`));
+          resolve({
+            code,
+            stdout: Buffer.concat(stdout).toString("utf8"),
+            stderr: Buffer.concat(stderr).toString("utf8")
+          });
+        }), (error: unknown) => finish(() => reject(error)));
+      });
       if (input !== undefined) child.stdin?.end(input, "utf8");
     });
   }

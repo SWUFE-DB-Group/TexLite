@@ -3,18 +3,36 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import type { ChildProcess } from "node:child_process";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../src/server/config.js";
 import type { DatabaseConnection } from "../src/server/db.js";
 import { captureCompileSnapshot, compileProject, publishCompileArtifacts } from "../src/server/compiler.js";
 import { availablePdf, compileRunPdf } from "../src/server/compileArtifacts.js";
 import { ProjectGitService } from "../src/server/git.js";
+import { afterProcessStop, stopProcessTree } from "../src/server/processTree.js";
 
 describe("external command process groups", () => {
   const roots: string[] = [];
 
   afterEach(() => {
     for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it.runIf(process.platform !== "win32")("preserves POSIX graceful shutdown and later escalation", async () => {
+    const signal = vi.spyOn(process, "kill").mockReturnValue(true);
+    const child = { pid: 1234, kill: vi.fn() } as unknown as ChildProcess;
+    try {
+      void stopProcessTree(child, "SIGTERM");
+      expect(signal).toHaveBeenNthCalledWith(1, -1234, "SIGTERM");
+      const complete = vi.fn();
+      const fail = vi.fn();
+      afterProcessStop(child, complete, fail);
+      expect(complete).toHaveBeenCalledOnce(); // No Windows termination wait on Linux/macOS.
+      await stopProcessTree(child, "SIGKILL");
+      expect(signal).toHaveBeenNthCalledWith(2, -1234, "SIGKILL");
+      expect(fail).not.toHaveBeenCalled();
+    } finally { signal.mockRestore(); }
   });
 
   it("terminates latexmk descendants when compilation times out", async () => {

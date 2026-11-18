@@ -3,17 +3,17 @@ import { PassThrough } from "node:stream";
 import { spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inspectPdfFonts, parsePdfFonts } from "../src/server/pdfFonts";
-import { killProcessGroup } from "../src/server/processTree";
+import { stopProcessTree } from "../src/server/processTree";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
-vi.mock("../src/server/processTree", () => ({ detachedProcessGroup: () => true,
-  killProcessGroup: vi.fn((child: EventEmitter) => child.emit("close", null)) }));
+vi.mock("../src/server/processTree", () => ({ detachedProcessGroup: () => true, afterProcessStop: (_child: EventEmitter, complete: () => void) => complete(),
+  stopProcessTree: vi.fn(async (child: EventEmitter) => { child.emit("close", null); }) }));
 
 const header = "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\n";
 const row = "ABCDEF+Noto Sans                      CID TrueType      Identity-H       yes yes yes     15  0\n";
 let child: EventEmitter & { stdout: PassThrough; stderr: PassThrough };
 beforeEach(() => {
-  vi.useFakeTimers(); vi.mocked(spawn).mockReset(); vi.mocked(killProcessGroup).mockClear();
+  vi.useFakeTimers(); vi.mocked(spawn).mockReset(); vi.mocked(stopProcessTree).mockClear();
   child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
   vi.mocked(spawn).mockReturnValue(child as never);
 });
@@ -73,7 +73,7 @@ describe("PDF font inspection", () => {
     const result = inspectPdfFonts("/private/main.pdf", controller.signal);
     controller.abort();
     await expect(result).rejects.toMatchObject({ name: "AbortError" });
-    expect(killProcessGroup).toHaveBeenCalledWith(child);
+    expect(stopProcessTree).toHaveBeenCalledWith(child);
     await expect(inspectPdfFonts("/private/main.pdf", controller.signal)).rejects.toMatchObject({ name: "AbortError" });
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
@@ -83,7 +83,7 @@ describe("PDF font inspection", () => {
     const result = inspectPdfFonts("/private/main.pdf");
     const rejected = expect(result).rejects.toMatchObject({ code: "PDF_FONTS_FAILED" });
     await vi.advanceTimersByTimeAsync(15_000); await rejected;
-    expect(killProcessGroup).toHaveBeenCalledWith(child);
+    expect(stopProcessTree).toHaveBeenCalledWith(child);
     for (const stream of ["stdout", "stderr"] as const) {
       const next = inspectPdfFonts("/private/main.pdf");
       child[stream].write(Buffer.alloc(1024 * 1024 + 1));

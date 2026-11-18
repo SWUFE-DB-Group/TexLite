@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { PdfFont } from "../shared/pdfFonts.js";
 import { httpError } from "./http.js";
-import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
+import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
 
 const timeoutMs = 15_000;
 const maxOutputBytes = 1024 * 1024;
@@ -29,8 +29,8 @@ export function inspectPdfFonts(pdfPath: string, signal?: AbortSignal): Promise<
     });
     const stdout: Buffer[] = [];
     let bytes = 0, hasWarnings = false, limited = false, settled = false;
-    const abort = () => killProcessGroup(child);
-    const timer = setTimeout(() => { limited = true; killProcessGroup(child); }, timeoutMs);
+    const abort = () => { void stopProcessTree(child).catch(() => finish(httpError(422, "PDF_FONTS_FAILED"))); };
+    const timer = setTimeout(() => { limited = true; abort(); }, timeoutMs);
     const finish = (error?: unknown) => {
       if (settled) return;
       settled = true;
@@ -43,7 +43,7 @@ export function inspectPdfFonts(pdfPath: string, signal?: AbortSignal): Promise<
     const collect = (chunk: Buffer, keep: boolean) => {
       bytes += chunk.length;
       if (bytes > maxOutputBytes) {
-        if (!limited) { limited = true; killProcessGroup(child); }
+        if (!limited) { limited = true; abort(); }
         return;
       }
       if (keep) stdout.push(chunk);
@@ -54,8 +54,11 @@ export function inspectPdfFonts(pdfPath: string, signal?: AbortSignal): Promise<
     child.once("error", () => finish(signal?.aborted
       ? new DOMException("Aborted", "AbortError")
       : httpError(503, "PDF_FONTS_UNAVAILABLE")));
-    child.once("close", (code) => finish(signal?.aborted ? new DOMException("Aborted", "AbortError")
-      : limited || code !== 0 ? httpError(422, "PDF_FONTS_FAILED") : undefined));
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      afterProcessStop(child, () => finish(signal?.aborted ? new DOMException("Aborted", "AbortError")
+        : limited || code !== 0 ? httpError(422, "PDF_FONTS_FAILED") : undefined), () => finish(httpError(422, "PDF_FONTS_FAILED")));
+    });
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
   });

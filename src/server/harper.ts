@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { afterProcessStop, stopProcessTree } from "./processTree.js";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -265,7 +266,10 @@ export class HarperService {
     }
     this.waitingByLane.clear();
     this.latestSequenceByLane.clear();
-    this.activeChild?.kill("SIGTERM");
+    if (this.activeChild) {
+      if (process.platform === "win32") await stopProcessTree(this.activeChild).catch(() => undefined);
+      else this.activeChild.kill("SIGTERM");
+    }
     await this.queueRunner?.catch(() => undefined);
     this.inFlight.clear();
     this.scheduledByKey.clear();
@@ -444,6 +448,7 @@ export class HarperService {
       const stderr: Buffer[] = [];
       let outputBytes = 0;
       let settled = false;
+      let terminationError: Error | undefined;
       let timer: NodeJS.Timeout | undefined;
       const finish = (callback: () => void) => {
         if (settled) return;
@@ -453,15 +458,23 @@ export class HarperService {
         callback();
       };
       const fail = (error: Error) => finish(() => reject(error));
+      const terminate = (error: Error) => {
+        if (settled || terminationError) return;
+        if (process.platform !== "win32") {
+          child.kill("SIGTERM");
+          fail(error);
+          return;
+        }
+        terminationError = error;
+        void stopProcessTree(child).then(() => fail(error), fail);
+      };
       timer = setTimeout(() => {
-        child.kill("SIGTERM");
-        fail(new Error(`${this.command} timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`));
+        terminate(new Error(`${this.command} timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`));
       }, timeoutMs);
       const collect = (target: Buffer[]) => (chunk: Buffer) => {
         outputBytes += chunk.length;
         if (outputBytes > outputLimit) {
-          child.kill("SIGTERM");
-          fail(new Error(`${this.command} produced too much output.`));
+          terminate(new Error(`${this.command} produced too much output.`));
           return;
         }
         target.push(chunk);
@@ -469,11 +482,13 @@ export class HarperService {
       child.stdout!.on("data", collect(stdout));
       child.stderr!.on("data", collect(stderr));
       child.once("error", (error) => fail(error));
-      child.once("close", (code) => finish(() => resolve({
-        code,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8")
-      })));
+      child.once("close", (code) => {
+        clearTimeout(timer);
+        afterProcessStop(child, () => finish(() => {
+          if (terminationError) return reject(terminationError);
+          resolve({ code, stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
+        }), fail);
+      });
     });
   }
 }

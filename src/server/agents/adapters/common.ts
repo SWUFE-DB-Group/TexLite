@@ -1,21 +1,35 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileOptionsWithStringEncoding } from "node:child_process";
 import { promisify } from "node:util";
 import type { AgentAdapterContext, AgentLaunch, NativeSessionInspection } from "./types.js";
+import { windowsAgentCommand } from "../terminal.js";
 
-export const executeAgentCommand = promisify(execFile);
+const exec = promisify(execFile);
+export function executeAgentCommand(executable: string, args: string[], options: Omit<ExecFileOptionsWithStringEncoding, "encoding">) {
+  if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executable)) {
+    const command = windowsAgentCommand(executable, args);
+    return exec(command.executable, command.argv, { ...options, shell: false, windowsVerbatimArguments: true, encoding: "utf8" });
+  }
+  return exec(executable, args, { ...options, shell: false, encoding: "utf8" });
+}
 export const noAgentFeatures = async (): Promise<ReadonlySet<string>> => new Set();
 
 export function hostAgentEnvironment(): Record<string, string> {
   const env: Record<string, string> = {};
   const names = /^(?:PATH|HOME|USER|USERNAME|USERPROFILE|SHELL|COMSPEC|SystemRoot|SYSTEMROOT|WINDIR|APPDATA|LOCALAPPDATA|TEMP|TMP|TMPDIR|LANG|LC_.*|COLORTERM|XDG_.*|https?_proxy|HTTPS?_PROXY|ALL_PROXY|all_proxy|NO_PROXY|no_proxy|SSL_CERT_FILE|SSL_CERT_DIR|NODE_EXTRA_CA_CERTS|SSH_AUTH_SOCK|OPENAI_.*|ANTHROPIC_.*|GOOGLE_.*|GEMINI_.*|OPENCODE_CONFIG(?:_DIR|_CONTENT)?|CODEX_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX)$/;
-  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && names.test(key)) env[key] = value;
+  for (const [key, value] of Object.entries(process.env)) {
+    const allowed = process.platform === "win32" ? key.toUpperCase() : key;
+    if (value !== undefined && names.test(allowed)) env[allowed] = value;
+  }
   env.TERM = "xterm-256color";
   return env;
 }
 
 export function agentLaunch(context: AgentAdapterContext, args: string[], overrides: Record<string, string> = {}): AgentLaunch {
+  const platformOverrides = process.platform === "win32"
+    ? Object.fromEntries(Object.entries(overrides).map(([key, value]) => [key.toUpperCase(), value]))
+    : overrides;
   // Inherit host cache settings for reuse across tasks and native terminals.
   // Adapters define native state/session ownership independently of caching.
   return { executable: context.executable, args, env: { ...hostAgentEnvironment(),
@@ -23,7 +37,7 @@ export function agentLaunch(context: AgentAdapterContext, args: string[], overri
     // discovery from treating that ancestor repository as the paper's repo.
     GIT_CEILING_DIRECTORIES: path.dirname(context.workingDirectory),
     TEXLITE_PROJECT_CONTEXT: path.join(context.stateDirectory, "project-context.json"),
-    TEXLITE_COMPILE_LOG: path.join(context.stateDirectory, "compile.log"), ...overrides } };
+    TEXLITE_COMPILE_LOG: path.join(context.stateDirectory, "compile.log"), ...platformOverrides } };
 }
 
 /** Copy an explicit credential/config file; never share native conversation history. */

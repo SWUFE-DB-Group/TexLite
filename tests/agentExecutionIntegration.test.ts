@@ -23,6 +23,45 @@ function processAlive(pid: number): boolean {
 }
 
 describe("recoverable agent PTY integration", () => {
+  it.runIf(process.platform === "win32")("reaps a Windows Agent job after the service and its launcher die", async () => {
+    expect(await loadAgentPty()).not.toBeNull();
+    const root = directory();
+    const filename = path.join(root, "execution.json");
+    const host = fork(fileURLToPath(new URL("./fixtures/agent-crash-host.ts", import.meta.url)), [root], {
+      execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "pipe", "ipc"]
+    });
+    let output = "";
+    host.stderr?.on("data", (data) => { output += data; });
+    let launcherPid: number | undefined;
+    host.on("message", (message) => {
+      if ((message as { ready?: boolean }).ready) launcherPid = (message as { pid: number }).pid;
+    });
+    try {
+      await vi.waitFor(() => {
+        expect(host.exitCode, output).toBeNull();
+        expect(launcherPid, output).toBeDefined();
+      }, { timeout: 25_000 });
+      const record = JSON.parse(fs.readFileSync(filename, "utf8")) as { executionId: string; version: number };
+      expect(record.version).toBe(2);
+      const pids = JSON.parse(fs.readFileSync(path.join(root, "pids.json"), "utf8")) as { cli: number; child: number };
+      expect(processAlive(pids.cli)).toBe(true);
+      expect(processAlive(pids.child)).toBe(true);
+      const exited = new Promise<void>((resolve) => host.once("exit", () => resolve()));
+      host.kill("SIGKILL"); await exited;
+      if ((await inspectAgentProcess(launcherPid!, record.executionId))?.owned) process.kill(launcherPid!, "SIGKILL");
+      await recoverAgentExecution(filename);
+      expect(fs.existsSync(filename)).toBe(false);
+      await vi.waitFor(() => {
+        expect(processAlive(launcherPid!)).toBe(false);
+        expect(processAlive(pids.cli)).toBe(false);
+        expect(processAlive(pids.child)).toBe(false);
+      }, { timeout: 5_000 });
+    } finally {
+      host.kill("SIGKILL");
+      if (fs.existsSync(filename)) await recoverAgentExecution(filename);
+    }
+  }, 45_000);
+
   it("recovers a real process group after its TexLite-like host is forcibly killed", async (test) => {
     if (process.platform !== "linux" || !await loadAgentPty()) { test.skip(); return; }
     const root = directory();

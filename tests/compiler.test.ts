@@ -170,6 +170,38 @@ describe("reliable project compilation", () => {
     releaseBlocker();
   });
 
+  it("shuts down by cancelling active and pending compilation, then waiting for cleanup", async () => {
+    const coordinator = new ProjectCompileCoordinator(new CompileQueue(1));
+    let activeSignal!: AbortSignal;
+    let cleanup!: () => void;
+    const cleaned = new Promise<void>((resolve) => { cleanup = resolve; });
+    const active = coordinator.request({
+      projectId: "paper", runId: "active", generation: "one",
+      onQueued: vi.fn(), onSelected: vi.fn(), onDiscarded: vi.fn(),
+      execute: async (signal) => {
+        activeSignal = signal;
+        await cleaned;
+        return { runId: "active", revision: "one", ok: false, cancelled: true, log: "",
+          diagnostics: { warnings: [], errors: [] }, pdfPath: null, synctexPath: null };
+      }
+    });
+    const execute = vi.fn();
+    const onDiscarded = vi.fn();
+    const next = { projectId: "paper", runId: "pending", generation: "two",
+      onQueued: vi.fn(), onSelected: vi.fn(), onDiscarded, execute };
+    const pending = coordinator.request(next);
+    const shutdownComplete = vi.fn();
+    const closing = coordinator.close().then(shutdownComplete);
+    expect(activeSignal.aborted).toBe(true);
+    await expect(pending).resolves.toMatchObject({ cancelled: true });
+    await expect(coordinator.request({ ...next, runId: "too-late" })).resolves.toMatchObject({ cancelled: true });
+    expect(shutdownComplete).not.toHaveBeenCalled();
+    cleanup();
+    await Promise.all([active, closing]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(onDiscarded).toHaveBeenCalledTimes(2);
+  });
+
   it("compiles from an immutable snapshot and atomically selects a complete artifact set", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-compiler-"));
     temporaryRoots.push(root);

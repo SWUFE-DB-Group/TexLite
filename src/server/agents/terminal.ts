@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 
 export interface AgentPty {
   pid: number;
+  stop?: () => Promise<void>;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   onData(callback: (data: string) => void): { dispose(): void };
@@ -34,19 +35,21 @@ export async function loadAgentPty(): Promise<AgentPtyFactory | null> {
   } catch { return null; }
 }
 
-export function windowsAgentCommand(executable: string, args: string[]): { executable: string; args: string } {
+export function windowsAgentCommand(executable: string, args: string[]): { executable: string; args: string; argv: string[] } {
   const quote = (value: string) => {
     // Registered CLI flags/IDs never require shell expansion. Refuse values
     // that cmd.exe would reinterpret even within double quotes.
-    if (/["%\r\n]/.test(value)) throw new Error("Unsupported Windows command argument");
+    if (/["%\0\r\n]/.test(value)) throw new Error("Unsupported Windows command argument");
     return `"${value}"`;
   };
   const command = [executable, ...args].map(quote).join(" ");
-  return { executable: process.env.COMSPEC ?? process.env.ComSpec ?? "cmd.exe", args: `/d /v:off /s /c "${command}"` };
+  const argv = ["/d", "/v:off", "/s", "/c", `"${command}"`];
+  return { executable: process.env.COMSPEC ?? process.env.ComSpec ?? "cmd.exe", args: argv.join(" "), argv };
 }
 
 /** Caller must own the live PTY or verify the persisted launcher's birth identity. */
-export async function stopAgentPty(pty: Pick<AgentPty, "pid">): Promise<void> {
+export async function stopAgentPty(pty: Pick<AgentPty, "pid" | "stop">): Promise<void> {
+  if (pty.stop) return pty.stop();
   if (process.platform === "win32") {
     // Natural exit (or another stop) may have already removed the process.
     // Do not interpret localized taskkill output/exit codes as proof of this:

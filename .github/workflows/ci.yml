@@ -60,3 +60,27 @@ jobs:
 
       - name: Inspect npm package contents
         run: npm pack --dry-run --ignore-scripts
+
+  windows-processes:
+    name: Windows x64 process lifecycle
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          architecture: x64
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Exercise process trees and Agent lifecycle with local fixtures
+        run: >-
+          npm test --
+          tests/windowsProcessTree.test.ts
+          tests/agentExecutionIntegration.test.ts
+          tests/agentExecutionRecovery.test.ts
+          tests/agentTerminalLifecycle.test.ts
+          tests/agentProcessIdentity.test.ts
+      - run: npm run build
+      - run: npm pack --dry-run --ignore-scripts

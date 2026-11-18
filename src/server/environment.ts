@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { LATEX_ENGINES, type Config } from "./config.js";
 import { httpError } from "./http.js";
-import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
+import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
 import { COMPILER_VERSION_TOOLS } from "../shared/compilerVersions.js";
 
 export const MIN_NODE_MAJOR = 24;
@@ -236,13 +236,17 @@ function commandVersion(command: string, timeoutMs: number, args: string[]): Pro
       clearTimeout(timer);
       resolve({ ...result, stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
     };
-    const timer = setTimeout(() => { timedOut = true; killProcessGroup(child); }, timeoutMs);
+    const terminate = () => {
+      void stopProcessTree(child).catch((error: Error) => finish({ status: null, error: error.message, errorCode: null }));
+    };
+    const timer = setTimeout(() => { timedOut = true; terminate(); }, timeoutMs);
     const collect = (target: Buffer[]) => (chunk: Buffer) => {
       if (settled) return;
       outputBytes += chunk.length;
       if (outputBytes > maxCommandOutputBytes) {
+        if (outputExceeded) return;
         outputExceeded = true;
-        killProcessGroup(child);
+        terminate();
         return;
       }
       target.push(chunk);
@@ -250,10 +254,13 @@ function commandVersion(command: string, timeoutMs: number, args: string[]): Pro
     child.stdout.on("data", collect(stdout));
     child.stderr.on("data", collect(stderr));
     child.once("error", (error: NodeJS.ErrnoException) => finish({ status: null, error: error.message, errorCode: error.code ?? null }));
-    child.once("close", (status) => finish({
-      status,
-      error: timedOut ? "command timed out" : outputExceeded ? "command produced too much output" : null,
-      errorCode: null
-    }));
+    child.once("close", (status) => {
+      clearTimeout(timer);
+      afterProcessStop(child, () => finish({
+        status,
+        error: timedOut ? "command timed out" : outputExceeded ? "command produced too much output" : null,
+        errorCode: null
+      }), (error: Error) => finish({ status: null, error: error.message, errorCode: null }));
+    });
   });
 }

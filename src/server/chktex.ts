@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
+import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
 
 /** A stable, line-based representation of one ChkTeX diagnostic. */
 export interface RawChktexLint {
@@ -179,7 +179,9 @@ export class ChktexService {
     }
     this.waitingByLane.clear();
     this.latestSequenceByLane.clear();
-    for (const child of this.activeChildren) killProcessGroup(child, "SIGTERM");
+    const children = [...this.activeChildren];
+    if (process.platform === "win32") await Promise.allSettled(children.map((child) => stopProcessTree(child)));
+    else for (const child of children) void stopProcessTree(child, "SIGTERM");
     await Promise.allSettled([...this.activeOperations]);
     await this.probePromise?.catch(() => undefined);
     this.inFlight.clear();
@@ -348,6 +350,7 @@ export class ChktexService {
       let outputBytes = 0;
       let settled = false;
       let timedOut = false;
+      let terminationError: Error | undefined;
       const finish = (callback: () => void): void => {
         if (settled) return;
         settled = true;
@@ -356,12 +359,13 @@ export class ChktexService {
         callback();
       };
       const terminate = (error: Error): void => {
-        killProcessGroup(child);
-        finish(() => reject(error));
+        if (terminationError || settled) return;
+        terminationError = error;
+        void stopProcessTree(child).then(() => finish(() => reject(error)), (failure: unknown) => finish(() => reject(failure)));
       };
       const timer = setTimeout(() => {
         timedOut = true;
-        killProcessGroup(child);
+        void stopProcessTree(child).catch((error) => finish(() => reject(error)));
       }, timeoutMs);
       const collect = (target: Buffer[]) => (chunk: Buffer): void => {
         outputBytes += chunk.length;
@@ -379,10 +383,14 @@ export class ChktexService {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return reject(new ChktexUnavailableError(`The optional ${this.command} command is not available.`));
         reject(error);
       }));
-      child.once("close", (code) => finish(() => {
-        if (timedOut) return reject(new Error(`${this.command} timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`));
-        resolve({ code, stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
-      }));
+      child.once("close", (code) => {
+        clearTimeout(timer);
+        afterProcessStop(child, () => finish(() => {
+          if (terminationError) return reject(terminationError);
+          if (timedOut) return reject(new Error(`${this.command} timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`));
+          resolve({ code, stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
+        }), (error: unknown) => finish(() => reject(error)));
+      });
       child.stdin?.end(input);
     });
   }

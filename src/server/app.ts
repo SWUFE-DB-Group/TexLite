@@ -102,6 +102,9 @@ export async function buildApp(
   app.addHook("onClose", async () => { await updates.dispose(); });
   const queue = new CompileQueue(config.maxCompileJobs);
   const compileCoordinator = new ProjectCompileCoordinator(queue);
+  // Windows PM2 uses a bounded IPC shutdown. Do not change when a POSIX
+  // instance drains in-flight compile requests.
+  if (process.platform === "win32") app.addHook("preClose", async () => { await compileCoordinator.close(); });
   const metrics = new MetricRegistry(200);
   const eventLoopDelay = monitorEventLoopDelay({ resolution: EVENT_LOOP_DELAY_RESOLUTION_MS });
   eventLoopDelay.enable();

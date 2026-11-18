@@ -4,9 +4,12 @@ import { fileURLToPath } from "node:url";
 import { inspectAgentProcess, agentProcessGroupAlive } from "./processIdentity.js";
 import { stopAgentPty, windowsAgentCommand, type AgentPty, type AgentPtyFactory } from "./terminal.js";
 import { httpError } from "../http.js";
+import { attachWindowsAgentJob, stopWindowsAgentJob } from "./windowsJob.js";
 
 interface ExecutionRecord {
-  version: 1;
+  // Version 2 denotes a committed Windows Job Object. Older TexLite builds
+  // must reject it rather than fall back to PID-only recovery on downgrade.
+  version: 1 | 2;
   executionId: string;
   platform: NodeJS.Platform;
   pid: number | null;
@@ -17,7 +20,8 @@ function readRecord(filename: string): ExecutionRecord | null {
   let value: ExecutionRecord;
   try { value = JSON.parse(fs.readFileSync(filename, "utf8")) as ExecutionRecord; }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
-  if (value?.version !== 1 || !/^[a-f\d-]{36}$/.test(value.executionId) || value.platform !== process.platform
+  if ((value?.version !== 1 && value?.version !== 2) || !/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/.test(value.executionId) || value.platform !== process.platform
+    || (value.version === 2 && (value.platform !== "win32" || value.pid === null))
     || !(value.pid === null && value.identity === null || Number.isSafeInteger(value.pid) && value.pid! > 0 && typeof value.identity === "string" && value.identity)) {
     throw httpError(409, "AGENT_RECOVERY_FAILED");
   }
@@ -38,7 +42,19 @@ export function clearAgentExecution(filename: string): void {
 export async function recoverAgentExecution(filename: string): Promise<void> {
   const record = readRecord(filename);
   if (!record) return;
+  if (record.version === 2) {
+    // The job outlives a dead launcher until all its members have exited.
+    // Never stop a recycled PID or infer completion from launcher exit.
+    await stopWindowsAgentJob(record.executionId);
+    clearAgentExecution(filename);
+    return;
+  }
   if (record.pid !== null) {
+    if (record.platform === "win32") {
+      // Legacy records have no owned job and cannot prove that every
+      // descendant is gone. Do not release the project on that basis.
+      throw httpError(409, "AGENT_RECOVERY_FAILED");
+    }
     const process = await inspectAgentProcess(record.pid, record.executionId);
     if (process && process.identity === record.identity && process.owned) {
       // Verify twice before signalling; a recycled PID must never be targeted.
@@ -69,14 +85,14 @@ export async function recoverAgentExecution(filename: string): Promise<void> {
 export async function spawnRecoverableAgent(spawn: AgentPtyFactory, executable: string, args: string[],
   options: Parameters<AgentPtyFactory>[2], filename: string, beforeStart?: () => void): Promise<AgentPty> {
   const record: ExecutionRecord = { version: 1, executionId: randomUUID(), platform: process.platform, pid: null, identity: null };
-  fs.writeFileSync(filename, JSON.stringify(record), { flag: "wx", mode: 0o600 });
   const compiled = new URL("./launcher.js", import.meta.url);
   const launcher = fileURLToPath(fs.existsSync(compiled) ? compiled : new URL("./launcher.ts", import.meta.url));
   let launch = { executable, args, windowsVerbatimArguments: false };
   if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executable)) {
     const command = windowsAgentCommand(executable, args);
-    launch = { executable: command.executable, args: ["/d", "/v:off", "/s", "/c", command.args.slice("/d /v:off /s /c ".length)], windowsVerbatimArguments: true };
+    launch = { executable: command.executable, args: command.argv, windowsVerbatimArguments: true };
   }
+  fs.writeFileSync(filename, JSON.stringify(record), { flag: "wx", mode: 0o600 });
   let pty: AgentPty | undefined;
   try {
     pty = await spawn(process.execPath, [launcher, filename, record.executionId], {
@@ -92,6 +108,11 @@ export async function spawnRecoverableAgent(spawn: AgentPtyFactory, executable: 
     }
     if (!identity?.owned) throw httpError(409, "AGENT_START_FAILED");
     record.pid = pty.pid; record.identity = identity.identity;
+    if (process.platform === "win32") {
+      await attachWindowsAgentJob(pty.pid, record.executionId);
+      record.version = 2;
+      wrapped.stop = () => stopWindowsAgentJob(record.executionId);
+    }
     // Conversation cleanup ownership must be durable before the CLI is allowed
     // to create any native state, not after the launch promise returns.
     beforeStart?.();
@@ -102,7 +123,9 @@ export async function spawnRecoverableAgent(spawn: AgentPtyFactory, executable: 
   } catch (error) {
     // No permit was issued, so the CLI cannot have started. Keep any failed
     // cleanup lease so service recovery can cancel the waiting launcher.
-    if (pty) await stopAgentPty(pty);
+    // On Windows no permit was issued. The launcher will exit when the
+    // pending record is removed; no CLI or descendants can have started.
+    if (pty && process.platform !== "win32") await stopAgentPty(pty);
     clearAgentExecution(filename);
     throw error;
   }

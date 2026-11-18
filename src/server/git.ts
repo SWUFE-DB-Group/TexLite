@@ -7,7 +7,7 @@ import type { DatabaseConnection, ProjectRow, UserRow } from "./db.js";
 import { assertGitAvailable } from "./environment.js";
 import { assertNoSourceSymlinks, sourceRoot, symbolicLinkError } from "./files.js";
 import { httpError } from "./http.js";
-import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
+import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
 import type { GitCommit, GitIdentity, ProjectGitStatus } from "../shared/gitProtocol.js";
 export type { GitCommit, GitIdentity, ProjectGitStatus } from "../shared/gitProtocol.js";
 
@@ -462,7 +462,7 @@ export class ProjectGitService {
       const terminate = (): void => {
         if (terminated) return;
         terminated = true;
-        killProcessGroup(child);
+        void stopProcessTree(child).catch(fail);
       };
       const timer = setTimeout(() => { timedOut = true; terminate(); }, this.config.gitOperationTimeoutMs);
       const collect = (target: Buffer[]) => (chunk: Buffer) => {
@@ -472,17 +472,20 @@ export class ProjectGitService {
       };
       child.stdout.on("data", collect(stdout));
       child.stderr.on("data", collect(stderr));
-      child.once("error", () => { clearTimeout(timer); reject(httpError(500, "GIT_OPERATION_FAILED")); });
+      function fail() { clearTimeout(timer); reject(httpError(500, "GIT_OPERATION_FAILED")); }
+      child.once("error", fail);
       child.once("close", (code) => {
         clearTimeout(timer);
-        const result = { stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8"), code: code ?? -1 };
-        if (timedOut) return reject(httpError(504, "GIT_TIMEOUT"));
-        if (size > MAX_COMMAND_OUTPUT) return reject(httpError(413, "GIT_OUTPUT_TOO_LARGE"));
-        if (result.code !== 0 && !allowedCodes.includes(result.code)) {
-          const pushAuthError = args[0] === "push" ? classifyGitPushFailure(result.stderr) : null;
-          return reject(httpError(400, pushAuthError ?? "GIT_COMMAND_FAILED"));
-        }
-        resolve(result);
+        afterProcessStop(child, () => {
+          const result = { stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8"), code: code ?? -1 };
+          if (timedOut) return reject(httpError(504, "GIT_TIMEOUT"));
+          if (size > MAX_COMMAND_OUTPUT) return reject(httpError(413, "GIT_OUTPUT_TOO_LARGE"));
+          if (result.code !== 0 && !allowedCodes.includes(result.code)) {
+            const pushAuthError = args[0] === "push" ? classifyGitPushFailure(result.stderr) : null;
+            return reject(httpError(400, pushAuthError ?? "GIT_COMMAND_FAILED"));
+          }
+          resolve(result);
+        }, fail);
       });
     });
   }

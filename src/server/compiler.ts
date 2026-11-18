@@ -10,7 +10,7 @@ import type { Config } from "./config.js";
 import type { DatabaseConnection } from "./db.js";
 import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, texFileStem } from "./files.js";
 import { parseCompileDiagnostics, type CompileDiagnostics } from "./compileDiagnostics.js";
-import { detachedProcessGroup, killProcessGroup } from "./processTree.js";
+import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
 
 export interface CompileTimings {
   cacheSyncMs: number;
@@ -182,10 +182,15 @@ interface ProjectCompileState {
  */
 export class ProjectCompileCoordinator {
   private readonly targets = new Map<string, ProjectCompileState>();
+  private closing = false;
 
   constructor(private readonly queue: CompileQueue) {}
 
   request(input: CoordinatedCompileJob): Promise<CoordinatedCompileResult> {
+    if (this.closing) {
+      input.onDiscarded("cancelled");
+      return Promise.resolve(cancelledCompileResult(input));
+    }
     const targetKey = `${input.projectId}\0${input.target ?? ""}`;
     const state = this.targets.get(targetKey) ?? { active: null, pending: null };
     this.targets.set(targetKey, state);
@@ -232,11 +237,25 @@ export class ProjectCompileCoordinator {
   cancel(projectId: string, target?: string): { runId: string; status: "queued" | "running" } | null {
     const targetKey = `${projectId}\0${target ?? ""}`;
     const state = this.targets.get(targetKey);
-    const active = state?.active;
+    return state ? this.cancelState(state) : null;
+  }
+
+  async close(): Promise<void> {
+    this.closing = true;
+    const active: Promise<CoordinatedCompileResult>[] = [];
+    for (const state of this.targets.values()) {
+      if (state.active) active.push(state.active.promise);
+      this.cancelState(state);
+    }
+    await Promise.allSettled(active);
+  }
+
+  private cancelState(state: ProjectCompileState): { runId: string; status: "queued" | "running" } | null {
+    const active = state.active;
     if (!active) return null;
     const status = active.started ? "running" : "queued";
     active.controller.abort();
-    if (state?.pending) {
+    if (state.pending) {
       const pending = state.pending;
       state.pending = null;
       pending.controller.abort();
@@ -797,6 +816,7 @@ export async function compileProject(
     });
     let log = "";
     let cancelled = false;
+    let timedOut = false;
     const append = (chunk: Buffer): void => {
       log += chunk.toString("utf8");
       if (log.length > 2_000_000) log = log.slice(-2_000_000);
@@ -809,28 +829,33 @@ export async function compileProject(
       if (cancelled) return;
       cancelled = true;
       log += "\nCompilation was cancelled.\n";
-      killProcessGroup(child);
+      void stopProcessTree(child).catch(fail);
     };
     const removeAbortListener = () => signal?.removeEventListener("abort", cancel);
-    child.once("error", (error) => {
+    function fail(error: unknown) {
       if (timeout) clearTimeout(timeout);
       removeAbortListener();
       reject(error);
-    });
+    }
+    child.once("error", fail);
 
     timeout = setTimeout(() => {
       if (cancelled) return;
-      log += `\nCompilation exceeded ${config.compileTimeoutMs / 1000} seconds and was terminated.\n`;
-      killProcessGroup(child);
+      if (process.platform === "win32") timedOut = true;
+      else log += `\nCompilation exceeded ${config.compileTimeoutMs / 1000} seconds and was terminated.\n`;
+      void stopProcessTree(child).catch(fail);
     }, config.compileTimeoutMs);
 
     if (signal?.aborted) cancel();
     else signal?.addEventListener("abort", cancel, { once: true });
 
-    child.on("close", (code) => {
+    child.once("close", (code) => {
       if (timeout) clearTimeout(timeout);
       removeAbortListener();
-      resolve({ code, log, cancelled });
+      afterProcessStop(child, () => {
+        if (timedOut) log += `\nCompilation exceeded ${config.compileTimeoutMs / 1000} seconds and was terminated.\n`;
+        resolve({ code: timedOut ? null : code, log, cancelled });
+      }, reject);
     });
   });
   const latexmkMs = performance.now() - latexmkStartedAt;

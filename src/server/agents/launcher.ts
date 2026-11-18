@@ -17,13 +17,16 @@ process.on("SIGTERM", () => undefined);
 process.on("SIGINT", () => undefined);
 if (process.platform !== "win32") process.on("SIGHUP", () => undefined);
 
-const deadline = Date.now() + 10_000;
+const deadline = Date.now() + (process.platform === "win32" ? 30_000 : 10_000);
 while (true) {
-  let record: { executionId: string; pid: number | null; identity: string | null };
+  let record: { version: number; executionId: string; pid: number | null; identity: string | null };
   try { record = JSON.parse(fs.readFileSync(recordFile, "utf8")); }
   catch { process.exit(1); }
   if (record.executionId !== executionId) process.exit(1);
-  if (record.pid === process.pid && record.identity) break;
+  if (record.pid === process.pid && record.identity) {
+    if (record.version !== (process.platform === "win32" ? 2 : 1)) process.exit(1);
+    break;
+  }
   if (Date.now() >= deadline) process.exit(1);
   await new Promise<void>((resolve) => setTimeout(resolve, 25));
 }

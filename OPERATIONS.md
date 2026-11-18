@@ -12,6 +12,14 @@ For the product's intended use and editor comparison, start with the
 - At least one configured engine: `pdflatex`, `xelatex`, or `lualatex`
 - `git` only when a project owner uses the optional Git/GitHub integration
 
+Native Windows x64 compatibility is still being verified. The Windows Agent
+terminal uses Windows PowerShell, CIM and a Windows Job Object to track each
+TexLite-launched process tree. It will not start a CLI if Windows policy blocks
+job assignment. Stop all TexLite Agent tasks before upgrading an experimental
+Windows deployment: older running records without job ownership cannot be
+recovered automatically. TexLite keeps those projects reserved instead of
+starting another task on top of a potentially surviving process.
+
 Check a host before initialization:
 
 ~~~bash
