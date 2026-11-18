@@ -221,7 +221,7 @@ export async function buildApp(
     history.enforceRetention(row.id);
     editHistory.enforceRetention(row.id);
     pruneCompileRuns(row.id);
-    pruneOrphanedCompileRuns(config, row.id);
+    pruneOrphanedCompileRuns(config, row.id, (err, directory) => app.log.warn({ err, directory }, "Could not remove a retired compile run"));
   }
   app.addHook("onClose", async () => {
     eventLoopDelay.disable();

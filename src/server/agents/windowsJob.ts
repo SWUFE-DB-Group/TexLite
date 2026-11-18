@@ -80,24 +80,33 @@ public static class TexLiteJob {
             throw new Win32Exception(error);
         }
         try {
-            if (!TerminateJobObject(job, 1)) throw new Win32Exception();
+            if (Active(job) == 0) return;
+            if (!TerminateJobObject(job, 1)) {
+                int error = Marshal.GetLastWin32Error();
+                if (Active(job) != 0) throw new Win32Exception(error);
+                return;
+            }
             Stopwatch timer = Stopwatch.StartNew();
             while (true) {
-                Accounting value;
-                if (!QueryInformationJobObject(job, 1, out value, (uint)Marshal.SizeOf(typeof(Accounting)), IntPtr.Zero)) throw new Win32Exception();
-                if (value.ActiveProcesses == 0) return;
-                if (timer.ElapsedMilliseconds >= 3000) throw new TimeoutException("Agent job still has active processes");
+                if (Active(job) == 0) return;
+                if (timer.ElapsedMilliseconds >= 3000) throw new TimeoutException("TexLite job still has active processes");
                 Thread.Sleep(30);
             }
         } finally { CloseHandle(job); }
     }
+
+    static uint Active(IntPtr job) {
+        Accounting value;
+        if (!QueryInformationJobObject(job, 1, out value, (uint)Marshal.SizeOf(typeof(Accounting)), IntPtr.Zero)) throw new Win32Exception();
+        return value.ActiveProcesses;
+    }
 }
 `;
 
-function jobName(executionId: string): string {
-  if (!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(executionId)) throw new Error("Invalid agent execution ID");
+function jobName(executionId: string, kind: "Agent" | "Command"): string {
+  if (!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(executionId)) throw new Error("Invalid execution ID");
   // Use the same namespace across login sessions when the server restarts.
-  return `Global\\TexLite.Agent.${executionId}`;
+  return `Global\\TexLite.${kind}.${executionId}`;
 }
 
 async function powershell(body: string): Promise<void> {
@@ -108,14 +117,14 @@ async function powershell(body: string): Promise<void> {
       { timeout: 10_000, windowsHide: true, maxBuffer: 32 * 1024 });
   } catch (error) {
     const stderr = (error as { stderr?: string })?.stderr?.trim();
-    throw new Error(stderr ? `Windows Agent job: ${stderr.slice(0, 512)}` : "Could not manage the Windows Agent job", { cause: error });
+    throw new Error(stderr ? `Windows job: ${stderr.slice(0, 512)}` : "Could not manage the Windows job", { cause: error });
   }
 }
 
-/** Attach before the launch permit is written, so all CLI descendants inherit the job. */
-export async function attachWindowsAgentJob(pid: number, executionId: string): Promise<void> {
+/** Attach before issuing the launch permit, so all CLI descendants inherit the job. */
+export async function attachWindowsJob(pid: number, executionId: string, kind: "Agent" | "Command"): Promise<void> {
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error("Invalid Windows launcher PID");
-  const name = jobName(executionId);
+  const name = jobName(executionId, kind);
   await powershell(`
 $launcher = Get-Process -Id ${pid} -ErrorAction Stop
 try {
@@ -129,6 +138,9 @@ try {
 `);
 }
 
-export function stopWindowsAgentJob(executionId: string): Promise<void> {
-  return powershell(`[TexLiteJob]::Stop('${jobName(executionId)}')`);
+export function stopWindowsJob(executionId: string, kind: "Agent" | "Command"): Promise<void> {
+  return powershell(`[TexLiteJob]::Stop('${jobName(executionId, kind)}')`);
 }
+
+export const attachWindowsAgentJob = (pid: number, id: string): Promise<void> => attachWindowsJob(pid, id, "Agent");
+export const stopWindowsAgentJob = (id: string): Promise<void> => stopWindowsJob(id, "Agent");

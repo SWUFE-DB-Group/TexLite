@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { stopProcessTree } from "../src/server/processTree.js";
+import { afterProcessStop, spawnOwnedCommand, stopProcessTree } from "../src/server/processTree.js";
 import { executeAgentCommand } from "../src/server/agents/adapters/common.js";
 
 it.runIf(process.platform === "win32")("uses the same batch quoting for noninteractive Agent commands", async () => {
@@ -43,3 +43,33 @@ it.runIf(process.platform === "win32")("cancels and waits for a Windows command 
     if (child.exitCode === null && child.signalCode === null) await stopProcessTree(child);
   }
 }, 15_000);
+
+it.runIf(process.platform === "win32").each(["command exit", "launcher exit", "parent disconnect", "cancel"])(
+  "reclaims owned Windows descendants after %s", async (event) => {
+    const child = spawnOwnedCommand(process.execPath, ["-e", `
+      const worker = require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+      console.log(worker.pid);
+      ${event === "command exit" ? "worker.unref();" : "setTimeout(() => {}, 30000);"}
+    `]);
+    child.stderr.resume();
+    const complete = new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", () => afterProcessStop(child, resolve, reject));
+    });
+    void complete.catch(() => undefined);
+    let output = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+    try {
+      await vi.waitFor(() => expect(output.trim()).toMatch(/^\d+$/), { timeout: 15_000 });
+      const pid = Number(output.trim());
+      if (event !== "command exit") expect(process.kill(pid, 0)).toBe(true);
+      if (event === "launcher exit") expect(child.kill()).toBe(true);
+      if (event === "parent disconnect") child.disconnect();
+      if (event === "cancel") await stopProcessTree(child);
+      await complete;
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" })));
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) await stopProcessTree(child);
+    }
+  }, 40_000
+);

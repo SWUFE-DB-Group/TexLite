@@ -9,7 +9,7 @@ import type { DatabaseConnection } from "../db.js";
 import type { CollaborationService } from "../collaboration.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { HistoryReason } from "../history.js";
-import { resolveSourcePath, safeRelativePath } from "../files.js";
+import { renameProjectPath, resolveSourcePath, safeRelativePath } from "../files.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { apiError, HttpError, httpError } from "../http.js";
 import { requireEditableProject, touchProject } from "./projectShared.js";
@@ -49,7 +49,7 @@ function writeAtomic(absolute: string, bytes: Buffer | string): void {
   const temporary = path.join(path.dirname(absolute), `.texlite-drawio-${randomUUID()}.tmp`);
   try {
     fs.writeFileSync(temporary, bytes, { mode: 0o600, flag: "wx" });
-    fs.renameSync(temporary, absolute);
+    renameProjectPath(temporary, absolute);
   } finally { fs.rmSync(temporary, { force: true }); }
 }
 

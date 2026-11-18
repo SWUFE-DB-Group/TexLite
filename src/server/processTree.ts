@@ -1,8 +1,83 @@
-import { execFile, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess, type ChildProcessByStdio } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import { promisify } from "node:util";
+import { attachWindowsJob, stopWindowsJob } from "./agents/windowsJob.js";
 
 const run = promisify(execFile);
+
+type WindowsCommand = { stop(): Promise<void>; complete: Promise<void> };
+const windowsCommands = new WeakMap<ChildProcess, WindowsCommand>();
+
+// No command runs before the parent assigns this launcher to the job. The
+// launcher owns the last job handle and exits even if its IPC parent crashes.
+const gatedCommand = `
+  const { spawn } = require('node:child_process');
+  process.once('disconnect', () => process.exit(1));
+  process.once('message', ({ command, args }) => {
+    const worker = spawn(command, args, { windowsHide: true, stdio: 'inherit' });
+    worker.once('error', ({ message, code }) => {
+      process.send({ message, code }, () => process.exit(1));
+    });
+    worker.once('exit', (code) => process.exit(code ?? 1));
+  });
+`;
+
+/** For commands that can leave work behind even after the main process exits. */
+export function spawnOwnedCommand(
+  command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}
+): ChildProcessByStdio<null, Readable, Readable> {
+  if (process.platform !== "win32") {
+    return spawn(command, args, { ...options, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  }
+
+  const id = randomUUID();
+  const child = spawn(process.execPath, ["--input-type=commonjs", "-e", gatedCommand, "--", id], {
+    ...options, windowsHide: true, stdio: ["ignore", "pipe", "pipe", "ipc"]
+  }) as ChildProcessByStdio<null, Readable, Readable>; // Node's overloads do not cover the fourth (IPC) slot.
+  const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
+  let attached = false;
+  let stopping: Promise<void> | undefined;
+  let draining: Promise<void> | undefined;
+  let launchError: unknown;
+  const drain = () => draining ??= stopWindowsJob(id, "Command");
+  child.on("message", (message: { message: string; code?: string }) => {
+    launchError = Object.assign(new Error(message.message), { code: message.code });
+  });
+  const ready = (async () => {
+    if (!child.pid) return; // Direct spawn errors still reach the usual listener.
+    await attachWindowsJob(child.pid, id, "Command");
+    attached = true;
+    if (!stopping && child.connected) {
+      // Pass arguments over IPC, not through a shell or the launcher's command line.
+      await new Promise<void>((resolve, reject) => child.send({ command, args }, (error) => error ? reject(error) : resolve()));
+    }
+  })().catch((error: unknown) => {
+    launchError = error;
+    child.kill();
+  });
+  const complete = closed.then(async () => {
+    await ready;
+    if (attached) await drain();
+    if (launchError) throw launchError;
+  });
+  void complete.catch(() => undefined);
+  const stop = async () => {
+    await ready;
+    if (attached) {
+      try { await drain(); }
+      catch (error) {
+        child.kill();
+        await closed;
+        throw error;
+      }
+    }
+    await closed;
+  };
+  windowsCommands.set(child, { stop: () => stopping ??= stop(), complete });
+  return child;
+}
 
 /** For a still-owned Windows root. A failed tree kill is not a successful exit. */
 async function killWindowsProcessTree(pid: number): Promise<void> {
@@ -48,6 +123,8 @@ export function stopProcessTree(child: ChildProcess, signal: NodeJS.Signals = "S
     signalPosixGroup(child, signal);
     return Promise.resolve();
   }
+  const owned = windowsCommands.get(child);
+  if (owned) return owned.stop();
   const pending = windowsTerminations.get(child);
   if (pending) return pending;
   if (!child.pid) return Promise.resolve();
@@ -62,7 +139,7 @@ export function stopProcessTree(child: ChildProcess, signal: NodeJS.Signals = "S
 }
 
 export function afterProcessStop(child: ChildProcess, complete: () => void, fail: (error: Error) => void): void {
-  const stopped = windowsTerminations.get(child);
+  const stopped = windowsCommands.get(child)?.complete ?? windowsTerminations.get(child);
   if (stopped) void stopped.then(complete, fail);
   else complete();
 }

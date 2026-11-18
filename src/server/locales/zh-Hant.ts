@@ -104,6 +104,7 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   OWNER_MEMBER_FORBIDDEN: "專案擁有者不能作為成員新增。",
   PASSWORD_TOO_SHORT: "密碼至少需要 {{minLength}} 個字元。",
   PATH_EXISTS: "目標路徑已被檔案或資料夾佔用。",
+  PROJECT_PATH_BUSY: "檔案或資料夾可能正在使用，或無法存取。請關閉後重試。",
   PATH_NOT_FOUND: "檔案或資料夾不存在。",
   PDF_NOT_FOUND: "尚未產生 PDF。",
   PROJECT_BUSY: "專案正在執行原始檔操作，請稍後再試一次。",

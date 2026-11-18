@@ -20,9 +20,17 @@ Windows deployment: older running records without job ownership cannot be
 recovered automatically. TexLite keeps those projects reserved instead of
 starting another task on top of a potentially surviving process.
 
+Native Windows compilation and Git pushes also use a Job Object. If policy
+blocks job assignment, TexLite reports a failure before running the command.
+Local Git reads and short host-tool probes do not use this launcher. Windows
+sandboxing and real CLI compatibility still need deployment verification.
+
 ZIP imports on Windows reject conflicting or invalid paths. For example, an
 archive cannot contain both `Main.tex` and `main.tex`, or a filename with a
-trailing dot or a reserved device name.
+trailing dot or a reserved device name. Use the exact casing shown in the file
+tree. A rename can change only the case of a name. If a viewer or another
+program blocks a rename or deletion, close it and retry; TexLite does not copy
+over or recursively delete the live path as a fallback on Windows.
 
 For native Windows x64, put the Windows executables on the `PATH` of the
 account that runs TexLite, then restart TexLite if that environment changes.

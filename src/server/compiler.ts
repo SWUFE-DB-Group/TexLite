@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
@@ -10,7 +9,7 @@ import type { Config } from "./config.js";
 import type { DatabaseConnection } from "./db.js";
 import { listProjectFilesAsync, outputRoot, resolveSourcePath, safeRelativePath, texFileStem } from "./files.js";
 import { parseCompileDiagnostics, type CompileDiagnostics } from "./compileDiagnostics.js";
-import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
+import { afterProcessStop, spawnOwnedCommand, stopProcessTree } from "./processTree.js";
 import { relocateSyncTeXInputs } from "./synctex.js";
 
 export interface CompileTimings {
@@ -394,7 +393,26 @@ async function copyAndDigest(source: string, destination: string): Promise<strin
 }
 
 export function discardCompileSnapshot(snapshot: CompileSnapshot): void {
-  fs.rmSync(snapshot.root, { recursive: true, force: true });
+  removeUnpublishedCompileRun(snapshot.root);
+}
+
+const removeCompileRunOptions = {
+  recursive: true, force: true,
+  ...(process.platform === "win32" ? { maxRetries: 3, retryDelay: 100 } : {})
+};
+type CompileCleanupWarning = (error: unknown, directory: string) => void;
+const warnCompileCleanup: CompileCleanupWarning = (error, directory) => {
+  process.emitWarning(`Could not remove retired compile run ${directory}: ${String(error)}`, { code: "TEXLITE_COMPILE_CLEANUP" });
+};
+
+function removeUnpublishedCompileRun(directory: string, warn = warnCompileCleanup): void {
+  try { fs.rmSync(directory, removeCompileRunOptions); }
+  catch (error) {
+    if (process.platform !== "win32" || !["EPERM", "EBUSY", "EACCES", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+    // An antivirus scanner or another reader can still have a handle open.
+    // Keep the stale bundle for the startup sweep instead of failing the run.
+    warn(error, directory);
+  }
 }
 
 /**
@@ -440,7 +458,8 @@ export function publishCompileArtifacts(
   config: Config,
   projectId: string,
   snapshot: CompileSnapshot,
-  result: CompileResult
+  result: CompileResult,
+  warnCleanup: CompileCleanupWarning = warnCompileCleanup
 ): PublishedCompileArtifacts {
   if (!result.ok || !result.pdfPath) throw new Error("Cannot publish a failed compilation result");
   const manifestDirectory = compileTargetRoot(config, projectId, snapshot.mainFile);
@@ -462,8 +481,10 @@ export function publishCompileArtifacts(
   if (previous && previous.runId !== snapshot.runId) {
     // Keep the previous immutable bundle briefly so an already-open PDF or SyncTeX
     // request can finish after the manifest switches to the new bundle.
+    const directory = compileRunRoot(config, projectId, previous.runId);
     const cleanup = setTimeout(() => {
-      fs.rmSync(compileRunRoot(config, projectId, previous.runId), { recursive: true, force: true });
+      // Never throw out of the timer if a previous PDF still has an open handle.
+      void fs.promises.rm(directory, removeCompileRunOptions).catch((error) => warnCleanup(error, directory));
     }, 60_000);
     cleanup.unref();
   }
@@ -553,13 +574,13 @@ function readPublishedManifest(
 }
 
 /** Remove run bundles left by an interrupted process, preserving the published PDF. */
-export function pruneOrphanedCompileRuns(config: Config, projectId: string): void {
+export function pruneOrphanedCompileRuns(config: Config, projectId: string, warnCleanup = warnCompileCleanup): void {
   const runsRoot = path.join(compileDataRoot(config, projectId), "runs");
   const publishedRunIds = new Set(listPublishedCompileArtifacts(config, projectId).map((artifact) => artifact.runId));
   if (!fs.existsSync(runsRoot)) return;
   for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || publishedRunIds.has(entry.name)) continue;
-    fs.rmSync(path.join(runsRoot, entry.name), { recursive: true, force: true });
+    removeUnpublishedCompileRun(path.join(runsRoot, entry.name), warnCleanup);
   }
 }
 
@@ -808,12 +829,9 @@ export async function compileProject(
 
   const latexmkStartedAt = performance.now();
   const processResult = await new Promise<{ code: number | null; log: string; cancelled: boolean }>((resolve, reject) => {
-    const child = spawn(config.latexmk, args, {
+    const child = spawnOwnedCommand(config.latexmk, args, {
       cwd,
-      shell: false,
-      detached: detachedProcessGroup(),
-      env: { ...process.env, max_print_line: "1000" },
-      stdio: ["ignore", "pipe", "pipe"]
+      env: { ...process.env, max_print_line: "1000" }
     });
     let log = "";
     let cancelled = false;

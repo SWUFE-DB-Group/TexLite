@@ -1227,6 +1227,28 @@ fs.writeFileSync(args.find((arg) => arg.startsWith("-outdir=")).slice(8) + "/arc
     expect(uploadedContent.json().content).toBe("second");
   });
 
+  it.each(["EBUSY", "EXDEV"])("preserves a complete upload destination after %s", async (code) => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: `Upload ${code}` } });
+    const projectId = created.json().project.id as string;
+    const destination = path.join(sourceRoot(config, projectId), "figure.png");
+    fs.writeFileSync(destination, "original bytes");
+    const rename = fs.renameSync;
+    const move = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(to) === destination && path.basename(String(from)).startsWith("upload-")) {
+        throw Object.assign(new Error("fixture rename failure"), { code });
+      }
+      rename(from, to);
+    });
+    const uploaded = multipartBody("figure.png", Buffer.from("new bytes"));
+    try {
+      const result = await app.inject({ method: "POST", url: `/api/projects/${projectId}/upload?overwrite=1`,
+        headers: { cookie, "content-type": `multipart/form-data; boundary=${uploaded.boundary}` }, payload: uploaded.body });
+      expect(result.statusCode).toBe(code === "EXDEV" ? 201 : process.platform === "win32" ? 409 : 500);
+      expect(fs.readFileSync(destination, "utf8")).toBe(code === "EXDEV" ? "new bytes" : "original bytes");
+      expect(fs.readdirSync(path.dirname(destination)).some((name) => name.startsWith(".texlite-upload-"))).toBe(false);
+    } finally { move.mockRestore(); }
+  });
+
   it("reanchors source comments when an uploaded text file replaces the source", async () => {
     const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Upload comment anchors" } });
     const projectId = created.json().project.id as string;

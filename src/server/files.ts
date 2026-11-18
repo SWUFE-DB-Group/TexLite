@@ -55,7 +55,7 @@ export async function duplicateProjectFiles(config: Config, sourceProjectId: str
     const entries = await fs.promises.readdir(source, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isSymbolicLink()) throw symbolicLinkError(entry.name);
-      if (entry.name === ".git") continue;
+      if (isGitEntry(entry.name)) continue;
       await fs.promises.cp(path.join(source, entry.name), path.join(target, entry.name), {
         recursive: true, errorOnExist: true, force: false, verbatimSymlinks: false
       });
@@ -99,6 +99,12 @@ export function safePathSegment(input: string): string {
 export interface ResolveSourcePathOptions {
   /** Deletion is allowed to address the link itself, never its target. */
   allowFinalSymlink?: boolean;
+  /** Only a case-only move may probe its destination using different casing. */
+  allowFinalCaseAlias?: boolean;
+}
+
+function isGitEntry(name: string): boolean {
+  return (process.platform === "win32" ? name.toLowerCase() : name) === ".git";
 }
 
 export function symbolicLinkError(relativePath: string): HttpError {
@@ -114,7 +120,7 @@ function assertSourcePathComponents(
   config: Config,
   projectId: string,
   relativePath: string,
-  allowFinalSymlink = false
+  options: ResolveSourcePathOptions = {}
 ): void {
   let current = projectRoot(config, projectId);
   const segments = ["source", ...relativePath.split("/").filter(Boolean)];
@@ -125,9 +131,20 @@ function assertSourcePathComponents(
     const stat = lstatIfPresent(current);
     if (!stat) return;
     const isFinal = index === segments.length - 1;
-    if (stat.isSymbolicLink() && !(allowFinalSymlink && isFinal && relativePath.length > 0)) {
+    if (stat.isSymbolicLink() && !(options.allowFinalSymlink && isFinal && relativePath.length > 0)) {
       const displayed = relativePath || segments.slice(0, index + 1).join("/");
       throw symbolicLinkError(displayed);
+    }
+    if (process.platform === "win32" && index > 0 && !stat.isSymbolicLink()) {
+      const actualName = path.basename(fs.realpathSync.native(current));
+      if (isGitEntry(actualName)) throw httpError(400, "RESERVED_PATH");
+      const requestedName = segments[index];
+      if (requestedName !== actualName && !(isFinal && options.allowFinalCaseAlias
+        && requestedName.toLowerCase() === actualName.toLowerCase())) {
+        // Do not let differently cased or DOS short aliases open separate
+        // Yjs rooms, hold independent locks, or bypass reserved paths.
+        throw httpError(400, "INVALID_PATH");
+      }
     }
   }
 }
@@ -153,7 +170,7 @@ export function assertNoSymbolicLinks(root: string, ignoreGitDirectory = false):
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) throw symbolicLinkError(relative);
-      if (ignoreGitDirectory && entry.name === ".git") continue;
+      if (ignoreGitDirectory && isGitEntry(entry.name)) continue;
       if (entry.isDirectory()) visit(path.join(directory, entry.name), relative);
     }
   };
@@ -178,8 +195,33 @@ export function resolveSourcePath(
   options: ResolveSourcePathOptions = {}
 ): string {
   const relativePath = safeRelativePath(input);
-  assertSourcePathComponents(config, projectId, relativePath, options.allowFinalSymlink === true);
+  assertSourcePathComponents(config, projectId, relativePath, options);
   return path.join(sourceRoot(config, projectId), relativePath);
+}
+
+export function resolveProjectMoveDestination(
+  config: Config, projectId: string, source: string, destination: string
+): string {
+  const caseOnly = process.platform === "win32" && source !== destination
+    && path.posix.dirname(source) === path.posix.dirname(destination)
+    && source.toLowerCase() === destination.toLowerCase();
+  const target = resolveSourcePath(config, projectId, destination, { allowFinalCaseAlias: caseOnly });
+  if (lstatIfPresent(target) && (!caseOnly || fs.realpathSync.native(target)
+    !== fs.realpathSync.native(resolveSourcePath(config, projectId, source)))) {
+    throw httpError(409, "PATH_EXISTS", { path: destination });
+  }
+  return target;
+}
+
+/** Surface sharing failures without falling back to non-atomic writes. */
+export function renameProjectPath(source: string, destination: string): void {
+  try { fs.renameSync(source, destination); }
+  catch (error) {
+    if (process.platform === "win32" && ["EBUSY", "EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+      throw httpError(409, "PROJECT_PATH_BUSY");
+    }
+    throw error;
+  }
 }
 
 export function listProjectFiles(config: Config, projectId: string): FileEntry[] {
@@ -192,7 +234,7 @@ export function listProjectFiles(config: Config, projectId: string): FileEntry[]
       const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
       const absolute = path.join(directory, entry.name);
       if (entry.isSymbolicLink()) throw symbolicLinkError(relative);
-      if (entry.name === ".git") continue;
+      if (isGitEntry(entry.name)) continue;
       if (entry.isDirectory()) {
         result.push({ path: relative, type: "directory" });
         visit(absolute, relative);
@@ -239,7 +281,7 @@ export async function listProjectFilesAsync(config: Config, projectId: string): 
       const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
       const absolute = path.join(directory, entry.name);
       if (entry.isSymbolicLink()) throw symbolicLinkError(relative);
-      if (entry.name === ".git") continue;
+      if (isGitEntry(entry.name)) continue;
       if (entry.isDirectory()) {
         result.push({ path: relative, type: "directory" });
         children.push(visit(absolute, relative));
@@ -264,16 +306,37 @@ export async function listProjectFilesAsync(config: Config, projectId: string): 
   return result.sort((left, right) => left.path.localeCompare(right.path));
 }
 
+const trashRemovalOptions = {
+  recursive: true, force: true,
+  ...(process.platform === "win32" ? { maxRetries: 3, retryDelay: 100 } : {})
+};
+
+function trashDestination(config: Config, label: string): string {
+  const trash = path.join(config.dataDir, "trash");
+  fs.mkdirSync(trash, { recursive: true, mode: 0o700 });
+  return path.join(trash, `${label}-${Date.now()}-${randomUUID()}`);
+}
+
+function retirePath(absolute: string, target: string): void {
+  renameProjectPath(absolute, target);
+  // If a handle is still open, the startup trash sweep retries it. The
+  // retired path cannot partially disappear from the active source tree.
+  void fs.promises.rm(target, trashRemovalOptions).catch(() => undefined);
+}
+
+export function removeProjectSourcePath(config: Config, absolute: string): void {
+  if (process.platform === "win32") retirePath(absolute, trashDestination(config, "source"));
+  else fs.rmSync(absolute, { recursive: true, force: true });
+}
+
 export function removeProjectDirectory(config: Config, projectId: string): void {
   const root = projectRoot(config, projectId);
   if (!fs.existsSync(root)) return;
-  const trash = path.join(config.dataDir, "trash");
-  fs.mkdirSync(trash, { recursive: true, mode: 0o700 });
-  const target = path.join(trash, `${projectId}-${Date.now()}-${randomUUID()}`);
+  const target = trashDestination(config, projectId);
   try {
-    fs.renameSync(root, target);
-    void fs.promises.rm(target, { recursive: true, force: true }).catch(() => undefined);
-  } catch {
+    retirePath(root, target);
+  } catch (error) {
+    if (process.platform === "win32") throw error;
     fs.rmSync(root, { recursive: true, force: true });
     if (fs.existsSync(root)) {
       throw new Error(`Unable to remove project directory: ${root}`);
@@ -287,7 +350,7 @@ export async function pruneTrashDirectory(config: Config): Promise<void> {
     try {
       if (!fs.existsSync(dir)) continue;
       const entries = await fs.promises.readdir(dir);
-      await Promise.allSettled(entries.map((entry) => fs.promises.rm(path.join(dir, entry), { recursive: true, force: true })));
+      await Promise.allSettled(entries.map((entry) => fs.promises.rm(path.join(dir, entry), trashRemovalOptions)));
     } catch {
       // Ignore error
     }

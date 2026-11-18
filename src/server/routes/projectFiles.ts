@@ -14,6 +14,9 @@ import type { DatabaseConnection } from "../db.js";
 import {
   assertNoSourceSymlinks,
   listProjectFilesAsync,
+  removeProjectSourcePath,
+  renameProjectPath,
+  resolveProjectMoveDestination,
   resolveSourcePath,
   safePathSegment,
   safeRelativePath,
@@ -199,8 +202,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     if (!fs.existsSync(destinationRoot) || !fs.statSync(destinationRoot).isDirectory()) {
       return apiError(reply, 404, "DIRECTORY_NOT_FOUND", { path: destinationDirectory });
     }
-    const destinationAbsolute = resolveSourcePath(config, id, destination);
-    if (fs.existsSync(destinationAbsolute)) return apiError(reply, 409, "PATH_EXISTS", { path: destination });
+    const destinationAbsolute = resolveProjectMoveDestination(config, id, source, destination);
     let currentProject = project;
     const validateMove = (): void => {
       currentProject = requireEditableProject(db, id, user);
@@ -219,9 +221,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
       if (!fs.existsSync(destinationRoot) || !fs.statSync(destinationRoot).isDirectory()) {
         throw httpError(404, "DIRECTORY_NOT_FOUND", { path: destinationDirectory });
       }
-      if (fs.existsSync(destinationAbsolute)) {
-        throw httpError(409, "PATH_EXISTS", { path: destination });
-      }
+      resolveProjectMoveDestination(config, id, source, destination);
     };
 
     // Moving/renaming is collaboration-aware: movePath() remaps the live Yjs
@@ -230,7 +230,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     // epoch and makes every connected browser reload after an otherwise safe
     // drag-and-drop move.
     return await projectMutations.runWrite(id, () => {
-      fs.renameSync(sourceAbsolute, destinationAbsolute);
+      renameProjectPath(sourceAbsolute, destinationAbsolute);
       let hasCommentUpdates = false;
       db.exec("BEGIN IMMEDIATE");
       try {
@@ -512,7 +512,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return apiError(reply, 404, "PATH_NOT_FOUND", { path: relative });
         throw error;
       }
-      fs.rmSync(absolute, { recursive: true, force: true });
+      removeProjectSourcePath(config, absolute);
       if (currentProject.latexmkrc === relative || currentProject.latexmkrc?.startsWith(`${relative}/`)) {
         db.prepare("UPDATE projects SET latexmkrc = NULL WHERE id = ?").run(id);
       }
@@ -599,10 +599,16 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
           }
         }
         try {
-          fs.renameSync(tmpPath, absolute);
-        } catch {
-          fs.copyFileSync(tmpPath, absolute);
-          fs.unlinkSync(tmpPath);
+          renameProjectPath(tmpPath, absolute);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+          // A separately mounted project needs a same-directory staged copy.
+          // Never copy directly over the live file, especially on a sharing violation.
+          const staged = path.join(path.dirname(absolute), `.texlite-upload-${randomUUID()}.tmp`);
+          try {
+            fs.copyFileSync(tmpPath, staged, fs.constants.COPYFILE_EXCL);
+            renameProjectPath(staged, absolute);
+          } finally { fs.rmSync(staged, { force: true }); }
         }
         touchProject(db, id, user.id);
         if (collaborativeText) {

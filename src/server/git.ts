@@ -7,7 +7,7 @@ import type { DatabaseConnection, ProjectRow, UserRow } from "./db.js";
 import { assertGitAvailable } from "./environment.js";
 import { assertNoSourceSymlinks, sourceRoot, symbolicLinkError } from "./files.js";
 import { httpError } from "./http.js";
-import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
+import { afterProcessStop, detachedProcessGroup, spawnOwnedCommand, stopProcessTree } from "./processTree.js";
 import type { GitCommit, GitIdentity, ProjectGitStatus } from "../shared/gitProtocol.js";
 export type { GitCommit, GitIdentity, ProjectGitStatus } from "../shared/gitProtocol.js";
 
@@ -451,9 +451,10 @@ export class ProjectGitService {
   private async git(cwd: string, args: string[], allowedCodes: number[] = [], env: NodeJS.ProcessEnv = process.env): Promise<CommandResult> {
     await this.ensureGitAvailable();
     return new Promise((resolve, reject) => {
-      const child = spawn(this.config.git, args, {
-        cwd, env, shell: false, detached: detachedProcessGroup(), stdio: ["ignore", "pipe", "pipe"]
-      });
+      // A push can leave SSH, credential helpers and remote helpers behind.
+      // Fast local status/history commands avoid the Windows job setup cost.
+      const child = args[0] === "push" ? spawnOwnedCommand(this.config.git, args, { cwd, env })
+        : spawn(this.config.git, args, { cwd, env, shell: false, detached: detachedProcessGroup(), stdio: ["ignore", "pipe", "pipe"] });
       const stdout: Buffer[] = [];
       const stderr: Buffer[] = [];
       let size = 0;

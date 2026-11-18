@@ -233,9 +233,18 @@ describe("reliable project compilation", () => {
     expect(second.revision).not.toBe(first.revision);
     const secondPdf = path.join(second.outputDir, "main.pdf");
     fs.writeFileSync(secondPdf, "second pdf");
-    publishCompileArtifacts(config, projectId, second, {
-      ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: secondPdf, synctexPath: null
-    });
+    const sharingViolation = Object.assign(new Error("old PDF is still open"), { code: "EBUSY" });
+    const warnCleanup = vi.fn();
+    vi.useFakeTimers();
+    try {
+      publishCompileArtifacts(config, projectId, second, {
+        ok: true, log: "", diagnostics: { warnings: [], errors: [] }, pdfPath: secondPdf, synctexPath: null
+      }, warnCleanup);
+      const remove = vi.spyOn(fs.promises, "rm").mockRejectedValueOnce(sharingViolation);
+      try { await vi.advanceTimersByTimeAsync(60_000); }
+      finally { remove.mockRestore(); }
+    } finally { vi.useRealTimers(); }
+    expect(warnCleanup).toHaveBeenCalledWith(sharingViolation, first.root);
     expect(publishedCompileArtifacts(config, projectId, "main.tex")).toMatchObject({ runId: second.runId, pdf: secondPdf, synctex: null });
     fs.writeFileSync(path.join(liveSource, "appendix.tex"), "appendix revision\n");
     const appendix = await captureCompileSnapshot(config, projectId, randomUUID(), {

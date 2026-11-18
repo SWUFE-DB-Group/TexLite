@@ -8,7 +8,7 @@ import { isEngine, type Config, type LatexEngine } from "../config.js";
 import type { DatabaseConnection } from "../db.js";
 import { requireUser } from "../auth.js";
 import { accessibleProject, canEdit } from "../projects.js";
-import { outputRoot, resolveSourcePath, safeRelativePath, texFileStem } from "../files.js";
+import { outputRoot, renameProjectPath, resolveSourcePath, safeRelativePath, texFileStem } from "../files.js";
 import { isStandaloneTikz } from "../../shared/tikzStandalone.js";
 import { touchProject } from "./projectShared.js";
 import {
@@ -384,7 +384,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       const staged = path.join(outputRoot(config, id), `.export-${randomUUID()}.pdf`);
       try {
         fs.copyFileSync(pdf.path, staged);
-        fs.renameSync(staged, destination);
+        renameProjectPath(staged, destination);
       } finally {
         fs.rmSync(staged, { force: true });
       }
@@ -663,7 +663,8 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
                 if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)) {
                   throw new Error("Project was deleted before compile artifacts could be published.");
                 }
-                publishCompileArtifacts(config, id, snapshot!, compiled!);
+                publishCompileArtifacts(config, id, snapshot!, compiled!,
+                  (err, directory) => app.log.warn({ err, directory }, "Could not remove a retired compile run"));
               }, { flush: false });
               refreshSnapshotStale();
               if (compiled.timings) {
