@@ -26,8 +26,11 @@ const hostEnvironmentNames = [
 
 function hostClaudeEnvironment(): Record<string, string> {
   const env: Record<string, string> = {};
+  const windows = process.platform === "win32";
   for (const [name, value] of Object.entries(process.env)) {
-    if (value !== undefined && hostEnvironmentNames.some((pattern) => pattern.test(name))) env[name] = value;
+    const key = windows ? name.toUpperCase() : name;
+    const windowsShellSetting = windows && /^CLAUDE_CODE_(?:GIT_BASH_PATH|USE_POWERSHELL_TOOL)$/.test(key);
+    if (value !== undefined && (windowsShellSetting || hostEnvironmentNames.some((pattern) => pattern.test(key)))) env[key] = value;
   }
   return env;
 }

@@ -33,6 +33,16 @@ afterEach(() => {
 });
 
 describe("Claude host configuration and owned conversations", () => {
+  it.runIf(process.platform === "win32")("inherits the host's native shell settings when starting and resuming", async () => {
+    const bash = path.join(root, "Git for Windows", "bin", "bash.exe");
+    vi.stubEnv("Claude_Code_Git_Bash_Path", bash);
+    vi.stubEnv("CLAUDE_CODE_USE_POWERSHELL_TOOL", "1");
+    await claudeAdapter.prepare(context);
+    const shell = { CLAUDE_CODE_GIT_BASH_PATH: bash, CLAUDE_CODE_USE_POWERSHELL_TOOL: "1" };
+    expect(claudeAdapter.start(context).env).toMatchObject(shell);
+    expect(claudeAdapter.resume({ ...context, nativeSessionId: context.taskId }).env).toMatchObject(shell);
+  });
+
   it("inherits gateway, model, cloud authentication and network settings on start and resume without persisting credentials", async () => {
     const environment: Record<string, string> = {
       ANTHROPIC_BASE_URL: "https://gateway.example.invalid/anthropic",

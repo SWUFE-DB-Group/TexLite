@@ -24,6 +24,32 @@ ZIP imports on Windows reject conflicting or invalid paths. For example, an
 archive cannot contain both `Main.tex` and `main.tex`, or a filename with a
 trailing dot or a reserved device name.
 
+For native Windows x64, put the Windows executables on the `PATH` of the
+account that runs TexLite, then restart TexLite if that environment changes.
+Use `texlite requirements` to check the tools:
+
+- **TeX Live:** use the [native Windows distribution](https://tug.org/texlive/).
+  Install the relevant TeX Live packages for optional TeXcount, ChkTeX, BibTeX,
+  Biber and MakeIndex support. SyncTeX also comes from the TeX toolchain.
+- **Harper:** use `harper-cli-x86_64-pc-windows-msvc.zip` from the
+  [Harper releases](https://github.com/Automattic/harper/releases).
+  TexLite needs `harper-cli.exe`, not the Harper desktop app or language server.
+- **PDF fonts:** use a [Windows Poppler build](https://github.com/oschwartz10612/poppler-windows/releases)
+  and add the directory containing `pdffonts.exe` to `PATH`. Keep its
+  accompanying DLLs in place. This is an optional host tool, not an npm package.
+- **Diagram export and Git:** use a native Chromium, Chrome, or Edge
+  executable for diagram PDF export, and [Git for Windows](https://gitforwindows.org/)
+  for Git/GitHub backup. These tools do not require WSL.
+- **Agent terminals:** install the native CLI, not just the vendor's desktop
+  app. Claude Code can use PowerShell; if you configure a custom Git Bash path
+  on the TexLite host, TexLite forwards `CLAUDE_CODE_GIT_BASH_PATH`.
+  Agent terminals also need the optional npm module `node-pty`.
+
+The npm package and Agent PTY are exercised on the Windows CI runner. CI also
+runs the native Harper CLI and exports a diagram PDF for inspection with
+Poppler. Real TeX compilation and authenticated Agent sessions are separate
+deployment checks.
+
 Check a host before initialization:
 
 ~~~bash

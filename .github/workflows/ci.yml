@@ -82,9 +82,33 @@ jobs:
           tests/agentExecutionRecovery.test.ts
           tests/agentTerminalLifecycle.test.ts
           tests/agentProcessIdentity.test.ts
+          tests/claudeAdapter.test.ts
           tests/projectPaths.test.ts
           tests/zip.test.ts
           tests/projectTemplateImport.test.ts
       - run: npm run build
       - name: Install and start the packed npm artifact
         run: npm run test:package-smoke
+      - name: Prepare native Harper and Poppler test tools
+        shell: pwsh
+        run: |
+          $toolRoot = Join-Path $env:RUNNER_TEMP 'TexLite native tools'
+          New-Item -ItemType Directory -Path $toolRoot | Out-Null
+          function Add-TestTool($name, $url, $hash, $executable) {
+            $archive = Join-Path $toolRoot "$name.zip"
+            $destination = Join-Path $toolRoot $name
+            Invoke-WebRequest -Uri $url -OutFile $archive
+            if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $hash) {
+              throw "$name archive SHA256 mismatch"
+            }
+            Expand-Archive -LiteralPath $archive -DestinationPath $destination
+            $binary = Get-ChildItem -LiteralPath $destination -Recurse -File -Filter $executable | Select-Object -First 1
+            if (-not $binary) { throw "$executable not found in the $name archive" }
+            $binary.DirectoryName >> $env:GITHUB_PATH
+          }
+          Add-TestTool harper 'https://github.com/Automattic/harper/releases/download/v3.0.0/harper-cli-x86_64-pc-windows-msvc.zip' '741c3beefe21629c9094fa1dfdfc55b1b1969ab82a987f023c395c4acd2a5430' 'harper-cli.exe'
+          Add-TestTool poppler 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip' '7a6f256a0ddf7536182246a5733331bf4677cbcc34f4663774947ad34556c8d0' 'pdffonts.exe'
+      - name: Run optional integrations with native Windows tools
+        env:
+          TEXLITE_TEST_NATIVE_HOST_TOOLS: "1"
+        run: npm test -- tests/nativeHostTools.test.ts
