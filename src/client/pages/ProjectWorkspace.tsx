@@ -1417,6 +1417,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     : [];
   if (!project) return <div className="center-card"><p>{error || t("common.loading")}</p>{error && <button className="primary" onClick={onBack}>{t("editor.backToProjects")}</button>}</div>;
   const readOnly = project.permission === "read" || !collaborationSynced;
+  const canTrackUndo = project.permission !== "read" && collaborationPermission !== "read";
   const activeFormatLease = formatLeaseStates.find((lease) => lease.path === activeFile);
   // The lease state deliberately has no durable user/session identity. Show
   // it whenever this browser is not the formatter currently holding it; this
@@ -1610,7 +1611,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         focusComment={focusComment} editorPreferences={editorPreferences} completionIndex={completionIndex}
         nativeSpellCheck={spellCheck.nativeFallback} spellCheckIssues={spellCheck.issues}
         spellCheckJump={spellCheck.jump} sourceJump={sourceJump} collaborativeText={collaborativeText}
-        collaborationAwareness={collaboration.awareness} undoManager={activeFile ? collaboration.getUndoManager(activeFile) : undefined}
+        collaborationAwareness={collaboration.awareness} undoManager={activeFile && canTrackUndo ? collaboration.getUndoManager(activeFile) : undefined}
         editorNotice={editorNotice} activateTab={activateTab} closeTab={closeTab}
         handleTabKeyDown={handleTabKeyDown} reorderTab={reorderTab} updateEditorContent={updateEditorContent}
         setSelection={(selectedText, startOffset, endOffset) => setSelection({ selectedText, startOffset, endOffset })}

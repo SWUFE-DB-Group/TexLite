@@ -128,9 +128,19 @@ const activeSpellCheckIssueMarks = StateField.define<DecorationSet>({
 });
 
 /** The parts of an editor that depend on whether it can be edited right now. */
-function editabilityExtensions(readOnly: boolean, collaborative: boolean) {
-  return [EditorState.readOnly.of(readOnly), ...(collaborative && !readOnly ? [keymap.of(yUndoManagerKeymap)] : [])];
+function editabilityExtensions(readOnly: boolean, hasCollaborativeUndo: boolean) {
+  return [EditorState.readOnly.of(readOnly), ...(hasCollaborativeUndo ? [
+    readOnly ? blockNativeHistory : keymap.of(yUndoManagerKeymap)
+  ] : [])];
 }
+
+// yCollab handles native Undo/Redo (e.g. the browser's Edit menu) separately
+// from its keymap, without consulting EditorState.readOnly.
+const blockNativeHistory = Prec.high(EditorView.domEventHandlers({
+  beforeinput(event) {
+    return event.inputType === "historyUndo" || event.inputType === "historyRedo";
+  }
+}));
 
 function referenceFromElement(element: EventTarget | null): LatexReference | null {
   if (!(element instanceof HTMLElement)) return null;
@@ -154,6 +164,7 @@ export function LatexEditor({
 }: Props) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
+  const undoManager = collaboration?.undoManager;
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -254,8 +265,8 @@ export function LatexEditor({
         keymap.of([...(isLatexFile ? [{ key: "Backspace", run: deleteLatexEscapedPair }] : []), ...closeBracketsKeymap, ...completionKeymap,
           ...(isLatexFile ? [{ key: "Enter", run: enterLatexEnvironmentBody }] : []), ...searchKeymap, ...foldKeymap,
           ...defaultKeymap, indentWithTab, ...(collaboration ? [] : historyKeymap)]),
-        ...(collaboration ? [yCollab(collaboration.text, collaboration.awareness, { undoManager: collaboration.undoManager ?? false })] : []),
-        editability.current.of(editabilityExtensions(readOnly, Boolean(collaboration))), appearance.current.of(editorAppearance(preferences, nativeSpellCheck, theme)),
+        ...(collaboration ? [yCollab(collaboration.text, collaboration.awareness, { undoManager: undoManager ?? false })] : []),
+        editability.current.of(editabilityExtensions(readOnly, Boolean(undoManager))), appearance.current.of(editorAppearance(preferences, nativeSpellCheck, theme)),
         EditorView.domEventHandlers({
           mousedown(event, editor) {
             const reference = referenceFromElement(event.target);
@@ -318,13 +329,13 @@ export function LatexEditor({
       view.current?.destroy();
       view.current = null;
     };
-  }, [filePath, i18n.resolvedLanguage, collaboration?.text]);
+  }, [filePath, i18n.resolvedLanguage, collaboration?.text, undoManager]);
 
   // A dropped connection also makes the editor read-only. Reconfiguring keeps
   // its cursor, scroll position, folds and focus through the reconnect.
   useEffect(() => {
-    view.current?.dispatch({ effects: editability.current.reconfigure(editabilityExtensions(readOnly, Boolean(collaboration))) });
-  }, [readOnly, Boolean(collaboration)]);
+    view.current?.dispatch({ effects: editability.current.reconfigure(editabilityExtensions(readOnly, Boolean(undoManager))) });
+  }, [readOnly, undoManager]);
 
   useEffect(() => {
     const editor = view.current;
@@ -372,7 +383,6 @@ export function LatexEditor({
     setVimStatus(""); setVimLoadState("loading");
     void loadVimSupport().then((support) => {
       if (cancelled || view.current !== editor) return;
-      const undoManager = collaboration?.undoManager;
       editor.dispatch({ effects: vimMode.current.reconfigure(support.createVimExtension(undoManager ? {
         undo: () => !readOnlyRef.current && undoManager.undo() !== null,
         redo: () => !readOnlyRef.current && undoManager.redo() !== null
@@ -391,7 +401,7 @@ export function LatexEditor({
       vimStatusCleanup.current?.();
       vimStatusCleanup.current = null;
     };
-  }, [preferences.vimMode, filePath, i18n.resolvedLanguage, collaboration?.text, collaboration?.undoManager, vimRetry]);
+  }, [preferences.vimMode, filePath, i18n.resolvedLanguage, collaboration?.text, undoManager, vimRetry]);
 
   useEffect(() => {
     const editor = view.current;

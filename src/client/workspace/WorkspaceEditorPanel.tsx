@@ -88,6 +88,10 @@ export function WorkspaceEditorPanel({
   // decorating the newly mounted editor tab.
   const editorComments = commentsForEditorFile(comments, activeFile);
   const editorFocusComment = focusCommentForEditorFile(focusComment, activeFile, loadedFile);
+  // A permission change can replace the undo binding. A temporary disconnect
+  // changes only readOnly, so it keeps the same editor and history.
+  const editorKey = `${activeFile}:${undoManager ? "undo" : "no-undo"}`;
+  const collaboration = collaborativeText ? { text: collaborativeText, awareness: collaborationAwareness, undoManager } : undefined;
   return <Panel id="source" minSize="22%">
     <EditorTerminalLayout terminal={terminal} tabs={!alternativeEditor && editorPreferences.openFilesInTabs && openTabs.length > 0 && (
         <EditorTabs openTabs={openTabs} activeFile={activeFile} projectMainFile={project.mainFile} activateTab={activateTab} closeTab={closeTab} handleTabKeyDown={handleTabKeyDown} reorderTab={reorderTab} />
@@ -96,7 +100,7 @@ export function WorkspaceEditorPanel({
         {figurePdf && <div className="figure-pdf-bar"><TikzCompileButton {...figurePdf} /></div>}
         <div className="editor-content-fill">
         <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
-          <LatexEditor key={activeFile} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaborativeText ? { text: collaborativeText, awareness: collaborationAwareness, undoManager: readOnly ? undefined : undoManager } : undefined} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
+          <LatexEditor key={editorKey} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaboration} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
             agentChanges={agentChanges} activeAgentChangeId={activeAgentChangeId} agentChangeReveal={agentChangeReveal} onAgentChangesStale={onAgentChangesStale} onOpenAgentChange={onOpenAgentChange} />
         </Suspense>
         </div>
