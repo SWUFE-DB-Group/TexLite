@@ -10,7 +10,7 @@ import type { Config } from "./config.js";
 import { pruneExpiredSessions, type DatabaseConnection } from "./db.js";
 import { digestToken, LoginRateLimiter } from "./security.js";
 import { currentUser } from "./auth.js";
-import { pruneTrashDirectory } from "./files.js";
+import { pruneTrashDirectory, removeProjectDirectory } from "./files.js";
 import {
   CompileQueue,
   ProjectCompileCoordinator,
@@ -20,6 +20,7 @@ import {
 } from "./compiler.js";
 import { CollaborationService } from "./collaboration.js";
 import { ProjectMutationCoordinator } from "./projectMutations.js";
+import { ProjectDeletionCleanup } from "./projectDeletionCleanup.js";
 import { ProjectGitService } from "./git.js";
 import { LatexCompletionService } from "./latexCompletion.js";
 import { ProjectHistoryService, type HistoryReason } from "./history.js";
@@ -170,6 +171,15 @@ export async function buildApp(
     metrics.record("collaboration.persist", durationMs + performance.now() - started);
   });
   const projectMutations = new ProjectMutationCoordinator(collaboration);
+  const projectDeletionCleanup = new ProjectDeletionCleanup(db, (id) =>
+    projectMutations.runExclusive(id, "admin user deletion cleanup", () => {
+      collaboration.resetProject(id);
+      latexCompletions.invalidate(id);
+      projectOutlines.invalidate(id);
+      removeProjectDirectory(config, id);
+    }, { flush: false }),
+  (err, projectId) => app.log.warn({ err, projectId }, "Pending project directory cleanup will be retried"));
+  app.addHook("onListen", async () => { projectDeletionCleanup.start(); });
   app.addHook("preClose", async () => { projectMutations.drawioLocks.close(); });
   const agents = new AgentService({ config, db, collaboration, projectMutations, recordHistory,
     recordEdits: (id, edits) => editRetry.save(id, edits)
@@ -216,6 +226,7 @@ export async function buildApp(
   // instance lock is held. Finish cleanup before accepting requests so a
   // freshly started server never races a stale trash/tmp removal.
   await pruneTrashDirectory(config);
+  await projectDeletionCleanup.retryPending();
   for (const row of db.prepare("SELECT id FROM projects").all() as Array<{ id: string }>) {
     history.pruneRestoreBackups(row.id);
     history.enforceRetention(row.id);
@@ -280,6 +291,7 @@ export async function buildApp(
   // Fastify runs close hooks in reverse registration order. Drain external
   // writers while Yjs rooms and history retry/retention services still exist.
   app.addHook("onClose", async () => { await agents.dispose(); });
+  app.addHook("onClose", async () => { await projectDeletionCleanup.close(); });
 
   const indexPath = path.join(config.clientDir, "index.html");
   const renderedIndex = fs.existsSync(indexPath)
@@ -322,12 +334,10 @@ export async function buildApp(
     registerAvatarRoutes(routes, { db, collaboration });
     registerCitationRoutes(routes, { db });
     registerUserManagementRoutes(routes, {
-      config,
       db,
       collaboration,
       projectMutations,
-      latexCompletions,
-      projectOutlines
+      projectDeletionCleanup
     });
     registerCommentRoutes(routes, { config, db, collaboration, projectMutations });
     registerProjectMemberRoutes(routes, { db, collaboration, projectMutations });

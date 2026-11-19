@@ -331,7 +331,7 @@ export function removeProjectSourcePath(config: Config, absolute: string): void 
 
 export function removeProjectDirectory(config: Config, projectId: string): void {
   const root = projectRoot(config, projectId);
-  if (!fs.existsSync(root)) return;
+  if (!lstatIfPresent(root)) return;
   const target = trashDestination(config, projectId);
   try {
     retirePath(root, target);

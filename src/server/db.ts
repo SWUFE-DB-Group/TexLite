@@ -269,6 +269,10 @@ const databaseMigrations: readonly DatabaseMigration[] = [
       DELETE FROM project_history_objects;
       INSERT INTO project_history_objects (project_id, digest, size, refs)
         SELECT project_id, digest, MAX(size), COUNT(*) FROM project_history_version_objects GROUP BY project_id, digest;`);
+  } },
+  { version: 26, name: "add_pending_project_deletions", apply: (db) => {
+    // These records must outlive the projects they refer to.
+    db.exec("CREATE TABLE IF NOT EXISTS pending_project_deletions (project_id TEXT PRIMARY KEY NOT NULL) WITHOUT ROWID");
   } }
 ];
 

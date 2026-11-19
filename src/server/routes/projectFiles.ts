@@ -14,6 +14,7 @@ import type { DatabaseConnection } from "../db.js";
 import {
   assertNoSourceSymlinks,
   listProjectFilesAsync,
+  outputRoot,
   removeProjectSourcePath,
   renameProjectPath,
   resolveProjectMoveDestination,
@@ -28,6 +29,7 @@ import type { LatexCompletionService } from "../latexCompletion.js";
 import type { MetricRegistry } from "../metrics.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { ProjectOutlineService } from "../projectOutline.js";
+import { saveProjectText } from "../projectTextSave.js";
 import { moveEditHistoryPaths } from "../editHistory.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { mainDocumentCandidates } from "../latexRoot.js";
@@ -475,17 +477,21 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     return await projectMutations.runWrite(id, () => {
       const absolute = resolveSourcePath(config, id, filePath);
       if (!isCollaborativeTextFile(filePath)) return apiError(reply, 400, "FILE_CONTENT_INVALID");
-      if (fs.existsSync(absolute) && fs.statSync(absolute).size > maxCollaborativeFileBytes(config)) {
+      const previous = fs.statSync(absolute, { throwIfNoEntry: false });
+      if (previous && !previous.isFile()) return apiError(reply, 409, "PATH_EXISTS", { path: filePath });
+      if (previous && previous.size > maxCollaborativeFileBytes(config)) {
         return apiError(reply, 413, "FILE_TOO_LARGE", { path: filePath });
       }
       fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
-      const previousBytes = fs.existsSync(absolute) ? fs.readFileSync(absolute) : Buffer.alloc(0);
+      const previousBytes = previous ? fs.readFileSync(absolute) : Buffer.alloc(0);
       if (!isTextContent(previousBytes)) return apiError(reply, 400, "FILE_CONTENT_INVALID");
       const previousContent = previousBytes.toString("utf8");
-      reanchorFileComments(db, id, filePath, previousContent, content);
-      fs.writeFileSync(absolute, content, { encoding: "utf8", mode: 0o600 });
-      touchProject(db, id, user.id);
+      saveProjectText(db, outputRoot(config, id), absolute, Buffer.from(content, "utf8"), previous, () => {
+        reanchorFileComments(db, id, filePath, previousContent, content);
+        touchProject(db, id, user.id);
+      }, (err, directory) => app.log.warn({ err, directory }, "Could not clean up source save staging"));
       collaboration.updateFile(id, filePath, content, user.id);
+      if (previousContent !== content) collaboration.signalComments(id);
       recordHistory(id, user.id, "file", [filePath]);
       return { ok: true, comments: commentsForFile(db, config, id, filePath) };
     }, { preflight: () => { requireEditableProject(db, id, user); } });

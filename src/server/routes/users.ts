@@ -2,23 +2,18 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { publicUser, requireAdmin, requireUser } from "../auth.js";
 import type { CollaborationService } from "../collaboration.js";
-import type { Config } from "../config.js";
 import { activeAdminCount, type DatabaseConnection, type UserRow } from "../db.js";
-import { removeProjectDirectory } from "../files.js";
 import { apiError, httpError, ValidationError } from "../http.js";
-import type { LatexCompletionService } from "../latexCompletion.js";
+import type { ProjectDeletionCleanup } from "../projectDeletionCleanup.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
-import type { ProjectOutlineService } from "../projectOutline.js";
 import { hashPassword } from "../security.js";
 import type { UserManagementSummary } from "../../shared/userManagement.js";
 
 interface UserManagementRouteContext {
-  config: Config;
   db: DatabaseConnection;
   collaboration: CollaborationService;
   projectMutations: ProjectMutationCoordinator;
-  latexCompletions: LatexCompletionService;
-  projectOutlines: ProjectOutlineService;
+  projectDeletionCleanup: ProjectDeletionCleanup;
 }
 
 const now = (): string => new Date().toISOString();
@@ -32,7 +27,7 @@ function text(value: unknown, max = 200): string {
 
 /** Register administrator-facing user management and the active-user directory. */
 export function registerUserManagementRoutes(app: FastifyInstance, context: UserManagementRouteContext): void {
-  const { config, db, collaboration, projectMutations, latexCompletions, projectOutlines } = context;
+  const { db, collaboration, projectMutations, projectDeletionCleanup } = context;
 
   app.get("/api/admin/users", async (request, reply) => {
     if (!requireAdmin(request, reply, db)) return;
@@ -149,7 +144,7 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
       if (currentTarget.role === "admin" && activeAdminCount(db) <= 1) {
         throw httpError(400, "LAST_ADMIN");
       }
-      owned = db.prepare("SELECT id FROM projects WHERE owner_id = ?").all(id) as Array<{ id: string }>;
+      owned = db.prepare("SELECT id FROM projects WHERE owner_id = ? ORDER BY created_at, rowid").all(id) as Array<{ id: string }>;
       if (!body.deleteProjects) {
         // Persist any active drafts while the old owner row still exists. This
         // is synchronous, so no edit can arrive between this flush and the
@@ -157,8 +152,9 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
         for (const project of owned) projectMutations.flushProject(project.id);
       }
       if (body.deleteProjects) {
+        for (const project of owned) projectDeletionCleanup.enqueue(project.id);
         db.prepare("DELETE FROM projects WHERE owner_id = ?").run(id);
-    } else {
+      } else {
         db.prepare("DELETE FROM project_members WHERE user_id = ? AND project_id IN (SELECT id FROM projects WHERE owner_id = ?)")
           .run(admin.id, id);
         db.prepare("UPDATE projects SET owner_id = ?, last_modified_by = ?, updated_at = ? WHERE owner_id = ?")
@@ -173,19 +169,13 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
     // Requests already queued for the removed user fail their lock-time
     // preflight. Cleanup is then serialized after them and invalidates any
     // room initialization that started before the transaction committed.
+    collaboration.disconnectUser(id, "user-deleted");
     for (const project of owned) {
-      await projectMutations.runExclusive(project.id, "admin user deletion cleanup", () => {
-        if (body.deleteProjects) {
-          collaboration.resetProject(project.id);
-          removeProjectDirectory(config, project.id);
-          latexCompletions.invalidate(project.id);
-          projectOutlines.invalidate(project.id);
-        } else {
-          collaboration.resetProject(project.id);
-        }
+      if (body.deleteProjects) await projectDeletionCleanup.clean(project.id);
+      else await projectMutations.runExclusive(project.id, "admin ownership transfer", () => {
+        collaboration.resetProject(project.id);
       }, { flush: false });
     }
-    collaboration.disconnectUser(id, "user-deleted");
     return { ok: true, deletedProjects: body.deleteProjects ? owned.length : 0 };
   });
 

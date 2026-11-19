@@ -14,7 +14,7 @@ import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
-import { sourceRoot } from "../src/server/files.js";
+import { createProjectFiles, sourceRoot } from "../src/server/files.js";
 import { ProjectHistoryService } from "../src/server/history.js";
 import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
 import { captureCompileSnapshot, publishCompileArtifacts } from "../src/server/compiler.js";
@@ -1247,6 +1247,63 @@ fs.writeFileSync(args.find((arg) => arg.startsWith("-outdir=")).slice(8) + "/arc
       expect(fs.readFileSync(destination, "utf8")).toBe(code === "EXDEV" ? "new bytes" : "original bytes");
       expect(fs.readdirSync(path.dirname(destination)).some((name) => name.startsWith(".texlite-upload-"))).toBe(false);
     } finally { move.mockRestore(); }
+  });
+
+  it.each(["replace", "commit"])("keeps source and anchors unchanged when a text save fails at %s", async (stage) => {
+    const projectId = (await app.inject({
+      method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: `Text save ${stage}` }
+    })).json().project.id as string;
+    const filePath = "notes.tex";
+    const filename = path.join(sourceRoot(config, projectId), filePath);
+    const original = "Keep this sentence.\n";
+    const prefix = "New first line.\n";
+    const save = (content: string) => app.inject({ method: "PUT", url: `/api/projects/${projectId}/file`,
+      headers: { cookie }, payload: { path: filePath, content } });
+    expect((await save(original)).statusCode).toBe(200);
+    expect((await app.inject({
+      method: "POST", url: `/api/projects/${projectId}/comments`, headers: { cookie },
+      payload: { path: filePath, startOffset: 0, endOffset: 18, content: "Keep this anchor" }
+    })).statusCode).toBe(201);
+    const anchors = () => db.prepare("SELECT * FROM comments WHERE project_id = ?").all(projectId);
+    const modified = () => db.prepare("SELECT updated_at, last_modified_by FROM projects WHERE id = ?").get(projectId);
+    const history = () => db.prepare("SELECT id FROM project_history_versions WHERE project_id = ?").all(projectId);
+    const priorAnchors = anchors();
+    const priorModified = modified();
+    const priorHistory = history();
+    if (stage === "commit") {
+      // Deferred FK violation surfaces only at COMMIT, after file replacement.
+      db.exec(`CREATE TABLE fixture_invalid_project (id TEXT REFERENCES projects(id) DEFERRABLE INITIALLY DEFERRED);
+        CREATE TRIGGER fixture_fail_commit AFTER UPDATE ON comments BEGIN
+          INSERT INTO fixture_invalid_project VALUES ('fixture-missing-project');
+        END;`);
+    }
+    const rename = fs.renameSync;
+    let attemptedReplace = false;
+    const move = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (to === filename && path.basename(String(from)) === "replacement") {
+        attemptedReplace = true;
+        if (stage === "replace") throw Object.assign(new Error("fixture sharing violation"), { code: "EBUSY" });
+      }
+      rename(from, to);
+    });
+    const updateFile = vi.spyOn(CollaborationService.prototype, "updateFile");
+    try {
+      const failed = await save(prefix + original);
+      expect(failed.statusCode, failed.body).toBe(stage === "replace" && process.platform === "win32" ? 409 : 500);
+      expect(attemptedReplace).toBe(true);
+      expect(fs.readFileSync(filename, "utf8")).toBe(original);
+      expect(anchors()).toEqual(priorAnchors);
+      expect(modified()).toEqual(priorModified);
+      expect(history()).toEqual(priorHistory);
+      expect(updateFile).not.toHaveBeenCalled();
+    } finally {
+      if (stage === "commit") db.exec("DROP TRIGGER fixture_fail_commit; DROP TABLE fixture_invalid_project");
+      move.mockRestore();
+      updateFile.mockRestore();
+    }
+    expect((await save(prefix + original)).statusCode).toBe(200);
+    expect(fs.readFileSync(filename, "utf8")).toBe(prefix + original);
+    expect(anchors()).toMatchObject([{ start_offset: prefix.length, selected_text: "Keep this sentence" }]);
   });
 
   it("reanchors source comments when an uploaded text file replaces the source", async () => {
@@ -2903,6 +2960,65 @@ Second version.
     expect(db.prepare("SELECT id FROM projects WHERE id = ?").get(projectId)).toBeUndefined();
     expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_versions WHERE project_id = ?").get(projectId) as { count: number }).count).toBe(0);
     expect((db.prepare("SELECT COUNT(*) AS count FROM project_history_state WHERE project_id = ?").get(projectId) as { count: number }).count).toBe(0);
+  });
+
+  it("retries a locked directory after restart without skipping other deleted projects", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-delete-retry-"));
+    const isolatedConfig = createTestConfig(directory);
+    const owner = randomUUID(), first = randomUUID(), second = randomUUID(), kept = randomUUID(), admin = randomUUID();
+    const timestamp = new Date().toISOString();
+    let instance: FastifyInstance | undefined;
+    let database = openDatabase(isolatedConfig);
+    try {
+      const users = database.prepare("INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)");
+      users.run(admin, "cleanup-admin", "Admin", await hashPassword("administrator password"), "admin", timestamp);
+      users.run(owner, "cleanup-owner", "Owner", "unused", "user", timestamp);
+      const insert = database.prepare("INSERT INTO projects (id, owner_id, name, main_file, engine, created_at, updated_at) VALUES (?, ?, ?, 'main.tex', 'xelatex', ?, ?)");
+      for (const id of [first, second, kept]) {
+        insert.run(id, id === kept ? admin : owner, id, timestamp, timestamp);
+        createProjectFiles(isolatedConfig, id);
+      }
+      const lockedDirectory = path.join(isolatedConfig.projectsDir, first);
+      const locked = Object.assign(new Error("fixture sharing violation"), { code: "EBUSY" });
+      const rename = fs.renameSync, rm = fs.rmSync;
+      instance = await buildApp(isolatedConfig, database, { logger: false });
+      const login = await loginEstablishedUser(instance, { method: "POST", url: "/api/auth/login",
+        payload: { username: "cleanup-admin", password: "administrator password" } });
+      const move = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+        if (from === lockedDirectory) throw locked;
+        rename(from, to);
+      });
+      const remove = vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+        // POSIX falls back to rm when rename fails. Model a lock that blocks both.
+        if (target === lockedDirectory) throw locked;
+        rm(target, options);
+      });
+      try {
+        const response = await instance.inject({ method: "DELETE", url: `/api/admin/users/${owner}`,
+          headers: { cookie: sessionCookie(login.headers) }, payload: { deleteProjects: true } });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({ deletedProjects: 2 });
+        expect(database.prepare("SELECT id FROM projects").all()).toEqual([{ id: kept }]);
+        expect(database.prepare("SELECT project_id FROM pending_project_deletions").all()).toEqual([{ project_id: first }]);
+        expect(fs.existsSync(path.join(lockedDirectory, "source", "main.tex"))).toBe(true);
+        expect(fs.existsSync(path.join(isolatedConfig.projectsDir, second))).toBe(false);
+      } finally {
+        move.mockRestore();
+        remove.mockRestore();
+      }
+      await instance.close();
+      instance = undefined;
+      database.close();
+      database = openDatabase(isolatedConfig);
+      instance = await buildApp(isolatedConfig, database, { logger: false });
+      expect(database.prepare("SELECT project_id FROM pending_project_deletions").all()).toEqual([]);
+      expect(fs.existsSync(lockedDirectory)).toBe(false);
+      expect(fs.existsSync(path.join(sourceRoot(isolatedConfig, kept), "main.tex"))).toBe(true);
+    } finally {
+      await instance?.close();
+      if (database.open) database.close();
+      await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 3 });
+    }
   });
 
   it("returns shared member counts for readers and editors without including the owner", async () => {

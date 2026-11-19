@@ -736,6 +736,15 @@ keeps the restored project live and retries cleanup of `.history-cleanup-*`
 directories at startup. Do not automatically delete `.history-backup-*`
 directories; they may contain the original files from an interrupted restore.
 
+When an administrator deletes a user and their projects, a directory that
+cannot be removed (for example, because another Windows process holds it open)
+stays queued in SQLite. TexLite retries at startup and every minute and logs
+the project ID on failure. The user and projects remain deleted in TexLite.
+
+An HTTP source save that cannot restore the old file after a failed SQLite
+commit logs the source path and recovery directory. Keep the `previous` file
+in that directory until the source has been recovered.
+
 TexLite is designed for trusted users on localhost. Shell escape is disabled by
 default and compile jobs have timeouts and concurrency limits, but LaTeX itself
 is not a security boundary. Before exposing it to an untrusted network, add an
