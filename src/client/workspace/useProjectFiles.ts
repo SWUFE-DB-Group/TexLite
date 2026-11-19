@@ -351,7 +351,7 @@ export function useProjectFiles({
     setSelectedFolder(null);
     setSelectedFile(entry.path);
     if (diagram) {
-      prepareDrawioEditor();
+      prepareDrawioEditor(site.drawioEditorUrl);
       setResourcePreview(null);
       setDrawioPath(entry.path);
       onDrawioOpen?.();

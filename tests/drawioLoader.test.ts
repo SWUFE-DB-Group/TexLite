@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DRAWIO_ORIGIN } from "../src/shared/drawio";
+import { DEFAULT_DRAWIO_EDITOR_URL } from "../src/shared/drawio";
 
 afterEach(() => {
   document.head.querySelectorAll('link[rel="preconnect"]').forEach((link) => link.remove());
@@ -21,9 +21,18 @@ describe("draw.io intent preloading", () => {
     expect(loadDrawioEditor()).toBe(first);
     await first;
     expect(moduleFactory).toHaveBeenCalledTimes(1);
-    expect(document.head.querySelectorAll(`link[rel="preconnect"][href="${DRAWIO_ORIGIN}"]`)).toHaveLength(1);
+    expect(document.head.querySelectorAll(`link[rel="preconnect"][href="${new URL(DEFAULT_DRAWIO_EDITOR_URL).origin}"]`)).toHaveLength(1);
     expect(document.querySelector("iframe")).toBeNull();
     expect(component).not.toHaveBeenCalled(); expect(socket).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("preconnects only to the configured editor origin, not the URL path or the default server", async () => {
+    vi.doMock("../src/client/workspace/DrawioEditor", () => ({ default: vi.fn() }));
+    const { loadDrawioEditor, prepareDrawioEditor } = await import("../src/client/workspace/drawioLoader");
+    prepareDrawioEditor("https://drawio.example.test:8443/tools/diagrams/");
+    await loadDrawioEditor();
+    expect([...document.querySelectorAll('link[rel="preconnect"]')].map((link) => link.getAttribute("href")))
+      .toEqual(["https://drawio.example.test:8443"]);
   });
 
   it("allows opening to retry after a failed speculative import", async () => {

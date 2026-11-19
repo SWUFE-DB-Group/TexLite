@@ -28,6 +28,7 @@ const INTERNAL_PATH_DRAG_PREFIX = "texlite-path:";
 
 export interface WorkspaceFilePanelProps {
   onProjectSearch?: () => void;
+  drawioEditorUrl?: string;
   phoneDrawer?: { open: boolean; onClose: () => void };
   project: Project;
   filesPanel: RefObject<PanelImperativeHandle | null>;
@@ -89,7 +90,7 @@ export interface WorkspaceFilePanelProps {
 }
 
 export function WorkspaceFilePanel({
-  phoneDrawer,
+  phoneDrawer, drawioEditorUrl,
   project, filesPanel, visibleEntries, deletedPath = null, activeFile, activeMainFile, selectedFile, selectedFolder,
   expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
   editorFontSize, outline, sourceCursorStore, wordCountBusy, plainWordCount, canCountFull, hasSelection, hasFormatSelection, uploadInput,
@@ -99,6 +100,7 @@ export function WorkspaceFilePanel({
   onError, onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount, onProjectSearch
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
+  const prepareDiagram = () => prepareDrawioEditor(drawioEditorUrl);
   const [showFileSizes, setShowFileSizes] = useState(false);
   const [fontFile, setFontFile] = useState<{ projectId: string; path: string } | null>(null);
   const [draggedEntry, setDraggedEntry] = useState<FileEntry | null>(null);
@@ -125,7 +127,7 @@ export function WorkspaceFilePanel({
               <input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} />
             </>}
             <FileTreeActionsMenu onQuickOpen={() => setQuickOpen(true)} onProjectSearch={onProjectSearch} onNewFolder={readOnly ? undefined : () => { setNewFolderName(""); setNewFolderOpen(true); }} onTikzGallery={readOnly || !tikzGalleryEnabled ? undefined : () => setTikzGalleryOpen(true)}
-              onNewDrawio={readOnly ? undefined : () => { setFileDialogError(""); setNewFilePath(`${selectedFolder ?? "figures"}/diagram.drawio`); setNewFileOpen(true); }} />
+              onPrepareDrawio={prepareDiagram} onNewDrawio={readOnly ? undefined : () => { setFileDialogError(""); setNewFilePath(`${selectedFolder ?? "figures"}/diagram.drawio`); setNewFileOpen(true); }} />
           </span>
         </div>
         {uploadFeedback && <div className={`file-upload-feedback ${uploadFeedback.kind}`} role={uploadFeedback.kind === "error" ? "alert" : "status"} aria-live={uploadFeedback.kind === "error" ? "assertive" : "polite"} aria-busy={uploadFeedback.kind === "uploading"}>
@@ -181,7 +183,7 @@ export function WorkspaceFilePanel({
               onAnimationEnd: (event: AnimationEvent<HTMLDivElement>) => { if (event.target === event.currentTarget && removeAt !== null) finishExit(entry.path); }
             };
             if (entry.type === "directory") return <div {...transition} className={`file-entry folder-entry${selectedFolder === entry.path ? " selected" : ""}${dropTargetFolder === entry.path ? " move-drop-target" : ""}`} style={{ paddingLeft: `${depth * 13 + 5}px` }} key={entry.path} onDragOver={(event) => { if (!draggedEntry && !isInternalPathDrag(event.dataTransfer)) return; event.preventDefault(); event.stopPropagation(); if (!draggedEntry) return; if (!canMoveToFolder(draggedEntry, entry.path)) { event.dataTransfer.dropEffect = "none"; return; } event.dataTransfer.dropEffect = "move"; setDropTargetFolder(entry.path); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTargetFolder((current) => current === entry.path ? null : current); }} onDrop={(event) => { if (!draggedEntry && !isInternalPathDrag(event.dataTransfer)) return; event.preventDefault(); event.stopPropagation(); if (!draggedEntry) return; const source = draggedEntry; clearMoveDrag(); if (canMoveToFolder(source, entry.path)) void movePathToFolder(source, entry.path); }}><button type="button" className="file-entry-main" onClick={() => { setSelectedFolder(entry.path); setExpandedFolders((current) => { const next = new Set(current); if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path); return next; }); }}>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<FolderOpen size={14} /><span>{name}</span></button>{!readOnly && <><button type="button" className="file-entry-action" title={t("editor.move")} aria-label={t("editor.move")} onClick={() => { setMoveEntry(entry); setMoveName(name ?? ""); setMoveDestination(""); }}><Move size={13} /></button>{canDelete && <button type="button" className="file-entry-action danger-text" title={t("editor.deletePath")} aria-label={t("editor.deletePath")} onClick={() => { setDeleteEntry(entry); setFileDialogError(""); }}><Trash2 size={13} /></button>}</>}</div>;
-            const prepare = isDrawioFile(entry.path) && entry.textContent !== false && (entry.size ?? 0) <= 5 * 1024 * 1024 ? prepareDrawioEditor : undefined;
+            const prepare = isDrawioFile(entry.path) && entry.textContent !== false && (entry.size ?? 0) <= 5 * 1024 * 1024 ? prepareDiagram : undefined;
             return <div {...transition} className={`file-entry${selectedFolder === null && selectedFile === entry.path ? " active" : ""}${draggedEntry?.path === entry.path ? " move-drag-source" : ""}`} style={{ paddingLeft: `${depth * 13 + 18}px` }} key={entry.path}>
               <button type="button" className="file-entry-main" onPointerEnter={prepare} onFocus={prepare} onPointerDown={prepare}
                 draggable={!readOnly} onDragStart={(event) => { suppressClickUntil.current = Date.now() + 500; startPathDrag(event, entry, setDraggedEntry); }} onDragEnd={clearMoveDrag} onClick={() => { if (suppressClickUntil.current > Date.now()) { suppressClickUntil.current = 0; return; } openFile(entry); }}><FileTypeIcon path={entry.path} /><span>{name}</span>{configuredMainDocument && <small>{t("editor.currentMainShort")}</small>}</button>

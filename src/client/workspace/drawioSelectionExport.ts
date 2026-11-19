@@ -1,4 +1,4 @@
-import { DRAWIO_ORIGIN } from "../../shared/drawio";
+import { drawioEmbedUrl } from "./drawioEmbed";
 
 /** The native JSON export includes lossless XML of the selection, not a
  * manually reconstructed graph. Empty selections must never become full pages. */
@@ -19,7 +19,7 @@ export function selectedDrawioXml(value: unknown): string | null {
 
 /** Render a selection in a disposable, noninteractive editor. Loading selection
  * XML into the live editor would replace its document and undo history. */
-export function renderDrawioSelection(xml: string, margin: number, lang: string, signal: AbortSignal): Promise<string> {
+export function renderDrawioSelection(editorUrl: URL, xml: string, margin: number, lang: string, signal: AbortSignal): Promise<string> {
   if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
   return new Promise((resolve, reject) => {
     const frame = document.createElement("iframe");
@@ -29,7 +29,7 @@ export function renderDrawioSelection(xml: string, margin: number, lang: string,
     frame.referrerPolicy = "no-referrer";
     frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
     let settled = false, loaded = false;
-    const post = (message: object) => frame.contentWindow?.postMessage(JSON.stringify(message), DRAWIO_ORIGIN);
+    const post = (message: object) => frame.contentWindow?.postMessage(JSON.stringify(message), editorUrl.origin);
     const finish = (error?: Error, svg?: string) => {
       if (settled) return;
       settled = true; window.clearTimeout(timer);
@@ -39,7 +39,7 @@ export function renderDrawioSelection(xml: string, margin: number, lang: string,
     };
     const abort = () => finish(new DOMException("Aborted", "AbortError"));
     const receive = (event: MessageEvent) => {
-      if (event.origin !== DRAWIO_ORIGIN || event.source !== frame.contentWindow || typeof event.data !== "string") return;
+      if (event.origin !== editorUrl.origin || event.source !== frame.contentWindow || typeof event.data !== "string") return;
       let message: Record<string, unknown>;
       try { message = JSON.parse(event.data); } catch { return; }
       if (!message || typeof message !== "object") return;
@@ -59,8 +59,7 @@ export function renderDrawioSelection(xml: string, margin: number, lang: string,
     const timer = window.setTimeout(() => finish(new Error("DRAWIO_EXPORT_FAILED")), 30_000);
     window.addEventListener("message", receive); signal.addEventListener("abort", abort, { once: true });
     frame.onerror = () => finish(new Error("DRAWIO_EXPORT_FAILED"));
-    frame.src = `${DRAWIO_ORIGIN}/?${new URLSearchParams({ embed: "1", proto: "json", configure: "1", ui: "min",
-      noSaveBtn: "1", noExitBtn: "1", stealth: "1", plugins: "0", lang })}`;
+    frame.src = drawioEmbedUrl(editorUrl, { ui: "min", lang });
     document.body.append(frame);
     if (signal.aborted) abort();
   });

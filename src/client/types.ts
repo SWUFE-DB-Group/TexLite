@@ -18,6 +18,7 @@ export interface SiteConfig {
   maxCitationBibtexBytes: number;
   allowedEngines?: Array<"pdflatex" | "xelatex" | "lualatex">;
   tikzGalleryEnabled?: boolean;
+  drawioEditorUrl?: string;
   allowProjectLatexmkrc?: boolean;
   maxUploadSizeMB: number;
   maxCollaborativeFileSizeMB: number;

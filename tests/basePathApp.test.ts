@@ -18,7 +18,7 @@ describe("application mounted below the origin root", () => {
 
   beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-base-path-app-"));
-    const config: Config = createTestConfig(root, { siteName: "Mounted TexLite", basePath: "/tools/texlite", defaultEngine: "pdflatex", allowedEngines: ["pdflatex"], historyMaxVersions: 10, historyMaxStorageBytes: 16 * 1024 * 1024, editHistoryMaxStorageBytes: 4 * 1024 * 1024 });
+    const config: Config = createTestConfig(root, { siteName: "Mounted TexLite", basePath: "/tools/texlite", drawioEditorUrl: "https://drawio.example.test/tools/diagrams/", defaultEngine: "pdflatex", allowedEngines: ["pdflatex"], historyMaxVersions: 10, historyMaxStorageBytes: 16 * 1024 * 1024, editHistoryMaxStorageBytes: 4 * 1024 * 1024 });
     fs.mkdirSync(path.join(config.clientDir, "assets"), { recursive: true });
     fs.writeFileSync(path.join(config.clientDir, "index.html"),
       '<!doctype html><html><head><base href="/" /><meta name="texlite-base-path" content="/" /></head><body></body></html>');
@@ -43,7 +43,7 @@ describe("application mounted below the origin root", () => {
     expect(health.statusCode).toBe(200);
 
     const publicConfig = await app.inject({ method: "GET", url: "/tools/texlite/api/config" });
-    expect(publicConfig.json()).toMatchObject({ siteName: "Mounted TexLite", basePath: "/tools/texlite" });
+    expect(publicConfig.json()).toMatchObject({ siteName: "Mounted TexLite", basePath: "/tools/texlite", drawioEditorUrl: "https://drawio.example.test/tools/diagrams/" });
 
     const mountedRoot = await app.inject({ method: "GET", url: "/tools/texlite" });
     expect(mountedRoot.statusCode).toBe(200);

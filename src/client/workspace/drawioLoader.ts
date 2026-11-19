@@ -1,4 +1,4 @@
-import { DRAWIO_ORIGIN } from "../../shared/drawio";
+import { resolveDrawioEditorUrl } from "./drawioEmbed";
 
 let editor: Promise<typeof import("./DrawioEditor")> | null = null;
 
@@ -12,11 +12,13 @@ export function loadDrawioEditor(): Promise<typeof import("./DrawioEditor")> {
 }
 
 /** Warm resources on intent only; never create a frame, connection or lease. */
-export function prepareDrawioEditor(): void {
-  if (!document.head.querySelector(`link[rel="preconnect"][href="${DRAWIO_ORIGIN}"]`)) {
+export function prepareDrawioEditor(editorUrl?: string): void {
+  const url = resolveDrawioEditorUrl(editorUrl);
+  if (!url) return;
+  if (!Array.from(document.head.querySelectorAll('link[rel="preconnect"]')).some((link) => link.getAttribute("href") === url.origin)) {
     const link = document.createElement("link");
     link.rel = "preconnect";
-    link.href = DRAWIO_ORIGIN;
+    link.href = url.origin;
     document.head.append(link);
   }
   // A speculative failure must not become an unhandled rejection or prevent

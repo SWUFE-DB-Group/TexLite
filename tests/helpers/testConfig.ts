@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { Config } from "../../src/server/config.js";
+import { DEFAULT_DRAWIO_EDITOR_URL } from "../../src/shared/drawio.js";
 
 /**
  * A complete server configuration rooted in a temporary directory. Tests pass
@@ -11,6 +12,7 @@ export function createTestConfig(root: string, overrides: Partial<Config> = {}):
     configPath: path.join(root, "config.json"), siteName: "Test", adminEmail: "",
     host: "127.0.0.1", port: 3000, basePath: "/", dataDir: root, databasePath: path.join(root, "texlite.db"),
     projectsDir: path.join(root, "projects"), clientDir: path.join(root, "client"), tikzGalleryEnabled: false, tikzGalleryDir: path.join(root, "tikz-gallery"), sessionDays: 1,
+    drawioEditorUrl: DEFAULT_DRAWIO_EDITOR_URL,
     compileTimeoutMs: 30_000, maxCompileJobs: 1, latexmk: "latexmk", defaultEngine: "xelatex",
     allowedEngines: ["xelatex"], extraArgs: [], allowProjectLatexmkrc: true, maxUploadBytes: 1024 * 1024,
     pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 5 * 1024 * 1024,

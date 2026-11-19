@@ -1563,7 +1563,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     {error && <div className="toast" onClick={() => setError("")}>{error}</div>}
     {notice && <div className="toast success" onClick={() => setNotice("")}>{notice}</div>}
     <Group orientation="horizontal" className="work-grid" {...panelLayout}>
-      {showEditor && <WorkspaceFilePanel tikzGalleryEnabled={site.tikzGalleryEnabled === true} setTikzGalleryOpen={setTikzGalleryOpen}
+      {showEditor && <WorkspaceFilePanel drawioEditorUrl={site.drawioEditorUrl} tikzGalleryEnabled={site.tikzGalleryEnabled === true} setTikzGalleryOpen={setTikzGalleryOpen}
         phoneDrawer={phone ? { open: phoneFilesOpen, onClose: () => setPhoneFilesOpen(false) } : undefined}
         project={project} filesPanel={filesPanel} visibleEntries={visibleEntries}
         deletedPath={filesEvent?.kind === "delete" ? filesEvent.path : null}
@@ -1591,7 +1591,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       />}
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel figurePdf={figurePdf}
-        alternativeEditor={drawioPath ? <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /></div>}><DrawioEditor ref={drawioEditor} key={`${projectId}:${drawioPath}`} projectId={projectId} path={drawioPath} readOnly={project.permission === "read"}
+        alternativeEditor={drawioPath ? <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /></div>}><DrawioEditor ref={drawioEditor} key={`${projectId}:${drawioPath}`} projectId={projectId} path={drawioPath} editorUrl={site.drawioEditorUrl} readOnly={project.permission === "read"}
           onClose={() => {
             setDrawioPath(null);
             setSelectedFile((selected) => selected === drawioPath ? activeFile : selected);

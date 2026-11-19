@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DRAWIO_ORIGIN } from "../src/shared/drawio";
+import { DEFAULT_DRAWIO_EDITOR_URL } from "../src/shared/drawio";
 import { renderDrawioSelection, selectedDrawioXml } from "../src/client/workspace/drawioSelectionExport";
 
 let controller: AbortController;
 let frame: HTMLIFrameElement;
 const xml = '<mxGraphModel><root><mxCell id="0"/><mxCell id="selected" value="中文" vertex="1" parent="0"/></root></mxGraphModel>';
-const start = (margin = 0) => {
-  const result = renderDrawioSelection(xml, margin, "zh", controller.signal);
+const DRAWIO_ORIGIN = new URL(DEFAULT_DRAWIO_EDITOR_URL).origin;
+const start = (margin = 0, editorUrl = DEFAULT_DRAWIO_EDITOR_URL) => {
+  const result = renderDrawioSelection(new URL(editorUrl), xml, margin, "zh", controller.signal);
   frame = document.querySelector(".drawio-export-frame")!;
   vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
   return result;
@@ -25,18 +26,21 @@ afterEach(() => { controller.abort(); vi.restoreAllMocks(); vi.useRealTimers(); 
 
 describe("isolated draw.io selection rendering", () => {
   it("accepts only the renderer window and exact origin/request, and removes the frame on success", async () => {
-    const result = start(12);
+    const origin = "https://drawio.example.test:8443";
+    const result = start(12, `${origin}/tools/diagrams/`);
     expect(frame.tabIndex).toBe(-1); expect(frame.getAttribute("aria-hidden")).toBe("true");
     expect(frame.inert).toBe(true);
     expect(frame.src).not.toContain(xml);
-    send({ event: "configure" }); send({ event: "init" });
+    expect(new URL(frame.src).pathname).toBe("/tools/diagrams/");
+    send({ event: "configure" }, origin); send({ event: "init" }, origin);
     expect(sent().at(-1)).toMatchObject({ action: "load", xml, readOnly: true, autosave: 0 });
-    send({ event: "load" });
+    expect(frame.contentWindow!.postMessage).toHaveBeenLastCalledWith(expect.any(String), origin);
+    send({ event: "load" }, origin);
     expect(sent().at(-1)).toMatchObject({ action: "export", format: "svg", allPages: false, border: 12 });
     const response = { event: "export", format: "svg", message: { requestId: 1 }, data: "data:image/svg+xml,%3Csvg%2F%3E" };
-    send(response, "https://other.test"); send(response, DRAWIO_ORIGIN, window); send({ ...response, message: { requestId: 2 } });
+    send(response); send(response, origin, window); send({ ...response, message: { requestId: 2 } }, origin);
     expect(document.querySelector(".drawio-export-frame")).toBe(frame);
-    send(response);
+    send(response, origin);
     await expect(result).resolves.toBe(response.data);
     expect(document.querySelector(".drawio-export-frame")).toBeNull();
   });

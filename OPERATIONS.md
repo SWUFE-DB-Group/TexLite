@@ -108,9 +108,23 @@ fonts are highlighted for review, not automatically repaired.
 ### draw.io diagrams
 
 Use **Files → ⋯ → draw.io diagram**, then open the `.drawio` file to edit
-it in the editor pane with an embedded diagrams.net editor. The browser needs access to
-`https://embed.diagrams.net`; the editor is not bundled with TexLite. Diagram
-data is passed directly to the iframe, not placed in its URL. Save explicitly
+it in the editor pane with an embedded diagrams.net editor. The editor is not
+bundled with TexLite. By default, the browser loads `https://embed.diagrams.net/`.
+To use a trusted self-hosted editor, set `drawio.editorUrl` in `texlite.config.json`
+and restart TexLite. For example:
+
+```json
+{ "drawio": { "editorUrl": "https://drawio.example.com/" } }
+```
+
+Use the final browser-accessible editor URL, including any deployment subpath,
+without credentials, query parameters or fragments. It must use a different
+origin from TexLite and HTTPS if TexLite uses HTTPS. If the editor's proxy
+restricts iframe embedding, allow the TexLite origin. TexLite uses this URL for
+editing and selection export; there is no fallback to the public embed server
+if the configured editor is unavailable.
+
+Diagram data is passed directly to the iframe, not placed in its URL. Save explicitly
 before closing or switching files. Unsaved changes require confirmation before
 leaving the diagram. Each file allows one editing browser tab at a time, even
 for the same account. Other tabs are read-only and can use **Try editing** once
@@ -349,6 +363,7 @@ preferred.
 | `siteName` | `TexLite` | Site title. |
 | `adminEmail` | empty | Optional administrator contact address. |
 | `tikzGallery.enabled` / `tikzGallery.path` | `false` / `addon/texlite-tikz` | Optional figure gallery. A relative path is resolved from the configuration file. |
+| `drawio.editorUrl` | `https://embed.diagrams.net/` | Browser-accessible URL for a trusted draw.io editor on a separate origin. |
 | `drawio.browserPath` | automatic detection | Optional Chromium-family executable for diagram PDF export. Relative paths resolve from the configuration file. |
 | `server.host` / `server.port` | `127.0.0.1` / `3000` | Use `0.0.0.0` to serve a trusted local network; keep localhost behind a tunnel or reverse proxy. |
 | `server.basePath` | `/` | Public URL mount point, such as `/texlite` or `/tools/texlite`. |

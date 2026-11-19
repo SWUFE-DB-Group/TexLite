@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DrawioEditor, { decodeDrawioSvg, type DrawioEditorHandle } from "../src/client/workspace/DrawioEditor";
 import { api, ApiError } from "../src/client/api";
-import { DRAWIO_ORIGIN, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
+import { DEFAULT_DRAWIO_EDITOR_URL, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
 import { renderDrawioSelection } from "../src/client/workspace/drawioSelectionExport";
 import i18n from "../src/client/i18n";
 import { deflateRawSync } from "node:zlib";
@@ -27,11 +27,12 @@ const compressed = (xml: string) => xml.replace(/<diagram([^>]*)>([\s\S]*?)<\/di
   `<diagram${attributes}>${deflateRawSync(Buffer.from(encodeURIComponent(model.trim()))).toString("base64")}</diagram>`);
 const onClose = vi.fn(), onChanged = vi.fn();
 const editor = createRef<DrawioEditorHandle>();
+const DRAWIO_ORIGIN = new URL(DEFAULT_DRAWIO_EDITOR_URL).origin;
 // Mimic the workspace's file navigation through the imperative handle.
 const requestClose = () => act(async () => {
   void editor.current!.confirmClose().then((confirmed) => { if (confirmed) onClose(); });
 });
-const send = (data: object, origin = DRAWIO_ORIGIN, source: Window | null = frame.contentWindow) => act(async () => {
+const send = (data: object, origin = new URL(frame.src).origin, source: Window | null = frame.contentWindow) => act(async () => {
   window.dispatchEvent(new MessageEvent("message", { origin, source, data: JSON.stringify(data) }));
 });
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!;
@@ -41,9 +42,9 @@ const saveShortcut = async (mac = false) => {
   await act(async () => window.dispatchEvent(event));
   return event.defaultPrevented;
 };
-const mount = async (readOnly = false, pdfRevision: string | null = null) => {
+const mount = async (readOnly = false, pdfRevision: string | null = null, editorUrl?: string) => {
   vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision });
-  await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly, onChanged, onClose })));
+  await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly, editorUrl, onChanged, onClose })));
   frame = document.querySelector("iframe")!;
   vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
   await send({ event: "init" }); await send({ event: "load" });
@@ -78,6 +79,7 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi
 describe("embedded draw.io editing", () => {
   it("shows the file name in TexLite without adding a title to the embedded menu", async () => {
     await mount();
+    expect(new URL(frame.src).origin).toBe(DRAWIO_ORIGIN);
     expect(host.querySelector(".drawio-toolbar")?.textContent).toContain("figures/diagram.drawio");
     expect(sent().find(({ action }) => action === "load")).not.toHaveProperty("title");
   });
@@ -94,7 +96,17 @@ describe("embedded draw.io editing", () => {
     await act(async () => help.click());
     const content = document.querySelector(".info-popover-content");
     expect(content?.getAttribute("data-side")).toBe("bottom");
-    expect(content?.textContent).toBe(i18n.t("drawio.help"));
+    expect(content?.textContent).toBe(i18n.t("drawio.help", { host: "embed.diagrams.net" }));
+  });
+
+  it("does not start a same-origin iframe or read project data when the editor URL is unsafe", async () => {
+    await act(async () => root.render(createElement(DrawioEditor, { projectId: "p1", path: "diagram.drawio",
+      readOnly: false, editorUrl: `${window.location.origin}/drawio/`, onChanged, onClose })));
+    expect(host.querySelector("iframe")).toBeNull();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("drawio.editorUrl");
+    expect(api).not.toHaveBeenCalled();
+    await act(async () => closeButton().click());
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -337,7 +349,14 @@ describe("embedded draw.io editing", () => {
   });
 
   it("exports selected content with custom margin but saves the complete source, never the selected XML", async () => {
-    await mount();
+    const editorUrl = new URL("https://drawio.example.test:8443/tools/diagrams/");
+    await mount(false, null, editorUrl.href);
+    expect(new URL(frame.src).pathname).toBe(editorUrl.pathname);
+    expect(frame.contentWindow!.postMessage).toHaveBeenCalledWith(expect.any(String), editorUrl.origin);
+    const before = sent().length;
+    await send({ event: "configure" }, DRAWIO_ORIGIN);
+    await send({ event: "configure" }, editorUrl.origin, window);
+    expect(sent()).toHaveLength(before);
     const selection = '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="selected" value="Selected" vertex="1" parent="1"/></root></mxGraphModel>';
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>Selected</text></svg>';
     vi.mocked(renderDrawioSelection).mockResolvedValue(`data:image/svg+xml,${encodeURIComponent(svg)}`);
@@ -352,7 +371,7 @@ describe("embedded draw.io editing", () => {
     expect(sent().at(-1)).toMatchObject({ format: "xml" });
     await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
     expect(JSON.parse(vi.mocked(api).mock.calls[1][1]!.body as string)).toMatchObject({ content: changed, revision: "r1" });
-    expect(renderDrawioSelection).toHaveBeenCalledWith(selection, 0, "en", expect.any(AbortSignal));
+    expect(renderDrawioSelection).toHaveBeenCalledWith(editorUrl, selection, 0, "en", expect.any(AbortSignal));
     expect(JSON.parse(vi.mocked(api).mock.calls[2][1]!.body as string)).toMatchObject({ svg, revision: "r2" });
     expect(frame.parentElement?.hasAttribute("inert")).toBe(false);
     expect(sent().filter((message) => message.action === "load")).not.toContainEqual(expect.objectContaining({ xml: selection }));
@@ -435,7 +454,7 @@ describe("embedded draw.io editing", () => {
     await act(async () => button("Export PDF").click());
     await send({ event: "export", format: "json", data: { data: "<mxGraphModel><root/></mxGraphModel>", pages: [{ cells: [{ id: "a" }] }] }, message: sent().at(-1) });
     await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
-    const signal = vi.mocked(renderDrawioSelection).mock.calls[0][3];
+    const signal = vi.mocked(renderDrawioSelection).mock.calls[0][4];
     await act(async () => button("Cancel").click()); expect(signal.aborted).toBe(true);
     await act(async () => finish("data:image/svg+xml,%3Csvg%2F%3E"));
     expect(api).toHaveBeenCalledTimes(2); // No PDF request from the cancelled render.

@@ -36,7 +36,7 @@ describe("configuration", () => {
       server: { basePath: "/tools/texlite/" },
       storage: { dataDir: "data" },
       uploads: { maxFileSizeMB: 25 },
-      drawio: { browserPath: "tools/chromium" },
+      drawio: { browserPath: "tools/chromium", editorUrl: "https://drawio.example.test/tools/diagrams/" },
       pdf: { loadingStrategy: "range", rangeThresholdMB: 7 },
       history: { maxVersions: 120, maxStorageMB: 256 },
       editHistory: { maxStorageMB: 48, maxSegments: 8000 },
@@ -53,6 +53,7 @@ describe("configuration", () => {
     expect(config.allowProjectLatexmkrc).toBe(false);
     expect(config.maxUploadBytes).toBe(25 * 1024 * 1024);
     expect(config.drawioBrowserPath).toBe(path.join(root, "tools/chromium"));
+    expect(config.drawioEditorUrl).toBe("https://drawio.example.test/tools/diagrams/");
     expect(config.pdfLoadingStrategy).toBe("range");
     expect(config.pdfRangeThresholdBytes).toBe(7 * 1024 * 1024);
     expect(config.historyMaxVersions).toBe(120);
@@ -85,6 +86,7 @@ describe("configuration", () => {
     const config = loadConfig();
     expect(config).toMatchObject({
       siteName: "TexLite", host: "127.0.0.1", port: 3000, basePath: "/", sessionDays: 14,
+      drawioEditorUrl: "https://embed.diagrams.net/",
       compileTimeoutMs: 600_000, maxCompileJobs: 10, defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
       pdfLoadingStrategy: "auto", pdfRangeThresholdBytes: 2 * 1024 * 1024,
@@ -92,6 +94,16 @@ describe("configuration", () => {
       editHistoryMaxStorageBytes: 64 * 1024 * 1024, editHistoryMaxSegments: 20_000,
       git: "git", gitOperationTimeoutMs: 120_000, githubApiBaseUrl: "https://api.github.com"
     });
+  });
+
+  it("rejects editor URLs that cannot be safely exposed to the browser", () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-drawio-"));
+    const configPath = path.join(root, "config.json");
+    for (const editorUrl of ["/drawio/", "javascript:void(0)", "https://user:secret@drawio.example.test/",
+      "https://drawio.example.test/?token=secret", "https://drawio.example.test/#editor", "https://"]) {
+      fs.writeFileSync(configPath, JSON.stringify({ drawio: { editorUrl } }));
+      expect(() => loadConfig(configPath)).toThrow(/drawio\.editorUrl/);
+    }
   });
 
   it("uses the new PDF threshold when omitted without replacing explicit file or environment settings", () => {

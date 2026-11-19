@@ -6,11 +6,12 @@ import { errorMessage } from "../errors";
 import { ConfirmDialog } from "../Dialog";
 import { InfoPopover } from "../InfoPopover";
 import { currentTheme } from "../theme";
-import { DRAWIO_ORIGIN, drawioPdfPath, type DrawioDocument, type DrawioExportOptions } from "../../shared/drawio";
+import { drawioPdfPath, type DrawioDocument, type DrawioExportOptions } from "../../shared/drawio";
 import { useDrawioLock } from "./useDrawioLock";
 import { sameDrawioContent } from "./drawioContent";
 import { DrawioExportButton } from "./DrawioExportButton";
 import { hasDrawioSelection, renderDrawioSelection, selectedDrawioXml } from "./drawioSelectionExport";
+import { drawioEmbedUrl, resolveDrawioEditorUrl } from "./drawioEmbed";
 
 const maxXmlLength = 5 * 1024 * 1024;
 const autosaveDelayMs = 1_000;
@@ -33,9 +34,24 @@ export interface DrawioEditorHandle {
   getLockToken: () => string | undefined;
 }
 
-export default function DrawioEditor({ projectId, path, readOnly, onChanged, onClose, ref }: {
-  projectId: string; path: string; readOnly: boolean; onChanged: () => void; onClose: () => void; ref?: Ref<DrawioEditorHandle>;
-}) {
+type DrawioEditorProps = {
+  projectId: string; path: string; editorUrl?: string; readOnly: boolean; onChanged: () => void; onClose: () => void; ref?: Ref<DrawioEditorHandle>;
+};
+
+export default function DrawioEditor({ editorUrl, ...props }: DrawioEditorProps) {
+  const { t } = useTranslation();
+  const url = resolveDrawioEditorUrl(editorUrl);
+  if (!url) return <section className="drawio-editor" aria-label={props.path}>
+    <div className="drawio-toolbar">
+      <span className="drawio-file-name"><Workflow size={14} aria-hidden /><span>{props.path}</span></span>
+      <button type="button" className="drawio-close" aria-label={t("common.close")} data-tooltip={t("common.close")} onClick={props.onClose}><X size={16} aria-hidden /></button>
+    </div>
+    <div className="error drawio-error" role="alert">{t("drawio.invalidEditorUrl")}</div>
+  </section>;
+  return <EmbeddedDrawioEditor key={url.href} {...props} editorUrl={url} />;
+}
+
+function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged, onClose, ref }: Omit<DrawioEditorProps, "editorUrl"> & { editorUrl: URL }) {
   const { t, i18n } = useTranslation();
   const lock = useDrawioLock(projectId, path, readOnly);
   const [approvedToken, setApprovedToken] = useState("");
@@ -69,7 +85,8 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, onC
   const [feedback, setFeedback] = useState(false);
   const [discard, setDiscard] = useState(false);
   const [overwrite, setOverwrite] = useState<DrawioExportOptions | null>(null);
-  const post = (message: object) => frame.current?.contentWindow?.postMessage(JSON.stringify(message), DRAWIO_ORIGIN);
+  const origin = editorUrl.origin;
+  const post = useCallback((message: object) => frame.current?.contentWindow?.postMessage(JSON.stringify(message), origin), [origin]);
   const checkSelection = useCallback((signal: AbortSignal): Promise<boolean> => {
     if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
     if (!readyRef.current || frameReadOnly.current) return Promise.resolve(false);
@@ -90,7 +107,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, onC
       post({ action: "export", format: "json", requestId: id, selection: true, allPages: false, includeData: false });
       if (signal.aborted) abort();
     });
-  }, []);
+  }, [post]);
   const load = () => {
     if (!initialized.current || !saved.current) return;
     const ownership = lock.current.current;
@@ -216,7 +233,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, onC
 
   useEffect(() => {
     const receive = async (event: MessageEvent) => {
-      if (event.origin !== DRAWIO_ORIGIN || event.source !== frame.current?.contentWindow || typeof event.data !== "string") return;
+      if (event.origin !== origin || event.source !== frame.current?.contentWindow || typeof event.data !== "string") return;
       let message: Record<string, unknown>;
       try { message = JSON.parse(event.data); } catch { return; }
       if (!message || typeof message !== "object") return;
@@ -302,7 +319,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, onC
           savingSource = false;
           assertOwner(request);
           const svgData = request.selectionXml
-            ? await renderDrawioSelection(request.selectionXml, request.options!.margin, lang, abort.signal) : message.data;
+            ? await renderDrawioSelection(editorUrl, request.selectionXml, request.options!.margin, lang, abort.signal) : message.data;
           if (abort.signal.aborted || !mounted.current) return;
           assertOwner(request);
           const svg = decodeDrawioSvg(svgData);
@@ -387,8 +404,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, onC
   const lang = useRef(i18n.resolvedLanguage === "zh-Hant" ? "zh-tw" : i18n.resolvedLanguage === "zh" ? "zh" : "en").current;
   const appearance = useRef({ ui: window.innerWidth <= 600 ? "simple" : currentTheme() === "dark" ? "dark" : "kennedy",
     dark: currentTheme() === "dark" ? "1" : "0", sidebar: window.innerWidth > 600 && !readOnly ? "1" : "0" }).current;
-  const url = `${DRAWIO_ORIGIN}/?${new URLSearchParams({ embed: "1", proto: "json", configure: "1", spin: "1",
-    libraries: "1", noSaveBtn: "1", noExitBtn: "1", saveAndExit: "0", stealth: "1", plugins: "0", ...appearance, lang })}`;
+  const url = drawioEmbedUrl(editorUrl, { spin: "1", libraries: "1", saveAndExit: "0", ...appearance, lang });
   const status = readOnly || (!canEdit && lock.state.status !== "connecting") ? "readOnly"
     : lock.state.status === "connecting" ? "connecting" : busy === "save" || busy === "close" ? "saving"
       : saveError ? "saveFailed" : dirty ? "saving" : ready ? "saved" : "loading";
@@ -406,7 +422,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, onC
           <span className={`drawio-status${status === "saved" ? " is-saved" : status === "saveFailed" ? " is-failed" : ""}`} role="status">
             {status === "saved" && <Check size={12} aria-hidden="true" />}{t(`drawio.${status}`)}
           </span>
-          <span className="drawio-help"><InfoPopover content={t("drawio.help")} side="bottom" /></span>
+          <span className="drawio-help"><InfoPopover content={t("drawio.help", { host: editorUrl.host })} side="bottom" /></span>
           <button type="button" className="drawio-close" aria-label={t("common.close")} data-tooltip={t("common.close")}
             disabled={closing || busy === "pdf"}
             onClick={() => { void confirmClose().then((confirmed) => { if (confirmed) onClose(); }); }}>
@@ -423,7 +439,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, onC
         {saveError && canEdit && <button type="button" disabled={Boolean(busy) || closing} onClick={requestSave}>{t("common.retry")}</button>}
       </div>}
       <div className="drawio-frame-wrap" inert={closing || busy === "pdf" || !canEdit && !frameReadOnly.current}>
-        {!ready && <div className="drawio-loading" role="status">{loadingFailed ? <><span>{t("drawio.unavailable")}</span><button onClick={() => setRetry((value) => value + 1)}><RefreshCw size={14} />{t("common.retry")}</button></> : <><LoaderCircle size={20} className="spin" /><span>{t("drawio.loading")}</span></>}</div>}
+        {!ready && <div className="drawio-loading" role="status">{loadingFailed ? <><span>{t("drawio.unavailable", { host: editorUrl.host })}</span><button onClick={() => setRetry((value) => value + 1)}><RefreshCw size={14} />{t("common.retry")}</button></> : <><LoaderCircle size={20} className="spin" /><span>{t("drawio.loading")}</span></>}</div>}
         <iframe key={retry} ref={frame} src={url} title={t("drawio.title")} referrerPolicy="no-referrer"
           onError={() => setLoadingFailed(true)}
           sandbox="allow-scripts allow-same-origin allow-modals" />

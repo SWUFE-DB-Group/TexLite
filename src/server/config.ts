@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultDataDirectory, packageClientDirectory, resolveConfigPath } from "./runtimePaths.js";
 import { normalizeBasePath, ROOT_BASE_PATH } from "../shared/basePath.js";
+import { DEFAULT_DRAWIO_EDITOR_URL, parseDrawioEditorUrl } from "../shared/drawio.js";
 
 export const LATEX_ENGINES = ["pdflatex", "xelatex", "lualatex"] as const;
 export type LatexEngine = typeof LATEX_ENGINES[number];
@@ -21,6 +22,7 @@ export const CONFIG_DEFAULTS = {
   tikzGalleryEnabled: false,
   /** Relative to the configuration file, like a relative storage.dataDir. */
   tikzGalleryPath: path.join("addon", "texlite-tikz"),
+  drawioEditorUrl: DEFAULT_DRAWIO_EDITOR_URL,
   sessionDays: 14,
   compileTimeoutSeconds: 600,
   maxCompileJobs: 10,
@@ -69,6 +71,7 @@ export interface Config {
   clientDir: string;
   tikzGalleryEnabled: boolean;
   tikzGalleryDir: string;
+  drawioEditorUrl: string;
   drawioBrowserPath?: string;
   sessionDays: number;
   compileTimeoutMs: number;
@@ -177,6 +180,7 @@ export function loadConfig(configPathOverride?: string): Config {
     clientDir,
     tikzGalleryEnabled: fileConfig.tikzGallery?.enabled ?? CONFIG_DEFAULTS.tikzGalleryEnabled,
     tikzGalleryDir: resolveConfiguredPath("tikzGallery.path", fileConfig.tikzGallery?.path ?? CONFIG_DEFAULTS.tikzGalleryPath, configDirectory),
+    drawioEditorUrl: fileConfig.drawio?.editorUrl?.trim() ?? CONFIG_DEFAULTS.drawioEditorUrl,
     drawioBrowserPath: fileConfig.drawio?.browserPath
       ? resolveConfiguredPath("drawio.browserPath", fileConfig.drawio.browserPath, configDirectory) : undefined,
     sessionDays: integerSetting("sessionDays", process.env.TEXLITE_SESSION_DAYS, fileConfig.sessionDays, CONFIG_DEFAULTS.sessionDays, CONFIG_LIMITS.sessionDays),
@@ -226,6 +230,9 @@ export function validateConfig(config: Config): void {
   validateFileTarget("database path", config.databasePath);
   validateDirectoryTarget("client directory", config.clientDir, false);
   validateUrl("git.githubApiBaseUrl", config.githubApiBaseUrl);
+  if (!parseDrawioEditorUrl(config.drawioEditorUrl)) {
+    throw configurationError("drawio.editorUrl", "must be an absolute HTTP or HTTPS URL without credentials, a query or a fragment");
+  }
   if (!config.allowedEngines.length || new Set(config.allowedEngines).size !== config.allowedEngines.length) {
     throw configurationError("latex.allowedEngines", "must contain at least one unique engine");
   }
@@ -262,7 +269,7 @@ interface FileConfig {
   server?: { host?: string; port?: number; basePath?: string };
   storage?: { dataDir?: string };
   tikzGallery?: { enabled?: boolean; path?: string };
-  drawio?: { browserPath?: string };
+  drawio?: { browserPath?: string; editorUrl?: string };
   latex?: {
     latexmk?: string;
     defaultEngine?: string;
@@ -333,6 +340,7 @@ function validateFileConfig(config: FileConfig): void {
   const tikzGallery = optionalSection(config.tikzGallery, "tikzGallery");
   const drawio = optionalSection(config.drawio, "drawio");
   optionalString(drawio?.browserPath, "drawio.browserPath", { min: 1, max: 4_096 });
+  optionalString(drawio?.editorUrl, "drawio.editorUrl", { min: 1, max: 2_048 });
   if (tikzGallery && Object.prototype.hasOwnProperty.call(tikzGallery, "enabled") && typeof tikzGallery.enabled !== "boolean") {
     throw configurationError("tikzGallery.enabled", "must be true or false");
   }
