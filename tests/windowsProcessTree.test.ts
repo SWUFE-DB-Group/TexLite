@@ -46,6 +46,7 @@ it.runIf(process.platform === "win32")("cancels and waits for a Windows command 
 
 it.runIf(process.platform === "win32").each(["command exit", "launcher exit", "parent disconnect", "cancel"])(
   "reclaims owned Windows descendants after %s", async (event) => {
+    const disconnect = event === "parent disconnect";
     const child = spawnOwnedCommand(process.execPath, ["-e", `
       const worker = require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
       console.log(worker.pid);
@@ -54,7 +55,10 @@ it.runIf(process.platform === "win32").each(["command exit", "launcher exit", "p
     child.stderr.resume();
     const complete = new Promise<void>((resolve, reject) => {
       child.once("error", reject);
-      child.once("close", () => afterProcessStop(child, resolve, reject));
+      // Explicit parent-side disconnect can suppress ChildProcess 'close' even
+      // after 'exit' and pipe shutdown (nodejs/node#65646).
+      if (disconnect) child.once("exit", () => resolve());
+      else child.once("close", () => afterProcessStop(child, resolve, reject));
     });
     void complete.catch(() => undefined);
     let output = "";
@@ -64,12 +68,24 @@ it.runIf(process.platform === "win32").each(["command exit", "launcher exit", "p
       const pid = Number(output.trim());
       if (event !== "command exit") expect(process.kill(pid, 0)).toBe(true);
       if (event === "launcher exit") expect(child.kill()).toBe(true);
-      if (event === "parent disconnect") child.disconnect();
+      if (disconnect) {
+        child.disconnect();
+        // The launcher exits with 1 on IPC EOF. Waiting for its worker to
+        // finish naturally would also remove the PID, but must not pass this test.
+        await vi.waitFor(() => expect(child.exitCode).toBe(1), { timeout: 10_000 });
+      }
       if (event === "cancel") await stopProcessTree(child);
       await complete;
-      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" })));
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" })), { timeout: 5_000 });
     } finally {
-      if (child.exitCode === null && child.signalCode === null) await stopProcessTree(child);
+      if (child.exitCode === null && child.signalCode === null) {
+        if (disconnect && !child.connected) {
+          // The launcher owns the last job handle. Force its exit for failure
+          // cleanup too, without waiting for Node's missing 'close' event.
+          child.kill();
+          await vi.waitFor(() => expect(child.exitCode ?? child.signalCode).not.toBeNull(), { timeout: 5_000 });
+        } else await stopProcessTree(child);
+      }
     }
   }, 40_000
 );
