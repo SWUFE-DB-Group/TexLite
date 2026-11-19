@@ -71,11 +71,17 @@ export class DrawioPdfRenderer {
 
   private async renderDocument(svg: string, configured: string | undefined, signal: AbortSignal): Promise<Buffer> {
     let close: (() => Promise<void>) | undefined;
+    let executablePath: string | undefined;
+    let stage = "browser detection";
+    const report = (error: unknown) => this.reportError?.(new Error(
+      `Draw.io PDF export failed during ${stage}${executablePath ? ` (${executablePath})` : ""}`, { cause: error }
+    ));
     try {
       signal.throwIfAborted();
-      const executablePath = this.detectedBrowser && this.detectedBrowser.configured === configured
+      executablePath = this.detectedBrowser && this.detectedBrowser.configured === configured
         ? this.detectedBrowser.path : await findDrawioBrowser(configured);
       this.detectedBrowser = { configured, path: executablePath };
+      stage = "browser startup";
       const { default: puppeteer } = await import("puppeteer-core");
       signal.throwIfAborted();
       let browser: Browser;
@@ -87,6 +93,7 @@ export class DrawioPdfRenderer {
         close = () => closeBrowser(browser);
       }
       signal.throwIfAborted();
+      stage = "page setup";
       const page = await browser.newPage();
       page.setDefaultTimeout(10_000);
       // SVG/foreignObject is untrusted. Never run its scripts or allow access
@@ -99,6 +106,7 @@ export class DrawioPdfRenderer {
         else { blockedResource = true; void request.abort(); }
       });
       await page.setContent(`<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;padding:0;background:white}svg{display:block}*{box-sizing:border-box}</style></head><body></body></html>`);
+      stage = "SVG preparation";
       const size = await page.evaluate((source) => {
         const documentSvg = new DOMParser().parseFromString(source, "image/svg+xml");
         const svg = documentSvg.documentElement;
@@ -118,6 +126,7 @@ export class DrawioPdfRenderer {
         return { width, height };
       }, svg);
       if (!size) throw httpError(400, "DRAWIO_INVALID");
+      stage = "font and image loading";
       await page.evaluate(async () => {
         await document.fonts.ready;
         await Promise.all(Array.from(document.images, async (image) => { if (!image.complete) await image.decode(); }));
@@ -129,16 +138,19 @@ export class DrawioPdfRenderer {
           const probe = new Image(); probe.src = href; await probe.decode();
         }));
       });
-      if (blockedResource) throw httpError(422, "DRAWIO_EXPORT_FAILED");
+      if (blockedResource) throw new Error("The diagram requested a blocked resource.");
       signal.throwIfAborted();
+      stage = "PDF printing";
       const bytes = Buffer.from(await page.pdf({ width: `${size.width}px`, height: `${size.height}px`,
         margin: { top: 0, right: 0, bottom: 0, left: 0 }, printBackground: true, displayHeaderFooter: false,
         waitForFonts: true, timeout: 10_000 }));
-      if (bytes.length > 20 * 1024 * 1024 || !bytes.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw httpError(422, "DRAWIO_EXPORT_FAILED");
+      if (bytes.length > 20 * 1024 * 1024 || !bytes.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
+        throw new Error("The browser returned an invalid or oversized PDF.");
+      }
       return bytes;
     } catch (error) {
       this.detectedBrowser = undefined; // Retry detection after installation/removal or a failed launch.
-      if (error instanceof AggregateError || (!signal.aborted && !(error instanceof HttpError))) this.reportError?.(error);
+      if (error instanceof AggregateError || (!signal.aborted && !(error instanceof HttpError))) report(error);
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       if (error instanceof HttpError) throw error;
       throw httpError(422, "DRAWIO_EXPORT_FAILED");
@@ -146,7 +158,8 @@ export class DrawioPdfRenderer {
       if (close) {
         try { await close(); }
         catch (error) {
-          this.reportError?.(error);
+          stage = "browser cleanup";
+          report(error);
           if (!signal.aborted) throw httpError(422, "DRAWIO_EXPORT_FAILED");
         }
       }

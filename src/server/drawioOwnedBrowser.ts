@@ -59,6 +59,8 @@ export async function launchOwnedDrawioBrowser(
   let closed: Promise<void> | undefined;
   let cleanup: Promise<void> | undefined;
   let launchFailure: Error | undefined;
+  let launchTimeout: AbortSignal | undefined;
+  let stderr = "";
   const release = () => cleanup ??= (async () => {
     signal.removeEventListener("abort", abort);
     transport?.close();
@@ -70,7 +72,8 @@ export async function launchOwnedDrawioBrowser(
   const abort = () => { void release().catch(() => undefined); };
 
   try {
-    const args = await api.defaultArgs({ headless: true, userDataDir: profile });
+    const args = await api.defaultArgs({ headless: true, userDataDir: profile,
+      ...(process.platform === "win32" ? { args: ["--enable-logging=stderr"] } : {}) });
     signal.throwIfAborted();
     const launched = spawnOwnedCommand(executable, [...args, "--remote-debugging-pipe"], { devtoolsPipe: true });
     child = launched;
@@ -81,10 +84,10 @@ export async function launchOwnedDrawioBrowser(
     }));
     launched.on("error", (error) => { launchFailure = error; transport?.close(); });
     launched.stdout.resume();
-    launched.stderr.resume();
+    launched.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr = (stderr + chunk).slice(-4_096); });
     transport = new DevToolsPipe(launched.stdio[3] as Writable, launched.stdio[4] as Readable);
     signal.addEventListener("abort", abort, { once: true });
-    const launchTimeout = AbortSignal.timeout(10_000);
+    launchTimeout = AbortSignal.timeout(10_000);
     launchTimeout.addEventListener("abort", abort, { once: true });
     let browser: Browser;
     try {
@@ -112,10 +115,16 @@ export async function launchOwnedDrawioBrowser(
       }
     };
   } catch (error) {
+    const timedOut = launchTimeout?.aborted === true && !signal.aborted;
     try { await release(); }
     catch (cleanupError) {
       throw new AggregateError([error, cleanupError], "Could not clean up failed draw.io browser launch");
     }
-    throw launchFailure ?? error;
+    const cause = launchFailure ?? error;
+    const detail = stderr.trim();
+    if (timedOut || detail) {
+      throw new Error(`${timedOut ? "Timed out waiting for the draw.io browser's DevTools pipe" : "Could not start the draw.io browser"}${detail ? `\nBrowser stderr:\n${detail}` : ""}`, { cause });
+    }
+    throw cause;
   }
 }

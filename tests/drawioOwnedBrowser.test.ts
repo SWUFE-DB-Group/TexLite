@@ -60,12 +60,12 @@ it("cleans up the job and profile when the browser exits before connecting", asy
   const marker = path.join(root, "child.pid");
   // Do not leave a test grandchild on POSIX, where this production path is
   // unused. Windows must reclaim it after the browser root exits.
-  const crash = process.platform === "win32" ? `
+  const crash = 'console.error("host browser diagnostic");\n' + (process.platform === "win32" ? `
     const child = require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
     require('node:fs').writeFileSync(process.argv[1], String(child.pid));
     child.unref();
     process.exit(2);
-  ` : "process.exit(2)";
+  ` : "process.exit(2)");
   try {
     let profile = "";
     await expect(launchOwnedDrawioBrowser({
@@ -76,7 +76,10 @@ it("cleans up the job and profile when the browser exits before connecting", asy
       connect: async ({ transport }) => new Promise<Browser>((_resolve, reject) => {
         transport!.onclose = () => reject(new Error("Chrome exited before connecting"));
       })
-    }, process.execPath, new AbortController().signal)).rejects.toThrow("Chrome exited before connecting");
+    }, process.execPath, new AbortController().signal)).rejects.toMatchObject({
+      message: expect.stringContaining("host browser diagnostic"),
+      cause: expect.objectContaining({ message: "Chrome exited before connecting" })
+    });
     expect(profile).toBeTruthy();
     expect(fs.existsSync(profile)).toBe(false);
     if (process.platform === "win32") {

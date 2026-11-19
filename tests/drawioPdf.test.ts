@@ -97,4 +97,15 @@ describe("optional host diagram PDF renderer", () => {
     await expect(renderer.render("<svg/>", binary)).resolves.toBeInstanceOf(Buffer);
     await renderer.close();
   });
+
+  it("reports the failing browser stage and original cause without exposing them in the API error", async () => {
+    const error = new Error("Print command timed out.");
+    page.pdf.mockRejectedValueOnce(error);
+    const report = vi.fn();
+    const renderer = new DrawioPdfRenderer(report);
+    try {
+      await expect(renderer.render("<svg/>", binary)).rejects.toMatchObject({ code: "DRAWIO_EXPORT_FAILED", details: {} });
+      expect(report).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("PDF printing"), cause: error }));
+    } finally { await renderer.close(); }
+  });
 });

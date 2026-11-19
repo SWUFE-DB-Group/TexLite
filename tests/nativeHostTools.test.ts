@@ -37,7 +37,7 @@ describe.runIf(process.env.TEXLITE_TEST_NATIVE_HOST_TOOLS === "1")("native host 
 
   it("exports a diagram with the host browser and reads its fonts with Poppler", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "TexLite PDF 图表 "));
-    const renderer = new DrawioPdfRenderer();
+    const renderer = new DrawioPdfRenderer((error) => console.error(error));
     try {
       const pdf = await renderer.render('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="32"><text x="3" y="20" font-family="Arial">TexLite</text></svg>');
       const file = path.join(directory, "diagram.pdf");
