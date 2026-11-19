@@ -40,6 +40,14 @@ describe("draw.io exclusive edit leases", () => {
     expect(() => locks.assertOwned("project", "figure.drawio", first.token, "u1")).toThrow();
   });
 
+  it("does not release the caller's lease when a folder also contains another editor's diagram", () => {
+    const first = acquire(new Socket(), "figures/first.drawio");
+    const second = acquire(new Socket(), "figures/second.drawio");
+    expect(() => locks.prepareDelete("project", "figures", "u1", first.token)).toThrow(expect.objectContaining({ code: "DRAWIO_LOCKED" }));
+    expect(() => locks.assertOwned("project", "figures/first.drawio", first.token, "u1")).not.toThrow();
+    expect(() => locks.assertOwned("project", "figures/second.drawio", second.token, "u1")).not.toThrow();
+  });
+
   it("renews with protocol pongs, but expires silent peers without relying on browser JavaScript timers", () => {
     const socket = acquire();
     for (let i = 0; i < 5; i++) { vi.advanceTimersByTime(DRAWIO_LOCK_PING_MS); socket.emit("pong"); }

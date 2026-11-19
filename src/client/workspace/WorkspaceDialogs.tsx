@@ -77,6 +77,8 @@ export interface WorkspaceDialogsProps {
   deleteEntry: FileEntry | null;
   setDeleteEntry: (entry: FileEntry | null) => void;
   deleteActiveSessions: ActiveSession[];
+  deletingPath: boolean;
+  deletingOpenDrawio: boolean;
   removePath: () => Promise<void>;
   commentOpen: boolean;
   closeComment: () => void;
@@ -122,7 +124,7 @@ export function WorkspaceDialogs({
   setNewFileOpen, newFilePath, setNewFilePath, newFolderOpen, setNewFolderOpen, newFolderName,
   setNewFolderName, selectedFolder, fileDialogError, setFileDialogError, createFile, createFolder, moveEntry,
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
-  setDeleteEntry, deleteActiveSessions, removePath, commentOpen, closeComment, commentSelection, commentText,
+  setDeleteEntry, deleteActiveSessions, deletingPath, deletingOpenDrawio, removePath, commentOpen, closeComment, commentSelection, commentText,
   setCommentText, commentSubmitting, commentError, addComment, cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection, shareOpen, setShareOpen, onSharedMemberCountChange, citationLibraryOpen, setCitationLibraryOpen,
   insertCitationAtCursor, quickOpen, setQuickOpen, openFile,
   selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
@@ -149,7 +151,13 @@ export function WorkspaceDialogs({
     <Modal open={newFileOpen} title={t("editor.newFile")} description={t("editor.newFileDescription")} onOpenChange={(open) => { setNewFileOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFileOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFile()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.filePath")}<input autoFocus value={newFilePath} onChange={(event) => setNewFilePath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void createFile(); } }} /></label></></Modal>
     <Modal open={newFolderOpen} title={t("editor.newFolder")} description={<Trans i18nKey="editor.folderDestination" values={{ folder: selectedFolder || t("editor.projectRoot") }} components={{ path: <strong className="folder-destination-path" /> }} />} onOpenChange={(open) => { setNewFolderOpen(open); if (!open) setFileDialogError(""); }} footer={<><button onClick={() => setNewFolderOpen(false)}>{t("common.cancel")}</button><button className="primary" onClick={() => void createFolder()}>{t("common.create")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.folderName")}<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></label></></Modal>
     <Modal open={Boolean(moveEntry)} title={t("editor.moveTitle", { name: moveEntry?.path.split("/").at(-1) ?? "" })} description={t("editor.moveDescription")} onOpenChange={(open) => { if (!open) { setMoveEntry(null); setMoveName(""); setFileDialogError(""); } }} footer={<><button onClick={() => setMoveEntry(null)}>{t("common.cancel")}</button><button className="primary" disabled={!moveName.trim()} onClick={() => void movePath()}>{t("editor.moveApply")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}<label className="form-field">{t("editor.pathName")}<input autoFocus value={moveName} onChange={(event) => setMoveName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void movePath(); }} /></label><label className="form-field">{t("editor.destinationFolder")}<select value={moveDestination} onChange={(event) => setMoveDestination(event.target.value)}><option value="">{t("editor.projectRoot")}</option>{directoryEntries.filter((directory) => moveEntry?.type !== "directory" || (directory.path !== moveEntry.path && !directory.path.startsWith(`${moveEntry.path}/`))).map((directory) => <option value={directory.path} key={directory.path}>{directory.path}</option>)}</select></label></></Modal>
-    <Modal open={Boolean(deleteEntry)} title={t("editor.deletePathTitle", { name: deleteEntry?.path.split("/").at(-1) ?? "" })} description={deleteActiveSessions.length ? t("editor.deletePathActiveDescription", { count: deleteActiveSessions.length, path: deleteEntry?.path ?? "", users: [...new Set(deleteActiveSessions.map((session) => session.name))].join(", ") }) : t("editor.deletePathDescription", { path: deleteEntry?.path ?? "" })} onOpenChange={(open) => { if (!open) { setDeleteEntry(null); setFileDialogError(""); } }} footer={<><button onClick={() => setDeleteEntry(null)}>{t("common.cancel")}</button><button className="danger" onClick={() => void removePath()}>{t("common.delete")}</button></>}><>{fileDialogError && <p className="error dialog-error">{fileDialogError}</p>}{deleteActiveSessions.length > 0 && <p className="warning"><AlertTriangle size={15} />{t("editor.deletePathWillClose")}</p>}</></Modal>
+    <ConfirmDialog open={Boolean(deleteEntry)} title={t("editor.deletePathTitle", { name: deleteEntry?.path.split("/").at(-1) ?? "" })}
+      description={deleteActiveSessions.length ? t("editor.deletePathActiveDescription", { count: deleteActiveSessions.length, path: deleteEntry?.path ?? "", users: [...new Set(deleteActiveSessions.map((session) => session.name))].join(", ") }) : t("editor.deletePathDescription", { path: deleteEntry?.path ?? "" })}
+      confirmLabel={t("common.delete")} danger busy={deletingPath} error={fileDialogError}
+      onCancel={() => { setDeleteEntry(null); setFileDialogError(""); }} onConfirm={() => void removePath()}>
+      {deletingOpenDrawio && <p className="warning"><AlertTriangle size={15} />{t("editor.deleteOpenDrawio")}</p>}
+      {deleteActiveSessions.length > 0 && <p className="warning"><AlertTriangle size={15} />{t("editor.deletePathWillClose")}</p>}
+    </ConfirmDialog>
     <CommentComposerDialog open={commentOpen} projectId={projectId} ownerId={project.ownerId} authorId={user.id}
       selection={commentSelection} text={commentText} onText={setCommentText} suggestion={commentSuggestion} onSuggestion={setCommentSuggestion}
       submitting={commentSubmitting} error={commentError} onSubmit={addComment}

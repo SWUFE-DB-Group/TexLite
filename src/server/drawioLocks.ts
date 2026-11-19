@@ -10,6 +10,8 @@ interface Lease {
   socket: WebSocket; expiresAt: number; timer: NodeJS.Timeout; valid: () => boolean;
 }
 
+const containsPath = (root: string, file: string) => file === root || file.startsWith(`${root}/`);
+
 /** Runtime-only ownership: a token is valid only while its exact socket owns the lease. */
 export class DrawioLocks {
   private readonly leases = new Map<string, Lease>();
@@ -55,15 +57,32 @@ export class DrawioLocks {
     if (!lease || lease.userId !== userId || lease.token !== token) throw httpError(409, "DRAWIO_LOCK_LOST");
   }
 
-  /** Generic upload/move/delete paths cannot bypass the visual editor's lease. */
-  assertUnlocked(projectId: string, paths: readonly string[]): void {
-    for (const candidate of [...this.leases.values()]) {
+  private *matching(projectId: string, paths: readonly string[]) {
+    for (const candidate of this.leases.values()) {
       if (candidate.projectId !== projectId) continue;
       const lease = this.active(projectId, candidate.path);
-      if (lease && paths.some((path) => [lease.path, drawioPdfPath(lease.path)].some((file) => file === path || file.startsWith(`${path}/`)))) {
+      if (lease && paths.some((path) => containsPath(path, lease.path) || containsPath(path, drawioPdfPath(lease.path)))) yield lease;
+    }
+  }
+
+  assertUnlocked(projectId: string, paths: readonly string[]): void {
+    for (const lease of this.matching(projectId, paths)) {
+      throw httpError(409, "DRAWIO_LOCKED", { name: lease.name });
+    }
+  }
+
+  /** The owning editor may delete its source, but not another lease or just its exported PDF. */
+  prepareDelete(projectId: string, path: string, userId: string, token: unknown): () => void {
+    let removedLease: Lease | undefined;
+    for (const lease of this.matching(projectId, [path])) {
+      if (lease.userId !== userId || lease.token !== token || !containsPath(path, lease.path)) {
         throw httpError(409, "DRAWIO_LOCKED", { name: lease.name });
       }
+      removedLease = lease;
     }
+    if (token !== undefined && !removedLease) throw httpError(409, "DRAWIO_LOCK_LOST");
+    // Run only after the filesystem deletion succeeds, inside the same mutation.
+    return () => { if (removedLease) this.release(removedLease); };
   }
 
   revokeProject(projectId: string): void {

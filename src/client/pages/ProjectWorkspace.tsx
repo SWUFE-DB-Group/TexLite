@@ -652,6 +652,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       setNotice(t("editor.fileDeletedByCollaborator", { path: filesEvent.path }));
     }
     if (filesEvent.kind === "delete" && filesEvent.path) {
+      setDrawioPath((current) => current && pathContains(filesEvent.path!, current) ? null : current);
       setSelectedFolder((current) => current && pathContains(filesEvent.path!, current) ? null : current);
       setSelectedFile((current) => pathContains(filesEvent.path!, current) ? "" : current);
       setResourcePreview((current) => current && pathContains(filesEvent.path!, current.path) ? null : current);
@@ -1027,7 +1028,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     selectedFolder, setSelectedFolder, selectedFile, setSelectedFile,
     expandedFolders, setExpandedFolders,
     moveEntry, setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination,
-    deleteEntry, setDeleteEntry,
+    deleteEntry, setDeleteEntry, deletingPath,
     fileDragActive, setFileDragActive,
     uploadConflict, setUploadConflict, uploadingFiles, uploadFeedback, dismissUploadFeedback,
     directoryEntries, visibleEntries,
@@ -1043,6 +1044,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     onActiveFile: setActiveFile,
     onActiveMainFile: setActiveMainFile,
     beforeOpenFile: () => drawioEditor.current?.confirmClose() ?? Promise.resolve(true),
+    getDrawioLockToken: () => drawioEditor.current?.getLockToken(),
     onDrawioOpen: () => setWorkspaceLayout("editor-only")
   });
   const navigateFromDrawio = (action: () => void) => {
@@ -1592,6 +1594,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel figurePdf={figurePdf}
         alternativeEditor={drawioPath ? <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /></div>}><DrawioEditor ref={drawioEditor} key={`${projectId}:${drawioPath}`} projectId={projectId} path={drawioPath} readOnly={project.permission === "read"}
+          onClose={() => {
+            setDrawioPath(null);
+            setSelectedFile((selected) => selected === drawioPath ? activeFile : selected);
+          }}
           onChanged={() => { void loadFiles().catch((error) => setError(errorMessage(error))); }} /></Suspense> : undefined}
         mobileSync={!drawioPath && phone && sidePanel !== "comments" ? markdownActive
           ? { disabled: loadedFile !== activeFile, onClick: showCursorInMarkdown, label: t("editor.markdown.showInPreview") }
@@ -1684,6 +1690,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       setMoveEntry={setMoveEntry} moveName={moveName} setMoveName={setMoveName}
       moveDestination={moveDestination} setMoveDestination={setMoveDestination} movePath={movePath}
       deleteEntry={deleteEntry} setDeleteEntry={setDeleteEntry} deleteActiveSessions={deleteActiveSessions}
+      deletingPath={deletingPath} deletingOpenDrawio={Boolean(deleteEntry && drawioPath && pathContains(deleteEntry.path, drawioPath))}
       removePath={removePath} commentOpen={commentOpen} closeComment={closeComment}
       commentSelection={commentSelection} commentSuggestion={commentSuggestion} setCommentSuggestion={setCommentSuggestion} commentText={commentText} setCommentText={setCommentText} commentSubmitting={commentSubmitting}
       cancelComment={cancelComment} commentDraftRestored={commentDraftRestored} commentDraftCanRetarget={commentDraftCanRetarget}

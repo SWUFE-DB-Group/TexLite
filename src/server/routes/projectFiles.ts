@@ -34,6 +34,7 @@ import { moveEditHistoryPaths } from "../editHistory.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { mainDocumentCandidates } from "../latexRoot.js";
 import { inspectPdfFonts } from "../pdfFonts.js";
+import { DRAWIO_LOCK_HEADER } from "../../shared/drawio.js";
 import { isTextContent } from "../../shared/fileTypes.js";
 import {
   commentsForFile,
@@ -508,7 +509,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN");
     return await projectMutations.runWrite(id, () => {
       const currentProject = requireEditableProject(db, id, user);
-      projectMutations.drawioLocks.assertUnlocked(id, [relative]);
+      const releaseDrawio = projectMutations.drawioLocks.prepareDelete(id, relative, user.id, request.headers[DRAWIO_LOCK_HEADER]);
       if (relative === currentProject.main_file || currentProject.main_file.startsWith(`${relative}/`)) {
         return apiError(reply, 400, "MAIN_FILE_DELETE_FORBIDDEN", { path: relative });
       }
@@ -519,6 +520,7 @@ export function registerProjectFileRoutes(app: FastifyInstance, context: Project
         throw error;
       }
       removeProjectSourcePath(config, absolute);
+      releaseDrawio();
       if (currentProject.latexmkrc === relative || currentProject.latexmkrc?.startsWith(`${relative}/`)) {
         db.prepare("UPDATE projects SET latexmkrc = NULL WHERE id = ?").run(id);
       }

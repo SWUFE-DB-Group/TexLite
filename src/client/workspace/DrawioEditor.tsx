@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { Check, LoaderCircle, LockKeyhole, RefreshCw, Workflow } from "lucide-react";
+import { Check, LoaderCircle, LockKeyhole, RefreshCw, Workflow, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, isAbortError } from "../api";
 import { errorMessage } from "../errors";
@@ -28,10 +28,13 @@ export function decodeDrawioSvg(value: unknown): string {
 type Request = { id: number; kind: "save" | "pdf" | "close"; timer: number; change: number; lockToken: string;
   options?: DrawioExportOptions; phase?: "selection" | "source"; selectionXml?: string };
 
-export interface DrawioEditorHandle { confirmClose: () => Promise<boolean> }
+export interface DrawioEditorHandle {
+  confirmClose: () => Promise<boolean>;
+  getLockToken: () => string | undefined;
+}
 
-export default function DrawioEditor({ projectId, path, readOnly, onChanged, ref }: {
-  projectId: string; path: string; readOnly: boolean; onChanged: () => void; ref?: Ref<DrawioEditorHandle>;
+export default function DrawioEditor({ projectId, path, readOnly, onChanged, onClose, ref }: {
+  projectId: string; path: string; readOnly: boolean; onChanged: () => void; onClose: () => void; ref?: Ref<DrawioEditorHandle>;
 }) {
   const { t, i18n } = useTranslation();
   const lock = useDrawioLock(projectId, path, readOnly);
@@ -135,7 +138,10 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, ref
       else settleClose(true);
     });
   };
-  useImperativeHandle(ref, () => ({ confirmClose }));
+  useImperativeHandle(ref, () => ({
+    confirmClose,
+    getLockToken: () => lock.current.current.status === "owned" ? lock.current.current.token : undefined
+  }));
 
   useEffect(() => {
     mounted.current = true;
@@ -400,6 +406,11 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, ref
             {status === "saved" && <Check size={12} aria-hidden="true" />}{t(`drawio.${status}`)}
           </span>
           <span className="drawio-help"><InfoPopover content={t("drawio.help")} side="bottom" /></span>
+          <button type="button" className="drawio-close" aria-label={t("common.close")} data-tooltip={t("common.close")}
+            disabled={closing || busy === "pdf"}
+            onClick={() => { void confirmClose().then((confirmed) => { if (confirmed) onClose(); }); }}>
+            <X size={16} aria-hidden />
+          </button>
         </div>
       </div>
       {(lock.state.status === "busy" || lock.state.status === "lost") && <div className="drawio-lock-notice" role="status"><LockKeyhole size={14} aria-hidden />

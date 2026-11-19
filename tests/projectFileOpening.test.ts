@@ -6,6 +6,7 @@ import { api, ApiError } from "../src/client/api";
 import type { FileEntry, SiteConfig } from "../src/client/types";
 import { useProjectFiles } from "../src/client/workspace/useProjectFiles";
 import { prepareDrawioEditor } from "../src/client/workspace/drawioLoader";
+import { DRAWIO_LOCK_HEADER } from "../src/shared/drawio";
 import "../src/client/i18n";
 
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
@@ -21,11 +22,12 @@ const onError = vi.fn();
 const onActiveFile = vi.fn();
 const onDrawioOpen = vi.fn();
 const beforeOpenFile = vi.fn(async () => true);
+const getDrawioLockToken = vi.fn<() => string | undefined>();
 
 function Harness() {
   const [activeFile, setActiveFile] = useState("main.tex");
   files = useProjectFiles({ projectId: "project", site, activeFile, dirty: false, save: async () => true,
-    onError, onProject: vi.fn(), beforeOpenFile, onDrawioOpen, onActiveFile: (value) => { onActiveFile(value); setActiveFile(value); }, onActiveMainFile: vi.fn() });
+    onError, onProject: vi.fn(), beforeOpenFile, getDrawioLockToken, onDrawioOpen, onActiveFile: (value) => { onActiveFile(value); setActiveFile(value); }, onActiveMainFile: vi.fn() });
   return null;
 }
 
@@ -33,6 +35,7 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.mocked(api).mockReset(); onError.mockReset(); onActiveFile.mockReset(); onDrawioOpen.mockReset();
   beforeOpenFile.mockReset().mockResolvedValue(true);
+  getDrawioLockToken.mockReset();
   vi.mocked(prepareDrawioEditor).mockClear();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host); unmounted = false;
   await act(async () => root.render(createElement(Harness)));
@@ -43,6 +46,34 @@ afterEach(async () => {
 });
 
 describe("opening suffix-classified project files", () => {
+  it("deletes the active diagram with its lease, preserving the editor until deletion succeeds", async () => {
+    const diagram: FileEntry = { path: "figures/diagram.drawio", type: "file", size: 100 };
+    await act(async () => files.openFile(diagram));
+    await act(async () => files.setDeleteEntry(diagram));
+    beforeOpenFile.mockClear();
+    getDrawioLockToken.mockReturnValue("current-lease");
+    vi.mocked(api).mockRejectedValueOnce(new ApiError("Unavailable", 503));
+    await act(async () => files.removePath());
+    expect(files.drawioPath).toBe(diagram.path);
+    expect(files.deleteEntry).toBe(diagram);
+    expect(files.fileDialogError).toBeTruthy();
+
+    let finish!: (value: object) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => { void files.removePath(); void files.removePath(); });
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(api).toHaveBeenLastCalledWith("/api/projects/project/file?path=figures%2Fdiagram.drawio", {
+      method: "DELETE", headers: { [DRAWIO_LOCK_HEADER]: "current-lease" }
+    });
+    expect(files.deletingPath).toBe(true);
+    expect(files.drawioPath).toBe(diagram.path);
+    await act(async () => finish({ ok: true }));
+    expect(files.drawioPath).toBeNull();
+    expect(files.selectedFile).toBe("main.tex");
+    expect(files.deleteEntry).toBeNull();
+    expect(beforeOpenFile).not.toHaveBeenCalled();
+  });
+
   it("keeps the diagram and its close guard untouched while previewing resources", async () => {
     await act(async () => files.openFile({ path: "diagram.drawio", type: "file", size: 100 }));
     beforeOpenFile.mockClear();

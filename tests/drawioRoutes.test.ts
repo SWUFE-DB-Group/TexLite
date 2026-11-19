@@ -9,7 +9,7 @@ import { openDatabase, type DatabaseConnection } from "../src/server/db";
 import { createSessionToken } from "../src/server/security";
 import { sourceRoot } from "../src/server/files";
 import { httpError } from "../src/server/http";
-import { EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
+import { DRAWIO_LOCK_HEADER, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
 import { createTestConfig } from "./helpers/testConfig";
 import { once } from "node:events";
 import { Socket } from "node:net";
@@ -266,6 +266,27 @@ describe("draw.io project files and PDF export", () => {
     expect(result.statusCode).toBe(409); expect(result.json().code).toBe("DRAWIO_LOCK_LOST");
     expect(fs.existsSync(absolute("diagram.pdf"))).toBe(false);
     expect((await request("PUT", "", { path: "figures/diagram.drawio", content: changed, revision: before.revision }, "writer")).statusCode).toBe(200);
+  });
+
+  it.each(["figures/diagram.drawio", "figures"])("deletes %s with the originating writer's live lease and fences late autosaves", async (target) => {
+    const { token, socket } = await acquire("writer");
+    const before = await document();
+    fs.writeFileSync(absolute("diagram.pdf"), "%PDF-fixture");
+    const remove = (user: string, lockToken: string, file = target) => app.inject({
+      method: "DELETE", url: `/tools/texlite/api/projects/${id}/file?path=${encodeURIComponent(file)}`,
+      headers: { cookie: cookies.get(user)!, [DRAWIO_LOCK_HEADER]: lockToken }
+    });
+    expect((await remove("reader", token)).statusCode).toBe(403);
+    expect((await remove("owner", token)).json().code).toBe("DRAWIO_LOCKED");
+    expect((await remove("writer", "stale-token")).json().code).toBe("DRAWIO_LOCKED");
+    expect((await remove("writer", token, "figures/diagram.pdf")).json().code).toBe("DRAWIO_LOCKED");
+    expect(fs.existsSync(absolute())).toBe(true);
+    const closed = once(socket, "close");
+    expect((await remove("writer", token)).statusCode).toBe(200);
+    await closed;
+    expect((await request("PUT", "", { path: "figures/diagram.drawio", revision: before.revision, content: changed }, "writer")).json().code).toBe("DRAWIO_LOCK_LOST");
+    expect(fs.existsSync(absolute())).toBe(false);
+    expect(fs.existsSync(absolute("diagram.pdf"))).toBe(target !== "figures");
   });
 
   it("closes active lock sockets on server shutdown, and accepts only new ownership after restart", async () => {

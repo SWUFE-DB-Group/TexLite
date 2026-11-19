@@ -1040,6 +1040,7 @@
     "deletePathActiveDescription_one": "確定刪除 {{path}}？{{users}} 目前正在開啟它，刪除後這些工作階段將關閉該檔案。",
     "deletePathActiveDescription_other": "確定刪除 {{path}}？{{users}} 目前正在開啟它，刪除後這些工作階段將關閉該檔案。",
     "deletePathWillClose": "系統會拒絕該路徑上遲到的修改，避免內容被靜默丟失。",
+    "deleteOpenDrawio": "圖表將關閉，未儲存的修改將被捨棄。",
     "fileDeletedByCollaborator": "{{path}} 已在其他工作階段中刪除，現已開啟安全的備用檔案。",
     "compileShortcut": "儲存並編譯（Ctrl+S / Cmd+S）",
     "compilingBy": "{{name}} 正在編譯",

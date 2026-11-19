@@ -5,7 +5,7 @@ import { errorMessage } from "../errors";
 import type { FileEntry, Project, SiteConfig } from "../types";
 import { appPath } from "../basePath";
 import { isEditableTextFile, isTextContent, resourceFileKind } from "../../shared/fileTypes";
-import { EMPTY_DRAWIO, isDrawioFile } from "../../shared/drawio";
+import { DRAWIO_LOCK_HEADER, EMPTY_DRAWIO, isDrawioFile } from "../../shared/drawio";
 import { prepareDrawioEditor } from "./drawioLoader";
 export { isEditableTextFile } from "../../shared/fileTypes";
 
@@ -64,6 +64,7 @@ export function rawFileUrl(projectId: string, filePath: string): string {
 
 interface UseProjectFilesOptions {
   beforeOpenFile?: () => Promise<boolean>;
+  getDrawioLockToken?: () => string | undefined;
   onDrawioOpen?: () => void;
   projectId: string;
   site: SiteConfig;
@@ -77,7 +78,7 @@ interface UseProjectFilesOptions {
 }
 
 export function useProjectFiles({
-  projectId, site, activeFile, dirty, save, onError, onProject, onActiveFile, onActiveMainFile, beforeOpenFile, onDrawioOpen
+  projectId, site, activeFile, dirty, save, onError, onProject, onActiveFile, onActiveMainFile, beforeOpenFile, getDrawioLockToken, onDrawioOpen
 }: UseProjectFilesOptions) {
   const { t } = useTranslation();
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -98,6 +99,8 @@ export function useProjectFiles({
   const [moveName, setMoveName] = useState("");
   const [moveDestination, setMoveDestination] = useState("");
   const [deleteEntry, setDeleteEntry] = useState<FileEntry | null>(null);
+  const [deletingPath, setDeletingPath] = useState(false);
+  const deleteInFlight = useRef(false);
   const [fileDragActive, setFileDragActive] = useState(false);
   const [uploadConflict, setUploadConflict] = useState<PendingUpload | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState(false);
@@ -433,13 +436,26 @@ export function useProjectFiles({
   };
 
   const removePath = async () => {
-    if (!deleteEntry) return;
+    if (!deleteEntry || deleteInFlight.current) return;
+    const path = deleteEntry.path;
+    const closesDrawio = drawioPath !== null && pathContains(path, drawioPath);
+    deleteInFlight.current = true;
+    setDeletingPath(true);
     setFileDialogError("");
     try {
       if (dirty && !(await save())) return;
-      await api(`/api/projects/${projectId}/file?path=${encodeURIComponent(deleteEntry.path)}`, { method: "DELETE" });
+      // Keep the diagram open and its lease alive until deletion succeeds.
+      const lockToken = closesDrawio ? getDrawioLockToken?.() : undefined;
+      await api(`/api/projects/${projectId}/file?path=${encodeURIComponent(path)}`, {
+        method: "DELETE", ...(lockToken && { headers: { [DRAWIO_LOCK_HEADER]: lockToken } })
+      });
+      if (closesDrawio) {
+        setDrawioPath((current) => current === drawioPath ? null : current);
+        setSelectedFile((current) => (!current || pathContains(path, current)) && !pathContains(path, activeFile) ? activeFile : current);
+      }
       setDeleteEntry(null);
     } catch (error) { setFileDialogError(errorMessage(error)); }
+    finally { deleteInFlight.current = false; setDeletingPath(false); }
   };
 
   useEffect(() => () => {
@@ -478,7 +494,7 @@ export function useProjectFiles({
     selectedFolder, setSelectedFolder, selectedFile, setSelectedFile,
     expandedFolders, setExpandedFolders,
     moveEntry, setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination,
-    deleteEntry, setDeleteEntry,
+    deleteEntry, setDeleteEntry, deletingPath,
     fileDragActive, setFileDragActive,
     uploadConflict, setUploadConflict, uploadingFiles, uploadFeedback, dismissUploadFeedback,
     directoryEntries, visibleEntries,

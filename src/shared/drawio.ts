@@ -3,6 +3,7 @@ export const isDrawioFile = (path: string): boolean => /\.drawio$/i.test(path);
 export const drawioPdfPath = (path: string): string => path.replace(/\.drawio$/i, ".pdf");
 export interface DrawioDocument { content: string; revision: string; pdfRevision: string | null }
 export const DRAWIO_ORIGIN = "https://embed.diagrams.net";
+export const DRAWIO_LOCK_HEADER = "x-texlite-drawio-lock";
 export interface DrawioExportOptions { scope: "page" | "selection"; margin: number }
 
 export const drawioMessages = {
