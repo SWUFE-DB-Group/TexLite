@@ -348,6 +348,19 @@ describe("embedded draw.io editing", () => {
     expect(api).toHaveBeenCalledTimes(1);
   });
 
+  it("does not show or leave behind a cancel action for a quick export", async () => {
+    await mount();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.mocked(api).mockResolvedValueOnce({ pdfRevision: "pdf-r1" });
+    await act(async () => button("Export PDF").click());
+    expect(button("Export PDF").getAttribute("aria-busy")).toBe("true");
+    expect(button("Cancel export")).toBeUndefined();
+    await send({ event: "export", format: "svg", xml: EMPTY_DRAWIO, data: "data:image/svg+xml,%3Csvg%2F%3E", message: sent().at(-1) });
+    expect(button("PDF saved")).toBeDefined();
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    expect(button("Cancel export")).toBeUndefined();
+  });
+
   it("exports selected content with custom margin but saves the complete source, never the selected XML", async () => {
     const editorUrl = new URL("https://drawio.example.test:8443/tools/diagrams/");
     await mount(false, null, editorUrl.href);
@@ -451,11 +464,17 @@ describe("embedded draw.io editing", () => {
     vi.mocked(api).mockResolvedValueOnce({ revision: "r2" });
     let finish!: (data: string) => void;
     vi.mocked(renderDrawioSelection).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await act(async () => button("Export PDF").click());
     await send({ event: "export", format: "json", data: { data: "<mxGraphModel><root/></mxGraphModel>", pages: [{ cells: [{ id: "a" }] }] }, message: sent().at(-1) });
     await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
     const signal = vi.mocked(renderDrawioSelection).mock.calls[0][4];
-    await act(async () => button("Cancel").click()); expect(signal.aborted).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(1_999));
+    expect(button("Cancel export")).toBeUndefined();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    await act(async () => button("Cancel export").click());
+    expect(signal.aborted).toBe(true);
+    expect(button("Cancel export")).toBeUndefined();
     await act(async () => finish("data:image/svg+xml,%3Csvg%2F%3E"));
     expect(api).toHaveBeenCalledTimes(2); // No PDF request from the cancelled render.
     expect(button("Export PDF").disabled).toBe(false);

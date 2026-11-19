@@ -16,6 +16,7 @@ import { drawioEmbedUrl, resolveDrawioEditorUrl } from "./drawioEmbed";
 const maxXmlLength = 5 * 1024 * 1024;
 const autosaveDelayMs = 1_000;
 const saveRequestTimeoutMs = 30_000;
+const exportCancelDelayMs = 2_000;
 
 /** Decode only an SVG data URI, never a URL supplied by an embedded page. */
 export function decodeDrawioSvg(value: unknown): string {
@@ -80,6 +81,8 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   const [editVersion, setEditVersion] = useState(0);
   const [closing, setClosing] = useState(false);
   const [busy, setBusy] = useState<Request["kind"] | null>(null);
+  const exporting = busy === "pdf";
+  const [showCancelExport, setShowCancelExport] = useState(false);
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [feedback, setFeedback] = useState(false);
@@ -127,7 +130,7 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   const finish = () => {
     if (pending.current) window.clearTimeout(pending.current.timer);
     pending.current = null;
-    if (mounted.current) setBusy(null);
+    if (mounted.current) { setBusy(null); setShowCancelExport(false); }
   };
   const settleClose = (confirmed: boolean) => {
     const resolve = closeDecision.current; closeDecision.current = null; resolve?.(confirmed);
@@ -384,6 +387,14 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
     start("save");
   };
   useEffect(() => {
+    if (!exporting) return;
+    const request = pending.current;
+    const timer = window.setTimeout(() => {
+      if (request && pending.current === request) setShowCancelExport(true);
+    }, exportCancelDelayMs);
+    return () => window.clearTimeout(timer);
+  }, [exporting]);
+  useEffect(() => {
     if (!ready || !canEdit || !dirty || busy || closing || overwrite || saveError) return;
     const timer = window.setTimeout(() => start("save"), autosaveDelayMs);
     return () => window.clearTimeout(timer);
@@ -414,9 +425,10 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
       <div className="drawio-toolbar">
         <span className="drawio-file-name"><Workflow size={14} aria-hidden /><span>{path}</span></span>
         {!readOnly && <div className="drawio-actions">
-          <DrawioExportButton saving={busy === "pdf"} disabled={!canEdit || !ready || Boolean(busy) || closing} feedback={feedback ? t("drawio.exported") : ""} checkSelection={checkSelection}
+          <DrawioExportButton saving={exporting} disabled={!canEdit || !ready || Boolean(busy) || closing} feedback={feedback ? t("drawio.exported") : ""} checkSelection={checkSelection}
             onExport={(options) => { if (saved.current?.pdfRevision) setOverwrite(options); else start("pdf", options); }} />
-          {busy === "pdf" && <button type="button" onClick={() => { const active = controller.current; controller.current = null; active?.abort(); finishRequest(false); }}>{t("common.cancel")}</button>}
+          {exporting && showCancelExport && <button type="button" className="drawio-export-cancel"
+            onClick={() => { const active = controller.current; controller.current = null; active?.abort(); finishRequest(false); }}>{t("drawio.cancelExport")}</button>}
         </div>}
         <div className="drawio-status-tools">
           <span className={`drawio-status${status === "saved" ? " is-saved" : status === "saveFailed" ? " is-failed" : ""}`} role="status">
@@ -424,7 +436,7 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
           </span>
           <span className="drawio-help"><InfoPopover content={t("drawio.help", { host: editorUrl.host })} side="bottom" /></span>
           <button type="button" className="drawio-close" aria-label={t("common.close")} data-tooltip={t("common.close")}
-            disabled={closing || busy === "pdf"}
+            disabled={closing || exporting}
             onClick={() => { void confirmClose().then((confirmed) => { if (confirmed) onClose(); }); }}>
             <X size={16} aria-hidden />
           </button>
@@ -438,7 +450,7 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
         <span>{saveError || error}</span>
         {saveError && canEdit && <button type="button" disabled={Boolean(busy) || closing} onClick={requestSave}>{t("common.retry")}</button>}
       </div>}
-      <div className="drawio-frame-wrap" inert={closing || busy === "pdf" || !canEdit && !frameReadOnly.current}>
+      <div className="drawio-frame-wrap" inert={closing || exporting || !canEdit && !frameReadOnly.current}>
         {!ready && <div className="drawio-loading" role="status">{loadingFailed ? <><span>{t("drawio.unavailable", { host: editorUrl.host })}</span><button onClick={() => setRetry((value) => value + 1)}><RefreshCw size={14} />{t("common.retry")}</button></> : <><LoaderCircle size={20} className="spin" /><span>{t("drawio.loading")}</span></>}</div>}
         <iframe key={retry} ref={frame} src={url} title={t("drawio.title")} referrerPolicy="no-referrer"
           onError={() => setLoadingFailed(true)}

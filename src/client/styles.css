@@ -2787,6 +2787,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .drawio-help::before { content: ""; inline-size: 1px; block-size: 14px; background: var(--ui-border, #dfe2de); }
 .drawio-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .drawio-toolbar .drawio-actions button { min-height: var(--ui-control-height); padding: 5px 10px; font-size: var(--ui-control-font-size); }
+.drawio-toolbar .drawio-actions > .drawio-export-cancel { padding-inline: 8px; border: 0; border-radius: var(--ui-control-radius); background: transparent; color: var(--ui-muted, #657068); font-weight: 500; line-height: 1.25; white-space: nowrap; }
+.drawio-actions > .drawio-export-cancel:hover { background: var(--ui-hover, #edf2ee); color: var(--ui-text, #30453a); }
+.drawio-export-cancel:focus-visible { outline: 2px solid var(--ui-info, #2563b4); outline-offset: -2px; }
 .drawio-export-button { display: inline-flex; align-items: stretch; overflow: hidden; border: 1px solid var(--ui-border, #c9d0ca); border-radius: var(--ui-control-radius); background: var(--ui-surface, #fff); }
 /* One shared outline; inner buttons never inherit standalone rounded borders. */
 :root .drawio-export-button > button { min-height: calc(var(--ui-control-height) - 2px); border: 0; border-radius: 0; background: transparent; line-height: 1.25; }

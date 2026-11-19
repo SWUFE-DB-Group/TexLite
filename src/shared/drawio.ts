@@ -29,7 +29,7 @@ export const drawioMessages = {
     },
     ui: {
       connecting: "Connecting…", lockedBy: "{{name}} is editing this diagram", lockLost: "Editing connection lost. Your unsaved changes are kept here.", retryEdit: "Try editing",
-      new: "draw.io diagram", title: "draw.io", export: "Export PDF", exported: "PDF saved", saved: "Saved",
+      new: "draw.io diagram", title: "draw.io", export: "Export PDF", cancelExport: "Cancel export", exported: "PDF saved", saved: "Saved",
       saving: "Saving…", saveFailed: "Save failed", saveTimeout: "The diagram editor did not respond. Try saving again.",
       exportOptions: "PDF export options", exportScope: "Export range", currentPage: "Current page", selection: "Selected content", margin: "Content margin",
       selectionCheckFailed: "Could not check selection. Reopen this menu to retry.",
@@ -54,7 +54,7 @@ export const drawioMessages = {
     },
     ui: {
       connecting: "连接中…", lockedBy: "{{name}} 正在编辑此图表", lockLost: "编辑连接已断开，未保存的修改仍保留在此处。", retryEdit: "尝试编辑",
-      new: "draw.io 图表", title: "draw.io", export: "导出 PDF", exported: "PDF 已保存", saved: "已保存",
+      new: "draw.io 图表", title: "draw.io", export: "导出 PDF", cancelExport: "取消导出", exported: "PDF 已保存", saved: "已保存",
       saving: "保存中…", saveFailed: "保存失败", saveTimeout: "图表编辑器未响应，请重试保存。",
       exportOptions: "PDF 导出选项", exportScope: "导出范围", currentPage: "当前页面", selection: "所选内容", margin: "内容外边距",
       selectionCheckFailed: "无法检查选区，请重新打开菜单重试。",
@@ -79,7 +79,7 @@ export const drawioMessages = {
     },
     ui: {
       connecting: "連線中…", lockedBy: "{{name}} 正在編輯此圖表", lockLost: "編輯連線已中斷，未儲存的修改仍保留在此處。", retryEdit: "嘗試編輯",
-      new: "draw.io 圖表", title: "draw.io", export: "匯出 PDF", exported: "PDF 已儲存", saved: "已儲存",
+      new: "draw.io 圖表", title: "draw.io", export: "匯出 PDF", cancelExport: "取消匯出", exported: "PDF 已儲存", saved: "已儲存",
       saving: "儲存中…", saveFailed: "儲存失敗", saveTimeout: "圖表編輯器未回應，請重試儲存。",
       exportOptions: "PDF 匯出選項", exportScope: "匯出範圍", currentPage: "目前頁面", selection: "所選內容", margin: "內容外邊距",
       selectionCheckFailed: "無法檢查選取範圍，請重新開啟選單重試。",
