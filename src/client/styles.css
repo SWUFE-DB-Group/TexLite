@@ -2775,7 +2775,11 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .drawio-file-name { min-width: 0; display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; max-width: min(40%, 320px); color: var(--ui-accent, #195d3b); font-size: 12px; font-weight: 600; }
 .drawio-file-name > svg { flex: none; }
 .drawio-file-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.drawio-status { margin-left: auto; color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
+.drawio-status-tools { display: inline-flex; flex: none; align-items: center; gap: 8px; margin-inline-start: auto; }
+.drawio-status { color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
+.drawio-status.is-saved { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; background: var(--ui-accent-bg, #e6f1e9); color: var(--ui-accent, #176b44); font-weight: 600; }
+.drawio-help { display: inline-flex; align-items: center; gap: 5px; }
+.drawio-help::before { content: ""; inline-size: 1px; block-size: 14px; background: var(--ui-border, #dfe2de); }
 .drawio-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .drawio-toolbar .drawio-actions button { min-height: var(--ui-control-height); padding: 5px 10px; font-size: var(--ui-control-font-size); }
 .drawio-export-button { display: inline-flex; align-items: stretch; overflow: hidden; border: 1px solid var(--ui-border, #c9d0ca); border-radius: var(--ui-control-radius); background: var(--ui-surface, #fff); }

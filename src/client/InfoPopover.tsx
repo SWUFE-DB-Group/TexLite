@@ -3,11 +3,11 @@ import * as Popover from "@radix-ui/react-popover";
 import { Info, type LucideIcon } from "lucide-react";
 
 /** Persistent, selectable help text. Unlike hover hints, this is an explicit toggle. */
-type InfoPopoverProps = { className?: string; icon?: LucideIcon; size?: number } & (
+type InfoPopoverProps = { className?: string; icon?: LucideIcon; size?: number; side?: Popover.PopoverContentProps["side"] } & (
   { content: string; label?: string } | { content: ReactNode; label: string }
 );
 
-export function InfoPopover({ content, label = typeof content === "string" ? content : undefined, className = "", icon: Icon = Info, size = 14 }: InfoPopoverProps) {
+export function InfoPopover({ content, label = typeof content === "string" ? content : undefined, className = "", icon: Icon = Info, size = 14, side = "top" }: InfoPopoverProps) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = trigger.current?.closest<HTMLElement>('[role="dialog"]') ?? null;
@@ -18,7 +18,7 @@ export function InfoPopover({ content, label = typeof content === "string" ? con
       </button>
     </Popover.Trigger>
     <Popover.Portal container={dialog ?? undefined}>
-      <Popover.Content className="info-popover-content" side="top" sideOffset={7} collisionPadding={10} collisionBoundary={dialog} aria-label={label}
+      <Popover.Content className="info-popover-content" side={side} sideOffset={7} collisionPadding={10} collisionBoundary={dialog} aria-label={label}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => event.preventDefault()}>

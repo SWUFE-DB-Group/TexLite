@@ -70,6 +70,27 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("embedded draw.io editing", () => {
+  it("shows the file name in TexLite without adding a title to the embedded menu", async () => {
+    await mount();
+    expect(host.querySelector(".drawio-toolbar")?.textContent).toContain("figures/diagram.drawio");
+    expect(sent().find(({ action }) => action === "load")).not.toHaveProperty("title");
+  });
+
+  it("shows the check only for saved diagrams and opens draw.io help below its button", async () => {
+    await mount();
+    const status = host.querySelector(".drawio-status")!;
+    expect(status.textContent).toBe("Saved");
+    expect(status.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    await send({ event: "autosave", xml: changed });
+    expect(status.textContent).toBe("Unsaved changes");
+    expect(status.querySelector("svg")).toBeNull();
+    const help = host.querySelector<HTMLButtonElement>(".drawio-help button")!;
+    await act(async () => help.click());
+    const content = document.querySelector(".info-popover-content");
+    expect(content?.getAttribute("data-side")).toBe("bottom");
+    expect(content?.textContent).toBe(i18n.t("drawio.help"));
+  });
+
   it.each([
     ["source", "lock", "init"], ["source", "init", "lock"],
     ["lock", "source", "init"], ["lock", "init", "source"],

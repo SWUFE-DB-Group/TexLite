@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { LoaderCircle, LockKeyhole, RefreshCw, Workflow } from "lucide-react";
+import { Check, LoaderCircle, LockKeyhole, RefreshCw, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, isAbortError } from "../api";
 import { errorMessage } from "../errors";
@@ -95,7 +95,8 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, ref
     loadPosted.current = true;
     readyRef.current = false; setReady(false);
     frameReadOnly.current = readOnly || lock.current.current.status !== "owned" || approved.current !== lock.current.current.token;
-    post({ action: "load", xml: currentXml.current, title: path,
+    // TexLite shows the file path above the embed; don't duplicate it in the draw.io menu.
+    post({ action: "load", xml: currentXml.current,
       autosave: frameReadOnly.current ? 0 : 1, readOnly: frameReadOnly.current, saveAndExit: "0", noSaveBtn: "1", noExitBtn: "1" });
   };
   const finish = () => {
@@ -314,6 +315,8 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, ref
     dark: currentTheme() === "dark" ? "1" : "0", sidebar: window.innerWidth > 600 && !readOnly ? "1" : "0" }).current;
   const url = `${DRAWIO_ORIGIN}/?${new URLSearchParams({ embed: "1", proto: "json", configure: "1", spin: "1",
     libraries: "1", noSaveBtn: "1", noExitBtn: "1", saveAndExit: "0", stealth: "1", plugins: "0", ...appearance, lang })}`;
+  const status = readOnly || (!canEdit && lock.state.status !== "connecting") ? "readOnly"
+    : lock.state.status === "connecting" ? "connecting" : dirty ? "dirty" : ready ? "saved" : "loading";
 
   return <>
     <section className="drawio-editor" aria-label={path}>
@@ -325,8 +328,12 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, ref
             onExport={(options) => { if (saved.current?.pdfRevision) setOverwrite(options); else start("pdf", options); }} />
           {busy && <button type="button" onClick={() => { const active = controller.current; controller.current = null; active?.abort(); finish(); settleClose(false); }}>{t("common.cancel")}</button>}
         </div>}
-        <span className="drawio-status" role="status">{readOnly || !canEdit && lock.state.status !== "connecting" ? t("drawio.readOnly") : lock.state.status === "connecting" ? t("drawio.connecting") : dirty ? t("drawio.dirty") : ready ? t("drawio.saved") : t("drawio.loading")}</span>
-        <InfoPopover content={t("drawio.help")} />
+        <div className="drawio-status-tools">
+          <span className={`drawio-status${status === "saved" ? " is-saved" : ""}`} role="status">
+            {status === "saved" && <Check size={12} aria-hidden="true" />}{t(`drawio.${status}`)}
+          </span>
+          <span className="drawio-help"><InfoPopover content={t("drawio.help")} side="bottom" /></span>
+        </div>
       </div>
       {(lock.state.status === "busy" || lock.state.status === "lost") && <div className="drawio-lock-notice" role="status"><LockKeyhole size={14} aria-hidden />
         <span>{lock.state.status === "busy" ? t("drawio.lockedBy", { name: lock.state.name }) : t("drawio.lockLost")}</span>
