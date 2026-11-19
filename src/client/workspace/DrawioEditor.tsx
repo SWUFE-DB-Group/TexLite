@@ -11,12 +11,13 @@ import { useDrawioLock } from "./useDrawioLock";
 import { sameDrawioContent } from "./drawioContent";
 import { DrawioExportButton } from "./DrawioExportButton";
 import { hasDrawioSelection, renderDrawioSelection, selectedDrawioXml } from "./drawioSelectionExport";
-import { drawioEmbedUrl, resolveDrawioEditorUrl } from "./drawioEmbed";
+import { drawioEmbedUrl, drawioFrameLoadTimeoutMs, resolveDrawioEditorUrl } from "./drawioEmbed";
 
 const maxXmlLength = 5 * 1024 * 1024;
 const autosaveDelayMs = 1_000;
 const saveRequestTimeoutMs = 30_000;
 const exportCancelDelayMs = 2_000;
+const loadingStages = ["editor", "initialize", "diagram"] as const;
 
 /** Decode only an SVG data URI, never a URL supplied by an embedded page. */
 export function decodeDrawioSvg(value: unknown): string {
@@ -64,7 +65,6 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   const currentXml = useRef("");
   const initialized = useRef(false);
   const loadPosted = useRef(false);
-  const [sourceLoaded, setSourceLoaded] = useState(false);
   const readyRef = useRef(false);
   const pending = useRef<Request | null>(null);
   const selectionQuery = useRef<{ id: number; finish: (error?: Error, selected?: boolean) => void } | null>(null);
@@ -75,8 +75,11 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   const closeDecision = useRef<((confirmed: boolean) => void) | null>(null);
   const saveImmediately = useRef(false);
   const [retry, setRetry] = useState(0);
+  const [loadedSourceAttempt, setLoadedSourceAttempt] = useState<number | null>(null);
+  const sourceLoaded = loadedSourceAttempt === retry;
   const [ready, setReady] = useState(false);
-  const [loadingFailed, setLoadingFailed] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<typeof loadingStages[number]>("editor");
+  const [loadFailure, setLoadFailure] = useState<"unavailable" | "diagramUnavailable" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editVersion, setEditVersion] = useState(0);
   const [closing, setClosing] = useState(false);
@@ -167,23 +170,31 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
     mounted.current = true;
     const abort = new AbortController();
     saved.current = null; initialized.current = false; readyRef.current = false; loadPosted.current = false;
-    approved.current = ""; setApprovedToken(""); setSourceLoaded(false);
-    setReady(false); setLoadingFailed(false); setError("");
-    const timeout = window.setTimeout(() => { if (!readyRef.current) setLoadingFailed(true); }, 30_000);
+    approved.current = ""; setApprovedToken("");
+    setReady(false); setLoadingStage("editor"); setLoadFailure(null); setError("");
     void api<DrawioDocument>(`/api/projects/${projectId}/drawio?${new URLSearchParams({ path })}`, { signal: abort.signal })
       .then((document) => {
         if (abort.signal.aborted) return;
-        saved.current = document; currentXml.current = document.content; setSourceLoaded(true);
-      }).catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) { setError(errorMessage(error)); setLoadingFailed(true); } });
+        saved.current = document; currentXml.current = document.content; setLoadedSourceAttempt(retry);
+      }).catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) { setError(errorMessage(error)); setLoadFailure("diagramUnavailable"); } });
     return () => {
       mounted.current = false; abort.abort(); controller.current?.abort();
       controller.current = null; saveImmediately.current = false;
       selectionQuery.current?.finish(new DOMException("Aborted", "AbortError"));
-      window.clearTimeout(timeout); finish(); settleClose(false);
+      finish(); settleClose(false);
     };
     // The parent keys this component by project/path. Retry replaces the iframe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, path, retry]);
+
+  useEffect(() => {
+    if (ready || loadFailure) return;
+    // One deadline for the entire load, even if the iframe reports progress.
+    const timeout = window.setTimeout(() => {
+      if (!readyRef.current) setLoadFailure(initialized.current ? "diagramUnavailable" : "unavailable");
+    }, drawioFrameLoadTimeoutMs);
+    return () => window.clearTimeout(timeout);
+  }, [ready, loadFailure, retry]);
 
   useEffect(() => {
     if (lock.state.status !== "owned") { approved.current = ""; setApprovedToken(""); return; }
@@ -241,6 +252,7 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
       try { message = JSON.parse(event.data); } catch { return; }
       if (!message || typeof message !== "object") return;
       if (message.event === "configure") {
+        setLoadingStage((stage) => stage === "editor" ? "initialize" : stage);
         post({ action: "configure", config: { suppressNewWindows: true, enableAi: false, settingsName: "texlite", autosaveDelay: 100,
           hideMenuItems: ["exportPdf"],
           passThroughKeys: [{ key: "s", ctrl: true, shift: false, alt: false, command: "save" }],
@@ -249,10 +261,10 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
           defaultTextStyle: "text;html=0;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" } });
         return;
       }
-      if (message.event === "init") { initialized.current = true; load(); return; }
+      if (message.event === "init") { initialized.current = true; setLoadingStage("diagram"); load(); return; }
       if (message.event === "load") {
-        if (message.error) { setError(t("errors.codes.DRAWIO_INVALID")); return; }
-        readyRef.current = true; setReady(true); setLoadingFailed(false); return;
+        if (message.error) { setError(t("errors.codes.DRAWIO_INVALID")); setLoadFailure("diagramUnavailable"); return; }
+        readyRef.current = true; setReady(true); setLoadFailure(null); return;
       }
       if (message.event === "autosave" && !frameReadOnly.current && typeof message.xml === "string" && message.xml.length <= maxXmlLength) {
         if (currentXml.current === message.xml) return;
@@ -416,6 +428,7 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   const appearance = useRef({ ui: window.innerWidth <= 600 ? "simple" : currentTheme() === "dark" ? "dark" : "kennedy",
     dark: currentTheme() === "dark" ? "1" : "0", sidebar: window.innerWidth > 600 && !readOnly ? "1" : "0" }).current;
   const url = drawioEmbedUrl(editorUrl, { spin: "1", libraries: "1", saveAndExit: "0", ...appearance, lang });
+  const loadingStep = loadingStages.indexOf(loadingStage) + 1;
   const status = readOnly || (!canEdit && lock.state.status !== "connecting") ? "readOnly"
     : lock.state.status === "connecting" ? "connecting" : busy === "save" || busy === "close" ? "saving"
       : saveError ? "saveFailed" : dirty ? "saving" : ready ? "saved" : "loading";
@@ -451,9 +464,22 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
         {saveError && canEdit && <button type="button" disabled={Boolean(busy) || closing} onClick={requestSave}>{t("common.retry")}</button>}
       </div>}
       <div className="drawio-frame-wrap" inert={closing || exporting || !canEdit && !frameReadOnly.current}>
-        {!ready && <div className="drawio-loading" role="status">{loadingFailed ? <><span>{t("drawio.unavailable", { host: editorUrl.host })}</span><button onClick={() => setRetry((value) => value + 1)}><RefreshCw size={14} />{t("common.retry")}</button></> : <><LoaderCircle size={20} className="spin" /><span>{t("drawio.loading")}</span></>}</div>}
+        {!ready && <div className="drawio-loading">
+          {loadFailure ? <>
+            <span role="status">{t(`drawio.${loadFailure}`, { host: editorUrl.host })}</span>
+            <button type="button" onClick={() => setRetry((value) => value + 1)}><RefreshCw size={14} aria-hidden />{t("common.retry")}</button>
+          </> : <div className="drawio-loading-status" role="status">
+            <LoaderCircle size={20} className="spin" aria-hidden />
+            <strong>{t(`drawio.loadingStage.${loadingStage}`, { host: editorUrl.host })}</strong>
+            {loadingStage !== "diagram" && <span className="drawio-loading-hint">{t("drawio.loadingHint")}</span>}
+            <div className="drawio-loading-progress" aria-hidden="true">
+              {loadingStages.map((stage, index) => <span key={stage} className={index + 1 < loadingStep ? "is-complete" : index + 1 === loadingStep ? "is-current" : undefined} />)}
+            </div>
+            <span className="drawio-loading-step">{t("drawio.loadingStep", { step: loadingStep, total: loadingStages.length })}</span>
+          </div>}
+        </div>}
         <iframe key={retry} ref={frame} src={url} title={t("drawio.title")} referrerPolicy="no-referrer"
-          onError={() => setLoadingFailed(true)}
+          onError={() => setLoadFailure("unavailable")}
           sandbox="allow-scripts allow-same-origin allow-modals" />
       </div>
     </section>

@@ -42,11 +42,14 @@ const saveShortcut = async (mac = false) => {
   await act(async () => window.dispatchEvent(event));
   return event.defaultPrevented;
 };
-const mount = async (readOnly = false, pdfRevision: string | null = null, editorUrl?: string) => {
+const mountFrame = async (readOnly = false, pdfRevision: string | null = null, editorUrl?: string) => {
   vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision });
   await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly, editorUrl, onChanged, onClose })));
   frame = document.querySelector("iframe")!;
   vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+};
+const mount = async (...args: Parameters<typeof mountFrame>) => {
+  await mountFrame(...args);
   await send({ event: "init" }); await send({ event: "load" });
 };
 const sent = () => vi.mocked(frame.contentWindow!.postMessage).mock.calls.map(([message]) => JSON.parse(message as string));
@@ -107,6 +110,49 @@ describe("embedded draw.io editing", () => {
     expect(api).not.toHaveBeenCalled();
     await act(async () => closeButton().click());
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("shows real startup stages without extending the 60-second deadline and resets on retry", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await mountFrame(false, null, "https://drawio.example.test/");
+    const loading = () => host.querySelector(".drawio-loading")?.textContent;
+    const advance = (ms: number) => act(async () => vi.advanceTimersByTimeAsync(ms));
+    expect(loading()).toContain("Loading draw.io from drawio.example.test");
+    expect(loading()).toContain("Step 1 of 3");
+    await advance(31_000);
+    expect(button("Retry")).toBeUndefined();
+    await send({ event: "configure" });
+    expect(loading()).toContain("Step 2 of 3");
+    await advance(24_000);
+    await send({ event: "init" });
+    expect(loading()).toContain("Opening the diagram");
+    expect(loading()).toContain("Step 3 of 3");
+    await advance(4_999);
+    expect(button("Retry")).toBeUndefined();
+    await advance(1);
+    expect(loading()).toContain("Could not open the diagram");
+
+    const previousFrame = frame;
+    vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision: null });
+    await act(async () => button("Retry").click());
+    frame = host.querySelector("iframe")!;
+    vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+    expect(frame).not.toBe(previousFrame);
+    expect(loading()).toContain("Step 1 of 3");
+    await send({ event: "init" });
+    expect(sent().at(-1)).toMatchObject({ action: "load", xml: EMPTY_DRAWIO, readOnly: false });
+    await send({ event: "load" });
+    await advance(60_000);
+    expect(loading()).toBeUndefined();
+    expect(button("Export PDF").disabled).toBe(false);
+  });
+
+  it("identifies the configured editor host if the iframe never initializes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await mountFrame(false, null, "https://drawio.example.test/");
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(host.querySelector(".drawio-loading")?.textContent).toContain("Check your connection to drawio.example.test");
+    expect(button("Retry")).toBeDefined();
   });
 
   it.each([

@@ -50,7 +50,11 @@ describe("isolated draw.io selection rendering", () => {
     const result = start();
     const rejected = expect(result).rejects.toMatchObject(reason === "cancel" ? { name: "AbortError" } : { message: reason === "invalid" ? "DRAWIO_INVALID" : "DRAWIO_EXPORT_FAILED" });
     if (reason === "cancel") controller.abort();
-    else if (reason === "timeout") await vi.advanceTimersByTimeAsync(30_000);
+    else if (reason === "timeout") {
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(document.querySelector(".drawio-export-frame")).toBe(frame);
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
     else send({ event: "load", error: "invalid XML" });
     await rejected;
     expect(document.querySelector(".drawio-export-frame")).toBeNull();

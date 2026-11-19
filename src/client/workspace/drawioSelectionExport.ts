@@ -1,4 +1,4 @@
-import { drawioEmbedUrl } from "./drawioEmbed";
+import { drawioEmbedUrl, drawioFrameLoadTimeoutMs } from "./drawioEmbed";
 
 /** The native JSON export includes lossless XML of the selection, not a
  * manually reconstructed graph. Empty selections must never become full pages. */
@@ -56,7 +56,7 @@ export function renderDrawioSelection(editorUrl: URL, xml: string, margin: numbe
         else finish(undefined, message.data);
       }
     };
-    const timer = window.setTimeout(() => finish(new Error("DRAWIO_EXPORT_FAILED")), 30_000);
+    const timer = window.setTimeout(() => finish(new Error("DRAWIO_EXPORT_FAILED")), drawioFrameLoadTimeoutMs);
     window.addEventListener("message", receive); signal.addEventListener("abort", abort, { once: true });
     frame.onerror = () => finish(new Error("DRAWIO_EXPORT_FAILED"));
     frame.src = drawioEmbedUrl(editorUrl, { ui: "min", lang });

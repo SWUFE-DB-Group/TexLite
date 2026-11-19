@@ -124,6 +124,10 @@ restricts iframe embedding, allow the TexLite origin. TexLite uses this URL for
 editing and selection export; there is no fallback to the public embed server
 if the configured editor is unavailable.
 
+The editor can take longer to open the first time while the browser downloads
+its assets. TexLite shows the loading, initialization and diagram-open stages
+and offers a retry if the editor is not ready within 60 seconds.
+
 Diagram data is passed directly to the iframe, not placed in its URL. Save explicitly
 before closing or switching files. Unsaved changes require confirmation before
 leaving the diagram. Each file allows one editing browser tab at a time, even
