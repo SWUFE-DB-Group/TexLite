@@ -1000,6 +1000,54 @@ Standalone document.
     expect(comments.json()).toEqual({ comments: [], summary: { totalCount: 0, unresolvedCount: 0, filePaths: [] } });
   });
 
+  it("uses the immutable final TeX log for completed, reopened, and skipped compiles", async () => {
+    const originalLatexmk = config.latexmk;
+    const compiler = path.join(root, "multi-pass-latexmk.mjs");
+    const transcript = [
+      "Run number 1 of rule 'pdflatex'", "Running 'pdflatex main.tex'",
+      "LaTeX Warning: Citation 'resolved' undefined on input line 6.",
+      "Run number 1 of rule 'bibtex output/main'", "Running 'bibtex main.aux'",
+      "Latexmk: All targets (main.pdf) are up-to-date"
+    ].join("\n");
+    fs.writeFileSync(compiler, [
+      "#!/usr/bin/env node",
+      'import fs from "node:fs";',
+      'import path from "node:path";',
+      'if (fs.readFileSync("main.tex", "utf8").includes("% fail this compile")) {',
+      '  console.error("main.tex:7: LaTeX Error: Failed fixture.");',
+      '  process.exit(1);',
+      '}',
+      'const output = process.argv.find(arg => arg.startsWith("-outdir=")).slice(8);',
+      'fs.writeFileSync(path.join(output, "main.pdf"), "%PDF-fixture");',
+      'fs.writeFileSync(path.join(output, "main.log"), "This is pdfTeX, Version 3.141592653\\nPackage test Warning: Persistent warning.\\n");',
+      "console.log(" + JSON.stringify(transcript) + ");"
+    ].join("\n"), { mode: 0o700 });
+    config.latexmk = compiler;
+    try {
+      const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Final compiler warnings" } });
+      const url = "/api/projects/" + created.json().project.id + "/compile";
+      const compiled = await app.inject({ method: "POST", url, headers: { cookie } });
+      expect(compiled.json()).toMatchObject({ ok: true, log: expect.stringContaining("Citation 'resolved'"),
+        diagnostics: { warnings: [{ message: "Persistent warning." }], errors: [] } });
+      const latest = await app.inject({ method: "GET", url: url + "/latest", headers: { cookie } });
+      expect(latest.json().latestRun).toMatchObject({ id: compiled.json().runId, diagnostics: compiled.json().diagnostics });
+      const skipped = await app.inject({ method: "POST", url, headers: { cookie } });
+      expect(skipped.json()).toMatchObject({ ok: true, skipped: true, diagnostics: compiled.json().diagnostics });
+
+      const updated = await app.inject({ method: "PUT", url: url.replace(/compile$/, "file"), headers: { cookie },
+        payload: { path: "main.tex", content: "\\documentclass{article}\n% fail this compile\n\\begin{document}\nHi\n\\end{document}" } });
+      expect(updated.statusCode).toBe(200);
+      const failed = await app.inject({ method: "POST", url, headers: { cookie } });
+      expect(failed.json()).toMatchObject({ ok: false, pdfUrl: null,
+        diagnostics: { warnings: [], errors: [{ message: "Failed fixture." }] } });
+      const reopened = await app.inject({ method: "GET", url: url + "/latest", headers: { cookie } });
+      expect(reopened.json()).toMatchObject({ pdfUrl: compiled.json().pdfUrl,
+        latestRun: { id: failed.json().runId, diagnostics: failed.json().diagnostics } });
+    } finally {
+      config.latexmk = originalLatexmk;
+    }
+  });
+
   it("allows an editor to cancel an active compilation without publishing output", async () => {
     const originalLatexmk = config.latexmk;
     const fakeLatexmk = path.join(root, "cancel-latexmk.mjs");

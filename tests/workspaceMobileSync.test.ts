@@ -31,9 +31,9 @@ function preview(overrides: Partial<WorkspacePreviewPanelProps> = {}) {
     projectId: "paper", activeMainFile: "main.tex", previewTab: "pdf", diagnosticTab: "log", pdfUrl: "/paper.pdf",
     pdfLoadingMode: "full", pdfLoading: false, pdfCompiledAt: null, pdfSizeBytes: null, pdfCompiledLabel: "", pdfTargetLabel: "main.tex",
     pdfDownloadUrl: "", pdfTarget: null, pdfViewport: { page: 2, x: 10, y: 20 }, activeFile: "part.tex", compileBusy: false,
-    compileLog: "", compileDiagnostics: null, compileMessages: { warnings: [], errors: [] }, artifacts: [], artifactPreview: null,
+    compileLog: "", compileDiagnostics: null, artifacts: [], artifactPreview: null,
     artifactLoading: false, cleaning: false, readOnly: false, collaborationSynced: true, workspaceLayout: "pdf-only",
-    showSyncResize: false, diagnosticCount: 0, selectPreviewTab: noop, changeWorkspaceLayout: noop,
+    showSyncResize: false, selectPreviewTab: noop, changeWorkspaceLayout: noop,
     onSetPdfViewport: noop, onResetPdfViewport: noop, onPdfDisplayed: noop, syncVisiblePdfToSource: done,
     syncCurrentSourceToPdf: done, syncPdfToSource: done, canSyncWithPdf: true, canSyncPdfToSource: true,
     files: [], jumpToSource: noop, onSetCleanMode: noop, viewArtifact: done, ...overrides

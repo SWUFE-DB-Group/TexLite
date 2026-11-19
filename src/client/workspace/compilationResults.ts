@@ -1,5 +1,5 @@
 import type { CompileDiagnostics } from "../compileDiagnostics";
-import type { CompileOutcome } from "../compileLog";
+type CompileOutcome = "succeeded" | "failed" | "cancelled" | null;
 
 export interface CompilationSelection {
   projectId: string;

@@ -59,6 +59,36 @@ describe("structured compile diagnostics", () => {
     ]));
   });
 
+  it("keeps repeated warnings only if they survive the final pass, even with wrapped engines and interleaved latexmk output", () => {
+    const result = parseCompileDiagnostics([
+      "Run number 1 of rule 'pdflatex'",
+      "Running 'engine-wrapper main.tex'",
+      "Latexmk: Missing bbl file 'output/main.bbl' in following:",
+      "LaTeX Warning: Citation 'draft' undefined on input line 10.",
+      "Package test Warning: Persistent warning.",
+      "Run number 1 of rule 'bibtex output/main'",
+      "Running 'bibtex main.aux'",
+      "Run number 2 of rule 'pdflatex'",
+      "Running 'engine-wrapper main.tex'",
+      "Package test Warning: Persistent warning.",
+      "(test)                second line of the message.",
+      "(/some/path/pgfplots.errorbars.code.tex)",
+      "Package: infwarerr Providing info/warning/error messages",
+      "Latexmk: All targets (main.pdf) are up-to-date"
+    ].join("\n"), "succeeded");
+    expect(result.warnings).toMatchObject([{ phase: "pdflatex", message: "Persistent warning." }]);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("counts a genuine unresolved citation without counting its aggregate summary twice", () => {
+    const result = parseCompileDiagnostics([
+      "This is pdfTeX, Version 3.141592653",
+      "LaTeX Warning: Citation 'missing' on page 1 undefined on input line 3.",
+      "LaTeX Warning: There were undefined references."
+    ].join("\n"), "succeeded", "main.tex");
+    expect(result.warnings).toMatchObject([{ file: "main.tex", line: 3, message: expect.stringContaining("'missing'") }]);
+  });
+
   it("returns a useful system diagnostic when a failed process has no marker", () => {
     const result = parseCompileDiagnostics("latexmk exited with status 1", "failed");
     expect(result.errors).toEqual([expect.objectContaining({ phase: "system", severity: "error" })]);

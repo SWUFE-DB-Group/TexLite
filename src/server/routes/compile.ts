@@ -21,6 +21,7 @@ import {
   hasCompileCache,
   publishCompileArtifacts,
   publishedCompileArtifacts,
+  successfulCompileDiagnostics,
   type ProjectCompileCoordinator
 } from "../compiler.js";
 import type { CompileSnapshot } from "../compiler.js";
@@ -125,10 +126,9 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       mainFile,
       latestRun: latest ? {
         id: latest.id, status: latest.status, log: latest.log,
-        diagnostics: parseCompileDiagnostics(
-          latest.log,
-          latest.status === "succeeded" || latest.status === "failed" ? latest.status : null
-        ),
+        diagnostics: latest.status === "succeeded"
+          ? await successfulCompileDiagnostics(latest.log, mainFile, pdf?.version === latest.id ? path.dirname(pdf.path) : undefined)
+          : parseCompileDiagnostics(latest.log, latest.status === "failed" ? "failed" : null, mainFile),
         createdAt: latest.created_at, finishedAt: latest.finished_at,
         requestedBy: latest.requested_by ? {
           id: latest.requested_by,
@@ -636,7 +636,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
               skipped: true,
               stale: snapshotStale,
               log: publishedRun.log ?? "",
-              diagnostics: parseCompileDiagnostics(publishedRun.log ?? "", "succeeded"),
+              diagnostics: await successfulCompileDiagnostics(publishedRun.log ?? "", mainFile, published.output),
               pdfPath: null,
               synctexPath: published.synctex,
               revision: published.revision,

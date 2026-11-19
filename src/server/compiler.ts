@@ -12,6 +12,8 @@ import { parseCompileDiagnostics, type CompileDiagnostics } from "./compileDiagn
 import { afterProcessStop, spawnOwnedCommand, stopProcessTree } from "./processTree.js";
 import { relocateSyncTeXInputs } from "./synctex.js";
 
+const MAX_COMPILE_LOG_SIZE = 2_000_000;
+
 export interface CompileTimings {
   cacheSyncMs: number;
   latexmkMs: number;
@@ -733,6 +735,23 @@ function regularFileStat(file: string): fs.Stats | null {
   }
 }
 
+/** The engine overwrites its .log on each pass. Only use output belonging
+ * to this successful run, never the retained log of a different build. */
+export async function successfulCompileDiagnostics(transcript: string, mainFile: string, outputDir?: string): Promise<CompileDiagnostics> {
+  if (outputDir) {
+    const file = path.join(outputDir, `${texFileStem(mainFile)}.log`);
+    let log: string | undefined;
+    try {
+      const stat = await fs.promises.lstat(file);
+      if (stat.isFile() && stat.size > 0 && stat.size <= MAX_COMPILE_LOG_SIZE) {
+        log = await fs.promises.readFile(file, "utf8");
+      }
+    } catch { /* Diagnostics still work if latexmk's log is unavailable or pruned. */ }
+    if (log?.trim()) return parseCompileDiagnostics(log, "succeeded", mainFile);
+  }
+  return parseCompileDiagnostics(transcript, "succeeded", mainFile);
+}
+
 function pruneCompileSource(root: string, prefix: string, validFiles: Set<string>, validDirectories: Set<string>): void {
   for (const entry of fs.readdirSync(path.join(root, prefix), { withFileTypes: true })) {
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -838,7 +857,7 @@ export async function compileProject(
     let timedOut = false;
     const append = (chunk: string): void => {
       log += chunk;
-      if (log.length > 2_000_000) log = log.slice(-2_000_000);
+      if (log.length > MAX_COMPILE_LOG_SIZE) log = log.slice(-MAX_COMPILE_LOG_SIZE);
     };
     child.stdout.setEncoding("utf8").on("data", append);
     child.stderr.setEncoding("utf8").on("data", append);
@@ -886,7 +905,8 @@ export async function compileProject(
     }, processResult.log);
   }
   const ok = processResult.code === 0 && fs.existsSync(cachedPdf);
-  const diagnostics = parseCompileDiagnostics(processResult.log, ok ? "succeeded" : "failed");
+  const diagnostics = ok ? await successfulCompileDiagnostics(processResult.log, mainFile, outDir)
+    : parseCompileDiagnostics(processResult.log, "failed", mainFile);
   if (!ok) {
     return {
       ok: false, log: processResult.log, diagnostics, pdfPath: null, synctexPath: null,

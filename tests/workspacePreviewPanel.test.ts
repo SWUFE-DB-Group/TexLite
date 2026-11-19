@@ -19,9 +19,9 @@ function render(overrides: Partial<WorkspacePreviewPanelProps> = {}): string {
     pdfUrl: "", pdfLoadingMode: "full", pdfLoading: false, pdfCompiledAt: null, pdfSizeBytes: null,
     pdfCompiledLabel: "", pdfTargetLabel: "main.tex", pdfDownloadUrl: "", pdfTarget: null, pdfViewport: null,
     activeFile: "main.tex", compileBusy: false, compileLog: "", compileDiagnostics: null,
-    compileMessages: { warnings: [], errors: [] }, artifacts: [], artifactPreview: null, artifactLoading: false,
+    artifacts: [], artifactPreview: null, artifactLoading: false,
     cleaning: false, readOnly: false, collaborationSynced: true, workspaceLayout: "editor-pdf", showSyncResize: false,
-    diagnosticCount: 0, selectPreviewTab: noop, changeWorkspaceLayout: noop, onSetPdfViewport: noop,
+    selectPreviewTab: noop, changeWorkspaceLayout: noop, onSetPdfViewport: noop,
     onResetPdfViewport: noop, onPdfDisplayed: noop, syncVisiblePdfToSource: asyncNoop, syncCurrentSourceToPdf: asyncNoop,
     syncPdfToSource: asyncNoop, canSyncWithPdf: false, canSyncPdfToSource: false, files: [],
     jumpToSource: noop, onSetCleanMode: noop, viewArtifact: asyncNoop, ...overrides
@@ -88,6 +88,20 @@ it("links a Windows diagnostic to the most specific project file despite differi
   });
   expect(html).toContain('class="compile-diagnostic-row"');
   expect(html).toContain("Chapters/Part One.tex:12");
+});
+
+it("counts only the diagnostics actually rendered, not transient warnings or generated files", async () => {
+  await i18n.changeLanguage("en");
+  const html = render({
+    previewTab: "diagnostics", diagnosticTab: "warnings",
+    compileLog: "LaTeX Warning: Early missing citation.\nLaTeX Warning: Final warning.",
+    compileDiagnostics: { warnings: [{ severity: "warning", phase: "pdflatex", message: "Final warning.", raw: "" }], errors: [] },
+    artifacts: [{ path: "main.log", size: 10, viewable: true }]
+  });
+  expect(html).toContain('class="diagnostic-count">1</span>');
+  expect(html).toContain('Warnings<span>1</span>');
+  expect(html).toContain("Final warning.");
+  expect(html).not.toContain("Early missing citation.");
 });
 
 describe("Markdown preview surface", () => {

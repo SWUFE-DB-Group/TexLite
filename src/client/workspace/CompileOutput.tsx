@@ -29,10 +29,9 @@ export function CompileDiagnosticOutput({ diagnostics, files, empty, tone, onJum
   })}</div>;
 }
 
-export function CompileOutput({ lines, empty, tone = "log" }: { lines: string[]; empty: string; tone?: "log" | "warning" | "error" }) {
-  const Icon = tone === "error" ? XCircle : tone === "warning" ? AlertTriangle : ScrollText;
-  if (!lines.length) return <div className={`compile-empty compile-${tone}`}><Icon size={26} /><span>{empty}</span></div>;
-  return <pre className={`compile-output compile-${tone}`}>{lines.join("\n")}</pre>;
+export function CompileOutput({ lines, empty }: { lines: string[]; empty: string }) {
+  if (!lines.length) return <div className="compile-empty compile-log"><ScrollText size={26} /><span>{empty}</span></div>;
+  return <pre className="compile-output compile-log">{lines.join("\n")}</pre>;
 }
 
 export function CompileArtifacts({ projectId, mainFile, artifacts, preview, loading, onView }: {

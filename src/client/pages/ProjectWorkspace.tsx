@@ -8,7 +8,6 @@ import { Group, Separator, type PanelImperativeHandle } from "react-resizable-pa
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
 import { BibtexFormatterError, createBibtexTextEdits, formatBibtexInWorker } from "../bibtexFormatter";
-import { classifyCompileLog } from "../compileLog";
 import { formatDateTime } from "../dateTime";
 import type { CollaborationSaveReceipt, FormatLease, ProjectCollaboration } from "../collaboration";
 import { errorMessage } from "../errors";
@@ -1327,7 +1326,6 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     else filesPanel.current?.collapse();
   };
   const outline = useMemo(() => workspaceOutlineForMainFile(projectOutline, activeMainFile, analysisSource), [projectOutline, activeMainFile, analysisSource]);
-  const compileMessages = useMemo(() => classifyCompileLog(compileLog, compileOutcome), [compileLog, compileOutcome]);
   const showEditor = workspaceLayout !== "pdf-only";
   const showPreview = workspaceLayout !== "editor-only";
   // Comments occupy only the preview region, leaving source/file widths intact.
@@ -1447,7 +1445,6 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
   }) : "";
   const pdfTargetLabel = activeMainFile.split("/").at(-1) ?? activeMainFile;
-  const diagnosticCount = compileMessages.warnings.length + compileMessages.errors.length + artifacts.length;
   const pdfDownloadUrl = pdfUrl ? `${pdfUrl}${pdfUrl.includes("?") ? "&" : "?"}download=1` : "";
   const syncMainFile = activeMainFile || project.mainFile;
   const canSyncWithPdf = canSyncSourceToPdf(activeFile, syncMainFile);
@@ -1633,10 +1630,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         pdfSizeBytes={pdfSizeBytes} pdfCompiledLabel={pdfCompiledLabel} pdfTargetLabel={pdfTargetLabel} pdfDownloadUrl={pdfDownloadUrl}
         pdfTarget={pdfTarget} pdfViewport={pdfViewport} activeFile={activeFile}
         compileBusy={compileBusy} compileLog={compileLog} compileDiagnostics={compileDiagnostics}
-        compileMessages={compileMessages} artifacts={artifacts}
+        artifacts={artifacts}
         artifactPreview={artifactPreview} artifactLoading={artifactLoading} cleaning={cleaning}
         readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={!drawioPath && showEditor && showPreview}
-        diagnosticCount={diagnosticCount} selectPreviewTab={choosePreviewSurface} markdown={markdownPreview}
+        selectPreviewTab={choosePreviewSurface} markdown={markdownPreview}
         changeWorkspaceLayout={changeWorkspaceLayout} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport} onPdfDisplayed={pdfDisplayed}
         syncVisiblePdfToSource={syncVisiblePdfToSource}
         syncCurrentSourceToPdf={syncCurrentSourceToPdf}

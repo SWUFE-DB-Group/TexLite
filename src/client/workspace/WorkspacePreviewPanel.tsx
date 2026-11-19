@@ -6,7 +6,6 @@ import { WorkspaceSyncSeparator } from "./WorkspaceSyncSeparator";
 import { WorkspaceCommentsSlot } from "./WorkspaceCommentsSlot";
 import { WorkspaceMobileSyncButton } from "./WorkspaceMobileSyncButton";
 import type { CompileDiagnostics } from "../compileDiagnostics";
-import type { CompileMessages } from "../compileLog";
 import type { FileEntry } from "../types";
 import type { PdfTarget } from "../PdfPreview";
 import { PdfDocumentIcon } from "../PdfDocumentIcon";
@@ -55,7 +54,6 @@ export interface WorkspacePreviewPanelProps {
   compileBusy: boolean;
   compileLog: string;
   compileDiagnostics: CompileDiagnostics | null;
-  compileMessages: CompileMessages;
   artifacts: CompileArtifact[];
   artifactPreview: { path: string; content: string } | null;
   artifactLoading: boolean;
@@ -64,7 +62,6 @@ export interface WorkspacePreviewPanelProps {
   collaborationSynced: boolean;
   workspaceLayout: WorkspaceLayout;
   showSyncResize: boolean;
-  diagnosticCount: number;
   selectPreviewTab: (tab: PreviewTab | PreviewSurface) => void;
   changeWorkspaceLayout: (layout: WorkspaceLayout) => void;
   onSetPdfViewport: (viewport: { page: number; x: number; y: number }) => void;
@@ -86,11 +83,13 @@ export function WorkspacePreviewPanel({
   commentsOpen = false, onCommentsHost, mobileSync = false,
   projectId, activeMainFile, previewTab, diagnosticTab, pdfUrl, pdfLoadingMode, pdfLoading, pdfCompiledAt, pdfSizeBytes,
   pdfCompiledLabel, pdfTargetLabel, pdfDownloadUrl, pdfTarget, pdfViewport, activeFile, compileBusy, compileLog,
-  compileDiagnostics, compileMessages, artifacts, artifactPreview, artifactLoading, cleaning, readOnly,
-  collaborationSynced, workspaceLayout, showSyncResize, diagnosticCount, selectPreviewTab, changeWorkspaceLayout,
+  compileDiagnostics, artifacts, artifactPreview, artifactLoading, cleaning, readOnly,
+  collaborationSynced, workspaceLayout, showSyncResize, selectPreviewTab, changeWorkspaceLayout,
   onSetPdfViewport, onResetPdfViewport, onPdfDisplayed, syncVisiblePdfToSource, syncCurrentSourceToPdf, syncPdfToSource, canSyncWithPdf, canSyncPdfToSource,
   files, jumpToSource, onSetCleanMode, viewArtifact, markdown = null
 }: WorkspacePreviewPanelProps) {
+  const warnings = compileDiagnostics?.warnings ?? [];
+  const errors = compileDiagnostics?.errors ?? [];
   const { t } = useTranslation();
   const [displayedPdfUrl, setDisplayedPdfUrl] = useState("");
   const displayedPdfUrlRef = useRef("");
@@ -123,11 +122,11 @@ export function WorkspacePreviewPanel({
         <WorkspaceCommentsSlot open={commentsOpen} onHost={onCommentsHost} />
       <section className="preview-panel">
         <WorkspacePreviewHeader mainFile={activeMainFile} targetLabel={pdfTargetLabel} compiledAt={pdfCompiledAt} compiledLabel={pdfCompiledLabel} sizeBytes={pdfSizeBytes}
-          downloadUrl={pdfDownloadUrl} activeSurface={previewTab} onSelect={selectPreviewTab} diagnosticCount={diagnosticCount} markdownFile={markdown?.path} />
+          downloadUrl={pdfDownloadUrl} activeSurface={previewTab} onSelect={selectPreviewTab} diagnosticCount={warnings.length + errors.length} markdownFile={markdown?.path} />
         {previewTab === "diagnostics" && <div className="preview-subtabs" role="tablist" aria-label={t("editor.outputTabs")}>
           <button role="tab" aria-selected={diagnosticTab === "log"} className={diagnosticTab === "log" ? "active" : ""} onClick={() => selectPreviewTab("log")}><Logs size={13} />{t("editor.log")}</button>
-          <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{compileMessages.warnings.length}</span></button>
-          <button role="tab" aria-selected={diagnosticTab === "errors"} className={diagnosticTab === "errors" ? "active" : ""} onClick={() => selectPreviewTab("errors")}><XCircle size={13} />{t("editor.errors")}<span>{compileMessages.errors.length}</span></button>
+          <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{warnings.length}</span></button>
+          <button role="tab" aria-selected={diagnosticTab === "errors"} className={diagnosticTab === "errors" ? "active" : ""} onClick={() => selectPreviewTab("errors")}><XCircle size={13} />{t("editor.errors")}<span>{errors.length}</span></button>
           <button role="tab" aria-selected={diagnosticTab === "artifacts"} className={diagnosticTab === "artifacts" ? "active" : ""} onClick={() => selectPreviewTab("artifacts")}><PackageOpen size={13} />{t("editor.artifacts")}<span>{artifacts.length}</span></button>
           <button role="tab" aria-selected={diagnosticTab === "fonts"} className={diagnosticTab === "fonts" ? "active" : ""} onClick={() => selectPreviewTab("fonts")}><CaseSensitive size={13} />{t("editor.pdfFonts.tab")}</button>
           <button role="tab" aria-selected={diagnosticTab === "clean"} className={diagnosticTab === "clean" ? "active" : ""} onClick={() => selectPreviewTab("clean")}><Eraser size={13} />{t("editor.clean")}</button>
@@ -147,8 +146,8 @@ export function WorkspacePreviewPanel({
                 reveal={shownMarkdown.reveal} onOpenPath={shownMarkdown.onOpenPath} onJumpToLine={shownMarkdown.onShowLine} />
             </Suspense>)}
           {previewTab === "diagnostics" && diagnosticTab === "log" && <CompileOutput lines={compileLog ? compileLog.split("\n") : []} empty={compileBusy ? t("editor.compiling") : t("editor.noLog")} />}
-          {previewTab === "diagnostics" && diagnosticTab === "warnings" && (compileDiagnostics ? <CompileDiagnosticOutput tone="warning" diagnostics={compileDiagnostics.warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} /> : <CompileOutput tone="warning" lines={compileMessages.warnings} empty={t("editor.noWarnings")} />)}
-          {previewTab === "diagnostics" && diagnosticTab === "errors" && (compileDiagnostics ? <CompileDiagnosticOutput tone="error" diagnostics={compileDiagnostics.errors} files={files} empty={t("editor.noErrors")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} /> : <CompileOutput tone="error" lines={compileMessages.errors} empty={t("editor.noErrors")} />)}
+          {previewTab === "diagnostics" && diagnosticTab === "warnings" && <CompileDiagnosticOutput tone="warning" diagnostics={warnings} files={files} empty={t("editor.noWarnings")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />}
+          {previewTab === "diagnostics" && diagnosticTab === "errors" && <CompileDiagnosticOutput tone="error" diagnostics={errors} files={files} empty={t("editor.noErrors")} onJump={(path, line, column) => { if (workspaceLayout === "pdf-only") changeWorkspaceLayout("editor-pdf"); jumpToSource(path, line, column); }} />}
           {previewTab === "diagnostics" && diagnosticTab === "artifacts" && <CompileArtifacts projectId={projectId} mainFile={activeMainFile} artifacts={artifacts} preview={artifactPreview} loading={artifactLoading} onView={(artifact) => void viewArtifact(artifact)} />}
           {previewTab === "diagnostics" && diagnosticTab === "fonts" && <PdfFontsPanel key={`${projectId}:${activeMainFile}:${pdfUrl}`} projectId={projectId} mainFile={activeMainFile} pdfUrl={pdfUrl} />}
           {previewTab === "diagnostics" && diagnosticTab === "clean" && <CompileCleanup mainFile={activeMainFile} disabled={readOnly || !collaborationSynced || compileBusy} cleaning={cleaning} onCleanCache={() => onSetCleanMode("cache")} onCleanArtifacts={() => onSetCleanMode("artifacts")} />}

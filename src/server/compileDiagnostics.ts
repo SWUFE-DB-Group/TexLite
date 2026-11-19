@@ -32,35 +32,59 @@ interface MutableDiagnostic extends CompileDiagnostic {
   latexPass?: number;
 }
 
+const toolPattern = /^(pdflatex|xelatex|lualatex|bibtex|biber)(?=\s|$)/i;
 const commandPattern = /\b(pdflatex|xelatex|lualatex|bibtex|biber)\b/i;
+const rulePassPattern = /^Run number \d+ of rule ['"]([^'"]+)['"]$/i;
+const engineBanner = /^This is (pdfTeX|XeTeX|Lua(?:HB)?TeX)\b/i;
 const locationPattern = /^(?<file>(?:[A-Za-z]:[\\/])?[^:\r\n]+):(?<line>\d+)(?::(?<column>\d+))?:\s*(?<rest>.*)$/;
 const inputLinePattern = /\bon input line (?<line>\d+)\b/i;
 const latexLinePattern = /^l\.(?<line>\d+)\b/;
 
-export function parseCompileDiagnostics(log: string, outcome: CompileDiagnosticOutcome = null): CompileDiagnostics {
+export function parseCompileDiagnostics(log: string, outcome: CompileDiagnosticOutcome = null, mainFile?: string): CompileDiagnostics {
   const lines = log.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const resolvedOutcome: CompileDiagnosticOutcome = outcome ?? (hasSuccessfulLatexmkResult(log) ? "succeeded" : null);
   const diagnostics: MutableDiagnostic[] = [];
-  let phase: CompileDiagnosticPhase = "unknown";
-  let currentFile: string | undefined;
+  let activePhase: CompileDiagnosticPhase = "unknown";
+  let currentFile = mainFile;
   let pendingBang: MutableDiagnostic | undefined;
   let latexPass = 0;
-  let lastLatexPass = 0;
+  let hasRulePass = false;
+  let hasEngineBanner = false;
+  const beginPass = (phase: CompileDiagnosticPhase) => {
+    activePhase = phase;
+    if (isLatexPhase(phase)) ++latexPass;
+    hasEngineBanner = false;
+    currentFile = mainFile;
+    pendingBang = undefined;
+  };
 
   for (const line of lines) {
+    const rule = line.match(rulePassPattern)?.[1];
+    if (rule) {
+      const tool = rule.match(toolPattern)?.[1];
+      beginPass(tool ? tool.toLowerCase() as CompileDiagnosticPhase : "unknown");
+      hasRulePass = true;
+      continue;
+    }
     const command = line.match(commandPattern);
-    if (/^Running\s+['"]?/i.test(line) && command) {
-      phase = command[1].toLowerCase() as CompileDiagnosticPhase;
-      if (phase === "pdflatex" || phase === "xelatex" || phase === "lualatex") {
-        latexPass += 1;
-        lastLatexPass = latexPass;
-      }
+    if (/^Running\s+['"]/i.test(line) && (command || hasRulePass)) {
+      if (!hasRulePass && command) beginPass(command[1].toLowerCase() as CompileDiagnosticPhase);
+      hasRulePass = false;
       const texArgument = [...line.matchAll(/(?:['"]|\s)([^\s'"]+\.tex)(?:['"]|\s|$)/gi)].at(-1)?.[1];
       if (texArgument) currentFile = texArgument.replaceAll("\\", "/");
       pendingBang = undefined;
       continue;
     }
-    if (/^Latexmk:/i.test(line)) phase = "latexmk";
+    const banner = line.match(engineBanner)?.[1]?.toLowerCase();
+    if (banner) {
+      if (hasEngineBanner || !isLatexPhase(activePhase)) {
+        beginPass(banner === "pdftex" ? "pdflatex" : banner === "xetex" ? "xelatex" : "lualatex");
+      }
+      hasEngineBanner = true;
+      hasRulePass = false;
+    }
+    // stdout and stderr can interleave; latexmk's own messages do not end a TeX pass.
+    const phase = /^Latexmk:/i.test(line) ? "latexmk" : activePhase;
 
     const located = parseLocatedLine(line);
     if (located) {
@@ -159,13 +183,13 @@ export function parseCompileDiagnostics(log: string, outcome: CompileDiagnosticO
     }
   }
 
-  const unique = dedupeDiagnostics(diagnostics);
   // A successful process/PDF is the source of truth.  Do not report a stale
   // BibTeX error from an earlier pass as a compile error after latexmk has
   // completed successfully.
-  const errors = resolvedOutcome === "succeeded" ? [] : unique.filter((item) => item.severity === "error");
-  const warnings = unique.filter((item) => item.severity === "warning")
-    .filter((item) => lastLatexPass < 2 || !isLatexPhase(item.phase) || item.latexPass === lastLatexPass);
+  const errors = resolvedOutcome === "succeeded" ? [] : dedupeDiagnostics(diagnostics.filter((item) => item.severity === "error"));
+  const warnings = dedupeDiagnostics(diagnostics.filter((item) => item.severity === "warning"
+    && (item.latexPass === undefined || item.latexPass === latexPass)));
+  const hasUndefinedDetail = warnings.some((item) => /^(?:Citation|Reference)\b.*\bundefined\b/i.test(item.message));
   if (resolvedOutcome === "failed" && errors.length === 0) {
     const fallback: MutableDiagnostic = {
       severity: "error",
@@ -176,7 +200,10 @@ export function parseCompileDiagnostics(log: string, outcome: CompileDiagnosticO
     };
     errors.push(fallback);
   }
-  return { warnings: publicDiagnostics(warnings), errors: publicDiagnostics(errors) };
+  return {
+    warnings: publicDiagnostics(hasUndefinedDetail ? warnings.filter((item) => !/^There were undefined (?:references|citations)\.?$/i.test(item.message)) : warnings),
+    errors: publicDiagnostics(errors)
+  };
 }
 
 function hasSuccessfulLatexmkResult(log: string): boolean {
@@ -241,10 +268,10 @@ function isLatexmkFailure(line: string): boolean {
 
 function addDiagnostic(target: MutableDiagnostic[], input: Omit<CompileDiagnostic, "raw"> & { raw: string; latexPass?: number }): MutableDiagnostic {
   const diagnostic: MutableDiagnostic = { ...input, key: diagnosticKey(input) };
-  const existing = target.find((item) => item.key === diagnostic.key
+  const existing = target.find((item) => (item.severity !== "warning" || item.latexPass === diagnostic.latexPass) && (item.key === diagnostic.key
     || (item.severity === diagnostic.severity && item.phase === diagnostic.phase
       && item.message === diagnostic.message && item.file === diagnostic.file
-      && (item.line === undefined || diagnostic.line === undefined)));
+      && (item.line === undefined || diagnostic.line === undefined))));
   if (existing) {
     if (existing.line === undefined && diagnostic.line !== undefined) existing.line = diagnostic.line;
     if (!existing.file && diagnostic.file) existing.file = diagnostic.file;
