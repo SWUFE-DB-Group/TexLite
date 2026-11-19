@@ -212,6 +212,7 @@ describe("embedded draw.io editing", () => {
     expect(sent().at(-1)).toEqual(request);
     await act(async () => resolve({ revision: "r2" }));
     expect(host.querySelector(".drawio-status")?.textContent).toBe("Saving…");
+    expect(sent().at(-1)).toEqual({ action: "status", message: "", modified: true });
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     const next = sent().at(-1);
     expect(next.requestId).not.toBe(request.requestId);
@@ -219,6 +220,7 @@ describe("embedded draw.io editing", () => {
     await send({ event: "export", format: "xml", xml: newer, message: next });
     expect(JSON.parse(vi.mocked(api).mock.calls[2][1]!.body as string)).toMatchObject({ content: newer, revision: "r2" });
     expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved");
+    expect(sent().at(-1)).toEqual({ action: "status", message: "", modified: false });
   });
 
   it.each(["Ctrl+S", "Cmd+S", "iframe"])("flushes promptly via %s without a save button", async (key) => {

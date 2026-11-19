@@ -295,7 +295,8 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, onC
         const stillDirty = await updateDirty();
         if (abort.signal.aborted || !mounted.current) return;
         if (stillDirty === false) setSaveError("");
-        post({ action: "status", message: stillDirty === false ? t("drawio.saved") : "", modified: stillDirty ?? true });
+        // Only TexLite shows save feedback; the iframe still needs the modified flag.
+        post({ action: "status", message: "", modified: stillDirty ?? true });
         if (request.kind === "close" && stillDirty === false) settleClose(true);
         if (request.kind === "pdf") {
           savingSource = false;
