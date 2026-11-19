@@ -95,6 +95,13 @@ describe("draw.io project files and PDF export", () => {
     expect(result.statusCode).toBe(200); expect(result.json().revision).not.toBe(before.revision);
     expect(fs.readFileSync(absolute(), "utf8")).toBe(changed);
     expect(db.prepare("SELECT last_modified_by FROM projects WHERE id = ?").get(id)).toEqual({ last_modified_by: "writer" });
+    const snapshots = () => db.prepare("SELECT id FROM project_history_versions WHERE project_id = ? AND reason = 'autosave'").all(id);
+    const first = snapshots();
+    expect(first.length).toBeGreaterThan(0);
+    const newer = changed.replace("Changed", "Even newer");
+    expect(newer).not.toBe(changed);
+    expect((await request("PUT", "", { path: "figures/diagram.drawio", revision: result.json().revision, content: newer }, "writer")).statusCode).toBe(200);
+    expect(snapshots()).toEqual(first); // Nearby autosaves coalesce like source edits.
   });
 
   it("reads diagrams behind the filesystem barrier without waiting for Yjs hydration", async () => {
@@ -111,7 +118,12 @@ describe("draw.io project files and PDF export", () => {
 
   it("rejects stale saves and never recreates a deleted diagram", async () => {
     const before = await document();
-    expect((await request("PUT", "", { path: "figures/diagram.drawio", revision: before.revision, content: changed })).statusCode).toBe(200);
+    const payload = { path: "figures/diagram.drawio", revision: before.revision, content: changed };
+    const saved = await request("PUT", "", payload);
+    expect(saved.statusCode).toBe(200);
+    const retried = await request("PUT", "", payload);
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json()).toEqual(saved.json());
     expect((await request("PUT", "", { path: "figures/diagram.drawio", revision: before.revision, content: EMPTY_DRAWIO })).statusCode).toBe(409);
     expect(fs.readFileSync(absolute(), "utf8")).toBe(changed);
     expect((await request("PUT", "", { path: "figures/missing.drawio", revision: before.revision, content: changed })).statusCode).toBe(409);

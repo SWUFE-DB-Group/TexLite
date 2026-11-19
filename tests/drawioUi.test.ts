@@ -35,6 +35,11 @@ const send = (data: object, origin = DRAWIO_ORIGIN, source: Window | null = fram
   window.dispatchEvent(new MessageEvent("message", { origin, source, data: JSON.stringify(data) }));
 });
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!;
+const saveShortcut = async (mac = false) => {
+  const event = new KeyboardEvent("keydown", { key: "s", ctrlKey: !mac, metaKey: mac, cancelable: true, bubbles: true });
+  await act(async () => window.dispatchEvent(event));
+  return event.defaultPrevented;
+};
 const mount = async (readOnly = false, pdfRevision: string | null = null) => {
   vi.mocked(api).mockResolvedValueOnce({ content: EMPTY_DRAWIO, revision: "r1", pdfRevision });
   await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly, onChanged })));
@@ -67,7 +72,7 @@ beforeEach(async () => {
   lease.state = { status: "owned", token: "lease-1", name: "" }; lease.current.current = lease.state; lease.retry.mockReset();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("embedded draw.io editing", () => {
   it("shows the file name in TexLite without adding a title to the embedded menu", async () => {
@@ -82,7 +87,7 @@ describe("embedded draw.io editing", () => {
     expect(status.textContent).toBe("Saved");
     expect(status.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     await send({ event: "autosave", xml: changed });
-    expect(status.textContent).toBe("Unsaved changes");
+    expect(status.textContent).toBe("Saving…");
     expect(status.querySelector("svg")).toBeNull();
     const help = host.querySelector<HTMLButtonElement>(".drawio-help button")!;
     await act(async () => help.click());
@@ -165,40 +170,83 @@ describe("embedded draw.io editing", () => {
     expect(sent()).toEqual([expect.objectContaining({ action: "load", xml: EMPTY_DRAWIO, readOnly: false, autosave: 1 })]);
     await send({ event: "autosave", xml: changed }, "https://evil.test");
     await send({ event: "autosave", xml: changed }, DRAWIO_ORIGIN, window);
-    expect(button("Save").disabled).toBe(true);
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved");
     await send({ event: "configure" });
-    expect(sent().at(-1)).toMatchObject({ action: "configure", config: { defaultVertexStyle: { html: "0" }, suppressNewWindows: true } });
+    expect(sent().at(-1)).toMatchObject({ action: "configure", config: { defaultVertexStyle: { html: "0" }, suppressNewWindows: true,
+      passThroughKeys: [{ key: "s", ctrl: true, shift: false, alt: false, command: "save" }] } });
   });
 
-  it("retrieves the latest XML and saves once with a revision; changes during save remain dirty", async () => {
+  it("debounces consecutive edits and serializes newer edits behind an in-flight save", async () => {
+    vi.useFakeTimers();
     await mount(); await send({ event: "autosave", xml: changed });
-    expect(button("Save").disabled).toBe(false);
+    expect(button("Save")).toBeUndefined();
+    const latest = changed.replace("Changed", "Latest");
+    await act(async () => vi.advanceTimersByTimeAsync(900));
+    await send({ event: "autosave", xml: latest });
+    await act(async () => vi.advanceTimersByTimeAsync(900));
+    expect(sent().at(-1).action).toBe("load");
     let resolve!: (value: object) => void;
     vi.mocked(api).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
-    await act(async () => button("Save").click());
+    await act(async () => vi.advanceTimersByTimeAsync(100));
     const request = sent().at(-1); expect(request).toMatchObject({ action: "export", format: "xml" });
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saving…");
     // A forged/stale response cannot commit changes.
-    await send({ event: "export", format: "xml", xml: changed, message: { requestId: 999 } });
+    await send({ event: "export", format: "xml", xml: latest, message: { requestId: 999 } });
     expect(api).toHaveBeenCalledTimes(1);
-    const saving = send({ event: "export", format: "xml", xml: changed, message: request });
-    await saving;
+    await send({ event: "export", format: "xml", xml: latest, message: request });
+    await send({ event: "export", format: "xml", xml: latest, message: request });
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(vi.mocked(api).mock.calls[1][1]!.body as string)).toMatchObject({ content: latest, revision: "r1", lockToken: "lease-1" });
+    const newer = changed.replace("Changed", "Newer"); await send({ event: "autosave", xml: newer });
+    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+    expect(sent().at(-1)).toEqual(request);
+    await act(async () => resolve({ revision: "r2" }));
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saving…");
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    const next = sent().at(-1);
+    expect(next.requestId).not.toBe(request.requestId);
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r3" });
+    await send({ event: "export", format: "xml", xml: newer, message: next });
+    expect(JSON.parse(vi.mocked(api).mock.calls[2][1]!.body as string)).toMatchObject({ content: newer, revision: "r2" });
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved");
+  });
+
+  it.each(["Ctrl+S", "Cmd+S", "iframe"])("flushes promptly via %s without a save button", async (key) => {
+    await mount();
+    if (key === "iframe") await send({ event: "shortcut", command: "save" });
+    else expect(await saveShortcut(key === "Cmd+S")).toBe(true);
+    expect(button("Save")).toBeUndefined();
+    const request = sent().at(-1);
+    expect(request).toMatchObject({ action: "export", format: "xml" });
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r2" });
     await send({ event: "export", format: "xml", xml: changed, message: request });
     expect(api).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(vi.mocked(api).mock.calls[1][1]!.body as string)).toEqual({ path: "figures/diagram.drawio", content: changed, revision: "r1", lockToken: "lease-1" });
-    const newer = changed.replace("Changed", "Newer"); await send({ event: "autosave", xml: newer });
-    await act(async () => resolve({ revision: "r2" }));
-    expect(button("Saved").disabled).toBe(false);
-    expect(document.body.textContent).toContain("Unsaved changes");
-    await requestClose();
-    expect(onClose).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved");
+  });
+
+  it("keeps the failed autosave draft and only retries after an explicit request", async () => {
+    vi.useFakeTimers();
+    await mount(); await send({ event: "autosave", xml: changed });
+    vi.mocked(api).mockRejectedValueOnce(new Error("Server temporarily unavailable"));
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Save failed");
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Server temporarily unavailable");
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    expect(api).toHaveBeenCalledTimes(2);
+    await act(async () => button("Retry").click());
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r2" });
+    await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
+    expect(api).toHaveBeenCalledTimes(3);
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved");
   });
 
   it.each(["save", "pdf"])("closes a saved %s without a false discard warning when export formatting/compression differs", async (kind) => {
     await mount(); await send({ event: "autosave", xml: changed });
     vi.mocked(api).mockResolvedValueOnce({ revision: "r2" });
     if (kind === "pdf") vi.mocked(api).mockResolvedValueOnce({ path: "figures/diagram.pdf", pdfRevision: "pdf-r2" });
-    await act(async () => button(kind === "pdf" ? "Export PDF" : "Save").click());
+    if (kind === "pdf") await act(async () => button("Export PDF").click());
+    else await saveShortcut();
     const request = sent().at(-1);
     const xml = kind === "pdf" ? compressed(changed) : changed;
     await send({ event: "export", format: kind === "pdf" ? "svg" : "xml", xml,
@@ -215,16 +263,21 @@ describe("embedded draw.io editing", () => {
     expect(api).toHaveBeenCalledTimes(kind === "pdf" ? 3 : 2);
   });
 
-  it("still warns for a real edit after a successful compressed PDF save", async () => {
+  it("flushes a real edit after a successful compressed PDF save before navigating", async () => {
     await mount();
     vi.mocked(api).mockResolvedValueOnce({ revision: "r2" }).mockResolvedValueOnce({ pdfRevision: "pdf-r2" });
     await act(async () => button("Export PDF").click());
     await send({ event: "export", format: "svg", xml: compressed(changed), data: "data:image/svg+xml,%3Csvg%2F%3E", message: sent().at(-1) });
-    await send({ event: "autosave", xml: changed.replace("Changed", "Newer") });
-    await vi.waitFor(() => expect(host.querySelector(".drawio-status")?.textContent).toBe("Unsaved changes"));
+    await act(async () => vi.waitFor(() => expect(onChanged).toHaveBeenCalledTimes(2)));
+    const newer = changed.replace("Changed", "Newer");
+    await send({ event: "autosave", xml: newer });
+    await vi.waitFor(() => expect(host.querySelector(".drawio-status")?.textContent).toBe("Saving…"));
     await requestClose();
     expect(onClose).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r3" });
+    await send({ event: "export", format: "xml", xml: newer, message: sent().at(-1) });
+    await act(async () => vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce()));
+    expect(JSON.parse(vi.mocked(api).mock.calls[3][1]!.body as string)).toMatchObject({ content: newer, revision: "r2" });
   });
 
   it("compares full multi-page graph content while ignoring serialization and viewport metadata", async () => {
@@ -242,9 +295,9 @@ describe("embedded draw.io editing", () => {
     vi.spyOn(drawioContent, "sameDrawioContent").mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     await send({ event: "autosave", xml: `${EMPTY_DRAWIO}\n` });
     await send({ event: "autosave", xml: changed });
-    expect(host.querySelector(".drawio-status")?.textContent).toBe("Unsaved changes");
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saving…");
     await act(async () => finish(true));
-    expect(host.querySelector(".drawio-status")?.textContent).toBe("Unsaved changes");
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saving…");
   });
 
   it("requires confirmation before replacing a PDF, saves source first, and preserves errors for retry", async () => {
@@ -382,14 +435,35 @@ describe("embedded draw.io editing", () => {
     await requestClose();
     expect(onClose).not.toHaveBeenCalled();
     const request = sent().at(-1); expect(request.format).toBe("xml");
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r2" });
     await send({ event: "export", format: "xml", xml: changed, message: request });
-    expect(onClose).not.toHaveBeenCalled(); expect(api).toHaveBeenCalledTimes(1);
-    expect(document.body.textContent).toContain("Discard unsaved diagram changes?");
+    expect(onClose).toHaveBeenCalledOnce(); expect(api).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for an in-flight save on navigation and flushes the newer draft with the returned revision", async () => {
+    await mount(); await send({ event: "autosave", xml: changed });
+    let resolve!: (value: object) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    await saveShortcut();
+    const first = sent().at(-1);
+    await send({ event: "export", format: "xml", xml: changed, message: first });
+    const latest = changed.replace("Changed", "Newest");
+    await send({ event: "autosave", xml: latest });
+    await requestClose();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(sent().at(-1)).toEqual(first);
+    await act(async () => resolve({ revision: "r2" }));
+    const flush = sent().at(-1);
+    expect(flush.requestId).not.toBe(first.requestId);
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r3" });
+    await send({ event: "export", format: "xml", xml: latest, message: flush });
+    expect(JSON.parse(vi.mocked(api).mock.calls[2][1]!.body as string)).toMatchObject({ content: latest, revision: "r2" });
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("cancels pending writes on close/unmount and ignores their late results", async () => {
     await mount(); await send({ event: "autosave", xml: changed });
-    await act(async () => button("Save").click());
+    await saveShortcut();
     let resolve!: (value: object) => void;
     vi.mocked(api).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
     await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
@@ -400,10 +474,12 @@ describe("embedded draw.io editing", () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 
-  it("guards external file navigation with cancel/discard decisions without closing the editor itself", async () => {
+  it("guards external file navigation with cancel/discard decisions when saving fails", async () => {
     await mount(); await send({ event: "autosave", xml: changed });
     let decision!: Promise<boolean>;
     await act(async () => { decision = editor.current!.confirmClose(); });
+    vi.mocked(api).mockRejectedValueOnce(new Error("Server unavailable"));
+    await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
     await act(async () => button("Cancel").click());
     await expect(decision).resolves.toBe(false);
     expect(host.querySelector("iframe")).toBe(frame);
@@ -414,6 +490,7 @@ describe("embedded draw.io editing", () => {
   });
 
   it("opens other editors read-only and preserves a local draft when ownership is lost", async () => {
+    vi.useFakeTimers();
     lease.state = { status: "busy", token: "", name: "Other writer" }; lease.current.current = lease.state;
     await mount();
     expect(sent()[0]).toMatchObject({ readOnly: true, autosave: 0 });
@@ -429,7 +506,9 @@ describe("embedded draw.io editing", () => {
     await rerender();
     expect(sent()).toHaveLength(count); // Do not reload and erase the draft.
     expect(frame.parentElement?.hasAttribute("inert")).toBe(true);
-    expect(button("Save").disabled).toBe(true);
+    expect(button("Save")).toBeUndefined();
+    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+    expect(sent()).toHaveLength(count); // The scheduled save did not request XML after the lease was lost.
     await send({ event: "save", xml: changed });
     expect(api).toHaveBeenCalledTimes(1);
     await requestClose();
@@ -450,7 +529,7 @@ describe("embedded draw.io editing", () => {
     lease.state = { status: "owned", token: "third-owner", name: "", revision: "r3" }; lease.current.current = lease.state; await rerender();
     expect(api).toHaveBeenCalledTimes(2);
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("changed elsewhere");
-    expect(button("Save").disabled).toBe(true);
+    expect(button("Save")).toBeUndefined();
     expect(frame.parentElement?.hasAttribute("inert")).toBe(true);
   });
 

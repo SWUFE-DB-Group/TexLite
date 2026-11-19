@@ -9,12 +9,13 @@ import type { DatabaseConnection } from "../db.js";
 import type { CollaborationService } from "../collaboration.js";
 import type { ProjectMutationCoordinator } from "../projectMutations.js";
 import type { HistoryReason } from "../history.js";
-import { renameProjectPath, resolveSourcePath, safeRelativePath } from "../files.js";
+import { outputRoot, renameProjectPath, resolveSourcePath, safeRelativePath } from "../files.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { apiError, HttpError, httpError } from "../http.js";
 import { requireEditableProject, touchProject } from "./projectShared.js";
 import { reanchorFileComments } from "../anchors.js";
 import { DrawioPdfRenderer } from "../drawioPdf.js";
+import { saveProjectText } from "../projectTextSave.js";
 import { drawioPdfPath, isDrawioFile } from "../../shared/drawio.js";
 import { isTextContent } from "../../shared/fileTypes.js";
 
@@ -45,7 +46,7 @@ function pdfRevision(absolute: string): string | null {
   const stat = fs.statSync(absolute, { bigint: true });
   return hash(`${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`);
 }
-function writeAtomic(absolute: string, bytes: Buffer | string): void {
+function writeAtomic(absolute: string, bytes: Buffer): void {
   const temporary = path.join(path.dirname(absolute), `.texlite-drawio-${randomUUID()}.tmp`);
   try {
     fs.writeFileSync(temporary, bytes, { mode: 0o600, flag: "wx" });
@@ -111,14 +112,16 @@ export function registerDrawioRoutes(app: FastifyInstance, { config, db, collabo
       locks.assertOwned(id, relative, body.lockToken, user.id);
       const absolute = resolveSourcePath(config, id, relative);
       const previous = readDiagram(absolute);
+      // A lost response can leave the browser retrying the same save with its
+      // old revision. Acknowledge identical bytes without another write.
+      if (previous === content) return { revision: hash(previous) };
       if (hash(previous) !== body.revision) throw httpError(409, "DRAWIO_CONFLICT");
-      if (previous !== content) {
-        writeAtomic(absolute, content);
+      saveProjectText(db, outputRoot(config, id), absolute, Buffer.from(content, "utf8"), fs.statSync(absolute), () => {
         reanchorFileComments(db, id, relative, previous, content);
-        collaboration.invalidateSourceTree(id, relative);
         touchProject(db, id, user.id);
-        recordHistory(id, user.id, "file", [relative]);
-      }
+      }, (err, directory) => app.log.warn({ err, directory }, "Could not clean up diagram save staging"));
+      collaboration.invalidateSourceTree(id, relative);
+      recordHistory(id, user.id, "autosave", [relative]);
       return { revision: hash(content) };
     }, { preflight: () => { requireEditableProject(db, id, user); locks.assertOwned(id, relative, body.lockToken, user.id); } });
   });
