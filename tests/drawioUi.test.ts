@@ -173,7 +173,16 @@ describe("embedded draw.io editing", () => {
     expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved");
     await send({ event: "configure" });
     expect(sent().at(-1)).toMatchObject({ action: "configure", config: { defaultVertexStyle: { html: "0" }, suppressNewWindows: true,
+      hideMenuItems: ["exportPdf"],
       passThroughKeys: [{ key: "s", ctrl: true, shift: false, alt: false, command: "save" }] } });
+  });
+
+  it("enables math for new diagrams without forcing it in the iframe", async () => {
+    await mount();
+    const { xml } = sent()[0];
+    const diagram = new DOMParser().parseFromString(xml, "text/xml");
+    expect(diagram.querySelector("mxGraphModel")?.getAttribute("math")).toBe("1");
+    expect(new URL(frame.src).searchParams.has("math")).toBe(false);
   });
 
   it("debounces consecutive edits and serializes newer edits behind an in-flight save", async () => {
@@ -253,7 +262,7 @@ describe("embedded draw.io editing", () => {
       data: "data:image/svg+xml,%3Csvg%2F%3E", message: request });
     // Native autosave and close use expanded XML, not the SVG export's data.
     const expanded = changed.replace("<mxfile>", '<mxfile host="embed.diagrams.net" modified="later">\n ')
-      .replace("<mxGraphModel>", '<mxGraphModel dx="1200" dy="800">');
+      .replace(/<mxGraphModel\b/, '<mxGraphModel dx="1200" dy="800"');
     await send({ event: "autosave", xml: expanded });
     await vi.waitFor(() => expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved"));
     await requestClose();

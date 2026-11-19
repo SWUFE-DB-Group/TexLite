@@ -216,6 +216,7 @@ export default function DrawioEditor({ projectId, path, readOnly, onChanged, ref
       if (!message || typeof message !== "object") return;
       if (message.event === "configure") {
         post({ action: "configure", config: { suppressNewWindows: true, enableAi: false, settingsName: "texlite", autosaveDelay: 100,
+          hideMenuItems: ["exportPdf"],
           passThroughKeys: [{ key: "s", ctrl: true, shift: false, alt: false, command: "save" }],
           defaultVertexStyle: { html: "0", fontFamily: "Arial" },
           defaultEdgeStyle: { html: "0", fontFamily: "Arial", edgeStyle: "orthogonalEdgeStyle", rounded: "0", jettySize: "auto", orthogonalLoop: "1", defaultLabelBackgroundColor: "page" },

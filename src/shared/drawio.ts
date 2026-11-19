@@ -1,4 +1,4 @@
-export const EMPTY_DRAWIO = '<mxfile><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
+export const EMPTY_DRAWIO = '<mxfile><diagram id="page-1" name="Page-1"><mxGraphModel math="1"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
 export const isDrawioFile = (path: string): boolean => /\.drawio$/i.test(path);
 export const drawioPdfPath = (path: string): string => path.replace(/\.drawio$/i, ".pdf");
 export interface DrawioDocument { content: string; revision: string; pdfRevision: string | null }
