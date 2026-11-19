@@ -20,8 +20,11 @@ Windows deployment: older running records without job ownership cannot be
 recovered automatically. TexLite keeps those projects reserved instead of
 starting another task on top of a potentially surviving process.
 
-Native Windows compilation and Git pushes also use a Job Object. If policy
+Native Windows compilation, Git pushes, and draw.io exports also use a Job Object. If policy
 blocks job assignment, TexLite reports a failure before running the command.
+draw.io exports use a separate browser profile and a DevTools pipe, not a
+debugging port. TexLite waits for the browser job to stop before removing that
+profile.
 Local Git reads and short host-tool probes do not use this launcher. Windows
 sandboxing and real CLI compatibility still need deployment verification.
 

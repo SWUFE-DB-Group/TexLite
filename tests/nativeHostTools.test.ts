@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { DrawioPdfRenderer } from "../src/server/drawioPdf.js";
+import { DrawioPdfRenderer, findDrawioBrowser } from "../src/server/drawioPdf.js";
+import { launchOwnedDrawioBrowser } from "../src/server/drawioOwnedBrowser.js";
 import { inspectHostRequirements } from "../src/server/environment.js";
 import { HarperService } from "../src/server/harper.js";
 import { inspectPdfFonts } from "../src/server/pdfFonts.js";
@@ -48,4 +49,18 @@ describe.runIf(process.env.TEXLITE_TEST_NATIVE_HOST_TOOLS === "1")("native host 
       await fs.rm(directory, { recursive: true, force: true, maxRetries: 3 });
     }
   }, 50_000);
+
+  // Windows already uses this transport in the export above. Verify it
+  // against Linux Chrome as well, without changing the POSIX export path.
+  it.runIf(process.platform === "linux")("talks to native Chrome over the managed DevTools pipe", async () => {
+    const { default: puppeteer } = await import("puppeteer-core");
+    const { browser, close } = await launchOwnedDrawioBrowser(
+      puppeteer, await findDrawioBrowser(), AbortSignal.timeout(15_000)
+    );
+    try {
+      const page = await browser.newPage();
+      await page.setContent("<html><body>TexLite</body></html>");
+      expect(Buffer.from(await page.pdf()).subarray(0, 5).toString()).toBe("%PDF-");
+    } finally { await close(); }
+  }, 35_000);
 });

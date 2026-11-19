@@ -78,6 +78,7 @@ jobs:
         run: >-
           npm test --
           tests/windowsProcessTree.test.ts
+          tests/drawioOwnedBrowser.test.ts
           tests/agentExecutionIntegration.test.ts
           tests/agentExecutionRecovery.test.ts
           tests/agentTerminalLifecycle.test.ts

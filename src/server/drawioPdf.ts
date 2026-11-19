@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Browser } from "puppeteer-core";
+import { launchOwnedDrawioBrowser } from "./drawioOwnedBrowser.js";
 import { HttpError, httpError } from "./http.js";
 
 /** Only Chromium-family browsers share this export backend. No browser is downloaded. */
@@ -49,6 +50,8 @@ export class DrawioPdfRenderer {
   private closing = false;
   private detectedBrowser?: { configured: string | undefined; path: string };
 
+  constructor(private readonly reportError?: (error: unknown) => void) {}
+
   async close(): Promise<void> {
     this.closing = true;
     for (const job of this.jobs) job.abort();
@@ -67,7 +70,7 @@ export class DrawioPdfRenderer {
   }
 
   private async renderDocument(svg: string, configured: string | undefined, signal: AbortSignal): Promise<Buffer> {
-    let browser: Browser | undefined;
+    let close: (() => Promise<void>) | undefined;
     try {
       signal.throwIfAborted();
       const executablePath = this.detectedBrowser && this.detectedBrowser.configured === configured
@@ -75,8 +78,14 @@ export class DrawioPdfRenderer {
       this.detectedBrowser = { configured, path: executablePath };
       const { default: puppeteer } = await import("puppeteer-core");
       signal.throwIfAborted();
-      browser = await puppeteer.launch({ executablePath, browser: "chrome", headless: true, pipe: true,
-        timeout: 10_000, signal, handleSIGINT: false, handleSIGHUP: false, handleSIGTERM: false });
+      let browser: Browser;
+      if (process.platform === "win32") {
+        ({ browser, close } = await launchOwnedDrawioBrowser(puppeteer, executablePath, signal));
+      } else {
+        browser = await puppeteer.launch({ executablePath, browser: "chrome", headless: true, pipe: true,
+          timeout: 10_000, signal, handleSIGINT: false, handleSIGHUP: false, handleSIGTERM: false });
+        close = () => closeBrowser(browser);
+      }
       signal.throwIfAborted();
       const page = await browser.newPage();
       page.setDefaultTimeout(10_000);
@@ -129,9 +138,19 @@ export class DrawioPdfRenderer {
       return bytes;
     } catch (error) {
       this.detectedBrowser = undefined; // Retry detection after installation/removal or a failed launch.
+      if (error instanceof AggregateError || (!signal.aborted && !(error instanceof HttpError))) this.reportError?.(error);
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       if (error instanceof HttpError) throw error;
       throw httpError(422, "DRAWIO_EXPORT_FAILED");
-    } finally { if (browser) await closeBrowser(browser); }
+    } finally {
+      if (close) {
+        try { await close(); }
+        catch (error) {
+          this.reportError?.(error);
+          if (!signal.aborted) throw httpError(422, "DRAWIO_EXPORT_FAILED");
+        }
+      }
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    }
   }
 }

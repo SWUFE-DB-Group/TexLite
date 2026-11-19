@@ -15,8 +15,10 @@ const windowsCommands = new WeakMap<ChildProcess, WindowsCommand>();
 const gatedCommand = `
   const { spawn } = require('node:child_process');
   process.once('disconnect', () => process.exit(1));
-  process.once('message', ({ command, args }) => {
-    const worker = spawn(command, args, { windowsHide: true, stdio: 'inherit' });
+  process.once('message', ({ command, args, devtoolsPipe }) => {
+    // Keep the Chrome protocol descriptors at 3 and 4 through both spawns.
+    const stdio = devtoolsPipe ? ['inherit', 'inherit', 'inherit', 3, 4] : 'inherit';
+    const worker = spawn(command, args, { windowsHide: true, stdio });
     worker.once('error', ({ message, code }) => {
       process.send({ message, code }, () => process.exit(1));
     });
@@ -26,16 +28,19 @@ const gatedCommand = `
 
 /** For commands that can leave work behind even after the main process exits. */
 export function spawnOwnedCommand(
-  command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}
+  command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; devtoolsPipe?: boolean } = {}
 ): ChildProcessByStdio<null, Readable, Readable> {
+  const { devtoolsPipe, ...spawnOptions } = options;
+  const stdio: ("ignore" | "pipe" | "ipc")[] = ["ignore", "pipe", "pipe"];
+  if (devtoolsPipe) stdio.push("pipe", "pipe");
   if (process.platform !== "win32") {
-    return spawn(command, args, { ...options, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    return spawn(command, args, { ...spawnOptions, detached: true, stdio }) as ChildProcessByStdio<null, Readable, Readable>;
   }
 
   const id = randomUUID();
   const child = spawn(process.execPath, ["--input-type=commonjs", "-e", gatedCommand, "--", id], {
-    ...options, windowsHide: true, stdio: ["ignore", "pipe", "pipe", "ipc"]
-  }) as ChildProcessByStdio<null, Readable, Readable>; // Node's overloads do not cover the fourth (IPC) slot.
+    ...spawnOptions, windowsHide: true, stdio: [...stdio, "ipc"]
+  }) as ChildProcessByStdio<null, Readable, Readable>; // Node's overloads only type the three standard streams.
   const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
   let attached = false;
   let stopping: Promise<void> | undefined;
@@ -51,7 +56,7 @@ export function spawnOwnedCommand(
     attached = true;
     if (!stopping && child.connected) {
       // Pass arguments over IPC, not through a shell or the launcher's command line.
-      await new Promise<void>((resolve, reject) => child.send({ command, args }, (error) => error ? reject(error) : resolve()));
+      await new Promise<void>((resolve, reject) => child.send({ command, args, devtoolsPipe }, (error) => error ? reject(error) : resolve()));
     }
   })().catch((error: unknown) => {
     launchError = error;

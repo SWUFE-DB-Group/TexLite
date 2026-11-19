@@ -57,9 +57,10 @@ export function registerDrawioRoutes(app: FastifyInstance, { config, db, collabo
   config: Config; db: DatabaseConnection; collaboration: CollaborationService; projectMutations: ProjectMutationCoordinator;
   recordHistory: (projectId: string, userId: string | null, reason: HistoryReason, paths?: readonly string[]) => unknown;
 }): void {
-  const renderer = new DrawioPdfRenderer();
+  const renderer = new DrawioPdfRenderer((err) => app.log.warn({ err }, "draw.io browser export failed"));
   const locks = projectMutations.drawioLocks;
-  app.addHook("onClose", async () => { await renderer.close(); });
+  // Cancel Windows browser jobs before Fastify waits for in-flight exports.
+  app.addHook(process.platform === "win32" ? "preClose" : "onClose", async () => { await renderer.close(); });
 
   app.get("/api/projects/:id/drawio/lock", { websocket: true }, (socket, request) => {
     const user = currentUser(request, db);
