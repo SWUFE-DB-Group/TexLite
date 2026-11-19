@@ -111,7 +111,16 @@ jobs:
           }
           Add-TestTool harper 'https://github.com/Automattic/harper/releases/download/v3.0.0/harper-cli-x86_64-pc-windows-msvc.zip' '741c3beefe21629c9094fa1dfdfc55b1b1969ab82a987f023c395c4acd2a5430' 'harper-cli.exe'
           Add-TestTool poppler 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip' '7a6f256a0ddf7536182246a5733331bf4677cbcc34f4663774947ad34556c8d0' 'pdffonts.exe'
-      - name: Run optional integrations with native Windows tools
+      - name: Check native Harper and Poppler availability and Harper linting
         env:
           TEXLITE_TEST_NATIVE_HOST_TOOLS: "1"
         run: npm test -- tests/nativeHostTools.test.ts
+      - name: Smoke-test draw.io PDF export with the runner's browser (non-blocking)
+        id: native_drawio
+        continue-on-error: true
+        env:
+          TEXLITE_TEST_NATIVE_HOST_TOOLS: "1"
+        run: npm test -- tests/nativeDrawioPdf.test.ts
+      - name: Report the non-blocking draw.io smoke test failure
+        if: steps.native_drawio.outcome == 'failure'
+        run: Write-Output "::warning::Native draw.io PDF export failed. See the browser smoke test for diagnostics."
