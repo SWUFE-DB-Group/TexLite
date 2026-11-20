@@ -2482,8 +2482,8 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .history-snapshot-actions button:focus, .history-restore-project:focus, .history-file-list button:focus, .history-file-actions button:focus { outline: 2px solid var(--ui-accent-border, #70ad88); outline-offset: 2px; }
 }
 .history-comparison { min-height: 360px; margin-top: 10px; border: 1px solid #d8dfda; border-radius: 7px; overflow: hidden; background: #202522; display: flex; flex-direction: column; }
-.history-attachment-change { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; padding: 11px 12px; border: 1px solid var(--ui-border, #d8dfda); border-radius: 7px; background: var(--ui-surface, #f5f8f6); color: var(--ui-text, #526258); font-size: 12px; overflow-wrap: anywhere; }
-.history-attachment-change > svg { flex: none; }
+.history-no-text-diff { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 14px 0 0; padding: 4px 8px; color: var(--ui-muted, #627168); font-size: 12px; font-weight: 500; line-height: 1.5; text-align: center; overflow-wrap: anywhere; }
+.history-no-text-diff > svg { flex: none; }
 .history-comparison > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #36413a; background: #28302b; color: #d9e1dc; }
 .history-comparison-meta { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .history-comparison-meta strong { font-size: 12px; color: #f0f4f1; }

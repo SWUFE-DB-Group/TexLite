@@ -1299,8 +1299,9 @@
     "noFiles": "沒有符合的檔案。"
   },
   "history": {
-    "diagramChanged": "圖表已變更：{{path}}，不顯示文字差異。",
-    "diagramDeleted": "圖表已刪除：{{path}}。",
+    "diagramNoDiff": "draw.io 圖表不顯示文字差異。",
+    "nonTextNoDiff": "非文字檔案不顯示文字差異。",
+    "nonTextFileDeleted": "此非文字檔案已刪除，不顯示文字差異。",
     "manageFiles": "管理記錄檔案",
     "trackingDescription": "選擇本專案之後的快照要記錄哪些檔案。",
     "trackingHint": "預設記錄文字檔案。依路徑設定，立即儲存並由協作者共用；已有快照保留。",
@@ -1332,8 +1333,6 @@
     "changedFilesHeading_one": "修改的檔案 ({{count}})",
     "changedFilesHeading_other": "修改的檔案 ({{count}})",
     "noChangedFiles": "此快照沒有修改的檔案。",
-    "nonTextFileChanged": "{{path}} 是非文字檔案，僅顯示變更資訊，不顯示文字差異。",
-    "nonTextFileDeleted": "非文字檔案已刪除：{{path}}。",
     "noDifferences": "檔案在此快照與目前版本內容相同，沒有差異。",
     "noDifferencesInCommit": "此檔案在本次修改中無內容變動。",
     "currentVersion": "目前版本",

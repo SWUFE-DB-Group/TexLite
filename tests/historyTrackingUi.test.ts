@@ -67,7 +67,7 @@ it.each([".gitignore", "build.bat", "scripts/RUN.CMD", "settings.ini", "notes.cu
     .mockResolvedValue({ path: filePath, historical: "*.aux\n*.log\n", comparison: "*.aux\n", against: "previous", previousVersion: null });
   await act(async () => root.render(createElement(HistoryDialog, { open: true, project: { id: "p", permission: "read" } as Project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
   expect(api).toHaveBeenLastCalledWith(`/api/projects/p/history/v/file?path=${encodeURIComponent(filePath)}&against=__previous__`, expect.anything());
-  expect(host.querySelector(".history-attachment-change")).toBeNull();
+  expect(host.querySelector(".history-no-text-diff")).toBeNull();
   expect(host.querySelector(".history-git-diff")?.textContent).toContain("+*.log");
 
   const currentMode = host.querySelectorAll<HTMLButtonElement>(".history-mode-toggle button")[1];
@@ -84,7 +84,10 @@ it("summarizes recorded binary bytes even when the filename has a text extension
     .mockResolvedValueOnce({ version, files: [{ path: "binary.bat", size: 3, textContent: false }], settings: { mainFile: "main.tex", engine: "pdflatex", latexmkrc: null } });
   await act(async () => root.render(createElement(HistoryDialog, { open: true, project: { id: "p", permission: "read" } as Project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
   expect(api).toHaveBeenCalledTimes(2);
-  expect(host.querySelector(".history-attachment-change")?.textContent).toContain("binary.bat");
+  expect(host.querySelector(".history-file-list button")?.textContent).toContain("binary.bat");
+  const notice = host.querySelector(".history-no-text-diff");
+  expect(notice?.querySelector("svg[aria-hidden]")).toBeTruthy();
+  expect(notice?.textContent).not.toContain("binary.bat");
   expect(host.querySelector(".history-git-diff")).toBeNull();
 });
 
@@ -98,7 +101,9 @@ it.each([false, true])("lists draw.io changes without requesting a diff (deleted
   await act(async () => root.render(createElement(HistoryDialog, { open: true, project: { id: "p", permission: "edit" } as Project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
   expect(api).toHaveBeenCalledTimes(2);
   expect(host.querySelector(".history-file-list button")?.textContent).toContain(filePath);
-  expect(host.querySelector(".history-attachment-change")).not.toBeNull();
+  const notice = host.querySelector(".history-no-text-diff");
+  expect(notice?.querySelector("svg[aria-hidden]")).toBeTruthy();
+  expect(notice?.textContent).not.toContain(filePath);
   expect(host.querySelector(".history-mode-toggle")).toBeNull();
   expect(host.querySelector<HTMLButtonElement>(".history-file-actions button")?.disabled).toBe(deleted);
 });

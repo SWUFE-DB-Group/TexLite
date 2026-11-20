@@ -2,7 +2,7 @@ import { formatBytes } from "./formatBytes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  CheckCircle2, ChevronDown, ChevronRight, Clock3, FileClock, FileCode2, FileText, HardDrive, ListChecks,
+  CheckCircle2, ChevronDown, ChevronRight, Clock3, EyeClosed, FileClock, FileCode2, FileText, HardDrive, ListChecks,
   LoaderCircle, Maximize2, Minimize2, Minus, Plus, RotateCcw, Tag, Trash2
 } from "lucide-react";
 import { ApiError, api, isAbortError } from "./api";
@@ -195,9 +195,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const selectedFile = detail?.files.find((file) => file.path === selectedPath);
   const canCompareSelectedFile = historyDiffCandidate(selectedPath) && selectedFile?.textContent !== false;
   const selectedFileDeleted = selectedFile?.deleted === true;
-  const changeSummary = isDrawioFile(selectedPath)
-    ? selectedFileDeleted ? "history.diagramDeleted" : "history.diagramChanged"
-    : selectedFileDeleted ? "history.nonTextFileDeleted" : "history.nonTextFileChanged";
+  const selectedDiagram = isDrawioFile(selectedPath);
 
   useEffect(() => {
     if (!open || !selectedId || !selectedPath || !canCompareSelectedFile) {
@@ -579,7 +577,10 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                 <p className="muted padded-small">{t("history.noChangedFiles")}</p>
               )}
             </div>
-            {selectedPath && !canCompareSelectedFile ? <p className="history-attachment-change"><FileText size={14} /><span>{t(changeSummary, { path: selectedPath })}</span></p> : <div ref={diffSectionRef} className={`history-comparison${diffFullscreen ? " is-fullscreen" : ""}`}>
+            {selectedPath && !canCompareSelectedFile ? <p className="history-no-text-diff">
+              <EyeClosed size={16} strokeWidth={2.25} aria-hidden />
+              <span>{t(selectedDiagram ? "history.diagramNoDiff" : selectedFileDeleted ? "history.nonTextFileDeleted" : "history.nonTextNoDiff")}</span>
+            </p> : <div ref={diffSectionRef} className={`history-comparison${diffFullscreen ? " is-fullscreen" : ""}`}>
               {selectedPath ? <>
                 <header>
                   <div className="history-comparison-meta">

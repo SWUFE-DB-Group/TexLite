@@ -564,8 +564,9 @@
     "quickOpen": "Quick open", "quickOpenDescription": "Open a project file by name (Ctrl/Cmd+P).", "filePlaceholder": "Type a file name…", "noFiles": "No matching files."
   },
   "history": {
-    "diagramChanged": "Diagram changed: {{path}}. Text diff is not shown.",
-    "diagramDeleted": "Diagram deleted: {{path}}.",
+    "diagramNoDiff": "Text diffs aren’t shown for draw.io diagrams.",
+    "nonTextNoDiff": "Text diffs aren’t shown for non-text files.",
+    "nonTextFileDeleted": "This non-text file was deleted. No text diff is available.",
     "manageFiles": "Manage recorded files",
     "trackingDescription": "Choose which files this project records in future snapshots.",
     "trackingHint": "Text files are recorded by default. Path-based choices save immediately for all collaborators; existing snapshots stay.",
@@ -583,7 +584,7 @@
     "title": "History", "projectSnapshots": "Project snapshots", "projectSnapshotsButton": "Snapshots", "description": "Browse snapshots, compare files and restore earlier versions.", "empty": "No project snapshots yet.", "loadOlder": "Load older snapshots",
     "changedCount_one": "{{count}} changed file", "changedCount_other": "{{count}} changed files", "fileCount_one": "{{count}} file", "fileCount_other": "{{count}} files", "labelPlaceholder": "Name this version", "saveLabel": "Save label",
     "comparingCurrent": "Earlier snapshot compared with the current file", "chooseFile": "Choose a file, then compare it with the current source.",
-    "changedFilesHeading_one": "Changed file ({{count}})", "changedFilesHeading_other": "Changed files ({{count}})", "noChangedFiles": "No files were changed in this snapshot.", "nonTextFileChanged": "Non-text file changed: {{path}}. Text diff is not available.", "nonTextFileDeleted": "Non-text file deleted: {{path}}.", "noDifferences": "This file is identical between the snapshot and current version.", "noDifferencesInCommit": "This file was not changed in this edit.", "currentVersion": "Current version",
+    "changedFilesHeading_one": "Changed file ({{count}})", "changedFilesHeading_other": "Changed files ({{count}})", "noChangedFiles": "No files were changed in this snapshot.", "noDifferences": "This file is identical between the snapshot and current version.", "noDifferencesInCommit": "This file was not changed in this edit.", "currentVersion": "Current version",
     "diffMode": "Diff mode", "diffModeCommit": "This edit", "diffModeCommitHint": "View changes made in this snapshot compared to previous", "diffModeCurrent": "vs Current", "diffModeCurrentHint": "Compare this snapshot with current project source", "changedAt": "changed at {{time}}", "createdAt": "created at {{time}}", "previousVersion": "Previous snapshot",
     "restore": "Restore", "restoreFile": "Restore file", "restoreProject": "Restore project", "restoreFileTitle": "Restore this file", "restoreProjectTitle": "Restore this project snapshot",
     "restoreFileDescription": "Restore {{path}} from this snapshot? The current project is checkpointed first.", "restoreProjectDescription": "Restore all source files and compiler settings from this snapshot? The current project is checkpointed first.",

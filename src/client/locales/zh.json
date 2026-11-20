@@ -555,8 +555,9 @@
     "quickOpen": "快速打开", "quickOpenDescription": "按名称打开项目文件（Ctrl/Cmd+P）。", "filePlaceholder": "输入文件名…", "noFiles": "没有匹配的文件。"
   },
   "history": {
-    "diagramChanged": "图表已变更：{{path}}，不展示文本差异。",
-    "diagramDeleted": "图表已删除：{{path}}。",
+    "diagramNoDiff": "draw.io 图表不显示文本差异。",
+    "nonTextNoDiff": "非文本文件不显示文本差异。",
+    "nonTextFileDeleted": "此非文本文件已删除，不显示文本差异。",
     "manageFiles": "管理记录文件",
     "trackingDescription": "选择本项目之后的快照要记录哪些文件。",
     "trackingHint": "默认记录文本文件。按路径设置，立即保存并由协作者共享；已有快照保留。",
@@ -574,7 +575,7 @@
     "title": "历史", "projectSnapshots": "项目快照", "projectSnapshotsButton": "项目快照", "description": "浏览快照、比较文件并恢复早期版本。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",
     "changedCount_one": "{{count}} 个文件有变化", "changedCount_other": "{{count}} 个文件有变化", "fileCount_one": "{{count}} 个文件", "fileCount_other": "{{count}} 个文件", "labelPlaceholder": "为此版本命名", "saveLabel": "保存标签",
     "comparingCurrent": "历史快照与当前文件的比较", "chooseFile": "选择文件后，可与当前源码进行比较。",
-    "changedFilesHeading_one": "修改的文件 ({{count}})", "changedFilesHeading_other": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "nonTextFileChanged": "非文本文件已变更：{{path}}，不展示文本差异。", "nonTextFileDeleted": "非文本文件已删除：{{path}}。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "currentVersion": "当前版本",
+    "changedFilesHeading_one": "修改的文件 ({{count}})", "changedFilesHeading_other": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "currentVersion": "当前版本",
     "diffMode": "对比模式", "diffModeCommit": "本次修改", "diffModeCommitHint": "查看此快照相比上一快照的改动", "diffModeCurrent": "与当前对比", "diffModeCurrentHint": "查看此快照与当前工作区源码的差异", "changedAt": "修改于 {{time}}", "createdAt": "创建于 {{time}}", "previousVersion": "上一快照",
     "restore": "恢复", "restoreFile": "恢复文件", "restoreProject": "恢复项目", "restoreFileTitle": "恢复此文件", "restoreProjectTitle": "恢复此项目快照",
     "restoreFileDescription": "从此快照恢复 {{path}}？系统会先为当前项目创建安全检查点。", "restoreProjectDescription": "恢复此快照的全部源码和编译器设置？系统会先为当前项目创建安全检查点。",
