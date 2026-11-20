@@ -145,6 +145,7 @@ export function localizedResponseError(body: unknown, status: number, fallbackKe
       PROJECT_TRANSFER_TARGET_INVALID: "projects.transferTargetInvalid",
       PROJECT_TRANSFER_SELF: "projects.transferSelf",
       MAIN_DOCUMENT_INVALID: "apiErrors.mainDocumentInvalid",
+      COMMENT_CONTENT_CHANGED: "editor.commentContentChanged",
       COMPILE_SNAPSHOT_BUSY: "apiErrors.compileSnapshotBusy",
       COMPILE_CLEAN_BUSY: "editor.cleanBusy",
       CITATION_INVALID: "citationErrors.invalid",

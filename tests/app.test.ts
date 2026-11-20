@@ -640,16 +640,31 @@ It works.
     expect(new Date(reply.json().reply.createdAt).toISOString()).toBe(reply.json().reply.createdAt);
     const editedComment = await app.inject({
       method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
-      payload: { content: "Updated heading comment" }
+      payload: { content: "Updated heading comment", expectedContent: "Check this heading" }
     });
     expect(editedComment.statusCode).toBe(200);
     const editedReply = await app.inject({
       method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}/replies/${replyId}`, headers: { cookie },
-      payload: { content: "Updated thread reply" }
+      payload: { content: "Updated thread reply", expectedContent: "Reply in this thread" }
     });
     expect(editedReply.statusCode).toBe(200);
     expect(editedReply.json().reply).toMatchObject({ content: "Updated thread reply" });
     expect(new Date(editedReply.json().reply.editedAt).toISOString()).toBe(editedReply.json().reply.editedAt);
+    for (const [suffix, original, saved, confirmed] of [
+      ["", "Check this heading", "Updated heading comment", editedComment.json().change.comment],
+      [`/replies/${replyId}`, "Reply in this thread", "Updated thread reply", editedReply.json().reply]
+    ] as const) {
+      const save = (payload: object) => app.inject({
+        method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}${suffix}`, headers: { cookie }, payload
+      });
+      expect((await save({ content: "Another change" })).statusCode).toBe(400);
+      const conflict = await save({ content: "Old tab's draft", expectedContent: original });
+      expect(conflict.statusCode).toBe(409);
+      expect(conflict.json().code).toBe("COMMENT_CONTENT_CHANGED");
+      const retry = await save({ content: saved, expectedContent: original });
+      expect(retry.statusCode).toBe(200);
+      expect(suffix ? retry.json().reply : retry.json().change.comment).toEqual(confirmed);
+    }
     const shiftedSource = `% preface\n${source}`;
     const shifted = await app.inject({ method: "PUT", url: `/api/projects/${project.id}/file`, headers: { cookie }, payload: { path: "main.tex", content: shiftedSource } });
     expect(shifted.statusCode).toBe(200);
@@ -2458,9 +2473,10 @@ Second version.
     expect(new Date(resolved.resolvedAt).toISOString()).toBe(resolved.resolvedAt);
     expect((await load("scope=project")).resolvedAt).toBe(resolved.resolvedAt);
     expect((await update(true, cookie)).statusCode).toBe(200);
-    await app.inject({ method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
-      payload: { content: "Updated review." } });
-    expect(await load()).toMatchObject({ resolvedById: readerId, resolvedAt: resolved.resolvedAt });
+    const edited = await app.inject({ method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
+      payload: { content: "Updated review.", expectedContent: resolved.content } });
+    expect(edited.statusCode).toBe(200);
+    expect(await load()).toMatchObject({ content: "Updated review.", resolvedById: readerId, resolvedAt: resolved.resolvedAt });
     const reopened = await update(false);
     expect(reopened.statusCode).toBe(200);
     expect(reopened.json()).toMatchObject({ resolution: { id: commentId, resolved: false, ...empty }, summary: { unresolvedCount: 1 } });
@@ -2525,12 +2541,12 @@ Second version.
 
     const removeMention = await app.inject({
       method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
-      payload: { content: "Please check this without a direct notification." }
+      payload: { content: "Please check this without a direct notification.", expectedContent: "Could you check this, @mention-reader?" }
     });
     expect(removeMention.statusCode).toBe(200);
     const resolveMention = await app.inject({
       method: "PATCH", url: `/api/projects/${project.id}/comments/${commentId}`, headers: { cookie },
-      payload: { content: "Please check this, @mention-reader." }
+      payload: { content: "Please check this, @mention-reader.", expectedContent: "Please check this without a direct notification." }
     });
     expect(resolveMention.statusCode).toBe(200);
     const newlyUnread = await app.inject({ method: "GET", url: `/api/projects/${project.id}/mentions?unread=1`, headers: { cookie: readerCookie } });

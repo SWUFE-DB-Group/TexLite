@@ -129,6 +129,7 @@
     "saved": "Saved",
     "updatedWhileEditing": "This suggestion changed elsewhere. Cancel and reopen the editor to use the latest version.",
     "reviewBeforeResolve": "Review the suggestion before resolving this discussion.",
+    "reviewPaused": "Review paused",
     "reviewRequested": "Your review was requested"
   },
   "projectSearch": {
@@ -142,7 +143,8 @@
     "matches_one": "{{count}} match", "matches_other": "{{count}} matches",
     "files_one": "{{count}} file", "files_other": "{{count}} files",
     "empty": "Find text across your project files.", "noMatches": "No matches found.",
-    "limited": "Some files or matches were omitted. Narrow your search to enable replacement.",
+    "limited": "Some files or matches were omitted.",
+    "limitedReplace": "Results are incomplete. You can replace individual matches, but not all at once.",
     "location": "{{path}}, line {{line}}, column {{column}}"
   },
   "common": {
@@ -438,6 +440,7 @@
     "commentDraftRestored": "Workspace draft restored, still linked to its original source location.",
     "commentDraftUseSelection": "Use this source selection",
     "commentSending": "Sending…", "commentSubmitFailed": "Unable to submit. Your text has been kept. Please retry.",
+    "commentContentChanged": "This text changed elsewhere. Copy your draft before reopening the editor to see the latest version.",
     "commentDeleteFailed": "Could not delete the comment. Please try again.",
     "editComment": "Edit comment", "deleteComment": "Delete comment",
     "deleteCommentTitle": "Delete comment", "deleteCommentDescription": "Delete this comment and its replies? This cannot be undone.",

@@ -34,6 +34,14 @@ export interface CommentRouteContext {
   projectMutations: ProjectMutationCoordinator;
 }
 
+function shouldWriteDiscussionText(current: string, content: string, expectedContent: unknown): boolean {
+  if (typeof expectedContent !== "string") throw httpError(400, "REQUEST_INVALID");
+  // A retry after a lost response must not update timestamps or notify again.
+  if (content === current) return false;
+  if (expectedContent !== current) throw httpError(409, "COMMENT_CONTENT_CHANGED");
+  return true;
+}
+
 /** Register source-anchored comments and reply routes. */
 export function registerCommentRoutes(app: FastifyInstance, context: CommentRouteContext): void {
   const { config, db, collaboration, projectMutations } = context;
@@ -212,14 +220,10 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
     const comment = db.prepare("SELECT author_id, resolved, content FROM comments WHERE id = ? AND project_id = ?")
       .get(commentId, id) as { author_id: string | null; resolved: number; content: string } | undefined;
     if (!comment) return apiError(reply, 404, "COMMENT_NOT_FOUND");
-    const body = request.body as { resolved?: unknown; content?: unknown };
+    const body = (request.body ?? {}) as { resolved?: unknown; content?: unknown; expectedContent?: unknown };
     const changedAt = now();
-    let changed = false;
     const content = typeof body.content === "string" ? text(body.content, 5000) : null;
-    if (typeof body.content === "string") {
-      if (comment.author_id !== user.id) return apiError(reply, 403, "COMMENT_EDIT_FORBIDDEN");
-      changed = true;
-    }
+    if (content !== null && comment.author_id !== user.id) return apiError(reply, 403, "COMMENT_EDIT_FORBIDDEN");
     if (typeof body.resolved === "boolean") {
       // Read-only members may discuss, but closing or reopening a thread is a
       // review decision for people who can change the project.
@@ -231,24 +235,27 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
           return apiError(reply, 409, "SUGGESTION_PENDING");
         }
       }
-      changed = true;
     }
-    if (!changed) return apiError(reply, 400, "COMMENT_UPDATE_EMPTY");
-    db.transaction(() => {
-      if (content !== null) {
-        db.prepare("UPDATE comments SET content = ?, updated_at = ?, edited_at = ? WHERE id = ?")
-          .run(content, changedAt, changedAt, commentId);
-        createCommentMentions(db, {
-          projectId: id, commentId, authorId: user.id, content, previousContent: comment.content, createdAt: changedAt
-        });
-      }
-      if (typeof body.resolved === "boolean" && body.resolved !== Boolean(comment.resolved)) {
-        db.prepare("UPDATE comments SET resolved = ?, resolved_by = ?, resolved_at = ?, updated_at = ? WHERE id = ?")
-          .run(body.resolved ? 1 : 0, body.resolved ? user.id : null, body.resolved ? changedAt : null, changedAt, commentId);
-        if (body.resolved) markCommentMentionsResolved(db, commentId, changedAt);
-      }
-    })();
-    collaboration.signalComments(id);
+    if (content === null && typeof body.resolved !== "boolean") return apiError(reply, 400, "COMMENT_UPDATE_EMPTY");
+    const textChanged = content !== null && shouldWriteDiscussionText(comment.content, content, body.expectedContent);
+    const resolutionChanged = typeof body.resolved === "boolean" && body.resolved !== Boolean(comment.resolved);
+    if (textChanged || resolutionChanged) {
+      db.transaction(() => {
+        if (textChanged) {
+          db.prepare("UPDATE comments SET content = ?, updated_at = ?, edited_at = ? WHERE id = ?")
+            .run(content, changedAt, changedAt, commentId);
+          createCommentMentions(db, {
+            projectId: id, commentId, authorId: user.id, content, previousContent: comment.content, createdAt: changedAt
+          });
+        }
+        if (resolutionChanged) {
+          db.prepare("UPDATE comments SET resolved = ?, resolved_by = ?, resolved_at = ?, updated_at = ? WHERE id = ?")
+            .run(body.resolved ? 1 : 0, body.resolved ? user.id : null, body.resolved ? changedAt : null, changedAt, commentId);
+          if (body.resolved) markCommentMentionsResolved(db, commentId, changedAt);
+        }
+      })();
+      collaboration.signalComments(id);
+    }
     // Acknowledge the persisted state independently of a subsequent list GET.
     // Do not return source anchors here: their live positions belong to the
     // collaboration-aware comment readers, not this mutation response.
@@ -256,18 +263,19 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       SELECT c.id, c.file_path AS filePath, c.resolved,
              c.resolved_by AS resolvedById, u.username AS resolvedByUsername,
              u.display_name AS resolvedByDisplayName, c.resolved_at AS resolvedAt,
-             c.updated_at AS updatedAt
+             c.updated_at AS updatedAt, c.edited_at AS editedAt
       FROM comments c LEFT JOIN users u ON u.id = c.resolved_by
       WHERE c.id = ? AND c.project_id = ?
     `).get(commentId, id) as {
       id: string; filePath: string; resolved: number; resolvedById: string | null;
       resolvedByUsername: string | null; resolvedByDisplayName: string | null;
-      resolvedAt: string | null; updatedAt: string;
+      resolvedAt: string | null; updatedAt: string; editedAt: string | null;
     };
-    const persisted = { ...resolution, resolved: Boolean(resolution.resolved) };
+    const { editedAt, ...resolutionFields } = resolution;
+    const persisted = { ...resolutionFields, resolved: Boolean(resolution.resolved) };
     const result: CommentMutationResult = { change: typeof body.resolved === "boolean"
       ? { kind: "resolved", resolution: persisted }
-      : { kind: "edited", comment: { id: commentId, filePath: resolution.filePath, content: content!, updatedAt: changedAt, editedAt: changedAt } },
+      : { kind: "edited", comment: { id: commentId, filePath: resolution.filePath, content: content!, updatedAt: resolution.updatedAt, editedAt } },
       summary: commentsSummaryForProject(db, id) };
     return { ok: true, resolution: persisted, ...result };
   });
@@ -299,18 +307,20 @@ export function registerCommentRoutes(app: FastifyInstance, context: CommentRout
       .get(replyId, commentId, id) as { author_id: string | null; content: string; file_path: string } | undefined;
     if (!commentReply) return apiError(reply, 404, "REPLY_NOT_FOUND");
     if (commentReply.author_id !== user.id) return apiError(reply, 403, "REPLY_EDIT_FORBIDDEN");
-    const body = request.body as { content?: unknown };
-    const changedAt = now();
+    const body = (request.body ?? {}) as { content?: unknown; expectedContent?: unknown };
     const content = text(body.content, 5000);
-    db.transaction(() => {
-      db.prepare("UPDATE comment_replies SET content = ?, updated_at = ?, edited_at = ? WHERE id = ?")
-        .run(content, changedAt, changedAt, replyId);
-      createCommentMentions(db, {
-        projectId: id, commentId, replyId, authorId: user.id, content, previousContent: commentReply.content, createdAt: changedAt
-      });
-    })();
+    if (shouldWriteDiscussionText(commentReply.content, content, body.expectedContent)) {
+      const changedAt = now();
+      db.transaction(() => {
+        db.prepare("UPDATE comment_replies SET content = ?, updated_at = ?, edited_at = ? WHERE id = ?")
+          .run(content, changedAt, changedAt, replyId);
+        createCommentMentions(db, {
+          projectId: id, commentId, replyId, authorId: user.id, content, previousContent: commentReply.content, createdAt: changedAt
+        });
+      })();
+      collaboration.signalComments(id);
+    }
     const updated = repliesForComment(db, commentId).find((item) => item.id === replyId);
-    collaboration.signalComments(id);
     const result: CommentMutationResult = { change: { kind: "reply-saved", commentId, filePath: commentReply.file_path, reply: updated! }, summary: commentsSummaryForProject(db, id) };
     return { reply: updated, ...result };
   });

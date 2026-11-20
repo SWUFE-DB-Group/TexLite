@@ -16,6 +16,7 @@ export interface NewCommentDraft {
 }
 
 export interface CommentFormDraft {
+  readonly originalContent: string;
   readonly content: string;
   readonly open: boolean;
   readonly pending: boolean;
@@ -62,7 +63,7 @@ export class CommentDraftStore {
       }
     }
     const current = drafts[key];
-    drafts[key] = { content, pending: false, error: "", ...current, open: true };
+    drafts[key] = { originalContent: content, content, pending: false, error: "", ...current, open: true };
     this.publish(id, drafts);
   }
 
@@ -79,14 +80,14 @@ export class CommentDraftStore {
     this.publish(id, drafts);
   }
 
-  async submit(id: string, key: CommentDraftKey, action: (content: string) => Promise<boolean>, failureMessage: string): Promise<boolean> {
+  async submit(id: string, key: CommentDraftKey, action: (content: string, expectedContent: string) => Promise<boolean>, failureMessage: string): Promise<boolean> {
     const draft = this.getThread(id)[key];
     if (!draft || !draft.content.trim() || this.isPending(id)) return false;
     const pending = { ...draft, pending: true, error: "" };
     this.publish(id, { ...this.getThread(id), [key]: pending });
     let failure = failureMessage;
     try {
-      if (await action(draft.content)) {
+      if (await action(draft.content, draft.originalContent)) {
         // A deleted/replaced draft must not be resurrected by a late request.
         if (this.getThread(id)[key] === pending) this.discard(id, key);
         return true;

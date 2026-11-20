@@ -56,13 +56,14 @@ export function SuggestionAttachment({ projectId, ownerId, currentUserId, canEdi
     </div>;
   }
   const pending = suggestion.status === "pending";
+  const paused = pending && comment.resolved;
   const reviewer = suggestion.reviewerDisplayName ?? suggestion.reviewerUsername ?? t("editor.deletedUser");
   const selfReview = suggestion.reviewerId !== null && suggestion.reviewerId === comment.authorId;
-  const canReview = canEdit && !selfReview && suggestion.reviewerId === currentUserId && suggestion.reviewerAvailable;
-  const canRevise = pending && !suggestion.applying && comment.authorId === currentUserId;
+  const canReview = !paused && canEdit && !selfReview && suggestion.reviewerId === currentUserId && suggestion.reviewerAvailable;
+  const canRevise = pending && !paused && !suggestion.applying && comment.authorId === currentUserId;
   const editConflict = Boolean(revisionDraft && revisionDraft.expectedReplacementText !== suggestion.replacementText
     && revisionDraft.replacementText !== suggestion.replacementText);
-  const reviewerLabel = pending ? canReview ? t("suggestions.awaitingYou")
+  const reviewerLabel = paused ? t("suggestions.reviewPaused") : pending ? canReview ? t("suggestions.awaitingYou")
     : <Trans i18nKey="suggestions.awaiting" values={{ name: reviewer }} components={{ reviewer: <strong className="suggestion-reviewer-name"
       data-tooltip={suggestion.reviewerUsername ? `@${suggestion.reviewerUsername}` : undefined} data-texlite-tooltip-always /> }} />
     : t(`suggestions.${suggestion.status}`);
@@ -81,8 +82,9 @@ export function SuggestionAttachment({ projectId, ownerId, currentUserId, canEdi
             onClick={() => void operation("", "PATCH", revisionDraft)}>{t("common.save")}</SaveButton>
         </div>
       </section> : <SuggestionDiff original={suggestion.originalText} replacement={suggestion.replacementText} />}
-      {pending && !suggestion.applicable && !suggestion.applying && <p className="suggestion-warning">{t("suggestions.sourceChanged")}</p>}
-      {pending && (selfReview || !suggestion.reviewerAvailable) && <p className="suggestion-warning">{t(selfReview ? "errors.codes.SUGGESTION_SELF_REVIEW" : "suggestions.reviewerUnavailable")}</p>}
+      {paused && <p className="suggestion-warning">{t("errors.codes.SUGGESTION_THREAD_RESOLVED")}</p>}
+      {pending && !paused && !suggestion.applicable && !suggestion.applying && <p className="suggestion-warning">{t("suggestions.sourceChanged")}</p>}
+      {pending && !paused && (selfReview || !suggestion.reviewerAvailable) && <p className="suggestion-warning">{t(selfReview ? "errors.codes.SUGGESTION_SELF_REVIEW" : "suggestions.reviewerUnavailable")}</p>}
       {suggestion.applying && <p className="suggestion-warning">{t("suggestions.saving")}</p>}
       {!pending && <p className="suggestion-decision"><span><Trans i18nKey="suggestions.decidedBy"
         values={{ name: suggestion.decidedByDisplayName ?? suggestion.decidedByUsername ?? t("editor.deletedUser") }}

@@ -60,9 +60,9 @@ export interface WorkspaceContextPanelProps {
   onFocusComment: (comment: Comment) => void;
   onToggleComment: (comment: Comment) => Promise<void>;
   onReplyComment: (comment: Comment, content: string) => Promise<boolean>;
-  onEditComment: (comment: Comment, content: string) => Promise<boolean>;
+  onEditComment: (comment: Comment, content: string, expectedContent: string) => Promise<boolean>;
   onDeleteComment: (comment: Comment) => Promise<boolean>;
-  onEditCommentReply: (comment: Comment, replyId: string, content: string) => Promise<boolean>;
+  onEditCommentReply: (comment: Comment, replyId: string, content: string, expectedContent: string) => Promise<boolean>;
   onDeleteCommentReply: (comment: Comment, replyId: string) => Promise<boolean>;
   onAskAgentAboutComment?: (comment: Comment) => boolean;
   dictionaryWords: string[];
@@ -301,7 +301,7 @@ export function WorkspaceContextPanel({
                   setReplyExpansion((current) => current.get(comment.id) === expanded ? current : new Map(current).set(comment.id, expanded));
                 }}
                 selectedParticipantIds={singleCommentMode ? undefined : participantIds} highlightReplyParticipants={!singleCommentMode && !topLevelOnly}
-                onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onActivate={() => setActiveComposerId(comment.id)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content) => onEditComment(comment, content)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content) => onEditCommentReply(comment, replyId, content)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} onAskAgent={onAskAgentAboutComment ? () => onAskAgentAboutComment(comment) : undefined} /></div></div>;
+                onMarkMentionRead={markReviewMentionRead} onFocus={() => focusReviewComment(comment)} onActivate={() => setActiveComposerId(comment.id)} onToggle={() => onToggleComment(comment)} onReply={(content) => onReplyComment(comment, content)} onEdit={(content, expectedContent) => onEditComment(comment, content, expectedContent)} onDelete={() => onDeleteComment(comment)} onEditReply={(replyId, content, expectedContent) => onEditCommentReply(comment, replyId, content, expectedContent)} onDeleteReply={(replyId) => onDeleteCommentReply(comment, replyId)} onAskAgent={onAskAgentAboutComment ? () => onAskAgentAboutComment(comment) : undefined} /></div></div>;
             })}
             {displayedComments.length === 0 && !commentsLoading && !commentsError && <div className="comment-review-empty" role="status">
               <span className="comment-review-empty-icon" aria-hidden="true"><MessagesSquare size={23} strokeWidth={1.5} /></span>

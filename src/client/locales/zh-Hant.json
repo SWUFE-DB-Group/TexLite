@@ -129,6 +129,7 @@
     "saved": "已儲存",
     "updatedWhileEditing": "此建議已在其他位置更新，請取消編輯並重新開啟，以使用最新版本。",
     "reviewBeforeResolve": "請先審核修改建議，再解決此討論。",
+    "reviewPaused": "審核已暫停",
     "reviewRequested": "邀請你審核修改建議"
   },
   "projectSearch": {
@@ -142,7 +143,8 @@
     "matches_one": "{{count}} 筆相符結果", "matches_other": "{{count}} 筆相符結果",
     "files_one": "{{count}} 個檔案", "files_other": "{{count}} 個檔案",
     "empty": "尋找專案檔案中的文字。", "noMatches": "找不到相符內容。",
-    "limited": "部分檔案或相符結果未顯示，請縮小搜尋範圍後再取代。",
+    "limited": "部分檔案或相符結果未顯示。",
+    "limitedReplace": "搜尋結果不完整。可以逐項取代，但無法全部取代。",
     "location": "{{path}}，第 {{line}} 行，第 {{column}} 欄"
   },
   "common": {
@@ -1087,6 +1089,7 @@
     "commentDraftUseSelection": "使用本次原始碼位置",
     "commentSending": "正在傳送…",
     "commentSubmitFailed": "提交失敗，輸入內容已保留，請再試一次。",
+    "commentContentChanged": "這段文字已在其他工作階段中修改。請先複製草稿，再重新開啟編輯器查看最新內容。",
     "commentDeleteFailed": "無法刪除批註，請再試一次。",
     "deleteCommentTitle": "刪除批註",
     "deleteCommentDescription": "確定刪除這條批註及其回覆嗎？此操作無法復原。",

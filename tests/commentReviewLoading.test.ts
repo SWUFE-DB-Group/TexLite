@@ -280,7 +280,10 @@ describe("confirmed comment cache updates", () => {
       if (options?.method === "DELETE") return { change: { kind: "deleted", commentId: "first", filePath: "child.tex" }, summary: { totalCount: 0, unresolvedCount: 0, filePaths: [] } };
       throw new Error("Offline");
     });
-    await act(async () => comments.editComment(comments.comments[0], "Edited"));
+    const expectedContent = comments.comments[0].content;
+    await act(async () => comments.editComment(comments.comments[0], "Edited", expectedContent));
+    const patch = vi.mocked(api).mock.calls.find(([, options]) => options?.method === "PATCH")!;
+    expect(JSON.parse(patch[1]!.body as string)).toEqual({ content: "Edited", expectedContent });
     expect(comments.comments[0]).toMatchObject({ content: "Edited", startOffset: 0, endOffset: 6, sourceOrder: 3 });
     expect(comments.reviewComments[0].content).toBe("Edited");
     await act(async () => comments.deleteComment(comments.comments[0]));

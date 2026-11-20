@@ -63,7 +63,7 @@ describe("workspace comment drafts", () => {
     store.change("thread", key, "Cannot overwrite pending input");
     store.open("thread", "reply", "Another action");
     expect(store.getThread("thread")).toBe(pendingSnapshot);
-    expect(action).toHaveBeenCalledExactlyOnceWith("Draft text");
+    expect(action).toHaveBeenCalledExactlyOnceWith("Draft text", "Draft text");
     finish(true);
     expect(await first).toBe(true);
     expect(store.getThread("thread")[key]).toBeUndefined();

@@ -169,6 +169,21 @@ describe("suggestions as comment attachments", () => {
     expect(host.querySelector(".suggestion-actions")).toBeNull();
   });
 
+  it("keeps resolved suggestions readable and only offers author/reviewer actions after reopening", async () => {
+    comment = { ...comment, resolved: true };
+    await render(); await click(".suggestion-toggle");
+    expect(host.textContent).toContain("Review paused");
+    expect(host.querySelector(".suggestion-diff")).not.toBeNull();
+    expect(host.querySelector(".suggestion-actions")).toBeNull();
+    await render("reader", false);
+    expect(host.querySelector(".suggestion-revision-action")).toBeNull();
+    comment = { ...comment, resolved: false };
+    await render("reader", false);
+    expect(host.querySelector(".suggestion-revision-action button")).not.toBeNull();
+    await render();
+    expect(host.querySelectorAll(".suggestion-actions button")).toHaveLength(2);
+  });
+
   it("prevents duplicate reviews, retains errors and updates the cache without closing the discussion", async () => {
     await render(); await click(".suggestion-toggle");
     vi.mocked(api).mockRejectedValueOnce(new Error("Review failed"));

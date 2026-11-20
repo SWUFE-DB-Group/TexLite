@@ -95,21 +95,23 @@ describe("project search dialog", () => {
     vi.mocked(api).mockResolvedValue({ matches: [{ ...result.matches[0], preview: "<img>", matchStart: 0, matchEnd: 5 }], limited: true });
     await act(async () => document.querySelector<HTMLButtonElement>(".project-search-error button")!.click()); await advance();
     expect(document.querySelector('[role="alert"]')).toBeNull();
-    expect(document.querySelector(".project-search-limit")!.textContent).toBe(i18n.t("projectSearch.limited"));
+    expect(document.querySelector(".project-search-limit")!.textContent).toBe(i18n.t("projectSearch.limitedReplace"));
     expect(document.querySelector(".project-search-match mark")!.textContent).toBe("<img>");
     expect(document.querySelector(".project-search-match img")).toBeNull();
   });
 
-  it("shows separate occurrences on the same line and replaces only the selected match once", async () => {
+  it("replaces just the selected occurrence when results are incomplete, without allowing Replace all", async () => {
     const line = { ...result.matches[0], preview: "key key", column: 1, from: 20, to: 23, matchStart: 0, matchEnd: 3 };
     const matches = [line, { ...line, column: 5, from: 24, to: 27, matchStart: 4, matchEnd: 7 }, result.matches[1]];
     let finish!: (value: unknown) => void;
-    vi.mocked(api).mockResolvedValueOnce({ matches, limited: false });
+    vi.mocked(api).mockResolvedValueOnce({ matches, limited: true });
     await enter("key"); await advance();
     expect(document.querySelectorAll(".project-search-row")).toHaveLength(3);
     expect([...document.querySelectorAll(".project-search-line")].map((node) => node.textContent)).toEqual(["L3:1", "L3:5", "L1:10"]);
     expect(document.querySelectorAll(".project-search-match del, .project-search-match ins")).toHaveLength(0);
     await enterReplacement("new-key");
+    expect(document.querySelector<HTMLButtonElement>(".project-replace-all")!.disabled).toBe(true);
+    expect(document.querySelectorAll<HTMLButtonElement>(".project-replace-match")[1].disabled).toBe(false);
     const firstRow = document.querySelectorAll(".project-search-row")[0];
     const secondRow = document.querySelectorAll(".project-search-row")[1];
     expect(firstRow.querySelector("code")!.textContent).toBe("keynew-key key");

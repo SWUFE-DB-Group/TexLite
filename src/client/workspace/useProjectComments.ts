@@ -222,9 +222,9 @@ export function useProjectComments({
     return true;
   };
 
-  const editComment = async (comment: Comment, content: string): Promise<boolean> => {
+  const editComment = async (comment: Comment, content: string, expectedContent: string): Promise<boolean> => {
     await write(`/${comment.id}`, {
-      method: "PATCH", body: JSON.stringify({ content })
+      method: "PATCH", body: JSON.stringify({ content, expectedContent })
     });
     return true;
   };
@@ -237,9 +237,9 @@ export function useProjectComments({
     return true;
   };
 
-  const editCommentReply = async (comment: Comment, replyId: string, content: string): Promise<boolean> => {
+  const editCommentReply = async (comment: Comment, replyId: string, content: string, expectedContent: string): Promise<boolean> => {
     await write(`/${comment.id}/replies/${replyId}`, {
-      method: "PATCH", body: JSON.stringify({ content })
+      method: "PATCH", body: JSON.stringify({ content, expectedContent })
     });
     return true;
   };

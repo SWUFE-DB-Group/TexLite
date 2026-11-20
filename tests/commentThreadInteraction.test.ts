@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommentThread } from "../src/client/workspace/Comments";
 import { CommentDraftStore } from "../src/client/workspace/commentDrafts";
 import { GlobalTooltip } from "../src/client/GlobalTooltip";
+import { ApiError } from "../src/client/api";
 import i18n from "../src/client/i18n";
 import type { Comment } from "../src/client/types";
 import { withDiscussionQueries } from "./discussionTestUtils";
@@ -159,9 +160,29 @@ describe("comment reading and actions", () => {
     expect(save).not.toHaveBeenCalled();
     await change("Updated text");
     await act(async () => submit().click());
-    if (reply) expect(save).toHaveBeenCalledExactlyOnceWith("reply", "Updated text");
-    else expect(save).toHaveBeenCalledExactlyOnceWith("Updated text");
+    if (reply) expect(save).toHaveBeenCalledExactlyOnceWith("reply", "Updated text", original);
+    else expect(save).toHaveBeenCalledExactlyOnceWith("Updated text", original);
     expect(host.querySelector(".comment-edit-form")).toBeNull();
+  });
+
+  it.each(["comment", "reply"] as const)("keeps the %s draft and its original text when another tab saves first", async (kind) => {
+    const reply = kind === "reply";
+    const key = reply ? "edit-reply:reply" : "edit-comment";
+    const original = reply ? comment.replies[0].content : comment.content;
+    props.currentUserId = reply ? "reader" : "author";
+    const save = vi.fn(async () => { throw new ApiError(i18n.t("editor.commentContentChanged"), 409, "COMMENT_CONTENT_CHANGED"); });
+    if (reply) props.onEditReply = save;
+    else props.onEdit = save;
+    props.draftStore.open(comment.id, key, original);
+    props.draftStore.change(comment.id, key, "My draft");
+    await render();
+    props.comment = reply ? { ...comment, replies: [{ ...comment.replies[0], content: "Other tab's reply" }] }
+      : { ...comment, content: "Other tab's comment" };
+    await render();
+    await act(async () => host.querySelector<HTMLButtonElement>(".comment-edit-form .save-button")!.click());
+    expect(save).toHaveBeenCalledExactlyOnceWith(...(reply ? ["reply"] : []), "My draft", original);
+    expect(host.querySelector<HTMLTextAreaElement>(".comment-edit-form textarea")?.value).toBe("My draft");
+    expect(host.querySelector(".comment-edit-form [role=alert]")?.textContent).toBe(i18n.t("editor.commentContentChanged"));
   });
 
   it("restores a typed reply after the thread unmounts without stealing focus", async () => {

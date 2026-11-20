@@ -10,6 +10,7 @@ import { createSessionToken } from "../src/server/security.js";
 import { resolveSourcePath } from "../src/server/files.js";
 import { searchProject } from "../src/server/projectSearch.js";
 import type { ProjectSearchResult } from "../src/shared/projectSearch.js";
+import { MAX_TEXT_EDITOR_BYTES } from "../src/shared/fileTypes.js";
 import { CollaborationService } from "../src/server/collaboration.js";
 
 let root: string, config: Config, db: DatabaseConnection, app: FastifyInstance, projectId: string;
@@ -130,6 +131,21 @@ describe("project-wide text search", () => {
     const response = await replace("owner", { ...body, targets: [{ path: selected.path, sourceHash: selected.sourceHash, ranges: [{ from: selected.from, to: selected.to }] }] });
     expect(response.statusCode, response.body).toBe(200);
     expect(fs.readFileSync(resolveSourcePath(config, projectId, "main.tex"), "utf8")).toBe("中文 😀 key changed\r\n😀 key\r\n");
+  });
+
+  it("can replace the second match in a file even when an oversized project file was omitted", async () => {
+    write("main.tex", "key key\n");
+    const oversized = Buffer.alloc(MAX_TEXT_EDITOR_BYTES + 1, "x");
+    write("large.txt", oversized);
+    const result = (await request("owner", { query: "key" })).json<ProjectSearchResult>();
+    expect(result.limited).toBe(true);
+    expect(result.matches).toHaveLength(2);
+    const { path: matchPath, from, to, sourceHash } = result.matches[1];
+    const changed = await replace("owner", { query: "key", caseSensitive: false, wholeWord: false, replacement: "second",
+      targets: [{ path: matchPath, sourceHash, ranges: [{ from, to }] }] });
+    expect(changed.json()).toEqual({ replaced: 1, files: 1 });
+    expect(fs.readFileSync(resolveSourcePath(config, projectId, "main.tex"), "utf8")).toBe("key second\n");
+    expect(fs.readFileSync(resolveSourcePath(config, projectId, "large.txt")).equals(oversized)).toBe(true);
   });
 
   it("rejects partial or nonmatching ranges before editing any target file", async () => {

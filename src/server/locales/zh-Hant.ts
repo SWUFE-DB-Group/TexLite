@@ -47,6 +47,7 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   COMMENT_RANGE_INVALID: "批註的原始碼範圍無效。",
   COMMENT_SOURCE_CHANGED: "準備批註時原始碼已發生變化。請重新選取文字後再試。",
   COMMENT_UPDATE_EMPTY: "沒有可儲存的批註修改。",
+  COMMENT_CONTENT_CHANGED: "這段文字已在其他工作階段中修改，請查看最新內容後再儲存。",
   COMPILE_ARTIFACT_NOT_FOUND: "編譯產出不存在。",
   COMPILE_ARTIFACTS_NOT_FOUND: "尚無可用的編譯產出。",
   COMPILE_CLEAN_BUSY: "目前主文件正在編譯，請完成後再執行故障排除。",

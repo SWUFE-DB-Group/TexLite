@@ -66,6 +66,8 @@ export function registerSuggestionRoutes(app: FastifyInstance, context: CommentR
         throw httpError(403, "SUGGESTION_REVIEW_FORBIDDEN");
       }
       if (row.author_id === user.id) throw httpError(403, "SUGGESTION_SELF_REVIEW");
+      // Completed decisions can still be retried after the thread is closed.
+      if (row.resolved && row.status === "pending") throw httpError(409, "SUGGESTION_THREAD_RESOLVED");
       // Bind the decision to the replacement actually displayed by the reviewer.
       // Repeat inside the project write queue after room preparation and flushing.
       if (typeof expectedReplacementText !== "string" || row.replacement_text !== expectedReplacementText) throw httpError(409, "SUGGESTION_UPDATED");
@@ -107,6 +109,7 @@ export function registerSuggestionRoutes(app: FastifyInstance, context: CommentR
       if (!row) throw httpError(404, "COMMENT_NOT_FOUND");
       if (row.author_id !== user.id) throw httpError(403, "COMMENT_EDIT_FORBIDDEN");
       if (row.status !== "pending") throw httpError(409, "SUGGESTION_DECIDED");
+      if (row.resolved) throw httpError(409, "SUGGESTION_THREAD_RESOLVED");
       if (row.apply_update) throw httpError(409, "SUGGESTION_APPLYING");
       return row;
     };

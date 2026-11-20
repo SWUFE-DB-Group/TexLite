@@ -85,9 +85,9 @@ export function CommentThread({
   onActivate: () => void;
   onToggle: () => Promise<void>;
   onReply: (content: string) => Promise<boolean>;
-  onEdit: (content: string) => Promise<boolean>;
+  onEdit: (content: string, expectedContent: string) => Promise<boolean>;
   onDelete: () => Promise<boolean>;
-  onEditReply: (replyId: string, content: string) => Promise<boolean>;
+  onEditReply: (replyId: string, content: string, expectedContent: string) => Promise<boolean>;
   onDeleteReply: (replyId: string) => Promise<boolean>;
   /** Absent when the user cannot use agents here. Returns false when no task of theirs is running. */
   onAskAgent?: () => boolean;
@@ -148,10 +148,10 @@ export function CommentThread({
     setAutoFocusDraft(key);
     draftStore.open(comment.id, key, content);
   };
-  const draftForm = (key: CommentDraftKey, label: string, submit: (content: string) => Promise<boolean>, originalValue?: string) => {
+  const draftForm = (key: CommentDraftKey, label: string, submit: (content: string, expectedContent: string) => Promise<boolean>) => {
     const draft = drafts[key];
     if (!draft?.open) return null;
-    return <CommentForm key={key} projectId={projectId} editing={key !== "reply"} originalValue={originalValue} label={label}
+    return <CommentForm key={key} projectId={projectId} editing={key !== "reply"} originalValue={draft.originalContent} label={label}
       value={draft.content} pending={draft.pending} error={draft.error} disabled={submittingForm || toggling}
       autoFocus={autoFocusDraft === key} onChange={(content) => draftStore.change(comment.id, key, content)}
       onSubmit={() => draftStore.submit(comment.id, key, submit, t("editor.commentSubmitFailed"))}
@@ -211,7 +211,7 @@ export function CommentThread({
     {agentTaskNeeded && <p className="comment-agent-hint" role="status">{t("agents.commentAgentUnavailable")}</p>}
     <div className="comment-location">{comment.orphaned ? t("editor.orphaned") : showFilePath ? t("editor.commentLocation", { path: comment.filePath, line: comment.startLine }) : t("editor.line", { line: comment.startLine })}</div>
     {comment.selectedText && <blockquote className="comment-selected-text">{comment.selectedText}</blockquote>}
-    {commentEditDraft?.open && comment.authorId === currentUserId ? draftForm("edit-comment", t("editor.editComment"), onEdit, comment.content)
+    {commentEditDraft?.open && comment.authorId === currentUserId ? draftForm("edit-comment", t("editor.editComment"), onEdit)
       : <p className="comment-content">{renderCommentContent(comment.content)}</p>}
     {projectOwnerId && (comment.suggestion || suggestionTarget) && <SuggestionAttachment projectId={projectId} ownerId={projectOwnerId} currentUserId={currentUserId} canEdit={canEditSource} comment={comment}
       draftTarget={suggestionTarget} onCloseComposer={() => setSuggestionTarget(null)} />}
@@ -239,7 +239,7 @@ export function CommentThread({
               onDelete={() => { setDeleteError(""); setDeleteReplyId(reply.id); }} />}
           </span>
         </header>
-        {editing ? draftForm(editKey, t("editor.editReply"), (content) => onEditReply(reply.id, content), reply.content)
+        {editing ? draftForm(editKey, t("editor.editReply"), (content, expectedContent) => onEditReply(reply.id, content, expectedContent))
           : <p className="comment-content">{renderCommentContent(reply.content)}</p>}
         {unreadMentionId && <div className="comment-mention"><span><AtSign aria-hidden size={12} />{t("editor.mentionedYou")}</span><button type="button" onClick={(event) => void markRead(unreadMentionId, event)}>{t("editor.markMentionRead")}</button></div>}
       </div>;

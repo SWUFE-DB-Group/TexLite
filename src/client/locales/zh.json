@@ -129,6 +129,7 @@
     "saved": "已保存",
     "updatedWhileEditing": "此建议已在其他位置更新，请取消编辑并重新打开，以使用最新版本。",
     "reviewBeforeResolve": "请先审核修改建议，再解决此讨论。",
+    "reviewPaused": "审核已暂停",
     "reviewRequested": "邀请你审核修改建议"
   },
   "projectSearch": {
@@ -142,7 +143,8 @@
     "matches_one": "{{count}} 处匹配", "matches_other": "{{count}} 处匹配",
     "files_one": "{{count}} 个文件", "files_other": "{{count}} 个文件",
     "empty": "查找项目文件中的文本。", "noMatches": "未找到匹配内容。",
-    "limited": "部分文件或匹配未显示，请缩小搜索范围后再替换。",
+    "limited": "部分文件或匹配未显示。",
+    "limitedReplace": "搜索结果不完整。可以逐条替换，但不能全部替换。",
     "location": "{{path}}，第 {{line}} 行，第 {{column}} 列"
   },
   "common": {
@@ -430,6 +432,7 @@
     "commentDraftRestored": "已恢复工作区草稿，仍关联原源码位置。",
     "commentDraftUseSelection": "使用本次源码位置",
     "commentSending": "正在发送…", "commentSubmitFailed": "提交失败，输入内容已保留，请重试。",
+    "commentContentChanged": "这段文字已在其他会话中修改。请先复制草稿，再重新打开编辑器查看最新内容。",
     "commentDeleteFailed": "无法删除批注，请重试。",
     "deleteCommentTitle": "删除批注", "deleteCommentDescription": "确定删除这条批注及其回复吗？此操作不可撤销。",
     "editReply": "编辑回复", "deleteReply": "删除回复", "deleteReplyTitle": "删除回复",

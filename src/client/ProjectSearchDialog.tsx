@@ -60,7 +60,7 @@ export function ProjectSearchDialog({ projectId, onClose, onNavigate, readOnly =
     }
     return [...files];
   }, [result]);
-  const canReplace = (matches: readonly ProjectSearchMatch[]) => !readOnly && !locked && !loading && !error && !mutationError && !result?.limited
+  const canReplace = (matches: readonly ProjectSearchMatch[]) => !readOnly && !locked && !loading && !error && !mutationError
     && !(caseSensitive && query === replacement)
     && matches.some((match) => match.preview.slice(match.matchStart, match.matchEnd) !== replacement);
   const refresh = () => { setMutationError(""); immediateRefresh.current = criteriaKey; setRetry((value) => value + 1); };
@@ -113,11 +113,11 @@ export function ProjectSearchDialog({ projectId, onClose, onNavigate, readOnly =
           {(replacing || loading) && <LoaderCircle className="spin" size={14} aria-label={t(replacing ? "projectSearch.replacing" : "projectSearch.searching")} />}</>
           : replacing || loading ? <><LoaderCircle className="spin" size={14} aria-hidden />{t(replacing ? "projectSearch.replacing" : "projectSearch.searching")}</> : null}
       </div>
-      {!readOnly && <button type="button" className="project-replace-all" disabled={!canReplace(result?.matches ?? [])} onClick={() => setConfirm(true)}><ReplaceAll size={14} aria-hidden />{t("projectSearch.replaceAll")}</button>}
+      {!readOnly && <button type="button" className="project-replace-all" disabled={result?.limited || !canReplace(result?.matches ?? [])} onClick={() => setConfirm(true)}><ReplaceAll size={14} aria-hidden />{t("projectSearch.replaceAll")}</button>}
       </div>
     </div>
     {(error || mutationError) && <div className="error dialog-error project-search-error" role="alert"><span>{mutationError || error}</span><button type="button" disabled={locked} onClick={refresh}>{t(mutationError ? "projectSearch.refresh" : "common.retry")}</button></div>}
-    {result?.limited && <p className="project-search-limit" role="status">{t("projectSearch.limited")}</p>}
+    {result?.limited && <p className="project-search-limit" role="status">{t(readOnly ? "projectSearch.limited" : "projectSearch.limitedReplace")}</p>}
     <div className="project-search-results" aria-busy={loading} aria-describedby={headingId}>
       {!query || (result && groups.length === 0) ? <div className="project-search-empty"><FileSearch size={28} aria-hidden /><p>{t(query ? "projectSearch.noMatches" : "projectSearch.empty")}</p></div>
         : groups.map(([path, matches]) => <details key={path} open>

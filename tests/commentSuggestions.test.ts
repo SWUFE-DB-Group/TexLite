@@ -90,6 +90,24 @@ describe("comment suggestion workflow", () => {
     db.prepare("UPDATE comment_suggestions SET apply_update = NULL WHERE comment_id = ?").run(comment.id);
   });
 
+  it("pauses edits and new review decisions until the resolved discussion is reopened", async () => {
+    const comment = await suggest("writer");
+    const endpoint = `/api/projects/:project/comments/${comment.id}`;
+    const permission = db.prepare("UPDATE project_members SET permission = ? WHERE project_id = ? AND user_id = 'writer'");
+    permission.run("read", projectId);
+    expect((await request("other", "PATCH", endpoint, { resolved: true })).statusCode).toBe(200);
+    permission.run("edit", projectId);
+    for (const response of [await review(comment, "accept", "writer"), await review(comment, "reject", "writer"), await revise(comment, "demonstrate")]) {
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe("SUGGESTION_THREAD_RESOLVED");
+    }
+    expect(source()).toBe(initial);
+    expect((await comments())[0]).toMatchObject({ resolved: true, suggestion: { status: "pending", replacementText: "suggest" } });
+    expect((await request("other", "PATCH", endpoint, { resolved: false })).statusCode).toBe(200);
+    expect((await review(comment, "accept", "writer")).statusCode).toBe(200);
+    expect(source()).toBe(initial.replace("prove", "suggest"));
+  });
+
   it("keeps ordinary comments free of reviewer metadata and review notifications", async () => {
     const response = await request("reader", "POST", "/api/projects/:project/comments", {
       path: "main.tex", content: "@owner please check this claim.", startOffset: 0, endOffset: 6, sourceHash: hash(initial)
@@ -184,12 +202,12 @@ describe("comment suggestion workflow", () => {
     const comment = await suggest();
     const endpoint = `/api/projects/:project/comments/${comment.id}`;
     const unread = async () => (await request("owner", "GET", "/api/projects/:project/mentions?unread=1")).json().mentions;
-    expect((await request("reader", "PATCH", endpoint, { content: "@owner take a look" })).statusCode).toBe(200);
+    expect((await request("reader", "PATCH", endpoint, { content: "@owner take a look", expectedContent: comment.content })).statusCode).toBe(200);
     expect(await unread()).toMatchObject([{ kind: "review" }]);
     expect((await review(comment, "reject")).statusCode).toBe(200);
     expect(await unread()).toEqual([]);
-    await request("reader", "PATCH", endpoint, { content: "Another question" });
-    await request("reader", "PATCH", endpoint, { content: "@owner another question" });
+    expect((await request("reader", "PATCH", endpoint, { content: "Another question", expectedContent: "@owner take a look" })).statusCode).toBe(200);
+    expect((await request("reader", "PATCH", endpoint, { content: "@owner another question", expectedContent: "Another question" })).statusCode).toBe(200);
     expect(await unread()).toMatchObject([{ kind: "mention" }]);
   });
 
@@ -206,6 +224,7 @@ describe("comment suggestion workflow", () => {
     expect((await request("writer", "GET", "/api/projects/:project/mentions?unread=1")).json().mentions).toEqual([]);
     expect((await review(comment, "reject", "writer")).statusCode).toBe(409);
     expect((await request("other", "PATCH", `/api/projects/:project/comments/${comment.id}`, { resolved: true })).statusCode).toBe(200);
+    expect((await review(comment, "accept", "writer")).statusCode).toBe(200);
     expect((await request("reader", "DELETE", `/api/projects/:project/comments/${comment.id}`)).statusCode).toBe(200);
     expect(source()).toBe(initial.replace("prove", "suggest"));
   });

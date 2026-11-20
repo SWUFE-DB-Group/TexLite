@@ -16,7 +16,7 @@ export function useCommentMutations(projectId: string) {
       return result;
     },
     onError: (error, { id }) => {
-      if (error instanceof ApiError && ["SUGGESTION_UPDATED", "SUGGESTION_DECIDED", "SUGGESTION_APPLYING"].includes(error.code ?? "")) {
+      if (error instanceof ApiError && ["COMMENT_CONTENT_CHANGED", "SUGGESTION_UPDATED", "SUGGESTION_DECIDED", "SUGGESTION_APPLYING", "SUGGESTION_THREAD_RESOLVED"].includes(error.code ?? "")) {
         void refreshDiscussion(client, id);
       }
     }

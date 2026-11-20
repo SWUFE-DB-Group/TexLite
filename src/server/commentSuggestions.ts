@@ -45,11 +45,11 @@ export function clearSuggestionReview(db: DatabaseConnection, commentId: string,
 interface SuggestionRow {
   comment_id: string; author_id: string | null; file_path: string; original_text: string; replacement_text: string;
   reviewer_id: string | null; status: CommentSuggestion["status"]; decided_by: string | null; decided_at: string | null;
-  apply_update: Buffer | null; apply_range: string | null; start_offset: number; end_offset: number; orphaned: number;
+  apply_update: Buffer | null; apply_range: string | null; start_offset: number; end_offset: number; orphaned: number; resolved: number;
 }
 
 export function suggestionRow(db: DatabaseConnection, projectId: string, commentId: string): SuggestionRow | undefined {
-  return db.prepare(`SELECT s.*, c.author_id, c.file_path, c.start_offset, c.end_offset, c.orphaned FROM comment_suggestions s
+  return db.prepare(`SELECT s.*, c.author_id, c.file_path, c.start_offset, c.end_offset, c.orphaned, c.resolved FROM comment_suggestions s
     JOIN comments c ON c.id = s.comment_id WHERE c.project_id = ? AND c.id = ?`).get(projectId, commentId) as SuggestionRow | undefined;
 }
 
@@ -61,7 +61,7 @@ export function hasPendingSuggestionApplication(db: DatabaseConnection, projectI
 /** One query per discussion list, not one query per thread. */
 export function suggestionsForProject(db: DatabaseConnection, projectId: string, sources: ReadonlyMap<string, string>): Map<string, CommentSuggestion> {
   const reviewers = new Set(suggestionReviewers(db, projectId).map((user) => user.id));
-  const rows = db.prepare(`SELECT s.*, c.author_id, c.file_path, c.start_offset, c.end_offset, c.orphaned,
+  const rows = db.prepare(`SELECT s.*, c.author_id, c.file_path, c.start_offset, c.end_offset, c.orphaned, c.resolved,
     reviewer.username AS reviewerUsername, reviewer.display_name AS reviewerDisplayName,
     decider.username AS decidedByUsername, decider.display_name AS decidedByDisplayName
     FROM comment_suggestions s JOIN comments c ON c.id = s.comment_id
