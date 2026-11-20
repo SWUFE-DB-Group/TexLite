@@ -99,8 +99,8 @@ export function registerProjectMemberRoutes(app: FastifyInstance, context: Proje
     if (!db.prepare("SELECT 1 FROM users WHERE id = ? AND disabled = 0").get(userId)) {
       return apiError(reply, 404, "USER_NOT_FOUND");
     }
-    const body = request.body as { permission?: unknown };
-    const permission = body.permission === "edit" ? "edit" : "read";
+    const permission = (request.body as { permission?: unknown } | null | undefined)?.permission;
+    if (permission !== "read" && permission !== "edit") return apiError(reply, 400, "REQUEST_INVALID");
     db.prepare(`INSERT INTO project_members (project_id, user_id, permission, created_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(project_id, user_id) DO UPDATE SET permission = excluded.permission`)
       .run(id, userId, permission, now());

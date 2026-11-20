@@ -482,36 +482,36 @@ export class CollaborationService {
 
   notifyPermissionChanged(projectId: string, userId: string, permission: "read" | "edit" | "owner" | "revoked"): void {
     const room = this.rooms.get(projectId);
-    if (!room) return;
-    if (permission === "read" || permission === "revoked") {
-      const connectionIds = new Set([...room.connections].filter((connection) => connection.user.id === userId));
-      for (const connection of connectionIds) this.releaseFormatLeasesForConnection(room, connection);
-    }
+    if (room) this.notifyRoomPermissionChanged(room, userId, permission, "Project access revoked");
+  }
+
+  disconnectUser(userId: string, reason = "User access revoked"): void {
+    for (const room of this.rooms.values()) this.notifyRoomPermissionChanged(room, userId, "revoked", reason);
+  }
+
+  private notifyRoomPermissionChanged(room: Room, userId: string, permission: "read" | "edit" | "owner" | "revoked", reason: string): void {
+    const connections = [...room.connections].filter((connection) => connection.user.id === userId);
+    if (!connections.length) return;
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_PERMISSION);
     encoding.writeVarString(encoder, userId);
     encoding.writeVarString(encoder, permission);
     const message = encoding.toUint8Array(encoder);
-    for (const connection of room.connections) {
-      if (connection.user.id === userId) send(connection.socket, message);
-    }
-  }
 
-  disconnectUser(userId: string, reason = "User access revoked"): void {
-    const encoder = encoding.createEncoder();
-    encoding.writeVarUint(encoder, MESSAGE_PERMISSION);
-    encoding.writeVarString(encoder, userId);
-    encoding.writeVarString(encoder, "revoked");
-    const message = encoding.toUint8Array(encoder);
-
-    for (const room of this.rooms.values()) {
-      for (const connection of [...room.connections]) {
-        if (connection.user.id === userId) {
-          send(connection.socket, message);
-          connection.socket.close(1008, reason);
-          this.disconnect(room, connection);
-        }
+    if (permission === "revoked") {
+      // Start closing every affected socket before room cleanup can broadcast
+      // presence or lease changes. Do not wait for the peer's close handshake.
+      for (const connection of connections) {
+        send(connection.socket, message);
+        connection.socket.close(1008, reason);
       }
+      for (const connection of connections) this.disconnect(room, connection);
+      return;
+    }
+
+    for (const connection of connections) {
+      if (permission === "read") this.releaseFormatLeasesForConnection(room, connection);
+      send(connection.socket, message);
     }
   }
 
@@ -1211,6 +1211,7 @@ export class CollaborationService {
   }
 
   private handleMessage(room: Room, connection: Connection, bytes: Uint8Array): void {
+    if (!room.connections.has(connection)) return;
     const refreshedUser = this.userByIdStatement.get(connection.user.id);
     if (!refreshedUser || refreshedUser.disabled) {
       connection.socket.close(1008, "Project access revoked");

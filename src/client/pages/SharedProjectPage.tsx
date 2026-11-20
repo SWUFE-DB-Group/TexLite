@@ -21,6 +21,7 @@ export function SharedProjectPage({ linkId }: { linkId: string }) {
   const [content, setContent] = useState<{ path: string; content: string } | null>(null);
   const [invalid, setInvalid] = useState(false);
   const [error, setError] = useState("");
+  const [accessError, setAccessError] = useState("");
   const [fileError, setFileError] = useState("");
   const [loading, setLoading] = useState(true);
   const [fileLoading, setFileLoading] = useState(false);
@@ -43,7 +44,7 @@ export function SharedProjectPage({ linkId }: { linkId: string }) {
       if (!fragment || fragment === lastFragment.current) return;
       lastFragment.current = fragment;
       generation.current++;
-      setData(null); setContent(null); setPath(""); setInvalid(false); setError(""); setFileError("");
+      setData(null); setContent(null); setPath(""); setInvalid(false); setError(""); setAccessError(""); setFileError("");
       setRefresh((value) => value + 1);
     };
     window.addEventListener("hashchange", newSecret);
@@ -68,17 +69,20 @@ export function SharedProjectPage({ linkId }: { linkId: string }) {
           }
         } else {
           await api(`${endpoint}/access`, { signal: controller.signal, suppressSessionExpired: true });
+          if (!controller.signal.aborted && generation.current === version) setAccessError("");
           return;
         }
         const result = await api<SharedProjectData>(endpoint, { signal: controller.signal, suppressSessionExpired: true });
         if (controller.signal.aborted || generation.current !== version) return;
-        setInvalid(false); setError(""); setData(result);
+        setInvalid(false); setError(""); setAccessError(""); setData(result);
         setPath((previous) => result.files.some((file) => file.type === "file" && file.path === previous) ? previous
           : result.files.some((file) => file.type === "file" && file.path === result.project.mainFile) ? result.project.mainFile
           : result.files.find((file) => file.type === "file")?.path ?? "");
       } catch (reason) {
         if (controller.signal.aborted || generation.current !== version) return;
-        if (invalidGrant(reason)) failGrant(); else setError(errorMessage(reason));
+        if (invalidGrant(reason)) failGrant();
+        else if (initial) setError(errorMessage(reason));
+        else setAccessError(errorMessage(reason));
       } finally { checking = false; if (!controller.signal.aborted && generation.current === version) setLoading(false); }
     };
     setLoading(true);
@@ -129,7 +133,7 @@ export function SharedProjectPage({ linkId }: { linkId: string }) {
       <SharedWorkspaceTopbar loading={loading || invalid} onRefresh={refreshView} />
       {invalid ? <div className="shared-reader-empty shared-reader-unavailable" role="alert"><LockKeyhole size={32} /><h1>{t("viewLinks.unavailable")}</h1><p>{t("viewLinks.unavailableHint")}</p></div>
         : loading ? waiting : <div className="shared-reader-empty" role="alert">{error}</div>}
-    </> : <SharedWorkspace data={data} path={path} loading={loading} error={error} onRefresh={refreshView} sourceCursorStore={sourceCursorStore}
+    </> : <SharedWorkspace data={data} path={path} loading={loading} error={error || accessError} onRefresh={refreshView} sourceCursorStore={sourceCursorStore}
       onOpenFile={(next) => { sourceCursorStore.reset(); setSourceJump(null); setPath(next); }}
       onJumpToSource={(next, line) => { sourceCursorStore.reset(); setPath(next); setSourceJump({ path: next, line, nonce: ++jumpSequence.current }); }}>
       {!path ? <div className="shared-reader-empty">{t("viewLinks.noFile")}</div> : fileLoading ? waiting : fileError ? <div className="shared-reader-empty" role="alert">{fileError}</div>

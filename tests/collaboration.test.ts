@@ -345,6 +345,55 @@ describe("project collaboration", () => {
     }
   });
 
+  it("closes all removed member sessions in that project without disconnecting their other projects", async () => {
+    const username = "removed-member";
+    const member = await createUser(app, adminCookie, username, "Removed Member");
+    const cookie = await login(app, username, "reader-password");
+    const createSharedProject = async (name: string) => {
+      const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name } });
+      expect(created.statusCode).toBe(201);
+      const id = created.json().project.id as string;
+      const shared = await app.inject({ method: "PUT", url: `/api/projects/${id}/members/${member.id}`,
+        headers: { cookie: adminCookie }, payload: { permission: "edit" } });
+      expect(shared.statusCode).toBe(200);
+      return id;
+    };
+    const projectId = await createSharedProject("Session revocation");
+    const otherProjectId = await createSharedProject("Unaffected session");
+    const identity = { id: member.id, username, name: "Removed Member" };
+    const [owner, first, second, other] = await Promise.all([
+      TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" }),
+      TestPeer.connect(app, projectId, cookie, identity),
+      TestPeer.connect(app, projectId, cookie, identity),
+      TestPeer.connect(app, otherProjectId, cookie, identity)
+    ]);
+    try {
+      await waitFor(() => owner.awareness.getStates().size === 3);
+      const membership = `/api/projects/${projectId}/members/${member.id}`;
+      const downgraded = await app.inject({ method: "PUT", url: membership, headers: { cookie: adminCookie }, payload: { permission: "read" } });
+      expect(downgraded.statusCode).toBe(200);
+      await waitFor(() => [first, second].every((peer) => peer.permissionChanges.includes("read")));
+      const ownerText = owner.doc.getText("source:main.tex");
+      ownerText.insert(0, "% Still shared with readers\n");
+      await waitFor(() => [first, second].every((peer) => peer.doc.getText("source:main.tex").toString() === ownerText.toString()));
+
+      const removed = await app.inject({ method: "DELETE", url: membership, headers: { cookie: adminCookie } });
+      expect(removed.statusCode).toBe(200);
+      // The test peers handle the notification without closing the socket; the
+      // server must enforce revocation on its own.
+      await waitFor(() => [first, second].every((peer) => !peer.connected && peer.permissionChanges.includes("revoked")));
+      await waitFor(() => owner.awareness.getStates().size === 1);
+      ownerText.insert(0, "% Edited after removal\n");
+      expect((await owner.flush()).ok).toBe(true);
+      for (const peer of [first, second]) expect(peer.doc.getText("source:main.tex").toString()).not.toContain("Edited after removal");
+      expect(other.connected).toBe(true);
+      other.doc.getText("source:main.tex").insert(0, "% Other project still editable\n");
+      expect((await other.flush()).ok).toBe(true);
+    } finally {
+      for (const peer of [owner, first, second, other]) peer.destroy();
+    }
+  });
+
   it("merges concurrent edits, persists them, exposes each active session and rejects read-only writes", async () => {
     const editor = await createUser(app, adminCookie, "collab-editor", "Collaborative Editor");
     const reader = await createUser(app, adminCookie, "collab-reader", "Collaborative Reader");

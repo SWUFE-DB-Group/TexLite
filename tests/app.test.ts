@@ -3112,6 +3112,30 @@ Second version.
     expect((await app.inject({ method: "DELETE", url: `/api/projects/${projectId}`, headers: { cookie } })).statusCode).toBe(403);
   });
 
+  it("rejects invalid member permissions without granting access or changing an existing grant", async () => {
+    const user = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie }, payload: {
+      username: "invalid-grant-member", displayName: "Member", password: "member-password"
+    } });
+    expect(user.statusCode).toBe(201);
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Permission validation" } });
+    expect(created.statusCode).toBe(201);
+    const members = `/api/projects/${created.json().project.id}/members`;
+    const change = (payload?: Record<string, unknown>) => app.inject({
+      method: "PUT", url: `${members}/${user.json().user.id}`, headers: { cookie }, payload
+    });
+    const list = async () => (await app.inject({ method: "GET", url: members, headers: { cookie } })).json().members;
+
+    expect((await change({})).statusCode).toBe(400);
+    expect(await list()).toEqual([]);
+    expect((await change({ permission: "edit" })).statusCode).toBe(200);
+    for (const payload of [undefined, {}, { permission: "owner" }, { permission: "typo" }, { permission: null }]) {
+      const response = await change(payload);
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toBe("REQUEST_INVALID");
+    }
+    expect(await list()).toMatchObject([{ id: user.json().user.id, permission: "edit" }]);
+  });
+
   it("transfers ownership while retaining the former owner as an editor", async () => {
     const createdUser = await app.inject({
       method: "POST", url: "/api/admin/users", headers: { cookie },

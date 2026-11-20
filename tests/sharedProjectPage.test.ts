@@ -177,6 +177,27 @@ describe("isolated anonymous reader", () => {
     expect(vi.mocked(api).mock.calls.filter(([url]) => url === endpoint)).toHaveLength(metadataCalls);
   });
 
+  it("clears a failed access check when the next check succeeds, without hiding file errors", async () => {
+    const defaultApi = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (url, options) => {
+      if (url.includes("/file?path=")) throw new ApiError("Source file unavailable", 404, "FILE_NOT_FOUND");
+      return defaultApi(url, options);
+    });
+    await render(); await settle();
+    expect(host.textContent).toContain("Source file unavailable");
+    const requestCount = vi.mocked(api).mock.calls.length;
+    const checkAccess = () => act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+
+    vi.mocked(api).mockRejectedValueOnce(new ApiError("Connection interrupted", 0, "NETWORK_ERROR"));
+    await checkAccess();
+    expect(host.textContent).toContain("Connection interrupted");
+
+    await checkAccess();
+    expect(host.textContent).not.toContain("Connection interrupted");
+    expect(host.textContent).toContain("Source file unavailable");
+    expect(vi.mocked(api).mock.calls.slice(requestCount).map(([url]) => url)).toEqual([`${endpoint}/access`, `${endpoint}/access`]);
+  });
+
   it("aborts switched-file requests and ignores their late source", async () => {
     await render(); await settle();
     let resolve!: (value: never) => void, oldSignal: AbortSignal | null | undefined;
