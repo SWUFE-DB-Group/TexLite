@@ -1301,7 +1301,7 @@
   "history": {
     "diagramNoDiff": "draw.io 圖表不顯示文字差異。",
     "nonTextNoDiff": "非文字檔案不顯示文字差異。",
-    "nonTextFileDeleted": "此非文字檔案已刪除，不顯示文字差異。",
+    "fileDeleted": "此檔案已刪除。",
     "manageFiles": "管理記錄檔案",
     "trackingDescription": "選擇本專案之後的快照要記錄哪些檔案。",
     "trackingHint": "預設記錄文字檔案。依路徑設定，立即儲存並由協作者共用；已有快照保留。",

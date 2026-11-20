@@ -27,6 +27,11 @@ interface HistoryComparison {
   previousVersion: HistoryVersion | null;
 }
 
+type RestoreTarget = {
+  versionId: string;
+  snapshotHash: string;
+} & ({ kind: "project"; scoped?: boolean } | { kind: "file"; path: string });
+
 const HISTORY_PAGE_SIZE = 100;
 /** Collaborators' saves and agent writes add snapshots while the dialog is open. */
 const HISTORY_REFRESH_MS = 15_000;
@@ -42,7 +47,8 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const [versions, setVersions] = useState<HistoryVersion[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [selectedId, setSelectedId] = useState("");
-  const [detail, setDetail] = useState<HistoryVersionDetail | null>(null);
+  const [loadedDetail, setDetail] = useState<HistoryVersionDetail | null>(null);
+  const detail = loadedDetail?.version.id === selectedId ? loadedDetail : null;
   const [selectedPath, setSelectedPath] = useState("");
   const [comparison, setComparison] = useState<HistoryComparison | null>(null);
   const [comparisonRevision, setComparisonRevision] = useState(0);
@@ -50,7 +56,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   const [diffFontSize, setDiffFontSize] = useState(11);
   const [diffFullscreen, setDiffFullscreen] = useState(false);
   const [label, setLabel] = useState("");
-  const [restoreTarget, setRestoreTarget] = useState<"project" | string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<RestoreTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<HistoryVersion | "all" | null>(null);
   const [busy, setBusy] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -179,7 +185,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
   useEffect(() => {
     if (!open || !selectedId) { setDetail(null); return; }
     const controller = new AbortController();
-    setBusy("detail"); setComparison(null);
+    setBusy("detail"); setDetail(null); setComparison(null); setError("");
     void api<HistoryVersionDetail>(`/api/projects/${project.id}/history/${selectedId}`, { signal: controller.signal }).then((result) => {
       if (controller.signal.aborted) return;
       setDetail(result);
@@ -191,9 +197,14 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     return () => controller.abort();
   }, [open, project.id, selectedId]);
 
+  const changedFiles = useMemo(() => {
+    if (!detail) return [];
+    const set = new Set(detail.version.changedPaths);
+    return detail.files.filter((file) => set.has(file.path));
+  }, [detail]);
   const previousVersion = comparison?.previousVersion ?? null;
-  const selectedFile = detail?.files.find((file) => file.path === selectedPath);
-  const canCompareSelectedFile = historyDiffCandidate(selectedPath) && selectedFile?.textContent !== false;
+  const selectedFile = changedFiles.find((file) => file.path === selectedPath);
+  const canCompareSelectedFile = Boolean(selectedFile && historyDiffCandidate(selectedPath) && selectedFile.textContent !== false);
   const selectedFileDeleted = selectedFile?.deleted === true;
   const selectedDiagram = isDrawioFile(selectedPath);
 
@@ -229,20 +240,6 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     return () => controller.abort();
   }, [open, project.id, selectedId, selectedPath, canCompareSelectedFile, diffMode, comparisonRevision]);
 
-  const changedFiles = useMemo(() => {
-    if (!detail) return [];
-    const set = new Set(detail.version.changedPaths);
-    return detail.files.filter((file) => set.has(file.path));
-  }, [detail]);
-
-  useEffect(() => {
-    if (changedFiles.length > 0 && !changedFiles.some((f) => f.path === selectedPath)) {
-      setSelectedPath(changedFiles[0].path);
-    } else if (changedFiles.length === 0 && selectedPath) {
-      setSelectedPath("");
-    }
-  }, [changedFiles, selectedPath]);
-
   const toggleDiffFullscreen = async () => {
     if (diffFullscreen) {
       if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
@@ -266,7 +263,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       if (controller.signal.aborted || projectIdRef.current !== projectId || selectedIdRef.current !== versionId) return false;
       setDetail(refreshed);
       setLabel(refreshed.version.label ?? "");
-      setSelectedPath((current) => current && refreshed.files.some((file) => file.path === current)
+      setSelectedPath((current) => refreshed.version.changedPaths.includes(current) && refreshed.files.some((file) => file.path === current)
         ? current
         : refreshed.version.changedPaths.find((filePath) => refreshed.files.some((file) => file.path === filePath)) ?? "");
       setComparison(null);
@@ -372,14 +369,14 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
 
   const restore = async () => {
     const target = restoreTarget;
-    if (!target || !detail) return;
+    if (!target) return;
     setRestoreTarget(null); setBusy("restore"); setError("");
     try {
       if (!(await onBeforeMutation())) throw new Error(t("errors.collaborationUnavailable"));
-      await api(`/api/projects/${project.id}/history/${detail.version.id}/restore`, {
-        method: "POST", body: JSON.stringify(target === "project"
-          ? { snapshotHash: detail.version.snapshotHash }
-          : { path: target, snapshotHash: detail.version.snapshotHash })
+      await api(`/api/projects/${project.id}/history/${target.versionId}/restore`, {
+        method: "POST", body: JSON.stringify(target.kind === "project"
+          ? { snapshotHash: target.snapshotHash }
+          : { path: target.path, snapshotHash: target.snapshotHash })
       });
       window.location.reload();
     } catch (reason) {
@@ -388,7 +385,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
       // here instead of restoring data the user has not inspected.
       if (reason instanceof ApiError && reason.code === "HISTORY_VERSION_CHANGED") {
         try {
-          if (!(await refreshSnapshot(detail.version.id, true))) {
+          if (!(await refreshSnapshot(target.versionId, true))) {
             setBusy("");
             return;
           }
@@ -467,7 +464,8 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     ? formatVersionTitle(deleteTarget, t(`history.reasons.${deleteTarget.reason}`), i18n.resolvedLanguage)
     : "";
   const restoreProjectAction = canRestore && detail
-    ? <button type="button" className="history-restore-project" disabled={controlsBusy} title={t("history.restoreProjectTitle")} onClick={() => setRestoreTarget("project")}><RotateCcw size={14} />{t("history.restoreProject")}</button>
+    ? <button type="button" className="history-restore-project" disabled={controlsBusy} title={t("history.restoreProjectTitle")}
+      onClick={() => setRestoreTarget({ kind: "project", versionId: detail.version.id, snapshotHash: detail.version.snapshotHash, scoped: detail.scoped })}><RotateCcw size={14} />{t("history.restoreProject")}</button>
     : null;
 
   return <><Modal open={open} extraWide draggable className="history-dialog-modal" title={t("history.projectSnapshots")} description={t("history.description")} onOpenChange={onOpenChange}
@@ -527,6 +525,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
           {versions.length === 0 && <p className="muted padded">{t("history.empty")}</p>}
         </aside>
         <section className="history-detail">
+          {!detail && busy === "detail" && <div className="history-loading" role="status"><LoaderCircle className="spin" size={24} aria-hidden /><span>{t("common.loading")}</span></div>}
           {detail && <>
             <header className="history-detail-header">
               <div>
@@ -570,18 +569,19 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                     </button>
                   ))}</div>
                   {canRestore && <div className="history-file-actions">
-                    <button type="button" disabled={!selectedPath || selectedFileDeleted || controlsBusy} title={t("history.restoreFileTitle")} onClick={() => setRestoreTarget(selectedPath)}><RotateCcw size={13} />{t("history.restoreFile")}</button>
+                    <button type="button" disabled={!selectedFile || selectedFileDeleted || controlsBusy} title={t("history.restoreFileTitle")}
+                      onClick={() => setRestoreTarget({ kind: "file", path: selectedPath, versionId: detail.version.id, snapshotHash: detail.version.snapshotHash })}><RotateCcw size={13} />{t("history.restoreFile")}</button>
                   </div>}
                 </div>
               ) : (
                 <p className="muted padded-small">{t("history.noChangedFiles")}</p>
               )}
             </div>
-            {selectedPath && !canCompareSelectedFile ? <p className="history-no-text-diff">
+            {selectedFile && !canCompareSelectedFile ? <p className="history-no-text-diff">
               <EyeClosed size={16} strokeWidth={2.25} aria-hidden />
-              <span>{t(selectedDiagram ? "history.diagramNoDiff" : selectedFileDeleted ? "history.nonTextFileDeleted" : "history.nonTextNoDiff")}</span>
+              <span>{t(selectedFileDeleted ? "history.fileDeleted" : selectedDiagram ? "history.diagramNoDiff" : "history.nonTextNoDiff")}</span>
             </p> : <div ref={diffSectionRef} className={`history-comparison${diffFullscreen ? " is-fullscreen" : ""}`}>
-              {selectedPath ? <>
+              {selectedFile ? <>
                 <header>
                   <div className="history-comparison-meta">
                     <strong>{selectedPath}</strong>
@@ -649,8 +649,8 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     setTrackingRevision((revision) => revision + 1);
     setComparisonRevision((revision) => revision + 1);
   }} />
-    <ConfirmDialog open={Boolean(restoreTarget)} title={restoreTarget === "project" ? t("history.restoreProjectTitle") : t("history.restoreFileTitle")}
-    description={restoreTarget === "project" ? t(detail?.scoped ? "history.restoreTrackedDescription" : "history.restoreProjectDescription") : t("history.restoreFileDescription", { path: restoreTarget ?? "" })}
+    <ConfirmDialog open={Boolean(restoreTarget)} title={restoreTarget?.kind === "project" ? t("history.restoreProjectTitle") : t("history.restoreFileTitle")}
+    description={restoreTarget?.kind === "project" ? t(restoreTarget.scoped ? "history.restoreTrackedDescription" : "history.restoreProjectDescription") : t("history.restoreFileDescription", { path: restoreTarget?.path ?? "" })}
     confirmLabel={t("history.restore")} danger onCancel={() => setRestoreTarget(null)} onConfirm={() => void restore()} />
     <ConfirmDialog open={Boolean(deleteTarget)} title={deleteTarget === "all" ? t("history.clearAllTitle") : t("history.deleteVersionTitle")}
       description={deleteTarget === "all" ? t("history.clearAllDescription") : t("history.deleteVersionDescription", { name: deleteTargetName })}

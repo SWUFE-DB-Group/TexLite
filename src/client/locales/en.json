@@ -566,7 +566,7 @@
   "history": {
     "diagramNoDiff": "Text diffs aren’t shown for draw.io diagrams.",
     "nonTextNoDiff": "Text diffs aren’t shown for non-text files.",
-    "nonTextFileDeleted": "This non-text file was deleted. No text diff is available.",
+    "fileDeleted": "This file was deleted.",
     "manageFiles": "Manage recorded files",
     "trackingDescription": "Choose which files this project records in future snapshots.",
     "trackingHint": "Text files are recorded by default. Path-based choices save immediately for all collaborators; existing snapshots stay.",

@@ -2437,6 +2437,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .selection-history-load-more { padding: 10px 0 0; border-top: 0; background: transparent; }
 .history-load-more button:disabled { cursor: wait; opacity: .62; }
 .history-detail { min-width: 0; min-height: 0; height: 100%; overflow-y: auto; padding: 14px; }
+.history-detail > .history-loading { min-height: 160px; }
 .history-detail-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 7px; }
 .history-detail-header > div { display: grid; flex: 1 1 260px; min-width: 0; gap: 4px; }
 .history-detail-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

@@ -557,7 +557,7 @@
   "history": {
     "diagramNoDiff": "draw.io 图表不显示文本差异。",
     "nonTextNoDiff": "非文本文件不显示文本差异。",
-    "nonTextFileDeleted": "此非文本文件已删除，不显示文本差异。",
+    "fileDeleted": "此文件已删除。",
     "manageFiles": "管理记录文件",
     "trackingDescription": "选择本项目之后的快照要记录哪些文件。",
     "trackingHint": "默认记录文本文件。按路径设置，立即保存并由协作者共享；已有快照保留。",
