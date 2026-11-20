@@ -60,7 +60,7 @@ it("cleans up the job and profile when the browser exits before connecting", asy
   const marker = path.join(root, "child.pid");
   // Do not leave a test grandchild on POSIX, where this production path is
   // unused. Windows must reclaim it after the browser root exits.
-  const crash = 'console.error("host browser diagnostic");\n' + (process.platform === "win32" ? `
+  const crash = String.raw`require('node:fs').writeSync(2, 'host browser diagnostic\n');` + (process.platform === "win32" ? `
     const child = require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
     require('node:fs').writeFileSync(process.argv[1], String(child.pid));
     child.unref();

@@ -134,36 +134,47 @@ export function registerDrawioRoutes(app: FastifyInstance, { config, db, collabo
     const relative = diagramPath(body.path), output = drawioPdfPath(relative);
     if (typeof body.svg !== "string" || Buffer.byteLength(body.svg) > 10 * 1024 * 1024
       || !/^\s*(?:<\?xml[^>]*>\s*)?(?:<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(body.svg)) return apiError(reply, 400, "DRAWIO_INVALID");
-    const validate = () => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const cancel = () => { if (!reply.raw.writableEnded) controller.abort(); };
+    const preflight = () => {
+      signal.throwIfAborted();
       requireEditableProject(db, id, user);
+    };
+    const validate = () => {
+      preflight();
       locks.assertOwned(id, relative, body.lockToken, user.id);
       if (hash(readDiagram(resolveSourcePath(config, id, relative))) !== body.revision
         || pdfRevision(resolveSourcePath(config, id, output)) !== body.pdfRevision) throw httpError(409, "DRAWIO_CONFLICT");
     };
-    // Validate before spawning, but never hold the project write queue while
-    // rendering. Recheck source, output, and permissions at the actual write.
-    await projectMutations.runConsistentRead(id, validate, { preflight: () => { requireEditableProject(db, id, user); } });
-    const controller = new AbortController();
-    const cancel = () => { if (!reply.raw.writableEnded) controller.abort(); };
-    reply.raw.on("close", cancel);
+    reply.raw.once("close", cancel);
+    if (reply.raw.destroyed) cancel();
     try {
-      const pdf = await renderer.render(body.svg, config.drawioBrowserPath, controller.signal);
-      controller.signal.throwIfAborted();
-      return await projectMutations.runWrite(id, () => {
-        controller.signal.throwIfAborted();
-        validate();
-        const absolute = resolveSourcePath(config, id, output);
-        writeAtomic(absolute, pdf);
-        touchProject(db, id, user.id);
-        collaboration.invalidateSourceTree(id, output);
-        recordHistory(id, user.id, "file", [output]);
-        return { path: output, pdfRevision: pdfRevision(absolute) };
-      }, { preflight: validate });
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      requireEditableProject(db, id, user);
-      if (error instanceof HttpError) return apiError(reply, error.statusCode, error.code, error.details);
-      return apiError(reply, 422, "DRAWIO_EXPORT_FAILED");
+      // Validate before spawning, but never hold the project write queue while
+      // rendering. Recheck source, output, and permissions at the actual write.
+      if (signal.aborted) return;
+      await projectMutations.runConsistentRead(id, validate, { preflight }).catch((error) => {
+        if (!signal.aborted) throw error;
+      });
+      if (signal.aborted) return;
+      try {
+        const pdf = await renderer.render(body.svg, config.drawioBrowserPath, signal);
+        signal.throwIfAborted();
+        return await projectMutations.runWrite(id, () => {
+          validate();
+          const absolute = resolveSourcePath(config, id, output);
+          writeAtomic(absolute, pdf);
+          touchProject(db, id, user.id);
+          collaboration.invalidateSourceTree(id, output);
+          recordHistory(id, user.id, "file", [output]);
+          return { path: output, pdfRevision: pdfRevision(absolute) };
+        }, { preflight: validate });
+      } catch (error) {
+        if (signal.aborted) return;
+        requireEditableProject(db, id, user);
+        if (error instanceof HttpError) return apiError(reply, error.statusCode, error.code, error.details);
+        return apiError(reply, 422, "DRAWIO_EXPORT_FAILED");
+      }
     } finally { reply.raw.off("close", cancel); }
   });
 }

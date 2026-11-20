@@ -29,6 +29,7 @@ import { buildApp } from "../src/server/app.js";
 import { hashPassword } from "../src/server/security.js";
 import * as Y from "yjs";
 import { createSourceAnchor } from "../src/server/anchors.js";
+import { deferred } from "./helpers/deferred";
 
 class FakePty implements AgentPty {
   readonly pid = 123456789;
@@ -735,6 +736,37 @@ describe("external agent tasks", () => {
     await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_START_FAILED" });
     await service.remove(task.id, owner);
     expect(adapters[0].cleanup).toHaveBeenCalled();
+  });
+
+  it.each(["membership", "policy"])("denies native launch if %s is revoked while the launcher is preparing", async (revocation) => {
+    const task = await create("codex", editor);
+    const next = await create("claude", owner);
+    const launched = vi.fn();
+    const waiting = deferred<void>();
+    const permit = deferred<void>();
+    spawn.mockImplementationOnce(async (_command, _args, options) => {
+      waiting.resolve();
+      await permit.promise;
+      options.beforeStart!();
+      launched();
+      const process = new FakePty(); processes.push(process); return process;
+    });
+    const starting = service.start(task.id, editor);
+    const rejected = expect(starting).rejects.toMatchObject({ code: "AGENT_DISABLED" });
+    try {
+      await Promise.race([waiting.promise, starting]);
+      if (revocation === "membership") {
+        db.prepare("UPDATE project_members SET permission = 'read' WHERE user_id = ? AND project_id = ?").run(editor.id, projectId);
+        await service.reconcilePermissions();
+      } else await service.setPolicy({ allowed: ["claude"] });
+    } finally {
+      permit.resolve();
+      await rejected;
+    }
+    expect(launched).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT ever_started FROM agent_tasks WHERE id = ?").get(task.id)).toEqual({ ever_started: 0 });
+    expect(service.task(task.id, editor)).toMatchObject({ state: "failed", errorCode: "AGENT_DISABLED" });
+    expect((await service.start(next.id, owner)).state).toBe("running");
   });
 
   it("releases naturally exited executions without automatically restarting them", async () => {

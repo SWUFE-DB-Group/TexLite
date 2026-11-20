@@ -12,7 +12,9 @@ import { httpError } from "../src/server/http";
 import { DRAWIO_LOCK_HEADER, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
 import type { HistoryPageResponse } from "../src/shared/historyProtocol";
 import { createTestConfig } from "./helpers/testConfig";
+import { deferred } from "./helpers/deferred";
 import { once } from "node:events";
+import type { ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import type WebSocket from "ws";
 
@@ -24,6 +26,7 @@ const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"/>'
 describe("draw.io project files and PDF export", () => {
   let root: string, app: FastifyInstance, db: DatabaseConnection, id: string;
   let lease: { socket: WebSocket; token: string; user: string } | null = null;
+  let captureExportResponse: ((response: ServerResponse) => void) | undefined;
   const cookies = new Map<string, string>();
   const config = () => createTestConfig(root, { basePath: "/tools/texlite" });
   const request = (method: "GET" | "PUT" | "POST", endpoint = "", payload?: object, user = "owner") => app.inject({
@@ -62,6 +65,9 @@ describe("draw.io project files and PDF export", () => {
       cookies.set(user, `texlite_session=${session.token}`);
     }
     app = await buildApp(config(), db, { logger: false });
+    app.addHook("onRequest", async (request, reply) => {
+      if (request.method === "POST" && request.url.endsWith("/drawio/pdf")) captureExportResponse?.(reply.raw);
+    });
     const created = await app.inject({ method: "POST", url: "/tools/texlite/api/projects", headers: { cookie: cookies.get("owner")! }, payload: { name: "Diagrams" } });
     expect(created.statusCode).toBe(201); id = created.json().project.id;
     for (const [user, permission] of [["reader", "read"], ["writer", "edit"]]) {
@@ -186,6 +192,40 @@ describe("draw.io project files and PDF export", () => {
     expect((await request("POST", "/pdf", payload, "writer")).statusCode).toBe(409);
     expect(render).toHaveBeenCalledTimes(1);
     expect((await request("POST", "/pdf", { ...payload, pdfRevision: result.json().pdfRevision }, "writer")).statusCode).toBe(200);
+  });
+
+  it("does not render or replace a PDF if the request closes while waiting for the project read", async () => {
+    fs.writeFileSync(absolute("diagram.pdf"), "%PDF-previous");
+    const before = await document();
+    const response = deferred<ServerResponse>();
+    const waiting = deferred<void>();
+    const resume = deferred<void>();
+    captureExportResponse = response.resolve;
+    const wait = CollaborationService.prototype.waitForReady;
+    const gate = vi.spyOn(CollaborationService.prototype, "waitForReady").mockImplementationOnce(async function (this: CollaborationService, projectId) {
+      waiting.resolve();
+      await resume.promise;
+      return wait.call(this, projectId);
+    });
+    const payload = { path: "figures/diagram.drawio", revision: before.revision, pdfRevision: before.pdfRevision, svg };
+    try {
+      const pending = request("POST", "/pdf", payload);
+      await Promise.race([waiting.promise, pending]);
+      (await response.promise).destroy();
+      await expect(pending).rejects.toMatchObject({ code: "LIGHT_ECONNRESET" });
+    } finally {
+      captureExportResponse = undefined;
+      resume.resolve();
+      gate.mockRestore();
+    }
+    // A new export must wait behind the first project's read and be the only render.
+    render.mockImplementationOnce(async () => {
+      expect(fs.readFileSync(absolute("diagram.pdf"), "utf8")).toBe("%PDF-previous");
+      return Buffer.from("%PDF-retry");
+    });
+    expect((await request("POST", "/pdf", payload)).statusCode).toBe(200);
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(fs.readFileSync(absolute("diagram.pdf"), "utf8")).toBe("%PDF-retry");
   });
 
   it("rechecks source/output revisions and membership after rendering, leaving existing PDFs untouched", async () => {

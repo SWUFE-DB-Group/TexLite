@@ -5,7 +5,7 @@ import type { WebSocket } from "ws";
 import type { AgentAccess, AgentCatalog, AgentId, AgentPolicy, AgentTask, AgentTaskPage, AgentServerMessage } from "../../shared/agentProtocol.js";
 import { AGENT_TASK_PAGE_SIZE, parseAgentClientMessage } from "../../shared/agentProtocol.js";
 import type { DatabaseConnection, UserRow } from "../db.js";
-import { httpError } from "../http.js";
+import { HttpError, httpError } from "../http.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { requireEditableProject } from "../routes/projectShared.js";
 import { AgentRegistry } from "./registry.js";
@@ -189,6 +189,10 @@ export class AgentService {
         if (this.activeProjects.get(row.project_id) === id) this.activeProjects.delete(row.project_id);
         releaseWriter();
       };
+      const assertMayStart = () => {
+        this.requireEditable(row);
+        if (this.closing) throw httpError(409, "AGENT_UNAVAILABLE");
+      };
       let source: AgentSourceSync | undefined;
       try {
         // Starting a CLI is not the same as creating its first conversation.
@@ -216,14 +220,18 @@ export class AgentService {
           void this.stop(id).catch((failure) => this.options.onError?.(failure));
         });
         await source.start();
-        this.requireEditable(row);
-        if (this.closing) throw httpError(409, "AGENT_UNAVAILABLE");
+        assertMayStart();
         this.db.prepare("UPDATE agent_tasks SET state = 'starting', error_code = NULL, updated_at = ? WHERE id = ?").run(now(), id);
         try {
           const command = resume ? adapter.resume({ ...context, nativeSessionId: row.native_session_id! }) : adapter.start(context);
           const pty = await spawn(command.executable, command.args, { name: "xterm-256color", cwd: context.workingDirectory, env: command.env, cols: 100, rows: 24,
             executionFile: this.executionFile(id),
-            beforeStart: () => { this.db.prepare("UPDATE agent_tasks SET ever_started = 1 WHERE id = ?").run(id); } });
+            beforeStart: () => {
+              // Launcher identity and job setup can yield. Revalidate before
+              // publishing the permit that lets the native CLI run.
+              assertMayStart();
+              this.db.prepare("UPDATE agent_tasks SET ever_started = 1 WHERE id = ?").run(id);
+            } });
           let finish!: () => void;
           const execution: Execution = { pty, attachments: new Set(), controller: null, output: new AgentOutputBuffer(), permissionsCheckedAt: -Infinity, cols: 100, rows: 24, stopping: false, termination: null, exitCode: null,
             finished: new Promise<void>((resolve) => { finish = resolve; }), finish: () => finish(), subscriptions: [], source, releaseProject };
@@ -241,8 +249,11 @@ export class AgentService {
             .run(now(), now(), id);
           return this.task(id, user);
         } catch (error) {
+          const denied = error instanceof HttpError && (error.code === "AGENT_DISABLED" || error.code === "AGENT_UNAVAILABLE");
+          this.db.prepare("UPDATE agent_tasks SET state = 'failed', error_code = ?, updated_at = ? WHERE id = ?")
+            .run(denied ? error.code : "AGENT_START_FAILED", now(), id);
+          if (denied) throw error;
           this.options.onError?.(error);
-          this.db.prepare("UPDATE agent_tasks SET state = 'failed', error_code = 'AGENT_START_FAILED', updated_at = ? WHERE id = ?").run(now(), id);
           throw httpError(409, "AGENT_START_FAILED");
         }
       } catch (error) {
