@@ -26,6 +26,8 @@ interface ProjectMutationOptions {
    * can interleave between validation, the final flush, and maintenance.
    */
   preflight?: () => void;
+  /** Revalidate state that the synchronous room flush may have changed. */
+  afterFlush?: () => void;
   /** Skip the final room flush when the source tree is about to be deleted. */
   flush?: boolean;
 }
@@ -97,10 +99,11 @@ export class ProjectMutationCoordinator {
       try {
         await this.collaboration.waitForReady?.(projectId);
         options.preflight?.();
-        this.drawioLocks.revokeProject(projectId);
         // This call is synchronous. No WebSocket event can interleave between
         // the final flush and the maintenance flag being installed.
         if (options.flush !== false) this.flushProject(projectId);
+        options.afterFlush?.();
+        this.drawioLocks.revokeProject(projectId);
         this.collaboration.beginMaintenance(projectId, reason);
         try {
           return await operation();

@@ -894,11 +894,13 @@ as one token, allowing coarser but lossless comparisons of unusually large files
 Recovery snapshots are created only for actual file additions, changes, or
 deletions. Settings-only changes update the persistence baseline without adding
 a timeline entry; effective compiler settings are captured with the next file
-change. The one exception is the safety checkpoint of a whole-project restore:
-the restore replaces the settings, so the checkpoint is recorded, and shown,
+change. The one exception is the safety checkpoint of a whole-project restore
+by the owner: the restore replaces the settings, so the checkpoint is recorded, and shown,
 when only the settings differ from the newest snapshot. Older zero-file-change
 entries are excluded from timeline pagination and previous-version comparisons,
-but are not automatically purged.
+but are not automatically purged. Writers who are not the owner can restore
+project sources without restoring settings. The source-only restore must not
+remove an existing main document or latexmkrc referenced by the current settings.
 
 A version lists the files changed since the newest version that still exists,
 not since the internal persistence baseline. The two differ after an owner

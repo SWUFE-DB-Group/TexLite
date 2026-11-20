@@ -17,6 +17,7 @@ import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
 import { createProjectFiles, sourceRoot } from "../src/server/files.js";
 import { ProjectHistoryService } from "../src/server/history.js";
 import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
+import { DrawioLocks } from "../src/server/drawioLocks.js";
 import { captureCompileSnapshot, publishCompileArtifacts } from "../src/server/compiler.js";
 import * as metricSummaries from "../src/server/metrics.js";
 import { useFakeTexTools } from "./texTools";
@@ -1735,6 +1736,125 @@ Copied source.
       expect(result.statusCode).toBe(500);
       expect(fs.readFileSync(path.join(sourceRoot(config, projectId), "main.tex"), "utf8")).toBe("current unsnapshotted content");
     } finally { checkpoint.mockRestore(); }
+  });
+
+  it("rejects malformed or stale snapshot restores without flushing or entering maintenance", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Snapshot restore validation" } });
+    const projectId = created.json().project.id as string;
+    const history = new ProjectHistoryService(config, db);
+    const snapshot = history.list(projectId)[0];
+    const main = path.join(sourceRoot(config, projectId), "main.tex");
+    fs.writeFileSync(main, "current source");
+    const flush = vi.spyOn(CollaborationService.prototype, "flushProject");
+    const maintain = vi.spyOn(CollaborationService.prototype, "beginMaintenance");
+    const checkpoint = vi.spyOn(ProjectHistoryService.prototype, "checkpointForRestore");
+    const stopAgent = vi.fn(async () => {});
+    const runExclusive = ProjectMutationCoordinator.prototype.runExclusive;
+    const exclusive = vi.spyOn(ProjectMutationCoordinator.prototype, "runExclusive").mockImplementationOnce(
+      async function(this: ProjectMutationCoordinator, ...args: Parameters<typeof runExclusive>) {
+        const unregister = this.registerExternalWriter(projectId, stopAgent)!;
+        try { return await runExclusive.apply(this, args); }
+        finally { unregister(); }
+      }
+    );
+    const restore = (payload: object) => app.inject({ method: "POST",
+      url: `/api/projects/${projectId}/history/${snapshot.id}/restore`, headers: { cookie }, payload });
+    try {
+      for (const invalid of [null, 7, false, {}, ["main.tex"], "", "../outside"]) {
+        expect((await restore({ path: invalid, snapshotHash: snapshot.snapshotHash })).statusCode).toBe(400);
+      }
+      expect((await restore([])).statusCode).toBe(400);
+      expect(exclusive).not.toHaveBeenCalled();
+      const stale = await restore({ path: "main.tex", snapshotHash: "0".repeat(64) });
+      expect(stale.statusCode, stale.body).toBe(409);
+      expect(stale.json().code).toBe("HISTORY_VERSION_CHANGED");
+      expect(exclusive).toHaveBeenCalledOnce();
+      expect(stopAgent).not.toHaveBeenCalled();
+      expect(flush).not.toHaveBeenCalled();
+      expect(maintain).not.toHaveBeenCalled();
+      expect(checkpoint).not.toHaveBeenCalled();
+      expect(fs.readFileSync(main, "utf8")).toBe("current source");
+    } finally {
+      exclusive.mockRestore(); flush.mockRestore(); maintain.mockRestore(); checkpoint.mockRestore();
+    }
+  });
+
+  it("leaves the collaboration room and draw.io locks intact when the final flush changes the snapshot", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Snapshot coalesced at flush" } });
+    const projectId = created.json().project.id as string;
+    const history = new ProjectHistoryService(config, db);
+    const main = path.join(sourceRoot(config, projectId), "main.tex");
+    fs.writeFileSync(main, "first autosave");
+    const snapshot = history.record(projectId, null, "autosave", ["main.tex"])!;
+    const flush = vi.spyOn(CollaborationService.prototype, "flushProject").mockImplementationOnce(() => {
+      fs.writeFileSync(main, "latest collaborative edit");
+      expect(history.record(projectId, null, "autosave", ["main.tex"])?.id).toBe(snapshot.id);
+      return null;
+    });
+    const maintain = vi.spyOn(CollaborationService.prototype, "beginMaintenance");
+    const revokeLocks = vi.spyOn(DrawioLocks.prototype, "revokeProject");
+    try {
+      const restore = await app.inject({ method: "POST", url: `/api/projects/${projectId}/history/${snapshot.id}/restore`,
+        headers: { cookie }, payload: { path: "main.tex", snapshotHash: snapshot.snapshotHash } });
+      expect(restore.statusCode, restore.body).toBe(409);
+      expect(restore.json().code).toBe("HISTORY_VERSION_CHANGED");
+      expect(flush).toHaveBeenCalledOnce();
+      expect(revokeLocks).not.toHaveBeenCalled();
+      expect(maintain).not.toHaveBeenCalled();
+      expect(fs.readFileSync(main, "utf8")).toBe("latest collaborative edit");
+      expect(history.list(projectId).some((version) => version.reason === "checkpoint")).toBe(false);
+    } finally {
+      revokeLocks.mockRestore(); flush.mockRestore(); maintain.mockRestore();
+    }
+  });
+
+  it("restores sources for project editors but restores LaTeX settings only for the owner", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Snapshot restore settings permissions" } });
+    const projectId = created.json().project.id as string;
+    const url = `/api/projects/${projectId}`;
+    const source = (marker: string) => `\\documentclass{article}\n\\begin{document}\n${marker}\n\\end{document}\n`;
+    const save = async (filePath: string, content: string) => {
+      const saved = await app.inject({ method: "PUT", url: `${url}/file`, headers: { cookie }, payload: { path: filePath, content } });
+      expect(saved.statusCode, saved.body).toBe(200);
+    };
+    await save("alternate.tex", source("alternate"));
+    await save(".latexmkrc", "$pdf_mode = 1;\n");
+    await save("main.tex", source("snapshot"));
+    const snapshot = new ProjectHistoryService(config, db).list(projectId)[0];
+    const ownerSettings = { mainFile: "alternate.tex", engine: "xelatex", latexmkrc: ".latexmkrc", chktexEnabled: true };
+    const settings = await app.inject({ method: "PATCH", url, headers: { cookie }, payload: ownerSettings });
+    expect(settings.statusCode, settings.body).toBe(200);
+    await save("main.tex", source("later"));
+
+    const username = "snapshot-restore-editor";
+    const editor = await app.inject({ method: "POST", url: "/api/admin/users", headers: { cookie },
+      payload: { username, displayName: "Snapshot Editor", password: "editor-password" } });
+    await app.inject({ method: "PUT", url: `${url}/members/${editor.json().user.id}`, headers: { cookie }, payload: { permission: "edit" } });
+    const login = await loginEstablishedUser(app, { method: "POST", url: "/api/auth/login", payload: { username, password: "editor-password" } });
+    const editorCookie = sessionCookie(login.headers);
+    const restore = (actor: string, payload: object = {}) => app.inject({ method: "POST",
+      url: `${url}/history/${snapshot.id}/restore`, headers: { cookie: actor }, payload: { ...payload, snapshotHash: snapshot.snapshotHash } });
+    const editorRestore = await restore(editorCookie, { restoreSettings: true });
+    expect(editorRestore.statusCode, editorRestore.body).toBe(200);
+    expect(editorRestore.json().project).toMatchObject(ownerSettings);
+    const sourceDir = sourceRoot(config, projectId);
+    expect(fs.readFileSync(path.join(sourceDir, "main.tex"), "utf8")).toBe(source("snapshot"));
+
+    await save("new-main.tex", source("new main"));
+    expect((await app.inject({ method: "PATCH", url, headers: { cookie }, payload: { mainFile: "new-main.tex" } })).statusCode).toBe(200);
+    const conflictingRestore = await restore(editorCookie);
+    expect(conflictingRestore.statusCode, conflictingRestore.body).toBe(409);
+    expect(conflictingRestore.json()).toMatchObject({ code: "HISTORY_RESTORE_SETTINGS_CONFLICT", path: "new-main.tex" });
+    expect(fs.readFileSync(path.join(sourceDir, "new-main.tex"), "utf8")).toBe(source("new main"));
+
+    await save("main.tex", source("latest"));
+    const single = await restore(editorCookie, { path: "main.tex" });
+    expect(single.statusCode, single.body).toBe(200);
+    expect(single.json().project).toMatchObject({ ...ownerSettings, mainFile: "new-main.tex" });
+    expect(fs.readFileSync(path.join(sourceDir, "main.tex"), "utf8")).toBe(source("snapshot"));
+    const ownerRestore = await restore(cookie);
+    expect(ownerRestore.statusCode, ownerRestore.body).toBe(200);
+    expect(ownerRestore.json().project).toMatchObject({ mainFile: "main.tex", engine: "pdflatex", latexmkrc: null, chktexEnabled: false });
   });
 
   it("builds the outline across included files and restores automatic project history", async () => {

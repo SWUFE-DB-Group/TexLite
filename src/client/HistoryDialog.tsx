@@ -467,6 +467,11 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     ? <button type="button" className="history-restore-project" disabled={controlsBusy} title={t("history.restoreProjectTitle")}
       onClick={() => setRestoreTarget({ kind: "project", versionId: detail.version.id, snapshotHash: detail.version.snapshotHash, scoped: detail.scoped })}><RotateCcw size={14} />{t("history.restoreProject")}</button>
     : null;
+  const restoreDescription = restoreTarget?.kind === "project"
+    ? isOwner
+      ? t(restoreTarget.scoped ? "history.restoreTrackedDescription" : "history.restoreProjectDescription")
+      : t(restoreTarget.scoped ? "history.restoreTrackedSourcesDescription" : "history.restoreProjectSourcesDescription")
+    : t("history.restoreFileDescription", { path: restoreTarget?.path ?? "" });
 
   return <><Modal open={open} extraWide draggable className="history-dialog-modal" title={t("history.projectSnapshots")} description={t("history.description")} onOpenChange={onOpenChange}
     footer={<>
@@ -650,7 +655,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
     setComparisonRevision((revision) => revision + 1);
   }} />
     <ConfirmDialog open={Boolean(restoreTarget)} title={restoreTarget?.kind === "project" ? t("history.restoreProjectTitle") : t("history.restoreFileTitle")}
-    description={restoreTarget?.kind === "project" ? t(restoreTarget.scoped ? "history.restoreTrackedDescription" : "history.restoreProjectDescription") : t("history.restoreFileDescription", { path: restoreTarget?.path ?? "" })}
+    description={restoreDescription}
     confirmLabel={t("history.restore")} danger onCancel={() => setRestoreTarget(null)} onConfirm={() => void restore()} />
     <ConfirmDialog open={Boolean(deleteTarget)} title={deleteTarget === "all" ? t("history.clearAllTitle") : t("history.deleteVersionTitle")}
       description={deleteTarget === "all" ? t("history.clearAllDescription") : t("history.deleteVersionDescription", { name: deleteTargetName })}

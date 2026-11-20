@@ -64,6 +64,11 @@ export interface HistoryRecordOptions {
   keepSettingsChange?: boolean;
 }
 
+interface HistoryRestoreOptions {
+  /** Whole-project restores by editors keep the owner's current settings. */
+  restoreSettings?: boolean;
+}
+
 /**
  * Versions shown in the timeline and used as "previous" comparisons. Older
  * settings-only rows are hidden; a settings-only safety checkpoint is shown.
@@ -470,7 +475,7 @@ export class ProjectHistoryService {
     return this.readStoredObject(projectId, entry.digest, filePath);
   }
 
-  restore(projectId: string, versionId: string, filePathInput?: string): { restoredPaths: string[]; manifest: HistoryManifest } {
+  restore(projectId: string, versionId: string, filePathInput?: string, { restoreSettings = true }: HistoryRestoreOptions = {}): { restoredPaths: string[]; manifest: HistoryManifest } {
     const manifest = this.manifest(projectId, versionId);
     if (!manifest) throw httpError(404, "HISTORY_VERSION_NOT_FOUND");
     if (filePathInput) {
@@ -490,11 +495,11 @@ export class ProjectHistoryService {
       }
       return { restoredPaths: [filePath], manifest };
     }
-    this.restoreProjectTree(projectId, manifest);
+    this.restoreProjectTree(projectId, manifest, restoreSettings);
     return { restoredPaths: Object.keys(manifest.files).sort(), manifest };
   }
 
-  checkpointForRestore(projectId: string, authorId: string, versionId: string, filePathInput?: string): HistoryVersion | null {
+  checkpointForRestore(projectId: string, authorId: string, versionId: string, filePathInput?: string, { restoreSettings = true }: HistoryRestoreOptions = {}): HistoryVersion | null {
     const target = this.manifest(projectId, versionId);
     if (!target) throw httpError(404, "HISTORY_VERSION_NOT_FOUND");
     const current = this.trackingPolicy(projectId);
@@ -508,7 +513,7 @@ export class ProjectHistoryService {
     }
     // This policy belongs only to the safety checkpoint, not project settings.
     // Even a legacy restore or a single excluded file must remain reversible.
-    return this.record(projectId, authorId, "checkpoint", undefined, { tracking, keepSettingsChange: selected === null });
+    return this.record(projectId, authorId, "checkpoint", undefined, { tracking, keepSettingsChange: selected === null && restoreSettings });
   }
 
   private assertRestoreTargetIsFile(projectId: string, filePath: string): void {
@@ -863,7 +868,7 @@ export class ProjectHistoryService {
     catch (error) { this.onRestoreCleanupError(error, directory); }
   }
 
-  private restoreProjectTree(projectId: string, manifest: HistoryManifest): void {
+  private restoreProjectTree(projectId: string, manifest: HistoryManifest, restoreSettings: boolean): void {
     assertNoSourceSymlinks(this.config, projectId);
     const root = projectRoot(this.config, projectId);
     const live = sourceRoot(this.config, projectId);
@@ -901,6 +906,19 @@ export class ProjectHistoryService {
         this.copyStoredObject(projectId, entry.digest, filePath, target);
         fs.chmodSync(target, 0o600);
       }
+      if (!restoreSettings) {
+        const { main_file, latexmkrc } = this.project(projectId);
+        for (const filePath of [main_file, latexmkrc]) {
+          if (!filePath) continue;
+          const relative = safeRelativePath(filePath);
+          // Do not break a current compiler setting by removing its file.
+          // Allow a restore to repair a project with an already missing file.
+          if (fs.statSync(path.join(live, relative), { throwIfNoEntry: false })?.isFile()
+            && !fs.statSync(path.join(temporary, relative), { throwIfNoEntry: false })?.isFile()) {
+            throw httpError(409, "HISTORY_RESTORE_SETTINGS_CONFLICT", { path: relative });
+          }
+        }
+      }
       fs.renameSync(live, backup);
       liveMoved = true;
       fs.renameSync(temporary, live);
@@ -910,8 +928,10 @@ export class ProjectHistoryService {
         fs.renameSync(git, path.join(live, ".git"));
         gitMoved = true;
       }
-      this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ?, chktex_enabled = ? WHERE id = ?")
-        .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, manifest.settings.chktexEnabled ? 1 : 0, projectId);
+      if (restoreSettings) {
+        this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ?, chktex_enabled = ? WHERE id = ?")
+          .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, manifest.settings.chktexEnabled ? 1 : 0, projectId);
+      }
     } catch (error) {
       // The backup is still intact. Swap the replacement out before deleting
       // anything, so another cleanup failure cannot strand the live tree.
@@ -928,7 +948,7 @@ export class ProjectHistoryService {
       throw error;
     }
 
-    // Both the source swap and the settings update succeeded. Mark this
+    // The source swap and any settings update succeeded. Mark this
     // backup as disposable before attempting any non-atomic deletion.
     const cleanup = path.join(root, `.history-cleanup-${restoreId}`);
     try { fs.renameSync(backup, cleanup); }

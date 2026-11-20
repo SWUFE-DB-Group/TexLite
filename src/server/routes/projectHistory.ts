@@ -315,19 +315,31 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
     const project = accessibleProject(db, id, user);
     if (!project || !canEdit(project)) return apiError(reply, 403, "PROJECT_EDIT_FORBIDDEN");
     const body = request.body as { path?: unknown; snapshotHash?: unknown } | undefined;
-    const filePath = typeof body?.path === "string" ? safeRelativePath(body.path) : undefined;
+    if (body !== undefined && (!body || typeof body !== "object" || Array.isArray(body))) {
+      return apiError(reply, 400, "REQUEST_INVALID");
+    }
+    const requestedPath = body?.path;
+    if (requestedPath !== undefined && typeof requestedPath !== "string") return apiError(reply, 400, "REQUEST_INVALID");
+    const filePath = requestedPath === undefined ? undefined : safeRelativePath(requestedPath);
     // Current clients bind a restore to the snapshot they displayed. Accept
     // an omitted fingerprint only for already-open clients during an upgrade.
     if (body?.snapshotHash !== undefined && (typeof body.snapshotHash !== "string" || !/^[a-f0-9]{64}$/.test(body.snapshotHash))) {
       return apiError(reply, 400, "REQUEST_INVALID");
     }
     const snapshotHash = typeof body?.snapshotHash === "string" ? body.snapshotHash : undefined;
+    const validateSnapshot = () => {
+      if (snapshotHash !== undefined) {
+        history.assertSnapshotHash(id, versionId, snapshotHash);
+      } else if (!history.version(versionId, id)) {
+        throw httpError(404, "HISTORY_VERSION_NOT_FOUND");
+      }
+    };
     return await projectMutations.runExclusive(id, "history restore", () => {
       const currentProject = requireEditableProject(db, id, user);
-      history.assertSnapshotHash(id, versionId, snapshotHash);
-      history.checkpointForRestore(id, user.id, versionId, filePath);
+      const options = { restoreSettings: currentProject.permission === "owner" };
+      history.checkpointForRestore(id, user.id, versionId, filePath, options);
       const before = projectTextSnapshot(config, id);
-      const restored = history.restore(id, versionId, filePath);
+      const restored = history.restore(id, versionId, filePath, options);
       reanchorProjectSnapshot(db, id, before, projectTextSnapshot(config, id));
       touchProject(db, id, user.id);
       recordHistory(id, user.id, "restore", filePath ? [filePath] : undefined);
@@ -340,13 +352,14 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
           commentsSummaryForProject(db, id)
         )
       };
-    }, { preflight: () => {
-      requireEditableProject(db, id, user);
-      if (!history.version(versionId, id)) {
-        throw httpError(404, "HISTORY_VERSION_NOT_FOUND");
-      }
-      history.validateRestoreTarget(id, versionId, filePath);
-    } });
+    }, {
+      preflight: () => {
+        requireEditableProject(db, id, user);
+        validateSnapshot();
+        history.validateRestoreTarget(id, versionId, filePath);
+      },
+      afterFlush: validateSnapshot
+    });
   });
 }
 

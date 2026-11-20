@@ -81,27 +81,31 @@ it.each([".gitignore", "build.bat", "scripts/RUN.CMD", "settings.ini", "notes.cu
   expect(host.querySelector(".history-git-diff")?.textContent).toContain("-*.log");
 });
 
-it.each(["file", "project"] as const)("confirms and restores the intended scope (%s) when the path is named project", async (scope) => {
+it.each([
+  ["file", "owner", true, "history.restoreFileDescription"],
+  ["project", "owner", true, "history.restoreTrackedDescription"],
+  ["project", "edit", true, "history.restoreTrackedSourcesDescription"],
+  ["project", "edit", false, "history.restoreProjectSourcesDescription"]
+] as const)("confirms restore scope %s for %s (scoped snapshot: %s)", async (scope, permission, scoped, descriptionKey) => {
   const filePath = "project";
   const snapshotHash = "a".repeat(64);
   const version: HistoryVersion = { id: "v", snapshotHash, reason: "file", label: null,
     createdAt: "2026-10-24T00:00:00Z", author: null, hasAgent: false, changedPaths: [filePath], fileCount: 1, totalSize: 3 };
   vi.mocked(api)
     .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
-    .mockResolvedValueOnce({ version, scoped: true, files: [{ path: filePath, size: 3, textContent: true }] })
+    .mockResolvedValueOnce({ version, scoped, files: [{ path: filePath, size: 3, textContent: true }] })
     .mockResolvedValueOnce({ path: filePath, historical: "New", comparison: "Old", against: "__previous__", previousVersion: null })
     .mockResolvedValueOnce({ ok: true });
   vi.spyOn(window.location, "reload").mockImplementation(() => {});
   const onBeforeMutation = vi.fn(async () => true);
   await act(async () => root.render(createElement(HistoryDialog, {
-    open: true, project: { id: "p", permission: "owner" } as Project, onOpenChange: vi.fn(), onBeforeMutation
+    open: true, project: { id: "p", permission } as Project, onOpenChange: vi.fn(), onBeforeMutation
   })));
   const trigger = host.querySelector<HTMLButtonElement>(scope === "file" ? ".history-file-actions button" : ".history-restore-project")!;
   await act(async () => trigger.click());
   const confirm = host.querySelector('[role="alertdialog"]')!;
   expect(confirm.querySelector("h2")?.textContent).toBe(i18n.t(scope === "file" ? "history.restoreFileTitle" : "history.restoreProjectTitle"));
-  expect(confirm.querySelector("p")?.textContent).toBe(scope === "file"
-    ? i18n.t("history.restoreFileDescription", { path: filePath }) : i18n.t("history.restoreTrackedDescription"));
+  expect(confirm.querySelector("p")?.textContent).toBe(i18n.t(descriptionKey, { path: filePath }));
   expect(onBeforeMutation).not.toHaveBeenCalled();
   await act(async () => confirm.querySelector("button")!.click());
   expect(onBeforeMutation).toHaveBeenCalledOnce();

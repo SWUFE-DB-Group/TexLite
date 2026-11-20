@@ -85,6 +85,7 @@ export const zhHantMessages: Record<ServerErrorCode, string> = {
   HISTORY_OBJECT_MISSING: "此快照儲存的檔案已遺失，無法再檢視或還原。",
   HISTORY_FILE_PREVIEW_UNSUPPORTED: "該歷史檔案不能作為文字比較。",
   HISTORY_TARGET_CONFLICT: "無法將歷史版本還原到所請求的路徑。",
+  HISTORY_RESTORE_SETTINGS_CONFLICT: "此快照會移除目前 LaTeX 設定使用的檔案。",
   HISTORY_VERSION_NOT_FOUND: "歷史版本不存在。",
   HISTORY_VERSION_CHANGED: "檢視期間該專案快照已發生變化。請重新整理後再還原。",
   SELECTION_HISTORY_SOURCE_CHANGED: "開啟選取範圍歷史時原始碼已發生變化。請等待同步完成，重新選取文字後再開啟歷史。",
