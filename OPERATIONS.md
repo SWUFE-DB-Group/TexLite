@@ -126,7 +126,7 @@ if the configured editor is unavailable.
 
 The editor can take longer to open the first time while the browser downloads
 its assets. TexLite shows the loading, initialization and diagram-open stages
-and offers a retry if the editor is not ready within 60 seconds.
+and offers a retry if the editor is not ready within 30 seconds.
 
 Diagram data is passed directly to the iframe, not placed in its URL. Save explicitly
 before closing or switching files. Unsaved changes require confirmation before

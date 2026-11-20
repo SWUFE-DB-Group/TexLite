@@ -1,7 +1,7 @@
 import { DEFAULT_DRAWIO_EDITOR_URL, parseDrawioEditorUrl } from "../../shared/drawio";
 
 // Both iframe entry points may need a cold download of the editor's assets.
-export const drawioFrameLoadTimeoutMs = 60_000;
+export const drawioFrameLoadTimeoutMs = 30_000;
 
 /** draw.io needs allow-scripts and allow-same-origin. Never embed it on TexLite's own origin. */
 export function resolveDrawioEditorUrl(value = DEFAULT_DRAWIO_EDITOR_URL): URL | null {

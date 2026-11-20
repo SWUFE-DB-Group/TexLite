@@ -112,18 +112,18 @@ describe("embedded draw.io editing", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("shows real startup stages without extending the 60-second deadline and resets on retry", async () => {
+  it("shows real startup stages without extending the 30-second deadline and resets on retry", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await mountFrame(false, null, "https://drawio.example.test/");
     const loading = () => host.querySelector(".drawio-loading")?.textContent;
     const advance = (ms: number) => act(async () => vi.advanceTimersByTimeAsync(ms));
     expect(loading()).toContain("Loading draw.io from drawio.example.test");
     expect(loading()).toContain("Step 1 of 3");
-    await advance(31_000);
+    await advance(10_000);
     expect(button("Retry")).toBeUndefined();
     await send({ event: "configure" });
     expect(loading()).toContain("Step 2 of 3");
-    await advance(24_000);
+    await advance(15_000);
     await send({ event: "init" });
     expect(loading()).toContain("Opening the diagram");
     expect(loading()).toContain("Step 3 of 3");
@@ -142,7 +142,7 @@ describe("embedded draw.io editing", () => {
     await send({ event: "init" });
     expect(sent().at(-1)).toMatchObject({ action: "load", xml: EMPTY_DRAWIO, readOnly: false });
     await send({ event: "load" });
-    await advance(60_000);
+    await advance(30_000);
     expect(loading()).toBeUndefined();
     expect(button("Export PDF").disabled).toBe(false);
   });
@@ -150,7 +150,7 @@ describe("embedded draw.io editing", () => {
   it("identifies the configured editor host if the iframe never initializes", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await mountFrame(false, null, "https://drawio.example.test/");
-    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
     expect(host.querySelector(".drawio-loading")?.textContent).toContain("Check your connection to drawio.example.test");
     expect(button("Retry")).toBeDefined();
   });
