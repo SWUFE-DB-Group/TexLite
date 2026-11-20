@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, isAbortError } from "../api";
 import type { PdfTarget } from "../PdfPreview";
 import { errorMessage } from "../errors";
+import type { CompilationRunIdentity } from "./compilationResults";
 
 export interface SourceJump {
   path: string;
@@ -57,53 +58,57 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onOpenSourceFile, 
     onOpenSourceFileRef.current(path);
   };
 
-  const syncSourceToPdf = async (path: string, line: number, column: number, options: { silent?: boolean } = {}) => {
+  const matchesSelection = (pdf: CompilationRunIdentity | null): pdf is CompilationRunIdentity =>
+    pdf !== null && pdf.projectId === projectId && pdf.mainFile === mainFile;
+
+  const syncSourceToPdf = async (pdf: CompilationRunIdentity | null, path: string, line: number, column: number, options: { silent?: boolean } = {}) => {
     // Keep the selected root as the PDF target, but allow lookups from its
     // included sources. Opening a child file must not change the compile root.
-    if (!canSyncSourceToPdf(path, mainFile)) return;
+    if (!matchesSelection(pdf) || !canSyncSourceToPdf(path, mainFile)) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     try {
       const location = await api<{ page: number; x: number; y: number } | null>(
-        `/api/projects/${projectId}/sync/pdf?mainFile=${encodeURIComponent(mainFile)}&path=${encodeURIComponent(path)}&line=${line}&column=${column}`,
+        `/api/projects/${projectId}/sync/pdf?mainFile=${encodeURIComponent(mainFile)}&run=${encodeURIComponent(pdf.runId)}&path=${encodeURIComponent(path)}&line=${line}&column=${column}`,
         { signal: controller.signal }
       );
       if (request.current !== controller || !location) return;
       setPdfTarget({ ...location, nonce: ++nonce.current });
       onShowPdfRef.current();
     } catch (error) {
-      if (!isAbortError(error) && !options.silent) onErrorRef.current(errorMessage(error));
+      if (request.current === controller && !isAbortError(error) && !options.silent) onErrorRef.current(errorMessage(error));
     } finally {
       if (request.current === controller) request.current = null;
     }
   };
 
-  const syncPdfToSource = async (page: number, x: number, y: number) => {
+  const syncPdfToSource = async (pdf: CompilationRunIdentity | null, page: number, x: number, y: number) => {
     // A PDF belongs to the selected root document, regardless of which source
     // tab is currently active. SyncTeX returns the actual source path, which
     // may be an included TeX file rather than the root itself.
+    if (!matchesSelection(pdf)) return;
     const requestedFromFile = activeFileRef.current;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     try {
       const location = await api<{ path: string; line: number; column: number }>(
-        `/api/projects/${projectId}/sync/source?mainFile=${encodeURIComponent(mainFile)}&page=${page}&x=${x}&y=${y}`,
+        `/api/projects/${projectId}/sync/source?mainFile=${encodeURIComponent(mainFile)}&run=${encodeURIComponent(pdf.runId)}&page=${page}&x=${x}&y=${y}`,
         { signal: controller.signal }
       );
       if (request.current !== controller || activeFileRef.current !== requestedFromFile) return;
       onShowEditorRef.current();
       jumpToSource(location.path, location.line, location.column);
     } catch (error) {
-      if (!isAbortError(error)) onErrorRef.current(errorMessage(error));
+      if (request.current === controller && activeFileRef.current === requestedFromFile && !isAbortError(error)) onErrorRef.current(errorMessage(error));
     } finally {
       if (request.current === controller) request.current = null;
     }
   };
 
-  const syncVisiblePdfToSource = () => {
-    return pdfViewport ? syncPdfToSource(pdfViewport.page, pdfViewport.x, pdfViewport.y) : Promise.resolve();
+  const syncVisiblePdfToSource = (pdf: CompilationRunIdentity | null) => {
+    return pdfViewport ? syncPdfToSource(pdf, pdfViewport.page, pdfViewport.x, pdfViewport.y) : Promise.resolve();
   };
 
   const clearPdfViewport = () => {

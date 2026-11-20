@@ -65,23 +65,31 @@ console.log("Fake latexmk completed.");
 const synctexSource = `#!/bin/sh
 set -e
 
-case "$1" in
+mode="$1"
+location=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    location="$1"
+    break
+  fi
+  shift
+done
+if [ "$mode" = edit ]; then
+  pdfPath="$(printf '%s' "$location" | sed 's/^.*:[^:]*:[^:]*://')"
+else
+  pdfPath="$location"
+fi
+# Test documents can mark an otherwise fixed mapping to identify which
+# immutable PDF the caller passed to SyncTeX.
+marker="$(sed -n 's/^% synctex-test-location: \\([0-9][0-9]*\\)$/\\1/p' "$pdfPath")"
+case "$mode" in
   view)
-    printf '%s\\n' 'Page:1' 'x:42' 'y:84' 'W:10' 'H:12'
+    printf '%s\\n' "Page:\${marker:-1}" 'x:42' 'y:84' 'W:10' 'H:12'
     ;;
   edit)
-    location=""
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = "-o" ]; then
-        shift
-        location="$1"
-        break
-      fi
-      shift
-    done
-    pdfPath="$(printf '%s' "$location" | sed 's/^.*:[^:]*:[^:]*://')"
     stem="$(basename "$pdfPath" .pdf)"
-    printf 'Input:%s/%s.tex\\nLine:4\\nColumn:1\\n' "$(pwd)" "$stem"
+    printf 'Input:%s/%s.tex\\nLine:%s\\nColumn:1\\n' "$(pwd)" "$stem" "\${marker:-4}"
     ;;
   *)
     printf '%s\\n' 'unsupported fake synctex operation' >&2

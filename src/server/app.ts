@@ -18,6 +18,7 @@ import {
   pruneOrphanedCompileRuns,
   reconcilePublishedCompileRuns
 } from "./compiler.js";
+import { compileRunPdf } from "./compileArtifacts.js";
 import { CollaborationService } from "./collaboration.js";
 import { ProjectMutationCoordinator } from "./projectMutations.js";
 import { ProjectDeletionCleanup } from "./projectDeletionCleanup.js";
@@ -207,9 +208,9 @@ export async function buildApp(
     finished_at = ? WHERE status IN ('queued', 'running')`).run(now());
   const pruneCompileRuns = (projectId: string): void => {
     const keep = new Set(listPublishedCompileArtifacts(config, projectId).map((artifact) => artifact.runId));
-    const completed = db.prepare(`SELECT id, main_file FROM compile_runs
+    const completed = db.prepare(`SELECT id, main_file, status FROM compile_runs
       WHERE project_id = ? AND status NOT IN ('queued', 'running')
-      ORDER BY created_at DESC, rowid DESC`).all(projectId) as Array<{ id: string; main_file: string }>;
+      ORDER BY created_at DESC, rowid DESC`).all(projectId) as Array<{ id: string; main_file: string; status: string }>;
     const latestTargets = new Set<string>();
     for (const run of completed) {
       if (!latestTargets.has(run.main_file)) {
@@ -219,7 +220,13 @@ export async function buildApp(
     }
     const remove = db.prepare("DELETE FROM compile_runs WHERE id = ?");
     db.transaction(() => {
-      for (const run of completed) if (!keep.has(run.id)) remove.run(run.id);
+      for (const run of completed) {
+        // The retired bundle can still serve open viewers during the cleanup
+        // grace period. Keep its project/root/status binding until it is gone.
+        if (!keep.has(run.id) && !(run.status === "succeeded" && compileRunPdf(config, projectId, run.main_file, run.id))) {
+          remove.run(run.id);
+        }
+      }
     })();
   };
   // No second TexLite instance can mutate the data directory while the
@@ -231,8 +238,8 @@ export async function buildApp(
     history.pruneRestoreBackups(row.id);
     history.enforceRetention(row.id);
     editHistory.enforceRetention(row.id);
-    pruneCompileRuns(row.id);
     pruneOrphanedCompileRuns(config, row.id, (err, directory) => app.log.warn({ err, directory }, "Could not remove a retired compile run"));
+    pruneCompileRuns(row.id);
   }
   app.addHook("onClose", async () => {
     eventLoopDelay.disable();

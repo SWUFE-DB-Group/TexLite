@@ -1254,7 +1254,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     return () => window.clearTimeout(timer);
   }, [activeFile, comments, sidePanel, targetMention]);
   const {
-    pdfUrl, pdfCompiledAt, pdfSizeBytes, pdfLoadingMode, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
+    pdfUrl, pdfIdentity, pdfCompiledAt, pdfSizeBytes, pdfLoadingMode, pdfLoading, compileLog, compileDiagnostics, compileOutcome,
     artifacts, artifactPreview, artifactLoading, editorNotice, localCompiling, cancelling, cleaning,
     compile, cancelCompile, cleanCompile, viewArtifact, pdfDisplayed
   } = useProjectCompilation({
@@ -1273,11 +1273,11 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     onPreviewTab: selectPreviewTab,
     onError: setError,
     onCompileStart: () => { setError(""); setNotice(""); },
-    onCompileSuccess: () => {
+    onCompileSuccess: (pdf) => {
       const path = activeFileRef.current;
       if (path) {
         const cursor = sourceCursorStore.getCursor();
-        void syncSourceToPdf(path, cursor.line, cursor.column, { silent: true });
+        void syncSourceToPdf(pdf, path, cursor.line, cursor.column, { silent: true });
       }
     },
     onPdfChanged: clearPdfViewport
@@ -1453,7 +1453,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     const path = activeFileRef.current;
     if (!path) return Promise.resolve();
     const cursor = sourceCursorStore.getCursor();
-    return syncSourceToPdf(path, cursor.line, cursor.column);
+    return syncSourceToPdf(pdfIdentity, path, cursor.line, cursor.column);
   };
   const figurePdf: WorkspaceFigurePdf | null = standaloneFigure && !readOnly ? {
     state: tikzPdf.state?.path === activeFile ? tikzPdf.state : null,
@@ -1587,7 +1587,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         onError={setError}
         uploadFiles={uploadFiles} refreshFiles={() => { void loadFiles().catch((error) => setNotice(errorMessage(error))); }} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder} copyPath={copyPath}
         onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
-        jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }} syncSourceToPdf={phone ? undefined : syncSourceToPdf} onWordCount={(mode) => void requestWordCount(mode)}
+        jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }}
+        syncSourceToPdf={phone || !pdfIdentity ? undefined : (path, line, column) => syncSourceToPdf(pdfIdentity, path, line, column)} onWordCount={(mode) => void requestWordCount(mode)}
       />}
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel figurePdf={figurePdf}
@@ -1635,9 +1636,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         readOnly={readOnly} collaborationSynced={collaborationSynced} workspaceLayout={workspaceLayout} showSyncResize={!drawioPath && showEditor && showPreview}
         selectPreviewTab={choosePreviewSurface} markdown={markdownPreview}
         changeWorkspaceLayout={changeWorkspaceLayout} onSetPdfViewport={setPdfViewport} onResetPdfViewport={resetPdfViewport} onPdfDisplayed={pdfDisplayed}
-        syncVisiblePdfToSource={syncVisiblePdfToSource}
+        syncVisiblePdfToSource={() => syncVisiblePdfToSource(pdfIdentity)}
         syncCurrentSourceToPdf={syncCurrentSourceToPdf}
-        syncPdfToSource={syncPdfToSource} canSyncWithPdf={!drawioPath && canSyncWithPdf} canSyncPdfToSource={!drawioPath && canSyncPdfToSource} files={files}
+        syncPdfToSource={(page, x, y) => syncPdfToSource(pdfIdentity, page, x, y)}
+        canSyncWithPdf={!drawioPath && canSyncWithPdf} canSyncPdfToSource={!drawioPath && canSyncPdfToSource} files={files}
         jumpToSource={jumpToSource} onSetCleanMode={setCleanMode}
         viewArtifact={viewArtifact}
       />}

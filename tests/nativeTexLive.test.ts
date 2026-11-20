@@ -58,7 +58,7 @@ describe.runIf(process.env.TEXLITE_TEST_NATIVE_TEXLIVE === "1")("native TeX Live
     expect(cached.ok, cached.log).toBe(true);
     expect(cached.log).toMatch(/nothing to do/i);
     publishCompileArtifacts(config, projectId, second, cached);
-    const artifact = syncArtifacts(config, projectId, "main.tex");
+    const artifact = syncArtifacts(config, projectId, "main.tex", second.runId);
     expect(artifact).toEqual({ source: second.sourceDir, pdf: cached.pdfPath, synctex: cached.synctexPath });
     expect(artifact?.pdf).toBeTruthy();
     expect(artifact?.synctex).toBeTruthy();
@@ -80,7 +80,7 @@ describe.runIf(process.env.TEXLITE_TEST_NATIVE_TEXLIVE === "1")("native TeX Live
     expect(result.diagnostics.errors, result.log).toContainEqual(expect.objectContaining({
       phase: "xelatex", file: expect.stringContaining(chapter), line: 2, message: "Undefined control sequence."
     }));
-    expect(syncArtifacts(config, projectId, "main.tex")).toBeNull();
+    expect(syncArtifacts(config, projectId, "main.tex", run.runId)).toBeNull();
   }, 35_000);
 
   it("cancels a running latexmk before it can publish anything", async () => {
@@ -105,7 +105,7 @@ describe.runIf(process.env.TEXLITE_TEST_NATIVE_TEXLIVE === "1")("native TeX Live
       expect(await Promise.race([started, compile.then(() => false)])).toBe(true);
       controller.abort();
       expect(await compile).toMatchObject({ ok: false, cancelled: true, pdfPath: null });
-      expect(syncArtifacts(config, projectId, "main.tex")).toBeNull();
+      expect(syncArtifacts(config, projectId, "main.tex", run.runId)).toBeNull();
     } finally {
       controller.abort();
       await started;

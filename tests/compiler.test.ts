@@ -297,7 +297,7 @@ describe("reliable project compilation", () => {
     expect(publishedCompileArtifacts(config, projectId, "main.tex")).toBeNull();
     expect(listPublishedCompileArtifacts(config, projectId)).toEqual([]);
     expect(availablePdf(config, projectId, "main.tex")).toBeNull();
-    expect(syncArtifacts(config, projectId, "main.tex")).toBeNull();
+    expect(syncArtifacts(config, projectId, "main.tex", randomUUID())).toBeNull();
     expect(fs.readFileSync(path.join(source, "main.tex"), "utf8")).toBe("source\n");
 
     publishCompileArtifacts(config, projectId, snapshot, {
@@ -312,7 +312,7 @@ describe("reliable project compilation", () => {
     });
     expect(listPublishedCompileArtifacts(config, projectId)).toHaveLength(1);
     expect(availablePdf(config, projectId, "main.tex")).toEqual({ path: pdf, version: snapshot.runId });
-    expect(syncArtifacts(config, projectId, "main.tex")).toEqual({ source: snapshot.sourceDir, pdf, synctex });
+    expect(syncArtifacts(config, projectId, "main.tex", snapshot.runId)).toEqual({ source: snapshot.sourceDir, pdf, synctex });
     expect(availablePdf(config, projectId, "appendix.tex")).toBeNull();
   });
 

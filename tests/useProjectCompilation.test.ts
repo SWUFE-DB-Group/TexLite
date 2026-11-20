@@ -13,7 +13,7 @@ vi.mock("react-i18next", async (importOriginal) => {
 });
 
 type Options = Parameters<typeof useProjectCompilation>[0];
-type CompileResult = LatestCompileResponse & { runId: string; ok: boolean; skipped?: boolean; cancelled?: boolean; log: string; diagnostics: { warnings: []; errors: [] } };
+type CompileResult = LatestCompileResponse & { runId: string; ok: boolean; skipped?: boolean; cancelled?: boolean; stale?: boolean; log: string; diagnostics: { warnings: []; errors: [] } };
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (reason: Error) => void;
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
@@ -459,7 +459,7 @@ describe("compilation selection and request lifetimes", () => {
     await finishCompile({ ...result("promoted-root"), mainFile: "other.tex" });
     expect(current.pdfUrl).toBe("/pdf?run=promoted-root");
     expect(current.localCompiling).toBe(false);
-    expect(options.onCompileSuccess).toHaveBeenCalledOnce();
+    expect(options.onCompileSuccess).toHaveBeenCalledExactlyOnceWith({ projectId: options.projectId, mainFile: "other.tex", runId: "promoted-root" });
   });
 
   it("ignores an earlier shared lookup without hiding the later lookup's loading state", async () => {
@@ -775,6 +775,20 @@ describe("compile completion and PDF priority", () => {
     expect(requests("/compile/latest")).toHaveLength(0);
     expect(options.onCompileSuccess).toHaveBeenCalledOnce();
   });
+
+  it.each([["local", true], ["shared", true], ["local", false], ["shared", false]] as const)(
+    "shows a stale PDF notice on a %s completion only when stale is %s", async (source, stale) => {
+      await prepare();
+      if (source === "local") {
+        await startCompile();
+        await finishCompile({ ...result(), stale });
+      } else {
+        latest = result();
+        await render({ sharedState: { ...sharedState(), stale } });
+      }
+      expect(current.editorNotice).toBe(stale ? "editor.compileSnapshotStale" : "");
+    }
+  );
 
   it("recovers a lost local response through the shared completion", async () => {
     await prepare(); await startCompile(); latest = result();

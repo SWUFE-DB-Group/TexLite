@@ -94,6 +94,9 @@ class CompileSnapshotBusyError extends Error {
 
 export function registerCompileRoutes(app: FastifyInstance, context: CompileRouteContext): void {
   const { config, db, collaboration, projectMutations, compileCoordinator, metrics, pruneCompileRuns } = context;
+  const syncRun = db.prepare(`SELECT 1 FROM compile_runs WHERE id = ? AND project_id = ? AND main_file = ? AND status = 'succeeded'`);
+  const syncArtifactsForRun = (projectId: string, mainFile: string, runId: string) =>
+    syncRun.get(runId, projectId, mainFile) ? syncArtifacts(config, projectId, mainFile, runId) : null;
 
   app.get("/api/projects/:id/compile/latest", async (request, reply) => {
     const user = requireUser(request, reply, db);
@@ -108,12 +111,12 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       run.requested_by, user.username AS requested_by_username, user.display_name AS requested_by_name
       FROM compile_runs run LEFT JOIN users user ON user.id = run.requested_by
       WHERE run.project_id = ? AND run.main_file = ?
-      ORDER BY CASE run.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END, run.created_at DESC LIMIT 1`).get(id, mainFile) as {
+      ORDER BY CASE run.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END, run.created_at DESC, run.rowid DESC LIMIT 1`).get(id, mainFile) as {
         id: string; status: string; log: string; created_at: string; finished_at: string | null;
         requested_by: string | null; requested_by_username: string | null; requested_by_name: string | null;
       } | undefined;
     const latestSuccess = db.prepare(`SELECT id, finished_at FROM compile_runs
-      WHERE project_id = ? AND main_file = ? AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1`).get(id, mainFile) as {
+      WHERE project_id = ? AND main_file = ? AND status = 'succeeded' ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(id, mainFile) as {
         id: string; finished_at: string | null;
       } | undefined;
     const pdf = availablePdf(config, id, mainFile);
@@ -305,7 +308,9 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
     if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const query = request.query as { mainFile?: string; path?: string; line?: string; column?: string };
+    const query = request.query as { mainFile?: string; run?: unknown; path?: string; line?: string; column?: string };
+    const runId = query.run;
+    if (typeof runId !== "string" || !/^[a-f0-9-]{36}$/i.test(runId)) return apiError(reply, 400, "REQUEST_INVALID");
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
     if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const sourcePath = safeRelativePath(query.path ?? "");
@@ -318,7 +323,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       if (!fs.existsSync(resolveSourcePath(config, id, sourcePath))) {
         return apiError(reply, 404, "SOURCE_FILE_NOT_FOUND");
       }
-      const artifacts = syncArtifacts(config, id, mainFile);
+      const artifacts = syncArtifactsForRun(id, mainFile, runId);
       if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE");
       return await sourceToPdf(artifacts.source, artifacts.pdf, sourcePath, line, column);
     }, { preflight: () => {
@@ -332,7 +337,9 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const { id } = request.params as { id: string };
     const project = accessibleProject(db, id, user);
     if (!project) return apiError(reply, 404, "PROJECT_NOT_FOUND");
-    const query = request.query as { mainFile?: string; page?: string; x?: string; y?: string };
+    const query = request.query as { mainFile?: string; run?: unknown; page?: string; x?: string; y?: string };
+    const runId = query.run;
+    if (typeof runId !== "string" || !/^[a-f0-9-]{36}$/i.test(runId)) return apiError(reply, 400, "REQUEST_INVALID");
     const mainFile = compileMainFile(config, id, project.main_file, query.mainFile);
     if (!mainFile) return apiError(reply, 400, "MAIN_DOCUMENT_INVALID");
     const page = Number(query.page);
@@ -342,7 +349,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       return apiError(reply, 400, "SYNC_PDF_INVALID");
     }
     return await projectMutations.runConsistentRead(id, async () => {
-      const artifacts = syncArtifacts(config, id, mainFile);
+      const artifacts = syncArtifactsForRun(id, mainFile, runId);
       if (!artifacts) return apiError(reply, 409, "SYNCTEX_NOT_AVAILABLE");
       const location = await pdfToSource(artifacts.source, artifacts.pdf, page, x, y);
       const sourceDirectory = path.resolve(artifacts.source);
@@ -615,7 +622,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
           // The current queued row is intentionally excluded. It is a request
           // probe, not evidence that the last successful compile is stale.
           const latestRun = db.prepare(`SELECT id, status FROM compile_runs
-            WHERE project_id = ? AND main_file = ? AND id <> ? ORDER BY created_at DESC LIMIT 1`).get(id, mainFile, runId) as {
+            WHERE project_id = ? AND main_file = ? AND id <> ? ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(id, mainFile, runId) as {
               id: string; status: string;
             } | undefined;
           const activeRun = db.prepare(`SELECT 1 AS active FROM compile_runs
@@ -765,7 +772,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
     const timings = result.timings
       ? { snapshotMs: result.snapshotMs ?? 0, ...result.timings, requestMs }
       : { snapshotMs: result.snapshotMs ?? 0, requestMs };
-    const responsePdf = result.ok ? availablePdf(config, id, mainFile) : null;
+    const responsePdf = result.ok ? compileRunPdf(config, id, mainFile, result.runId) : null;
     const pdfMetadata = pdfResponseMetadata(config, responsePdf?.path ?? null);
     reply.header("Server-Timing", [
       `snapshot;dur=${timingDuration(result.snapshotMs ?? 0)}`,
@@ -779,6 +786,7 @@ export function registerCompileRoutes(app: FastifyInstance, context: CompileRout
       mainFile, runId: result.runId, ok: result.ok, cancelled: result.cancelled === true, skipped: result.skipped === true, log: result.log, diagnostics: result.diagnostics,
       pdfUrl: result.ok ? compilePdfUrl(config, id, mainFile, result.runId) : null,
       pdfCompiledAt: result.ok ? completed?.finished_at ?? null : null,
+      stale: result.stale === true,
       ...pdfMetadata,
       timings
     };

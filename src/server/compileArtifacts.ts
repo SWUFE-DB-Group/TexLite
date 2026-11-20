@@ -50,10 +50,16 @@ export function compileRunPdf(
 export function syncArtifacts(
   config: Config,
   projectId: string,
-  mainFile: string
+  mainFile: string,
+  runId: string
 ): { source: string; pdf: string; synctex: string } | null {
-  const published = publishedCompileArtifacts(config, projectId, mainFile);
-  return published?.synctex ? { source: published.source, pdf: published.pdf, synctex: published.synctex } : null;
+  const artifact = compileRunPdf(config, projectId, mainFile, runId);
+  if (!artifact) return null;
+  const output = path.dirname(artifact.path);
+  const source = path.join(output, "..", "source");
+  const synctex = path.join(output, `${texFileStem(mainFile)}.synctex.gz`);
+  if (!fs.statSync(source, { throwIfNoEntry: false })?.isDirectory() || !regularFileStat(synctex)) return null;
+  return { source, pdf: artifact.path, synctex };
 }
 
 export function compileMainFile(

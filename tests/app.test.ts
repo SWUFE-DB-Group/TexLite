@@ -14,7 +14,7 @@ import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 import { hashPassword, MIN_PASSWORD_LENGTH } from "../src/server/security.js";
-import { createProjectFiles, sourceRoot } from "../src/server/files.js";
+import { createProjectFiles, outputRoot, sourceRoot } from "../src/server/files.js";
 import { ProjectHistoryService } from "../src/server/history.js";
 import { ProjectMutationCoordinator } from "../src/server/projectMutations.js";
 import { DrawioLocks } from "../src/server/drawioLocks.js";
@@ -734,7 +734,6 @@ It works.
     expect(incrementalCompile.json().ok, incrementalCompile.json().log).toBe(true);
     expect(incrementalCompile.json().runId).not.toBe(compiled.json().runId);
     expect(incrementalCompile.headers["server-timing"]).toContain("cache;dur=");
-    expect((db.prepare("SELECT COUNT(*) AS count FROM compile_runs WHERE project_id = ?").get(project.id) as { count: number }).count).toBe(1);
     const cacheRoot = path.join(config.projectsDir, project.id, "output", ".texlite", "cache");
     expect(fs.readdirSync(cacheRoot)).toHaveLength(1);
     const targetRoot = path.join(config.projectsDir, project.id, "output", ".texlite", "targets");
@@ -769,13 +768,13 @@ It works.
     expect(downloadedArtifact.statusCode).toBe(200);
     expect(downloadedArtifact.headers["content-disposition"]).toContain("attachment");
     const pdfLocation = await app.inject({
-      method: "GET", url: `/api/projects/${project.id}/sync/pdf?path=main.tex&line=4&column=1`, headers: { cookie }
+      method: "GET", url: `/api/projects/${project.id}/sync/pdf?run=${manifest.runId}&path=main.tex&line=4&column=1`, headers: { cookie }
     });
     expect(pdfLocation.statusCode, pdfLocation.body).toBe(200);
     expect(pdfLocation.json()).toMatchObject({ page: 1 });
     const sourceLocation = await app.inject({
       method: "GET",
-      url: `/api/projects/${project.id}/sync/source?page=${pdfLocation.json().page}&x=${pdfLocation.json().x}&y=${pdfLocation.json().y}`,
+      url: `/api/projects/${project.id}/sync/source?run=${manifest.runId}&page=${pdfLocation.json().page}&x=${pdfLocation.json().x}&y=${pdfLocation.json().y}`,
       headers: { cookie }
     });
     expect(sourceLocation.statusCode, sourceLocation.body).toBe(200);
@@ -843,6 +842,68 @@ It works.
     expect((await app.inject({ method: "GET", url: `/api/projects/${project.id}/pdf`, headers: { cookie } })).statusCode).toBe(404);
   }, 40_000);
 
+  it("uses the displayed PDF run for both SyncTeX directions after a newer PDF is published", async () => {
+    const headers = { cookie };
+    const { project } = (await app.inject({ method: "POST", url: "/api/projects", headers, payload: { name: "SyncTeX versions" } })).json();
+    const url = `/api/projects/${project.id}`;
+    const compile = async (location: number) => {
+      const content = `\\documentclass{article}\n\\begin{document}\n% synctex-test-location: ${location}\nText.\n\\end{document}\n`;
+      expect((await app.inject({ method: "PUT", url: url + "/file", headers, payload: { path: "main.tex", content } })).statusCode).toBe(200);
+      const response = await app.inject({ method: "POST", url: url + "/compile", headers });
+      expect(response.json()).toMatchObject({ ok: true, stale: false });
+      return response.json().runId as string;
+    };
+    const first = await compile(2);
+    const second = await compile(6);
+    expect(second).not.toBe(first);
+    const forward = (run: string) => app.inject({ method: "GET", headers, url: `${url}/sync/pdf?run=${run}&path=main.tex&line=4&column=1` });
+    const reverse = (run: string) => app.inject({ method: "GET", headers, url: `${url}/sync/source?run=${run}&page=1&x=42&y=84` });
+    for (const [run, location] of [[first, 2], [second, 6]] as const) {
+      const view = await forward(run);
+      expect(view.statusCode, view.body).toBe(200);
+      expect(view.json().page).toBe(location);
+      const edit = await reverse(run);
+      expect(edit.statusCode, edit.body).toBe(200);
+      expect(edit.json()).toMatchObject({ path: "main.tex", line: location });
+    }
+    const firstOutput = path.join(outputRoot(config, project.id), ".texlite", "runs", first, "output");
+    fs.unlinkSync(path.join(firstOutput, "main.synctex.gz"));
+    for (const response of [await forward(first), await reverse(first)]) {
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe("SYNCTEX_NOT_AVAILABLE");
+    }
+    expect((await forward(second)).json().page).toBe(6);
+    expect((await app.inject({ method: "GET", headers, url: `${url}/sync/source?page=1&x=42&y=84` })).statusCode).toBe(400);
+    // Simulate retirement of the bundle, then ensure the next compile request
+    // drops its authorization row rather than accumulating run history.
+    fs.unlinkSync(path.join(firstOutput, "main.pdf"));
+    expect((await app.inject({ method: "POST", url: url + "/compile", headers })).json()).toMatchObject({ skipped: true, runId: second });
+    expect(db.prepare("SELECT id FROM compile_runs WHERE project_id = ?").all(project.id)).toEqual([{ id: second }]);
+  });
+
+  it("reports a stale successful compile to the requesting client and its collaborators", async () => {
+    const headers = { cookie };
+    const { project } = (await app.inject({ method: "POST", url: "/api/projects", headers, payload: { name: "Stale compile" } })).json();
+    const originalSignal = CollaborationService.prototype.signalCompileState;
+    const originalPending = CollaborationService.prototype.hasPendingChanges;
+    let editedDuringRun = false;
+    const signal = vi.spyOn(CollaborationService.prototype, "signalCompileState").mockImplementation(function (this: CollaborationService, id, state) {
+      if (id === project.id && state.status === "running") editedDuringRun = true;
+      originalSignal.call(this, id, state);
+    });
+    const pending = vi.spyOn(CollaborationService.prototype, "hasPendingChanges").mockImplementation(function (this: CollaborationService, id) {
+      return (id === project.id && editedDuringRun) || originalPending.call(this, id);
+    });
+    try {
+      const response = await app.inject({ method: "POST", url: `/api/projects/${project.id}/compile`, headers });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({ ok: true, stale: true });
+      expect(signal).toHaveBeenCalledWith(project.id, expect.objectContaining({
+        status: "succeeded", runId: response.json().runId, stale: true
+      }));
+    } finally { pending.mockRestore(); signal.mockRestore(); }
+  });
+
   it("keeps a saved unavailable engine but rejects using or selecting it", async () => {
     const headers = { cookie };
     const created = await app.inject({ method: "POST", url: "/api/projects", headers, payload: { name: "Unavailable engine fixture" } });
@@ -902,7 +963,7 @@ Standalone document.
       .toEqual([{ main_file: "standalone.tex" }]);
 
     const includedLocation = await app.inject({
-      method: "GET", url: `/api/projects/${projectId}/sync/pdf?mainFile=standalone.tex&path=chapter.tex&line=1&column=1`,
+      method: "GET", url: `/api/projects/${projectId}/sync/pdf?mainFile=standalone.tex&run=${compiled.json().runId}&path=chapter.tex&line=1&column=1`,
       headers: { cookie }
     });
     expect(includedLocation.statusCode, includedLocation.body).toBe(200);
@@ -1015,13 +1076,15 @@ Standalone document.
       'import fs from "node:fs";',
       'import path from "node:path";',
       'if (fs.readFileSync("main.tex", "utf8").includes("% fail this compile")) {',
-      '  console.error("main.tex:7: LaTeX Error: Failed fixture.");',
+      '  fs.writeSync(2, "main.tex:7: LaTeX Error: Failed fixture.\\n");',
       '  process.exit(1);',
       '}',
       'const output = process.argv.find(arg => arg.startsWith("-outdir=")).slice(8);',
       'fs.writeFileSync(path.join(output, "main.pdf"), "%PDF-fixture");',
       'fs.writeFileSync(path.join(output, "main.log"), "This is pdfTeX, Version 3.141592653\\nPackage test Warning: Persistent warning.\\n");',
-      "console.log(" + JSON.stringify(transcript) + ");"
+      // Write the fixture's bytes directly to the inherited pipe. Node's
+      // console can swallow socket-write failures in restricted runners.
+      "fs.writeSync(1, " + JSON.stringify(transcript + "\n") + ");"
     ].join("\n"), { mode: 0o700 });
     config.latexmk = compiler;
     try {
@@ -1031,9 +1094,9 @@ Standalone document.
       expect(compiled.json()).toMatchObject({ ok: true, log: expect.stringContaining("Citation 'resolved'"),
         diagnostics: { warnings: [{ message: "Persistent warning." }], errors: [] } });
       const latest = await app.inject({ method: "GET", url: url + "/latest", headers: { cookie } });
-      expect(latest.json().latestRun).toMatchObject({ id: compiled.json().runId, diagnostics: compiled.json().diagnostics });
+      expect(latest.json().latestRun).toMatchObject({ id: compiled.json().runId, log: compiled.json().log, diagnostics: compiled.json().diagnostics });
       const skipped = await app.inject({ method: "POST", url, headers: { cookie } });
-      expect(skipped.json()).toMatchObject({ ok: true, skipped: true, diagnostics: compiled.json().diagnostics });
+      expect(skipped.json()).toMatchObject({ ok: true, skipped: true, log: compiled.json().log, diagnostics: compiled.json().diagnostics });
 
       const updated = await app.inject({ method: "PUT", url: url.replace(/compile$/, "file"), headers: { cookie },
         payload: { path: "main.tex", content: "\\documentclass{article}\n% fail this compile\n\\begin{document}\nHi\n\\end{document}" } });

@@ -1438,7 +1438,9 @@ Compilation follows this sequence:
 5. A successful PDF, SyncTeX file, log, and generated artifacts are copied into
    an immutable run bundle. A small atomic manifest switch publishes it as the
    latest result; an older bundle is retained briefly so an already-open PDF
-   request can finish.
+   request can finish. Both directions of SyncTeX look up the immutable run
+   associated with the PDF being navigated. If that run has been removed,
+   the lookup reports missing SyncTeX data instead of using another run.
 
 The previous successful PDF remains visible during a new compile. The latest
 published bundle is recovered after a restart independently of collaboration

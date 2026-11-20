@@ -12,6 +12,7 @@ let current: ReturnType<typeof useSyncTeX>;
 let root: Root | null;
 let container: HTMLDivElement;
 let options: HookOptions;
+const pdf = { projectId: "paper", mainFile: "main.tex", runId: "run-a" };
 
 function Harness(props: HookOptions) {
   current = useSyncTeX(props);
@@ -54,9 +55,9 @@ describe("source to PDF navigation", () => {
   it("looks up an included source against the selected root without opening another file", async () => {
     vi.mocked(api).mockResolvedValue({ page: 7, x: 97, y: 367 });
     await render();
-    await act(async () => { await current.syncSourceToPdf(options.activeFile, 8, 1); });
+    await act(async () => { await current.syncSourceToPdf(pdf, options.activeFile, 8, 1); });
     expect(api).toHaveBeenCalledWith(
-      `/api/projects/paper/sync/pdf?mainFile=main.tex&path=${encodeURIComponent(options.activeFile)}&line=8&column=1`,
+      `/api/projects/paper/sync/pdf?mainFile=main.tex&run=run-a&path=${encodeURIComponent(options.activeFile)}&line=8&column=1`,
       { signal: expect.any(AbortSignal) }
     );
     expect(current.pdfTarget).toMatchObject({ page: 7, x: 97, y: 367 });
@@ -66,14 +67,14 @@ describe("source to PDF navigation", () => {
 
   it("does not request mappings for non-TeX files", async () => {
     await render({ activeFile: "refs.bib" });
-    await current.syncSourceToPdf(options.activeFile, 1, 1);
+    await current.syncSourceToPdf(pdf, options.activeFile, 1, 1);
     expect(api).not.toHaveBeenCalled();
   });
 
   it("leaves the preview unchanged when a source line has no typeset location", async () => {
     vi.mocked(api).mockResolvedValue(null);
     await render();
-    await act(async () => { await current.syncSourceToPdf(options.activeFile, 1, 1); });
+    await act(async () => { await current.syncSourceToPdf(pdf, options.activeFile, 1, 1); });
     expect(current.pdfTarget).toBeNull();
     expect(options.onShowPdf).not.toHaveBeenCalled();
     expect(options.onError).not.toHaveBeenCalled();
@@ -83,7 +84,7 @@ describe("source to PDF navigation", () => {
     let resolve!: (location: { page: number; x: number; y: number }) => void;
     vi.mocked(api).mockReturnValue(new Promise((done) => { resolve = done; }));
     await render();
-    const pending = current.syncSourceToPdf(options.activeFile, 8, 1);
+    const pending = current.syncSourceToPdf(pdf, options.activeFile, 8, 1);
     const signal = vi.mocked(api).mock.calls[0][1]?.signal;
     await render({ mainFile: "other-root.tex" });
     expect(signal?.aborted).toBe(true);
@@ -99,9 +100,9 @@ describe("visible PDF to source navigation", () => {
     vi.mocked(api).mockReturnValue(new Promise((done) => { resolve = done; }));
     await render();
     await act(async () => { current.setPdfViewport({ page: 7, x: 97, y: 367 }); });
-    const pending = current.syncVisiblePdfToSource();
+    const pending = current.syncVisiblePdfToSource(pdf);
     expect(api).toHaveBeenCalledWith(
-      "/api/projects/paper/sync/source?mainFile=main.tex&page=7&x=97&y=367",
+      "/api/projects/paper/sync/source?mainFile=main.tex&run=run-a&page=7&x=97&y=367",
       { signal: expect.any(AbortSignal) }
     );
     expect(options.onShowEditor).not.toHaveBeenCalled();
@@ -113,11 +114,11 @@ describe("visible PDF to source navigation", () => {
 
   it("does not switch views without a visible position or when the request fails", async () => {
     await render();
-    await current.syncVisiblePdfToSource();
+    await current.syncVisiblePdfToSource(pdf);
     expect(api).not.toHaveBeenCalled();
     vi.mocked(api).mockRejectedValue(new Error("No source mapping"));
     await act(async () => { current.setPdfViewport({ page: 1, x: 10, y: 20 }); });
-    await act(async () => { await current.syncVisiblePdfToSource(); });
+    await act(async () => { await current.syncVisiblePdfToSource(pdf); });
     expect(options.onShowEditor).not.toHaveBeenCalled();
     expect(options.onOpenSourceFile).not.toHaveBeenCalled();
     expect(options.onError).toHaveBeenCalledOnce();
@@ -128,10 +129,26 @@ describe("visible PDF to source navigation", () => {
     vi.mocked(api).mockReturnValue(new Promise((done) => { resolve = done; }));
     await render();
     await act(async () => { current.setPdfViewport({ page: 2, x: 15, y: 25 }); });
-    const pending = current.syncVisiblePdfToSource();
+    const pending = current.syncVisiblePdfToSource(pdf);
     await render({ mainFile: "other.tex" });
     await act(async () => { resolve({ path: "chapters/old.tex", line: 8, column: 1 }); await pending; });
     expect(options.onShowEditor).not.toHaveBeenCalled();
+    expect(current.sourceJump).toBeNull();
+  });
+
+  it("drops the previous PDF's coordinates and in-flight lookup when a new run is selected", async () => {
+    let resolve!: (location: { path: string; line: number; column: number }) => void;
+    vi.mocked(api).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await render();
+    await act(async () => { current.setPdfViewport({ page: 2, x: 15, y: 25 }); });
+    const pending = current.syncVisiblePdfToSource(pdf);
+    const signal = vi.mocked(api).mock.calls[0][1]?.signal;
+    await act(async () => { current.clearPdfViewport(); });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { resolve({ path: "chapters/old.tex", line: 8, column: 1 }); await pending; });
+    await current.syncVisiblePdfToSource({ ...pdf, runId: "run-b" });
+    expect(api).toHaveBeenCalledOnce();
+    expect(options.onOpenSourceFile).not.toHaveBeenCalled();
     expect(current.sourceJump).toBeNull();
   });
 });

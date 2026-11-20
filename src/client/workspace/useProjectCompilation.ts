@@ -4,7 +4,7 @@ import { api, isAbortError } from "../api";
 import type { SharedCompileState } from "../collaboration";
 import { errorMessage } from "../errors";
 import type { Project } from "../types";
-import { CompilationResults, type CompileResponse, type LatestCompileResponse } from "./compilationResults";
+import { CompilationResults, type CompilationRunIdentity, type CompileResponse, type LatestCompileResponse } from "./compilationResults";
 import type { CompileArtifact } from "./types";
 
 export type { LatestCompileResponse } from "./compilationResults";
@@ -28,7 +28,7 @@ interface UseProjectCompilationOptions {
   onPreviewTab: (tab: PreviewTab) => void;
   onError: (message: string) => void;
   onCompileStart: () => void;
-  onCompileSuccess: () => void;
+  onCompileSuccess: (pdf: CompilationRunIdentity) => void;
   onPdfChanged: () => void;
 }
 
@@ -155,7 +155,7 @@ export function useProjectCompilation(options: UseProjectCompilationOptions) {
     if (!reception || !isCurrent(scope)) return false;
     setSnapshot(reception.snapshot);
     if (reception.pdfChanged) callbacks.current.onPdfChanged();
-    if (reception.focusPdf) callbacks.current.onCompileSuccess();
+    if (reception.focusPdf && reception.snapshot.pdf) callbacks.current.onCompileSuccess(reception.snapshot.pdf.identity);
     return true;
   };
 
@@ -466,6 +466,7 @@ export function useProjectCompilation(options: UseProjectCompilationOptions) {
   const visible = selectionVisible ? snapshot : null;
   return {
     pdfUrl: visible?.pdf?.url ?? "", pdfCompiledAt: visible?.pdf?.compiledAt ?? null,
+    pdfIdentity: visible?.pdf?.identity ?? null,
     pdfSizeBytes: visible?.pdf?.sizeBytes ?? null, pdfLoadingMode: visible?.pdf?.loadingMode ?? "full",
     pdfLoading: Boolean((initialLoad?.owner === owner && !initialLoad.controller.signal.aborted) || (sharedLoad?.owner === owner && !sharedLoad.controller.signal.aborted)),
     compileLog: visible?.run?.log ?? "", compileDiagnostics: visible?.run?.diagnostics ?? null, compileOutcome: visible?.run?.outcome ?? null,
