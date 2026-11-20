@@ -9,7 +9,8 @@ import { ApiError, api, isAbortError } from "./api";
 import { ConfirmDialog, Modal } from "./Dialog";
 import { formatCommitTime, formatVersionTitle, generateUnifiedDiff } from "./diff";
 import type { HistoryPage, HistoryStats, HistoryVersion, HistoryVersionDetail, Project } from "./types";
-import { historyTextCandidate } from "../shared/historyTracking";
+import { historyDiffCandidate } from "../shared/historyTracking";
+import { isDrawioFile } from "../shared/drawio";
 import { HistoryFilesManager } from "./HistoryFilesManager";
 import { formatDateTime } from "./dateTime";
 import { useSuccessNotice } from "./SuccessNotice";
@@ -192,11 +193,14 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
 
   const previousVersion = comparison?.previousVersion ?? null;
   const selectedFile = detail?.files.find((file) => file.path === selectedPath);
-  const selectedTextFile = selectedFile?.textContent ?? historyTextCandidate(selectedPath);
+  const canCompareSelectedFile = historyDiffCandidate(selectedPath) && selectedFile?.textContent !== false;
   const selectedFileDeleted = selectedFile?.deleted === true;
+  const changeSummary = isDrawioFile(selectedPath)
+    ? selectedFileDeleted ? "history.diagramDeleted" : "history.diagramChanged"
+    : selectedFileDeleted ? "history.nonTextFileDeleted" : "history.nonTextFileChanged";
 
   useEffect(() => {
-    if (!open || !selectedId || !selectedPath || !selectedTextFile) {
+    if (!open || !selectedId || !selectedPath || !canCompareSelectedFile) {
       preserveErrorForComparisonRef.current = false;
       setComparison(null);
       setBusy((current) => current === "compare" ? "" : current);
@@ -225,7 +229,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
         if (!controller.signal.aborted) setBusy((current) => (current === "compare" ? "" : current));
       });
     return () => controller.abort();
-  }, [open, project.id, selectedId, selectedPath, selectedTextFile, diffMode, comparisonRevision]);
+  }, [open, project.id, selectedId, selectedPath, canCompareSelectedFile, diffMode, comparisonRevision]);
 
   const changedFiles = useMemo(() => {
     if (!detail) return [];
@@ -575,7 +579,7 @@ export function HistoryDialog({ open, project, onOpenChange, onBeforeMutation }:
                 <p className="muted padded-small">{t("history.noChangedFiles")}</p>
               )}
             </div>
-            {selectedPath && !selectedTextFile ? <p className="history-attachment-change"><FileText size={14} /><span>{t(selectedFileDeleted ? "history.nonTextFileDeleted" : "history.nonTextFileChanged", { path: selectedPath })}</span></p> : <div ref={diffSectionRef} className={`history-comparison${diffFullscreen ? " is-fullscreen" : ""}`}>
+            {selectedPath && !canCompareSelectedFile ? <p className="history-attachment-change"><FileText size={14} /><span>{t(changeSummary, { path: selectedPath })}</span></p> : <div ref={diffSectionRef} className={`history-comparison${diffFullscreen ? " is-fullscreen" : ""}`}>
               {selectedPath ? <>
                 <header>
                   <div className="history-comparison-meta">

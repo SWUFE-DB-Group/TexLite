@@ -555,6 +555,8 @@
     "quickOpen": "快速打开", "quickOpenDescription": "按名称打开项目文件（Ctrl/Cmd+P）。", "filePlaceholder": "输入文件名…", "noFiles": "没有匹配的文件。"
   },
   "history": {
+    "diagramChanged": "图表已变更：{{path}}，不展示文本差异。",
+    "diagramDeleted": "图表已删除：{{path}}。",
     "manageFiles": "管理记录文件",
     "trackingDescription": "选择本项目之后的快照要记录哪些文件。",
     "trackingHint": "默认记录文本文件。按路径设置，立即保存并由协作者共享；已有快照保留。",

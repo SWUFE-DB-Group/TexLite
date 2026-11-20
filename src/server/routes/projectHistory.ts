@@ -11,7 +11,7 @@ import { HISTORY_RETENTION_DELAY_MS } from "../historyRetention.js";
 import { resolveSourcePath, safeRelativePath } from "../files.js";
 import { apiError, httpError } from "../http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "../limits.js";
-import { defaultHistoryTracking, historyTextCandidate } from "../../shared/historyTracking.js";
+import { defaultHistoryTracking, historyDiffCandidate } from "../../shared/historyTracking.js";
 import type { AgentChangeFile } from "../../shared/agentProtocol.js";
 
 /** Files with agent changes examined per request; the newest edits matter most. */
@@ -230,8 +230,7 @@ export function registerProjectHistoryRoutes(app: FastifyInstance, context: Proj
       const version = history.version(versionId, id);
       if (!manifest || !version) return apiError(reply, 404, "HISTORY_VERSION_NOT_FOUND");
       if (!manifest.files[filePath] && !version.changedPaths.includes(filePath)) return apiError(reply, 404, "HISTORY_FILE_NOT_FOUND");
-      // Never decode attachment bytes as UTF-8, including direct API calls.
-      if (!historyTextCandidate(filePath)) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
+      if (!historyDiffCandidate(filePath)) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
       const historical = manifest.files[filePath] ? history.readTextFile(id, versionId, filePath) : "";
       if (historical === null) return apiError(reply, 415, "HISTORY_FILE_PREVIEW_UNSUPPORTED", { path: filePath });
       let comparison = "";

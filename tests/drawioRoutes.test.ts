@@ -10,6 +10,7 @@ import { createSessionToken } from "../src/server/security";
 import { sourceRoot } from "../src/server/files";
 import { httpError } from "../src/server/http";
 import { DRAWIO_LOCK_HEADER, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
+import type { HistoryPageResponse } from "../src/shared/historyProtocol";
 import { createTestConfig } from "./helpers/testConfig";
 import { once } from "node:events";
 import { Socket } from "node:net";
@@ -114,6 +115,38 @@ describe("draw.io project files and PDF export", () => {
       expect(hydration).not.toHaveBeenCalled();
       expect(flush).toHaveBeenCalledWith(id);
     } finally { hydration.mockRestore(); flush.mockRestore(); }
+  });
+
+  it("records diagrams in snapshots and restores their bytes without exposing an XML diff", async () => {
+    const filePath = "figures/diagram.drawio";
+    const historyUrl = `/tools/texlite/api/projects/${id}/history`;
+    const headers = { cookie: cookies.get("owner")! };
+    const before = await document();
+    const saved = await request("PUT", "", { path: filePath, revision: before.revision, content: changed });
+    expect(saved.statusCode).toBe(200);
+
+    const page = await app.inject({ method: "GET", url: historyUrl, headers });
+    const snapshot = page.json<HistoryPageResponse>().versions[0];
+    expect(snapshot.changedPaths).toContain(filePath);
+    const versionUrl = `${historyUrl}/${snapshot.id}`;
+    // Keep the next diagram save from coalescing into the restore target.
+    const labeled = await app.inject({ method: "PATCH", url: versionUrl, headers, payload: { label: "Diagram checkpoint" } });
+    expect(labeled.statusCode).toBe(200);
+    const newer = changed.replace("Changed", "Newer");
+    expect((await request("PUT", "", { path: filePath, revision: saved.json().revision, content: newer })).statusCode).toBe(200);
+    expect((await document()).content).toBe(newer);
+
+    for (const against of ["", "&against=__previous__"]) {
+      const response = await app.inject({ method: "GET", url: `${versionUrl}/file?path=${encodeURIComponent(filePath)}${against}`, headers });
+      expect(response.statusCode).toBe(415);
+      expect(response.json().code).toBe("HISTORY_FILE_PREVIEW_UNSUPPORTED");
+    }
+    await release();
+    const restored = await app.inject({ method: "POST", url: `${versionUrl}/restore`, headers,
+      payload: { path: filePath, snapshotHash: snapshot.snapshotHash } });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(restored.json().restoredPaths).toEqual([filePath]);
+    expect((await document()).content).toBe(changed);
   });
 
   it("rejects stale saves and never recreates a deleted diagram", async () => {

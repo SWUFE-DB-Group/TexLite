@@ -564,6 +564,8 @@
     "quickOpen": "Quick open", "quickOpenDescription": "Open a project file by name (Ctrl/Cmd+P).", "filePlaceholder": "Type a file name…", "noFiles": "No matching files."
   },
   "history": {
+    "diagramChanged": "Diagram changed: {{path}}. Text diff is not shown.",
+    "diagramDeleted": "Diagram deleted: {{path}}.",
     "manageFiles": "Manage recorded files",
     "trackingDescription": "Choose which files this project records in future snapshots.",
     "trackingHint": "Text files are recorded by default. Path-based choices save immediately for all collaborators; existing snapshots stay.",

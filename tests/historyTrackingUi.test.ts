@@ -87,3 +87,18 @@ it("summarizes recorded binary bytes even when the filename has a text extension
   expect(host.querySelector(".history-attachment-change")?.textContent).toContain("binary.bat");
   expect(host.querySelector(".history-git-diff")).toBeNull();
 });
+
+it.each([false, true])("lists draw.io changes without requesting a diff (deleted: %s)", async (deleted) => {
+  const filePath = "figures/Diagram.DRAWIO";
+  const version: HistoryVersion = { id: "v", snapshotHash: "a".repeat(64), reason: "file", label: null,
+    createdAt: "2026-10-24T00:00:00Z", author: null, hasAgent: false, changedPaths: [filePath], fileCount: deleted ? 0 : 1, totalSize: deleted ? 0 : 128 };
+  vi.mocked(api)
+    .mockResolvedValueOnce({ versions: [version], stats: null, nextCursor: null })
+    .mockResolvedValueOnce({ version, files: [{ path: filePath, size: version.totalSize, textContent: true, deleted }] });
+  await act(async () => root.render(createElement(HistoryDialog, { open: true, project: { id: "p", permission: "edit" } as Project, onOpenChange: vi.fn(), onBeforeMutation: async () => true })));
+  expect(api).toHaveBeenCalledTimes(2);
+  expect(host.querySelector(".history-file-list button")?.textContent).toContain(filePath);
+  expect(host.querySelector(".history-attachment-change")).not.toBeNull();
+  expect(host.querySelector(".history-mode-toggle")).toBeNull();
+  expect(host.querySelector<HTMLButtonElement>(".history-file-actions button")?.disabled).toBe(deleted);
+});

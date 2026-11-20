@@ -146,7 +146,8 @@ conflict. Locked diagrams and their PDFs cannot be moved, deleted or replaced
 through generic file operations until the editing tab is closed.
 
 Diagrams use explicit saves, not Yjs real-time text editing, and are excluded
-from global text search/replace. They remain tracked as text in project snapshots.
+from global text search/replace. Project snapshots track diagrams by default
+and can restore them, but do not show XML text diffs for them.
 
 **Export PDF** saves the current diagram page beside the source file by default.
 The attached export options switch between **Current page** and **Selected

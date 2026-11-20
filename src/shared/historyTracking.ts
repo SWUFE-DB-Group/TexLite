@@ -1,4 +1,5 @@
 import { isTextContent, resourceFileKind } from "./fileTypes.js";
+import { isDrawioFile } from "./drawio.js";
 
 /** Presence on a manifest distinguishes scoped snapshots from legacy full-tree snapshots. */
 export interface HistoryTrackingPolicy {
@@ -18,6 +19,11 @@ export function historyTextCandidate(filePath: string): boolean {
   if (!filePath) return false;
   const kind = resourceFileKind(filePath);
   return kind === "text" || kind === "other";
+}
+
+/** Track draw.io files as text, but don't compare their serialized diagrams line by line. */
+export function historyDiffCandidate(filePath: string): boolean {
+  return historyTextCandidate(filePath) && !isDrawioFile(filePath);
 }
 
 export function defaultHistoryTracking(filePath: string, bytes: Uint8Array): boolean {
