@@ -526,8 +526,9 @@ No agents are allowed by default. Administrators open **Coding Agent CLI** from 
 dashboard to select allowed agents and refresh executable detection. There is no
 separate global switch. Deselecting an agent stops its active executions while
 preserving task context and cleanup access; other allowed agents are unaffected.
-Supported launch commands are `codex`, `opencode`, and `claude` on the
-TexLite service account's `PATH`. Detection reports installation/version, not
+Supported launch commands are `codex`, `opencode`, `claude`, and
+`agy` (Antigravity, currently Linux only) on the TexLite service account's
+`PATH`. Detection reports installation/version, not
 authentication or provider quota. A PM2/systemd service may have a different
 `PATH` from an interactive login shell.
 
@@ -604,8 +605,9 @@ to reload updated instructions.
 TexLite keeps the CLIs' native project-instruction loading and does not create
 a separate `CLAUDE.md` or change their settings. See the official instructions
 for [Codex](https://developers.openai.com/codex/guides/agents-md/),
-[OpenCode](https://opencode.ai/docs/rules/) and
-[Claude Code](https://code.claude.com/docs/en/memory#agents-md).
+[OpenCode](https://opencode.ai/docs/rules/),
+[Claude Code](https://code.claude.com/docs/en/memory#agents-md), and
+[Antigravity](https://antigravity.google/docs/rules-workflows).
 Claude Code's native `AGENTS.md` support requires a supported version and enabled
 project-instruction loading; a project `CLAUDE.md` can take precedence depending
 on the user's CLI settings. These instructions guide model behavior, not enforce
@@ -657,7 +659,7 @@ If an OpenCode task's project directory has been deleted, management commands
 use its task-state directory while still targeting only its registered database
 and session ID; the deleted project is not recreated.
 
-All agents inherit the TexLite service account's `XDG_CACHE_HOME`. If unset,
+Codex, OpenCode and Claude inherit the TexLite service account's `XDG_CACHE_HOME`. If unset,
 the CLI uses its own default cache location. This lets model catalogs and
 downloaded dependencies be reused without merging task conversations. It does
 not share the mixed state/cache files inside task-specific native homes.
@@ -704,6 +706,30 @@ for development); refreshing the browser or restarting only the agent cannot
 update its parent service's environment. Alternatively, put persistent Claude
 variables in the host's `~/.claude/settings.json` under `env`, as described in
 the [Claude environment-variable reference](https://code.claude.com/docs/en/env-vars).
+
+Antigravity support is for the native Linux `agy` CLI (tested with 1.5.11).
+Sign in to Antigravity on the host as the operating-system user that runs
+TexLite. AGY can reuse that user's
+[Google OAuth login](https://antigravity.google/docs/install?tab=cli#local-silent-keyring-sign-in)
+when the TexLite service can access the same system keyring. A different
+service user, headless environment, or container may not have that access.
+No API key or TexLite authentication setting is needed. TexLite does not
+copy OAuth tokens. Tasks seed missing preferences from just these files in the
+service user's `~/.gemini/antigravity-cli/`: `settings.json`, `keybindings.json`,
+`cache/nux_state.json`, and `cache/onboarding.json` only if onboarding is
+already complete on the host. Task-local changes are never overwritten.
+Explicitly trusted paths in the host's settings are inherited; other paths
+still prompt, and trust granted inside a task is preserved there. Signing out
+inside AGY can affect the shared host login.
+
+The project source remains the working directory, but each AGY task has a private
+`HOME` and XDG directories under `agent-tasks/<task-id>/state/agy-home`.
+Resume targets the original conversation by ID; ending execution keeps its
+history. Deleting a stopped task removes that whole private store, including
+any local forks, without touching host sessions. When AGY provides a supported
+noninteractive delete-by-ID operation, replace this isolation strategy for new
+tasks once exact ownership and cleanup can be verified. Keep existing isolated
+tasks in their original stores until deleted; do not edit AGY's shared databases.
 
 On the first start, Codex and legacy isolated OpenCode tasks copy selected host credential/configuration
 files if available; they do not copy host conversation history. Credentials

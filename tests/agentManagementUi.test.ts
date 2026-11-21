@@ -163,9 +163,10 @@ describe("coding agent management presentation", () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Policy save failed");
   });
   it("shows shared new-session guidance with an information icon across agents and locales, even while running", async () => {
+    const locales = ["en", "zh", "zh-Hant"] as const;
     container.dataset.texliteTooltips = "off";
     for (const [index, agentId] of AGENT_IDS.entries()) {
-      language = (["en", "zh", "zh-Hant"] as const)[index];
+      language = locales[index % locales.length];
       const task: AgentTask = { id: `task-${agentId}`, projectId: "paper", projectName: "Paper", userId: user.id, userName: user.displayName,
         agentId, title: "Revise abstract", state: "running", cleanupState: "none", errorCode: null,
         createdAt: "2026-10-25", updatedAt: "2026-10-25", startedAt: "2026-10-25", endedAt: null, exitCode: null,

@@ -1824,7 +1824,7 @@ so reopening does not leave the editor collapsed.
 
 `AgentAdapter` in `src/server/agents/adapters/types.ts` defines feature discovery,
 native preparation, start, exact-context resume, native-session identification,
-and scoped cleanup. Codex, OpenCode, and Claude implement it separately;
+and scoped cleanup. Codex, OpenCode, Claude and Antigravity implement it separately;
 registration/discovery and session orchestration do not contain native command
 switches. PTY attachment, input ownership, process termination, task authorization,
 and retry state are shared service responsibilities. A task owns one native
@@ -1868,7 +1868,7 @@ credentials or unrelated native sessions. The native terminal's own history
 picker can expose shared host conversations; this is an accepted boundary for
 trusted writers, not additional tasks imported into TexLite.
 
-All adapters inherit the service account's `XDG_CACHE_HOME`; when it is unset,
+Codex, OpenCode and Claude inherit the service account's `XDG_CACHE_HOME`; when it is unset,
 the CLI chooses its own default. Shared caches can reuse model catalogs and
 installed dependencies across projects, tasks and native terminals.
 Codex keeps a task-specific `CODEX_HOME`. Claude directly shares the service
@@ -1891,6 +1891,19 @@ dropping the task and leaving an unmanaged conversation. After successful native
 cleanup, `agent_tasks.native_cleanup_done` is committed before local file removal;
 retries (including after restart) then need neither the binding nor CLI discovery.
 The successful deletion audit and final task-row deletion commit together.
+Antigravity uses the original TUI on Linux, with a task-private `HOME` and XDG
+directories. It uses AGY's native Google OAuth sign-in through the service
+user's system keyring, without copying credentials into task state. Its
+`SessionStart` hook writes the first native conversation ID
+outside AGY's store but inside task state; exact-ID inspection is confined to
+that private store. If the hook did not finish, only a unique native database
+can identify the conversation. A normal exit before the first turn can leave a
+summary database but no conversation. Stop preserves state; delete uses the
+shared task directory cleanup after process reaping and removes any local
+forks too. This is a workaround for the lack of supported native noninteractive
+deletion: switch new tasks to native delete-by-ID when it is available and exact
+ownership can be verified. Existing isolated tasks must keep their original
+storage and cleanup path.
 OpenCode management falls back to the task-state directory when a project's
 source directory is gone, retaining the registered database and exact session ID.
 Old private Claude conversations are not migrated and should be removed before

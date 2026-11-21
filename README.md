@@ -71,7 +71,7 @@ a narrower self-hosted use case:
   follows a more involved [Docker deployment path](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit), and
   several functionalities, such as source comments, are [Server Pro features](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions).
   _If you do not mind a heftier Docker image, [we have one ready too](#docker-deployment) :)_
-- TexLite can run host-installed Coding Agent CLIs (e.g., Claude Code, Codex, OpenCode) directly in a project terminal. Agents can inspect and edit project files, while the team chooses the models and workflows; this goes beyond a built-in AI chat interface.
+- TexLite can run host-installed Coding Agent CLIs (e.g., Claude Code, Codex, OpenCode, or Antigravity on Linux) directly in a project terminal. Agents can inspect and edit project files, while the team chooses the models and workflows; this goes beyond a built-in AI chat interface.
 
 Self-hosting does not make every document compile faster: that still depends on
 the host and the document. It does give the team control over capacity, TeX

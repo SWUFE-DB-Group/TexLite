@@ -14,12 +14,16 @@ No Chromium, Chrome or Edge binary is bundled or downloaded by TexLite.
 
 ## Coding agent brand icons
 
-The inline SVG paths in `src/client/agents/AgentIcon.tsx` come from theSVG:
+The Codex, Claude Code and OpenCode SVG paths in `src/client/agents/AgentIcon.tsx` come from theSVG:
 [Codex (OpenAI)](https://thesvg.org/icon/codex-openai),
 [Claude Code](https://thesvg.org/icon/claude-code), and
 [OpenCode](https://thesvg.org/icon/opencode).
+The Antigravity outline comes from the official single-color
+[Google Antigravity press asset](https://antigravity.google/press).
 Brand names and marks belong to their respective owners. Their use identifies
 the installed tools and does not imply endorsement of TexLite.
+
+theSVG license:
 
 MIT License
 

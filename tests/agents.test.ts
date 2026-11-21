@@ -13,6 +13,7 @@ import { AgentService } from "../src/server/agents/sessions.js";
 import { AgentRegistry } from "../src/server/agents/registry.js";
 import { opencodeAdapter } from "../src/server/agents/adapters/opencode.js";
 import { claudeAdapter } from "../src/server/agents/adapters/claude.js";
+import { agyAdapter } from "../src/server/agents/adapters/agy.js";
 import type { AgentAdapter } from "../src/server/agents/adapters/types.js";
 import { AGENT_IDS, AGENT_LABELS, agentInputChunks, parseAgentClientMessage, type AgentId, type AgentTask, type AgentServerMessage } from "../src/shared/agentProtocol.js";
 import { agentMessages } from "../src/shared/agentMessages.js";
@@ -137,6 +138,71 @@ async function liveRoom(): Promise<{ doc: Y.Doc }> {
 const workingFile = (task: AgentTask, file = "main.tex") => path.join(sourceRoot(config, task.projectId), file);
 
 describe("external agent tasks", () => {
+  it.runIf(process.platform === "linux")("resumes the bound Antigravity conversation and removes its entire private store", async () => {
+    const host = path.join(root, "host's home");
+    const hostData = path.join(host, ".gemini", "antigravity-cli");
+    fs.mkdirSync(path.join(hostData, "conversations"), { recursive: true });
+    const nativeDB = path.join(hostData, "conversations", `${randomUUID()}.db`);
+    fs.writeFileSync(nativeDB, "host history");
+    const hostSettings = '{"colorScheme":"dark","modelProvider":"gemini"}';
+    fs.writeFileSync(path.join(hostData, "settings.json"), hostSettings);
+    vi.stubEnv("HOME", host);
+    vi.stubEnv("GEMINI_API_KEY", undefined);
+    vi.stubEnv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/texlite-fake-bus");
+    vi.spyOn(registry, "adapter").mockImplementation((id) => id === "agy" ? agyAdapter : adapters.find((entry) => entry.id === id)!);
+    vi.mocked(registry.detect).mockResolvedValue({ executable: "agy", version: "1.5.11", features: new Set(["isolated-conversations"]) });
+
+    await expect(service.create(projectId, owner, "agy", "Disabled")).rejects.toMatchObject({ code: "AGENT_DISABLED" });
+    await service.setPolicy({ allowed: ["agy"] });
+    const task = await service.create(projectId, owner, "agy", "Revise abstract");
+    const originalSource = fs.readFileSync(workingFile(task), "utf8");
+    await service.start(task.id, owner); await service.stop(task.id, owner);
+    expect(service.task(task.id, owner)).toMatchObject({ state: "stopped", nativeSessionId: null, canResume: false });
+
+    const taskRoot = agentTaskRoot(config, task.id);
+    const home = path.join(taskRoot, "state", "agy-home");
+    expect(spawn.mock.calls.at(-1)).toMatchObject(["agy", ["--settings", '{"modelProvider":""}'], {
+      cwd: sourceRoot(config, projectId), env: {
+        HOME: home, XDG_DATA_HOME: path.join(home, ".local", "share"),
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/tmp/texlite-fake-bus"
+      }
+    }]);
+    const taskData = path.join(home, ".gemini", "antigravity-cli");
+    expect(fs.readFileSync(path.join(taskData, "settings.json"), "utf8")).toBe(hostSettings);
+    expect(fs.existsSync(path.join(taskData, "conversations"))).toBe(false);
+    await service.start(task.id, owner);
+    expect(spawn.mock.calls.at(-1)?.[1]).not.toContain("--conversation");
+
+    const first = randomUUID(), fork = randomUUID();
+    const store = path.join(taskData, "conversations");
+    fs.mkdirSync(store);
+    const hooks = JSON.parse(fs.readFileSync(path.join(home, ".gemini", "config", "hooks.json"), "utf8"));
+    const command = hooks["texlite-session"].SessionStart[0].command;
+    for (const id of [first, fork]) fs.writeFileSync(path.join(store, `${id}.db`), "native database");
+    expect(await agyAdapter.findNativeSession(await registry.context("agy", task.id, taskRoot, null, sourceRoot(config, projectId))))
+      .toEqual({ status: "unknown" });
+    for (const id of [first, fork]) {
+      execFileSync("/bin/sh", ["-c", command], { input: JSON.stringify({ conversationId: id }) });
+    }
+    await service.stop(task.id, owner);
+    expect(service.task(task.id, owner)).toMatchObject({ nativeSessionId: first, canResume: true });
+    vi.stubEnv("GEMINI_API_KEY", "unrelated-service-key");
+    vi.stubEnv("GOOGLE_GEMINI_BASE_URL", "http://localhost:1234");
+    await service.start(task.id, owner);
+    expect(spawn.mock.calls.at(-1)?.[1]).toEqual(["--settings", '{"modelProvider":""}', "--conversation", first]);
+    expect(spawn.mock.calls.at(-1)?.[2].env).not.toHaveProperty("GEMINI_API_KEY");
+    expect(spawn.mock.calls.at(-1)?.[2].env).not.toHaveProperty("GOOGLE_GEMINI_BASE_URL");
+    await service.stop(task.id, owner);
+    fs.unlinkSync(path.join(store, `${first}.db`));
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_NO_CONTEXT" });
+    expect(fs.existsSync(path.join(store, `${fork}.db`))).toBe(true);
+    await service.remove(task.id, admin, true);
+    expect(fs.existsSync(taskRoot)).toBe(false);
+    expect(fs.readFileSync(nativeDB, "utf8")).toBe("host history");
+    expect(fs.readFileSync(path.join(hostData, "settings.json"), "utf8")).toBe(hostSettings);
+    expect(fs.readFileSync(workingFile(task), "utf8")).toBe(originalSource);
+  });
+
   it("starts and resumes an owned Claude host session and keeps failed cleanup retryable", async () => {
     const host = path.join(root, "claude-host");
     const transcripts = path.join(host, "projects", "paper");

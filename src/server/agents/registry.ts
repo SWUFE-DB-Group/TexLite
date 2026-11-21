@@ -5,6 +5,7 @@ import { executeAgentCommand } from "./adapters/common.js";
 import { codexAdapter } from "./adapters/codex.js";
 import { opencodeAdapter } from "./adapters/opencode.js";
 import { claudeAdapter } from "./adapters/claude.js";
+import { agyAdapter } from "./adapters/agy.js";
 import type { AgentAdapter, AgentAdapterContext } from "./adapters/types.js";
 
 export interface DetectedAgent { executable: string | null; version: string | null; features: ReadonlySet<string> }
@@ -27,7 +28,7 @@ export class AgentRegistry {
   private detected = new Map<AgentId, Promise<DetectedAgent>>();
   private adapters: Map<AgentId, AgentAdapter>;
   constructor(private readonly resolveExecutable = findAgentExecutable,
-    adapters: readonly AgentAdapter[] = [codexAdapter, opencodeAdapter, claudeAdapter]) {
+    adapters: readonly AgentAdapter[] = [codexAdapter, opencodeAdapter, claudeAdapter, agyAdapter]) {
     this.adapters = new Map(adapters.map((adapter) => [adapter.id, adapter]));
   }
   adapter(id: AgentId): AgentAdapter { return this.adapters.get(id)!; }
@@ -51,6 +52,7 @@ export class AgentRegistry {
       nativeSessionId, executable: detected.executable ?? "", features: detected.features };
   }
   private async probe(id: AgentId): Promise<DetectedAgent> {
+    if (this.adapter(id)?.isSupported?.() === false) return { executable: null, version: null, features: new Set() };
     const executable = this.resolveExecutable(id);
     if (!executable) return { executable: null, version: null, features: new Set() };
     let version: string | null = null;

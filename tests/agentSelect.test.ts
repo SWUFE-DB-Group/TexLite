@@ -46,17 +46,18 @@ describe("project terminal agent selection", () => {
     expect(host.contains(document.querySelector(".agent-select-options"))).toBe(false);
     await key(document.activeElement!, "End"); await settleFocus();
     await key(document.activeElement!, "Enter"); await settleFocus();
-    expect(onChange).toHaveBeenCalledExactlyOnceWith("claude");
-    expect(trigger.textContent).toBe("Claude Code");
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("agy");
+    expect(trigger.textContent).toBe("Antigravity");
     expect(trigger.querySelector(".agent-identity-icon path")!.getAttribute("d")).not.toBe(firstIcon);
-    expect(trigger.getAttribute("aria-label")).toBe("Agent: Claude Code");
+    expect(trigger.getAttribute("aria-label")).toBe("Agent: Antigravity");
     expect(document.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(trigger);
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("keeps missing and administrator-disabled agents visible but not selectable", async () => {
-    agents[1].enabled = false;
+    for (const agent of agents) if (agent.id !== "codex") agent.enabled = false;
+    agents[2].enabled = true;
     agents[2].installed = false;
     await act(async () => root.render(createElement(Form)));
     await key(host.querySelector(".agent-select-trigger")!, "ArrowDown"); await settleFocus();

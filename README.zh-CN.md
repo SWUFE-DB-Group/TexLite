@@ -67,7 +67,7 @@ texlite logs
 - Overleaf 开源 [Community Edition](https://github.com/overleaf/overleaf) 的
   [Docker 部署路径](https://docs.overleaf.com/on-premises/getting-started/what-is-the-overleaf-toolkit) 更复杂，且源码批注等高级功能 [仅限 Server Pro](https://docs.overleaf.com/on-premises/user-and-project-management/roles-and-permissions)。
   *如果不介意一个更庞大的 Docker 镜像，[我们也准备好了](#docker-deployment) :)*
-- TexLite 可在项目终端中直接运行宿主机安装的 Coding Agent CLI（比如Claude Code、Codex、OpenCode），让 agent 读取和编辑项目文件，由团队自主选择模型和工作流，而不局限于内建的 AI 聊天界面。
+- TexLite 可在项目终端中直接运行宿主机安装的 Coding Agent CLI（如 Claude Code、Codex、OpenCode，以及 Linux 上的 Antigravity），让 Agent 读取和编辑项目文件，由团队自主选择模型和工作流，而不局限于内建的 AI 聊天界面。
 
 自托管并不保证每份文档都编译得更快，速度仍取决于宿主机和文档本身；它带来的是对容量、
 TeX 更新、数据位置与协作工作流的掌控。

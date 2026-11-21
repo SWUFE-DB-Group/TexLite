@@ -21,6 +21,7 @@ export interface AgentAdapter {
   readonly id: AgentId;
   readonly label: string;
   readonly supportsResume: boolean;
+  isSupported?(): boolean;
   discoverFeatures(executable: string): Promise<ReadonlySet<string>>;
   prepare(context: AgentAdapterContext): Promise<void>;
   start(context: AgentAdapterContext): AgentLaunch;
