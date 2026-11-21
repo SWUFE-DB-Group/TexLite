@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { Check, LoaderCircle, LockKeyhole, RefreshCw, Workflow, X } from "lucide-react";
+import { Check, LoaderCircle, LockKeyhole, RefreshCw, Shapes, Workflow, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError, isAbortError } from "../api";
 import { errorMessage } from "../errors";
@@ -478,6 +478,8 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
             {status === "saved" && <Check size={12} aria-hidden="true" />}{t(`drawio.${status}`)}
           </span>
           <span className="drawio-help"><InfoPopover content={t("drawio.help", { host: editorUrl.host })} side="bottom" /></span>
+          <a className="drawio-asset-link" href="https://www.svgrepo.com/" target="_blank" rel="noopener noreferrer"
+            aria-label={t("drawio.browseSvgRepo")} data-tooltip={t("drawio.browseSvgRepo")}><Shapes size={16} aria-hidden /></a>
           <button type="button" className="drawio-close" aria-label={t("common.close")} data-tooltip={t("common.close")}
             disabled={closing || exporting}
             onClick={() => { void confirmClose().then((confirmed) => { if (confirmed) onClose(); }); }}>

@@ -45,6 +45,7 @@ export const drawioMessages = {
       diagramUnavailable: "Could not open the diagram. Try again.",
       invalidEditorUrl: "The draw.io editor needs a separate origin and must use HTTPS if TexLite does. Ask your administrator to check drawio.editorUrl.",
       help: "Loaded from {{host}}. PDFs are generated using a server browser.",
+      browseSvgRepo: "Browse SVG Repo (opens in a new tab)",
       discard: "Discard unsaved diagram changes?", discardDescription: "Your changes have not been saved.", discardAction: "Discard",
       overwrite: "Replace PDF?", overwriteDescription: "Exporting will replace {{path}}.", overwriteAction: "Replace and export",
       readOnly: "Read-only"
@@ -77,6 +78,7 @@ export const drawioMessages = {
       diagramUnavailable: "无法打开图表，请重试。",
       invalidEditorUrl: "draw.io 编辑器必须与 TexLite 不同源；若 TexLite 使用 HTTPS，编辑器也必须使用 HTTPS。请联系管理员检查 drawio.editorUrl。",
       help: "从 {{host}} 加载。PDF 使用服务器浏览器生成。",
+      browseSvgRepo: "浏览 SVG Repo 图标素材（在新标签页打开）",
       discard: "放弃未保存的图表修改？", discardDescription: "当前修改尚未保存。", discardAction: "放弃修改",
       overwrite: "替换 PDF？", overwriteDescription: "导出将替换 {{path}}。", overwriteAction: "替换并导出",
       readOnly: "只读"
@@ -109,6 +111,7 @@ export const drawioMessages = {
       diagramUnavailable: "無法開啟圖表，請重試。",
       invalidEditorUrl: "draw.io 編輯器必須與 TexLite 不同源；若 TexLite 使用 HTTPS，編輯器也必須使用 HTTPS。請聯絡管理員檢查 drawio.editorUrl。",
       help: "從 {{host}} 載入。PDF 使用伺服器瀏覽器產生。",
+      browseSvgRepo: "瀏覽 SVG Repo 圖示素材（在新分頁開啟）",
       discard: "捨棄未儲存的圖表修改？", discardDescription: "目前修改尚未儲存。", discardAction: "捨棄修改",
       overwrite: "取代 PDF？", overwriteDescription: "匯出將取代 {{path}}。", overwriteAction: "取代並匯出",
       readOnly: "唯讀"

@@ -103,6 +103,15 @@ describe("embedded draw.io editing", () => {
     expect(content?.textContent).toBe(i18n.t("drawio.help", { host: "embed.diagrams.net" }));
   });
 
+  it("links to SVG Repo from the host toolbar without enabling iframe popups", async () => {
+    await mount(true);
+    const link = host.querySelector<HTMLAnchorElement>('.drawio-toolbar a[aria-label="Browse SVG Repo (opens in a new tab)"]');
+    expect(link?.href).toBe("https://www.svgrepo.com/");
+    expect(link?.target).toBe("_blank");
+    expect(link?.relList.contains("noopener")).toBe(true);
+    expect(frame.sandbox.contains("allow-popups")).toBe(false);
+  });
+
   it("does not start a same-origin iframe or read project data when the editor URL is unsafe", async () => {
     await act(async () => root.render(createElement(DrawioEditor, { projectId: "p1", path: "diagram.drawio",
       readOnly: false, editorUrl: `${window.location.origin}/drawio/`, onChanged, onClose })));
