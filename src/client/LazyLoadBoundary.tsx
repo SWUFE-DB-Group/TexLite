@@ -3,6 +3,7 @@ import { LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Modal } from "./Dialog";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { isModuleLoadFailure } from "./moduleLoadFailure";
 
 function LoadingState({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation();
@@ -12,10 +13,10 @@ function LoadingState({ compact = false }: { compact?: boolean }) {
   </div>;
 }
 
-function FailureState({ onClose, compact = false }: { onClose?: () => void; compact?: boolean }) {
+function FailureState({ error, onClose, compact = false }: { error: Error; onClose?: () => void; compact?: boolean }) {
   const { t } = useTranslation();
   return <div className={`lazy-load-state lazy-load-error${compact ? " compact" : ""}`} role="alert">
-    <span>{t("errors.boundaryDescription")}</span>
+    <span>{t(isModuleLoadFailure(error) ? "lazyLoad.recoveryHint" : "errors.boundaryDescription")}</span>
     <div className="lazy-load-actions">
       {onClose && <button type="button" onClick={onClose}>{t("common.close")}</button>}
       <button type="button" className="primary" onClick={() => window.location.reload()}>{t("common.reload")}</button>
@@ -23,13 +24,13 @@ function FailureState({ onClose, compact = false }: { onClose?: () => void; comp
   </div>;
 }
 
-function ModalFailure({ title, onClose }: { title: string; onClose: () => void }) {
-  return <Modal open title={title} onOpenChange={(open) => { if (!open) onClose(); }}><FailureState onClose={onClose} /></Modal>;
+function ModalFailure({ title, onClose, error }: { title: string; onClose: () => void; error: Error }) {
+  return <Modal open title={title} onOpenChange={(open) => { if (!open) onClose(); }}><FailureState onClose={onClose} error={error} /></Modal>;
 }
 
 /** Keep a failed deferred page local instead of replacing the whole application. */
 export function LazyPage({ children, onClose }: { children: ReactNode; onClose?: () => void }) {
-  return <ErrorBoundary fallback={<FailureState onClose={onClose} />}>
+  return <ErrorBoundary fallback={(error) => <FailureState onClose={onClose} error={error} />}>
     <Suspense fallback={<LoadingState />}>{children}</Suspense>
   </ErrorBoundary>;
 }
@@ -37,13 +38,12 @@ export function LazyPage({ children, onClose }: { children: ReactNode; onClose?:
 /** Give deferred dialogs an immediate, dismissible loading surface. */
 export function LazyModal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const loading = <Modal open title={title} onOpenChange={(open) => { if (!open) onClose(); }}><LoadingState /></Modal>;
-  const failure = <ModalFailure title={title} onClose={onClose} />;
-  return <ErrorBoundary fallback={failure}><Suspense fallback={loading}>{children}</Suspense></ErrorBoundary>;
+  return <ErrorBoundary fallback={(error) => <ModalFailure title={title} onClose={onClose} error={error} />}><Suspense fallback={loading}>{children}</Suspense></ErrorBoundary>;
 }
 
 /** Settings keep their narrow panel while a deferred module loads or fails. */
 export function LazyPanel({ children, onClose }: { children: ReactNode; onClose: () => void }) {
-  return <ErrorBoundary fallback={<FailureState onClose={onClose} compact />}>
+  return <ErrorBoundary fallback={(error) => <FailureState onClose={onClose} error={error} compact />}>
     <Suspense fallback={<LoadingState compact />}>{children}</Suspense>
   </ErrorBoundary>;
 }

@@ -1,4 +1,7 @@
 {
+  "lazyLoad": {
+    "recoveryHint": "This part of TexLite couldn’t load. Save any changes you can, then reload the page."
+  },
   "citationNotes": {
     "tab": "Notes",
     "preview": "Notes preview",

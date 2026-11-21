@@ -8,6 +8,7 @@ import type { UpdateMethod, UpdateNotice } from "../shared/updates.js";
 export const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60_000;
 export const UPDATE_RETRY_INTERVAL_MS = 60 * 60_000;
 const REQUEST_TIMEOUT_MS = 5_000;
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
 const REGISTRY_URL = "https://registry.npmjs.org/texlite/latest";
 
 interface UpdateCache {
@@ -40,7 +41,8 @@ export class UpdateChecker {
   private readonly method: UpdateMethod;
   private pending: Promise<void> | null = null;
   private controller: AbortController | null = null;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private started = false;
   private disposed = false;
 
   constructor(private readonly db: DatabaseConnection, private readonly options: UpdateCheckerOptions) {
@@ -51,9 +53,26 @@ export class UpdateChecker {
   }
 
   start(): void {
-    if (!this.options.enabled || this.disposed || this.timer) return;
-    void this.check().catch(() => undefined);
-    this.timer = setInterval(() => { void this.check().catch(() => undefined); }, UPDATE_RETRY_INTERVAL_MS);
+    if (!this.options.enabled || this.disposed || this.started || !valid(this.currentVersion)) return;
+    this.started = true;
+    void this.runScheduledCheck();
+  }
+
+  private async runScheduledCheck(): Promise<void> {
+    let delay = UPDATE_RETRY_INTERVAL_MS;
+    try {
+      await this.check();
+      if (this.disposed) return;
+      const deadline = this.cache()?.next_check_at;
+      if (deadline !== undefined) delay = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, deadline - this.now()));
+    } catch {
+      // If the cache could not be read or written, retry without spinning.
+    }
+    if (this.disposed) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.runScheduledCheck();
+    }, delay);
     this.timer.unref();
   }
 
@@ -117,7 +136,8 @@ export class UpdateChecker {
 
   async dispose(): Promise<void> {
     this.disposed = true;
-    if (this.timer) clearInterval(this.timer);
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
     this.controller?.abort();
     await this.pending;
   }

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadBasePath, loadConfig, validateConfig } from "../src/server/config.js";
 
 describe("configuration", () => {
@@ -12,23 +12,24 @@ describe("configuration", () => {
     "TEXLITE_PDF_LOADING_STRATEGY", "TEXLITE_PDF_RANGE_THRESHOLD_MB",
     "TEXLITE_HISTORY_MAX_VERSIONS", "TEXLITE_HISTORY_MAX_STORAGE_MB",
     "TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB", "TEXLITE_EDIT_HISTORY_MAX_SEGMENTS",
-    "TEXLITE_GIT", "TEXLITE_GIT_TIMEOUT", "TEXLITE_GITHUB_API_URL"
+    "TEXLITE_GIT", "TEXLITE_GIT_TIMEOUT", "TEXLITE_GITHUB_API_URL", "XDG_CONFIG_HOME", "XDG_DATA_HOME"
   ] as const;
-  const originalEnvironment = new Map(envKeys.map((key) => [key, process.env[key]]));
   let root = "";
 
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-"));
+    for (const key of envKeys) vi.stubEnv(key, undefined);
+    vi.stubEnv("XDG_CONFIG_HOME", path.join(root, "xdg-config"));
+    vi.stubEnv("XDG_DATA_HOME", path.join(root, "xdg-data"));
+  });
+
   afterEach(() => {
-    for (const key of envKeys) {
-      const value = originalEnvironment.get(key);
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
+    vi.unstubAllEnvs();
     if (root) fs.rmSync(root, { recursive: true, force: true });
     root = "";
   });
 
   it("resolves data paths relative to the config file", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-"));
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, JSON.stringify({
       siteName: "Lab TeX",
@@ -66,7 +67,6 @@ describe("configuration", () => {
   });
 
   it("enables update checks by default and accepts only a boolean opt-out", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-update-config-"));
     const configPath = path.join(root, "config.json");
     fs.writeFileSync(configPath, JSON.stringify({ storage: { dataDir: root } }));
     expect(loadConfig(configPath).updatesEnabled).toBe(true);
@@ -76,16 +76,14 @@ describe("configuration", () => {
     expect(() => loadConfig(configPath)).toThrow(/updates.enabled.*true or false/);
   });
 
-  it("uses TexLite as the default site name", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-default-"));
+  it("uses defaults for an empty config, deriving the storage path from XDG_DATA_HOME", () => {
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, JSON.stringify({}));
     process.env.TEXLITE_CONFIG = configPath;
-    process.env.TEXLITE_DATA_DIR = path.join(root, "data");
-    delete process.env.TEXLITE_SITE_NAME;
     const config = loadConfig();
     expect(config).toMatchObject({
       siteName: "TexLite", host: "127.0.0.1", port: 3000, basePath: "/", sessionDays: 14,
+      dataDir: path.join(root, "xdg-data", "texlite"),
       drawioEditorUrl: "https://embed.diagrams.net/",
       compileTimeoutMs: 600_000, maxCompileJobs: 10, defaultEngine: "xelatex",
       allowedEngines: ["pdflatex", "xelatex", "lualatex"], maxUploadBytes: 50 * 1024 * 1024,
@@ -97,7 +95,6 @@ describe("configuration", () => {
   });
 
   it("rejects editor URLs that cannot be safely exposed to the browser", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-drawio-"));
     const configPath = path.join(root, "config.json");
     for (const editorUrl of ["/drawio/", "javascript:void(0)", "https://user:secret@drawio.example.test/",
       "https://drawio.example.test/?token=secret", "https://drawio.example.test/#editor", "https://"]) {
@@ -107,7 +104,6 @@ describe("configuration", () => {
   });
 
   it("uses the new PDF threshold when omitted without replacing explicit file or environment settings", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-pdf-default-"));
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, JSON.stringify({ pdf: { loadingStrategy: "auto" } }));
     expect(loadConfig(configPath).pdfRangeThresholdBytes).toBe(2 * 1024 * 1024);
@@ -118,7 +114,6 @@ describe("configuration", () => {
   });
 
   it("rejects invalid limits instead of silently restoring a default", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-limit-"));
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, JSON.stringify({ latex: { compileTimeoutSeconds: 0 } }));
     process.env.TEXLITE_CONFIG = configPath;
@@ -126,7 +121,6 @@ describe("configuration", () => {
   });
 
   it("validates history retention limits", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-history-"));
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, JSON.stringify({ history: { maxVersions: -1, maxStorageMB: 15 } }));
     process.env.TEXLITE_CONFIG = configPath;
@@ -134,7 +128,6 @@ describe("configuration", () => {
   });
 
   it("validates the independent selection edit-history storage limit", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-edit-history-"));
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, JSON.stringify({ editHistory: { maxStorageMB: 3 } }));
     process.env.TEXLITE_CONFIG = configPath;
@@ -143,7 +136,6 @@ describe("configuration", () => {
 
   it.each([undefined, {}, { maxStorageMB: 32 }, { maxSegments: 5000 }])(
     "defaults omitted edit-history settings without replacing explicit existing values (%j)", (editHistory) => {
-      root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-edit-defaults-"));
       const configPath = path.join(root, "config.json");
       fs.writeFileSync(configPath, JSON.stringify({ storage: { dataDir: root }, editHistory }));
       const config = loadConfig(configPath);
@@ -154,7 +146,6 @@ describe("configuration", () => {
   );
 
   it("overrides both edit-history file limits through environment variables", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-edit-env-"));
     const configPath = path.join(root, "config.json");
     fs.writeFileSync(configPath, JSON.stringify({ editHistory: { maxStorageMB: 32, maxSegments: 5000 } }));
     process.env.TEXLITE_EDIT_HISTORY_MAX_STORAGE_MB = "96";
@@ -165,14 +156,12 @@ describe("configuration", () => {
   });
 
   it.each([0, -1, 1.5, 100001, "20000", null])("rejects an invalid edit-history segment limit (%j)", (maxSegments) => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-edit-count-"));
     const configPath = path.join(root, "config.json");
     fs.writeFileSync(configPath, JSON.stringify({ editHistory: { maxSegments } }));
     expect(() => loadConfig(configPath)).toThrow(/editHistory\.maxSegments/);
   });
 
   it("validates materialized segment limits and accepts their documented endpoints", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-edit-range-"));
     const configPath = path.join(root, "config.json");
     fs.writeFileSync(configPath, JSON.stringify({ storage: { dataDir: root } }));
     const config = loadConfig(configPath);
@@ -181,7 +170,6 @@ describe("configuration", () => {
   });
 
   it("validates the PDF loading strategy and range threshold", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-pdf-"));
     const configPath = path.join(root, "texlite.config.json");
     process.env.TEXLITE_CONFIG = configPath;
     fs.writeFileSync(configPath, JSON.stringify({ pdf: { loadingStrategy: "sometimes" } }));
@@ -191,7 +179,6 @@ describe("configuration", () => {
   });
 
   it("rejects invalid environment overrides with the variable context", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-env-"));
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, "{}");
     process.env.TEXLITE_CONFIG = configPath;
@@ -200,7 +187,6 @@ describe("configuration", () => {
   });
 
   it("validates a deployment base path from files and the environment", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-base-path-"));
     const configPath = path.join(root, "texlite.config.json");
     process.env.TEXLITE_CONFIG = configPath;
     process.env.TEXLITE_DATA_DIR = path.join(root, "data");
@@ -213,7 +199,6 @@ describe("configuration", () => {
   });
 
   it("reads a development base path without validating server storage", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-base-path-only-"));
     const configPath = path.join(root, "texlite.config.json");
     const blockedPath = path.join(root, "not-a-directory");
     fs.writeFileSync(blockedPath, "file");
@@ -227,7 +212,6 @@ describe("configuration", () => {
   });
 
   it("rejects an engine list that omits the selected default", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-engine-"));
     const configPath = path.join(root, "texlite.config.json");
     fs.writeFileSync(configPath, JSON.stringify({ latex: { defaultEngine: "xelatex", allowedEngines: ["pdflatex"] } }));
     process.env.TEXLITE_CONFIG = configPath;
@@ -235,7 +219,6 @@ describe("configuration", () => {
   });
 
   it("reports a data path that is a file", () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-config-invalid-path-"));
     const blocked = path.join(root, "not-a-directory");
     fs.writeFileSync(blocked, "file");
     const configPath = path.join(root, "texlite.config.json");

@@ -17,7 +17,7 @@ export const CONFIG_DEFAULTS = {
   host: "127.0.0.1",
   port: 3000,
   basePath: ROOT_BASE_PATH,
-  dataDir: defaultDataDirectory(),
+  get dataDir() { return defaultDataDirectory(); },
   clientDir: packageClientDirectory(),
   tikzGalleryEnabled: false,
   /** Relative to the configuration file, like a relative storage.dataDir. */

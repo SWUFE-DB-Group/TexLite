@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import i18n from "./i18n";
+import { isModuleLoadFailure } from "./moduleLoadFailure";
 
 interface Props {
   children: ReactNode;
@@ -40,6 +41,7 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) {
         return this.props.fallback;
       }
+      const moduleLoadFailed = isModuleLoadFailure(this.state.error);
       return (
         <div
           role="alert"
@@ -57,17 +59,17 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.props.title ?? i18n.t("errors.boundaryTitle")}
           </h2>
           <p style={{ fontSize: "0.9rem", color: "var(--ui-muted, #6c757d)", marginBottom: "1rem" }}>
-            {i18n.t("errors.boundaryDescription")}
+            {i18n.t(moduleLoadFailed ? "lazyLoad.recoveryHint" : "errors.boundaryDescription")}
           </p>
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
+            {!moduleLoadFailed && <button
               type="button"
               onClick={this.handleReset}
               className="primary"
               style={{ padding: "0.4rem 0.8rem", borderRadius: "4px", cursor: "pointer" }}
             >
               {i18n.t("errors.boundaryRetry")}
-            </button>
+            </button>}
             <button
               type="button"
               onClick={() => window.location.reload()}

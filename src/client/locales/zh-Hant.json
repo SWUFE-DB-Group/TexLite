@@ -1,4 +1,7 @@
 {
+  "lazyLoad": {
+    "recoveryHint": "此功能未能載入。請盡可能儲存變更，然後重新載入頁面。"
+  },
   "citationNotes": {
     "tab": "筆記",
     "preview": "筆記預覽",

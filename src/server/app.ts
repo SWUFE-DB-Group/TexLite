@@ -415,8 +415,14 @@ export async function buildApp(
       routes.get("/", sendIndex);
       routes.get("/index.html", sendIndex);
       routes.get("/*", async (request, reply) => {
-        const requestPath = withoutBasePath(config.basePath, request.url) ?? request.url;
+        const pathname = request.url.split("?", 1)[0];
+        const requestPath = withoutBasePath(config.basePath, pathname) ?? pathname;
         if (requestPath.startsWith("/api/")) return apiError(reply, 404, "API_NOT_FOUND");
+        // An open page may still request a hashed chunk from the previous build.
+        // Do not send HTML (or cache the miss) for a missing static asset.
+        if (requestPath === "/assets" || requestPath.startsWith("/assets/")) {
+          return reply.header("Cache-Control", "no-store").callNotFound();
+        }
         return sendIndex(request, reply);
       });
     }

@@ -1,4 +1,7 @@
 {
+  "lazyLoad": {
+    "recoveryHint": "此功能未能加载。请尽可能保存修改，然后刷新页面。"
+  },
   "citationNotes": {
     "tab": "笔记",
     "preview": "笔记预览",

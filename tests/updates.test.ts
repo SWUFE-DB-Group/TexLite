@@ -116,6 +116,50 @@ describe("update notifications", () => {
     expect(updates.notice("a")?.latestVersion).toBe("0.18.0");
   });
 
+  it.each([false, true])("schedules from request completion (registry failure: %s)", async (fails) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    registry.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      if (fails) throw new TypeError("Network unavailable");
+      return Response.json({ version });
+    });
+    const updates = checker({ now: Date.now });
+    updates.start();
+    updates.start();
+    const inFlight = updates.check(); // The admin endpoint can share the scheduled check.
+    await vi.advanceTimersByTimeAsync(2_000);
+    await inFlight;
+    const interval = fails ? UPDATE_RETRY_INTERVAL_MS : UPDATE_CHECK_INTERVAL_MS;
+    expect(db.prepare("SELECT next_check_at FROM update_check_cache").get()).toEqual({ next_check_at: now + 2_000 + interval });
+    await vi.advanceTimersByTimeAsync(interval - 1);
+    expect(registry).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(registry).toHaveBeenCalledTimes(2);
+  });
+
+  it("resumes a persisted deadline on restart without waiting for a new polling interval", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const original = checker({ now: Date.now });
+    original.start();
+    await original.check();
+    await original.dispose();
+    db.close();
+
+    await vi.advanceTimersByTimeAsync(UPDATE_CHECK_INTERVAL_MS - 12_345);
+    db = openDatabase(config());
+    const restarted = checker({ now: Date.now });
+    restarted.start();
+    await vi.advanceTimersByTimeAsync(12_344);
+    expect(registry).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(registry).toHaveBeenCalledTimes(2);
+    await restarted.dispose();
+    await vi.advanceTimersByTimeAsync(UPDATE_CHECK_INTERVAL_MS);
+    expect(registry).toHaveBeenCalledTimes(2);
+  });
+
   it("can be disabled without requests or notifications", async () => {
     await checker().check();
     registry.mockClear();

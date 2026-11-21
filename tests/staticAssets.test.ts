@@ -76,6 +76,17 @@ describe.each(["/", "/tools/texlite"])("precompressed production assets at %s", 
     expect(cached.headers.vary).toContain("accept-encoding");
   });
 
+  it("returns an uncached 404 for old build assets instead of the SPA shell", async () => {
+    for (const method of ["GET", "HEAD"] as const) {
+      const response = await app.inject({ method, url: url("/assets/old/panel.js?v=previous"),
+        headers: { "accept-encoding": "br, gzip" } });
+      expect(response.statusCode).toBe(404);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.headers["content-type"]).not.toMatch(/text\/html/);
+      expect(response.body).not.toContain("<base");
+    }
+  });
+
   it("falls back for older assets and does not compress API responses or the runtime-rendered shell", async () => {
     const headers = { "accept-encoding": "br, gzip" };
     const legacy = await app.inject({ method: "GET", url: url("/assets/legacy.js"), headers });
