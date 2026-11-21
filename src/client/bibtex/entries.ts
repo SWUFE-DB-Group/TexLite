@@ -16,6 +16,8 @@ export interface BibtexDocumentEntry {
    * BibTeX does.
    */
   fields: Record<string, string>;
+  /** Standalone entry source when file-defined string references were replaced. */
+  standaloneSource?: string;
 }
 
 export interface BibtexDocument {
@@ -25,11 +27,16 @@ export interface BibtexDocument {
   hasSyntaxErrors: boolean;
 }
 
+interface BibtexMacro { text: string; custom?: boolean }
+
 /** The month macros every standard BibTeX style defines. */
-const predefinedMacros: ReadonlyArray<[string, string]> = [
+const predefinedMacros: ReadonlyArray<[string, BibtexMacro]> = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
-].map((month) => [month.slice(0, 3).toLowerCase(), month]);
+].map((month) => [month.slice(0, 3).toLowerCase(), { text: month }]);
+
+export class BibtexMacroExpansionLimitError extends Error {}
+type MacroExpansionBudget = (length: number) => void;
 
 /**
  * Read every entry of a BibTeX source with the editor's Lezer grammar.
@@ -40,34 +47,41 @@ const predefinedMacros: ReadonlyArray<[string, string]> = [
  * or reports as a syntax error. Entries recovered from a syntax error are still
  * listed; callers that must not accept them check `hasSyntaxErrors`.
  */
-export function parseBibtexDocument(source: string): BibtexDocument {
+export function parseBibtexDocument(source: string, options?: { standaloneMaxChars: number }): BibtexDocument {
   const entries: BibtexDocumentEntry[] = [];
   // BibTeX macro names are case-insensitive and must be defined before use,
   // so definitions are collected in source order as the walk reaches them.
   const macros = new Map(predefinedMacros);
+  // Allow headroom for intermediate expansions in addition to final values.
+  // The caller still checks the actual bytes of the portable entries.
+  let remaining = options ? options.standaloneMaxChars * 2 : 0;
+  const consume: MacroExpansionBudget | undefined = options ? (length) => {
+    remaining -= length;
+    if (remaining < 0) throw new BibtexMacroExpansionLimitError();
+  } : undefined;
   let hasSyntaxErrors = false;
   parser.parse(source).cursor().iterate((node: { name: string; type: { isError: boolean }; node: SyntaxNode }) => {
     if (node.type.isError) hasSyntaxErrors = true;
     if (node.name === "StringEntry") {
-      defineMacro(source, node.node, macros);
+      defineMacro(source, node.node, macros, consume);
       return;
     }
     if (node.name !== "Entry") return;
-    const entry = readEntry(source, node.node, macros);
+    const entry = readEntry(source, node.node, macros, consume);
     if (entry) entries.push(entry);
   });
   return { entries, hasSyntaxErrors };
 }
 
-function defineMacro(source: string, entry: SyntaxNode, macros: Map<string, string>): void {
+function defineMacro(source: string, entry: SyntaxNode, macros: Map<string, BibtexMacro>, consume?: MacroExpansionBudget): void {
   const nameNode = entry.getChild("StringName");
   const valueNode = entry.getChild("Value");
   if (!nameNode || !valueNode) return;
-  const value = expandValue(source, valueNode, macros);
-  if (value !== null) macros.set(source.slice(nameNode.from, nameNode.to).toLowerCase(), value);
+  const text = expandValue(source, valueNode, macros, consume);
+  if (text !== null) macros.set(source.slice(nameNode.from, nameNode.to).toLowerCase(), { text, custom: true });
 }
 
-function readEntry(source: string, entry: SyntaxNode, macros: ReadonlyMap<string, string>): BibtexDocumentEntry | null {
+function readEntry(source: string, entry: SyntaxNode, macros: ReadonlyMap<string, BibtexMacro>, consume?: MacroExpansionBudget): BibtexDocumentEntry | null {
   const keyNode = entry.getChild("EntryKey");
   if (!keyNode) return null;
   const key = source.slice(keyNode.from, keyNode.to);
@@ -83,6 +97,8 @@ function readEntry(source: string, entry: SyntaxNode, macros: ReadonlyMap<string
   const entryType = typeNode ? source.slice(typeNode.from, typeNode.to).replace(/^@/, "").trim() : "";
   const fields: Record<string, string> = {};
   const seen = new Set<string>();
+  const replacements: Array<{ from: number; to: number; text: string }> = [];
+  const record = consume ? (atom: SyntaxNode, text: string) => replacements.push({ from: atom.from, to: atom.to, text }) : undefined;
   for (const field of entry.getChildren("Field")) {
     const nameNode = field.getChild("FieldName");
     const valueNode = field.getChild("Value");
@@ -90,24 +106,32 @@ function readEntry(source: string, entry: SyntaxNode, macros: ReadonlyMap<string
     const name = source.slice(nameNode.from, nameNode.to).toLowerCase();
     // BibTeX ignores a repeated field (with a warning, which the editor's
     // diagnostics also show), so the first occurrence is the one that prints.
-    if (seen.has(name)) continue;
+    const repeated = seen.has(name);
+    if (repeated && !record) continue;
     seen.add(name);
-    const value = fieldValue(source, valueNode, macros);
-    if (value) fields[name] = value;
+    const expanded = expandValue(source, valueNode, macros, consume, record);
+    if (!repeated) {
+      // Keep an expression with an undefined reference as written for display.
+      const value = (expanded ?? source.slice(valueNode.from, valueNode.to)).replace(/\s+/g, " ").trim();
+      if (value) fields[name] = value;
+    }
   }
-  return { key, entryType, from: entry.from, to: entry.to, fields };
-}
-
-function fieldValue(source: string, valueNode: SyntaxNode, macros: ReadonlyMap<string, string>): string | null {
-  // An undefined macro cannot be expanded; show the expression as written
-  // rather than guessing what it stands for.
-  const value = expandValue(source, valueNode, macros) ?? source.slice(valueNode.from, valueNode.to);
-  return value.replace(/\s+/g, " ").trim() || null;
+  if (!replacements.length) return { key, entryType, from: entry.from, to: entry.to, fields };
+  let offset = entry.from;
+  const parts: string[] = [];
+  for (const replacement of replacements) {
+    parts.push(source.slice(offset, replacement.from), "{", replacement.text, "}");
+    offset = replacement.to;
+  }
+  parts.push(source.slice(offset, entry.to));
+  return { key, entryType, from: entry.from, to: entry.to, fields, standaloneSource: parts.join("") };
 }
 
 /** The text of a value with its delimiters removed and macros expanded, or null when that is not possible. */
-function expandValue(source: string, valueNode: SyntaxNode, macros: ReadonlyMap<string, string>): string | null {
+function expandValue(source: string, valueNode: SyntaxNode, macros: ReadonlyMap<string, BibtexMacro>,
+  consume?: MacroExpansionBudget, record?: (atom: SyntaxNode, text: string) => void): string | null {
   let text = "";
+  let resolved = true;
   for (let child = valueNode.firstChild; child; child = child.nextSibling) {
     if (child.name === "Concat") continue;
     const atom = child.name === "ValueAtom" ? child.firstChild : null;
@@ -119,14 +143,22 @@ function expandValue(source: string, valueNode: SyntaxNode, macros: ReadonlyMap<
     } else if (atom.name === "Number") {
       text += source.slice(atom.from, atom.to);
     } else if (atom.name === "StringRef") {
-      const expansion = macros.get(source.slice(atom.from, atom.to).toLowerCase());
-      if (expansion === undefined) return null;
-      text += expansion;
+      const macro = macros.get(source.slice(atom.from, atom.to).toLowerCase());
+      if (!macro) {
+        if (!record) return null;
+        resolved = false;
+        continue;
+      }
+      if (macro.custom) {
+        consume?.(macro.text.length + (record ? 2 : 0));
+        record?.(atom, macro.text);
+      }
+      text += macro.text;
     } else {
       return null;
     }
   }
-  return text;
+  return resolved ? text : null;
 }
 
 /** Fields that describe the parent entry itself and are never inherited. */

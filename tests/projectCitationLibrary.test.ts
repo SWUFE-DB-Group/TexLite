@@ -183,6 +183,47 @@ describe("minimal project bibliography workflow", () => {
     expect(document.querySelector(".citation-tag-manage")).toBeNull();
   });
 
+  it("hides stale entries and pagination when a folder request fails, and retries the selected folder", async () => {
+    const implementation = vi.mocked(api).getMockImplementation()!;
+    const fromB = { ...stored, id: "from-b", citationKey: "fromB", collectionIds: ["b"] };
+    const resultA = { entries: [stored], pagination: { page: 1, pageSize: 60, total: 61, totalPages: 2 } };
+    const resultB = { entries: [fromB], pagination: { page: 1, pageSize: 60, total: 1, totalPages: 1 } };
+    let finishOld: (() => void) | undefined;
+    let oldSignal: AbortSignal | null | undefined;
+    let failB = true;
+    const folderButton = (name: string) => [...document.querySelectorAll<HTMLButtonElement>(".citation-collection-select")]
+      .find((button) => button.querySelector("span")?.textContent === name)!;
+    vi.mocked(api).mockImplementation(async (url, options) => {
+      if (!url.startsWith("/api/citations?")) return implementation(url, options);
+      const folder = new URLSearchParams(url.split("?")[1]).get("collection");
+      if (folder === "a") return resultA as never;
+      if (folder === "b") {
+        if (failB) { failB = false; throw new Error("Folder unavailable"); }
+        return resultB as never;
+      }
+      return new Promise((resolve) => { oldSignal = options?.signal; finishOld = () => resolve(resultA as never); });
+    });
+    await render(); await openLibrary();
+    await click(folderButton("Paper A")); await tick();
+    expect(rows()[0].querySelector("code")?.textContent).toBe("paper");
+    expect(document.querySelector(".citation-library-pagination")).not.toBeNull();
+    await click(folderButton("Paper B"));
+    expect(rows()).toHaveLength(0);
+    await tick();
+    expect(oldSignal?.aborted).toBe(true);
+    await act(async () => finishOld?.());
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("Folder unavailable");
+    expect(rows()).toHaveLength(0);
+    expect(document.querySelector(".citation-library-pagination")).toBeNull();
+    expect(onInsert).not.toHaveBeenCalled();
+
+    const retry = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Retry")!;
+    await click(retry); await tick();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    await click(rows()[0].querySelector<HTMLButtonElement>("button")!);
+    expect(onInsert).toHaveBeenCalledExactlyOnceWith(fromB);
+  });
+
   it("requires a destination for new references, blocks duplicate submission and saves without opening tag editors", async () => {
     await render(); await openCurrent();
     expect(saveButton().disabled).toBe(true); expect(saveButton().getAttribute("data-tooltip")).toContain("Choose a folder");

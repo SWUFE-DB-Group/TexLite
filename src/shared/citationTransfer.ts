@@ -3,6 +3,10 @@ export const CITATION_FOLDER_FORMAT = "texlite-citation-folder";
 export const CITATION_FOLDER_VERSION = 1;
 export const MAX_CITATION_NOTES_BYTES = 64 * 1024;
 export const MAX_CITATION_FOLDER_BYTES = 16 * 1024 * 1024;
+export const MAX_CITATION_FOLDER_NAME_LENGTH = 80;
+/** A JSON string can use up to six bytes per UTF-16 code unit (a Unicode escape). */
+export const MAX_CITATION_FOLDER_IMPORT_REQUEST_BYTES = MAX_CITATION_FOLDER_BYTES
+  + ',"name":""'.length + MAX_CITATION_FOLDER_NAME_LENGTH * 6;
 /** Shared folder capacity and per-transfer entry limit. */
 export const MAX_CITATION_FOLDER_ENTRIES = 500;
 

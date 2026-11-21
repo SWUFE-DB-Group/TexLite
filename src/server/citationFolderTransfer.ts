@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { CITATION_FOLDER_FORMAT, CITATION_FOLDER_VERSION, MAX_CITATION_FOLDER_BYTES, MAX_CITATION_FOLDER_ENTRIES,
+  MAX_CITATION_FOLDER_IMPORT_REQUEST_BYTES, MAX_CITATION_FOLDER_NAME_LENGTH,
   type CitationFolderBundle, type CitationFolderImportRequest, type CitationTransferEntry } from "../shared/citationTransfer.js";
 import { requireUser } from "./auth.js";
 import { citationInput } from "./citationInput.js";
@@ -25,13 +26,15 @@ export function exportCitationFolder(db: DatabaseConnection, userId: string, fol
 }
 
 export function registerCitationFolderImport(app: FastifyInstance, db: DatabaseConnection): void {
-  app.post("/api/citations/collections/import", { bodyLimit: MAX_CITATION_FOLDER_BYTES }, async (request, reply) => {
+  app.post("/api/citations/collections/import", { bodyLimit: MAX_CITATION_FOLDER_IMPORT_REQUEST_BYTES }, async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
     const body = request.body as Partial<CitationFolderImportRequest> | null;
     if (!body || body.format !== CITATION_FOLDER_FORMAT || body.version !== CITATION_FOLDER_VERSION
-      || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80
+      || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > MAX_CITATION_FOLDER_NAME_LENGTH
       || !Array.isArray(body.entries)) throw httpError(400, "CITATION_FOLDER_INVALID");
-    if (body.entries.length > MAX_CITATION_FOLDER_ENTRIES) throw httpError(413, "CITATION_FOLDER_TOO_LARGE");
+    const { name: folderName, ...bundle } = body;
+    if (body.entries.length > MAX_CITATION_FOLDER_ENTRIES
+      || Buffer.byteLength(JSON.stringify(bundle), "utf8") > MAX_CITATION_FOLDER_BYTES) throw httpError(413, "CITATION_FOLDER_TOO_LARGE");
     // Validate the entire import before opening a write transaction. Repeated
     // keys in the bundle follow the same last-entry-wins rule as existing keys.
     const entries = new Map<string, ReturnType<typeof citationInput>>();
@@ -42,13 +45,13 @@ export function registerCitationFolderImport(app: FastifyInstance, db: DatabaseC
     }
     const timestamp = new Date().toISOString();
     const id = randomUUID();
-    const baseName = body.name.trim();
+    const baseName = folderName.trim();
     const name = db.transaction(() => {
       let candidate = baseName, suffix = 0;
       const exists = db.prepare("SELECT 1 FROM citation_library_collections WHERE user_id = ? AND name = ? COLLATE NOCASE");
       while (exists.get(user.id, candidate)) {
         const ending = `-${++suffix}`;
-        candidate = `${baseName.slice(0, 80 - ending.length)}${ending}`;
+        candidate = `${baseName.slice(0, MAX_CITATION_FOLDER_NAME_LENGTH - ending.length)}${ending}`;
       }
       db.prepare("INSERT INTO citation_library_collections (id, user_id, name, created_at) VALUES (?, ?, ?, ?)").run(id, user.id, candidate, timestamp);
       const upsert = db.prepare(`INSERT INTO citation_library_entries

@@ -23,6 +23,28 @@ describe("citation import normalization", () => {
     expect(result.entries[0]).toMatchObject({ citationKey: "venue", venue: "Journal of Testing" });
   });
 
+  it("inlines strings in source order, preserving other atoms, comments and standard month macros", () => {
+    const result = parse([
+      '@string{conf = "First {Conference}"}',
+      '@inproceedings(first, booktitle = missing # CONF, % keep this comment',
+      '  month = jan)',
+      '@string{conf = "Second Conference"}',
+      '@string{jan = {Early January}}',
+      '@inproceedings{second, booktitle = conf, month = jan, title = "conf"}'
+    ].join("\n"), "papers.bib");
+    expect(result.entries.map((entry) => entry.bibtex)).toEqual([
+      '@inproceedings(first, booktitle = missing # {First {Conference}}, % keep this comment\n  month = jan)',
+      '@inproceedings{second, booktitle = {Second Conference}, month = {Early January}, title = "conf"}'
+    ]);
+  });
+
+  it("rejects excessive macro expansion before materializing an enormous entry", () => {
+    const definitions = Array.from({ length: 40 }, (_, index) => index === 0 ? '@string{s0 = "x"}'
+      : `@string{s${index} = s${index - 1} # s${index - 1}}`);
+    const source = [...definitions, "@article{paper, journal = s39}"].join("\n");
+    expect(() => parse(source, "amplified.bib")).toThrow("citationFolders.transferTooLarge");
+  });
+
   it("preserves JSON notes but ignores embedded folder names, tag fields, IDs and untrusted metadata", () => {
     const result = parse(JSON.stringify({ ...bundle, name: "Ignore this embedded folder name", tags: ["ignored"], entries: [{ ...bundle.entries[0],
       tags: ["ignored"], tagIds: ["foreign"], collectionIds: ["foreign"], id: "foreign", title: "Not the real title" }] }));

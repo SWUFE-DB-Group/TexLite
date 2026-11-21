@@ -5,7 +5,7 @@ import type { DatabaseConnection } from "./db.js";
 import { requireUser } from "./auth.js";
 import { contentDisposition, httpError, ValidationError } from "./http.js";
 import { exportCitationFolder, registerCitationFolderImport } from "./citationFolderTransfer.js";
-import { MAX_CITATION_FOLDER_ENTRIES } from "../shared/citationTransfer.js";
+import { MAX_CITATION_FOLDER_ENTRIES, MAX_CITATION_FOLDER_NAME_LENGTH } from "../shared/citationTransfer.js";
 
 function collection(db: DatabaseConnection, userId: string, id: string): { id: string; name: string } {
   const row = db.prepare("SELECT id, name FROM citation_library_collections WHERE id = ? AND user_id = ?").get(id, userId) as { id: string; name: string } | undefined;
@@ -14,7 +14,7 @@ function collection(db: DatabaseConnection, userId: string, id: string): { id: s
 }
 
 function collectionName(value: unknown): string {
-  if (typeof value !== "string" || !value.trim() || value.trim().length > 80) throw httpError(400, "CITATION_COLLECTION_NAME_INVALID");
+  if (typeof value !== "string" || !value.trim() || value.trim().length > MAX_CITATION_FOLDER_NAME_LENGTH) throw httpError(400, "CITATION_COLLECTION_NAME_INVALID");
   return value.trim();
 }
 

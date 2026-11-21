@@ -16,7 +16,10 @@ import type { CitationLibraryEntry, CitationLibraryTag, ProjectListPagination } 
 const noop = () => undefined;
 const PAGE_SIZE = 60;
 
-const emptyPagination: ProjectListPagination = { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 0 };
+type LibraryResult = { key: string } & (
+  { status: "ready"; entries: CitationLibraryEntry[]; pagination: ProjectListPagination } |
+  { status: "error"; message: string }
+);
 
 type CurrentFilter = "all" | "new";
 const statusFilterLabels = {
@@ -59,10 +62,16 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
   const [tags, setTags] = useState<CitationLibraryTag[]>([]);
   const [selectedTag, setSelectedTag] = useState("");
   const [page, setPage] = useState(1);
-  const [entries, setEntries] = useState<CitationLibraryEntry[]>([]);
-  const [pagination, setPagination] = useState(emptyPagination);
-  const [loading, setLoading] = useState(true);
+  const [libraryResult, setLibraryResult] = useState<LibraryResult | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const libraryParams = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+  if (collection) libraryParams.set("collection", collection);
+  if (selectedTag) libraryParams.set("tag", selectedTag);
+  const librarySearch = query.trim();
+  if (librarySearch) libraryParams.set("q", librarySearch);
+  const libraryQuery = libraryParams.toString();
+  const libraryKey = JSON.stringify([currentUserId, currentFile, refresh, libraryQuery]);
+  const visibleLibrary = libraryResult?.key === libraryKey ? libraryResult : null;
   const [lookupNonce, setLookupNonce] = useState(0);
   /** Lower-cased keys of current-file entries already in the library, for the file as it was read. */
   const [comparison, setComparison] = useState<{ signature: string; inLibrary: Set<string> } | null>(null);
@@ -145,21 +154,22 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
 
   useEffect(() => {
     if (!open || view !== "library") return;
-    const controller = new AbortController(); setLoading(true);
+    const controller = new AbortController();
+    setLibraryResult(null);
     const timer = setTimeout(() => {
-      const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
-      if (collection) params.set("collection", collection);
-      if (selectedTag) params.set("tag", selectedTag);
-      if (query.trim()) params.set("q", query.trim());
-      void api<{ entries: CitationLibraryEntry[]; pagination: ProjectListPagination }>(`/api/citations?${params}`, { signal: controller.signal }).then((result) => {
+      void api<{ entries: CitationLibraryEntry[]; pagination: ProjectListPagination }>(`/api/citations?${libraryQuery}`, { signal: controller.signal }).then((result) => {
         if (controller.signal.aborted) return;
-        setEntries(result.entries); setPagination(result.pagination);
-        if (result.pagination.page !== page) setPage(result.pagination.page);
-      }).catch((reason) => { if (!controller.signal.aborted) setError(errorMessage(reason)); })
-        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    }, query.trim() ? 180 : 0);
+        if (result.pagination.page !== page) {
+          setPage(result.pagination.page);
+          return;
+        }
+        setLibraryResult({ key: libraryKey, status: "ready", ...result });
+      }).catch((reason) => {
+        if (!controller.signal.aborted) setLibraryResult({ key: libraryKey, status: "error", message: errorMessage(reason) });
+      });
+    }, librarySearch ? 180 : 0);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [open, view, collection, selectedTag, query, page, refresh, currentFile, currentUserId]);
+  }, [open, view, libraryKey, libraryQuery, librarySearch, page]);
 
   useEffect(() => {
     if (!open || view !== "current") return;
@@ -233,10 +243,17 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
           <div className="citation-library-scope-heading"><strong><FolderOpen size={15} />{filterFolder?.name ?? t(collection === "unfiled" ? "citationFolders.unfiled" : "citationFolders.all")}</strong></div>
           <label className="citation-library-search"><Search size={15} /><input aria-label={t("citationLibrary.searchPlaceholder")} placeholder={t("citationLibrary.searchPlaceholder")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /></label>
           <CitationTagFilters tags={tags} selectedId={selectedTag} onSelect={(id) => { setSelectedTag(id); setPage(1); }} />
-          {loading ? <div className="citation-library-empty"><LoaderCircle className="spin" size={22} />{t("common.loading")}</div> : !entries.length ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.emptyTitle")}</strong><span>{t("citationFolders.empty")}</span></div>
-            : <div className="citation-entry-list">{entries.map((entry) => <CitationCard key={entry.id} entry={entry} manage={false} alreadyInFile={currentKeys.has(entry.citationKey.toLowerCase())}
-              importDisabled={readOnly || !isBib || Boolean(savingKey || importingKey)} importHint={readOnly ? t("citationLibrary.importRequiresWrite") : undefined} onImport={() => insert(entry)} t={t} />)}</div>}
-          <CitationPagination pagination={{ ...pagination, page }} onPage={setPage} t={t} />
+          {!visibleLibrary ? <div className="citation-library-empty" role="status"><LoaderCircle className="spin" size={22} aria-hidden />{t("common.loading")}</div>
+            : visibleLibrary.status === "error" ? <div className="citation-library-empty">
+              <p className="error dialog-error" role="alert">{visibleLibrary.message}</p>
+              <button type="button" onClick={() => setRefresh((value) => value + 1)}>{t("common.retry")}</button>
+            </div>
+            : <>
+              {visibleLibrary.entries.length === 0 ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.emptyTitle")}</strong><span>{t("citationFolders.empty")}</span></div>
+                : <div className="citation-entry-list">{visibleLibrary.entries.map((entry) => <CitationCard key={entry.id} entry={entry} manage={false} alreadyInFile={currentKeys.has(entry.citationKey.toLowerCase())}
+                  importDisabled={readOnly || !isBib || Boolean(savingKey || importingKey)} importHint={readOnly ? t("citationLibrary.importRequiresWrite") : undefined} onImport={() => insert(entry)} t={t} />)}</div>}
+              <CitationPagination pagination={visibleLibrary.pagination} onPage={setPage} t={t} />
+            </>}
         </> : <>
           <label className="citation-project-destination"><FolderOpen size={15} /><span>{t("citationProject.saveFolder")}</span><select aria-label={t("citationProject.saveFolder")} value={destinationFolder?.id ?? ""} disabled={Boolean(savingKey)} onChange={(event) => setDestination(event.target.value)}>
             <option value="">{t("citationProject.chooseFolder")}</option>{catalog.collections.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}

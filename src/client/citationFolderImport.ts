@@ -16,7 +16,8 @@ export function parseCitationFolderFile(source: string, filename: string, maxBib
   source = source.replace(/^\uFEFF/, "");
   let entries: CitationFolderBundle["entries"];
   if (/\.bib$/i.test(filename)) {
-    const result = parseBibEntriesResult(source, MAX_CITATION_FOLDER_BYTES);
+    const result = parseBibEntriesResult(source, MAX_CITATION_FOLDER_BYTES, { standaloneEntries: true });
+    if (result.status === "too-large") throw new CitationFolderImportError("citationFolders.transferTooLarge");
     if (result.status !== "ok" || !result.entries.length) return fail();
     if (result.entries.length > MAX_CITATION_FOLDER_ENTRIES) throw new CitationFolderImportError("citationFolders.transferTooLarge");
     entries = result.entries.map((entry) => {

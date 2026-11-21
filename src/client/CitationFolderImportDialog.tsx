@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FileUp, LibraryBig, Upload, X } from "lucide-react";
-import { MAX_CITATION_FOLDER_BYTES, type CitationFolderBundle, type CitationFolderImportRequest } from "../shared/citationTransfer";
+import { MAX_CITATION_FOLDER_BYTES, MAX_CITATION_FOLDER_NAME_LENGTH, type CitationFolderBundle, type CitationFolderImportRequest } from "../shared/citationTransfer";
 import { api } from "./api";
 import { CitationFolderImportError, parseCitationFolderFile } from "./citationFolderImport";
 import { Modal } from "./Dialog";
@@ -33,7 +33,7 @@ export function CitationFolderImportDialog({ maxBibtexBytes, onClose, onImported
     if (pending.current) return;
     const sequence = ++selection.current;
     setBundle(null); setError(""); setFile(file ?? null); setReading(Boolean(file));
-    setName(file ? file.name.replace(/(?:\.texlite-citations)?\.json$|\.bib$/i, "").trim().slice(0, 80) : "");
+    setName(file ? file.name.replace(/(?:\.texlite-citations)?\.json$|\.bib$/i, "").trim().slice(0, MAX_CITATION_FOLDER_NAME_LENGTH) : "");
     if (!file) return;
     try {
       if (file.size > MAX_CITATION_FOLDER_BYTES) throw new Error(t("citationFolders.transferTooLarge"));
@@ -42,15 +42,15 @@ export function CitationFolderImportDialog({ maxBibtexBytes, onClose, onImported
     } catch (reason) { if (sequence === selection.current) setError(reason instanceof CitationFolderImportError ? t(reason.key) : errorMessage(reason)); }
     finally { if (sequence === selection.current) setReading(false); }
   };
+  const folderName = name.trim();
+  const validName = folderName.length > 0 && folderName.length <= MAX_CITATION_FOLDER_NAME_LENGTH;
   const save = async () => {
     const signal = request.current?.signal;
-    if (!bundle || !name.trim() || name.trim().length > 80 || pending.current || reading || !signal || signal.aborted) return;
+    if (!bundle || !validName || pending.current || reading || !signal || signal.aborted) return;
     pending.current = true; setSaving(true); setError("");
     try {
-      const payload: CitationFolderImportRequest = { ...bundle, name: name.trim() };
-      const body = JSON.stringify(payload);
-      if (new TextEncoder().encode(body).byteLength > MAX_CITATION_FOLDER_BYTES) throw new Error(t("citationFolders.transferTooLarge"));
-      const result = await api<{ collection: { id: string } }>("/api/citations/collections/import", { method: "POST", body, signal });
+      const payload: CitationFolderImportRequest = { ...bundle, name: folderName };
+      const result = await api<{ collection: { id: string } }>("/api/citations/collections/import", { method: "POST", body: JSON.stringify(payload), signal });
       if (!signal.aborted) { onImported(result.collection.id); onClose(); }
     } catch (reason) { if (!signal.aborted) setError(errorMessage(reason)); }
     finally { pending.current = false; if (!signal.aborted) setSaving(false); }
@@ -58,7 +58,7 @@ export function CitationFolderImportDialog({ maxBibtexBytes, onClose, onImported
   return <Modal open className="management-dialog" title={t("citationFolders.import")} description={t("citationFolders.importDescription")}
     onOpenChange={(open) => { if (!open && !saving) onClose(); }} footer={<>
       <button type="button" disabled={saving} onClick={onClose}>{t("common.cancel")}</button>
-      <SaveButton icon={<FileUp size={14} aria-hidden />} saving={saving} disabled={!bundle || reading || !name.trim() || name.trim().length > 80} onClick={() => void save()}>{t("citationFolders.import")}</SaveButton>
+      <SaveButton icon={<FileUp size={14} aria-hidden />} saving={saving} disabled={!bundle || reading || !validName} onClick={() => void save()}>{t("citationFolders.import")}</SaveButton>
     </>}>
     <div className="citation-folder-import">
       <div className={`upload-picker${file ? " has-file" : ""}${saving || reading ? " is-disabled" : ""}`}
@@ -80,7 +80,7 @@ export function CitationFolderImportDialog({ maxBibtexBytes, onClose, onImported
         {file && <button className="upload-clear" type="button" disabled={saving || reading} aria-label={t("projects.clearFile")}
           data-tooltip={t("projects.clearFile")} onClick={() => void readFile(undefined)}><X size={14} aria-hidden /></button>}
       </div>
-      {file && <label className="form-field">{t("citationFolders.name")}<input type="text" maxLength={80} disabled={saving}
+      {file && <label className="form-field">{t("citationFolders.name")}<input type="text" maxLength={MAX_CITATION_FOLDER_NAME_LENGTH} disabled={saving}
         value={name} onChange={(event) => setName(event.target.value)} /></label>}
       {reading && <p role="status">{t("common.loading")}</p>}
       {bundle && <p role="status">{t("citationFolders.importPreview", { name: name.trim(), count: bundle.entries.length })}</p>}

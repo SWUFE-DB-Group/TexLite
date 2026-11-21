@@ -8,8 +8,12 @@ import { loadConfig } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection } from "../src/server/db.js";
 import { createSessionToken } from "../src/server/security.js";
 import type { CitationLibraryEntry } from "../src/client/types";
+import { parseCitationFolderFile } from "../src/client/citationFolderImport";
+import { parseSingleBibEntry } from "../src/client/citationLibrary";
+import { MAX_CITATION_BIBTEX_BYTES } from "../src/server/limits.js";
 import type { CitationCollection, CitationCollectionCatalog } from "../src/shared/citationCollections.js";
-import { CITATION_FOLDER_FORMAT, CITATION_FOLDER_VERSION, MAX_CITATION_FOLDER_BYTES, MAX_CITATION_NOTES_BYTES, type CitationFolderBundle, type CitationFolderImportRequest } from "../src/shared/citationTransfer.js";
+import { CITATION_FOLDER_FORMAT, CITATION_FOLDER_VERSION, MAX_CITATION_FOLDER_BYTES, MAX_CITATION_FOLDER_IMPORT_REQUEST_BYTES,
+  MAX_CITATION_FOLDER_NAME_LENGTH, MAX_CITATION_NOTES_BYTES, type CitationFolderBundle, type CitationFolderImportRequest } from "../src/shared/citationTransfer.js";
 
 let root: string, db: DatabaseConnection, app: FastifyInstance;
 const cookies = new Map<string, string>();
@@ -63,6 +67,25 @@ describe("private citation folders", () => {
       ...created, venue: "Conference Proceedings", expectedRevision: 1
     });
     expect(updated.json().entry).toMatchObject({ venue: "Conference Proceedings", revision: 2 });
+  });
+
+  it("exports imported BibTeX entries that no longer depend on file-defined string macros", async () => {
+    const bundle = parseCitationFolderFile([
+      '@string{short = "{Example}"}',
+      '@string{conf = short # " Conference"}',
+      '@inproceedings{paper, booktitle = CONF # { 2026}, month = jan, title = {Literal conf}}'
+    ].join("\n"), "papers.bib", MAX_CITATION_BIBTEX_BYTES);
+    const imported = await call("POST", "/api/citations/collections/import", { ...bundle, name: "Papers" });
+    expect(imported.statusCode, imported.body).toBe(201);
+    const path = `/api/citations/collections/${imported.json().collection.id}/export`;
+    const bib = await call("GET", path);
+    expect(bib.statusCode).toBe(200);
+    expect(bib.body).toContain("booktitle = {{Example} Conference} # { 2026}, month = jan");
+    expect(parseSingleBibEntry(bib.body, MAX_CITATION_BIBTEX_BYTES)).toMatchObject({
+      citationKey: "paper", venue: "{Example} Conference 2026", title: "Literal conf"
+    });
+    const json = await call("GET", `${path}?notes=true`);
+    expect(parseCitationFolderFile(json.body, "papers.json", MAX_CITATION_BIBTEX_BYTES)).toEqual(bundle);
   });
 
   it("saves private Markdown notes with revision checks, preserves them across tag changes and supports explicit clearing", async () => {
@@ -252,9 +275,38 @@ describe("private citation folders", () => {
     expect(response.statusCode).toBe(413);
     expect(response.json().code).toBe("CITATION_FOLDER_TOO_LARGE");
     await folder("Still writable");
-    const tooLarge = await call("POST", "/api/citations/collections/import", { padding: "x".repeat(MAX_CITATION_FOLDER_BYTES) });
+    const tooLarge = await call("POST", "/api/citations/collections/import", { padding: "x".repeat(MAX_CITATION_FOLDER_IMPORT_REQUEST_BYTES) });
     expect(tooLarge.statusCode).toBe(413);
     expect((await folders()).collections).toHaveLength(2);
+  });
+
+  it("round-trips a JSON export at the byte limit independently of the destination name", async () => {
+    const notes = "x".repeat(MAX_CITATION_NOTES_BYTES);
+    const entries = Array.from({ length: MAX_CITATION_FOLDER_BYTES / MAX_CITATION_NOTES_BYTES }, (_, index) => ({
+      citationKey: `ref${index}`, entryType: "misc", bibtex: `@misc{ref${index}}`,
+      title: null, authors: null, year: null, venue: null, notes
+    }));
+    const bundle: CitationFolderBundle = { format: CITATION_FOLDER_FORMAT, version: CITATION_FOLDER_VERSION, entries };
+    const overflow = Buffer.byteLength(JSON.stringify(bundle)) - MAX_CITATION_FOLDER_BYTES;
+    entries.at(-1)!.notes = notes.slice(0, -overflow);
+    const name = "文".repeat(MAX_CITATION_FOLDER_NAME_LENGTH);
+    const first = await call("POST", "/api/citations/collections/import", { ...bundle, name });
+    expect(first.statusCode, first.body).toBe(201);
+    const exported = await call("GET", `/api/citations/collections/${first.json().collection.id}/export?notes=true`);
+    expect(exported.statusCode).toBe(200);
+    expect(Buffer.byteLength(exported.body)).toBe(MAX_CITATION_FOLDER_BYTES);
+
+    const parsed = parseCitationFolderFile(exported.body, `${name}.json`, MAX_CITATION_BIBTEX_BYTES);
+    const second = await call("POST", "/api/citations/collections/import", { ...parsed, name }, "bob");
+    expect(second.statusCode, second.body).toBe(201);
+    expect(second.json()).toMatchObject({ imported: entries.length, collection: { name } });
+
+    // Still reject a larger bundle even when the request fits in the name allowance.
+    parsed.entries[0] = { ...parsed.entries[0], bibtex: parsed.entries[0].bibtex + " " };
+    const rejected = await call("POST", "/api/citations/collections/import", { ...parsed, name: "Too large" }, "bob");
+    expect(rejected.statusCode, rejected.body).toBe(413);
+    expect(rejected.json().code).toBe("CITATION_FOLDER_TOO_LARGE");
+    expect((await call("GET", "/api/citations/collections", undefined, "bob")).json().collections).toHaveLength(1);
   });
   it("looks up project keys case-insensitively without returning library text", async () => {
     const stored = await entry("paper", undefined, { bibtex: "@article{paper,\n title={Original}\n}" });

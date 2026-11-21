@@ -1,5 +1,5 @@
 import { bibtexVenue, bibtexYear } from "../shared/bibtexReferences";
-import { parseBibtexDocument, withCrossrefFields, type BibtexDocumentEntry } from "./bibtex/entries";
+import { BibtexMacroExpansionLimitError, parseBibtexDocument, withCrossrefFields, type BibtexDocument, type BibtexDocumentEntry } from "./bibtex/entries";
 import { isBibtexTooLarge } from "./bibtexLimits";
 
 export { citationBibtexLimitLabel, isBibtexTooLarge } from "./bibtexLimits";
@@ -35,7 +35,7 @@ function citationEntry(source: string, entry: BibtexDocumentEntry): ParsedCitati
   return {
     citationKey: entry.key,
     entryType: entry.entryType,
-    bibtex: source.slice(entry.from, entry.to),
+    bibtex: entry.standaloneSource ?? source.slice(entry.from, entry.to),
     title: entry.fields.title ?? null,
     authors: entry.fields.author ?? null,
     year: bibtexYear(entry.fields),
@@ -48,14 +48,20 @@ function citationEntry(source: string, entry: BibtexDocumentEntry): ParsedCitati
  * returned. Callers that make safety decisions (for example duplicate-key
  * checks) must not treat an oversized document as an empty one.
  */
-export function parseBibEntriesResult(source: string, maxBytes: number): BibtexParseResult {
+export function parseBibEntriesResult(source: string, maxBytes: number, options?: { standaloneEntries: boolean }): BibtexParseResult {
   if (!source.trim()) return { status: "empty", entries: [] };
   if (isBibtexTooLarge(source, maxBytes)) return { status: "too-large", entries: [] };
-  const document = parseBibtexDocument(source);
+  let document: BibtexDocument;
+  try {
+    document = parseBibtexDocument(source, options?.standaloneEntries ? { standaloneMaxChars: maxBytes } : undefined);
+  } catch (error) {
+    if (error instanceof BibtexMacroExpansionLimitError) return { status: "too-large", entries: [] };
+    throw error;
+  }
   if (document.hasSyntaxErrors) return { status: "invalid", entries: [] };
   if (!document.entries.length) return { status: "empty", entries: [] };
-  // A parent in the same file fills the child's venue and year; the saved
-  // BibTeX stays exactly as written.
+  // A parent in the same file fills the child's display metadata. Crossref
+  // links stay as written, even when making file-defined string macros portable.
   return { status: "ok", entries: withCrossrefFields(document.entries).map((entry) => citationEntry(source, entry)) };
 }
 
