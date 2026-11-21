@@ -289,19 +289,39 @@ describe("minimal project bibliography workflow", () => {
     expect(posts()).toHaveLength(0);
   });
 
-  it("keeps saving disabled after a failed library check and retries when the current-file tab is reopened", async () => {
+  it("checks a large bibliography in bounded batches and keeps saving disabled until all batches succeed", async () => {
+    const generated = Array.from({ length: 5000 }, (_, index) => `@misc{k${index}}`);
+    currentSource = [...generated, generated[0], stored.bibtex].join("\n");
     await render(false, false);
     const implementation = vi.mocked(api).getMockImplementation()!;
-    let failed = false;
+    const batches: string[][] = [];
+    let failLastBatch!: (error: Error) => void;
     vi.mocked(api).mockImplementation(async (url, options) => {
-      if (url === "/api/citations/lookup" && !failed) { failed = true; throw new Error("Comparison unavailable"); }
+      if (url === "/api/citations/lookup") {
+        const { keys } = JSON.parse(String(options?.body)) as { keys: string[] };
+        batches.push(keys);
+        if (keys.length > 5000) throw new Error("Too many keys");
+        if (batches.length === 2) return new Promise((_resolve, reject) => { failLastBatch = reject; });
+      }
       return implementation(url, options);
     });
     await render(); await chooseFolder(); await tick(180);
+    expect(batches.map((keys) => keys.length)).toEqual([5000, 1]);
+    expect(batches[1]).toEqual(["paper"]);
+    expect(saveButton().disabled).toBe(true);
+    await act(async () => failLastBatch(new Error("Comparison unavailable")));
     expect(saveButton().disabled).toBe(true); expect(document.querySelector('[role="alert"]')?.textContent).toBe("Comparison unavailable");
     await click(saveButton()); expect(posts()).toHaveLength(0);
     await openLibrary(); await openCurrent();
     expect(saveButton().disabled).toBe(false); expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.querySelector(".citation-status-filters button:last-child")?.textContent).toBe("Not in library5001");
+    await act(async () => {
+      const input = document.querySelector<HTMLInputElement>(".citation-library-search input")!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "paper");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].querySelector(".citation-entry-heading em")?.textContent).toBe("Saved");
   });
 
   it("aborts and ignores library checks for old file contents when reopened", async () => {

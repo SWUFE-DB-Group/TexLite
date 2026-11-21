@@ -6,6 +6,7 @@ import { apiError, httpError, ValidationError } from "../http.js";
 import { MAX_CITATION_BIBTEX_BYTES } from "../limits.js";
 import { assertCitationCollectionCapacity, citationCollectionIds, citationCollectionsForEntries, filterCitationCollection, registerCitationCollectionRoutes } from "../citationCollections.js";
 import { citationInput } from "../citationInput.js";
+import { MAX_CITATION_LOOKUP_KEYS } from "../../shared/citationLookup.js";
 
 interface CitationRouteContext {
   db: DatabaseConnection;
@@ -235,7 +236,7 @@ export function registerCitationRoutes(app: FastifyInstance, context: CitationRo
     const user = requireUser(request, reply, db);
     if (!user) return;
     const keyInput = (request.body as { keys?: unknown } | undefined)?.keys;
-    if (!Array.isArray(keyInput) || keyInput.length > 5000
+    if (!Array.isArray(keyInput) || keyInput.length > MAX_CITATION_LOOKUP_KEYS
       || keyInput.some((key) => typeof key !== "string" || !key.trim() || key.length > 512)) {
       throw new ValidationError();
     }

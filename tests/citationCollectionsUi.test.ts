@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../src/client/api";
 import { CitationLibraryDialog } from "../src/client/CitationLibraryDialog";
-import type { CitationLibraryEntry } from "../src/client/types";
+import type { CitationLibraryEntry, CitationLibraryTag } from "../src/client/types";
 import type { CitationCollectionCatalog } from "../src/shared/citationCollections";
 import i18n from "../src/client/i18n";
 import { replaceCitationBibtex } from "./helpers/citationEditor";
@@ -17,6 +17,10 @@ const settle = () => act(async () => { vi.advanceTimersByTime(0); });
 const buttons = (selector = "button") => [...document.querySelectorAll<HTMLButtonElement>(selector)];
 const named = (name: string, selector?: string) => buttons(selector).find((button) => button.textContent === name || button.getAttribute("aria-label") === name)!;
 const folder = (name: string) => buttons(".citation-collection-select").find((button) => button.querySelector("span")?.textContent === name)!;
+const tagChoice = (name: string) => [...document.querySelectorAll<HTMLLabelElement>(".citation-tag-choice-list label")]
+  .find((label) => label.textContent === name)!.querySelector("input")!;
+const editEntryTags = (key: string) => menu([...host.querySelectorAll<HTMLElement>(".citation-entry-card")]
+  .find((card) => card.querySelector("code")?.textContent === key)!.querySelector<HTMLElement>(".citation-entry-menu-trigger")!, "Tags");
 function change(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
@@ -84,6 +88,71 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("citation folder workflows", () => {
+  it("saves only changed tag sets and retains the returned revision for the next save", async () => {
+    const tags: CitationLibraryTag[] = ["Alpha", "Beta", "Gamma"].map((name) => ({ id: name, name, color: "blue", ownerId: "alice" }));
+    saved = { ...saved, tags: tags.slice(0, 2) };
+    const implementation = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (url, options) => {
+      if (url === "/api/citations/tags") return { tags } as never;
+      if (url === "/api/citations/ref/tags") {
+        const { tagIds } = JSON.parse(String(options?.body)) as { tagIds: string[] };
+        saved = { ...saved, revision: saved.revision + 1, tags: tags.filter((tag) => tagIds.includes(tag.id)) };
+        return { entry: saved } as never;
+      }
+      return implementation(url, options);
+    });
+    const save = () => document.querySelector<HTMLButtonElement>(".citation-edit-actions .save-button")!;
+    const patches = () => vi.mocked(api).mock.calls.filter(([url]) => url === "/api/citations/ref/tags")
+      .map(([, options]) => {
+        const { tagIds, expectedRevision } = JSON.parse(String(options?.body)) as { tagIds: string[]; expectedRevision: number };
+        return { tagIds: tagIds.sort(), expectedRevision };
+      });
+    await render(); await editEntryTags("paper");
+    expect(save().disabled).toBe(true);
+    await click(tagChoice("Alpha"));
+    expect(save().disabled).toBe(false);
+    await click(tagChoice("Alpha")); // Same set, now in a different order.
+    expect(save().disabled).toBe(true);
+    await click(save());
+    expect(patches()).toHaveLength(0);
+    await click(tagChoice("Gamma")); await click(save()); await settle();
+    expect(save().disabled).toBe(true);
+    expect(save().textContent).toBe("Saved");
+    await click(tagChoice("Beta"));
+    expect(save().textContent).toBe("Save");
+    await click(save());
+    expect(patches()).toEqual([
+      { tagIds: ["Alpha", "Beta", "Gamma"], expectedRevision: 1 },
+      { tagIds: ["Alpha", "Gamma"], expectedRevision: 2 }
+    ]);
+  });
+
+  it.each(["paper", "second"])("does not apply a closed tag editor's save to a new draft for %s", async (nextKey) => {
+    const tags: CitationLibraryTag[] = ["Alpha", "Beta"].map((name) => ({ id: name, name, color: "blue", ownerId: "alice" }));
+    const other = { ...saved, id: "other", citationKey: "second" };
+    const implementation = vi.mocked(api).getMockImplementation()!;
+    let finish!: (value: never) => void;
+    vi.mocked(api).mockImplementation(async (url, options) => {
+      if (url === "/api/citations/tags") return { tags } as never;
+      if (url === "/api/citations/ref/tags") return new Promise((resolve) => { finish = resolve; });
+      if (url.startsWith("/api/citations?")) return { entries: [saved, other], pagination: { page: 1, pageSize: 60, total: 2, totalPages: 1 } } as never;
+      return implementation(url, options);
+    });
+    await render(); await editEntryTags("paper");
+    await click(tagChoice("Alpha"));
+    await click(named("Save", ".citation-edit-actions button"));
+    await click(named("Cancel", ".citation-edit-actions button"));
+    await editEntryTags(nextKey);
+    await click(tagChoice("Beta"));
+    saved = { ...saved, tags: [tags[0]], revision: 2 };
+    await act(async () => finish({ entry: saved } as never)); await settle();
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(`Tags for ${nextKey}`);
+    expect(tagChoice("Alpha").checked).toBe(false);
+    expect(tagChoice("Beta").checked).toBe(true);
+    expect(named("Save", ".citation-edit-actions button").disabled).toBe(false);
+    expect(document.querySelector(".citation-edit-actions [data-save-feedback]")).toBeNull();
+  });
+
   it("submits optional Markdown notes with the BibTeX entry, not inside the BibTeX text", async () => {
     await render();
     await click(named("Add entry", ".citation-add-entry-button"));

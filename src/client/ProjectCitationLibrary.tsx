@@ -12,6 +12,7 @@ import { citationBibtexLimitLabel, isBibtexTooLarge, parseBibEntriesResult, type
 import { CITATION_PAGE_SIZE, useCitationLibraryPage } from "./useCitationLibraryPage";
 import { bibtexDisplayText } from "../shared/bibtexText";
 import type { CitationCollectionCatalog } from "../shared/citationCollections";
+import { MAX_CITATION_LOOKUP_KEYS } from "../shared/citationLookup";
 import type { CitationLibraryEntry, CitationLibraryTag, ProjectListPagination } from "./types";
 
 const noop = () => undefined;
@@ -30,6 +31,19 @@ function searchable(value: string): string {
 function currentEntrySearchText(entry: ParsedCitationEntry): string {
   const fields = [entry.title, entry.authors, entry.venue].filter((value): value is string => Boolean(value));
   return searchable([entry.citationKey, entry.year ?? "", ...fields, ...fields.map(bibtexDisplayText)].join("\n"));
+}
+
+async function lookupCitationKeys(entries: readonly ParsedCitationEntry[], signal: AbortSignal): Promise<Set<string>> {
+  const keys = [...new Set(entries.map((entry) => entry.citationKey))];
+  const inLibrary = new Set<string>();
+  for (let start = 0; start < keys.length; start += MAX_CITATION_LOOKUP_KEYS) {
+    const { matches } = await api<{ matches: Array<{ citationKey: string }> }>("/api/citations/lookup", {
+      method: "POST", body: JSON.stringify({ keys: keys.slice(start, start + MAX_CITATION_LOOKUP_KEYS) }), signal
+    });
+    signal.throwIfAborted();
+    for (const match of matches) inLibrary.add(match.citationKey.toLowerCase());
+  }
+  return inLibrary;
 }
 
 /** Project import/save workflows do not mount private-library management UI. */
@@ -149,10 +163,8 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
     const timer = setTimeout(() => {
       const { status, entries: fileEntries } = parsedRef.current;
       if (status === "invalid" || status === "too-large" || !fileEntries.length) { setComparison(null); setComparing(false); return; }
-      void api<{ matches: Array<{ citationKey: string }> }>("/api/citations/lookup", {
-        method: "POST", body: JSON.stringify({ keys: fileEntries.map((entry) => entry.citationKey) }), signal: controller.signal
-      }).then((result) => {
-        if (!controller.signal.aborted) setComparison({ signature, inLibrary: new Set(result.matches.map((match) => match.citationKey.toLowerCase())) });
+      void lookupCitationKeys(fileEntries, controller.signal).then((inLibrary) => {
+        if (!controller.signal.aborted) setComparison({ signature, inLibrary });
       }).catch((reason) => { if (!controller.signal.aborted) { setComparison(null); setError(errorMessage(reason)); } })
         .finally(() => { if (!controller.signal.aborted) setComparing(false); });
     }, 180);
