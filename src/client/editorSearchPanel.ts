@@ -2,7 +2,7 @@ import type { TFunction } from "i18next";
 import { EditorView, runScopeHandlers, type Panel, type ViewUpdate } from "@codemirror/view";
 import {
   SearchQuery, closeSearchPanel, findNext, findPrevious, getSearchQuery,
-  replaceAll, replaceNext, setSearchQuery
+  replaceAll, replaceNext, search, setSearchQuery
 } from "@codemirror/search";
 import { countSearchMatches, currentSearchMatch, searchQuerySignature } from "./editorSearch";
 
@@ -33,8 +33,10 @@ function icon(doc: Document, name: keyof typeof iconPaths): SVGSVGElement {
   return svg;
 }
 
-export function createEditorSearchPanel(t: TFunction): (view: EditorView) => Panel {
-  return view => new CompactSearchPanel(view, t);
+export function editorSearch(t: TFunction) {
+  // Keep plain queries literal, including a LaTeX command prefilled from
+  // the editor selection when the panel is opened.
+  return search({ top: true, literal: true, createPanel: view => new CompactSearchPanel(view, t) });
 }
 
 class CompactSearchPanel implements Panel {
@@ -51,6 +53,7 @@ class CompactSearchPanel implements Panel {
   private readonly options: HTMLButtonElement[];
   private readonly actions: HTMLButtonElement[];
   private readonly replaceActions: HTMLButtonElement[];
+  private replaceExpanded = true;
   private query: SearchQuery;
   private countedDoc: EditorView["state"]["doc"] | null = null;
   private signature = "";
@@ -79,8 +82,11 @@ class CompactSearchPanel implements Panel {
     this.status.setAttribute("aria-live", "polite");
     tools.append(this.status);
     this.searchBox.append(this.searchField, tools);
-    this.toggleReplace = this.button("toggleReplace", "", () => this.showReplace(this.replaceRow.hidden));
-    this.toggleReplace.hidden = view.state.readOnly;
+    this.toggleReplace = this.button("toggleReplace", "", () => {
+      if (view.state.readOnly) return;
+      this.replaceExpanded = !this.replaceExpanded;
+      this.showReplace(this.replaceExpanded);
+    });
     const navigation = this.element("div", "cm-search-actions");
     this.actions = [
       this.iconButton("prev", t("editor.search.previous"), "up", () => findPrevious(view), "Shift+Enter"),
@@ -100,7 +106,7 @@ class CompactSearchPanel implements Panel {
     this.replaceRow.append(replacement, replacementActions);
     layout.append(this.toggleReplace, this.searchBox, navigation, close, this.replaceRow);
     this.dom.append(layout);
-    this.showReplace(!view.state.readOnly);
+    this.updateEditability();
     this.dom.addEventListener("keydown", this.keydown);
     this.refresh();
   }
@@ -108,7 +114,9 @@ class CompactSearchPanel implements Panel {
   mount(): void { this.searchField.focus(); this.searchField.select(); }
   update(update: ViewUpdate): void {
     const query = getSearchQuery(update.state);
-    if (!query.eq(this.query) || update.docChanged || update.selectionSet) this.refresh();
+    const editabilityChanged = update.startState.readOnly !== update.state.readOnly;
+    if (editabilityChanged) this.updateEditability();
+    if (editabilityChanged || !query.eq(this.query) || query.literal !== this.query.literal || update.docChanged || update.selectionSet) this.refresh();
   }
 
   private element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string): HTMLElementTagNameMap[K] {
@@ -143,10 +151,11 @@ class CompactSearchPanel implements Panel {
     return button;
   }
   private commit(options: Partial<Pick<SearchQuery, "caseSensitive" | "regexp" | "wholeWord">> = {}): void {
-    const { caseSensitive, regexp, wholeWord, literal } = this.query;
-    const query = new SearchQuery({ caseSensitive, regexp, wholeWord, literal,
-      search: this.searchField.value, replace: this.replaceField.value, ...options });
-    if (!query.eq(this.query)) this.view.dispatch({ effects: setSearchQuery.of(query) });
+    const { caseSensitive, regexp, wholeWord } = { ...this.query, ...options };
+    // Regexp mode keeps CodeMirror's replacement escapes and capture groups.
+    const query = new SearchQuery({ caseSensitive, regexp, wholeWord, literal: !regexp,
+      search: this.searchField.value, replace: this.replaceField.value });
+    if (!query.eq(this.query) || query.literal !== this.query.literal) this.view.dispatch({ effects: setSearchQuery.of(query) });
   }
   private refresh(): void {
     this.query = getSearchQuery(this.view.state);
@@ -171,6 +180,14 @@ class CompactSearchPanel implements Panel {
     // Literal, case-sensitive identical replacement cannot change the source.
     const unchanged = !this.query.regexp && this.query.caseSensitive && this.query.search === this.query.replace;
     this.replaceActions.forEach(button => { button.disabled = !this.count || unchanged || this.view.state.readOnly; });
+  }
+  private updateEditability(): void {
+    const readOnly = this.view.state.readOnly;
+    const focused = this.view.root.activeElement;
+    if (readOnly && (focused === this.toggleReplace || this.replaceRow.contains(focused))) this.searchField.focus();
+    this.toggleReplace.hidden = readOnly;
+    this.replaceField.disabled = readOnly;
+    this.showReplace(!readOnly && this.replaceExpanded);
   }
   private showReplace(show: boolean): void {
     this.replaceRow.hidden = !show;

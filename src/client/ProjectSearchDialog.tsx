@@ -7,8 +7,10 @@ import { ConfirmDialog, Modal } from "./Dialog";
 import { errorMessage } from "./errors";
 import { FileTypeIcon } from "./fileIcons";
 
+const matchedText = (match: ProjectSearchMatch) => match.preview.slice(match.matchStart, match.matchEnd);
+
 export function ProjectSearchDialog({ projectId, onClose, onNavigate, readOnly = false }: {
-  projectId: string; onClose: () => void; onNavigate: (path: string, line: number, column: number) => void; readOnly?: boolean;
+  projectId: string; onClose: () => void; onNavigate: (path: string, line: number, column: number, matchText: string) => void; readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const input = useRef<HTMLInputElement>(null);
@@ -62,7 +64,7 @@ export function ProjectSearchDialog({ projectId, onClose, onNavigate, readOnly =
   }, [result]);
   const canReplace = (matches: readonly ProjectSearchMatch[]) => !readOnly && !locked && !loading && !error && !mutationError
     && !(caseSensitive && query === replacement)
-    && matches.some((match) => match.preview.slice(match.matchStart, match.matchEnd) !== replacement);
+    && matches.some((match) => matchedText(match) !== replacement);
   const refresh = () => { setMutationError(""); immediateRefresh.current = criteriaKey; setRetry((value) => value + 1); };
   const replaceMatches = async (matches: readonly ProjectSearchMatch[]) => {
     if (busy.current || readOnly || !matches.length) return;
@@ -85,7 +87,7 @@ export function ProjectSearchDialog({ projectId, onClose, onNavigate, readOnly =
     }
   };
   const preview = (match: ProjectSearchMatch) => {
-    const original = match.preview.slice(match.matchStart, match.matchEnd);
+    const original = matchedText(match);
     return <>{match.preview.slice(0, match.matchStart)}
       {!readOnly && replacement ? <><del>{original}</del><ins>{replacement}</ins></> : <mark>{original}</mark>}
       {match.preview.slice(match.matchEnd)}</>;
@@ -125,7 +127,7 @@ export function ProjectSearchDialog({ projectId, onClose, onNavigate, readOnly =
           <div>{matches.map((match) => <div className="project-search-row" key={`${match.line}:${match.column}`}>
             <button type="button" className="project-search-match" disabled={locked}
               aria-label={t("projectSearch.location", { path, line: match.line, column: match.column })}
-              onClick={() => { onNavigate(path, match.line, match.column); onClose(); }}>
+              onClick={() => { onNavigate(path, match.line, match.column, matchedText(match)); onClose(); }}>
               <span className="project-search-line">L{match.line}:{match.column}</span><code>{preview(match)}</code>
             </button>
             {!readOnly && <button type="button" className="project-replace-match" disabled={!canReplace([match])}

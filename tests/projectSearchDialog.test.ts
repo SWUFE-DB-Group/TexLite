@@ -71,7 +71,7 @@ describe("project search dialog", () => {
     await advance();
     expect(JSON.parse(vi.mocked(api).mock.calls.at(-1)![1]!.body as string)).toEqual({ query: "key", caseSensitive: false, wholeWord: false });
     await act(async () => document.querySelector<HTMLButtonElement>(".project-search-match")!.click());
-    expect(navigate).toHaveBeenCalledWith("chapters/intro.tex", 3, 7); expect(close).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith("chapters/intro.tex", 3, 7, "key"); expect(close).toHaveBeenCalledOnce();
   });
 
   it("aborts obsolete requests and never shows their late results or errors", async () => {

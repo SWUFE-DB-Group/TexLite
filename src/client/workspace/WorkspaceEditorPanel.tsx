@@ -17,6 +17,7 @@ import { commentsForEditorFile, focusCommentForEditorFile } from "./commentNavig
 import type { SelectionLineAction } from "../selectionLineActions";
 import { EditorTerminalLayout, type TerminalPanelRenderer } from "./EditorTerminalLayout";
 import { WorkspaceMobileSyncButton } from "./WorkspaceMobileSyncButton";
+import type { SourceJump } from "./useSyncTeX";
 
 const LatexEditor = lazy(() => import("../LatexEditor").then((module) => ({ default: module.LatexEditor })));
 
@@ -50,7 +51,8 @@ export interface WorkspaceEditorPanelProps {
   nativeSpellCheck: boolean;
   spellCheckIssues: SpellCheckIssue[];
   spellCheckJump: SpellCheckJump | null;
-  sourceJump: { path: string; line: number; column: number; nonce: number } | null;
+  sourceJump: SourceJump | null;
+  onSourceJumpHandled: (nonce: number) => void;
   collaborativeText: Y.Text | null;
   collaborationAwareness: Awareness;
   undoManager?: Y.UndoManager;
@@ -77,7 +79,7 @@ export interface WorkspaceEditorPanelProps {
 
 export function WorkspaceEditorPanel({
   project, projectId, activeFile, mainFile, openTabs, content, loadedFile, readOnly, comments, focusComment,
-  editorPreferences, completionIndex, nativeSpellCheck, spellCheckIssues, spellCheckJump, sourceJump,
+  editorPreferences, completionIndex, nativeSpellCheck, spellCheckIssues, spellCheckJump, sourceJump, onSourceJumpHandled,
   collaborativeText, collaborationAwareness, undoManager, editorNotice, activateTab, closeTab,
   handleTabKeyDown, reorderTab, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync,
   alternativeEditor, figurePdf = null, agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
@@ -101,6 +103,7 @@ export function WorkspaceEditorPanel({
         <div className="editor-content-fill">
         <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
           <LatexEditor key={editorKey} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaboration} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
+            onSourceJumpHandled={onSourceJumpHandled}
             agentChanges={agentChanges} activeAgentChangeId={activeAgentChangeId} agentChangeReveal={agentChangeReveal} onAgentChangesStale={onAgentChangesStale} onOpenAgentChange={onOpenAgentChange} />
         </Suspense>
         </div>

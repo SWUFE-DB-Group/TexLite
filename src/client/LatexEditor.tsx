@@ -14,7 +14,7 @@ import {
 import {
   acceptCompletion, autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap
 } from "@codemirror/autocomplete";
-import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
+import { openSearchPanel, searchKeymap } from "@codemirror/search";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
@@ -22,7 +22,7 @@ import type { Comment, LatexCompletionIndex } from "./types";
 import { editorFontStack, type EditorPreferences } from "./editorPreferences";
 import { editorColorScheme, editorGenericHighlightStyle, selectedSyntaxHighlighting } from "./editorThemeExtension";
 import { useTheme, type Theme } from "./theme";
-import { createEditorSearchPanel } from "./editorSearchPanel";
+import { editorSearch } from "./editorSearchPanel";
 import { editorSearchOverview } from "./editorSearchOverview";
 import { bibtexCompletionSource, bibtexHighlightStyle, bibtexLanguage, bstLanguage, createBibtexEditorExtensions, latexLanguage, localizedBibtexMessages } from "./latexLanguage";
 import { supportsLatexMathHover } from "./latexMath";
@@ -44,6 +44,7 @@ import { SpellSuggestionsMenu, type WritingSuggestionAnchor } from "./SpellSugge
 import type { AgentChange } from "../shared/agentProtocol";
 import { agentChangeMarks, agentChangeStart, setAgentChangeMarks } from "./agents/agentChangeMarks";
 import { sourceHash } from "./sourceHash";
+import type { SourceJump } from "./workspace/useSyncTeX";
 export type { SpellCheckIssue } from "./spellCheck";
 
 interface Props {
@@ -59,7 +60,8 @@ interface Props {
   completionIndex: LatexCompletionIndex | null;
   spellCheckIssues: SpellCheckIssue[];
   spellCheckJump: SpellCheckJump | null;
-  jumpTo: { line: number; column: number; nonce: number } | null;
+  jumpTo: SourceJump | null;
+  onSourceJumpHandled?: (nonce: number) => void;
   searchRequest: number;
   collaboration?: { text: Y.Text; awareness: Awareness; undoManager?: Y.UndoManager };
   onChange: (value: string) => void;
@@ -158,7 +160,7 @@ function referenceFromElement(element: EventTarget | null): LatexReference | nul
 }
 
 export function LatexEditor({
-  value, projectId, filePath, mainFile, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, searchRequest,
+  value, projectId, filePath, mainFile, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, onSourceJumpHandled, searchRequest,
   nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor,
   agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: Props) {
@@ -252,7 +254,7 @@ export function LatexEditor({
         mathHover.current.of(preferences.mathPreviewOnHover && supportsLatexMathHover(filePath) ? latexMathHover({
           loading: t("editor.mathPreviewLoading"), unavailable: t("editor.mathPreviewUnavailable"), preview: t("editor.mathPreview")
         }) : []),
-        search({ top: true, createPanel: createEditorSearchPanel(t) }), editorSearchOverview, EditorState.phrases.of(searchPhrases(t)),
+        editorSearch(t), editorSearchOverview, EditorState.phrases.of(searchPhrases(t)),
         // Ahead of the snippet keymap, so Tab in a snippet field accepts an open list first.
         Prec.highest(keymap.of([{ key: "Tab", run: acceptCompletion },
           ...(isLatexFile ? [{ key: "Enter", run: enterAfterCompleteLatexCommand }] : [])])),
@@ -500,12 +502,18 @@ export function LatexEditor({
     const lineNumber = Math.max(1, Math.min(editor.state.doc.lines, jumpTo.line));
     const line = editor.state.doc.line(lineNumber);
     const position = Math.min(line.to, line.from + Math.max(0, jumpTo.column - 1));
+    // Only search jumps have a selection, and only while the exact text is
+    // still here. Line/column also work when the editor normalizes CRLF.
+    const match = jumpTo.matchText;
+    const end = position + (match?.length ?? 0);
+    const matches = match && lineNumber === jumpTo.line && end <= line.to && editor.state.sliceDoc(position, end) === match;
     editor.dispatch({
-      selection: { anchor: line.from, head: line.to },
+      selection: { anchor: position, head: matches ? end : position },
       effects: EditorView.scrollIntoView(position, { y: "center", yMargin: 60 })
     });
     editor.focus();
-  }, [jumpTo?.nonce]);
+    onSourceJumpHandled?.(jumpTo.nonce);
+  }, [jumpTo, onSourceJumpHandled]);
 
   useEffect(() => {
     const editor = view.current;

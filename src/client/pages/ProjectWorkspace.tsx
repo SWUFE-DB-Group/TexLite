@@ -343,7 +343,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
 
   const {
     pdfTarget, pdfViewport, sourceJump, setPdfViewport, resetPdfViewport, clearPdfViewport,
-    jumpToSource, syncSourceToPdf, syncPdfToSource, syncVisiblePdfToSource
+    jumpToSource, finishSourceJump, syncSourceToPdf, syncPdfToSource, syncVisiblePdfToSource
   } = useSyncTeX({
     projectId,
     mainFile: activeMainFile,
@@ -1608,7 +1608,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         content={content} loadedFile={loadedFile} readOnly={readOnly} comments={comments}
         focusComment={focusComment} editorPreferences={editorPreferences} completionIndex={completionIndex}
         nativeSpellCheck={spellCheck.nativeFallback} spellCheckIssues={spellCheck.issues}
-        spellCheckJump={spellCheck.jump} sourceJump={sourceJump} collaborativeText={collaborativeText}
+        spellCheckJump={spellCheck.jump} sourceJump={sourceJump} onSourceJumpHandled={finishSourceJump} collaborativeText={collaborativeText}
         collaborationAwareness={collaboration.awareness} undoManager={activeFile && canTrackUndo ? collaboration.getUndoManager(activeFile) : undefined}
         editorNotice={editorNotice} activateTab={activateTab} closeTab={closeTab}
         handleTabKeyDown={handleTabKeyDown} reorderTab={reorderTab} updateEditorContent={updateEditorContent}
@@ -1671,10 +1671,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       error={wordCountError} result={wordCountResult} plainResult={wordCountPlainResult} onOpenChange={setWordCountOpen} /></LazyModal>}
     <WorkspaceDialogs
       projectSearchOpen={projectSearchOpen} setProjectSearchOpen={setProjectSearchOpen}
-      onSearchNavigate={(path, line, column) => {
+      onSearchNavigate={(path, line, column, matchText) => {
         if (workspaceLayout === "pdf-only") changeWorkspaceLayout(phone ? "editor-only" : "editor-pdf");
         if (phone) setPhoneFilesOpen(false);
-        jumpToSource(path, line, column);
+        jumpToSource(path, line, column, matchText);
       }}
       user={user} project={project} projectId={projectId} activeFile={activeFile}
       content={content} maxCitationBibtexBytes={site.maxCitationBibtexBytes} files={files} directoryEntries={directoryEntries} readOnly={readOnly}

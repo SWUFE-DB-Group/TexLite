@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isAbortError } from "../api";
 import type { PdfTarget } from "../PdfPreview";
 import { errorMessage } from "../errors";
@@ -8,6 +8,8 @@ export interface SourceJump {
   path: string;
   line: number;
   column: number;
+  /** Select this text only if it still matches at the requested position. */
+  matchText?: string;
   nonce: number;
 }
 
@@ -53,10 +55,13 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onOpenSourceFile, 
     return () => request.current?.abort();
   }, [projectId, mainFile]);
 
-  const jumpToSource = (path: string, line: number, column: number) => {
-    setSourceJump({ path, line, column, nonce: ++nonce.current });
+  const jumpToSource = (path: string, line: number, column: number, matchText?: string) => {
+    setSourceJump({ path, line, column, matchText, nonce: ++nonce.current });
     onOpenSourceFileRef.current(path);
   };
+  const finishSourceJump = useCallback((nonce: number) => {
+    setSourceJump((current) => current?.nonce === nonce ? null : current);
+  }, []);
 
   const matchesSelection = (pdf: CompilationRunIdentity | null): pdf is CompilationRunIdentity =>
     pdf !== null && pdf.projectId === projectId && pdf.mainFile === mainFile;
@@ -128,6 +133,7 @@ export function useSyncTeX({ projectId, mainFile, activeFile, onOpenSourceFile, 
     resetPdfViewport: () => setPdfViewport(null),
     clearPdfViewport,
     jumpToSource,
+    finishSourceJump,
     syncSourceToPdf,
     syncPdfToSource,
     syncVisiblePdfToSource

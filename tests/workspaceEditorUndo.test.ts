@@ -47,7 +47,7 @@ afterEach(async () => {
 
 const view = () => EditorView.findFromDOM(host.querySelector(".cm-editor")!)!;
 const noop = () => {};
-const render = (readOnly: boolean) => act(async () => {
+const render = (readOnly: boolean, overrides: Partial<WorkspaceEditorPanelProps> = {}) => act(async () => {
   const props: WorkspaceEditorPanelProps = {
     project: { mainFile: "main.tex" } as WorkspaceEditorPanelProps["project"],
     projectId: "paper", activeFile: "main.tex", mainFile: "main.tex", loadedFile: "main.tex", openTabs: [], content: initial,
@@ -56,7 +56,7 @@ const render = (readOnly: boolean) => act(async () => {
     collaborativeText: text, collaborationAwareness: awareness, undoManager: manager, editorNotice: "",
     activateTab: noop, closeTab: noop, handleTabKeyDown: noop, reorderTab: noop, updateEditorContent: noop,
     setSelection: noop, onAddComment: noop, onSelectionHistory: noop, onCommentClick: noop, onSpellCheckReplace: noop,
-    onReferenceNavigate: noop, onCursor: noop
+    onReferenceNavigate: noop, onCursor: noop, onSourceJumpHandled: noop, ...overrides
   };
   root.render(createElement(WorkspaceEditorPanel, props));
 });
@@ -99,5 +99,34 @@ describe("workspace collaboration undo", () => {
     expect(view()).toBe(current);
     await pressUndoKey();
     expect(text.toString()).toBe(initial);
+  });
+});
+
+describe("workspace source navigation", () => {
+  it("waits for the requested file and selects only the clicked occurrence on a line", async () => {
+    const content = "Setup\nkey key suffix";
+    text.delete(0, text.length);
+    text.insert(0, content);
+    const onSourceJumpHandled = vi.fn();
+    const sourceJump = { path: "main.tex", line: 2, column: 5, matchText: "key", nonce: 1 };
+    await render(false, { sourceJump, onSourceJumpHandled, loadedFile: "" });
+    await act(async () => vi.dynamicImportSettled());
+    expect(view().state.selection.main.empty).toBe(true);
+    expect(onSourceJumpHandled).not.toHaveBeenCalled();
+    await render(false, { sourceJump, onSourceJumpHandled });
+    expect(view().state.selection.main).toMatchObject({ from: 10, to: 13 });
+    expect(onSourceJumpHandled).toHaveBeenCalledExactlyOnceWith(1);
+    await act(async () => {
+      view().dispatch(view().state.replaceSelection("new"));
+    });
+    expect(text.toString()).toBe("Setup\nkey new suffix");
+  });
+
+  it("positions the caret without selecting a line for coordinates or a stale search result", async () => {
+    await render(false, { sourceJump: { path: "main.tex", line: 1, column: 4, nonce: 1 } });
+    await act(async () => vi.dynamicImportSettled());
+    expect(view().state.selection.main).toMatchObject({ from: 3, to: 3 });
+    await render(false, { sourceJump: { path: "main.tex", line: 1, column: 10, matchText: "obsolete", nonce: 2 } });
+    expect(view().state.selection.main).toMatchObject({ from: 9, to: 9 });
   });
 });

@@ -31,7 +31,7 @@ export interface WorkspaceDialogsProps {
   addFile: (path: string, content: string) => Promise<void>;
   projectSearchOpen: boolean;
   setProjectSearchOpen: (open: boolean) => void;
-  onSearchNavigate: (path: string, line: number, column: number) => void;
+  onSearchNavigate: (path: string, line: number, column: number, matchText: string) => void;
   commentSuggestion: SuggestionDraft | null;
   setCommentSuggestion: (suggestion: SuggestionDraft | null) => void;
   user: User;

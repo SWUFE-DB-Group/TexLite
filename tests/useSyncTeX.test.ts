@@ -95,6 +95,17 @@ describe("source to PDF navigation", () => {
 });
 
 describe("visible PDF to source navigation", () => {
+  it("consumes a jump without discarding a newer navigation", async () => {
+    await render();
+    await act(async () => current.jumpToSource("main.tex", 1, 3, "first"));
+    const first = current.sourceJump!;
+    await act(async () => current.jumpToSource("main.tex", 4, 2, "second"));
+    await act(async () => current.finishSourceJump(first.nonce));
+    expect(current.sourceJump).toMatchObject({ path: "main.tex", line: 4, column: 2, matchText: "second" });
+    await act(async () => current.finishSourceJump(current.sourceJump!.nonce));
+    expect(current.sourceJump).toBeNull();
+  });
+
   it("opens the mapped included source and switches views only after a successful lookup", async () => {
     let resolve!: (location: { path: string; line: number; column: number }) => void;
     vi.mocked(api).mockReturnValue(new Promise((done) => { resolve = done; }));

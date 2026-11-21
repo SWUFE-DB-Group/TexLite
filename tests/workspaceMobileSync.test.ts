@@ -66,7 +66,7 @@ describe("phone SyncTeX controls", () => {
       project: { id: "paper", name: "Paper", ownerId: "owner", mainFile: "main.tex", lastModifiedBy: null,
         latexmkrc: null, engine: "pdflatex", icon: null, chktexEnabled: false, permission: "owner", tags: [], createdAt: "2026-01-01", updatedAt: "2026-01-01" },
       editorPreferences: defaultEditorPreferences, openTabs: [], comments: [], focusComment: null,
-      readOnly: false, completionIndex: null, nativeSpellCheck: false, spellCheckIssues: [], spellCheckJump: null, sourceJump: null,
+      readOnly: false, completionIndex: null, nativeSpellCheck: false, spellCheckIssues: [], spellCheckJump: null, sourceJump: null, onSourceJumpHandled: () => {},
       collaborativeText: null, collaborationAwareness: {} as WorkspaceEditorPanelProps["collaborationAwareness"],
       editorNotice: "", activateTab: noop, closeTab: noop, handleTabKeyDown: noop, reorderTab: noop, updateEditorContent: noop, setSelection: noop,
       onAddComment: noop, onSelectionHistory: noop, onCommentClick: noop, onSpellCheckReplace: noop, onReferenceNavigate: noop, onCursor: noop,

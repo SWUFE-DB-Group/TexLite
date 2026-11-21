@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { history, undo } from "@codemirror/commands";
-import { SearchQuery, openSearchPanel, search, searchKeymap, searchPanelOpen, setSearchQuery } from "@codemirror/search";
+import { SearchQuery, closeSearchPanel, openSearchPanel, searchKeymap, searchPanelOpen, setSearchQuery } from "@codemirror/search";
 import { createInstance } from "i18next";
 import en from "../src/client/locales/en.json";
-import { createEditorSearchPanel } from "../src/client/editorSearchPanel";
+import { editorSearch } from "../src/client/editorSearchPanel";
 
 const i18n = createInstance();
 await i18n.init({ lng: "en", resources: { en: { translation: en } } });
@@ -23,8 +23,9 @@ afterEach(() => {
 function fixture(readOnly = false, doc = "model Model model models") {
   const parent = document.createElement("div");
   document.body.append(parent);
+  const editability = new Compartment();
   const view = new EditorView({ parent, state: EditorState.create({ doc, extensions: [
-    search({ top: true, createPanel: createEditorSearchPanel(i18n.t) }), keymap.of(searchKeymap), history(), EditorState.allowMultipleSelections.of(true), EditorState.readOnly.of(readOnly)
+    editorSearch(i18n.t), keymap.of(searchKeymap), history(), EditorState.allowMultipleSelections.of(true), editability.of(EditorState.readOnly.of(readOnly))
   ] }) });
   views.push(view);
   openSearchPanel(view);
@@ -33,7 +34,8 @@ function fixture(readOnly = false, doc = "model Model model models") {
   const type = (name: string, text: string) => { field(name).value = text; field(name).dispatchEvent(new Event("input", { bubbles: true })); };
   const key = (target: HTMLElement, key: string, shiftKey = false) => target.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true }));
   const status = () => view.dom.querySelector(".cm-search-count")!.textContent;
-  return { view, field, button, type, key, status };
+  const setReadOnly = (next: boolean) => view.dispatch({ effects: editability.reconfigure(EditorState.readOnly.of(next)) });
+  return { view, field, button, type, key, status, setReadOnly };
 }
 
 describe("compact editor search panel", () => {
@@ -91,6 +93,25 @@ describe("compact editor search panel", () => {
     expect(view.state.doc.toString()).toBe("value1 item2");
   });
 
+  it("preserves LaTeX commands and doubled backslashes in literal searches and replacements", () => {
+    const command = String.raw`\newcommand`;
+    const query = String.raw`\ref{x}`;
+    const replacement = String.raw`\textbf{x}\\`;
+    const { view, field, button, type, status } = fixture(false, `${command} ${query} ${query}`);
+    closeSearchPanel(view);
+    view.dispatch({ selection: { anchor: 0, head: command.length } });
+    openSearchPanel(view);
+    expect(field("search").value).toBe(command);
+    expect(status()).toBe("1 / 1");
+
+    type("search", query); type("replace", replacement);
+    button("regexp").click();
+    button("regexp").click();
+    expect(status()).toBe("0 / 2");
+    button("replaceAll").click();
+    expect(view.state.doc.toString()).toBe(`${command} ${replacement} ${replacement}`);
+  });
+
   it("preserves the replacement when collapsed and exposes the current expand/collapse action without a menu", () => {
     const { view, field, button, type } = fixture();
     type("search", "model"); type("replace", "framework");
@@ -116,6 +137,32 @@ describe("compact editor search panel", () => {
     expect(view.state.selection.main.empty).toBe(true);
     button("replaceAll").click();
     expect(view.state.doc.toString()).toBe("model Model model models");
+  });
+
+  it("updates replacement and focus as editability changes without closing the panel or losing its values", () => {
+    const { view, field, button, type, setReadOnly } = fixture(true);
+    type("search", "model");
+    const row = view.dom.querySelector<HTMLElement>(".cm-search-replace-row")!;
+    setReadOnly(false);
+    expect(button("toggleReplace").hidden).toBe(false);
+    expect(row.hidden).toBe(false);
+    expect(button("replaceAll").disabled).toBe(false);
+    type("replace", "framework");
+    field("replace").focus();
+
+    setReadOnly(true);
+    expect(row.hidden).toBe(true);
+    expect(button("toggleReplace").hidden).toBe(true);
+    expect(button("replaceAll").disabled).toBe(true);
+    expect(document.activeElement).toBe(field("search"));
+    expect(searchPanelOpen(view.state)).toBe(true);
+
+    setReadOnly(false);
+    expect(field("search").value).toBe("model");
+    expect(field("replace").value).toBe("framework");
+    expect(row.hidden).toBe(false);
+    button("replaceAll").click();
+    expect(view.state.doc.toString()).toBe("framework framework framework frameworks");
   });
 
   it("disables identical case-sensitive replacements but permits case normalization and deletion", () => {
