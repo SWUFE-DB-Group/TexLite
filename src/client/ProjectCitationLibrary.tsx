@@ -8,18 +8,13 @@ import { CitationCard } from "./CitationCard";
 import { CitationCollections } from "./CitationCollections";
 import { CitationTagFilters } from "./CitationTagFilters";
 import { errorMessage } from "./errors";
-import { citationBibtexLimitLabel, parseBibEntriesResult, type ParsedCitationEntry } from "./citationLibrary";
+import { citationBibtexLimitLabel, isBibtexTooLarge, parseBibEntriesResult, type ParsedCitationEntry } from "./citationLibrary";
+import { CITATION_PAGE_SIZE, useCitationLibraryPage } from "./useCitationLibraryPage";
 import { bibtexDisplayText } from "../shared/bibtexText";
 import type { CitationCollectionCatalog } from "../shared/citationCollections";
 import type { CitationLibraryEntry, CitationLibraryTag, ProjectListPagination } from "./types";
 
 const noop = () => undefined;
-const PAGE_SIZE = 60;
-
-type LibraryResult = { key: string } & (
-  { status: "ready"; entries: CitationLibraryEntry[]; pagination: ProjectListPagination } |
-  { status: "error"; message: string }
-);
 
 type CurrentFilter = "all" | "new";
 const statusFilterLabels = {
@@ -62,16 +57,11 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
   const [tags, setTags] = useState<CitationLibraryTag[]>([]);
   const [selectedTag, setSelectedTag] = useState("");
   const [page, setPage] = useState(1);
-  const [libraryResult, setLibraryResult] = useState<LibraryResult | null>(null);
   const [refresh, setRefresh] = useState(0);
-  const libraryParams = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
-  if (collection) libraryParams.set("collection", collection);
-  if (selectedTag) libraryParams.set("tag", selectedTag);
-  const librarySearch = query.trim();
-  if (librarySearch) libraryParams.set("q", librarySearch);
-  const libraryQuery = libraryParams.toString();
-  const libraryKey = JSON.stringify([currentUserId, currentFile, refresh, libraryQuery]);
-  const visibleLibrary = libraryResult?.key === libraryKey ? libraryResult : null;
+  const { result: visibleLibrary, retry } = useCitationLibraryPage({
+    enabled: open && view === "library", userId: currentUserId, currentFile, collection, tag: selectedTag,
+    query, page, refresh, onPage: setPage
+  });
   const [lookupNonce, setLookupNonce] = useState(0);
   /** Lower-cased keys of current-file entries already in the library, for the file as it was read. */
   const [comparison, setComparison] = useState<{ signature: string; inLibrary: Set<string> } | null>(null);
@@ -91,7 +81,8 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
   const snapshotKey = open ? currentFile : null;
   const [snapshot, setSnapshot] = useState({ key: snapshotKey, source: currentSource });
   const parsedSource = snapshot.key === snapshotKey ? snapshot.source : currentSource;
-  const parsed = useMemo(() => open && isBib ? parseBibEntriesResult(parsedSource, maxBibtexBytes) : { status: "empty", entries: [] } as const, [open, isBib, parsedSource, maxBibtexBytes]);
+  const parsed = useMemo(() => open && isBib ? parseBibEntriesResult(parsedSource, maxBibtexBytes, { standaloneEntries: true })
+    : { status: "empty", entries: [] } as const, [open, isBib, parsedSource, maxBibtexBytes]);
   const parsedRef = useRef(parsed); parsedRef.current = parsed;
   const signature = useMemo(() => parsed.entries.map((entry) => entry.citationKey.toLowerCase()).join("\u0000"), [parsed]);
   const signatureRef = useRef(signature); signatureRef.current = signature;
@@ -114,11 +105,11 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
     return parsed.entries.map((entry, index) => ({ entry, index })).filter(({ index }) =>
       (!onlyNew || !inLibrary[index]) && terms.every((term) => searchTexts[index].includes(term)));
   }, [parsed, searchTexts, inLibrary, currentFilter, currentQuery]);
-  const currentTotalPages = Math.ceil(currentMatches.length / PAGE_SIZE);
+  const currentTotalPages = Math.ceil(currentMatches.length / CITATION_PAGE_SIZE);
   // Editing the file can shrink the list below the selected page.
   const shownCurrentPage = Math.min(currentPage, Math.max(1, currentTotalPages));
-  const currentPagination: ProjectListPagination = { page: shownCurrentPage, pageSize: PAGE_SIZE, total: currentMatches.length, totalPages: currentTotalPages };
-  const currentPageEntries = currentMatches.slice((shownCurrentPage - 1) * PAGE_SIZE, shownCurrentPage * PAGE_SIZE);
+  const currentPagination: ProjectListPagination = { page: shownCurrentPage, pageSize: CITATION_PAGE_SIZE, total: currentMatches.length, totalPages: currentTotalPages };
+  const currentPageEntries = currentMatches.slice((shownCurrentPage - 1) * CITATION_PAGE_SIZE, shownCurrentPage * CITATION_PAGE_SIZE);
 
   useEffect(() => {
     if (snapshot.key !== snapshotKey) setSnapshot({ key: snapshotKey, source: source.current });
@@ -153,25 +144,6 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
   }, [open, currentUserId]);
 
   useEffect(() => {
-    if (!open || view !== "library") return;
-    const controller = new AbortController();
-    setLibraryResult(null);
-    const timer = setTimeout(() => {
-      void api<{ entries: CitationLibraryEntry[]; pagination: ProjectListPagination }>(`/api/citations?${libraryQuery}`, { signal: controller.signal }).then((result) => {
-        if (controller.signal.aborted) return;
-        if (result.pagination.page !== page) {
-          setPage(result.pagination.page);
-          return;
-        }
-        setLibraryResult({ key: libraryKey, status: "ready", ...result });
-      }).catch((reason) => {
-        if (!controller.signal.aborted) setLibraryResult({ key: libraryKey, status: "error", message: errorMessage(reason) });
-      });
-    }, librarySearch ? 180 : 0);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [open, view, libraryKey, libraryQuery, librarySearch, page]);
-
-  useEffect(() => {
     if (!open || view !== "current") return;
     const controller = new AbortController(); setComparing(true);
     const timer = setTimeout(() => {
@@ -192,6 +164,8 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
     const controller = scope.current;
     const key = entry.citationKey.toLowerCase();
     if (!controller || controller.signal.aborted || pending.current || !comparisonReady || comparison.inLibrary.has(key) || !destinationFolder) return;
+    // Inlining macros can make an individual entry larger than the source file.
+    if (isBibtexTooLarge(entry.bibtex, maxBibtexBytes)) { setError(t("citationErrors.tooLarge")); return; }
     const savedSignature = signature;
     pending.current = true; setSavingKey(entry.citationKey); setError("");
     try {
@@ -246,7 +220,7 @@ export function ProjectCitationLibrary({ open, onOpenChange, currentFile, curren
           {!visibleLibrary ? <div className="citation-library-empty" role="status"><LoaderCircle className="spin" size={22} aria-hidden />{t("common.loading")}</div>
             : visibleLibrary.status === "error" ? <div className="citation-library-empty">
               <p className="error dialog-error" role="alert">{visibleLibrary.message}</p>
-              <button type="button" onClick={() => setRefresh((value) => value + 1)}>{t("common.retry")}</button>
+              <button type="button" onClick={retry}>{t("common.retry")}</button>
             </div>
             : <>
               {visibleLibrary.entries.length === 0 ? <div className="citation-library-empty"><BookMarked size={28} /><strong>{t("citationLibrary.emptyTitle")}</strong><span>{t("citationFolders.empty")}</span></div>

@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../src/client/api";
 import { CitationLibraryDialog } from "../src/client/CitationLibraryDialog";
+import { parseSingleBibEntry } from "../src/client/citationLibrary";
 import type { CitationLibraryEntry } from "../src/client/types";
 import i18n from "../src/client/i18n";
 
@@ -245,6 +246,35 @@ describe("minimal project bibliography workflow", () => {
     expect(rows()[0].querySelectorAll("button")).toHaveLength(0);
     expect(rows()[0].querySelector(".citation-entry-heading em")?.textContent).toBe("Saved");
     expect(document.querySelector(".citation-tag-editor, .citation-entry-controls")).toBeNull();
+  });
+
+  it("saves a standalone entry from a project and imports it into a different bibliography without its macros", async () => {
+    currentFile = "source.bib";
+    currentSource = [
+      '@string{publisher = "Example"}',
+      '@string{myjournal = publisher # " Journal"}',
+      '@article{portable, title={Paper}, journal = MYJOURNAL # { of Testing}, month = jan}'
+    ].join("\n");
+    await render(); await openCurrent(); await chooseFolder();
+    await click(saveButton());
+    expect(posts()).toHaveLength(1);
+    expect(stored.bibtex).toBe("@article{portable, title={Paper}, journal = {Example Journal} # { of Testing}, month = jan}");
+
+    currentFile = "destination.bib";
+    currentSource = "";
+    onInsert.mockImplementation(async (entry: CitationLibraryEntry) => { currentSource += entry.bibtex; return true; });
+    await reopen(); await openLibrary();
+    await click(rows()[0].querySelector<HTMLButtonElement>("button")!);
+    expect(parseSingleBibEntry(currentSource, 100_000)).toMatchObject({ citationKey: "portable", venue: "Example Journal of Testing" });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("does not submit an entry that exceeds the UTF-8 size limit after macro expansion", async () => {
+    currentSource = `@string{description = {${"界".repeat(20_000)}}}\n@misc{large, note = description # description}`;
+    await render(); await openCurrent(); await chooseFolder();
+    await click(saveButton());
+    expect(posts()).toHaveLength(0);
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(i18n.t("citationErrors.tooLarge"));
   });
 
   it("never offers to change an entry that is already in the library, even when the file's copy differs", async () => {

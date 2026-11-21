@@ -33,9 +33,10 @@ from a syntax error. Field values follow BibTeX: `@string` macros defined
 earlier (and the month macros) are expanded case-insensitively, an expression
 with an undefined macro keeps its source text, and a repeated field keeps its
 first value. A key must be followed by a comma or the entry's end.
-Folder imports replace references to file-defined strings with their literal
-values before storing entries separately. Built-in and undefined strings are
-left alone, and the original entry range remains available to editor callers.
+Folder imports and saving entries from a project's bibliography replace
+references to file-defined strings with their literal values before storing
+entries separately. Built-in and undefined strings are left alone, and the
+original entry range remains available to editor callers.
 `withCrossrefFields` applies biblatex's default `crossref` inheritance within
 one document for display metadata. Hover previews (`entryMetadata.ts`) and the citation
 library (`../citationLibrary.ts`) are built on it, so they cannot disagree with

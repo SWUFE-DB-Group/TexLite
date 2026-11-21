@@ -359,6 +359,41 @@ describe("citation folder workflows", () => {
     expect(folder("Paper B").getAttribute("aria-current")).toBe("true");
   });
 
+  it("hides stale actions and pagination after a folder load fails, and retries without losing a draft", async () => {
+    const implementation = vi.mocked(api).getMockImplementation()!;
+    const other = { ...saved, id: "other", citationKey: "other", title: "Reference from B", collectionIds: ["b"] };
+    let fail = true;
+    vi.mocked(api).mockImplementation(async (url, options) => {
+      if (url.includes("collection=a")) return {
+        entries: [saved], pagination: { page: 1, pageSize: 60, total: 61, totalPages: 2 }
+      } as never;
+      if (url.includes("collection=b")) {
+        if (fail) { fail = false; throw new Error("Folder B unavailable"); }
+        return { entries: [other], pagination: { page: 1, pageSize: 60, total: 1, totalPages: 1 } } as never;
+      }
+      return implementation(url, options);
+    });
+    await render();
+    await click(folder("Paper A")); await settle();
+    expect(host.querySelector(".citation-entry-menu-trigger")).not.toBeNull();
+    expect(host.querySelector(".citation-library-pagination")).not.toBeNull();
+
+    await click(named("Add entry", ".citation-add-entry-button"));
+    const draft = "@misc{draft, title={Unsubmitted draft}}";
+    await act(async () => replaceCitationBibtex(host, draft));
+    await click(folder("Paper B"));
+    expect(host.querySelector(".citation-entry-card")).toBeNull();
+    await settle();
+    expect(folder("Paper B").getAttribute("aria-current")).toBe("true");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Folder B unavailable");
+    expect(host.querySelector(".citation-entry-card, .citation-entry-menu-trigger, .citation-library-pagination")).toBeNull();
+
+    await click(named("Retry")); await settle();
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.querySelector(".citation-entry-card")?.textContent).toContain("Reference from B");
+    expect(host.querySelector(".citation-add-panel .cm-content")?.textContent).toBe(draft);
+  });
+
   it("resets pagination on a folder change and combines it with search and tags without narrowing the export", async () => {
     const implementation = vi.mocked(api).getMockImplementation()!;
     vi.mocked(api).mockImplementation(async (url, options) => {
