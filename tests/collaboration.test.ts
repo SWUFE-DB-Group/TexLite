@@ -16,7 +16,7 @@ import { buildApp } from "../src/server/app.js";
 import { CollaborationService, collaborationEpochPath, collaborationStatePath, maxCollaborativeFileBytes } from "../src/server/collaboration.js";
 import type { Config } from "../src/server/config.js";
 import { openDatabase, type DatabaseConnection, type UserRow } from "../src/server/db.js";
-import { hashPassword } from "../src/server/security.js";
+import { digestToken, hashPassword } from "../src/server/security.js";
 import { COLLABORATION_PROTOCOL_VERSION, CollaborationMessageType } from "../src/shared/collaborationProtocol.js";
 import { useFakeTexTools } from "./texTools";
 
@@ -59,6 +59,51 @@ describe("project collaboration", () => {
     await app?.close();
     db?.close();
     fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("disconnects all tabs of a logged-out session without closing a separate login", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Logout collaboration" } });
+    const projectId = created.json().project.id as string;
+    const identity = { id: adminId, username: "admin", name: "Administrator" };
+    const cookie = await login(app, "admin", "administrator password");
+    const peers = await Promise.all([cookie, cookie, adminCookie].map((value) => TestPeer.connect(app, projectId, value, identity)));
+    try {
+      expect((await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie } })).statusCode).toBe(200);
+      await waitFor(() => !peers[0].connected && !peers[1].connected);
+      expect(peers[2].connected).toBe(true);
+      expect((await peers[2].flush()).ok).toBe(true);
+    } finally { peers.forEach((peer) => peer.destroy()); }
+  });
+
+  it("closes idle collaboration at session expiry without waiting for a client message", async () => {
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Expiring collaboration" } });
+    const cookie = await login(app, "admin", "administrator password");
+    db.prepare("UPDATE sessions SET expires_at = ? WHERE id = ?")
+      .run(new Date(Date.now() + 1000).toISOString(), sessionId(cookie));
+    const peer = await TestPeer.connect(app, created.json().project.id, cookie, { id: adminId, username: "admin", name: "Administrator" });
+    try {
+      expect(peer.connected).toBe(true);
+      await waitFor(() => !peer.connected);
+    } finally { peer.destroy(); }
+  });
+
+  it("disconnects other login sessions after a password change but keeps the current session", async () => {
+    const account = await createUser(app, adminCookie, "ws-password-change", "Password change");
+    const cookie = await login(app, "ws-password-change", "reader-password");
+    const otherCookie = await login(app, "ws-password-change", "reader-password");
+    const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Password collaboration" } });
+    const projectId = created.json().project.id as string;
+    expect((await app.inject({ method: "PUT", url: `/api/projects/${projectId}/members/${account.id}`,
+      headers: { cookie: adminCookie }, payload: { permission: "edit" } })).statusCode).toBe(200);
+    const identity = { id: account.id, username: "ws-password-change", name: "Password change" };
+    const [current, other] = await Promise.all([cookie, otherCookie].map((value) => TestPeer.connect(app, projectId, value, identity)));
+    try {
+      expect((await app.inject({ method: "PUT", url: "/api/me/password", headers: { cookie },
+        payload: { currentPassword: "reader-password", newPassword: "updated-password" } })).statusCode).toBe(200);
+      await waitFor(() => !other.connected);
+      expect(current.connected).toBe(true);
+      expect((await current.flush()).ok).toBe(true);
+    } finally { current.destroy(); other.destroy(); }
   });
 
   it("updates avatar styles across active sessions without interrupting edits or trusting client-supplied styles", async () => {
@@ -957,7 +1002,7 @@ describe("project collaboration", () => {
         readyState: WebSocket.OPEN,
         close: (code: number) => { closeCode = code; }
       } as unknown as WebSocket;
-      await service.connect(socket, projectId, user);
+      await service.connect(socket, projectId, user, sessionId(adminCookie));
       expect(closeCode).toBe(1011);
       expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
     } finally {
@@ -1040,7 +1085,7 @@ describe("project collaboration", () => {
         readyState: WebSocket.OPEN,
         close: (code: number) => { closeCode = code; }
       } as unknown as WebSocket;
-      await service.connect(socket, projectId, user);
+      await service.connect(socket, projectId, user, sessionId(adminCookie));
       expect(closeCode).toBe(1011);
       expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
       expect(fs.readFileSync(collaborationStatePath(config, projectId))).toEqual(durableState);
@@ -1071,7 +1116,7 @@ describe("project collaboration", () => {
         readyState: WebSocket.OPEN,
         close: (code: number) => { closeCode = code; }
       } as unknown as WebSocket;
-      await service.connect(socket, projectId, user);
+      await service.connect(socket, projectId, user, sessionId(adminCookie));
       expect(closeCode).toBe(1011);
       expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
     } finally {
@@ -1080,11 +1125,12 @@ describe("project collaboration", () => {
     }
   });
 
-  it("invalidates a room initialization that races with project reset", async () => {
+  it.each(["project reset", "logout"])("rejects a cold collaboration connection that races with %s", async (operation) => {
     const created = await app.inject({
       method: "POST", url: "/api/projects", headers: { cookie: adminCookie }, payload: { name: "Initialization race" }
     });
     const projectId = created.json().project.id as string;
+    const cookie = await login(app, "admin", "administrator password");
     const service = new CollaborationService(config, db);
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(adminId) as UserRow;
     let release!: () => void;
@@ -1104,13 +1150,15 @@ describe("project collaboration", () => {
       close: (code: number) => { closeCode = code; }
     } as unknown as WebSocket;
     try {
-      const connecting = service.connect(socket, projectId, user);
+      const connecting = service.connect(socket, projectId, user, sessionId(cookie));
       await loadStarted;
-      service.resetProject(projectId);
+      if (operation === "project reset") service.resetProject(projectId);
+      else await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie } });
       release();
       await connecting;
-      expect(closeCode).toBe(1011);
-      expect(service.stats()).toMatchObject({ rooms: 0, initializing: 0 });
+      expect(closeCode).toBe(operation === "project reset" ? 1011 : 1008);
+      expect(service.stats()).toMatchObject({ sessions: 0, initializing: 0 });
+      if (operation === "project reset") expect(service.stats().rooms).toBe(0);
     } finally {
       vi.restoreAllMocks();
       service.destroy();
@@ -1451,6 +1499,8 @@ function sessionCookie(headers: OutgoingHttpHeaders): string {
   if (typeof cookie !== "string" || !cookie) throw new Error("Expected a Set-Cookie response header");
   return cookie.split(";")[0];
 }
+
+const sessionId = (cookie: string) => digestToken(cookie.slice("texlite_session=".length));
 
 function syncUpdate(update: Uint8Array): Uint8Array {
   const encoder = encoding.createEncoder();

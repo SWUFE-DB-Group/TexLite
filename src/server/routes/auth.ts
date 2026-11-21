@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import type { Config } from "../config.js";
 import type { DatabaseConnection, UserRow } from "../db.js";
-import { publicUser, requireUser } from "../auth.js";
+import { currentUser, publicUser, requireUser } from "../auth.js";
+import type { CollaborationService } from "../collaboration.js";
 import {
   createSessionToken,
   digestToken,
@@ -9,13 +10,14 @@ import {
   LoginRateLimiter,
   verifyPassword
 } from "../security.js";
-import { apiError, ValidationError } from "../http.js";
+import { apiError, httpError, ValidationError } from "../http.js";
 import { basePathHref } from "../../shared/basePath.js";
 
 interface AuthRouteContext {
   config: Config;
   db: DatabaseConnection;
   loginLimiter: LoginRateLimiter;
+  collaboration: CollaborationService;
 }
 
 const now = (): string => new Date().toISOString();
@@ -29,7 +31,7 @@ function text(value: unknown, max = 200): string {
 
 /** Register login, logout, session introspection, and password routes. */
 export function registerAuthRoutes(app: FastifyInstance, context: AuthRouteContext): void {
-  const { config, db, loginLimiter } = context;
+  const { config, db, loginLimiter, collaboration } = context;
 
   app.post("/api/auth/login", async (request, reply) => {
     const body = request.body as { username?: unknown; password?: unknown };
@@ -40,8 +42,11 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthRouteConte
       return apiError(reply, 429, "AUTH_RATE_LIMITED");
     }
     const password = typeof body?.password === "string" ? body.password : "";
-    const user = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(username) as UserRow | undefined;
-    if (!user || user.disabled || !(await verifyPassword(password, user.password_hash))) {
+    const candidate = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(username) as UserRow | undefined;
+    const verified = candidate && !candidate.disabled && await verifyPassword(password, candidate.password_hash);
+    const user = verified ? db.prepare("SELECT * FROM users WHERE id = ? AND disabled = 0 AND password_hash = ?")
+      .get(candidate.id, candidate.password_hash) as UserRow | undefined : undefined;
+    if (!user) {
       const result = loginLimiter.recordFailure(rateLimitKey);
       if (result.locked) {
         return apiError(reply, 429, "AUTH_RATE_LIMITED");
@@ -68,7 +73,11 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthRouteConte
 
   app.post("/api/auth/logout", async (request, reply) => {
     const token = request.cookies.texlite_session;
-    if (token) db.prepare("DELETE FROM sessions WHERE id = ?").run(digestToken(token));
+    if (token) {
+      const sessionId = digestToken(token);
+      db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+      collaboration.disconnectSession(sessionId);
+    }
     const cookiePath = basePathHref(config.basePath);
     reply.clearCookie("texlite_session", { path: cookiePath });
     return { ok: true };
@@ -93,10 +102,15 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthRouteConte
       return apiError(reply, 400, "PASSWORD_UNCHANGED");
     }
     const passwordHash = await hashPassword(newPassword);
-    db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?")
-      .run(passwordHash, user.id);
-    db.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?")
-      .run(user.id, digestToken(request.cookies.texlite_session ?? ""));
+    const sessionId = digestToken(request.cookies.texlite_session!);
+    db.transaction(() => {
+      if (!currentUser(request, db, true)) throw httpError(401, "AUTH_REQUIRED");
+      const updated = db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ? AND password_hash = ?")
+        .run(passwordHash, user.id, user.password_hash);
+      if (updated.changes !== 1) throw httpError(400, "CURRENT_PASSWORD_INVALID");
+      db.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?").run(user.id, sessionId);
+    })();
+    collaboration.disconnectOtherSessions(user.id, sessionId);
     return { ok: true };
   });
 }

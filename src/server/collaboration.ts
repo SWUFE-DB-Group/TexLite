@@ -91,6 +91,8 @@ const COLORS = [
 interface Connection {
   socket: WebSocket;
   user: UserRow;
+  session: { id: string; expiresAt: number };
+  sessionTimer: NodeJS.Timeout | null;
   awarenessClientId: number | null;
   protocolVerified: boolean;
   protocolTimer: NodeJS.Timeout | null;
@@ -180,6 +182,7 @@ export class CollaborationService {
   private readonly historyWarnings = new Set<string>();
   private closed = false;
   private readonly userByIdStatement;
+  private readonly activeSessionStatement;
   private readonly collaborationProjectAccessStatement;
 
   constructor(
@@ -190,6 +193,8 @@ export class CollaborationService {
     // Avatar SVGs are served separately; do not copy one on every editing message.
     this.userByIdStatement = db.prepare<[string], UserRow>(`SELECT id, username, display_name, avatar_style, password_hash,
       role, disabled, must_change_password, can_create_projects, created_at FROM users WHERE id = ?`);
+    this.activeSessionStatement = db.prepare<[string, string, string], { expires_at: string }>(
+      "SELECT expires_at FROM sessions WHERE id = ? AND user_id = ? AND expires_at > ?");
     this.collaborationProjectAccessStatement = prepareCollaborationProjectAccessStatement(db);
   }
 
@@ -197,7 +202,7 @@ export class CollaborationService {
     return collaborationProjectAccessFromStatement(this.collaborationProjectAccessStatement, projectId, user);
   }
 
-  async connect(socket: WebSocket, projectId: string, user: UserRow): Promise<void> {
+  async connect(socket: WebSocket, projectId: string, user: UserRow, sessionId: string): Promise<void> {
     if (this.closed) {
       socket.close(1012, "Collaboration service is shutting down");
       return;
@@ -214,7 +219,7 @@ export class CollaborationService {
     }
     const existing = this.rooms.get(projectId);
     if (existing) {
-      this.attachConnection(existing, socket, user);
+      this.attachConnection(existing, socket, user, sessionId);
       return;
     }
     const generation = this.projectGeneration(projectId);
@@ -235,7 +240,7 @@ export class CollaborationService {
       } else if (this.projectGeneration(projectId) !== generation) {
         socket.close(1013, "Collaboration state changed; retry required");
       } else if (socket.readyState === WebSocket.OPEN) {
-        this.attachConnection(room, socket, user);
+        this.attachConnection(room, socket, user, sessionId);
       } else {
         socket.close(1000, "Collaboration connection closed during initialization");
       }
@@ -487,6 +492,24 @@ export class CollaborationService {
 
   disconnectUser(userId: string, reason = "User access revoked"): void {
     for (const room of this.rooms.values()) this.notifyRoomPermissionChanged(room, userId, "revoked", reason);
+  }
+
+  disconnectSession(sessionId: string): void {
+    this.disconnectSessions((connection) => connection.session.id === sessionId);
+  }
+
+  disconnectOtherSessions(userId: string, retainedSessionId: string): void {
+    this.disconnectSessions((connection) => connection.user.id === userId
+      && connection.session.id !== retainedSessionId);
+  }
+
+  private disconnectSessions(matches: (connection: Connection) => boolean): void {
+    for (const room of this.rooms.values()) {
+      const affected = [...room.connections].filter(matches);
+      // Mark every affected socket closing before releasing leases/presence.
+      for (const connection of affected) connection.socket.close(1008, "Authentication expired");
+      for (const connection of affected) this.disconnect(room, connection);
+    }
   }
 
   private notifyRoomPermissionChanged(room: Room, userId: string, permission: "read" | "edit" | "owner" | "revoked", reason: string): void {
@@ -1054,9 +1077,17 @@ export class CollaborationService {
     return room;
   }
 
-  private attachConnection(room: Room, socket: WebSocket, user: UserRow): void {
+  private attachConnection(room: Room, socket: WebSocket, user: UserRow, sessionId: string): void {
     if (socket.readyState !== WebSocket.OPEN) return;
-    if (!this.lookupProjectAccess(room.projectId, user)) {
+    // A room can take time to initialize. Recheck before sending any data.
+    const active = this.activeSessionStatement.get(sessionId, user.id, new Date().toISOString());
+    const account = this.userByIdStatement.get(user.id);
+    if (!active || !account || account.disabled || account.must_change_password) {
+      socket.close(1008, "Authentication expired");
+      this.scheduleRoomCleanup(room);
+      return;
+    }
+    if (!this.lookupProjectAccess(room.projectId, account)) {
       socket.close(1008, "Project access denied");
       return;
     }
@@ -1073,8 +1104,9 @@ export class CollaborationService {
       clearTimeout(room.cleanupTimer);
       room.cleanupTimer = null;
     }
+    const session = { id: sessionId, expiresAt: Date.parse(active.expires_at) };
     const connection: Connection = {
-      socket, user, awarenessClientId: null, protocolVerified: false, protocolTimer: null
+      socket, user: account, session, sessionTimer: null, awarenessClientId: null, protocolVerified: false, protocolTimer: null
     };
     room.connections.add(connection);
     socket.binaryType = "arraybuffer";
@@ -1090,6 +1122,18 @@ export class CollaborationService {
     connection.protocolTimer = setTimeout(() => {
       if (!connection.protocolVerified) socket.close(4001, "Reload required");
     }, 10_000);
+    const expire = () => {
+      const remaining = session.expiresAt - Date.now();
+      if (remaining > 0) {
+        // Node's timeout limit is shorter than some configured sessions.
+        connection.sessionTimer = setTimeout(expire, Math.min(remaining, 2 ** 31 - 1));
+        connection.sessionTimer.unref();
+      } else {
+        socket.close(1008, "Authentication expired");
+        this.disconnect(room, connection);
+      }
+    };
+    expire();
     send(socket, protocolMessage(room.epoch));
   }
 
@@ -1213,7 +1257,8 @@ export class CollaborationService {
   private handleMessage(room: Room, connection: Connection, bytes: Uint8Array): void {
     if (!room.connections.has(connection)) return;
     const refreshedUser = this.userByIdStatement.get(connection.user.id);
-    if (!refreshedUser || refreshedUser.disabled) {
+    if (!refreshedUser || refreshedUser.disabled || refreshedUser.must_change_password
+      || !this.activeSessionStatement.get(connection.session.id, refreshedUser.id, new Date().toISOString())) {
       connection.socket.close(1008, "Project access revoked");
       this.disconnect(room, connection);
       return;
@@ -1340,6 +1385,7 @@ export class CollaborationService {
     this.releaseFormatLeasesForConnection(room, connection);
     room.pendingFlushes = room.pendingFlushes.filter((pending) => pending.connection !== connection);
     if (connection.protocolTimer) clearTimeout(connection.protocolTimer);
+    if (connection.sessionTimer) clearTimeout(connection.sessionTimer);
     connection.protocolTimer = null;
     if (connection.awarenessClientId !== null) {
       removeAwarenessStates(room.awareness, [connection.awarenessClientId], connection);
@@ -1361,7 +1407,10 @@ export class CollaborationService {
   }
 
   private broadcast(room: Room, message: Uint8Array, except: Connection | null): void {
-    for (const connection of room.connections) if (connection !== except) send(connection.socket, message);
+    const now = Date.now();
+    for (const connection of room.connections) {
+      if (connection !== except && connection.session.expiresAt > now) send(connection.socket, message);
+    }
   }
 
   /**
@@ -1767,6 +1816,7 @@ export class CollaborationService {
     if (room.stateSaveTimer) clearTimeout(room.stateSaveTimer);
     for (const connection of room.connections) {
       if (connection.protocolTimer) clearTimeout(connection.protocolTimer);
+      if (connection.sessionTimer) clearTimeout(connection.sessionTimer);
       connection.protocolTimer = null;
     }
     room.connections.clear();

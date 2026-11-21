@@ -337,7 +337,7 @@ export async function buildApp(
     });
     registerCollaborationRoutes(routes, { db, collaboration, metrics });
     registerAgentRoutes(routes, { db, agents });
-    registerAuthRoutes(routes, { config, db, loginLimiter });
+    registerAuthRoutes(routes, { config, db, loginLimiter, collaboration });
     registerAvatarRoutes(routes, { db, collaboration });
     registerCitationRoutes(routes, { db });
     registerUserManagementRoutes(routes, {

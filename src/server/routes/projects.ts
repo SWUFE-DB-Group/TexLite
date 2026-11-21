@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { currentUser, requireUser } from "../auth.js";
 import { maxCollaborativeFileBytes, type CollaborationService } from "../collaboration.js";
 import { isEngine, type Config } from "../config.js";
@@ -16,7 +16,7 @@ import {
   sourceRoot
 } from "../files.js";
 import type { HistoryReason } from "../history.js";
-import { apiError, contentDisposition, httpError } from "../http.js";
+import { apiError, contentDisposition, HttpError, httpError } from "../http.js";
 import { isMainDocumentCandidate } from "../latexRoot.js";
 import { lucideIconSvg, resolveLucideIconName } from "../lucideIcons.js";
 import type { LatexCompletionService } from "../latexCompletion.js";
@@ -66,9 +66,16 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
   const { config, db, collaboration, projectMutations, latexCompletions, projectOutlines, harper, chktex, recordHistory } = context;
   const projectPreviews = new ProjectPreviewService(config);
   const templateCache = new ProjectTemplateCache(path.join(config.dataDir, "tmp", "template-cache"), config.maxUploadBytes);
+  const requireProjectCreator = (request: FastifyRequest): UserRow => {
+    const creator = currentUser(request, db, true);
+    if (!creator) throw httpError(401, "AUTH_REQUIRED");
+    if (creator.must_change_password) throw httpError(403, "PASSWORD_CHANGE_REQUIRED");
+    if (creator.role !== "admin" && !creator.can_create_projects) throw httpError(403, "PROJECT_CREATE_FORBIDDEN");
+    return creator;
+  };
 
   /** Both uploaded archives and template URLs use the same project import. */
-  const importArchive = async (user: UserRow, name: string, archive: Buffer): Promise<ProjectRow> => {
+  const importArchive = async (request: FastifyRequest, user: UserRow, name: string, archive: Buffer): Promise<ProjectRow> => {
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(name, 120),
       main_file: "", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, created_at: now(), updated_at: now()
@@ -78,6 +85,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       fs.mkdirSync(outputRoot(config, project.id), { recursive: true, mode: 0o700 });
       const extracted = await extractProjectZip(archive, sourceRoot(config, project.id), config.maxUploadBytes);
       project.main_file = extracted.mainFile;
+      requireProjectCreator(request);
       db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`)
         .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.engine, project.chktex_enabled, project.created_at, project.updated_at);
@@ -267,11 +275,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
   });
 
   app.post("/api/projects", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    if (user.role !== "admin" && !user.can_create_projects) {
-      return apiError(reply, 403, "PROJECT_CREATE_FORBIDDEN");
-    }
+    const user = requireProjectCreator(request);
     const body = request.body as Record<string, unknown>;
     if (body?.templateUrl !== undefined) {
       // Validate the name before starting a potentially slow download.
@@ -283,13 +287,11 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
         .finally(() => reply.raw.off("close", disconnect));
       if (controller.signal.aborted) return;
       // Downloading may take time; do not create after access was revoked.
-      const creator = currentUser(request, db, true);
-      if (!creator) return apiError(reply, 401, "AUTH_REQUIRED");
-      if (creator.must_change_password) return apiError(reply, 403, "PASSWORD_CHANGE_REQUIRED");
-      if (creator.role !== "admin" && !creator.can_create_projects) return apiError(reply, 403, "PROJECT_CREATE_FORBIDDEN");
+      const creator = requireProjectCreator(request);
       let project: ProjectRow;
-      try { project = await importArchive(creator, name, template.archive); }
+      try { project = await importArchive(request, creator, name, template.archive); }
       catch (error) {
+        if (error instanceof HttpError) throw error;
         if (error instanceof ZipValidationError) return apiError(reply, 400, error.code, error.details);
         return apiError(reply, 400, "ZIP_INVALID");
       }
@@ -319,11 +321,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
   });
 
   app.post("/api/projects/import", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    if (user.role !== "admin" && !user.can_create_projects) {
-      return apiError(reply, 403, "PROJECT_CREATE_FORBIDDEN");
-    }
+    const user = requireProjectCreator(request);
     const part = await request.file();
     if (!part || !part.filename.toLowerCase().endsWith(".zip")) {
       return apiError(reply, 400, "ZIP_ONLY");
@@ -333,8 +331,11 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const name = text(query.name || fallbackName, 120);
     let project: ProjectRow;
     try {
-      project = await importArchive(user, name, await part.toBuffer());
+      const archive = await part.toBuffer();
+      requireProjectCreator(request);
+      project = await importArchive(request, user, name, archive);
     } catch (error) {
+      if (error instanceof HttpError) throw error;
       if (error instanceof ZipValidationError) return apiError(reply, 400, error.code, error.details);
       return apiError(reply, 400, "ZIP_INVALID");
     }
@@ -345,11 +346,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
   });
 
   app.post("/api/projects/:id/duplicate", async (request, reply) => {
-    const user = requireUser(request, reply, db);
-    if (!user) return;
-    if (user.role !== "admin" && !user.can_create_projects) {
-      return apiError(reply, 403, "PROJECT_CREATE_FORBIDDEN");
-    }
+    const user = requireProjectCreator(request);
     const { id } = request.params as { id: string };
     const source = accessibleProject(db, id, user);
     if (!source) return apiError(reply, 404, "PROJECT_NOT_FOUND");
@@ -359,18 +356,18 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(requestedName, 120),
       main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, icon: source.icon, chktex_enabled: source.chktex_enabled, created_at: now(), updated_at: now()
     };
+    const checkSource = () => {
+      if (!accessibleProject(db, source.id, requireProjectCreator(request))) throw httpError(404, "PROJECT_NOT_FOUND");
+    };
     try {
       // Duplicate the source tree only after flushing the live Yjs room and
       // while a short source barrier prevents autosave from changing files
       // between directory entries. The copy is asynchronous, so a large
       // project does not block the Node.js event loop for its entire duration.
       await projectMutations.runConsistentRead(source.id, () => duplicateProjectFiles(config, source.id, project.id), {
-        preflight: () => {
-          if (!accessibleProject(db, source.id, user)) {
-            throw httpError(404, "PROJECT_NOT_FOUND");
-          }
-        }
+        preflight: checkSource
       });
+      checkSource();
       db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, icon, chktex_enabled, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.icon, project.chktex_enabled, project.created_at, project.updated_at);

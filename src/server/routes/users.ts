@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyInstance } from "fastify";
-import { publicUser, requireAdmin, requireUser } from "../auth.js";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { currentUser, publicUser, requireAdmin, requireUser } from "../auth.js";
 import type { CollaborationService } from "../collaboration.js";
 import { activeAdminCount, type DatabaseConnection, type UserRow } from "../db.js";
 import { apiError, httpError, ValidationError } from "../http.js";
@@ -28,6 +28,13 @@ function text(value: unknown, max = 200): string {
 /** Register administrator-facing user management and the active-user directory. */
 export function registerUserManagementRoutes(app: FastifyInstance, context: UserManagementRouteContext): void {
   const { db, collaboration, projectMutations, projectDeletionCleanup } = context;
+  const refreshAdministrator = (request: FastifyRequest): UserRow => {
+    const actor = currentUser(request, db, true);
+    if (!actor) throw httpError(401, "AUTH_REQUIRED");
+    if (actor.must_change_password) throw httpError(403, "PASSWORD_CHANGE_REQUIRED");
+    if (actor.role !== "admin") throw httpError(403, "ADMIN_REQUIRED");
+    return actor;
+  };
 
   app.get("/api/admin/users", async (request, reply) => {
     if (!requireAdmin(request, reply, db)) return;
@@ -76,6 +83,7 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
       password_hash: await hashPassword(password), role, disabled: 0,
       must_change_password: 1, can_create_projects: body?.canCreateProjects === true ? 1 : 0, created_at: now()
     };
+    refreshAdministrator(request);
     db.prepare(`INSERT INTO users
       (id, username, display_name, password_hash, role, disabled, must_change_password, can_create_projects, created_at)
       VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?)`)
@@ -84,40 +92,33 @@ export function registerUserManagementRoutes(app: FastifyInstance, context: User
   });
 
   app.patch("/api/admin/users/:id", async (request, reply) => {
-    const admin = requireAdmin(request, reply, db);
-    if (!admin) return;
+    if (!requireAdmin(request, reply, db)) return;
     const { id } = request.params as { id: string };
-    const target = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
-    if (!target) return apiError(reply, 404, "USER_NOT_FOUND");
-    const body = request.body as Record<string, unknown>;
-    const role = body.role === "admin" ? "admin" : body.role === "user" ? "user" : target.role;
-    const disabled = typeof body.disabled === "boolean" ? Number(body.disabled) : target.disabled;
-    if (target.id === admin.id && (disabled || role !== "admin")) {
-      return apiError(reply, 400, "SELF_RESTRICT_FORBIDDEN");
-    }
-    const canCreateProjects = typeof body.canCreateProjects === "boolean"
-      ? Number(body.canCreateProjects) : target.can_create_projects;
-    if (target.role === "admin" && (!role || role !== "admin" || disabled) && activeAdminCount(db) <= 1) {
-      return apiError(reply, 400, "LAST_ADMIN");
-    }
-    const displayName = typeof body.displayName === "string" ? text(body.displayName, 100) : target.display_name;
-    let passwordHash = target.password_hash;
-    let mustChange = target.must_change_password;
-    if (typeof body.password === "string" && body.password) {
-      passwordHash = await hashPassword(body.password);
-      mustChange = 1;
-      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
-    }
-    db.prepare(`UPDATE users SET display_name = ?, role = ?, disabled = ?, password_hash = ?, must_change_password = ?, can_create_projects = ? WHERE id = ?`)
-      .run(displayName, role, disabled, passwordHash, mustChange, canCreateProjects, id);
-    // A disabled account must not regain access by being re-enabled while an
-    // old cookie is still within its normal lifetime. Password resets already
-    // revoke sessions above; disabling does the same for every active token.
-    if (disabled === 1) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
-    if (disabled === 1 || (typeof body.password === "string" && body.password)) {
-      collaboration.disconnectUser(id, "user-disabled-or-reset");
-    }
-    const updated = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as unknown as UserRow;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const role = body.role === "admin" || body.role === "user" ? body.role : null;
+    const disabled = typeof body.disabled === "boolean" ? Number(body.disabled) : null;
+    const canCreateProjects = typeof body.canCreateProjects === "boolean" ? Number(body.canCreateProjects) : null;
+    const displayName = typeof body.displayName === "string" ? text(body.displayName, 100) : null;
+    const passwordHash = typeof body.password === "string" && body.password ? await hashPassword(body.password) : null;
+    const { updated, revoke } = db.transaction(() => {
+      const admin = refreshAdministrator(request);
+      const target = db.prepare<[string], UserRow>("SELECT * FROM users WHERE id = ?").get(id);
+      if (!target) throw httpError(404, "USER_NOT_FOUND");
+      const removesAdminAccess = (disabled ?? target.disabled) !== 0 || (role ?? target.role) !== "admin";
+      if (target.id === admin.id && removesAdminAccess) throw httpError(400, "SELF_RESTRICT_FORBIDDEN");
+      if (!target.disabled && target.role === "admin" && removesAdminAccess && activeAdminCount(db) <= 1) {
+        throw httpError(400, "LAST_ADMIN");
+      }
+      const updated = db.prepare<unknown[], UserRow>(`UPDATE users SET
+        display_name = COALESCE(?, display_name), role = COALESCE(?, role), disabled = COALESCE(?, disabled),
+        password_hash = COALESCE(?, password_hash), must_change_password = COALESCE(?, must_change_password),
+        can_create_projects = COALESCE(?, can_create_projects) WHERE id = ? RETURNING *`)
+        .get(displayName, role, disabled, passwordHash, passwordHash ? 1 : null, canCreateProjects, id)!;
+      const revoke = Boolean(updated.disabled || passwordHash);
+      if (revoke) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+      return { updated, revoke };
+    })();
+    if (revoke) collaboration.disconnectUser(id, "user-disabled-or-reset");
     return { user: publicUser(updated) };
   });
 
