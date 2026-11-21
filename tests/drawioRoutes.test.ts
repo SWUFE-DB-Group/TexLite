@@ -9,7 +9,7 @@ import { openDatabase, type DatabaseConnection } from "../src/server/db";
 import { createSessionToken } from "../src/server/security";
 import { sourceRoot } from "../src/server/files";
 import { httpError } from "../src/server/http";
-import { DRAWIO_LOCK_HEADER, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
+import { DRAWIO_LOCK_HEADER, DRAWIO_MAX_BYTES, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
 import type { HistoryPageResponse } from "../src/shared/historyProtocol";
 import { createTestConfig } from "./helpers/testConfig";
 import { deferred } from "./helpers/deferred";
@@ -28,7 +28,7 @@ describe("draw.io project files and PDF export", () => {
   let lease: { socket: WebSocket; token: string; user: string } | null = null;
   let captureExportResponse: ((response: ServerResponse) => void) | undefined;
   const cookies = new Map<string, string>();
-  const config = () => createTestConfig(root, { basePath: "/tools/texlite" });
+  const config = () => createTestConfig(root, { basePath: "/tools/texlite", maxUploadBytes: 2 * DRAWIO_MAX_BYTES });
   const request = (method: "GET" | "PUT" | "POST", endpoint = "", payload?: object, user = "owner") => app.inject({
     method, url: `/tools/texlite/api/projects/${id}/drawio${endpoint}${method === "GET" ? "?path=figures%2Fdiagram.drawio" : ""}`,
     headers: { cookie: cookies.get(user) ?? "" }, payload: payload ? { lockToken: lease?.token, ...payload } : undefined
@@ -167,6 +167,49 @@ describe("draw.io project files and PDF export", () => {
     expect(fs.readFileSync(absolute(), "utf8")).toBe(changed);
     expect((await request("PUT", "", { path: "figures/missing.drawio", revision: before.revision, content: changed })).statusCode).toBe(409);
     expect(fs.existsSync(absolute("missing.drawio"))).toBe(false);
+  });
+
+  it("opens and saves up to 4 MiB of UTF-8 XML, but does not load or save larger diagrams", async () => {
+    const before = await document();
+    const padding = DRAWIO_MAX_BYTES - Buffer.byteLength(changed);
+    const atLimit = changed.replace("Changed", "汉".repeat(Math.floor(padding / 3)) + "Changed") + " ".repeat(padding % 3);
+    const file = "figures/diagram.drawio";
+    expect(Buffer.byteLength(atLimit)).toBe(DRAWIO_MAX_BYTES);
+    const saved = await request("PUT", "", { path: file, revision: before.revision, content: atLimit });
+    expect(saved.statusCode, saved.body).toBe(200);
+    expect((await document()).content).toBe(atLimit);
+    const oversized = atLimit + " ";
+    const rejected = await request("PUT", "", { path: file, revision: saved.json().revision, content: oversized });
+    expect(rejected.statusCode).toBe(413);
+    expect(rejected.json().code).toBe("DRAWIO_TOO_LARGE");
+    expect(fs.statSync(absolute()).size).toBe(DRAWIO_MAX_BYTES);
+    await release();
+    // Older files/imports can already exceed the editor's limit.
+    fs.writeFileSync(absolute(), oversized);
+    try {
+      const response = await request("GET");
+      expect(response.statusCode).toBe(413);
+      expect(response.json().code).toBe("DRAWIO_TOO_LARGE");
+      expect(response.json()).not.toHaveProperty("content");
+    } finally { fs.writeFileSync(absolute(), atLimit); }
+  });
+
+  it("opens and saves the diagram when its PDF destination is a directory, but blocks export", async () => {
+    const output = absolute("diagram.pdf");
+    fs.mkdirSync(output);
+    try {
+      const before = await request("GET");
+      expect(before.statusCode).toBe(200);
+      const source = before.json<DrawioDocument>();
+      expect(source).toMatchObject({ content: EMPTY_DRAWIO, pdfRevision: null });
+      const file = "figures/diagram.drawio";
+      const saved = await request("PUT", "", { path: file, revision: source.revision, content: changed });
+      expect(saved.statusCode).toBe(200);
+      const response = await request("POST", "/pdf", { path: file, svg, revision: saved.json().revision, pdfRevision: null });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe("PATH_EXISTS");
+      expect(render).not.toHaveBeenCalled();
+    } finally { fs.rmdirSync(output); }
   });
 
   it("forbids anonymous/outsider access and read-only source or host execution, before invoking the browser", async () => {

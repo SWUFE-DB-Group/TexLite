@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Check, LoaderCircle, LockKeyhole, RefreshCw, Workflow, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { api, isAbortError } from "../api";
+import { api, ApiError, isAbortError } from "../api";
 import { errorMessage } from "../errors";
 import { ConfirmDialog } from "../Dialog";
 import { InfoPopover } from "../InfoPopover";
 import { currentTheme } from "../theme";
-import { drawioPdfPath, type DrawioDocument, type DrawioExportOptions } from "../../shared/drawio";
+import { DRAWIO_MAX_BYTES, drawioPdfPath, type DrawioDocument, type DrawioExportOptions } from "../../shared/drawio";
 import { useDrawioLock } from "./useDrawioLock";
 import { sameDrawioContent } from "./drawioContent";
 import { DrawioExportButton } from "./DrawioExportButton";
 import { hasDrawioSelection, renderDrawioSelection, selectedDrawioXml } from "./drawioSelectionExport";
 import { drawioEmbedUrl, drawioFrameLoadTimeoutMs, resolveDrawioEditorUrl } from "./drawioEmbed";
 
-const maxXmlLength = 5 * 1024 * 1024;
+const encoder = new TextEncoder();
+const exceedsDiagramLimit = (xml: string) => xml.length > DRAWIO_MAX_BYTES || encoder.encode(xml).byteLength > DRAWIO_MAX_BYTES;
 const autosaveDelayMs = 1_000;
 const saveRequestTimeoutMs = 30_000;
 const exportCancelDelayMs = 2_000;
@@ -55,7 +56,8 @@ export default function DrawioEditor({ editorUrl, ...props }: DrawioEditorProps)
 
 function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged, onClose, ref }: Omit<DrawioEditorProps, "editorUrl"> & { editorUrl: URL }) {
   const { t, i18n } = useTranslation();
-  const lock = useDrawioLock(projectId, path, readOnly);
+  const [loadFailure, setLoadFailure] = useState<"unavailable" | "diagramUnavailable" | "tooLarge" | null>(null);
+  const lock = useDrawioLock(projectId, path, readOnly || loadFailure === "tooLarge");
   const [approvedToken, setApprovedToken] = useState("");
   const approved = useRef("");
   const canEdit = !readOnly && lock.state.status === "owned" && approvedToken === lock.state.token;
@@ -63,6 +65,8 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   const frame = useRef<HTMLIFrameElement>(null);
   const saved = useRef<DrawioDocument | null>(null);
   const currentXml = useRef("");
+  const draftOversize = useRef(false);
+  const [oversize, setOversize] = useState(false);
   const initialized = useRef(false);
   const loadPosted = useRef(false);
   const readyRef = useRef(false);
@@ -79,7 +83,6 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   const sourceLoaded = loadedSourceAttempt === retry;
   const [ready, setReady] = useState(false);
   const [loadingStage, setLoadingStage] = useState<typeof loadingStages[number]>("editor");
-  const [loadFailure, setLoadFailure] = useState<"unavailable" | "diagramUnavailable" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editVersion, setEditVersion] = useState(0);
   const [closing, setClosing] = useState(false);
@@ -139,9 +142,18 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
     const resolve = closeDecision.current; closeDecision.current = null; resolve?.(confirmed);
     if (mounted.current) setClosing(false);
   };
+  const updateDraft = (xml: string, tooLarge: boolean) => {
+    // The editable iframe already retains the oversized draft. Keep only the
+    // unsaved marker here so we cannot parse or reload the oversized XML.
+    currentXml.current = tooLarge ? "" : xml;
+    draftOversize.current = tooLarge;
+    setOversize(tooLarge);
+    if (tooLarge) { setDirty(true); setFeedback(false); }
+  };
   const updateDirty = async () => {
     const xml = currentXml.current, document = saved.current, change = changes.current;
     if (!document) return;
+    if (draftOversize.current) return true;
     const unchanged = await sameDrawioContent(xml, document.content);
     // XML inflation is asynchronous. An older comparison cannot clear a
     // newer edit or replace the result of a save that finished meanwhile.
@@ -156,7 +168,7 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
       closeDecision.current = resolve;
       setClosing(true);
       if (pending.current) return; // Finish the in-flight save, then flush the latest XML.
-      if (saveError || dirty && !canEdit) setDiscard(true);
+      if (saveError || (dirty || draftOversize.current) && !canEdit) setDiscard(true);
       else if (readyRef.current && !frameReadOnly.current) start("close");
       else settleClose(true);
     });
@@ -175,8 +187,13 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
     void api<DrawioDocument>(`/api/projects/${projectId}/drawio?${new URLSearchParams({ path })}`, { signal: abort.signal })
       .then((document) => {
         if (abort.signal.aborted) return;
-        saved.current = document; currentXml.current = document.content; setLoadedSourceAttempt(retry);
-      }).catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) { setError(errorMessage(error)); setLoadFailure("diagramUnavailable"); } });
+        if (exceedsDiagramLimit(document.content)) { setLoadFailure("tooLarge"); return; }
+        saved.current = document; updateDraft(document.content, false); setLoadedSourceAttempt(retry);
+      }).catch((error) => {
+        if (abort.signal.aborted || isAbortError(error)) return;
+        if (error instanceof ApiError && error.code === "DRAWIO_TOO_LARGE") setLoadFailure("tooLarge");
+        else { setError(errorMessage(error)); setLoadFailure("diagramUnavailable"); }
+      });
     return () => {
       mounted.current = false; abort.abort(); controller.current?.abort();
       controller.current = null; saveImmediately.current = false;
@@ -202,27 +219,34 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
     const token = lock.state.token, revision = lock.state.revision;
     if (approved.current === token) return;
     const abort = new AbortController();
-    const approve = () => { approved.current = token; setApprovedToken(token); };
+    const approve = () => { approved.current = token; setApprovedToken(token); setError(""); };
     if (!revision || revision === saved.current.revision) approve();
     else {
       // A viewer may have been open while the previous owner saved. Refresh
       // that clean viewer, but never replace a disconnected owner's draft.
+      const fail = (message: string) => {
+        if (abort.signal.aborted || lock.current.current.token !== token) return;
+        setError(message);
+        lock.relinquish(token);
+      };
       void (async () => {
-        if (!(await sameDrawioContent(currentXml.current, saved.current!.content))) {
-          if (!abort.signal.aborted) setError(t("errors.codes.DRAWIO_CONFLICT"));
-          return;
+        if (draftOversize.current || !(await sameDrawioContent(currentXml.current, saved.current!.content))) {
+          fail(t("errors.codes.DRAWIO_CONFLICT")); return;
         }
         if (abort.signal.aborted) return;
-        const document = await api<DrawioDocument>(`/api/projects/${projectId}/drawio?${new URLSearchParams({ path })}`, { signal: abort.signal });
+        const document = await api<DrawioDocument>(`/api/projects/${projectId}/drawio?${new URLSearchParams({ path })}`, {
+          signal: AbortSignal.any([abort.signal, AbortSignal.timeout(saveRequestTimeoutMs)])
+        });
         if (abort.signal.aborted || lock.current.current.token !== token) return;
         const xml = currentXml.current;
-        const clean = await sameDrawioContent(xml, saved.current!.content);
+        const clean = !draftOversize.current && await sameDrawioContent(xml, saved.current!.content);
         if (abort.signal.aborted || lock.current.current.token !== token) return;
-        if (!clean || currentXml.current !== xml) { setError(t("errors.codes.DRAWIO_CONFLICT")); return; }
-        saved.current = document; currentXml.current = document.content; setDirty(false);
+        if (!clean || currentXml.current !== xml) { fail(t("errors.codes.DRAWIO_CONFLICT")); return; }
+        if (exceedsDiagramLimit(document.content)) { fail(t("errors.codes.DRAWIO_TOO_LARGE")); return; }
+        saved.current = document; updateDraft(document.content, false); setDirty(false);
         approve();
         if (initialized.current) load();
-      })().catch((error) => { if (!abort.signal.aborted && !isAbortError(error)) setError(errorMessage(error)); });
+      })().catch((error) => { fail(errorMessage(error)); });
     }
     return () => abort.abort();
   }, [lock.state.status, lock.state.token, lock.state.revision, sourceLoaded, retry]);
@@ -234,11 +258,11 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   }, [canEdit, ready, sourceLoaded, lock.state.status, retry]);
 
   useEffect(() => {
-    if (!dirty && !saveError && busy !== "save" && busy !== "close") return;
+    if (!dirty && !oversize && !saveError && busy !== "save" && busy !== "close") return;
     const prevent = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
-  }, [dirty, saveError, busy]);
+  }, [dirty, oversize, saveError, busy]);
   useEffect(() => {
     if (!feedback) return;
     const timer = window.setTimeout(() => setFeedback(false), 2_000);
@@ -266,12 +290,15 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
         if (message.error) { setError(t("errors.codes.DRAWIO_INVALID")); setLoadFailure("diagramUnavailable"); return; }
         readyRef.current = true; setReady(true); setLoadFailure(null); return;
       }
-      if (message.event === "autosave" && !frameReadOnly.current && typeof message.xml === "string" && message.xml.length <= maxXmlLength) {
+      if (message.event === "autosave" && !frameReadOnly.current && typeof message.xml === "string") {
         if (currentXml.current === message.xml) return;
-        currentXml.current = message.xml;
+        const tooLarge = exceedsDiagramLimit(message.xml);
+        if (draftOversize.current && !tooLarge) setSaveError("");
+        updateDraft(message.xml, tooLarge);
         setDirty(true);
         setEditVersion(++changes.current);
-        await updateDirty(); return;
+        if (!tooLarge) await updateDirty();
+        return;
       }
       if (message.event === "save" || message.event === "shortcut" && message.command === "save") {
         requestSave(); return;
@@ -304,9 +331,11 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
       let failed = false;
       let savingSource = request.kind !== "pdf";
       try {
-        if (message.error || typeof message.xml !== "string" || message.xml.length > maxXmlLength) throw new Error(t("errors.codes.DRAWIO_INVALID"));
+        if (message.error || typeof message.xml !== "string") throw new Error(t("errors.codes.DRAWIO_INVALID"));
         const xml = message.xml;
-        if (changes.current === request.change) currentXml.current = xml;
+        const tooLarge = exceedsDiagramLimit(xml);
+        if (changes.current === request.change) updateDraft(xml, tooLarge);
+        if (tooLarge || request.kind === "pdf" && draftOversize.current) { failed = true; return; }
         const base = saved.current;
         const unchanged = await sameDrawioContent(xml, base.content);
         if (abort.signal.aborted || !mounted.current) return;
@@ -376,6 +405,7 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   };
   const start = (kind: Request["kind"], options?: DrawioExportOptions) => {
     if (pending.current || !readyRef.current || !saved.current || frameReadOnly.current) return false;
+    if (kind === "pdf" && draftOversize.current) return false;
     if (kind !== "close" && (readOnly || closeDecision.current || lock.current.current.status !== "owned" || approved.current !== lock.current.current.token)) return false;
     const id = ++sequence.current;
     setError(""); setFeedback(false); setBusy(kind);
@@ -407,12 +437,12 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
     return () => window.clearTimeout(timer);
   }, [exporting]);
   useEffect(() => {
-    if (!ready || !canEdit || !dirty || busy || closing || overwrite || saveError) return;
+    if (!ready || !canEdit || !dirty || oversize || busy || closing || overwrite || saveError) return;
     const timer = window.setTimeout(() => start("save"), autosaveDelayMs);
     return () => window.clearTimeout(timer);
     // Restart the timer for each edit, even while the diagram is already dirty.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, canEdit, dirty, busy, closing, overwrite, saveError, editVersion]);
+  }, [ready, canEdit, dirty, oversize, busy, closing, overwrite, saveError, editVersion]);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if (!canEdit || !ready || closing || overwrite || event.defaultPrevented || event.altKey || event.shiftKey
@@ -431,14 +461,14 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
   const loadingStep = loadingStages.indexOf(loadingStage) + 1;
   const status = readOnly || (!canEdit && lock.state.status !== "connecting") ? "readOnly"
     : lock.state.status === "connecting" ? "connecting" : busy === "save" || busy === "close" ? "saving"
-      : saveError ? "saveFailed" : dirty ? "saving" : ready ? "saved" : "loading";
+      : oversize || saveError ? "saveFailed" : dirty ? "saving" : ready ? "saved" : "loading";
 
   return <>
     <section className="drawio-editor" aria-label={path}>
       <div className="drawio-toolbar">
         <span className="drawio-file-name"><Workflow size={14} aria-hidden /><span>{path}</span></span>
         {!readOnly && <div className="drawio-actions">
-          <DrawioExportButton saving={exporting} disabled={!canEdit || !ready || Boolean(busy) || closing} feedback={feedback ? t("drawio.exported") : ""} checkSelection={checkSelection}
+          <DrawioExportButton saving={exporting} disabled={!canEdit || !ready || oversize || Boolean(busy) || closing} feedback={feedback ? t("drawio.exported") : ""} checkSelection={checkSelection}
             onExport={(options) => { if (saved.current?.pdfRevision) setOverwrite(options); else start("pdf", options); }} />
           {exporting && showCancelExport && <button type="button" className="drawio-export-cancel"
             onClick={() => { const active = controller.current; controller.current = null; active?.abort(); finishRequest(false); }}>{t("drawio.cancelExport")}</button>}
@@ -459,14 +489,14 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
         <span>{lock.state.status === "busy" ? t("drawio.lockedBy", { name: lock.state.name }) : t("drawio.lockLost")}</span>
         <button type="button" disabled={Boolean(busy)} onClick={lock.retry}><RefreshCw size={13} aria-hidden />{t("drawio.retryEdit")}</button>
       </div>}
-      {(saveError || error) && <div className="error drawio-error" role="alert">
-        <span>{saveError || error}</span>
-        {saveError && canEdit && <button type="button" disabled={Boolean(busy) || closing} onClick={requestSave}>{t("common.retry")}</button>}
+      {(oversize || saveError || error) && <div className="error drawio-error" role="alert">
+        <span>{oversize ? t("drawio.unsavedTooLarge") : saveError || error}</span>
+        {!oversize && saveError && canEdit && <button type="button" disabled={Boolean(busy) || closing} onClick={requestSave}>{t("common.retry")}</button>}
       </div>}
       <div className="drawio-frame-wrap" inert={closing || exporting || !canEdit && !frameReadOnly.current}>
         {!ready && <div className="drawio-loading">
           {loadFailure ? <>
-            <span role="status">{t(`drawio.${loadFailure}`, { host: editorUrl.host })}</span>
+            <span role={loadFailure === "tooLarge" ? "alert" : "status"}>{loadFailure === "tooLarge" ? t("errors.codes.DRAWIO_TOO_LARGE") : t(`drawio.${loadFailure}`, { host: editorUrl.host })}</span>
             <button type="button" onClick={() => setRetry((value) => value + 1)}><RefreshCw size={14} aria-hidden />{t("common.retry")}</button>
           </> : <div className="drawio-loading-status" role="status">
             <LoaderCircle size={20} className="spin" aria-hidden />
@@ -478,9 +508,9 @@ function EmbeddedDrawioEditor({ projectId, path, editorUrl, readOnly, onChanged,
             <span className="drawio-loading-step">{t("drawio.loadingStep", { step: loadingStep, total: loadingStages.length })}</span>
           </div>}
         </div>}
-        <iframe key={retry} ref={frame} src={url} title={t("drawio.title")} referrerPolicy="no-referrer"
+        {loadFailure !== "tooLarge" && <iframe key={retry} ref={frame} src={url} title={t("drawio.title")} referrerPolicy="no-referrer"
           onError={() => setLoadFailure("unavailable")}
-          sandbox="allow-scripts allow-same-origin allow-modals" />
+          sandbox="allow-scripts allow-same-origin allow-modals" />}
       </div>
     </section>
     <ConfirmDialog open={discard} title={t("drawio.discard")} description={t("drawio.discardDescription")} confirmLabel={t("drawio.discardAction")} danger

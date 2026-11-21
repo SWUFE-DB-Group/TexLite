@@ -16,7 +16,15 @@ const containsPath = (root: string, file: string) => file === root || file.start
 export class DrawioLocks {
   private readonly leases = new Map<string, Lease>();
   private closed = false;
-  private key(projectId: string, path: string): string { return JSON.stringify([projectId, path]); }
+  constructor(private readonly platform: NodeJS.Platform = process.platform) {}
+  private pathIdentity(path: string): string {
+    const normalized = path.replace(/\/+$/, "");
+    return this.platform === "win32" ? normalized.toLowerCase() : normalized;
+  }
+  private key(projectId: string, path: string): string { return JSON.stringify([projectId, this.pathIdentity(path)]); }
+  private containsPath(root: string, file: string): boolean {
+    return containsPath(this.pathIdentity(root), this.pathIdentity(file));
+  }
   private active(projectId: string, path: string): Lease | undefined {
     const lease = this.leases.get(this.key(projectId, path));
     if (lease && (lease.expiresAt <= Date.now() || lease.socket.readyState !== 1 || !lease.valid())) {
@@ -61,7 +69,7 @@ export class DrawioLocks {
     for (const candidate of this.leases.values()) {
       if (candidate.projectId !== projectId) continue;
       const lease = this.active(projectId, candidate.path);
-      if (lease && paths.some((path) => containsPath(path, lease.path) || containsPath(path, drawioPdfPath(lease.path)))) yield lease;
+      if (lease && paths.some((path) => this.containsPath(path, lease.path) || this.containsPath(path, drawioPdfPath(lease.path)))) yield lease;
     }
   }
 
@@ -75,7 +83,7 @@ export class DrawioLocks {
   prepareDelete(projectId: string, path: string, userId: string, token: unknown): () => void {
     let removedLease: Lease | undefined;
     for (const lease of this.matching(projectId, [path])) {
-      if (lease.userId !== userId || lease.token !== token || !containsPath(path, lease.path)) {
+      if (lease.userId !== userId || lease.token !== token || !this.containsPath(path, lease.path)) {
         throw httpError(409, "DRAWIO_LOCKED", { name: lease.name });
       }
       removedLease = lease;

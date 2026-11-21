@@ -79,6 +79,17 @@ describe("browser draw.io lock lifecycle", () => {
     expect(lock.current.current.token).toBe(""); expect(lock.state.status).toBe("lost");
   });
 
+  it("can give up an unreconciled lease without releasing a successor", async () => {
+    await render(); const first = Socket.instances[0]; await act(async () => first.acquire("first"));
+    await act(async () => lock.relinquish("first"));
+    expect(first.send).toHaveBeenCalledExactlyOnceWith("release");
+    expect(lock.state.status).toBe("lost");
+    await act(async () => lock.retry()); const second = Socket.instances[1]; await act(async () => second.acquire("second"));
+    await act(async () => lock.relinquish("first"));
+    expect(second.close).not.toHaveBeenCalled();
+    expect(lock.current.current.token).toBe("second");
+  });
+
   it("releases on pagehide even without React unmounting, and ignores a late queued grant", async () => {
     await render(); const socket = Socket.instances[0]; await act(async () => socket.acquire());
     await act(async () => window.dispatchEvent(new Event("pagehide")));

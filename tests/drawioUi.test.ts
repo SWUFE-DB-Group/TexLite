@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DrawioEditor, { decodeDrawioSvg, type DrawioEditorHandle } from "../src/client/workspace/DrawioEditor";
 import { api, ApiError } from "../src/client/api";
-import { DEFAULT_DRAWIO_EDITOR_URL, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
+import { DEFAULT_DRAWIO_EDITOR_URL, DRAWIO_MAX_BYTES, EMPTY_DRAWIO, type DrawioDocument } from "../src/shared/drawio";
 import { renderDrawioSelection } from "../src/client/workspace/drawioSelectionExport";
 import i18n from "../src/client/i18n";
 import { deflateRawSync } from "node:zlib";
@@ -14,7 +14,8 @@ import * as drawioContent from "../src/client/workspace/drawioContent";
 vi.mock("../src/client/api", async (original) => ({ ...await original<typeof import("../src/client/api")>(), api: vi.fn() }));
 const { lease } = vi.hoisted(() => ({ lease: {
   state: { status: "owned", token: "lease-1", name: "" } as { status: string; token: string; name: string; revision?: string },
-  current: { current: { status: "owned", token: "lease-1", name: "" } as { status: string; token: string; name: string; revision?: string } }, retry: vi.fn()
+  current: { current: { status: "owned", token: "lease-1", name: "" } as { status: string; token: string; name: string; revision?: string } },
+  retry: vi.fn(), relinquish: vi.fn()
 } }));
 vi.mock("../src/client/workspace/useDrawioLock", () => ({ useDrawioLock: () => lease }));
 vi.mock("../src/client/workspace/drawioSelectionExport", async (original) => ({
@@ -74,7 +75,7 @@ beforeEach(async () => {
   });
   vi.mocked(api).mockReset(); onClose.mockReset(); onChanged.mockReset();
   vi.mocked(renderDrawioSelection).mockReset();
-  lease.state = { status: "owned", token: "lease-1", name: "" }; lease.current.current = lease.state; lease.retry.mockReset();
+  lease.state = { status: "owned", token: "lease-1", name: "" }; lease.current.current = lease.state; lease.retry.mockReset(); lease.relinquish.mockReset();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -309,6 +310,44 @@ describe("embedded draw.io editing", () => {
     await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
     expect(api).toHaveBeenCalledTimes(3);
     expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved");
+  });
+
+  it("does not render an oversized file received while opening a diagram", async () => {
+    vi.mocked(api).mockRejectedValueOnce(new ApiError("Too large", 413, "DRAWIO_TOO_LARGE"));
+    await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "diagram.drawio", readOnly: false, onChanged, onClose })));
+    expect(host.querySelector("iframe")).toBeNull();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("4 MiB");
+    expect(button("Export PDF").disabled).toBe(true);
+    await requestClose();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("warns on oversized UTF-8 drafts without saving or exporting and recovers after reducing the size", async () => {
+    vi.useFakeTimers();
+    await mount();
+    const largeXml = changed.replace("Changed", "汉".repeat(Math.ceil(DRAWIO_MAX_BYTES / 3)));
+    expect(largeXml.length).toBeLessThan(DRAWIO_MAX_BYTES);
+    await send({ event: "autosave", xml: largeXml });
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Save failed");
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Reduce its size");
+    expect(button("Export PDF").disabled).toBe(true);
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    expect(sent().at(-1).action).toBe("load");
+    await requestClose();
+    await send({ event: "export", format: "xml", xml: largeXml, message: sent().at(-1) });
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => button("Cancel").click());
+    await send({ event: "autosave", xml: changed });
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    vi.mocked(api).mockResolvedValueOnce({ revision: "r2" });
+    await send({ event: "export", format: "xml", xml: changed, message: sent().at(-1) });
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(host.querySelector(".drawio-status")?.textContent).toBe("Saved");
+    expect(button("Export PDF").disabled).toBe(false);
   });
 
   it.each(["save", "pdf"])("closes a saved %s without a false discard warning when export formatting/compression differs", async (kind) => {
@@ -634,8 +673,31 @@ describe("embedded draw.io editing", () => {
     lease.state = { status: "owned", token: "third-owner", name: "", revision: "r3" }; lease.current.current = lease.state; await rerender();
     expect(api).toHaveBeenCalledTimes(2);
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("changed elsewhere");
+    expect(lease.relinquish).toHaveBeenCalledWith("third-owner");
     expect(button("Save")).toBeUndefined();
     expect(frame.parentElement?.hasAttribute("inert")).toBe(true);
+  });
+
+  it("relinquishes a lease when refreshing a stale diagram fails and retries without replacing the live frame", async () => {
+    lease.state = { status: "busy", token: "", name: "Writer" }; lease.current.current = lease.state;
+    await mount();
+    const setLock = async (state: typeof lease.state) => {
+      lease.state = state; lease.current.current = state;
+      await act(async () => root.render(createElement(DrawioEditor, { ref: editor, projectId: "p1", path: "figures/diagram.drawio", readOnly: false, onChanged, onClose })));
+    };
+    vi.mocked(api).mockRejectedValueOnce(new Error("Server temporarily unavailable"));
+    await setLock({ status: "owned", token: "failed-lease", name: "", revision: "r2" });
+    expect(lease.relinquish).toHaveBeenCalledExactlyOnceWith("failed-lease");
+    expect(sent()).toHaveLength(1);
+    await setLock({ status: "lost", token: "", name: "" });
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Server temporarily unavailable");
+    await act(async () => button("Try editing").click());
+    expect(lease.retry).toHaveBeenCalledOnce();
+    vi.mocked(api).mockResolvedValueOnce({ content: changed, revision: "r2", pdfRevision: null });
+    await setLock({ status: "owned", token: "new-lease", name: "", revision: "r2" });
+    expect(host.querySelector("iframe")).toBe(frame);
+    expect(sent().at(-1)).toMatchObject({ action: "load", xml: changed, readOnly: false });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("decodes Unicode SVG exports without fetching arbitrary URLs", () => {

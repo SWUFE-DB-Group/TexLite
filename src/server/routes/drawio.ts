@@ -16,10 +16,9 @@ import { requireEditableProject, touchProject } from "./projectShared.js";
 import { reanchorFileComments } from "../anchors.js";
 import { DrawioPdfRenderer } from "../drawioPdf.js";
 import { saveProjectText } from "../projectTextSave.js";
-import { drawioPdfPath, isDrawioFile } from "../../shared/drawio.js";
+import { DRAWIO_MAX_BYTES, drawioPdfPath, isDrawioFile } from "../../shared/drawio.js";
 import { isTextContent } from "../../shared/fileTypes.js";
 
-const maxDiagramBytes = 5 * 1024 * 1024;
 const hash = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 
 function diagramPath(value: unknown): string {
@@ -28,22 +27,41 @@ function diagramPath(value: unknown): string {
   return relative;
 }
 function readDiagram(absolute: string): string {
-  if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) throw httpError(404, "FILE_NOT_FOUND");
-  if (fs.statSync(absolute).size > maxDiagramBytes) throw httpError(413, "DRAWIO_INVALID");
-  const bytes = fs.readFileSync(absolute);
+  const stat = fs.statSync(absolute, { throwIfNoEntry: false });
+  if (!stat?.isFile()) throw httpError(404, "FILE_NOT_FOUND");
+  if (stat.size > DRAWIO_MAX_BYTES) throw httpError(413, "DRAWIO_TOO_LARGE");
+  // A host tool can change the file between stat and read.
+  const descriptor = fs.openSync(absolute, "r");
+  let bytes: Buffer;
+  try {
+    const buffer = Buffer.allocUnsafe(stat.size + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const read = fs.readSync(descriptor, buffer, length, buffer.length - length, null);
+      if (!read) break;
+      length += read;
+    }
+    if (length > DRAWIO_MAX_BYTES) throw httpError(413, "DRAWIO_TOO_LARGE");
+    if (length > stat.size) throw httpError(409, "DRAWIO_CONFLICT");
+    bytes = buffer.subarray(0, length);
+  } finally { fs.closeSync(descriptor); }
   if (!isTextContent(bytes)) throw httpError(400, "DRAWIO_INVALID");
   return bytes.toString("utf8");
 }
-function validateXml(content: unknown, limit: number): asserts content is string {
+function validateXml(content: unknown, limit = DRAWIO_MAX_BYTES): asserts content is string {
+  if (typeof content === "string" && Buffer.byteLength(content) > DRAWIO_MAX_BYTES) throw httpError(413, "DRAWIO_TOO_LARGE");
   if (typeof content !== "string" || Buffer.byteLength(content) > limit || !isTextContent(Buffer.from(content))
     || !/^\s*(?:<\?xml[^>]*>\s*)?<(?:mxfile|mxGraphModel)(?:\s|>)/.test(content)
     || /<!DOCTYPE/i.test(content)) throw httpError(400, "DRAWIO_INVALID");
 }
-function pdfRevision(absolute: string): string | null {
-  if (!fs.existsSync(absolute)) return null;
-  if (!fs.statSync(absolute).isFile()) throw httpError(409, "PATH_EXISTS");
+function pdfRevision(absolute: string, allowOccupiedPath = false): string | null {
   // Only detect replacement conflicts; do not read an existing large PDF.
-  const stat = fs.statSync(absolute, { bigint: true });
+  const stat = fs.statSync(absolute, { bigint: true, throwIfNoEntry: false });
+  if (!stat) return null;
+  if (!stat.isFile()) {
+    if (allowOccupiedPath) return null;
+    throw httpError(409, "PATH_EXISTS", { path: path.basename(absolute) });
+  }
   return hash(`${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`);
 }
 function writeAtomic(absolute: string, bytes: Buffer): void {
@@ -79,7 +97,7 @@ export function registerDrawioRoutes(app: FastifyInstance, { config, db, collabo
     void projectMutations.runFilesystemRead(id, () => {
       if (socket.readyState !== 1) return;
       const content = readDiagram(resolveSourcePath(config, id, relative));
-      validateXml(content, maxDiagramBytes);
+      validateXml(content);
       locks.acquire(id, relative, user.id, user.display_name, socket, valid, hash(content));
     }, { preflight: () => { if (!valid()) throw httpError(403, "PROJECT_EDIT_FORBIDDEN"); } })
       .catch(() => { socket.close(1008, "Diagram unavailable"); });
@@ -95,18 +113,26 @@ export function registerDrawioRoutes(app: FastifyInstance, { config, db, collabo
     // without making the editor wait for unrelated room hydration.
     return projectMutations.runFilesystemRead(id, () => {
       const content = readDiagram(resolveSourcePath(config, id, relative));
-      validateXml(content, maxDiagramBytes);
-      return { content, revision: hash(content), pdfRevision: pdfRevision(resolveSourcePath(config, id, drawioPdfPath(relative))) };
+      validateXml(content);
+      const output = drawioPdfPath(relative);
+      // An invalid PDF destination should not stop users from editing the diagram.
+      let outputRevision: string | null = null;
+      try { outputRevision = pdfRevision(resolveSourcePath(config, id, output), true); }
+      catch (error) {
+        if (!(error instanceof HttpError) || !["SYMLINK_FORBIDDEN", "INVALID_PATH"].includes(error.code)) throw error;
+      }
+      return { content, revision: hash(content), pdfRevision: outputRevision };
     }, { preflight: () => { if (!accessibleProject(db, id, user)) throw httpError(404, "PROJECT_NOT_FOUND"); } });
   });
 
-  app.put("/api/projects/:id/drawio", { bodyLimit: 6 * 1024 * 1024 }, async (request, reply) => {
+  // JSON escaping can expand an otherwise valid 4 MiB XML document.
+  app.put("/api/projects/:id/drawio", { bodyLimit: 2 * DRAWIO_MAX_BYTES + 64 * 1024 }, async (request, reply) => {
     const user = requireUser(request, reply, db); if (!user) return;
     const { id } = request.params as { id: string };
     requireEditableProject(db, id, user);
     const body = request.body as { path?: unknown; content?: unknown; revision?: unknown; lockToken?: unknown };
     const relative = diagramPath(body.path);
-    validateXml(body.content, Math.min(maxDiagramBytes, config.maxUploadBytes));
+    validateXml(body.content, config.maxUploadBytes);
     const content = body.content;
     return projectMutations.runWrite(id, () => {
       locks.assertOwned(id, relative, body.lockToken, user.id);

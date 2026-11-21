@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { appPath } from "../basePath";
 
 export type DrawioLockState = { status: "connecting" | "owned" | "busy" | "lost" | "readonly"; token: string; name: string; revision?: string };
@@ -9,6 +9,10 @@ export function useDrawioLock(projectId: string, path: string, readOnly: boolean
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<DrawioLockState>(() => empty(readOnly ? "readonly" : "connecting"));
   const current = useRef(state);
+  const releaseCurrent = useRef<() => void>(null);
+  const relinquish = useCallback((token: string) => {
+    if (current.current.status === "owned" && current.current.token === token) releaseCurrent.current?.();
+  }, []);
   useEffect(() => {
     let disposed = false;
     const update = (next: DrawioLockState) => {
@@ -28,6 +32,7 @@ export function useDrawioLock(projectId: string, path: string, readOnly: boolean
       if (socket?.readyState === WebSocket.OPEN) socket.send("release");
       socket?.close();
     };
+    releaseCurrent.current = release;
     // Full-page navigation/bfcache may not unmount React first. Merely
     // backgrounding a tab does not release its editing ownership.
     window.addEventListener("pagehide", release);
@@ -56,10 +61,11 @@ export function useDrawioLock(projectId: string, path: string, readOnly: boolean
     return () => {
       disposed = true; ended = true; window.clearTimeout(timeout);
       window.removeEventListener("pagehide", release);
+      releaseCurrent.current = null;
       // A connecting socket's close() cancels its handshake; the server also
       // checks readyState after waiting for the project mutation queue.
       release();
     };
   }, [projectId, path, readOnly, attempt]);
-  return { state, current, retry: () => setAttempt((value) => value + 1) };
+  return { state, current, relinquish, retry: () => setAttempt((value) => value + 1) };
 }

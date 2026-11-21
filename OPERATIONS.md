@@ -128,9 +128,10 @@ The editor can take longer to open the first time while the browser downloads
 its assets. TexLite shows the loading, initialization and diagram-open stages
 and offers a retry if the editor is not ready within 30 seconds.
 
-Diagram data is passed directly to the iframe, not placed in its URL. Save explicitly
-before closing or switching files. Unsaved changes require confirmation before
-leaving the diagram. Each file allows one editing browser tab at a time, even
+Diagram data is passed directly to the iframe, not placed in its URL. Diagram
+files larger than 4 MiB are not opened in the editor. Edits are saved automatically;
+if a draft exceeds the limit, reduce its size before saving or exporting.
+Unsaved changes require confirmation before leaving the diagram. Each file allows one editing browser tab at a time, even
 for the same account. Other tabs are read-only and can use **Try editing** once
 the owner closes the diagram. Different diagram files are independent.
 

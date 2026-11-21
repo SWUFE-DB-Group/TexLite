@@ -1559,7 +1559,8 @@ tracking, but opened in the editor pane using a lazy-loaded official diagrams.ne
 iframe. The parent checks both message origin and source window. Only diagram
 XML is exchanged; project URLs and session cookies are not handed to the editor.
 Diagrams are excluded from Yjs text hydration/mutations and global text
-search/replace. Explicit saves check source revisions under the project mutation
+search/replace. The diagram editor refuses to load or save XML over 4 MiB
+(UTF-8 bytes). Saves check source revisions under the project mutation
 lock, send file notifications, and record the saving user. Snapshot tracking
 still uses the shared text classification. Conflicts preserve the local editor
 rather than overwriting newer source.
@@ -1581,7 +1582,9 @@ explicitly discards it. Lock reconnection is explicit. Effect cleanup closes
 the exact connection, `pagehide` releases even before React unmounts, and
 StrictMode's probe mount does not open a socket. A clean stale viewer is refreshed
 against the source revision supplied when ownership is granted; an existing
-local draft is never automatically replaced.
+local draft is never automatically replaced. If reconciliation fails, the
+browser gives up that lease and offers a retry. Lock paths are compared without
+regard to case on Windows; Linux paths remain case-sensitive.
 
 PDF export saves the source and obtains a current-page SVG from the iframe,
 then sends it to an authenticated write-only project endpoint. A split export
@@ -1599,7 +1602,8 @@ never replaced. PDF capture freezes live input until finished/cancelled; the
 temporary frame is removed on success, failure, timeout or cancellation.
 The server checks
 ownership and source/output revisions before rendering and again before an atomic write next
-to the `.drawio` file. Headless `puppeteer-core` drives host Chromium/Chrome/Edge
+to the `.drawio` file. A conflicting PDF destination blocks export, not opening
+or saving the diagram. Headless `puppeteer-core` drives host Chromium/Chrome/Edge
 without downloading a browser, using an isolated temporary profile with scripts
 disabled and outbound/file requests blocked. Rendering never holds the source
 mutation lock. Each app owns bounded export jobs and aborts them on disconnect

@@ -31,6 +31,26 @@ describe("draw.io exclusive edit leases", () => {
     expect(() => locks.assertUnlocked("elsewhere", ["figure.drawio"])).not.toThrow();
   });
 
+  it("uses one Windows path identity for acquisition, token checks and file mutations", () => {
+    locks = new DrawioLocks("win32");
+    const first = acquire(new Socket(), "Figures/Diagram.drawio");
+    const duplicate = acquire(new Socket(), "figures/diagram.DRAWIO", "u2");
+    expect(JSON.parse(duplicate.send.mock.calls[0][0])).toMatchObject({ type: "busy" });
+    expect(() => locks.assertOwned("project", "FIGURES/diagram.DRAWIO", first.token, "u1")).not.toThrow();
+    for (const alias of ["FIGURES/", "Figures/diagram.PDF", "figures/DIAGRAM.drawio"]) {
+      expect(() => locks.assertUnlocked("project", [alias])).toThrow(expect.objectContaining({ code: "DRAWIO_LOCKED" }));
+    }
+    expect(() => locks.prepareDelete("project", "figures/DIAGRAM.pdf", "u1", first.token)).toThrow(expect.objectContaining({ code: "DRAWIO_LOCKED" }));
+    locks.prepareDelete("project", "figures/DIAGRAM.drawio", "u1", first.token)();
+    expect(first.terminate).toHaveBeenCalledOnce();
+
+    locks = new DrawioLocks("linux");
+    const upper = acquire(new Socket(), "Figures/Diagram.drawio");
+    const lower = acquire(new Socket(), "figures/diagram.drawio");
+    expect(lower.token).toBeTypeOf("string");
+    expect(lower.token).not.toBe(upper.token);
+  });
+
   it.each(["close", "error", "release"])("releases on %s, and a late old close/release cannot unlock the successor", (event) => {
     const first = acquire();
     if (event === "release") first.emit("message", Buffer.from("release")); else first.emit(event, new Error("fixture"));
