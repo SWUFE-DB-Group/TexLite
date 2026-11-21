@@ -72,6 +72,11 @@ export const agyAdapter: AgentAdapter = {
       const saved = await this.findNativeSession(context);
       if (saved.status === "unknown") throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
       if (saved.status !== "found") throw httpError(409, "AGENT_NO_CONTEXT");
+    } else if (await localStat(binding(context))) {
+      // SessionStart may run before AGY persists a conversation. Only discard
+      // a provisional ID when the private conversation store is verified empty.
+      if ((await this.findNativeSession(context)).status !== "empty") throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
+      await fs.promises.unlink(binding(context));
     }
     const config = path.join(home(context), ".gemini", "config");
     const hook = path.join(config, "texlite-session-start.mjs");
@@ -123,7 +128,7 @@ export const agyAdapter: AgentAdapter = {
       if (id) {
         if (registered && context.nativeSessionId && registered !== context.nativeSessionId) return { status: "unknown" };
         const entry = entries.find((file) => file.name === `${id}.db`);
-        if (!entry) return context.nativeSessionId ? { status: "empty" } : { status: "unknown" };
+        if (!entry) return context.nativeSessionId || entries.length === 0 ? { status: "empty" } : { status: "unknown" };
         return entry.isFile() ? { status: "found", id } : { status: "unknown" };
       }
       const databases = entries.filter((file) => file.name.endsWith(".db"));

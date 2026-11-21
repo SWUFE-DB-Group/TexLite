@@ -81,18 +81,19 @@ export class AgentSourceSync {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private pending: Promise<void> | undefined;
   private closed = false;
+  private active = false;
   private syncing = false;
 
   constructor(private readonly context: AgentWorkspaceContext, private readonly taskId: string,
     private readonly projectId: string, private readonly userId: string, private readonly onError: (error: unknown) => void) {}
 
-  async start(): Promise<void> {
+  async prepare(): Promise<void> {
     const { config, projectMutations, collaboration } = this.context;
     await projectMutations.runConsistentRead(this.projectId, async () => {
       assertNoSourceSymlinks(config, this.projectId);
       for (const relative of await this.files()) this.remember(relative);
       this.detach = collaboration.observeExternalSources(this.projectId, {
-        beforeFlush: (paths) => this.sync(paths),
+        beforeFlush: (paths) => { if (this.active) this.sync(paths); },
         written: (paths) => {
           if (this.syncing) return;
           // Ordinary browser/HTTP writes are not attributed to the agent.
@@ -103,16 +104,33 @@ export class AgentSourceSync {
         }
       });
     });
+  }
+
+  /** Observe agent writes only once the CLI has been launched. */
+  activate(): void {
+    this.active = true;
     this.schedule();
+  }
+
+  /** Abandon startup without scanning against a missing or partial baseline. */
+  discard(): void {
+    this.closed = true;
+    this.active = false;
+    clearTimeout(this.timer);
+    this.detach?.();
+    this.detach = undefined;
   }
 
   /** Stop polling only after the process tree is dead; reconcile its last writes first. */
   async close(): Promise<void> {
+    if (!this.active) return;
     this.closed = true;
     clearTimeout(this.timer);
     await this.pending;
-    try { await this.scan(); }
-    finally { this.detach?.(); }
+    // If the scan or the flush fails, keep the observer and baseline so a
+    // later stop can retry without leaving parallel editor saves unprotected.
+    await this.scan();
+    this.discard();
   }
 
   private schedule(): void {

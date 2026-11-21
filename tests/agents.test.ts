@@ -156,8 +156,7 @@ describe("external agent tasks", () => {
     await service.setPolicy({ allowed: ["agy"] });
     const task = await service.create(projectId, owner, "agy", "Revise abstract");
     const originalSource = fs.readFileSync(workingFile(task), "utf8");
-    await service.start(task.id, owner); await service.stop(task.id, owner);
-    expect(service.task(task.id, owner)).toMatchObject({ state: "stopped", nativeSessionId: null, canResume: false });
+    await service.start(task.id, owner);
 
     const taskRoot = agentTaskRoot(config, task.id);
     const home = path.join(taskRoot, "state", "agy-home");
@@ -169,15 +168,28 @@ describe("external agent tasks", () => {
     }]);
     const taskData = path.join(home, ".gemini", "antigravity-cli");
     expect(fs.readFileSync(path.join(taskData, "settings.json"), "utf8")).toBe(hostSettings);
-    expect(fs.existsSync(path.join(taskData, "conversations"))).toBe(false);
+    const hooks = JSON.parse(fs.readFileSync(path.join(home, ".gemini", "config", "hooks.json"), "utf8"));
+    const command = hooks["texlite-session"].SessionStart[0].command;
+    const provisional = randomUUID();
+    const binding = path.join(taskRoot, "state", "agy-conversation-id");
+    execFileSync("/bin/sh", ["-c", command], { input: JSON.stringify({ conversationId: provisional }) });
+    await service.stop(task.id, owner);
+    expect(service.task(task.id, owner)).toMatchObject({ state: "stopped", nativeSessionId: null, canResume: false });
+    expect(fs.readFileSync(binding, "utf8")).toBe(provisional);
+    const store = path.join(taskData, "conversations");
+    expect(fs.existsSync(store)).toBe(false);
+    fs.mkdirSync(store);
+    const ambiguous = path.join(store, `${randomUUID()}.db`);
+    fs.writeFileSync(ambiguous, "another native database");
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CONTEXT_CHECK_FAILED" });
+    expect(fs.readFileSync(binding, "utf8")).toBe(provisional);
+    expect(spawn).toHaveBeenCalledTimes(1);
+    fs.unlinkSync(ambiguous);
     await service.start(task.id, owner);
+    expect(fs.existsSync(binding)).toBe(false);
     expect(spawn.mock.calls.at(-1)?.[1]).not.toContain("--conversation");
 
     const first = randomUUID(), fork = randomUUID();
-    const store = path.join(taskData, "conversations");
-    fs.mkdirSync(store);
-    const hooks = JSON.parse(fs.readFileSync(path.join(home, ".gemini", "config", "hooks.json"), "utf8"));
-    const command = hooks["texlite-session"].SessionStart[0].command;
     for (const id of [first, fork]) fs.writeFileSync(path.join(store, `${id}.db`), "native database");
     expect(await agyAdapter.findNativeSession(await registry.context("agy", task.id, taskRoot, null, sourceRoot(config, projectId))))
       .toEqual({ status: "unknown" });
@@ -329,6 +341,50 @@ describe("external agent tasks", () => {
     await expect(service.start(a.id, owner)).rejects.toThrow("Credentials unavailable");
     await service.start(b.id, editor);
     expect(service.task(b.id, editor).state).toBe("running");
+  });
+
+  it("does not scan or attribute existing files to an agent when startup cannot establish a baseline", async () => {
+    const task = await create();
+    const main = workingFile(task);
+    const original = fs.readFileSync(main, "utf8");
+    vi.spyOn(coordinator, "runConsistentRead").mockRejectedValueOnce(new Error("Initial source read failed"));
+    await expect(service.start(task.id, owner)).rejects.toThrow("Initial source read failed");
+    expect(recordHistory.mock.calls.every(([, , , , options]) => !options?.hasAgent)).toBe(true);
+    expect(fs.readFileSync(main, "utf8")).toBe(original);
+    expect(db.prepare("SELECT 1 FROM project_edit_segments WHERE project_id = ? AND has_agent = 1").get(projectId)).toBeUndefined();
+    expect(spawn).not.toHaveBeenCalled();
+    expect(service.list(owner, false, { project: projectId }).activeTaskId).toBeNull();
+    await service.start(task.id, owner);
+  });
+
+  it("keeps the project reserved after final sync fails and retries without reaping or launching again", async () => {
+    const task = await create();
+    const next = await create("claude", editor);
+    const room = await liveRoom();
+    await service.start(task.id, owner);
+    const pty = processes[0];
+    const stop = vi.spyOn(pty, "end");
+    const socket = new FakeSocket();
+    service.attach(task.id, owner, socket.ws, () => true);
+    fs.writeFileSync(workingFile(task), "Final agent edit\n");
+    vi.spyOn(coordinator, "flushProject").mockImplementationOnce(() => { throw new Error("Final source flush failed"); });
+    // A natural exit uses the same finalization path as End execution.
+    pty.end(7);
+    await vi.waitFor(() => expect(service.task(task.id, owner)).toMatchObject({
+      state: "stopping", errorCode: "AGENT_FINAL_SYNC_FAILED"
+    }));
+    expect(socket.messages.at(-1)).toMatchObject({ type: "state", task: { errorCode: "AGENT_FINAL_SYNC_FAILED" } });
+    expect(service.list(owner, false, { project: projectId }).activeTaskId).toBe(task.id);
+    await expect(service.start(next.id, editor)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
+    const stopsBeforeRetry = stop.mock.calls.length;
+    expect(await service.stop(task.id, owner)).toMatchObject({ state: "exited", exitCode: 7, errorCode: null });
+    expect(stop).toHaveBeenCalledTimes(stopsBeforeRetry);
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(socket.close).toHaveBeenCalledWith(1000, "Execution ended");
+    expect(room.doc.getText("source:main.tex").toString()).toBe("Final agent edit\n");
+    expect(recordHistory.mock.calls.filter(([, , , paths, options]) => paths?.includes("main.tex") && options?.hasAgent)).toHaveLength(1);
+    expect(service.list(owner, false, { project: projectId }).activeTaskId).toBeNull();
+    await service.start(next.id, editor);
   });
 
   it("retains the project claim when process termination fails, and releases it after retry", async () => {
@@ -1326,10 +1382,20 @@ describe("agent direct project editing", () => {
 
   it("rejects agent-created symlinks without reading outside the project", async () => {
     const task = await create(); await service.start(task.id, owner);
-    fs.symlinkSync(path.join(root, "config.json"), workingFile(task, "link.txt"));
-    await vi.waitFor(() => expect(service.task(task.id, owner).state).toBe("stopped"), { timeout: 3000 });
-    expect(service.task(task.id, owner).errorCode).toBe("AGENT_SYNC_FAILED");
-    fs.rmSync(workingFile(task, "link.txt"));
+    const link = workingFile(task, "link.txt");
+    fs.symlinkSync(path.join(root, "config.json"), link);
+    try {
+      await vi.waitFor(() => expect(service.task(task.id, owner)).toMatchObject({
+        state: "stopping", errorCode: "AGENT_FINAL_SYNC_FAILED"
+      }), { timeout: 3000 });
+      const replace = vi.fn();
+      await expect(coordinator.runExclusive(projectId, "test replacement", replace)).rejects.toMatchObject({ code: "AGENT_FINAL_SYNC_FAILED" });
+      expect(replace).not.toHaveBeenCalled();
+      await expect(service.remove(task.id, admin, true)).rejects.toMatchObject({ code: "AGENT_FINAL_SYNC_FAILED" });
+      expect(service.task(task.id, admin, true)).toMatchObject({ cleanupState: "failed", errorCode: "AGENT_FINAL_SYNC_FAILED" });
+    } finally { fs.rmSync(link); }
+    await service.remove(task.id, admin, true);
+    expect(fs.existsSync(agentTaskRoot(config, task.id))).toBe(false);
     expect(() => agentTaskRoot(config, "..")).toThrow();
   });
 

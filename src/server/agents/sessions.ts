@@ -31,6 +31,8 @@ interface Execution {
   stopping: boolean; finished: Promise<void>; finish: () => void;
   subscriptions: Array<{ dispose(): void }>;
   termination: Promise<void> | null;
+  endState: "stopped" | "exited" | null;
+  processStopped: boolean;
   exitCode: number | null;
   source: AgentSourceSync;
   releaseProject: () => void;
@@ -219,7 +221,7 @@ export class AgentService {
           this.options.onError?.(error);
           void this.stop(id).catch((failure) => this.options.onError?.(failure));
         });
-        await source.start();
+        await source.prepare();
         assertMayStart();
         this.db.prepare("UPDATE agent_tasks SET state = 'starting', error_code = NULL, updated_at = ? WHERE id = ?").run(now(), id);
         try {
@@ -233,7 +235,8 @@ export class AgentService {
               this.db.prepare("UPDATE agent_tasks SET ever_started = 1 WHERE id = ?").run(id);
             } });
           let finish!: () => void;
-          const execution: Execution = { pty, attachments: new Set(), controller: null, output: new AgentOutputBuffer(), permissionsCheckedAt: -Infinity, cols: 100, rows: 24, stopping: false, termination: null, exitCode: null,
+          source.activate();
+          const execution: Execution = { pty, attachments: new Set(), controller: null, output: new AgentOutputBuffer(), permissionsCheckedAt: -Infinity, cols: 100, rows: 24, stopping: false, termination: null, endState: null, processStopped: false, exitCode: null,
             finished: new Promise<void>((resolve) => { finish = resolve; }), finish: () => finish(), subscriptions: [], source, releaseProject };
           this.executions.set(id, execution);
           execution.subscriptions.push(pty.onData((data) => this.output(id, execution, data)));
@@ -259,7 +262,7 @@ export class AgentService {
       } catch (error) {
         const execution = this.executions.get(id);
         if (execution) await this.terminate(id, execution, "stopped");
-        else { try { await source?.close(); } finally { releaseProject(); } }
+        else { try { source?.discard(); } finally { releaseProject(); } }
         throw error;
       }
     });
@@ -282,7 +285,7 @@ export class AgentService {
   async remove(id: string, user: TaskActor, administration = false): Promise<void> {
     await this.withTask(id, async () => {
       const row = this.owned(id, user, administration);
-      this.db.prepare("UPDATE agent_tasks SET cleanup_state = 'deleting', error_code = NULL, updated_at = ? WHERE id = ?").run(now(), id);
+      this.db.prepare("UPDATE agent_tasks SET cleanup_state = 'deleting', updated_at = ? WHERE id = ?").run(now(), id);
       try {
         await this.stopExecution(id);
         const root = agentTaskRoot(this.context.config, id);
@@ -304,8 +307,9 @@ export class AgentService {
           this.db.prepare("DELETE FROM agent_tasks WHERE id = ?").run(id);
         })();
       } catch (error) {
-        this.db.prepare("UPDATE agent_tasks SET cleanup_state = 'failed', error_code = ?, updated_at = ? WHERE id = ?")
-          .run("AGENT_CLEANUP_FAILED", now(), id);
+        this.db.prepare(`UPDATE agent_tasks SET cleanup_state = 'failed',
+          error_code = CASE WHEN error_code = 'AGENT_FINAL_SYNC_FAILED' THEN error_code ELSE 'AGENT_CLEANUP_FAILED' END,
+          updated_at = ? WHERE id = ?`).run(now(), id);
         this.audit(id, user.id, "delete", "failed");
         if (error instanceof Error && "statusCode" in error) throw error;
         this.options.onError?.(error);
@@ -401,28 +405,39 @@ export class AgentService {
   private terminate(id: string, execution: Execution, finalState: "stopped" | "exited"): Promise<void> {
     if (execution.termination) return execution.termination;
     execution.stopping = true;
+    execution.endState ??= finalState;
     this.db.prepare("UPDATE agent_tasks SET state = 'stopping', updated_at = ? WHERE id = ?").run(now(), id);
+    this.controls(execution);
     const termination = Promise.resolve().then(async () => {
-      await (this.options.stopPty ?? stopAgentPty)(execution.pty);
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        await Promise.race([execution.finished, new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(httpError(409, "AGENT_STOP_FAILED")), 3_000);
-        })]);
-      } finally { clearTimeout(timer); }
+      if (!execution.processStopped) {
+        await (this.options.stopPty ?? stopAgentPty)(execution.pty);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([execution.finished, new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => reject(httpError(409, "AGENT_STOP_FAILED")), 3_000);
+          })]);
+        } finally { clearTimeout(timer); }
+        execution.processStopped = true;
+        try { await this.captureContext(id, true); }
+        catch (error) { this.options.onError?.(error); }
+      }
       if (this.executions.get(id) !== execution) return;
-      try { await this.captureContext(id, true); }
-      catch (error) { this.options.onError?.(error); }
       try { await execution.source.close(); }
       catch (error) {
-        this.db.prepare("UPDATE agent_tasks SET error_code = 'AGENT_SYNC_FAILED' WHERE id = ?").run(id);
+        this.db.prepare("UPDATE agent_tasks SET error_code = 'AGENT_FINAL_SYNC_FAILED', updated_at = ? WHERE id = ?").run(now(), id);
         this.options.onError?.(error);
+        // The process is gone, but releasing the project now would let a new
+        // writer race unsynchronized changes. End execution retries only sync.
+        const row = this.row(id);
+        if (row) for (const attachment of execution.attachments) this.send(attachment.socket, { type: "state", task: this.json(row) });
+        throw httpError(409, "AGENT_FINAL_SYNC_FAILED");
       }
       clearAgentExecution(this.executionFile(id));
+      this.db.prepare(`UPDATE agent_tasks SET state = ?, exit_code = ?, ended_at = ?, updated_at = ?,
+        error_code = CASE WHEN error_code IN ('AGENT_FINAL_SYNC_FAILED', 'AGENT_STOP_FAILED') THEN NULL ELSE error_code END WHERE id = ?`)
+        .run(execution.endState, execution.exitCode, now(), now(), id);
       this.executions.delete(id);
       execution.releaseProject();
-      this.db.prepare("UPDATE agent_tasks SET state = ?, exit_code = ?, ended_at = ?, updated_at = ? WHERE id = ?")
-        .run(finalState, execution.exitCode, now(), now(), id);
       const row = this.row(id);
       if (row) for (const attachment of execution.attachments) {
         this.send(attachment.socket, { type: "state", task: this.json(row) });
@@ -431,9 +446,11 @@ export class AgentService {
       for (const subscription of execution.subscriptions) subscription.dispose();
     });
     execution.termination = termination;
-    void termination.catch(() => {
+    void termination.catch((error: unknown) => {
       execution.termination = null;
-      this.db.prepare("UPDATE agent_tasks SET error_code = 'AGENT_STOP_FAILED' WHERE id = ?").run(id);
+      if (!(error instanceof HttpError && error.code === "AGENT_FINAL_SYNC_FAILED")) {
+        this.db.prepare("UPDATE agent_tasks SET error_code = 'AGENT_STOP_FAILED' WHERE id = ?").run(id);
+      }
     });
     return termination;
   }
@@ -454,7 +471,7 @@ export class AgentService {
     }
   }
   private controls(execution: Execution): void {
-    for (const attachment of execution.attachments) this.send(attachment.socket, { type: "control", writable: execution.controller === attachment });
+    for (const attachment of execution.attachments) this.send(attachment.socket, { type: "control", writable: !execution.stopping && execution.controller === attachment });
   }
   private send(socket: WebSocket, message: AgentServerMessage): void { if (socket.readyState === 1) socket.send(JSON.stringify(message)); }
   private audit(id: string, actorId: string, action: string, result: string): void {
