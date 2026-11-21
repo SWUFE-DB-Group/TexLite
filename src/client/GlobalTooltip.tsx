@@ -1,13 +1,15 @@
 import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 
-type TooltipPlacement = "above";
+type TooltipPlacement = "above" | "below";
 
 interface TooltipState {
+  seq: number;
   text: string;
   content?: ReactNode;
   left: number;
   top: number;
   placement: TooltipPlacement;
+  instant: boolean;
 }
 
 interface TooltipRect {
@@ -23,6 +25,8 @@ const disabledTooltipRegionSelector = '[data-texlite-tooltips="off"]';
 const alwaysEnabledTooltipSelector = "[data-texlite-tooltip-always]";
 const richTooltipContents = new Map<string, ReactNode>();
 const richContentChanged = "texlite:tooltip-content-changed";
+const HOVER_INTENT_DELAY_MS = 340;
+const WARM_TRANSITION_WINDOW_MS = 320;
 
 /** Structured React content shares ordinary tooltip positioning and dismissal. */
 export function RichTooltip({ children, text, content }: {
@@ -46,11 +50,27 @@ function tooltipContent(element: HTMLElement): ReactNode {
   return richTooltipContents.get(element.getAttribute("data-tooltip-content") ?? "");
 }
 
-export function globalTooltipPosition(rect: TooltipRect, viewportWidth: number, tooltipWidth = 0): Omit<TooltipState, "text"> {
+export function globalTooltipPosition(
+  rect: TooltipRect,
+  viewportWidth: number,
+  tooltipWidth = 0,
+  tooltipHeight = 0,
+  viewportHeight = 0
+): Pick<TooltipState, "left" | "top" | "placement"> {
   const halfWidth = Math.min(tooltipWidth, Math.max(0, viewportWidth - 16)) / 2;
   const center = rect.left + rect.width / 2;
   const left = Math.max(halfWidth + 8, Math.min(center, viewportWidth - halfWidth - 8));
-  return { left, top: rect.top - 8, placement: "above" };
+  const aboveTop = rect.top - 8;
+  if (tooltipHeight > 0 && aboveTop < tooltipHeight + 8) {
+    const belowTop = rect.bottom + 8;
+    const spaceAbove = rect.top - 8;
+    const spaceBelow = viewportHeight > 0 ? viewportHeight - rect.bottom - 8 : tooltipHeight + 8;
+    if (spaceBelow >= tooltipHeight + 8 || spaceBelow > spaceAbove) {
+      return { left, top: belowTop, placement: "below" };
+    }
+    return { left, top: Math.max(aboveTop, tooltipHeight + 8), placement: "above" };
+  }
+  return { left, top: aboveTop, placement: "above" };
 }
 
 function tooltipText(element: HTMLElement): string | null {
@@ -101,23 +121,40 @@ function restoreNativeTitle(element: HTMLElement | null): void {
 export function GlobalTooltip() {
   const active = useRef<HTMLElement | null>(null);
   const tooltipElement = useRef<HTMLDivElement | null>(null);
+  const seqRef = useRef(0);
+  const openedAtRef = useRef(0);
+  const wasInstantRef = useRef(false);
+  const warmUntilRef = useRef(0);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   useLayoutEffect(() => {
     if (!tooltip || !tooltipElement.current || !active.current) return;
-    // Keep the above placement, but prevent controls near the viewport's top
-    // edge from putting the text off-screen. Measure wrapped text as well.
+    // Measure wrapped text and flip below controls near the viewport top edge
+    // so topbar tooltips never cover their own trigger.
     const measured = tooltipElement.current.getBoundingClientRect();
-    const position = globalTooltipPosition(active.current.getBoundingClientRect(), window.innerWidth, measured.width);
-    const top = Math.max(position.top, measured.height + 8);
-    if (tooltip.left !== position.left || tooltip.top !== top) {
-      setTooltip((current) => current === tooltip ? { ...tooltip, ...position, top } : current);
+    const position = globalTooltipPosition(
+      active.current.getBoundingClientRect(),
+      window.innerWidth,
+      measured.width,
+      measured.height,
+      window.innerHeight
+    );
+    if (tooltip.left !== position.left || tooltip.top !== position.top || tooltip.placement !== position.placement) {
+      setTooltip((current) => current === tooltip ? { ...tooltip, ...position } : current);
     }
   }, [tooltip]);
 
   useEffect(() => {
     let pointerTarget: HTMLElement | null = null;
     let focusTarget: HTMLElement | null = null;
+
+    const recordWarmWindow = () => {
+      if (!active.current) return;
+      const now = Date.now();
+      if (wasInstantRef.current || now - openedAtRef.current >= HOVER_INTENT_DELAY_MS) {
+        warmUntilRef.current = now + WARM_TRANSITION_WINDOW_MS;
+      }
+    };
 
     // A route transition can unmount the element that owns a tooltip before
     // it emits pointerout/focusout (for example, the workspace back button).
@@ -128,11 +165,15 @@ export function GlobalTooltip() {
       focusTarget = null;
       restoreNativeTitle(active.current);
       active.current = null;
+      openedAtRef.current = 0;
+      wasInstantRef.current = false;
+      warmUntilRef.current = 0;
       setTooltip(null);
     };
 
     const updateActive = () => {
       const next = pointerTarget ?? focusTarget;
+      const fromKeyboard = !pointerTarget && Boolean(focusTarget);
       if (next && tooltipsDisabled(next)) {
         if (next !== active.current) restoreNativeTitle(active.current);
         active.current = next;
@@ -144,22 +185,45 @@ export function GlobalTooltip() {
         if (!next) return;
         const text = tooltipText(next);
         if (!text) return;
-        setTooltip({ text, content: tooltipContent(next), ...globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth) });
+        const position = globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth);
+        setTooltip((current) => ({
+          seq: current?.seq ?? ++seqRef.current,
+          text,
+          content: tooltipContent(next),
+          ...position,
+          instant: current?.instant ?? true
+        }));
         return;
       }
+      recordWarmWindow();
       restoreNativeTitle(active.current);
       active.current = next;
       if (!next) {
+        openedAtRef.current = 0;
+        wasInstantRef.current = false;
         setTooltip(null);
         return;
       }
       const text = tooltipText(next);
       if (!text) {
+        openedAtRef.current = 0;
+        wasInstantRef.current = false;
         setTooltip(null);
         return;
       }
       suppressNativeTitle(next);
-      setTooltip({ text, content: tooltipContent(next), ...globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth) });
+      const now = Date.now();
+      const instant = fromKeyboard || now <= warmUntilRef.current;
+      openedAtRef.current = now;
+      wasInstantRef.current = instant;
+      const seq = ++seqRef.current;
+      setTooltip({
+        seq,
+        text,
+        content: tooltipContent(next),
+        ...globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth),
+        instant
+      });
     };
 
     const refreshPosition = () => {
@@ -173,7 +237,19 @@ export function GlobalTooltip() {
       }
       const text = tooltipText(element);
       if (!text) return;
-      setTooltip({ text, content: tooltipContent(element), ...globalTooltipPosition(element.getBoundingClientRect(), window.innerWidth) });
+      const position = globalTooltipPosition(element.getBoundingClientRect(), window.innerWidth);
+      setTooltip((current) => current ? {
+        ...current,
+        text,
+        content: tooltipContent(element),
+        ...position
+      } : {
+        seq: ++seqRef.current,
+        text,
+        content: tooltipContent(element),
+        ...position,
+        instant: true
+      });
     };
     const refreshContent = (event: Event) => {
       const id = (event as CustomEvent<string>).detail;
@@ -242,5 +318,5 @@ export function GlobalTooltip() {
   }, []);
 
   if (!tooltip) return null;
-  return <div ref={tooltipElement} id="texlite-global-tooltip" role="tooltip" className={`global-tooltip ${tooltip.placement}`} style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.content ?? tooltip.text}</div>;
+  return <div key={tooltip.seq} ref={tooltipElement} id="texlite-global-tooltip" role="tooltip" data-instant={tooltip.instant ? "true" : undefined} className={`global-tooltip ${tooltip.placement}`} style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.content ?? tooltip.text}</div>;
 }

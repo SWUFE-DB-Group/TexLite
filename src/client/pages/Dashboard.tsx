@@ -6,7 +6,7 @@ import { ConfirmDialog, Modal } from "../Dialog";
 import type { DashboardData, Project, ProjectCatalogCounts, ProjectListPagination, ProjectOwnershipScope, ProjectTag, SiteConfig, TagColor, User } from "../types";
 import i18n from "../i18n";
 import { errorMessage } from "../errors";
-import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, ChevronLeft, ChevronRight, FileArchive, FolderKanban, FolderOpen, FolderPlus, LoaderCircle, Sparkles, Tags, TerminalSquare, Upload, Users, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowDownUp, ArrowLeft, ArrowRightLeft, BookMarked, ChevronLeft, ChevronRight, FileArchive, FolderKanban, FolderOpen, FolderPlus, LayoutGrid, List, LoaderCircle, Sparkles, Tags, TerminalSquare, Upload, Users, X } from "lucide-react";
 import { UserMenu } from "../UserMenu";
 import { SiteFooter, SiteLogo } from "./SiteChrome";
 import { UpdateNotification } from "../UpdateNotification";
@@ -443,7 +443,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
                 <Archive size={14} />{t("projects.archived")}{archivedCounts[ownership] > 0 && <sup>{archivedCounts[ownership]}</sup>}
               </button>
             </div>
-            <label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle"><button className={view === "grid" ? "active" : ""} onClick={() => changeView("grid")} title={t("projects.grid")}>▦</button><button className={view === "list" ? "active" : ""} onClick={() => changeView("list")} title={t("projects.list")}>☷</button></div></div>
+            <label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle" role="group"><button type="button" className={view === "grid" ? "active" : ""} aria-pressed={view === "grid"} aria-label={t("projects.grid")} onClick={() => changeView("grid")} title={t("projects.grid")}><LayoutGrid size={15} aria-hidden="true" /></button><button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label={t("projects.list")} onClick={() => changeView("list")} title={t("projects.list")}><List size={15} aria-hidden="true" /></button></div></div>
       {!resultsCurrent && !error && <div className="project-catalog-loading" role="status"><LoaderCircle className="spin" size={17} aria-hidden />{t("common.loading")}</div>}
       <div className={`project-grid ${view === "list" ? "list-view" : ""}${projectMenuId ? " project-list-menu-active" : ""}`}>
         {view === "list" && displayedProjects.length > 0 && <div className="project-list-header" aria-hidden="true">

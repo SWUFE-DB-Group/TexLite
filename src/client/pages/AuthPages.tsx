@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent, type InputHTMLAttributes } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { errorMessage } from "../errors";
@@ -58,15 +58,19 @@ export function Login({ site, onLogin }: { site: SiteConfig; onLogin: (user: Use
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (submitting) return;
     setError("");
+    setSubmitting(true);
     try {
       const result = await api<{ user: User }>("/api/auth/login", {
         method: "POST", body: JSON.stringify({ username, password }), suppressSessionExpired: true
       });
       onLogin(result.user);
     } catch (err) { setError(errorMessage(err)); }
+    finally { setSubmitting(false); }
   };
   return <main className="login-page"><LanguageSwitcher />
     <form className="login-card" onSubmit={submit}>
@@ -75,8 +79,8 @@ export function Login({ site, onLogin }: { site: SiteConfig; onLogin: (user: Use
       <p className="muted">{t("auth.tagline")}</p>
       <label>{t("auth.username")}<input autoFocus value={username} onChange={(e) => setUsername(e.target.value)} /></label>
       <PasswordField label={t("auth.password")} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      {error && <p className="error">{error}</p>}
-      <button className="primary" type="submit">{t("auth.login")}</button>
+      {error && <p className="error" role="alert">{error}</p>}
+      <button className="primary auth-submit" type="submit" disabled={submitting} aria-busy={submitting}>{submitting && <LoaderCircle className="spin" size={15} aria-hidden="true" />}{t("auth.login")}</button>
       {site.adminEmail && <small className="support">{t("auth.contact", { email: site.adminEmail })}</small>}
     </form><SiteFooter />
   </main>;

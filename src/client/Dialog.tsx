@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 
 interface ModalProps {
   open: boolean;
@@ -77,7 +77,7 @@ export function Modal({ open, title, description, onOpenChange, onEscapeKeyDown,
           <div><DialogPrimitive.Title>{title}</DialogPrimitive.Title>
             {description && <DialogPrimitive.Description>{description}</DialogPrimitive.Description>}
           </div>
-          <DialogPrimitive.Close className="dialog-close" aria-label={t("common.close")}>×</DialogPrimitive.Close>
+          <DialogPrimitive.Close className="dialog-close" aria-label={t("common.close")}><X size={16} aria-hidden="true" /></DialogPrimitive.Close>
         </div>
         <div className="dialog-body">{children}</div>
         {footer && <div className="dialog-footer">{footer}</div>}

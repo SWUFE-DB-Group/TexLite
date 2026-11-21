@@ -10,6 +10,14 @@ const styles = fs.readFileSync(new FileURL("../src/client/styles.css", import.me
 const tokens: Record<string, string> = {};
 postcss.parse(css).walkDecls((declaration) => { if (declaration.prop.startsWith("--ui-")) tokens[declaration.prop] = declaration.value; });
 
+const lightTokens: Record<string, string> = {};
+const darkTokens: Record<string, string> = {};
+postcss.parse(css).walkRules((rule) => {
+  const target = rule.selector === ":root" ? lightTokens : rule.selector === ':root[data-theme="dark"]' ? darkTokens : null;
+  if (!target) return;
+  rule.walkDecls((declaration) => { if (declaration.prop.startsWith("--ui-")) target[declaration.prop] = declaration.value; });
+});
+
 function luminance(hex: string): number {
   const [r, g, b] = hex.slice(1).match(/../g)!.map((value) => {
     const channel = Number.parseInt(value, 16) / 255;
@@ -89,10 +97,22 @@ describe("application dark palette", () => {
     }
   });
 
-  it.each(["text", "muted", "accent", "danger", "warning", "info", "purple", "pink"])("keeps %s readable across the application surfaces", (role) => {
-    const backgrounds = ["page", "surface", "raised", "subtle", "hover"];
-    if (tokens[`--ui-${role}-bg`]) backgrounds.push(`${role}-bg`);
-    for (const background of backgrounds) expect(contrast(tokens[`--ui-${role}`], tokens[`--ui-${background}`]), `${role} on ${background}`).toBeGreaterThanOrEqual(4.5);
+  it.each(["light", "dark"] as const)("keeps all semantic text roles readable across %s application surfaces", (mode) => {
+    const palette = mode === "light" ? lightTokens : { ...lightTokens, ...darkTokens };
+    for (const role of ["text", "muted", "accent", "danger", "warning", "info", "purple", "pink"]) {
+      const backgrounds = ["page", "surface", "raised", "subtle", "hover"];
+      if (palette[`--ui-${role}-bg`]) backgrounds.push(`${role}-bg`);
+      for (const background of backgrounds) {
+        expect(contrast(palette[`--ui-${role}`], palette[`--ui-${background}`]), `${mode}: ${role} on ${background}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    expect(contrast(palette["--ui-primary-fg"], palette["--ui-primary-bg"]), `${mode}: primary`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette["--ui-compile-fg"], palette["--ui-compile-bg"]), `${mode}: compile`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette["--ui-code-text"], palette["--ui-code-bg"]), `${mode}: code`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette["--ui-console-text"], palette["--ui-console-bg"]), `${mode}: console`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette["--ui-console-muted"], palette["--ui-console-bg"]), `${mode}: console muted`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette["--ui-console-warning-text"], palette["--ui-console-warning-bg"]), `${mode}: console warning`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette["--ui-console-error-text"], palette["--ui-console-error-bg"]), `${mode}: console error`).toBeGreaterThanOrEqual(4.5);
   });
 
   it("keeps PDF paper white and does not invert document or image contents", () => {

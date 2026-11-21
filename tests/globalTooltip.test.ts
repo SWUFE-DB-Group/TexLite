@@ -7,9 +7,14 @@ describe("global tooltip placement", () => {
       .toEqual({ placement: "above", top: 232, left: 120 });
   });
 
-  it("keeps the above placement for controls close to the viewport top", () => {
+  it("keeps the above placement for controls close to the viewport top when height is not measured yet", () => {
     expect(globalTooltipPosition({ top: 18, bottom: 42, left: 0, width: 24 }, 320))
       .toEqual({ placement: "above", top: 10, left: 12 });
+  });
+
+  it("flips below controls near the viewport top once height is measured", () => {
+    expect(globalTooltipPosition({ top: 14, bottom: 46, left: 100, width: 40 }, 1200, 120, 28, 800))
+      .toEqual({ placement: "below", top: 54, left: 120 });
   });
 
   it("centers a short tooltip above a button near the left edge", () => {

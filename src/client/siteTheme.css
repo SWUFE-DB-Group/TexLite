@@ -1,5 +1,6 @@
-/* Light uses the existing colors in styles.css as fallbacks. Keep these semantic
-   roles separate from syntax tokens so controls never inherit syntax colors. */
+/* Semantic UI color, elevation, and motion tokens for both light and dark
+   themes. Keep these roles separate from syntax tokens so controls never
+   inherit code highlighting colors. */
 :root {
   color-scheme: light;
   --ui-control-height: 32px;
@@ -7,63 +8,217 @@
   --ui-control-radius: 6px;
   --ui-menu-font-size: 11px;
   --ui-touch-target: 44px;
-  --muted: #737a75;
-  --ui-header-bg: #263a33;
-  --ui-header-text: #f0f2ee;
-  --ui-header-muted: #bac4bd;
-  --ui-header-focus: #bed2c5;
+
+  /* Surfaces */
+  --ui-page: #f3f5f2;
+  --ui-surface: #ffffff;
+  --ui-raised: #ffffff;
+  --ui-subtle: #edf1ed;
+  --ui-hover: #e5ece7;
+
+  /* Borders */
+  --ui-border-subtle: #e5eae6;
+  --ui-border: #d5ddd7;
+  --ui-border-strong: #b6c4ba;
+
+  /* Ink */
+  --ui-text: #1f2b24;
+  --ui-muted: #55635a;
+  --muted: var(--ui-muted);
+
+  /* Header chrome */
+  --ui-header-bg: #243831;
+  --ui-header-text: #f2f5f1;
+  --ui-header-muted: #b9c6be;
+  --ui-header-focus: #c2d7c9;
+
+  /* Brand & primary actions */
+  --ui-accent: #176b44;
+  --ui-accent-bg: #e5f1ea;
+  --ui-accent-border: #8eb89e;
+  --ui-primary-bg: #176b44;
+  --ui-primary-hover: #125837;
+  --ui-primary-fg: #ffffff;
+  --ui-compile-bg: #eef6f1;
+  --ui-compile-hover: #ffffff;
+  --ui-compile-fg: #14432d;
+  --ui-compile-border: #cbe0d2;
+
+  /* Project cards */
+  --ui-project-icon-border: #d5ddd7;
+  --ui-project-paper: #ffffff;
+
+  /* Semantic feedback */
+  --ui-danger: #a62c24;
+  --ui-danger-bg: #fdf1ef;
+  --ui-danger-border: #e4b4ae;
+  --ui-danger-solid: #b3261e;
+  --ui-danger-solid-hover: #961e17;
+  --ui-warning: #7d520c;
+  --ui-warning-bg: #fdf5df;
+  --ui-warning-border: #e2c67c;
+  --ui-info: #1f5a99;
+  --ui-info-bg: #edf4fd;
+  --ui-info-border: #b6cee8;
+  --ui-purple: #6b43a0;
+  --ui-pink: #9b376e;
+
+  /* Controls */
+  --ui-focus-ring: #176b4438;
+  --ui-tag-base: #ffffff;
+  --ui-switch-thumb: #ffffff;
+  --ui-switch-on-bg: #1f734b;
+
+  /* PDF stage & code/log/diff surfaces */
+  --ui-pdf-stage: #e3e7e3;
+  --ui-pdf-stage-text: #34443b;
+  --ui-pdf-stage-muted: #58675e;
+  --ui-pdf-scrollbar-track: #d7dcd7;
+  --ui-pdf-scrollbar-thumb: #9faaa3;
+  --ui-pdf-scrollbar-thumb-hover: #829188;
+  /* Compile log / diagnostic terminal console (always dark terminal surface) */
+  --ui-console-bg: #1c2220;
+  --ui-console-header: #242c29;
+  --ui-console-border: #333e3a;
+  --ui-console-hover: #28322f;
+  --ui-console-text: #dce3df;
+  --ui-console-muted: #9aa9a1;
+  --ui-console-accent: #82cca3;
+  --ui-console-link: #9cc6f0;
+  --ui-console-warning-bg: #27231a;
+  --ui-console-warning-text: #f3d28b;
+  --ui-console-warning-icon: #e8c26d;
+  --ui-console-error-bg: #2a1d1d;
+  --ui-console-error-text: #f6bab4;
+  --ui-console-error-icon: #ef9a92;
+
+  /* Code & diff surfaces */
+  --ui-code-bg: #f6f8f6;
+  --ui-code-header: #edf1ee;
+  --ui-code-border: #d8e0da;
+  --ui-code-text: #24322a;
+  --ui-code-muted: #5b6961;
+  --ui-diff-add-bg: #e4f3e8;
+  --ui-diff-add-fg: #155734;
+  --ui-diff-del-bg: #fbe8e6;
+  --ui-diff-del-fg: #962922;
+  --ui-diff-hunk-bg: #e7f0fa;
+  --ui-diff-hunk-fg: #235282;
+  --ui-diff-header-fg: #785614;
+
+  /* Layered shadows */
+  --ui-shadow-sm: 0 1px 2px rgb(16 32 23 / .06), 0 2px 6px rgb(16 32 23 / .04);
+  --ui-shadow-md: 0 1px 3px rgb(16 32 23 / .07), 0 8px 24px rgb(16 32 23 / .10);
+  --ui-shadow-lg: 0 2px 6px rgb(16 32 23 / .08), 0 20px 56px rgb(16 32 23 / .16);
+  --ui-shadow-page: 0 1px 3px rgb(16 32 23 / .10), 0 6px 20px rgb(16 32 23 / .10);
+
+  /* Motion */
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --motion-slow: 220ms;
 }
+
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ui-page: #1e222a;
-  --ui-header-bg: #222d29;
-  --ui-surface: #282c34;
-  --ui-raised: #303640;
-  --ui-subtle: #242831;
-  --ui-hover: #343d49;
-  --ui-border: #485261;
-  --ui-text: #d7dae0;
-  --ui-muted: #adb6c4;
-  --ui-accent: #96d4b3;
-  --ui-accent-bg: #293f35;
-  --ui-accent-border: #5e8b74;
-  --ui-project-icon-border: #5e8b74;
-  --ui-project-paper: #dce1da;
-  --ui-danger: #f2aaa0;
-  --ui-danger-bg: #482f32;
-  --ui-danger-border: #8c5d57;
-  --ui-warning: #e5c07b;
-  --ui-warning-bg: #463c2a;
-  --ui-warning-border: #927a44;
-  --ui-info: #a9c8f5;
-  --ui-info-bg: #293d57;
-  --ui-info-border: #5d7ca7;
-  --ui-purple: #ceb4eb;
-  --ui-pink: #edafcf;
-  --ui-focus-ring: #82c7af60;
-  --ui-tag-base: #282c34;
-  --ui-switch-thumb: #e2e7ef;
-  --ui-switch-on-bg: #27754f;
+
+  /* Surfaces: harmonized pine-charcoal neutral ramp */
+  --ui-page: #1a1f1e;
+  --ui-header-bg: #1f2b27;
+  --ui-header-text: #eef2ee;
+  --ui-header-muted: #b4c1b9;
+  --ui-header-focus: #bed4c6;
+  --ui-surface: #222827;
+  --ui-raised: #2a3130;
+  --ui-subtle: #1e2423;
+  --ui-hover: #313b39;
+
+  /* Borders */
+  --ui-border-subtle: #323c3a;
+  --ui-border: #434f4d;
+  --ui-border-strong: #586764;
+
+  /* Ink */
+  --ui-text: #dde2df;
+  --ui-muted: #aeb9b3;
   --muted: var(--ui-muted);
+
+  /* Brand & primary actions */
+  --ui-accent: #90d5b2;
+  --ui-accent-bg: #253c32;
+  --ui-accent-border: #56856e;
+  --ui-primary-bg: #257a51;
+  --ui-primary-hover: #2d8e5f;
+  --ui-primary-fg: #f4faf6;
+  --ui-compile-bg: #90d5b2;
+  --ui-compile-hover: #a5e0c2;
+  --ui-compile-fg: #12271e;
+  --ui-compile-border: #90d5b2;
+
+  /* Project cards */
+  --ui-project-icon-border: #56856e;
+  --ui-project-paper: #dde2dc;
+
+  /* Semantic feedback */
+  --ui-danger: #f4aca2;
+  --ui-danger-bg: #452c2f;
+  --ui-danger-border: #8d5c57;
+  --ui-danger-solid: #c2423a;
+  --ui-danger-solid-hover: #d44e46;
+  --ui-warning: #e8c27d;
+  --ui-warning-bg: #423826;
+  --ui-warning-border: #8f7743;
+  --ui-info: #a8caf5;
+  --ui-info-bg: #263a52;
+  --ui-info-border: #5a7aa4;
+  --ui-purple: #cfb5ed;
+  --ui-pink: #efafd0;
+
+  /* Controls */
+  --ui-focus-ring: #82c7af60;
+  --ui-tag-base: #222827;
+  --ui-switch-thumb: #e5ece8;
+  --ui-switch-on-bg: #2a7c54;
+
+  /* PDF stage & code/log/diff surfaces */
+  --ui-pdf-stage: #2f3635;
+  --ui-pdf-stage-text: #d7dfda;
+  --ui-pdf-stage-muted: #a4b0a9;
+  --ui-pdf-scrollbar-track: #222827;
+  --ui-pdf-scrollbar-thumb: #6f7c78;
+  --ui-pdf-scrollbar-thumb-hover: #8d9b96;
+  --ui-code-bg: #1c2120;
+  --ui-code-header: #252c2a;
+  --ui-code-border: #384240;
+  --ui-code-text: #d8e0db;
+  --ui-code-muted: #98a69e;
+  --ui-diff-add-bg: #1a3929;
+  --ui-diff-add-fg: #bce8c9;
+  --ui-diff-del-bg: #432423;
+  --ui-diff-del-fg: #f4c0bb;
+  --ui-diff-hunk-bg: #253645;
+  --ui-diff-hunk-fg: #b6d8f2;
+  --ui-diff-header-fg: #e5c982;
+
+  /* Layered shadows */
+  --ui-shadow-sm: 0 1px 2px rgb(0 0 0 / .28), 0 2px 6px rgb(0 0 0 / .18);
+  --ui-shadow-md: 0 1px 3px rgb(0 0 0 / .35), 0 10px 28px rgb(0 0 0 / .32);
+  --ui-shadow-lg: 0 2px 8px rgb(0 0 0 / .42), 0 24px 64px rgb(0 0 0 / .46);
+  --ui-shadow-page: 0 2px 8px rgb(0 0 0 / .36), 0 8px 24px rgb(0 0 0 / .28);
 }
 
 /* Root tokens also reach Radix portals and full-screen dialogs. Rendered PDF
    pages and image contents are deliberately not inverted or recolored. */
 :where(:root[data-theme="dark"]) :where(button, input, select, textarea) { color: inherit; }
 :where(:root[data-theme="dark"]) :where(input, select, textarea) { background-color: var(--ui-surface); }
-:root[data-theme="dark"] :is(input, textarea)::placeholder { color: #99a5b4; opacity: 1; }
+:root[data-theme="dark"] :is(input, textarea)::placeholder { color: #95a39c; opacity: 1; }
 :root[data-theme="dark"] option { background: var(--ui-surface); color: var(--ui-text); }
-:root[data-theme="dark"] .login-page { background: radial-gradient(circle at 50% 0, #273e34, var(--ui-page) 50%); }
+:root[data-theme="dark"] .login-page { background: radial-gradient(circle at 50% 0, #233830, var(--ui-page) 52%); }
 :root[data-theme="dark"] .login-card { background: var(--ui-surface); }
-:root[data-theme="dark"] .dialog-overlay { background: rgb(8 12 18 / .48); }
+:root[data-theme="dark"] .dialog-overlay { background: rgb(8 12 11 / .52); }
 :root[data-theme="dark"] .system-metrics-dialog { --metric-service: #5c9d89; --metric-tex: #7b9fc3; --metric-other: #536172; --metric-free: #272f3a; }
-:root[data-theme="dark"] :is(.preview-panel, .pdf-document, .pdf-stage, .pdf-initial-state, .pdf-loading-state) { background: #373e48; }
 :root[data-theme="dark"] :is(.preview-tabs, .pdf-toolbar) { background: var(--ui-raised); }
-:root[data-theme="dark"] .pdf-document { scrollbar-color: #7d8799 #282c34; }
-:root[data-theme="dark"] .pdf-document::-webkit-scrollbar-track,
-:root[data-theme="dark"] .pdf-document::-webkit-scrollbar-corner { background: #282c34; }
-:root[data-theme="dark"] .pdf-document::-webkit-scrollbar-thumb { background: #7d8799; border-color: #282c34; }
-:root[data-theme="dark"] .pdf-document::-webkit-scrollbar-thumb:hover { background: #a0a8b7; }
 
 .theme-switcher {
   display: flex;
@@ -90,6 +245,7 @@
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
+  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
 .theme-switcher button > svg { flex: none; }
 .theme-switcher button:hover { background: var(--ui-hover, #eaf2ec); color: var(--ui-accent, #176b44); }
