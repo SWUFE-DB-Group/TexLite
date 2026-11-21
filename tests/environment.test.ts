@@ -27,7 +27,9 @@ describe("startup environment checks", () => {
     };
     vi.stubEnv("PATH", tools);
     try {
-      const config = createTestConfig(tools, { latexmk: process.execPath, git: path.join(tools, "missing-git") });
+      const config = createTestConfig(tools, {
+        latexmk: process.execPath, git: path.join(tools, "missing-git"), drawioBrowserPath: path.join(tools, "missing-browser")
+      });
       install("xelatex");
       expect((await assertEnvironment(config)).map((item) => item.name)).toEqual(["Node.js 24+", "latexmk", "xelatex"]);
       const multiEngineConfig: Config = { ...config, allowedEngines: ["xelatex", "pdflatex"] };
@@ -68,5 +70,28 @@ describe("startup environment checks", () => {
     const missingEngine = { ...installed("xelatex", "one-of", "latex-engine"), status: "missing" as const };
     expect(hostRequirementsSatisfied([installed("node", "required"), missingEngine])).toBe(false);
     expect(hostRequirementsSatisfied([installed("node", "required"), installed("xelatex", "one-of", "latex-engine")])).toBe(true);
+  });
+
+  it("reports draw.io export browser discovery and configuration without launching the browser", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-browser-probe-"));
+    const binary = (name: string) => path.join(directory, process.platform === "win32" ? name + ".exe" : name);
+    const automatic = binary("chromium"), configured = binary("custom-browser"), missing = binary("missing-browser");
+    for (const file of [automatic, configured]) fs.writeFileSync(file, "not a runnable program", { mode: 0o700 });
+    vi.stubEnv("PATH", directory);
+    try {
+      const [requirements, doctor, misconfigured] = await Promise.all([
+        inspectHostRequirements(),
+        inspectHostEnvironment({ ...testConfig(), drawioBrowserPath: configured }),
+        inspectHostEnvironment({ ...testConfig(), drawioBrowserPath: missing })
+      ]);
+      const browser = (tools: EnvironmentTool[]) => tools.find(({ id }) => id === "drawio-browser")!;
+      expect(browser(requirements)).toMatchObject({ requirement: "optional", status: "installed", command: automatic, version: null });
+      expect(browser(doctor)).toMatchObject({ requirement: "optional", status: "installed", command: configured, version: null });
+      expect(browser(misconfigured)).toMatchObject({ requirement: "optional", status: "missing", command: missing });
+      expect(hostRequirementsSatisfied([browser(misconfigured)])).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DrawioPdfRenderer, browserCandidates, findDrawioBrowser } from "../src/server/drawioPdf";
+import { DrawioPdfRenderer } from "../src/server/drawioPdf";
+import { browserCandidates, findDrawioBrowser } from "../src/server/drawioBrowser";
 
 const { launch } = vi.hoisted(() => ({ launch: vi.fn() }));
 vi.mock("puppeteer-core", () => ({ default: { launch } }));
@@ -30,6 +31,13 @@ describe("optional host diagram PDF renderer", () => {
     expect(candidates.some((candidate) => /firefox|safari/i.test(candidate))).toBe(false);
     expect(await findDrawioBrowser(binary)).toBe(binary);
     await expect(findDrawioBrowser(path.join(root, "missing"))).rejects.toMatchObject({ statusCode: 503, code: "DRAWIO_BROWSER_UNAVAILABLE" });
+  });
+
+  it("reports a missing browser on export without launching it", async () => {
+    const renderer = new DrawioPdfRenderer();
+    await expect(renderer.render("<svg/>", path.join(root, "missing"))).rejects.toMatchObject({ code: "DRAWIO_BROWSER_UNAVAILABLE" });
+    expect(launch).not.toHaveBeenCalled();
+    await renderer.close();
   });
 
   it("uses an isolated headless browser without disabling its sandbox; blocks host/network requests and closes on success", async () => {

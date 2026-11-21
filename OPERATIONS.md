@@ -98,6 +98,11 @@ Git enables GitHub backup, TeXcount enables document statistics, and
 for host diagnosis and external editor integrations; TexLite itself invokes
 `harper-cli`.
 
+Both commands report the optional browser for draw.io PDF export. The
+`requirements` command searches `PATH` and standard install locations;
+`doctor` honors `drawio.browserPath` when configured. Neither command launches
+the browser. Initialization and startup do not check for a browser.
+
 PDF font inspection is optional. Install Poppler's `pdffonts` command on the
 server and make it available on `PATH` to use **Compile output → Fonts** or
 **PDF file menu → Inspect fonts** in the file tree.
@@ -162,7 +167,8 @@ than exporting the whole page. The full `.drawio` document is saved regardless
 of export scope; selection export never replaces it with a subset. Existing PDFs
 are replaced only after confirmation. It uses a host-installed Chromium,
 Chrome or Edge, in that order; Firefox and Safari are not export backends.
-Missing browsers do not prevent diagram editing, server startup or compilation.
+If no browser is found, clicking **Export PDF** prompts you to install one on
+the server. Diagram editing, startup and compilation are unaffected.
 Set optional `drawio.browserPath` in `texlite.config.json` to an explicit browser
 executable (relative paths resolve from that configuration file). No browser is
 automatically downloaded. In Docker the browser and fonts must be installed
@@ -300,7 +306,7 @@ Avoid putting a password into shell history on a shared host.
 | `texlite start` / `stop` / `restart` | Manage the bundled-PM2 service. |
 | `texlite status` | Show a colored, systemctl-style status view; add `--json` for scripts. |
 | `texlite logs` | Stream PM2-managed logs. |
-| `texlite requirements` | Check default host commands on `PATH` without loading TexLite configuration or data. |
+| `texlite requirements` | Check host tools without loading TexLite configuration or data. |
 | `texlite doctor` | Show configuration/application checks and a table of required and optional host software. Add `--json` for scripts. |
 | `texlite config` | Print effective configuration and paths without changing them. |
 

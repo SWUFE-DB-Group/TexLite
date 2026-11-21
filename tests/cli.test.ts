@@ -77,7 +77,7 @@ describe("CLI argument parsing", () => {
     };
     const output = formatRequirementsReport(report);
     expect(output).toContain("TexLite requirements");
-    expect(output).toContain("default commands on PATH");
+    expect(output).toContain("Host software (automatic discovery)");
     expect(output).toContain("One of");
     expect(output).toContain("does not read a TexLite configuration");
   });

@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DrawioPdfRenderer, findDrawioBrowser } from "../src/server/drawioPdf.js";
+import { findDrawioBrowser } from "../src/server/drawioBrowser.js";
+import { DrawioPdfRenderer } from "../src/server/drawioPdf.js";
 import { launchOwnedDrawioBrowser } from "../src/server/drawioOwnedBrowser.js";
 import { inspectPdfFonts } from "../src/server/pdfFonts.js";
 

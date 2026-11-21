@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { LATEX_ENGINES, type Config } from "./config.js";
-import { httpError } from "./http.js";
+import { HttpError, httpError } from "./http.js";
+import { findDrawioBrowser } from "./drawioBrowser.js";
 import { afterProcessStop, detachedProcessGroup, stopProcessTree } from "./processTree.js";
 import { COMPILER_VERSION_TOOLS } from "../shared/compilerVersions.js";
 
@@ -56,7 +57,10 @@ const maxCommandOutputBytes = 64 * 1024;
  * not prevent TexLite from starting.
  */
 export async function inspectHostEnvironment(config: Config): Promise<EnvironmentTool[]> {
-  return Promise.all(hostToolDefinitions(config).map((tool) => inspectTool(tool)));
+  return Promise.all([
+    ...hostToolDefinitions(config).map(inspectTool),
+    inspectDrawioBrowser(config.drawioBrowserPath)
+  ]);
 }
 
 /** Read-only, bounded version checks; missing tools never become requirements. */
@@ -71,11 +75,28 @@ export async function inspectCompilerEnvironment(config: Config): Promise<Enviro
 }
 
 /**
- * Probe the default commands on PATH without loading a TexLite configuration.
- * This supports pre-installation checks through `texlite requirements`.
+ * Discover host tools without loading a TexLite configuration, for
+ * pre-installation checks through `texlite requirements`.
  */
 export async function inspectHostRequirements(): Promise<EnvironmentTool[]> {
-  return Promise.all(hostRequirementToolDefinitions().map((tool) => inspectTool(tool)));
+  return Promise.all([
+    ...hostRequirementToolDefinitions().map(inspectTool),
+    inspectDrawioBrowser()
+  ]);
+}
+
+/** Check discovery only; do not launch the browser or run a test export. */
+async function inspectDrawioBrowser(configured?: string): Promise<EnvironmentTool> {
+  const name = "Draw.io PDF browser";
+  const tool = { id: "drawio-browser", name, requirement: "optional" as const, purpose: "Draw.io PDF export", version: null };
+  try {
+    const executable = await findDrawioBrowser(configured);
+    return { ...tool, command: executable, status: "installed", detail: executable };
+  } catch (error) {
+    if (!(error instanceof HttpError) || error.code !== "DRAWIO_BROWSER_UNAVAILABLE") throw error;
+    return { ...tool, command: configured ?? name, status: "missing",
+      detail: configured ? "Check drawio.browserPath" : "Install Chromium, Chrome or Edge on the host" };
+  }
 }
 
 export function hostRequirementsSatisfied(tools: EnvironmentTool[]): boolean {

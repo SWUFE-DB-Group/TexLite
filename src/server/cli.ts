@@ -56,7 +56,7 @@ Commands:
   restart       Restart (or start) the PM2-managed server.
   logs          Stream logs from the PM2-managed server.
   doctor        Check configuration, application state, and host dependencies.
-  requirements  Check host software on PATH without loading TexLite configuration.
+  requirements  Check host software without loading TexLite configuration.
   config        Print the effective configuration as JSON without changing it.
   help          Show this help message.
   version       Print the installed TexLite version.
@@ -376,7 +376,7 @@ export function formatRequirementsReport(report: RequirementsReport, colors = fa
   return [
     `${colorize("●", titleColor, colors)} ${colors ? `${ANSI.bold}TexLite requirements${ANSI.reset}` : "TexLite requirements"} — ${colorize(title, titleColor, colors)}`,
     "",
-    "Host software (default commands on PATH)",
+    "Host software (automatic discovery)",
     formatHostSoftwareTable(report.hostTools, colors),
     "",
     hostRequirementNote(report.hostTools, "compile with TexLite"),
@@ -387,7 +387,8 @@ export function formatRequirementsReport(report: RequirementsReport, colors = fa
 
 function formatHostSoftwareTable(hostTools: EnvironmentTool[], colors: boolean): string {
   const hostRows: DoctorTableCell[][] = hostTools.map((tool) => [
-    { text: shortenDoctorCell(tool.command === tool.name ? tool.name : `${tool.name} (${tool.command})`, 32) },
+    { text: shortenDoctorCell(tool.command === tool.name || tool.command === tool.detail && !tool.version
+      ? tool.name : `${tool.name} (${tool.command})`, 32) },
     { text: requirementLabel(tool.requirement) },
     hostToolStatusCell(tool),
     { text: shortenDoctorCell(tool.version ?? tool.detail ?? "—", 56) }
