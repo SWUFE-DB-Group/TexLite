@@ -90,6 +90,7 @@ describe("project ownership tabs", () => {
     expect(badges.querySelector<HTMLElement>(".project-comments-badge")?.dataset.tooltip).toBe("5 unresolved");
     expect(badges.firstElementChild?.classList.contains("project-mentions-badge")).toBe(true);
     expect(cards[0].querySelector(".project-card-tags")?.textContent).toBe("Research");
+    expect(cards[0].querySelector(".project-card-permission")).toBeNull();
     expect(cards[0].querySelector('.project-card-tags .tag-blue > .tag-dot[aria-hidden="true"]')).not.toBeNull();
     expect(cards[0].querySelector(".project-paper-title")?.textContent).toBe("Real source title");
     expect(cards[0].querySelector(".project-paper-summary")?.textContent).toBe("A readable research summary.");
@@ -164,6 +165,9 @@ describe("project ownership tabs", () => {
     expect(lastParams().get("scope")).toBe("shared"); expect(lastParams().get("page")).toBe("1");
     expect(names()).toHaveLength(32); expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
     expect(host.querySelector(".project-grid")!.classList.contains("list-view")).toBe(view === "list");
+    const permissionBadges = [...host.querySelectorAll(".project-permission-badge")];
+    expect(permissionBadges).toHaveLength(16);
+    expect(permissionBadges.every((badge) => badge.textContent === "Read only")).toBe(true);
   });
 
   it("keeps search, private tags and archive filtering inside every category and hides zero badges", async () => {

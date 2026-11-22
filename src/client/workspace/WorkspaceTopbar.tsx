@@ -1,4 +1,4 @@
-import { BookMarked, FileClock, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, TerminalSquare, Users, X } from "lucide-react";
+import { BookMarked, Eye, FileClock, GitBranch, Keyboard, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Play, Settings, TerminalSquare, Users, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ActiveSession, CollaborationStatus } from "../collaboration";
 import type { EditorPreferences } from "../editorPreferences";
@@ -61,6 +61,7 @@ export function WorkspaceTopbar({
   const { t } = useTranslation();
   const { showExecutionReminder } = useTerminalPreferences();
   return <WorkspaceTopbarFrame siteName={site.siteName} projectName={project.name} subtitle={<>{activeFile}{saveStateLabel && <> · {saveStateLabel}</>}</>} onBack={onBack}
+    titleAccessory={project.permission === "read" && <span className="workspace-readonly-badge" title={`${t("common.permission")}: ${t("common.readOnly")}`}><Eye size={12} aria-hidden="true" /><span>{t("common.readOnly")}</span></span>}
     leading={showEditor && <button className={`files-action${!filesCollapsed ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
     accessory={<>
     {editorPreferences.vimMode && <span className="vim-status-badge" title={t("editor.vimOnHint")}><Keyboard size={14} />{t("editor.vimOn")}</span>}

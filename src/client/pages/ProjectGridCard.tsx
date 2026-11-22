@@ -5,6 +5,7 @@ import { ProjectActionMenu, type ProjectActionMenuProps } from "./ProjectActionM
 import type { ProjectSourcePreview } from "../../shared/projectCatalog";
 import { RichTooltip } from "../GlobalTooltip";
 import { TagMarquee } from "../TagMarquee";
+import { ProjectPermissionBadge } from "./ProjectPermissionBadge";
 
 interface ProjectGridCardProps extends Omit<ProjectActionMenuProps, "variant"> {
   removing: boolean;
@@ -58,6 +59,7 @@ export function ProjectGridCard({ removing, onRemovalEnd, onOpenProject, onOpenM
     onAnimationEnd={(event) => { if (event.target === event.currentTarget && removing) onRemovalEnd(); }}>
     <button type="button" className="project-card-open" aria-label={t("projects.openProject", { project: project.name })} onClick={onOpenProject}>
       <div className="project-card-thumbnail">
+        <ProjectPermissionBadge permission={project.permission} t={t} className="project-card-permission" />
         <ProjectPaper preview={project.preview} />
         <TagMarquee className="project-card-tags" title={project.tags.map((tag) => tag.name).join(", ")}>
           {project.tags.map((tag) => <span className={`tag tag-${tag.color}`} key={tag.id}>

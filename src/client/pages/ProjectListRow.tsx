@@ -5,6 +5,7 @@ import type { Project, User } from "../types";
 import { ProjectActionMenu } from "./ProjectActionMenu";
 import { captureDeletionHeight } from "../useDeletionTransitions";
 import { TagMarquee } from "../TagMarquee";
+import { ProjectPermissionBadge } from "./ProjectPermissionBadge";
 
 export { projectInitial } from "../projectIcons";
 
@@ -79,6 +80,7 @@ export function ProjectListRow({
       <button type="button" className="project-list-cell-open project-list-summary-open" onClick={onOpenProject} aria-label={t("projects.openProject", { project: project.name })}>
         <span className="project-list-title-line">
           <strong className="project-list-title" title={project.name}>{project.name}</strong>
+          <ProjectPermissionBadge permission={project.permission} t={t} />
           {Boolean(project.unresolvedCommentCount && project.unresolvedCommentCount > 0) && (
             <span className="project-comments-badge unresolved" title={t("projects.unresolvedCommentsTooltip", { count: project.commentCount ?? project.unresolvedCommentCount, unresolved: project.unresolvedCommentCount, total: project.commentCount ?? project.unresolvedCommentCount })}>
               <MessageSquare aria-hidden size={10} />

@@ -37,6 +37,7 @@ describe("project list title layout", () => {
     const name = heading.querySelector<HTMLElement>(".project-list-title")!;
     const badge = heading.querySelector<HTMLElement>(".project-comments-badge")!;
     expect(heading.contains(tags)).toBe(false); expect(heading.nextElementSibling).toBe(tags);
+    expect(heading.querySelector(".project-permission-badge")).toBeNull();
     expect(badge.textContent).toBe(i18n.t("projects.unresolvedCount", { count: 123 }));
     expect(name.getAttribute("title")).toBe(project.name);
     const owner = host.querySelector<HTMLElement>(".project-list-owner")!;
@@ -50,5 +51,25 @@ describe("project list title layout", () => {
     expect(tags.querySelector('.tag-yellow > .tag-dot[aria-hidden="true"]')).not.toBeNull();
     expect(tags.querySelector(".tag-blue .tag-label")?.textContent).toBe("Research");
     await act(async () => tags.click()); expect(open).toHaveBeenCalledOnce();
+
+    await act(async () => root.render(createElement("div", { className: "project-grid list-view" }, createElement(ProjectListRow, {
+      project: { ...project, permission: "edit" }, currentUser: user, showArchived: false, archiveBusy: false, menuOpen: false, t: i18n.t.bind(i18n),
+      formatCreatedDate: () => "2026/10/29", formatUpdatedTime: () => "1 day ago", formatExactTime: () => "2026/10/29 12:00",
+      onOpenProject: open, onOpenMention: noop, onToggleMenu: noop, onCloseMenu: noop, onAssignTags: noop,
+      onRename: noop, onDuplicate: noop, onArchive: noop, onTransfer: noop, onDelete: noop, onChooseIcon: noop
+    }))));
+    expect(host.querySelector(".project-permission-badge")).toBeNull();
+
+    await act(async () => root.render(createElement("div", { className: "project-grid list-view" }, createElement(ProjectListRow, {
+      project: { ...project, permission: "read" }, currentUser: user, showArchived: false, archiveBusy: false, menuOpen: false, t: i18n.t.bind(i18n),
+      formatCreatedDate: () => "2026/10/29", formatUpdatedTime: () => "1 day ago", formatExactTime: () => "2026/10/29 12:00",
+      onOpenProject: open, onOpenMention: noop, onToggleMenu: noop, onCloseMenu: noop, onAssignTags: noop,
+      onRename: noop, onDuplicate: noop, onArchive: noop, onTransfer: noop, onDelete: noop, onChooseIcon: noop
+    }))));
+    const readOnlyBadge = host.querySelector<HTMLElement>(".project-permission-badge")!;
+    expect(readOnlyBadge.textContent).toBe(i18n.t("common.readOnly"));
+    expect(readOnlyBadge.classList.contains("is-readonly")).toBe(true);
+    expect(getComputedStyle(readOnlyBadge).flexShrink).toBe("0");
+    expect(getComputedStyle(readOnlyBadge).whiteSpace).toBe("nowrap");
   });
 });

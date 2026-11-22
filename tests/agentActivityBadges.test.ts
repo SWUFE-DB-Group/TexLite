@@ -253,3 +253,14 @@ it("uses a labeled layout menu on coarse-pointer tablets where hover tooltips ar
     window.matchMedia = originalMatchMedia;
   }
 });
+
+it("shows a read-only badge beside the workspace title only for read-only projects", async () => {
+  await act(async () => root.render(createElement(WorkspaceTopbar, { ...topbarProps, project: { ...project, permission: "owner" } })));
+  expect(host.querySelector(".workspace-readonly-badge")).toBeNull();
+  await act(async () => root.render(createElement(WorkspaceTopbar, { ...topbarProps, project: { ...project, permission: "edit" }, readOnly: true })));
+  expect(host.querySelector(".workspace-readonly-badge")).toBeNull();
+  await act(async () => root.render(createElement(WorkspaceTopbar, { ...topbarProps, project: { ...project, permission: "read" }, readOnly: true })));
+  const badge = host.querySelector<HTMLElement>(".workspace-project-title-row .workspace-readonly-badge")!;
+  expect(badge).not.toBeNull();
+  expect(badge.textContent).toBe(i18n.t("common.readOnly"));
+});
