@@ -720,6 +720,41 @@ describe("external agent tasks", () => {
     } finally { check.close(); }
   });
 
+  it("retains an OpenCode task with a missing shared binding even when discovery cannot identify the CLI", async () => {
+    const filename = path.join(root, "host-opencode.db");
+    vi.stubEnv("OPENCODE_DB", filename);
+    const dbNative = new Database(filename);
+    try {
+      dbNative.exec("CREATE TABLE session_v2 (id TEXT PRIMARY KEY); INSERT INTO session_v2 VALUES ('ses_native')");
+      vi.spyOn(registry, "adapter").mockImplementation((id) => id === "opencode" ? opencodeAdapter : adapters.find((adapter) => adapter.id === id)!);
+      vi.mocked(registry.detect).mockResolvedValue({ executable: process.execPath, version: "2.1.4", features: new Set(["standalone"]) });
+      const task = await create("opencode");
+      const fixture = new URL("./fixtures/opencode-session.cjs", import.meta.url);
+      for (const command of ["debug", "session"]) fs.copyFileSync(fixture, workingFile(task, command));
+      spawn.mockImplementationOnce((_executable, _args, options) => {
+        options.beforeStart!();
+        expect(db.prepare("SELECT native_session_storage FROM agent_tasks WHERE id = ?").get(task.id)).toEqual({ native_session_storage: "shared" });
+        const process = new FakePty(); processes.push(process); return process;
+      });
+      await service.start(task.id, owner);
+      const id = spawn.mock.calls.at(-1)![1].at(-1)!;
+      dbNative.prepare("INSERT INTO session_v2 VALUES (?)").run(id);
+      const binding = path.join(agentTaskRoot(config, task.id), "state", "opencode-session.json");
+      const original = fs.readFileSync(binding);
+      fs.unlinkSync(binding);
+      vi.mocked(registry.detect).mockResolvedValue({ executable: null, version: null, features: new Set() });
+      await expect(service.remove(task.id, owner)).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
+      expect(service.task(task.id, owner)).toMatchObject({ cleanupState: "failed", nativeSessionId: null });
+      expect(dbNative.prepare("SELECT id FROM session_v2 WHERE id = ?").get(id)).toEqual({ id });
+
+      fs.writeFileSync(binding, original);
+      vi.mocked(registry.detect).mockResolvedValue({ executable: process.execPath, version: "2.1.4", features: new Set(["standalone"]) });
+      await service.remove(task.id, admin, true);
+      expect(dbNative.prepare("SELECT id FROM session_v2").all()).toEqual([{ id: "ses_native" }]);
+      expect(service.list(admin, true, {}).total).toBe(0);
+    } finally { dbNative.close(); }
+  });
+
   it("retains cleanup locators across deletion of projects/users and cleans owned resources", async () => {
     const task = await create(); await service.start(task.id, owner);
     db.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
@@ -846,6 +881,25 @@ describe("external agent tasks", () => {
     const task = await create(); spawn.mockImplementationOnce(() => { throw new Error("native spawn failure"); });
     await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_START_FAILED" });
     expect(service.task(task.id, owner)).toMatchObject({ state: "failed", errorCode: "AGENT_START_FAILED" });
+  });
+
+  it("lets Stop recover a retained launch record without restarting the service", async () => {
+    const task = await create();
+    const next = await create("claude", editor);
+    const filename = path.join(agentTaskRoot(config, task.id), "execution.json");
+    spawn.mockImplementationOnce((_executable, _args, options) => {
+      fs.writeFileSync(options.executionFile!, JSON.stringify({
+        version: 1, executionId: randomUUID(), platform: process.platform, pid: null, identity: null
+      }));
+      throw new Error("Launch failed and retained its execution record");
+    });
+    await expect(service.start(task.id, owner)).rejects.toMatchObject({ code: "AGENT_RECOVERY_FAILED" });
+    expect(service.task(task.id, owner)).toMatchObject({ state: "stopping", errorCode: "AGENT_RECOVERY_FAILED" });
+    expect(service.list(owner, false, { project: projectId }).activeTaskId).toBe(task.id);
+    await expect(service.start(next.id, editor)).rejects.toMatchObject({ code: "AGENT_PROJECT_BUSY" });
+    expect(await service.stop(task.id, owner)).toMatchObject({ state: "stopped", errorCode: null });
+    expect(fs.existsSync(filename)).toBe(false);
+    expect((await service.start(next.id, editor)).state).toBe("running");
   });
 
   it("persists native cleanup ownership before the launcher may create a conversation", async () => {

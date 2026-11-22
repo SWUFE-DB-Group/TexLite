@@ -278,6 +278,11 @@ const databaseMigrations: readonly DatabaseMigration[] = [
   { version: 27, name: "add_project_tex_fmt_config", apply: (db) => {
     if (!missingColumn(db, "projects", "tex_fmt_config")) return;
     db.exec("ALTER TABLE projects ADD COLUMN tex_fmt_config TEXT NOT NULL DEFAULT 'wrap = false'");
+  } },
+  { version: 28, name: "track_agent_native_session_storage", apply: (db) => {
+    if (missingColumn(db, "agent_tasks", "native_session_storage")) {
+      db.exec("ALTER TABLE agent_tasks ADD COLUMN native_session_storage TEXT CHECK (native_session_storage IN ('private', 'shared'))");
+    }
   } }
 ];
 

@@ -31,10 +31,15 @@ function sharedSession(context: AgentAdapterContext): SharedSession | null {
 
 function nativeState(context: AgentAdapterContext): NativeState {
   const binding = sharedSession(context);
-  if (binding) return { shared: true, registered: true, ...binding };
+  if (binding) {
+    if (context.nativeSessionStorage === "private") throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
+    return { shared: true, registered: true, ...binding };
+  }
+  const requiresBinding = context.nativeSessionStorage === "shared" || context.nativeSessionId === taskSessionId(context);
   // Keep existing private conversations where they were created. Empty private
   // stores can be upgraded in prepare(), but are never silently abandoned.
-  if (!context.features.has("standalone") || fs.existsSync(privateDatabase(context))) {
+  if (!requiresBinding && (context.nativeSessionStorage === "private"
+      || !context.features.has("standalone") || fs.existsSync(privateDatabase(context)))) {
     return { shared: false, registered: false, database: privateDatabase(context), sessionId: context.nativeSessionId };
   }
   const data = process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share");
@@ -83,13 +88,18 @@ export const opencodeAdapter: AgentAdapter = {
     }
     const state = nativeState(context);
     if (state.shared && !context.features.has("standalone")) throw httpError(409, "AGENT_UNAVAILABLE");
-    if (state.shared && state.registered) return;
-    if (!state.shared && (context.nativeSessionId || !context.features.has("standalone"))) {
+    if (state.shared && state.registered) return "shared";
+    if (state.shared && (context.nativeSessionStorage === "shared" || context.nativeSessionId === taskSessionId(context))) {
+      throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
+    }
+    if (!state.shared && (context.nativeSessionStorage === "private" || context.nativeSessionId || !context.features.has("standalone"))) {
       const host = path.join(process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share"), "opencode");
       await copyAgentSetting(path.join(host, "auth.json"), path.join(context.stateDirectory, "data", "opencode", "auth.json"));
-      return;
+      return "private";
     }
-    if (!state.shared && (await this.findNativeSession(context)).status !== "empty") throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
+    if (!state.shared && (await this.findNativeSession({ ...context, nativeSessionStorage: "private" })).status !== "empty") {
+      throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
+    }
 
     // Ask the native CLI, rather than guessing release-channel/platform paths.
     // Authentication stays entirely in the host database; no credentials are copied.
@@ -108,6 +118,7 @@ export const opencodeAdapter: AgentAdapter = {
     if (fs.existsSync(database) && inspectDatabase(database, sessionId).status !== "empty") throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
     await fs.promises.mkdir(context.stateDirectory, { recursive: true, mode: 0o700 });
     await fs.promises.writeFile(bindingFile(context), JSON.stringify({ database, sessionId }), { flag: "wx", mode: 0o600 });
+    return "shared";
   },
   start(context) {
     const state = nativeState(context);
@@ -124,6 +135,7 @@ export const opencodeAdapter: AgentAdapter = {
     return state.shared ? launch : { ...launch, args: [...launch.args, "--session", context.nativeSessionId] };
   },
   async findNativeSession(context) {
+    const unresolvedLegacyStore = context.previouslyStarted && !context.nativeSessionStorage && !context.nativeSessionId;
     try {
       // The list command may create a database itself. A missing task database
       // must never be mistaken for a verified empty one after state loss.
@@ -131,7 +143,11 @@ export const opencodeAdapter: AgentAdapter = {
       if (state.shared && (!state.registered || (context.nativeSessionId && context.nativeSessionId !== state.sessionId))) return { status: "unknown" };
       if (!(await fs.promises.stat(state.database)).isFile()) return { status: "unknown" };
       // A shared database is queried by this task's registered ID only.
-      try { return inspectDatabase(state.database, state.shared ? state.sessionId : context.nativeSessionId); }
+      try {
+        const native = inspectDatabase(state.database, state.shared ? state.sessionId : context.nativeSessionId);
+        if (!state.shared && unresolvedLegacyStore && native.status === "empty") return { status: "unknown" };
+        return native;
+      }
       catch { /* Other native versions/formats can still be identified by the CLI. */ }
       if (state.shared || context.features.has("standalone")) return { status: "unknown" };
       const launch = this.start(context);
@@ -139,7 +155,7 @@ export const opencodeAdapter: AgentAdapter = {
         // OpenCode resolves project sessions from cwd as well as its state DB.
         cwd: await managementDirectory(context), env: launch.env, timeout: 5_000, maxBuffer: 1024 * 1024, windowsHide: true });
       const records: unknown = JSON.parse(stdout);
-      if (Array.isArray(records) && records.length === 0) return { status: "empty" };
+      if (Array.isArray(records) && records.length === 0 && !unresolvedLegacyStore) return { status: "empty" };
       if (Array.isArray(records) && records.length === 1 && validSessionId(records[0]?.id)) return { status: "found", id: records[0].id };
     } catch { /* Version-dependent management capability. */ }
     return { status: "unknown" };
@@ -151,15 +167,21 @@ export const opencodeAdapter: AgentAdapter = {
       const native = await this.findNativeSession(context);
       if (native.status === "unknown") throw httpError(409, "AGENT_CLEANUP_FAILED");
       if (native.status === "empty") return; // An exact-ID deletion already succeeded.
+      if (!context.executable || !context.features.has("standalone")) throw httpError(409, "AGENT_CLEANUP_FAILED");
       await executeAgentCommand(context.executable, ["session", "delete", state.sessionId, "--standalone"], {
         cwd: await managementDirectory(context), env: this.start(context).env, timeout: 15_000, maxBuffer: 64 * 1024, windowsHide: true });
       if ((await this.findNativeSession(context)).status !== "empty") throw httpError(409, "AGENT_CLEANUP_FAILED");
       return;
     }
-    // Private state can be removed with the task after its process tree stops.
-    if (context.features.has("standalone")) return;
-    const native = context.nativeSessionId && context.executable ? await this.findNativeSession(context) : null;
-    if (native?.status === "found" && native.id === context.nativeSessionId) await executeAgentCommand(context.executable, ["session", "delete", native.id], {
-      cwd: await managementDirectory(context), env: this.start(context).env, timeout: 15_000, maxBuffer: 64 * 1024, windowsHide: true });
+    // A failed capability probe cannot establish that a legacy task used
+    // private storage. Require either the durable mode or its exact native ID
+    // in the task-owned database; a leftover private file alone is not proof.
+    if (context.nativeSessionStorage !== "private") {
+      let native: NativeSessionInspection | null = null;
+      try { if (context.nativeSessionId) native = inspectDatabase(state.database, context.nativeSessionId); }
+      catch { /* Missing or unreadable private state does not establish ownership. */ }
+      if (native?.status !== "found" || native.id !== context.nativeSessionId) throw httpError(409, "AGENT_CLEANUP_FAILED");
+    }
+    // The service removes the entire verified private store with the task.
   }
 };

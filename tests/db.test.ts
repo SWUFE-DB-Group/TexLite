@@ -14,6 +14,27 @@ function migrationConfig(root: string, databasePath: string): Config {
 }
 
 describe("database migrations", () => {
+  it("adds native session storage without guessing the mode of existing tasks", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-agent-storage-migration-"));
+    const config = migrationConfig(root, path.join(root, "texlite.db"));
+    let database = openDatabase(config);
+    try {
+      database.exec(`ALTER TABLE agent_tasks DROP COLUMN native_session_storage;
+        DELETE FROM texlite_schema_migrations WHERE version = 28;
+        INSERT INTO agent_tasks (id, project_id, user_id, project_name, user_name, agent_id, title, created_at, updated_at, ever_started)
+          VALUES ('task', 'paper', 'owner', 'Paper', 'Owner', 'opencode', 'Edit', '2026-11-22', '2026-11-22', 1);`);
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT native_session_storage, ever_started FROM agent_tasks WHERE id = 'task'").get())
+        .toEqual({ native_session_storage: null, ever_started: 1 });
+      database.prepare("UPDATE agent_tasks SET native_session_storage = 'shared' WHERE id = 'task'").run();
+      const applied = database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 28").get();
+      database.close(); database = openDatabase(config);
+      expect(database.prepare("SELECT native_session_storage FROM agent_tasks WHERE id = 'task'").get())
+        .toEqual({ native_session_storage: "shared" });
+      expect(database.prepare("SELECT * FROM texlite_schema_migrations WHERE version = 28").get()).toEqual(applied);
+    } finally { database.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("adds project-level tex_fmt_config on upgrade and preserves custom TOML across restarts", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-texfmt-migration-"));
     const config = migrationConfig(root, path.join(root, "texlite.db"));
@@ -589,7 +610,8 @@ describe("database migrations", () => {
           { version: 24, name: "add_edit_segment_age_index" },
           { version: 25, name: "complete_history_object_index" },
           { version: 26, name: "add_pending_project_deletions" },
-          { version: 27, name: "add_project_tex_fmt_config" }
+          { version: 27, name: "add_project_tex_fmt_config" },
+          { version: 28, name: "track_agent_native_session_storage" }
         ]);
 
       // The old untracked migration copied this tag at every startup. Once
@@ -627,7 +649,8 @@ describe("database migrations", () => {
           { version: 24, name: "add_edit_segment_age_index" },
           { version: 25, name: "complete_history_object_index" },
           { version: 26, name: "add_pending_project_deletions" },
-          { version: 27, name: "add_project_tex_fmt_config" }
+          { version: 27, name: "add_project_tex_fmt_config" },
+          { version: 28, name: "track_agent_native_session_storage" }
         ]);
 
       migrated.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
@@ -667,7 +690,7 @@ describe("database migrations", () => {
 
       database = openDatabase(config);
       expect(database.prepare("SELECT COUNT(*) AS count FROM user_tags").get()).toEqual({ count: 0 });
-      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }, { version: 23 }, { version: 24 }, { version: 25 }, { version: 26 }, { version: 27 }]);
+      expect(database.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }, { version: 23 }, { version: 24 }, { version: 25 }, { version: 26 }, { version: 27 }, { version: 28 }]);
       expect(database.prepare("SELECT last_modified_by FROM projects WHERE id = 'project-1'").get())
         .toEqual({ last_modified_by: null });
       expect(database.prepare("SELECT main_file FROM compile_runs WHERE id = 'run-1'").get())
@@ -796,7 +819,7 @@ describe("database migrations", () => {
 
       const migrated = openDatabase(config);
       try {
-        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }, { version: 23 }, { version: 24 }, { version: 25 }, { version: 26 }, { version: 27 }]);
+        expect(migrated.prepare("SELECT version FROM texlite_schema_migrations").all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }, { version: 23 }, { version: 24 }, { version: 25 }, { version: 26 }, { version: 27 }, { version: 28 }]);
       } finally {
         migrated.close();
       }

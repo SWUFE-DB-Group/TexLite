@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { recoverAgentExecution } from "../src/server/agents/execution.js";
+import { recoverAgentExecution, spawnRecoverableAgent } from "../src/server/agents/execution.js";
 import { inspectAgentProcess, agentProcessGroupAlive } from "../src/server/agents/processIdentity.js";
-import { stopAgentPty } from "../src/server/agents/terminal.js";
+import { stopAgentPty, type AgentPty } from "../src/server/agents/terminal.js";
 import { stopWindowsAgentJob } from "../src/server/agents/windowsJob.js";
 
 vi.mock("../src/server/agents/processIdentity.js", () => ({ inspectAgentProcess: vi.fn(), agentProcessGroupAlive: vi.fn() }));
@@ -28,6 +28,32 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(root, { recursive: true, force: true }); vi.useRealTimers(); });
 
 describe("agent crash recovery", () => {
+  it("keeps the live execution record when a POSIX group outlives its launcher", async () => {
+    vi.useFakeTimers();
+    fs.unlinkSync(filename);
+    let ptyExit!: Parameters<AgentPty["onExit"]>[0];
+    const raw: AgentPty = { pid: 4242, write: vi.fn(), resize: vi.fn(), onData: () => ({ dispose() {} }),
+      onExit: (callback) => { ptyExit = callback; return { dispose() {} }; } };
+    const owned = { identity: "birth-1", owned: true };
+    vi.mocked(inspectAgentProcess).mockResolvedValue(owned);
+    const wrapped = await spawnRecoverableAgent(() => raw, "fixture-agent", [],
+      { cwd: root, name: "xterm", env: {}, cols: 80, rows: 24 }, filename);
+    try {
+      // A signal can return before the remaining processes actually exit.
+      vi.mocked(stopAgentPty).mockImplementationOnce(async () => {
+        vi.mocked(inspectAgentProcess).mockResolvedValue(null);
+        vi.mocked(agentProcessGroupAlive).mockResolvedValue(true);
+      });
+      const stopped = expect(wrapped.stop!()).rejects.toMatchObject({ code: "AGENT_STOP_FAILED" });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await stopped;
+      expect(fs.existsSync(filename)).toBe(true);
+      vi.mocked(agentProcessGroupAlive).mockResolvedValue(false);
+      await expect(wrapped.stop!()).resolves.toBeUndefined();
+      expect(stopAgentPty).toHaveBeenCalledExactlyOnceWith({ pid: raw.pid });
+    } finally { ptyExit({ exitCode: 0 }); }
+  });
+
   it("recovers a Windows execution by its job, even when its former PID is unsafe to use", async () => {
     platform().mockReturnValue("win32");
     fs.writeFileSync(filename, JSON.stringify({ ...record, platform: "win32", version: 2 }));

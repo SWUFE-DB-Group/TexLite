@@ -1,10 +1,14 @@
 import type { AgentId } from "../../../shared/agentProtocol.js";
 
+export type NativeSessionStorage = "private" | "shared";
+
 export interface AgentAdapterContext {
   taskId: string;
   stateDirectory: string;
   workingDirectory: string;
   nativeSessionId: string | null;
+  nativeSessionStorage?: NativeSessionStorage | null;
+  previouslyStarted?: boolean;
   executable: string;
   features: ReadonlySet<string>;
 }
@@ -23,7 +27,8 @@ export interface AgentAdapter {
   readonly supportsResume: boolean;
   isSupported?(): boolean;
   discoverFeatures(executable: string): Promise<ReadonlySet<string>>;
-  prepare(context: AgentAdapterContext): Promise<void>;
+  /** An adapter that can use multiple stores reports the one it prepared. */
+  prepare(context: AgentAdapterContext): Promise<void | NativeSessionStorage>;
   start(context: AgentAdapterContext): AgentLaunch;
   resume(context: AgentAdapterContext & { nativeSessionId: string }): AgentLaunch;
   findNativeSession(context: AgentAdapterContext): Promise<NativeSessionInspection>;

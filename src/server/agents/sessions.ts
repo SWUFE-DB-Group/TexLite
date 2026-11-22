@@ -12,14 +12,15 @@ import { AgentRegistry } from "./registry.js";
 import { agentTaskRoot, AgentSourceSync, ensureAgentInstructions, writeAgentProjectContext, type AgentWorkspaceContext } from "./workspaces.js";
 import { sourceRoot } from "../files.js";
 import { loadAgentPty, stopAgentPty, type AgentPty, type AgentPtyFactory } from "./terminal.js";
-import type { NativeSessionInspection } from "./adapters/types.js";
-import { clearAgentExecution, recoverAgentExecution } from "./execution.js";
+import type { NativeSessionInspection, NativeSessionStorage } from "./adapters/types.js";
+import { agentExecutionPending, clearAgentExecution, recoverAgentExecution } from "./execution.js";
 import { AgentOutputBuffer } from "./outputBuffer.js";
 
 interface TaskRow {
   id: string; project_id: string; user_id: string; project_name: string; user_name: string;
   agent_id: AgentId; title: string; state: AgentTask["state"];
   cleanup_state: AgentTask["cleanupState"]; error_code: string | null; native_session_id: string | null;
+  native_session_storage: NativeSessionStorage | null;
   ever_started: number; native_cleanup_done: number;
   created_at: string; updated_at: string; started_at: string | null; ended_at: string | null; exit_code: number | null;
 }
@@ -66,14 +67,9 @@ export class AgentService {
     this.db.prepare("UPDATE agent_tasks SET state = 'interrupted', ended_at = ?, updated_at = ? WHERE state IN ('starting', 'running', 'stopping')").run(now(), now());
     this.db.prepare("UPDATE agent_tasks SET cleanup_state = 'failed', error_code = 'AGENT_CLEANUP_FAILED' WHERE cleanup_state = 'deleting'").run();
     for (const row of this.db.prepare("SELECT * FROM agent_tasks").all() as TaskRow[]) {
-      if (!fs.existsSync(this.executionFile(row.id))) continue;
-      this.db.prepare("UPDATE agent_tasks SET state = 'stopping', error_code = 'AGENT_RECOVERY_FAILED' WHERE id = ?").run(row.id);
-      this.activeProjects.set(row.project_id, row.id);
+      if (!agentExecutionPending(this.executionFile(row.id))) continue;
       const releaseWriter = this.context.projectMutations.registerExternalWriter(row.project_id, async () => { await this.stop(row.id, undefined, false, "AGENT_STOPPED_BY_PROJECT_OPERATION"); });
-      this.recoveries.set(row.id, () => {
-        if (this.activeProjects.get(row.project_id) === row.id) this.activeProjects.delete(row.project_id);
-        releaseWriter?.();
-      });
+      this.trackRecovery(row, () => releaseWriter?.());
     }
     this.recovery = this.recoverOnStartup();
   }
@@ -204,15 +200,14 @@ export class AgentService {
         if (row.ever_started && !row.native_session_id) { native = await this.captureContext(id); row = this.owned(id, user); }
         const resume = Boolean(row.native_session_id);
         const adapter = this.registry.adapter(row.agent_id);
-        const root = agentTaskRoot(this.context.config, id);
-        const context = await this.registry.context(row.agent_id, id, root, row.native_session_id, sourceRoot(this.context.config, row.project_id));
+        const context = await this.nativeContext(row);
         if (!context.executable) throw httpError(409, "AGENT_UNAVAILABLE");
         if (!resume && row.ever_started && native?.status !== "empty") throw httpError(409, "AGENT_CONTEXT_CHECK_FAILED");
         if (resume && !adapter.supportsResume) throw httpError(409, "AGENT_NO_CONTEXT");
         const spawn = await (this.options.loadPty ?? loadAgentPty)();
         if (!spawn) throw httpError(409, "AGENT_PTY_UNAVAILABLE");
         await fs.promises.mkdir(context.stateDirectory, { recursive: true, mode: 0o700 });
-        await adapter.prepare(context);
+        const storage = await adapter.prepare(context);
         await ensureAgentInstructions(this.context, row.project_id, user);
         await writeAgentProjectContext(this.context, id, row.project_id);
         source = new AgentSourceSync(this.context, id, row.project_id, row.user_id, (error) => {
@@ -232,7 +227,8 @@ export class AgentService {
               // Launcher identity and job setup can yield. Revalidate before
               // publishing the permit that lets the native CLI run.
               assertMayStart();
-              this.db.prepare("UPDATE agent_tasks SET ever_started = 1 WHERE id = ?").run(id);
+              this.db.prepare("UPDATE agent_tasks SET ever_started = 1, native_session_storage = COALESCE(native_session_storage, ?) WHERE id = ?")
+                .run(storage ?? null, id);
             } });
           let finish!: () => void;
           source.activate();
@@ -262,7 +258,16 @@ export class AgentService {
       } catch (error) {
         const execution = this.executions.get(id);
         if (execution) await this.terminate(id, execution, "stopped");
-        else { try { source?.discard(); } finally { releaseProject(); } }
+        else {
+          try { source?.discard(); }
+          finally {
+            // If spawn cleanup failed, keep the project occupied and let Stop
+            // retry recovery in this process rather than waiting for restart.
+            if (agentExecutionPending(this.executionFile(id))) this.trackRecovery(row, releaseProject);
+            else releaseProject();
+          }
+          if (this.recoveries.has(id)) throw httpError(409, "AGENT_RECOVERY_FAILED");
+        }
         throw error;
       }
     });
@@ -293,7 +298,7 @@ export class AgentService {
           await this.captureContext(id);
           const current = this.row(id)!;
           if (current.ever_started) {
-            const context = await this.registry.context(row.agent_id, id, root, current.native_session_id, sourceRoot(this.context.config, row.project_id));
+            const context = await this.nativeContext(current);
             await this.registry.adapter(row.agent_id).cleanup(context);
           }
           // Commit before removing bindings in the task directory. A failed rm
@@ -389,10 +394,16 @@ export class AgentService {
     if (row?.native_cleanup_done) return { status: "empty" };
     if (row?.native_session_id) return { status: "found", id: row.native_session_id };
     if (!row || !row.ever_started || (!afterExit && this.executions.has(id))) return { status: "unknown" };
-    const context = await this.registry.context(row.agent_id, id, agentTaskRoot(this.context.config, id), null, sourceRoot(this.context.config, row.project_id));
+    const context = await this.nativeContext(row);
     const native = await this.registry.adapter(row.agent_id).findNativeSession(context);
     if (native.status === "found") this.db.prepare("UPDATE agent_tasks SET native_session_id = ? WHERE id = ?").run(native.id, id);
     return native;
+  }
+
+  private async nativeContext(row: TaskRow) {
+    const context = await this.registry.context(row.agent_id, row.id, agentTaskRoot(this.context.config, row.id),
+      row.native_session_id, sourceRoot(this.context.config, row.project_id));
+    return { ...context, nativeSessionStorage: row.native_session_storage, previouslyStarted: Boolean(row.ever_started) };
   }
 
   private async stopExecution(id: string, reason?: "AGENT_STOPPED_BY_PROJECT_OPERATION"): Promise<void> {
@@ -505,6 +516,16 @@ export class AgentService {
       canResume: !row.native_cleanup_done && Boolean(row.native_session_id && this.registry.adapter(row.agent_id).supportsResume) };
   }
   private executionFile(id: string): string { return path.join(agentTaskRoot(this.context.config, id), "execution.json"); }
+
+  private trackRecovery(row: TaskRow, releaseWriter: () => void): void {
+    this.activeProjects.set(row.project_id, row.id);
+    this.recoveries.set(row.id, () => {
+      if (this.activeProjects.get(row.project_id) === row.id) this.activeProjects.delete(row.project_id);
+      releaseWriter();
+    });
+    this.db.prepare("UPDATE agent_tasks SET state = 'stopping', error_code = 'AGENT_RECOVERY_FAILED', updated_at = ? WHERE id = ?")
+      .run(now(), row.id);
+  }
 
   private async recoverOnStartup(): Promise<void> {
     await Promise.all([...this.recoveries.keys()].map(async (id) => {

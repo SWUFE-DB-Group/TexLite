@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadAgentPty, stopAgentPty, type AgentPty } from "../src/server/agents/terminal.js";
 import { recoverAgentExecution, clearAgentExecution } from "../src/server/agents/execution.js";
-import { inspectAgentProcess } from "../src/server/agents/processIdentity.js";
+import { agentProcessGroupAlive, inspectAgentProcess } from "../src/server/agents/processIdentity.js";
 
 const roots: string[] = [];
 const directory = () => { const root = fs.mkdtempSync(path.join(os.tmpdir(), "texlite-agent-crash-")); roots.push(root); return root; };
@@ -120,7 +120,8 @@ describe("recoverable agent PTY integration", () => {
       expect(output).toContain("TTY:true:true");
       const record = JSON.parse(fs.readFileSync(filename, "utf8")) as { executionId: string };
       expect(await inspectAgentProcess(pty.pid, record.executionId)).toMatchObject({ owned: true });
-      await recoverAgentExecution(filename);
+      await stopAgentPty(pty);
+      if (process.platform !== "win32") expect(await agentProcessGroupAlive(pty.pid)).toBe(false);
     } finally {
       if (pty && processAlive(pty.pid)) await stopAgentPty(pty);
       if (fs.existsSync(filename)) clearAgentExecution(filename);

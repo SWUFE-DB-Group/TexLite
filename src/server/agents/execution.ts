@@ -28,6 +28,12 @@ function readRecord(filename: string): ExecutionRecord | null {
   return value;
 }
 
+/** An inaccessible execution record must also remain an occupied lease. */
+export function agentExecutionPending(filename: string): boolean {
+  try { fs.lstatSync(filename); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code !== "ENOENT"; }
+}
+
 export function clearAgentExecution(filename: string): void {
   const record = readRecord(filename);
   if (record) {
@@ -55,30 +61,39 @@ export async function recoverAgentExecution(filename: string): Promise<void> {
       // descendant is gone. Do not release the project on that basis.
       throw httpError(409, "AGENT_RECOVERY_FAILED");
     }
-    const process = await inspectAgentProcess(record.pid, record.executionId);
-    if (process && process.identity === record.identity && process.owned) {
-      // Verify twice before signalling; a recycled PID must never be targeted.
-      const current = await inspectAgentProcess(record.pid, record.executionId);
-      if (!current || current.identity !== record.identity || !current.owned) throw httpError(409, "AGENT_RECOVERY_FAILED");
-      await stopAgentPty({ pid: record.pid });
-      const deadline = Date.now() + 3_000;
-      while (true) {
-        const remaining = await inspectAgentProcess(record.pid, record.executionId);
-        if ((!remaining || remaining.identity !== record.identity) && !await agentProcessGroupAlive(record.pid)) break;
-        if (Date.now() >= deadline) throw httpError(409, "AGENT_RECOVERY_FAILED");
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      }
-    } else if (process && process.identity === record.identity) {
-      throw httpError(409, "AGENT_RECOVERY_FAILED");
-    } else if (!process && await agentProcessGroupAlive(record.pid)) {
-      // The wrapper was independently killed. Do not guess ownership of a
-      // leaderless group; the administrator can stop it on the host and retry.
-      throw httpError(409, "AGENT_RECOVERY_FAILED");
-    }
+    await stopOwnedPosixGroup(record.pid, record.identity!, record.executionId, "AGENT_RECOVERY_FAILED");
   }
   // An uncommitted launch cannot start the CLI. Removing its permit makes a
   // delayed launcher exit, closing the spawn-before-identity-persistence gap.
   clearAgentExecution(filename);
+}
+
+async function stopOwnedPosixGroup(pid: number, identity: string, executionId: string,
+  errorCode: "AGENT_RECOVERY_FAILED" | "AGENT_STOP_FAILED"): Promise<void> {
+  const process = await inspectAgentProcess(pid, executionId);
+  if (!process) {
+    // A leaderless group cannot be identified safely. Wait for it without
+    // signalling again (a previous Stop may already have killed its leader).
+    const deadline = Date.now() + 3_000;
+    while (await agentProcessGroupAlive(pid)) {
+      if (errorCode === "AGENT_RECOVERY_FAILED" || Date.now() >= deadline) throw httpError(409, errorCode);
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    }
+    return;
+  }
+  if (process.identity !== identity) return; // The saved PID was reused.
+  if (!process.owned) throw httpError(409, errorCode);
+  // Verify twice before signalling; a recycled PID must never be targeted.
+  const current = await inspectAgentProcess(pid, executionId);
+  if (!current || current.identity !== identity || !current.owned) throw httpError(409, errorCode);
+  await stopAgentPty({ pid });
+  const deadline = Date.now() + 3_000;
+  while (true) {
+    const remaining = await inspectAgentProcess(pid, executionId);
+    if ((!remaining || remaining.identity !== identity) && !await agentProcessGroupAlive(pid)) return;
+    if (Date.now() >= deadline) throw httpError(409, errorCode);
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
 }
 
 /** Start a gated, identifiable group leader without changing the CLI's TTY. */
@@ -112,7 +127,7 @@ export async function spawnRecoverableAgent(spawn: AgentPtyFactory, executable: 
       await attachWindowsAgentJob(pty.pid, record.executionId);
       record.version = 2;
       wrapped.stop = () => stopWindowsAgentJob(record.executionId);
-    }
+    } else wrapped.stop = () => stopOwnedPosixGroup(wrapped.pid, identity.identity, record.executionId, "AGENT_STOP_FAILED");
     // Conversation cleanup ownership must be durable before the CLI is allowed
     // to create any native state, not after the launch promise returns.
     beforeStart?.();

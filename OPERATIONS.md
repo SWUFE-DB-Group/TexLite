@@ -642,8 +642,9 @@ solely because a saved PID matches. The task and native conversation remain
 available for explicit continuation; source files left on disk are preserved
 and included in project snapshots.
 
-If recovery cannot verify or stop an execution, its task remains visible as
-stopping with a recovery error, and the project stays reserved. Owners or
+If stopping cannot confirm that the owned process tree is gone, or a failed
+launch leaves a recovery lease, its task remains visible as
+stopping with an error, and the project stays reserved. Owners or
 administrators can retry **End execution**. If instructed, stop the task's
 processes on the host first, then retry; do not delete its recovery file to
 bypass the reservation. Deletion and source-tree replacement also require
@@ -662,6 +663,9 @@ Task deletion records native-cleanup completion in the database before removing
 the task's local files. If local removal fails or the service restarts, retrying
 deletion finishes that step without needing a removed session binding or an
 installed CLI. Failed native cleanup keeps its ownership information for retry.
+If OpenCode used shared storage but its binding is missing, restore that binding
+before retrying deletion. TexLite will not infer ownership from the current CLI
+configuration or delete an unverified host session.
 If an OpenCode task's project directory has been deleted, management commands
 use its task-state directory while still targeting only its registered database
 and session ID; the deleted project is not recreated.

@@ -1860,14 +1860,18 @@ pass that exact `--session` ID, and shared-state discovery never enumerates host
 conversations or chooses a newest/unique one. An ID already present before its
 ownership binding is created is not claimed. The native CLI creates the bound
 conversation when needed; an unused task may still have no persisted conversation.
-Existing private OpenCode conversations stay in their original database. Only
-verified empty private stores switch to the shared layout; their old files remain
-until task deletion.
+Existing private OpenCode conversations stay in their original database. Before
+the launcher gets its permit, TexLite records whether the task uses private or
+shared storage in SQLite. A known private store is kept. For a task that has
+not launched, any unbound private store must be verified empty before choosing
+the shared layout.
 
 TexLite lists and authorizes tasks exclusively from its own `agent_tasks` rows,
 not the OpenCode session catalog. Shared-state cleanup uses native
 `session delete <registered-id> --standalone` and verifies that exact ID is gone
-before removing the task record/files. It never removes the host database,
+before removing the task record/files. A missing binding or an unverified legacy
+store leaves the task available for cleanup retry; CLI discovery cannot prove
+that a store was private. TexLite never removes the host database,
 credentials or unrelated native sessions. The native terminal's own history
 picker can expose shared host conversations; this is an accepted boundary for
 trusted writers, not additional tasks imported into TexLite.

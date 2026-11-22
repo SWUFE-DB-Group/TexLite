@@ -147,17 +147,21 @@ describe("native agent adapters", () => {
     expect(await opencodeAdapter.findNativeSession(context)).toEqual({ status: "found", id: "ses_existingProjectConversation" });
   });
 
-  it("deletes only the identified OpenCode session in the same project cwd and state", async () => {
-    const database = fakeOpenCode([{ id: "ses_ownConversation" }]);
-    await opencodeAdapter.cleanup({ ...context, nativeSessionId: "ses_ownConversation" });
-    expect(JSON.parse(fs.readFileSync(database, "utf8"))).toEqual([]);
+  it("allows cleanup of a legacy private OpenCode store only with exact session evidence", async () => {
+    const filename = privateDatabasePath();
+    fs.mkdirSync(path.dirname(filename), { recursive: true });
+    const db = new Database(filename);
+    db.exec("CREATE TABLE session (id TEXT PRIMARY KEY); INSERT INTO session VALUES ('ses_ownConversation')");
+    db.close();
+    await expect(opencodeAdapter.cleanup({ ...context, nativeSessionId: "ses_ownConversation", executable: "" })).resolves.toBeUndefined();
+    await expect(opencodeAdapter.cleanup({ ...context, nativeSessionId: "ses_other" })).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
   });
 
   it("does not guess or delete another OpenCode conversation when discovery is ambiguous", async () => {
     const sessions = [{ id: "ses_first" }, { id: "ses_second" }];
     const database = fakeOpenCode(sessions);
     expect(await opencodeAdapter.findNativeSession(context)).toEqual({ status: "unknown" });
-    await opencodeAdapter.cleanup({ ...context, nativeSessionId: "ses_first" });
+    await expect(opencodeAdapter.cleanup({ ...context, nativeSessionId: "ses_first" })).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
     expect(JSON.parse(fs.readFileSync(database, "utf8"))).toEqual(sessions);
   });
 
@@ -383,6 +387,9 @@ describe("native agent adapters", () => {
     fs.mkdirSync(path.dirname(privateFile), { recursive: true });
     const old = new Database(privateFile); old.exec("CREATE TABLE session_v2 (id TEXT PRIMARY KEY)"); old.close();
     expect(await opencodeAdapter.findNativeSession(context)).toEqual({ status: "empty" });
+    const legacy = { ...context, previouslyStarted: true, features: new Set<string>(), executable: "" };
+    expect(await opencodeAdapter.findNativeSession(legacy)).toEqual({ status: "unknown" });
+    await expect(opencodeAdapter.cleanup(legacy)).rejects.toMatchObject({ code: "AGENT_CLEANUP_FAILED" });
     await opencodeAdapter.prepare(context);
     expect(opencodeAdapter.start(context).env.OPENCODE_DB).toBe(filename);
     expect(fs.existsSync(privateFile)).toBe(true);
@@ -397,7 +404,7 @@ describe("native agent adapters", () => {
     const scoped = { ...context, nativeSessionId: "ses_saved", features: new Set(["standalone"]) };
     const execute = vi.spyOn(agentCommands, "executeAgentCommand");
     expect(await opencodeAdapter.findNativeSession(scoped)).toEqual({ status: "found", id: "ses_saved" });
-    await expect(opencodeAdapter.prepare(scoped)).resolves.toBeUndefined();
+    await expect(opencodeAdapter.prepare(scoped)).resolves.toBe("private");
     expect(execute).not.toHaveBeenCalled();
     expect(opencodeAdapter.resume(scoped).env.OPENCODE_DB).toBe(filename);
     expect(fs.existsSync(path.join(context.stateDirectory, "opencode-session.json"))).toBe(false);
