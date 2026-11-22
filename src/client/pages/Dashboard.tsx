@@ -449,8 +449,36 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
               </button>
             </div>
             <label className="project-sort"><ArrowDownUp size={14} /><span>{t("projects.sortBy")}</span><select value={sort} onChange={(event) => changeSort(event.target.value as "updated" | "created")}><option value="updated">{t("projects.sortModified")}</option><option value="created">{t("projects.sortCreated")}</option></select></label><div className="view-toggle" role="group"><button type="button" className={view === "grid" ? "active" : ""} aria-pressed={view === "grid"} aria-label={t("projects.grid")} onClick={() => changeView("grid")} title={t("projects.grid")}><LayoutGrid size={15} aria-hidden="true" /></button><button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label={t("projects.list")} onClick={() => changeView("list")} title={t("projects.list")}><List size={15} aria-hidden="true" /></button></div></div>
-      {!resultsCurrent && !error && <div className="project-catalog-loading" role="status"><LoaderCircle className="spin" size={17} aria-hidden />{t("common.loading")}</div>}
+      {!resultsCurrent && !error && <div className="sr-only" role="status">{t("common.loading")}</div>}
       <div className={`project-grid ${view === "list" ? "list-view" : ""}${projectMenuId ? " project-list-menu-active" : ""}`}>
+        {!resultsCurrent && !error && displayedProjects.length === 0 && Array.from({ length: 6 }, (_, index) => (
+          view === "list"
+            ? <div key={`skeleton-${index}`} className="project-skeleton-row" aria-hidden="true">
+                <span className="project-skeleton-avatar skeleton-shimmer" />
+                <span className="project-skeleton-cell">
+                  <span className="project-skeleton-bar skeleton-shimmer" style={{ width: `${52 + (index % 3) * 14}%` }} />
+                  <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: `${30 + (index % 2) * 12}%` }} />
+                </span>
+                <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: "68%" }} />
+                <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: "74%" }} />
+                <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: "62%" }} />
+              </div>
+            : <div key={`skeleton-${index}`} className="project-skeleton-card" aria-hidden="true">
+                <div className="project-card-thumbnail">
+                  <div className="project-paper project-skeleton-paper">
+                    <span className="project-skeleton-bar skeleton-shimmer" style={{ width: "76%", height: 6 }} />
+                    <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: "44%", height: 4 }} />
+                    <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: "92%", height: 4 }} />
+                    <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: "86%", height: 4 }} />
+                    <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: "68%", height: 4 }} />
+                  </div>
+                </div>
+                <div className="project-card-caption">
+                  <span className="project-skeleton-bar skeleton-shimmer" style={{ width: `${56 + (index % 3) * 14}%`, height: 14 }} />
+                  <span className="project-skeleton-bar subtle skeleton-shimmer" style={{ width: `${38 + (index % 2) * 16}%`, height: 11 }} />
+                </div>
+              </div>
+        ))}
         {view === "list" && displayedProjects.length > 0 && <div className="project-list-header" aria-hidden="true">
           <span className="project-list-header-avatar" />
           <span>{t("projects.title")}</span>

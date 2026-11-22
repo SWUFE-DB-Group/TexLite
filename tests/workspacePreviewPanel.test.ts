@@ -66,9 +66,11 @@ describe("uncompiled PDF preview", () => {
     const html = render({ compileBusy: true });
     expect(html).toContain(i18n.t("editor.compiling"));
     expect(html).toContain(i18n.t("editor.previewCompilingHint"));
+    expect(html).toContain('class="preview-compile-progress"');
     expect(html).not.toContain(i18n.t("editor.previewEmptyTitle"));
     expect(html).not.toContain(i18n.t("editor.previewHint"));
     expect(html).toMatch(/class="[^"]*\bspin\b/);
+    expect(render({ compileBusy: false })).not.toContain("preview-compile-progress");
   });
 
   it("does not show the empty state while looking for an existing PDF or viewing diagnostics", () => {

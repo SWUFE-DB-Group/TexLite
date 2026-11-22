@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Check, FileSearch, FolderPlus, HardDrive, LayoutGrid, MoreHorizontal, Search, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { formatShortcutKey } from "../shortcuts";
 
 export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch, onTikzGallery, onNewDrawio, onPrepareDrawio, showFileSizes, onToggleFileSizes }: {
   onQuickOpen: () => void;
@@ -33,7 +34,7 @@ export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch,
           if (selecting.current) event.preventDefault();
           selecting.current = false;
         }}>
-        <DropdownMenu.Item onSelect={() => select(onQuickOpen)}><FileSearch size={14} aria-hidden />{t("navigation.quickOpen")}</DropdownMenu.Item>
+        <DropdownMenu.Item title={t("navigation.quickOpen")} data-shortcut={formatShortcutKey("P")} onSelect={() => select(onQuickOpen)}><FileSearch size={14} aria-hidden />{t("navigation.quickOpen")}</DropdownMenu.Item>
         {onProjectSearch && <DropdownMenu.Item onSelect={() => select(onProjectSearch)}><Search size={14} aria-hidden />{t("projectSearch.title")}</DropdownMenu.Item>}
         {onNewFolder && <DropdownMenu.Item onSelect={() => select(onNewFolder)}><FolderPlus size={14} aria-hidden />{t("editor.newFolder")}</DropdownMenu.Item>}
         {onNewDrawio && <DropdownMenu.Item onFocus={onPrepareDrawio} onPointerEnter={onPrepareDrawio}

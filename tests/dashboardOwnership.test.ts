@@ -240,11 +240,13 @@ describe("project ownership tabs", () => {
     apiMock.mockImplementation((url: string, options: RequestInit) => url === "/api/tags" ? Promise.resolve({ tags: [tag] })
       : new Promise((resolve) => pending.set(new URL(url, "http://localhost").searchParams.get("scope")!, { resolve, signal: options.signal! })));
     await click('#project-tab-owned'); expect(names()).toEqual([]);
+    expect(host.querySelectorAll(".project-skeleton-card")).toHaveLength(6);
     await click('#project-tab-shared');
     expect(pending.get("owned")!.signal.aborted).toBe(true);
     expect(host.querySelector('[role="tabpanel"]')!.getAttribute("aria-busy")).toBe("true");
     await act(async () => pending.get("shared")!.resolve(response("/api/projects?scope=shared")));
     await act(async () => pending.get("owned")!.resolve(response("/api/projects?scope=owned")));
+    expect(host.querySelectorAll(".project-skeleton-card")).toHaveLength(0);
     expect(names().every((name) => name!.startsWith("Shared"))).toBe(true);
     expect(tab("shared").getAttribute("aria-selected")).toBe("true");
     expect(onDataChange.mock.lastCall![0].filters.ownership).toBe("shared");

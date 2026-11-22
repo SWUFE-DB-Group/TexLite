@@ -73,7 +73,14 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               type="button"
               onClick={() => window.location.reload()}
-              style={{ padding: "0.4rem 0.8rem", borderRadius: "4px", cursor: "pointer" }}
+              style={{
+                padding: "0.45rem 0.9rem",
+                borderRadius: "7px",
+                border: "1px solid var(--ui-border, #cbd2cc)",
+                backgroundColor: "var(--ui-surface, #ffffff)",
+                color: "var(--ui-text, #202421)",
+                cursor: "pointer"
+              }}
             >
               {i18n.t("errors.boundaryReload")}
             </button>

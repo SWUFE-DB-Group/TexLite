@@ -8,6 +8,7 @@ import { CollaborationPresence, WorkspaceLayoutMenu } from "./WorkspaceChrome";
 import { useTerminalPreferences } from "../terminalPreferences";
 import { WorkspaceTopbarFrame } from "./WorkspaceTopbarFrame";
 import { isMarkdownPath } from "./markdownPreviewUtils";
+import { formatShortcutKey } from "../shortcuts";
 
 export interface WorkspaceTopbarProps {
   agentTerminal?: { open: boolean; activeCount: number; toggle: () => void };
@@ -96,6 +97,6 @@ export function WorkspaceTopbar({
       <span className="topbar-divider" aria-hidden="true" />
       {sharedCompiling || localCompiling
         ? <button className="compile cancel-compile" aria-label={cancelling ? t("compileControls.cancelling") : t("compileControls.cancel")} title={t("compileControls.cancel")} onClick={onCancelCompile} disabled={cancelling || formatting || readOnly || !collaborationSynced}>{cancelling ? <LoaderCircle className="spin" size={15} /> : <X size={15} />}<span className="workspace-action-label workspace-action-label-persistent">{cancelling ? t("compileControls.cancelling") : t("compileControls.cancel")}</span></button>
-        : <button className="compile" aria-label={t("editor.compile", { engine: project.engine })} title={t("editor.compileShortcut")} onClick={onCompile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}<span className="workspace-action-label workspace-action-label-persistent">{t("editor.compileShort")}<span className="compile-engine-label"> · {project.engine}</span></span></button>}
+        : <button className="compile" aria-label={t("editor.compile", { engine: project.engine })} title={t("editor.compileTooltip")} data-shortcut={formatShortcutKey("S")} onClick={onCompile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}<span className="workspace-action-label workspace-action-label-persistent">{t("editor.compileShort")}<span className="compile-engine-label"> · {project.engine}</span></span></button>}
   </WorkspaceTopbarFrame>;
 }

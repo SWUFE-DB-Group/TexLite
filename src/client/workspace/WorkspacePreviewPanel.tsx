@@ -122,7 +122,7 @@ export function WorkspacePreviewPanel({
         <WorkspaceCommentsSlot open={commentsOpen} onHost={onCommentsHost} />
       <section className="preview-panel">
         <WorkspacePreviewHeader mainFile={activeMainFile} targetLabel={pdfTargetLabel} compiledAt={pdfCompiledAt} compiledLabel={pdfCompiledLabel} sizeBytes={pdfSizeBytes}
-          downloadUrl={pdfDownloadUrl} activeSurface={previewTab} onSelect={selectPreviewTab} diagnosticCount={warnings.length + errors.length} markdownFile={markdown?.path} />
+          downloadUrl={pdfDownloadUrl} activeSurface={previewTab} onSelect={selectPreviewTab} diagnosticCount={warnings.length + errors.length} markdownFile={markdown?.path} compiling={compileBusy} />
         {previewTab === "diagnostics" && <div className="preview-subtabs" role="tablist" aria-label={t("editor.outputTabs")}>
           <button role="tab" aria-selected={diagnosticTab === "log"} className={diagnosticTab === "log" ? "active" : ""} onClick={() => selectPreviewTab("log")}><Logs size={13} />{t("editor.log")}</button>
           <button role="tab" aria-selected={diagnosticTab === "warnings"} className={diagnosticTab === "warnings" ? "active" : ""} onClick={() => selectPreviewTab("warnings")}><AlertTriangle size={13} />{t("editor.warnings")}<span>{warnings.length}</span></button>

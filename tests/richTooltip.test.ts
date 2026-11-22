@@ -40,3 +40,13 @@ it("shares preference, focus and dismissal behavior with ordinary tooltips", asy
   await act(async () => host.querySelector("#ordinary")!.dispatchEvent(new Event("focusout", { bubbles: true })));
   expect(host.querySelector('[role="tooltip"]')).toBeNull();
 });
+
+it("renders a styled kbd hint when an element provides data-shortcut", async () => {
+  await act(async () => root.render(createElement(Fragment, null,
+    createElement("button", { id: "compile-btn", title: "Save and compile", "data-shortcut": "Ctrl+S" }, "Compile"),
+    createElement(GlobalTooltip))));
+  await hover("#compile-btn");
+  const tooltip = host.querySelector('[role="tooltip"]')!;
+  expect(tooltip.textContent).toContain("Save and compile");
+  expect(tooltip.querySelector("kbd.ui-kbd")?.textContent).toBe("Ctrl+S");
+});

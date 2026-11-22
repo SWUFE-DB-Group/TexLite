@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError, isAbortError } from "../api";
 import type { CitationLibraryEntry, Comment, CommentMention, FileEntry, LatexCompletionIndex, Project, SiteConfig, User, WordCountResult } from "../types";
 import i18n from "../i18n";
-import { AlertTriangle, GripVertical, LoaderCircle, X } from "lucide-react";
+import { AlertTriangle, AlignLeft, BookMarked, Columns2, FileClock, FileCode2, FileText, GitBranch, GripVertical, Hash, LoaderCircle, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen, Play, Search, Settings, Sun, X } from "lucide-react";
 import { Group, Separator, type PanelImperativeHandle } from "react-resizable-panels";
 import { loadEditorPreferences, saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import { createLatexTextEdits, formatWithTexFmt, isFormattableLatexFile, isTexFmtError, reindentLatexSelection, type TexFmtFailureKind } from "../latexFormatter";
@@ -58,6 +58,9 @@ import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
 
 import type { DrawioEditorHandle } from "../workspace/DrawioEditor";
 import { loadDrawioEditor } from "../workspace/drawioLoader";
+import type { QuickOpenCommand, QuickOpenMode } from "../QuickOpenDialog";
+import { formatShortcutKey, isApplePlatform } from "../shortcuts";
+import { setTheme, useTheme } from "../theme";
 
 const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
 const DrawioEditor = lazy(loadDrawioEditor);
@@ -161,6 +164,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     setPreviewTab("diagnostics");
   };
   const { workspaceLayout, setWorkspaceLayout, phone } = useWorkspaceLayout(user.id, projectId);
+  const siteTheme = useTheme();
   const [markdownPreferred, setMarkdownPreferred] = useMarkdownPreviewPreference(user.id, projectId);
   const markdownActive = isMarkdownPath(activeFile);
   const previewSurface = displayedPreviewSurface(previewTab, markdownActive, markdownPreferred);
@@ -199,6 +203,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [quickOpenMode, setQuickOpenMode] = useState<QuickOpenMode>("files");
   const [tikzGalleryOpen, setTikzGalleryOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [wordCountOpen, setWordCountOpen] = useState(false);
@@ -1286,9 +1291,20 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const standaloneFigure = useMemo(() => loadedFile === activeFile && /\.tex$/i.test(activeFile) && isStandaloneTikz(content), [activeFile, loadedFile, content]);
   useEffect(() => {
     const openNavigation = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey)) return;
-      if (!event.shiftKey && event.key.toLocaleLowerCase() === "p") {
-        event.preventDefault(); setQuickOpen(true);
+      if (event.altKey || event.shiftKey) return;
+      const key = event.key.toLocaleLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === "p") {
+        event.preventDefault();
+        setQuickOpenMode("files");
+        setQuickOpen(true);
+        return;
+      }
+      const inTerminal = event.target instanceof Element && Boolean(event.target.closest(".agent-xterm"));
+      const commandMod = isApplePlatform() ? (event.metaKey && !event.ctrlKey) : (event.ctrlKey || event.metaKey);
+      if (commandMod && key === "k" && !(inTerminal && event.ctrlKey)) {
+        event.preventDefault();
+        setQuickOpenMode("commands");
+        setQuickOpen(true);
       }
     };
     window.addEventListener("keydown", openNavigation, true);
@@ -1525,6 +1541,130 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     ? t("editor.savedAt", { time: formatDateTime(lastSavedAt, i18n.resolvedLanguage, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
     : t(visibleSaveState);
 
+  const quickOpenCommands: QuickOpenCommand[] = [];
+  if (!readOnly && !compileBusy && !formatting && collaborationSynced) {
+    quickOpenCommands.push({
+      id: "compile",
+      label: t("editor.compileTooltip"),
+      keywords: `compile build pdf ${project.engine} 编译`,
+      shortcut: formatShortcutKey("S"),
+      icon: <Play size={14} />,
+      onSelect: () => void compile()
+    });
+  }
+  if (!readOnly && !drawioPath && isFormattableLatexFile(activeFile) && !formatting && !activeFormatLease && collaborationSynced) {
+    quickOpenCommands.push({
+      id: "format-document",
+      label: t("editor.formatDocument"),
+      keywords: "format tex-fmt bibtex indent 格式化",
+      icon: <AlignLeft size={14} />,
+      onSelect: () => void formatCurrentFile()
+    });
+  }
+  quickOpenCommands.push({
+    id: "project-search",
+    label: t("projectSearch.title"),
+    keywords: "search replace find global 搜索 查找 替换",
+    icon: <Search size={14} />,
+    onSelect: () => setProjectSearchOpen(true)
+  });
+  if (!phone) {
+    quickOpenCommands.push({
+      id: "toggle-files",
+      label: t(filesCollapsed ? "navigation.showFiles" : "navigation.hideFiles"),
+      keywords: "files sidebar tree panel 文件 侧栏 折叠",
+      icon: filesCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />,
+      onSelect: toggleFilesPanel
+    });
+    if (workspaceLayout !== "editor-pdf") {
+      quickOpenCommands.push({
+        id: "layout-split",
+        label: `${t("editor.layout.label")} · ${t("editor.layout.editor-pdf.name")}`,
+        keywords: "layout split editor pdf 布局 分栏",
+        icon: <Columns2 size={14} />,
+        onSelect: () => changeWorkspaceLayout("editor-pdf")
+      });
+    }
+    if (workspaceLayout !== "editor-only") {
+      quickOpenCommands.push({
+        id: "layout-editor",
+        label: `${t("editor.layout.label")} · ${t("editor.layout.editor-only.name")}`,
+        keywords: "layout editor code source 布局 仅编辑",
+        icon: <FileCode2 size={14} />,
+        onSelect: () => changeWorkspaceLayout("editor-only")
+      });
+    }
+    if (workspaceLayout !== "pdf-only") {
+      quickOpenCommands.push({
+        id: "layout-pdf",
+        label: `${t("editor.layout.label")} · ${t("editor.layout.pdf-only.name")}`,
+        keywords: "layout pdf preview 布局 仅预览",
+        icon: <FileText size={14} />,
+        onSelect: () => changeWorkspaceLayout("pdf-only")
+      });
+    }
+  }
+  if (!drawioPath && (plainWordCount ? loadedFile === activeFile : Boolean(activeMainFile))) {
+    quickOpenCommands.push({
+      id: "word-count",
+      label: t("editor.wordCountTitle"),
+      keywords: "word count texcount stats 字数 统计",
+      icon: <Hash size={14} />,
+      onSelect: () => void requestWordCount("full")
+    });
+  }
+  quickOpenCommands.push(
+    {
+      id: "comments",
+      label: t("common.comments"),
+      keywords: "comments review mentions 批注 评论",
+      icon: <MessageSquare size={14} />,
+      onSelect: () => {
+        const opening = sidePanel !== "comments" || Boolean(singleCommentId);
+        setSingleCommentId(null);
+        if (opening) setCommentScope("project");
+        setSidePanel(opening ? "comments" : null);
+      }
+    },
+    {
+      id: "snapshots",
+      label: t("history.projectSnapshotsButton"),
+      keywords: "history snapshots restore 历史 快照",
+      icon: <FileClock size={14} />,
+      onSelect: () => setHistoryOpen(true)
+    },
+    {
+      id: "citations",
+      label: t("citationLibrary.title"),
+      keywords: "citation bibliography bibtex references 引用 文献",
+      icon: <BookMarked size={14} />,
+      onSelect: () => setCitationLibraryOpen(true)
+    },
+    {
+      id: "settings",
+      label: t("common.settings"),
+      keywords: "settings preferences editor compiler 设置 偏好",
+      icon: <Settings size={14} />,
+      onSelect: () => setSidePanel(sidePanel === "settings" ? null : "settings")
+    }
+  );
+  if (project.ownerId === user.id) {
+    quickOpenCommands.push({
+      id: "git",
+      label: t("git.title"),
+      keywords: "git github backup commit 备份",
+      icon: <GitBranch size={14} />,
+      onSelect: () => setGitOpen(true)
+    });
+  }
+  quickOpenCommands.push({
+    id: "toggle-theme",
+    label: t(siteTheme === "dark" ? "navigation.switchToLightTheme" : "navigation.switchToDarkTheme"),
+    keywords: "theme dark light appearance 主题 深色 浅色 外观",
+    icon: siteTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />,
+    onSelect: () => setTheme(siteTheme === "dark" ? "light" : "dark")
+  });
+
   return <div className="workspace" data-texlite-tooltips={editorPreferences.showTooltips ? "on" : "off"}>
     <WorkspaceTopbar
       agentTerminal={showEditor && agentAccess.visible && project.permission !== "read" ? { open: terminalOpen, activeCount: agentAccess.activeCount, toggle: () => setTerminalOpen((value) => !value) } : undefined}
@@ -1579,7 +1719,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         setDeleteEntry={setDeleteEntry} setFileDialogError={setFileDialogError}
         setNewFolderName={setNewFolderName} setNewFolderOpen={setNewFolderOpen}
         setNewFilePath={setNewFilePath} setNewFileOpen={setNewFileOpen}
-        setQuickOpen={setQuickOpen}
+        setQuickOpen={(open) => { if (open) setQuickOpenMode("files"); setQuickOpen(open); }}
         onProjectSearch={() => setProjectSearchOpen(true)}
         setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed}
         onError={setError}
@@ -1703,7 +1843,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       shareOpen={shareOpen} setShareOpen={setShareOpen} onSharedMemberCountChange={updateSharedMemberCount} citationLibraryOpen={citationLibraryOpen}
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
       tikzGalleryOpen={tikzGalleryOpen} setTikzGalleryOpen={setTikzGalleryOpen} tikzGalleryFolder={selectedFolder} addFile={addFile}
-      quickOpen={quickOpen} setQuickOpen={setQuickOpen} openFile={openFile}
+      quickOpen={quickOpen} setQuickOpen={setQuickOpen} quickOpenMode={quickOpenMode} quickOpenCommands={quickOpenCommands} openFile={openFile}
       selectionHistoryTarget={selectionHistoryTarget} closeSelectionHistory={() => setSelectionHistoryTarget(null)}
       historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} gitOpen={gitOpen} setGitOpen={setGitOpen}
       save={save} permissionDowngrade={permissionDowngrade} permissionDowngradeBusy={permissionDowngradeBusy}

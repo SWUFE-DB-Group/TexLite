@@ -15,6 +15,7 @@ import { CommentComposerDialog } from "./CommentComposerDialog";
 import type { SuggestionDraft } from "../../shared/comments";
 import { LazyModal } from "../LazyLoadBoundary";
 import type { SelectionHistoryTarget } from "../SelectionHistoryDialog";
+import type { QuickOpenCommand, QuickOpenMode } from "../QuickOpenDialog";
 
 const CitationLibraryDialog = lazy(() => import("../CitationLibraryDialog").then((module) => ({ default: module.CitationLibraryDialog })));
 const GitDialog = lazy(() => import("../GitDialog").then((module) => ({ default: module.GitDialog })));
@@ -101,6 +102,8 @@ export interface WorkspaceDialogsProps {
   insertCitationAtCursor: (entry: CitationLibraryEntry) => boolean | Promise<boolean>;
   quickOpen: boolean;
   setQuickOpen: (open: boolean) => void;
+  quickOpenMode?: QuickOpenMode;
+  quickOpenCommands?: QuickOpenCommand[];
   openFile: (entry: FileEntry) => void;
   selectionHistoryTarget: SelectionHistoryTarget | null;
   closeSelectionHistory: () => void;
@@ -126,7 +129,7 @@ export function WorkspaceDialogs({
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
   setDeleteEntry, deleteActiveSessions, deletingPath, deletingOpenDrawio, removePath, commentOpen, closeComment, commentSelection, commentText,
   setCommentText, commentSubmitting, commentError, addComment, cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection, shareOpen, setShareOpen, onSharedMemberCountChange, citationLibraryOpen, setCitationLibraryOpen,
-  insertCitationAtCursor, quickOpen, setQuickOpen, openFile,
+  insertCitationAtCursor, quickOpen, setQuickOpen, quickOpenMode = "files", quickOpenCommands, openFile,
   selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
   permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
 }: WorkspaceDialogsProps) {
@@ -165,7 +168,7 @@ export function WorkspaceDialogs({
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} onMemberCountChange={onSharedMemberCountChange} />
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {tikzGalleryOpen && <LazyModal title={t("gallery.title")} onClose={() => setTikzGalleryOpen(false)}><TikzGalleryDialog folder={tikzGalleryFolder} onClose={() => setTikzGalleryOpen(false)} onImport={addFile} /></LazyModal>}
-    {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
+    {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} commands={quickOpenCommands} initialMode={quickOpenMode} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
     {projectSearchOpen && <LazyModal title={t("projectSearch.title")} onClose={() => setProjectSearchOpen(false)}><ProjectSearchDialog projectId={projectId} readOnly={readOnly} onClose={() => setProjectSearchOpen(false)} onNavigate={onSearchNavigate} /></LazyModal>}
     {selectionHistoryTarget && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={(open) => { if (!open) closeSelectionHistory(); }} project={project} filePath={selectionHistoryTarget.filePath} selection={selectionHistoryTarget.selection} currentSource={selectionHistoryTarget.source} /></Suspense>}
     {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}

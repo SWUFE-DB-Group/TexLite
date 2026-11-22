@@ -8,7 +8,7 @@ import type { PreviewSurface } from "./types";
 
 /** Presentation shared by authenticated workspaces and anonymous readers. */
 export function WorkspacePreviewHeader({ mainFile, targetLabel, compiledAt, compiledLabel, sizeBytes, downloadUrl,
-  activeSurface, onSelect, diagnosticCount, diagnosticsDisabled = false, markdownFile = "" }: {
+  activeSurface, onSelect, diagnosticCount, diagnosticsDisabled = false, markdownFile = "", compiling = false }: {
   mainFile: string; targetLabel: string; compiledAt: string | null; compiledLabel: string;
   sizeBytes: number | null; downloadUrl: string; activeSurface: PreviewSurface;
   onSelect: (surface: PreviewSurface) => void;
@@ -17,6 +17,8 @@ export function WorkspacePreviewHeader({ mainFile, targetLabel, compiledAt, comp
   diagnosticsDisabled?: boolean;
   /** The active Markdown file, which adds a rendered-preview tab. */
   markdownFile?: string;
+  /** Show a subtle edge progress indicator while a compilation is active. */
+  compiling?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const metaLabel = [sizeBytes == null ? "" : formatBytes(sizeBytes), compiledLabel ? t("editor.pdfUpdatedAt", { time: compiledLabel }) : ""].filter(Boolean).join(" · ");
@@ -27,5 +29,6 @@ export function WorkspacePreviewHeader({ mainFile, targetLabel, compiledAt, comp
       {diagnosticCount !== undefined && <button role="tab" disabled={diagnosticsDisabled} aria-label={t("editor.outputTabs")} title={diagnosticCount > 0 ? `${t("editor.outputTabs")} (${diagnosticCount})` : t("editor.outputTabs")} aria-selected={activeSurface === "diagnostics"} className={`diagnostics-tab${activeSurface === "diagnostics" ? " active" : ""}`} onClick={() => onSelect("diagnostics")}><ScrollText size={14} aria-hidden /><span className="diagnostics-tab-label">{t("editor.outputTabs")}</span><span className="diagnostic-count">{diagnosticCount}</span></button>}
     </div>
     {downloadUrl && <a className="pdf-download-top" href={downloadUrl} download title={t("editor.downloadPdf")} aria-label={t("editor.downloadPdf")}><Download size={15} aria-hidden /><span className="pdf-download-label">{t("editor.downloadPdf")}</span></a>}
+    {compiling && <span className="preview-compile-progress" aria-hidden="true" />}
   </div>;
 }

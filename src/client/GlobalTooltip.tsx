@@ -5,6 +5,7 @@ type TooltipPlacement = "above" | "below";
 interface TooltipState {
   seq: number;
   text: string;
+  shortcut?: string;
   content?: ReactNode;
   left: number;
   top: number;
@@ -78,6 +79,11 @@ function tooltipText(element: HTMLElement): string | null {
     ?? element.getAttribute("title")
     ?? element.getAttribute(savedTitleAttribute);
   return text?.trim() || null;
+}
+
+function tooltipShortcut(element: HTMLElement): string | undefined {
+  const shortcut = element.getAttribute("data-shortcut")?.trim();
+  return shortcut || undefined;
 }
 
 function tooltipTarget(target: EventTarget | null): HTMLElement | null {
@@ -189,6 +195,7 @@ export function GlobalTooltip() {
         setTooltip((current) => ({
           seq: current?.seq ?? ++seqRef.current,
           text,
+          shortcut: tooltipShortcut(next),
           content: tooltipContent(next),
           ...position,
           instant: current?.instant ?? true
@@ -220,6 +227,7 @@ export function GlobalTooltip() {
       setTooltip({
         seq,
         text,
+        shortcut: tooltipShortcut(next),
         content: tooltipContent(next),
         ...globalTooltipPosition(next.getBoundingClientRect(), window.innerWidth),
         instant
@@ -241,11 +249,13 @@ export function GlobalTooltip() {
       setTooltip((current) => current ? {
         ...current,
         text,
+        shortcut: tooltipShortcut(element),
         content: tooltipContent(element),
         ...position
       } : {
         seq: ++seqRef.current,
         text,
+        shortcut: tooltipShortcut(element),
         content: tooltipContent(element),
         ...position,
         instant: true
@@ -318,5 +328,8 @@ export function GlobalTooltip() {
   }, []);
 
   if (!tooltip) return null;
-  return <div key={tooltip.seq} ref={tooltipElement} id="texlite-global-tooltip" role="tooltip" data-instant={tooltip.instant ? "true" : undefined} className={`global-tooltip ${tooltip.placement}`} style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.content ?? tooltip.text}</div>;
+  const body = tooltip.content ?? (tooltip.shortcut
+    ? <span className="global-tooltip-row"><span>{tooltip.text}</span><kbd className="ui-kbd ui-kbd-tooltip">{tooltip.shortcut}</kbd></span>
+    : tooltip.text);
+  return <div key={tooltip.seq} ref={tooltipElement} id="texlite-global-tooltip" role="tooltip" data-instant={tooltip.instant ? "true" : undefined} className={`global-tooltip ${tooltip.placement}`} style={{ left: tooltip.left, top: tooltip.top }}>{body}</div>;
 }

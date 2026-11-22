@@ -18,6 +18,7 @@ import type { SelectionLineAction } from "../selectionLineActions";
 import { EditorTerminalLayout, type TerminalPanelRenderer } from "./EditorTerminalLayout";
 import { WorkspaceMobileSyncButton } from "./WorkspaceMobileSyncButton";
 import type { SourceJump } from "./useSyncTeX";
+import { formatShortcutKey } from "../shortcuts";
 
 const LatexEditor = lazy(() => import("../LatexEditor").then((module) => ({ default: module.LatexEditor })));
 
@@ -109,6 +110,7 @@ export function WorkspaceEditorPanel({
   const searchAction = !alternativeEditor ? (
     <button type="button" className="editor-context-action"
       title={t(readOnly ? "editor.search.findOnlyHint" : "editor.search.findReplaceHint")}
+      data-shortcut={formatShortcutKey("F")}
       aria-label={t(readOnly ? "editor.search.find" : "editor.search.findReplace")}
       onMouseDown={(event) => event.preventDefault()}
       onClick={() => setSearchRequest((value) => value + 1)}>
