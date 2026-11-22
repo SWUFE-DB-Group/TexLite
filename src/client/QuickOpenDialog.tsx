@@ -127,7 +127,7 @@ export function QuickOpenDialog({ open, files, commands = [], initialMode = "fil
     <div className="quick-open-dialog">
       <div className="quick-open-input-bar">
         <label>
-          {isCommandMode ? <ChevronRight size={16} aria-hidden="true" /> : <Search size={16} aria-hidden="true" />}
+          <Search size={16} aria-hidden="true" />
           <input ref={input} value={query} placeholder={t(isCommandMode ? "navigation.commandPlaceholder" : "navigation.filePlaceholder")} onChange={(event) => {
             const nextValue = event.target.value;
             setQuery(nextValue);
@@ -176,7 +176,6 @@ export function QuickOpenDialog({ open, files, commands = [], initialMode = "fil
               <kbd className="ui-kbd quick-open-mode-kbd">{fileShortcut}</kbd>
             </button>
             <button type="button" className={isCommandMode ? "active" : ""} aria-pressed={isCommandMode} title={t("navigation.commandPalette")} data-shortcut={commandShortcut} onMouseDown={(event) => event.preventDefault()} onClick={() => switchMode("commands")}>
-              <span className="quick-open-mode-prefix" aria-hidden="true">&gt;</span>
               <span>{t("navigation.commands")}</span>
               <kbd className="ui-kbd quick-open-mode-kbd">{commandShortcut}</kbd>
             </button>

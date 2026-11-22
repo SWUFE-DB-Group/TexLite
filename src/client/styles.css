@@ -2340,7 +2340,6 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .quick-open-mode-kbd { min-width: 0; padding: 1px 4px; font-size: 10px; opacity: .82; }
 .quick-open-mode-switch button.active .quick-open-mode-kbd { border-color: var(--ui-accent-border, #8eb89e); background: var(--ui-accent-bg, #e5f1ea); color: var(--ui-accent, #176b44); opacity: 1; }
 @media (max-width: 520px) { .quick-open-mode-kbd { display: none; } }
-.quick-open-mode-prefix { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; }
 .project-search-modal { height: min(740px, calc(var(--workspace-height, 100dvh) - 40px)); display: flex; flex-direction: column; }
 .project-search-modal > .dialog-header, .project-search-modal > .dialog-footer { flex: none; }
 .project-search-modal > .dialog-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }

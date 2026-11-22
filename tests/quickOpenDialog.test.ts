@@ -103,6 +103,8 @@ describe("QuickOpenDialog command mode", () => {
     expect(filesButton.querySelector("kbd")?.textContent).toBe("Ctrl+P");
     expect(commandsButton.querySelector("kbd")?.textContent).toBe("Ctrl+K");
     expect(input.value).toBe("> ");
+    expect(document.querySelector(".quick-open-input-bar .lucide-chevron-right")).toBeNull();
+    expect(commandsButton.textContent).not.toContain(">");
     expect(commandsButton.getAttribute("aria-pressed")).toBe("true");
     expect(document.querySelectorAll(".quick-open-results button")).toHaveLength(1);
     expect(document.querySelector(".quick-open-results button")?.textContent).toContain("Save and compile");
