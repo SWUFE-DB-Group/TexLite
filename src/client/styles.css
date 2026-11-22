@@ -709,6 +709,13 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .client-tool-recovery-actions button:disabled { cursor: not-allowed; opacity: .5; }
 .formatter-diagnostics-dismiss { width: 25px; height: 25px; display: grid; place-items: center; flex: none; border: 1px solid transparent; border-radius: 5px; padding: 0; background: transparent; color: var(--ui-warning, #8f5b0d); cursor: pointer; }
 .formatter-diagnostics-dismiss:hover { border-color: var(--ui-warning-border, #d5a553); background: var(--ui-hover, #fff1cd); }
+@media (max-width: 1100px) {
+  .client-tool-recovery { display: grid; grid-template-columns: 15px minmax(0, 1fr) auto; align-items: start; gap: 6px 8px; padding: 8px 12px; text-align: left; }
+  .client-tool-recovery > svg { grid-column: 1; grid-row: 1; margin-top: 2px; }
+  .client-tool-recovery > span { grid-column: 2; grid-row: 1; }
+  .client-tool-recovery > .formatter-diagnostics-dismiss { grid-column: 3; grid-row: 1; margin: -4px -4px 0 0; }
+  .client-tool-recovery > .client-tool-recovery-actions { grid-column: 2 / -1; grid-row: 2; flex-wrap: wrap; }
+}
 .editor-actions { display: flex; align-items: center; gap: 4px; }
 .topbar-divider { flex: none; width: 1px; height: 18px; margin-inline: 4px; background: rgb(255 255 255 / .14); }
 .workspace-header-accessory { display: contents; }
@@ -1229,7 +1236,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .preview-empty-uncompiled > strong { font-size: 15px; font-weight: 600; line-height: 1.4; }
 .preview-empty-uncompiled > p { max-width: 260px; margin: 8px 0 0; color: var(--ui-muted, #647168); font-size: 12px; line-height: 1.7; text-wrap: balance; }
 .preview-log, .preview-warnings, .preview-errors { overflow: auto; background: var(--ui-console-bg, #1c2220); color-scheme: dark; }
-.preview-clean { overflow: auto; background: var(--ui-surface, #f4f6f4); }
+.preview-clean { overflow: auto; background: var(--ui-surface, #f4f6f4); container: compile-clean / inline-size; }
 .preview-fonts { overflow: auto; background: var(--ui-surface, #fff); }
 .pdf-fonts-panel { padding: 16px; color: var(--ui-text, #30453a); font-size: 12px; }
 .pdf-fonts-dialog .dialog-header h2 { overflow-wrap: anywhere; }
@@ -1285,25 +1292,35 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .compile-empty.compile-error { color: var(--ui-console-error-text, #f6bab4); background: var(--ui-console-error-bg, #2a1d1d); }
 .compile-clean-panel { max-width: 820px; margin: 0 auto; padding: 24px; color: var(--ui-text, #30453a); }
 .compile-clean-intro { display: flex; align-items: flex-start; gap: 12px; padding: 15px; border: 1px solid var(--ui-warning-border, #e3d1a7); border-radius: 9px; background: var(--ui-surface, #fffaf0); color: var(--ui-warning, #80631f); box-shadow: 0 3px 12px #5c48100d; }
+.compile-clean-intro > svg { flex: none; margin-top: 1px; }
 .compile-clean-intro > div { min-width: 0; }
 .compile-clean-intro strong { display: block; font-size: 14px; }
 .compile-clean-intro p { margin: 5px 0 0; color: var(--ui-muted, #718078); font-size: 11px; line-height: 1.5; }
 .compile-clean-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
 .compile-clean-actions article { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--ui-border, #d4dfd7); border-radius: 8px; background: var(--ui-surface, #fff); }
+.compile-clean-actions article > div:last-child { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 .compile-clean-actions article.danger { border-color: var(--ui-danger-border, #e3c9c5); }
 .compile-clean-action-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 7px; background: var(--ui-subtle, #e7f2ea); color: var(--ui-accent, #28714a); }
 .compile-clean-actions article.danger .compile-clean-action-icon { background: var(--ui-subtle, #f8e8e6); color: var(--ui-danger, #a6433a); }
 .compile-clean-actions strong { color: var(--ui-text, #2d4638); font-size: 12px; }
 .compile-clean-actions article.danger strong { color: var(--ui-danger, #874039); }
-.compile-clean-action-heading { display: flex; align-items: center; gap: 4px; }
+.compile-clean-action-heading { display: flex; align-items: center; gap: 4px; max-width: 100%; }
+.compile-clean-action-heading strong { min-width: 0; overflow-wrap: anywhere; }
 .compile-clean-help { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ui-muted, #718078); }
 .compile-clean-help:hover { background: var(--ui-hover, #edf2ee); color: var(--ui-text, #30453a); }
 .compile-clean-help:focus-visible { outline: 2px solid var(--ui-accent, #28714a); outline-offset: 1px; }
-.compile-clean-operation { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; padding: 6px 10px; border: 1px solid var(--ui-border, #b8d1bd); border-radius: 5px; background: var(--ui-surface, #f0f8f1); color: var(--ui-accent, #21633d); font-size: 11px; }
+.compile-clean-operation { display: inline-flex; align-items: center; gap: 5px; margin-top: auto; max-width: 100%; padding: 6px 10px; border: 1px solid var(--ui-border, #b8d1bd); border-radius: 5px; background: var(--ui-surface, #f0f8f1); color: var(--ui-accent, #21633d); font-size: 11px; }
 .compile-clean-operation:hover:not(:disabled) { border-color: var(--ui-accent-border, #79aa86); background: var(--ui-hover, #e3f2e6); }
 .compile-clean-operation.danger { border-color: var(--ui-danger-border, #e2b9b4); background: var(--ui-surface, #fff4f2); color: var(--ui-danger, #a23d35); }
 .compile-clean-operation.danger:hover:not(:disabled) { border-color: var(--ui-danger-border, #c8837a); background: var(--ui-hover, #fce7e4); }
 .compile-clean-operation:disabled { cursor: not-allowed; opacity: .45; }
+@container compile-clean (max-width: 560px) {
+  .compile-clean-panel { padding: 14px; }
+  .compile-clean-intro { padding: 12px; gap: 10px; }
+  .compile-clean-intro > svg { width: 22px; height: 22px; }
+  .compile-clean-actions { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .compile-clean-actions article > div:last-child > .compile-clean-operation { align-self: stretch; justify-content: center; }
+}
 .compile-diagnostic-list { min-height: 100%; padding: 8px; background: var(--ui-console-bg, #1c2220); overflow: auto; color-scheme: dark; }
 .compile-diagnostic-list.compile-warning { background: var(--ui-console-warning-bg, #27231a); }
 .compile-diagnostic-list.compile-error { background: var(--ui-console-error-bg, #2a1d1d); }
@@ -2678,6 +2695,9 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   .editor-topbar .project-heading { flex: 1 1 80px; min-width: 80px; max-width: 160px; }
   .editor-topbar .collaboration-presence { gap: 4px; padding-left: 0; }
   .editor-topbar .collaboration-avatar { width: 24px; height: 24px; margin-left: -12px; font-size: 10px; }
+  .editor-topbar .collaboration-recovery { margin: 0; max-width: 100%; }
+  .editor-topbar .collaboration-recovery > span { overflow: hidden; text-overflow: ellipsis; }
+  .editor-topbar .collaboration-recovery button { flex: none; }
   .editor-actions { gap: 3px; }
   .editor-actions > button { min-width: 34px; padding-inline: 6px; }
   .editor-actions .layout-trigger { min-width: 0; padding-inline: 9px; }
@@ -2866,6 +2886,11 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
   }
   .panel-title .file-tools button { width: var(--ui-touch-target); height: var(--ui-touch-target); }
   .files-panel > .panel-title { height: auto; min-height: var(--ui-touch-target); }
+  .compile-clean-help { width: var(--ui-touch-target); height: var(--ui-touch-target); margin: -10px -8px -10px 0; }
+  .compile-clean-operation { min-height: var(--ui-touch-target); padding-inline: 14px; font-size: 13px; }
+  .collaboration-recovery button { min-height: 32px; padding: 4px 10px; }
+  .client-tool-recovery-actions button { min-height: 36px; padding-inline: 12px; }
+  .client-tool-recovery .formatter-diagnostics-dismiss { width: 36px; height: 36px; }
   @container workspace-files (max-width: 200px) {
     .files-panel > .panel-title { flex-wrap: wrap; padding-block: 4px; }
     .panel-title .file-tools { width: 100%; justify-content: space-between; }
