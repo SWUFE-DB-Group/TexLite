@@ -159,7 +159,7 @@ describe("terminal appearance", () => {
     expect(MockSocket.instances).toHaveLength(1);
   });
 
-  it("offers a separate settings tab and saves through the header without touching editor/compiler settings", async () => {
+  it("offers a separate settings tab and applies terminal changes immediately without touching editor/compiler settings", async () => {
     const onEditorPreferences = vi.fn(); const onProject = vi.fn();
     const project: Project = { id: "paper", ownerId: "owner", lastModifiedBy: null, name: "Paper", mainFile: "main.tex", latexmkrc: null,
       engine: "xelatex", icon: null, chktexEnabled: false, permission: "read", tags: [], createdAt: "2026-10-26", updatedAt: "2026-10-26" };
@@ -174,22 +174,18 @@ describe("terminal appearance", () => {
     const reminder = panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     expect(reminder.checked).toBe(true);
     await act(async () => reminder.click());
-    expect(currentTerminalPreferences().showExecutionReminder).toBe(true);
+    expect(currentTerminalPreferences().showExecutionReminder).toBe(false);
     const [theme, font, size] = panel.querySelectorAll("select");
     expect([...theme.options].map((option) => option.value)).toEqual(["default", "catppuccin-latte", "gruvbox-dark"]);
     expect(font.options).toHaveLength(6);
     await act(async () => { theme.value = "gruvbox-dark"; theme.dispatchEvent(new Event("change", { bubbles: true })); });
     await act(async () => { size.value = "18"; size.dispatchEvent(new Event("change", { bubbles: true })); });
-    expect(currentTerminalPreferences().fontSize).toBe(13);
+    expect(currentTerminalPreferences().fontSize).toBe(18);
     expect((panel.querySelector("pre") as HTMLElement).style.fontSize).toBe("18px");
     expect((panel.querySelector("pre") as HTMLElement).style.lineHeight).toBe(String(terminalLineHeight));
-    expect(currentTerminalPreferences().theme).toBe("default");
+    expect(currentTerminalPreferences().theme).toBe("gruvbox-dark");
     expect((panel.querySelector("pre") as HTMLElement).style.getPropertyValue("--terminal-bg")).toBe(terminalThemes["gruvbox-dark"].colors.background);
     expect((panel.querySelector("pre") as HTMLElement).style.getPropertyValue("--terminal-fg")).toBe(terminalThemes["gruvbox-dark"].colors.foreground);
-    await act(async () => container.querySelector<HTMLButtonElement>(".drawer-settings-save")!.click());
-    expect(currentTerminalPreferences().fontSize).toBe(18);
-    expect(currentTerminalPreferences().theme).toBe("gruvbox-dark");
-    expect(currentTerminalPreferences().showExecutionReminder).toBe(false);
     expect(onEditorPreferences).not.toHaveBeenCalled(); expect(onProject).not.toHaveBeenCalled();
     await act(async () => container.querySelector<HTMLButtonElement>("#settings-tab-appearance")!.click());
     expect(container.querySelector("#settings-panel-appearance")).not.toBeNull();

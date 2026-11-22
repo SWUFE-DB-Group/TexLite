@@ -35,6 +35,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 const status = () => host.querySelector(".operation-success")?.textContent;
+const autosaveFeedback = () => host.querySelector(".settings-autosave-status")?.textContent;
 const saveFeedback = () => host.querySelector(".drawer-settings-save span")?.textContent;
 const click = (selector: string) => act(async () => host.querySelector<HTMLButtonElement>(selector)!.click());
 function changeText(input: HTMLInputElement, value: string) {
@@ -90,43 +91,46 @@ describe("settings save feedback", () => {
     expect(groupOf("projectSettings.texFmtOptions")).toBe(4);
   });
 
-  it("uses a compact shared header label while keeping each tab's bottom save label", async () => {
-    await settings();
-    for (const [tab, bottomKey] of [["appearance", "saveAppearance"], ["terminal", "saveTerminal"], ["compiler", "saveCompiler"]]) {
-      await click(`#settings-tab-${tab}`);
-      expect(host.querySelector(".drawer-settings-save")?.textContent).toBe("common.save");
-      expect(host.querySelector(`#settings-panel-${tab} .settings-save`)?.textContent).toBe(`projectSettings.${bottomKey}`);
-    }
+  it("auto-applies local editor and terminal preferences immediately and keeps explicit save for compiler settings", async () => {
+    const onEditorPreferences = vi.fn();
+    await settings(onEditorPreferences);
+    expect(host.querySelector(".drawer-settings-save")).toBeNull();
+    expect(host.querySelector("#settings-panel-appearance .settings-save")).toBeNull();
+    await click('#settings-panel-appearance input[type="checkbox"]');
+    expect(onEditorPreferences).toHaveBeenCalledOnce();
+    expect(autosaveFeedback()).toBe("editor.saved");
+    expect(status()).toBeUndefined();
+    await act(async () => vi.advanceTimersByTime(2000));
+    expect(autosaveFeedback()).toBeUndefined();
+
+    await click("#settings-tab-terminal");
+    expect(host.querySelector(".drawer-settings-save")).toBeNull();
+    expect(host.querySelector("#settings-panel-terminal .settings-save")).toBeNull();
+    await click('#settings-panel-terminal input[type="checkbox"]');
+    expect(autosaveFeedback()).toBe("editor.saved");
+    await act(async () => vi.advanceTimersByTime(2000));
+    expect(autosaveFeedback()).toBeUndefined();
+
+    await click("#settings-tab-compiler");
+    expect(host.querySelector(".drawer-settings-save")?.textContent).toBe("common.save");
+    expect(host.querySelector("#settings-panel-compiler .settings-save")?.textContent).toBe("projectSettings.saveCompiler");
   });
-  it.each(["appearance", "terminal"].flatMap((tab) => [".drawer-settings-save", ".settings-save"].map((button) => ({ tab, button }))))(
-    "confirms $tab on both save buttons through $button and restores their labels after two seconds", async ({ tab, button }) => {
-      await settings();
-      await click(`#settings-tab-${tab}`);
-      await click(button);
-      expect(saveFeedback()).toBe("editor.saved");
-      expect(host.querySelector(".settings-save")?.textContent).toBe("editor.saved");
-      expect(status()).toBeUndefined();
-      await act(async () => vi.advanceTimersByTime(2000));
-      expect(saveFeedback()).toBe("common.save");
-      expect(host.querySelector(".settings-save")?.textContent).toBe(`projectSettings.${tab === "terminal" ? "saveTerminal" : "saveAppearance"}`);
-    }
-  );
 
   it("reports local-storage failures without claiming that terminal preferences were saved", async () => {
     await settings(); await click("#settings-tab-terminal");
     vi.spyOn(window.localStorage, "setItem").mockImplementation(() => { throw new Error("Quota exceeded"); });
-    await click(".drawer-settings-save");
-    expect(saveFeedback()).toBe("common.save");
+    await click('#settings-panel-terminal input[type="checkbox"]');
+    expect(autosaveFeedback()).toBeUndefined();
     expect(status()).toBeUndefined();
     expect(host.querySelector(".error")?.textContent).toBe("projectSettings.appearanceSaveFailed");
   });
 
   it("clears stale success when saving editor preferences fails", async () => {
     const save = vi.fn(); await settings(save);
-    await click(".drawer-settings-save"); expect(saveFeedback()).toBe("editor.saved");
+    await click('#settings-panel-appearance input[type="checkbox"]'); expect(autosaveFeedback()).toBe("editor.saved");
     save.mockImplementationOnce(() => { throw new Error("Storage disabled"); });
-    await click(".drawer-settings-save");
-    expect(saveFeedback()).toBe("common.save"); expect(host.querySelector(".error")?.textContent).toBe("projectSettings.appearanceSaveFailed");
+    await click('#settings-panel-appearance input[type="checkbox"]');
+    expect(autosaveFeedback()).toBeUndefined(); expect(host.querySelector(".error")?.textContent).toBe("projectSettings.appearanceSaveFailed");
   });
 
   it("confirms compiler settings only after the server accepts them and blocks duplicate saves", async () => {
@@ -158,10 +162,9 @@ describe("settings save feedback", () => {
 
   it("does not show another tab's success, including a compiler response arriving after switching tabs", async () => {
     await settings();
-    await click(".drawer-settings-save");
+    await click('#settings-panel-appearance input[type="checkbox"]');
     await click("#settings-tab-terminal");
-    expect(saveFeedback()).toBe("common.save");
-    expect(host.querySelector(".settings-save")?.textContent).toBe("projectSettings.saveTerminal");
+    expect(autosaveFeedback()).toBeUndefined();
     await click("#settings-tab-compiler");
     await click('#settings-panel-compiler input[type="checkbox"]');
     let resolve!: (value: { project: Project }) => void;
@@ -169,7 +172,7 @@ describe("settings save feedback", () => {
     await click(".drawer-settings-save");
     await click("#settings-tab-terminal");
     await act(async () => resolve({ project: { ...project, chktexEnabled: true } }));
-    expect(saveFeedback()).toBe("common.save");
+    expect(autosaveFeedback()).toBeUndefined();
     await click("#settings-tab-compiler");
     expect(saveFeedback()).toBe("editor.saved");
     await act(async () => vi.advanceTimersByTime(2000));
@@ -177,14 +180,14 @@ describe("settings save feedback", () => {
     expect(host.querySelector(".settings-save")?.textContent).toBe("projectSettings.saveCompiler");
   });
 
-  it("restarts button feedback for consecutive saves instead of clearing at the first save's deadline", async () => {
-    await settings(); await click(".drawer-settings-save");
+  it("restarts feedback for consecutive changes instead of clearing at the first deadline", async () => {
+    await settings(); await click('#settings-panel-appearance input[type="checkbox"]');
     await act(async () => vi.advanceTimersByTime(1500));
-    await click(".drawer-settings-save");
+    await click('#settings-panel-appearance input[type="checkbox"]');
     await act(async () => vi.advanceTimersByTime(500));
-    expect(saveFeedback()).toBe("editor.saved");
+    expect(autosaveFeedback()).toBe("editor.saved");
     await act(async () => vi.advanceTimersByTime(1500));
-    expect(saveFeedback()).toBe("common.save");
+    expect(autosaveFeedback()).toBeUndefined();
   });
 
   it("confirms a project tag edit inside its management dialog", async () => {

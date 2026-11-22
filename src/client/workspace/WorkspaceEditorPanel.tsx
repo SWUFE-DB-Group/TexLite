@@ -1,5 +1,5 @@
-import { lazy, Suspense, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { LoaderCircle } from "lucide-react";
+import { lazy, Suspense, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { AlignLeft, LoaderCircle, Search } from "lucide-react";
 import { EditorTabs } from "./EditorTabs";
 import { TikzCompileButton } from "./TikzCompileButton";
 import type { LatexEngine, TikzFigurePdfState } from "./useTikzFigurePdf";
@@ -31,9 +31,19 @@ export interface WorkspaceFigurePdf {
   onCompile: () => void;
 }
 
+/** Offered while the open file is a formattable TeX/BibTeX source the user may edit. */
+export interface WorkspaceFormatControls {
+  busy: boolean;
+  disabled: boolean;
+  hasSelection: boolean;
+  onFormatFile: () => void;
+  onFormatSelection: () => void;
+}
+
 export interface WorkspaceEditorPanelProps {
   alternativeEditor?: ReactNode;
   figurePdf?: WorkspaceFigurePdf | null;
+  formatControls?: WorkspaceFormatControls | null;
   mobileSync?: { disabled: boolean; onClick: () => Promise<void>; label?: string };
   terminal?: TerminalPanelRenderer | null;
   project: Project;
@@ -82,9 +92,10 @@ export function WorkspaceEditorPanel({
   editorPreferences, completionIndex, nativeSpellCheck, spellCheckIssues, spellCheckJump, sourceJump, onSourceJumpHandled,
   collaborativeText, collaborationAwareness, undoManager, editorNotice, activateTab, closeTab,
   handleTabKeyDown, reorderTab, updateEditorContent, setSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor, terminal, mobileSync,
-  alternativeEditor, figurePdf = null, agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
+  alternativeEditor, figurePdf = null, formatControls = null, agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: WorkspaceEditorPanelProps) {
   const { t } = useTranslation();
+  const [searchRequest, setSearchRequest] = useState(0);
   // Comment offsets are meaningful only for the source document which
   // produced them. Keep a late response or cross-file review selection from
   // decorating the newly mounted editor tab.
@@ -94,15 +105,46 @@ export function WorkspaceEditorPanel({
   // changes only readOnly, so it keeps the same editor and history.
   const editorKey = `${activeFile}:${undoManager ? "undo" : "no-undo"}`;
   const collaboration = collaborativeText ? { text: collaborativeText, awareness: collaborationAwareness, undoManager } : undefined;
+  const showTabs = !alternativeEditor && editorPreferences.openFilesInTabs && openTabs.length > 0;
+  const searchAction = !alternativeEditor ? (
+    <button type="button" className="editor-context-action"
+      title={t(readOnly ? "editor.search.findOnlyHint" : "editor.search.findReplaceHint")}
+      aria-label={t(readOnly ? "editor.search.find" : "editor.search.findReplace")}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => setSearchRequest((value) => value + 1)}>
+      <Search size={12} aria-hidden="true" />
+      <span className="editor-context-action-label">{t(readOnly ? "editor.search.find" : "editor.search.findReplace")}</span>
+    </button>
+  ) : null;
+  const formatAction = !alternativeEditor && formatControls ? (
+    <button type="button" className={`editor-context-action${formatControls.hasSelection ? " is-selection" : ""}`}
+      title={t(formatControls.hasSelection ? "editor.formatSelection" : "editor.formatFileHint")}
+      aria-label={t(formatControls.hasSelection ? "editor.formatSelection" : "editor.formatFileHint")}
+      aria-busy={formatControls.busy}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={formatControls.hasSelection ? formatControls.onFormatSelection : formatControls.onFormatFile}
+      disabled={formatControls.disabled}>
+      {formatControls.busy ? <LoaderCircle className="spin" size={12} aria-hidden="true" /> : <AlignLeft size={12} aria-hidden="true" />}
+      <span className="editor-context-action-label">{t(formatControls.hasSelection ? "editor.formatSelection" : "editor.formatDocument")}</span>
+    </button>
+  ) : null;
+  const editorContextActions = searchAction || formatAction ? (
+    <>
+      {searchAction}
+      {searchAction && formatAction && <span className="editor-actions-divider" aria-hidden="true" />}
+      {formatAction}
+    </>
+  ) : null;
+  const showContextBar = Boolean(figurePdf) || (!showTabs && Boolean(editorContextActions));
   return <Panel id="source" minSize="22%">
-    <EditorTerminalLayout terminal={terminal} tabs={!alternativeEditor && editorPreferences.openFilesInTabs && openTabs.length > 0 && (
-        <EditorTabs openTabs={openTabs} activeFile={activeFile} projectMainFile={project.mainFile} activateTab={activateTab} closeTab={closeTab} handleTabKeyDown={handleTabKeyDown} reorderTab={reorderTab} />
+    <EditorTerminalLayout terminal={terminal} tabs={showTabs && (
+        <EditorTabs openTabs={openTabs} activeFile={activeFile} projectMainFile={project.mainFile} activateTab={activateTab} closeTab={closeTab} handleTabKeyDown={handleTabKeyDown} reorderTab={reorderTab} actions={editorContextActions} />
       )}>
       {alternativeEditor || <div id="editor-source-content" className="editor-content-container editor-content-column">
-        {figurePdf && <div className="figure-pdf-bar"><TikzCompileButton {...figurePdf} /></div>}
+        {showContextBar && <div className="figure-pdf-bar">{!showTabs && editorContextActions}{figurePdf && <TikzCompileButton {...figurePdf} />}</div>}
         <div className="editor-content-fill">
         <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
-          <LatexEditor key={editorKey} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={0} collaboration={collaboration} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
+          <LatexEditor key={editorKey} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={searchRequest} collaboration={collaboration} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
             onSourceJumpHandled={onSourceJumpHandled}
             agentChanges={agentChanges} activeAgentChangeId={activeAgentChangeId} agentChangeReveal={agentChangeReveal} onAgentChangesStale={onAgentChangesStale} onOpenAgentChange={onOpenAgentChange} />
         </Suspense>

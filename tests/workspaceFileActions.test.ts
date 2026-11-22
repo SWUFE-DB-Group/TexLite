@@ -33,15 +33,15 @@ function panelProps(readOnly: boolean): WorkspaceFilePanelProps {
       { path: "data", type: "directory" }, { path: "main.tex", type: "file" }, { path: "data/论文 & notes.txt", type: "file" }
     ], activeFile: "main.tex", activeMainFile: "main.tex", selectedFile: "main.tex", selectedFolder: null,
     expandedFolders: new Set(["data"]), fileDragActive: false, uploadingFiles: false, uploadFeedback: null,
-    readOnly, formatting: false, canFormat: false, activeFormatLease: false, collaborationSynced: true,
+    readOnly,
     editorFontSize: 14, outline: [], sourceCursorStore: createSourceCursorStore(), wordCountBusy: false,
-    hasSelection: false, hasFormatSelection: false, uploadInput: { current: null },
+    hasSelection: false, uploadInput: { current: null },
     setSelectedFolder: noop, setExpandedFolders: noop, setMoveEntry: noop, setMoveName: noop,
     setMoveDestination: noop, setDeleteEntry, setFileDialogError: noop, setNewFolderName: noop,
     setNewFolderOpen: noop, setNewFilePath: noop, setNewFileOpen: noop, tikzGalleryEnabled: true, setTikzGalleryOpen: noop, setQuickOpen: noop,
     setFileDragActive: noop, dismissUploadFeedback: noop, setFilesCollapsed: noop, onError: noop,
     uploadFiles: asyncNoop, refreshFiles: noop, upload: asyncNoop, openFile: noop, movePathToFolder: asyncNoop, copyPath,
-    onFormatFile: noop, onFormatSelection: noop, jumpToSource: noop, syncSourceToPdf: asyncNoop, onWordCount: noop
+    jumpToSource: noop, syncSourceToPdf: asyncNoop, onWordCount: noop
   };
   return props;
 }

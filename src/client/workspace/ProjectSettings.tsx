@@ -179,24 +179,25 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       }
     }
   };
-  const saveAppearanceSettings = () => {
-    savedNotice.clear(); setError("");
+  const applyAppearancePreferences = (next: EditorPreferences) => {
+    setAppearancePreferences(next);
+    savedNotice.clear();
+    setError("");
     try {
-      onEditorPreferences(appearancePreferences);
+      onEditorPreferences(next);
       confirmSave("appearance");
-    } catch { setError(t("projectSettings.appearanceSaveFailed")); }
+    } catch {
+      setError(t("projectSettings.appearanceSaveFailed"));
+    }
   };
-  const saveTerminalSettings = () => {
-    savedNotice.clear(); setError("");
-    if (saveTerminalPreferences(terminalDraft)) confirmSave("terminal");
+  const applyTerminalPreferences = (next: typeof terminalDraft) => {
+    setTerminalDraft(next);
+    savedNotice.clear();
+    setError("");
+    if (saveTerminalPreferences(next)) confirmSave("terminal");
     else setError(t("projectSettings.appearanceSaveFailed"));
   };
-  const saveCurrentSettings = () => {
-    if (settingsTab === "appearance") return saveAppearanceSettings();
-    if (settingsTab === "terminal") return saveTerminalSettings();
-    if (canManage) void saveCompilerSettings();
-  };
-  const canSaveCurrentTab = settingsTab !== "compiler" || canManage;
+  const showCompilerSave = settingsTab === "compiler" && canManage;
   const addDictionaryWord = async () => {
     const word = dictionaryValue.trim();
     if (!word) return;
@@ -216,7 +217,9 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       setDictionaryError("");
     } catch (requestError) { setDictionaryError(errorMessage(requestError)); }
   };
-  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{canSaveCurrentTab && <SaveButton className="drawer-settings-save" feedback={saveFeedback} saving={settingsTab === "compiler" && savingCompiler} onClick={saveCurrentSettings}>{t("common.save")}</SaveButton>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div>
+  return <><div className="drawer-title settings-drawer-title"><strong>{t("editor.projectSettings")}</strong><div className="drawer-title-actions">{showCompilerSave
+    ? <SaveButton className="drawer-settings-save" feedback={saveFeedback} saving={savingCompiler} onClick={() => void saveCompilerSettings()}>{t("common.save")}</SaveButton>
+    : saveFeedback && <span className="settings-autosave-status" role="status" aria-live="polite"><CheckCircle2 size={13} aria-hidden="true" /><span>{saveFeedback}</span></span>}<button type="button" aria-label={t("common.close")} onClick={onClose}><X size={17} /></button></div></div>
     <div className="settings project-settings padded">
     {error && <p className="error">{error}</p>}
     <div className="settings-tabs" role="tablist" aria-label={t("common.settings")}>
@@ -234,34 +237,34 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       <div className="settings-section-title"><Type size={15} /><strong>{t("projectSettings.editorTab")}</strong></div>
       <p className="settings-description appearance-description">{t("projectSettings.editorAppearanceDescription")}</p>
       <SettingsGroup id="settings-group-appearance" icon={<Palette size={15} aria-hidden />} title={t("projectSettings.groupAppearance")}>
-        <label>{t("projectSettings.fontFamily")}<select value={appearancePreferences.font} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, font: event.target.value as EditorPreferences["font"] })}>{editorFonts.map((font) => <option value={font.id} key={font.id}>{t(font.labelKey)}</option>)}</select></label>
-        <label>{t("projectSettings.fontSize")}<select value={appearancePreferences.fontSize} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, fontSize: Number(event.target.value) })}>{[12, 13, 14, 15, 16, 18, 20].map((size) => <option value={size} key={size}>{size} px</option>)}</select></label>
-        <label>{t("projectSettings.lineHeight")}<select value={appearancePreferences.lineHeight} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineHeight: Number(event.target.value) })}><option value={1.45}>{t("projectSettings.lineHeightCompact")}</option><option value={1.65}>{t("projectSettings.lineHeightNormal")}</option><option value={1.85}>{t("projectSettings.lineHeightRelaxed")}</option></select></label>
-        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.lineWrapping} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, lineWrapping: event.target.checked })} /><WrapText size={15} /><span>{t("projectSettings.lineWrapping")}</span></label>
+        <label>{t("projectSettings.fontFamily")}<select value={appearancePreferences.font} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, font: event.target.value as EditorPreferences["font"] })}>{editorFonts.map((font) => <option value={font.id} key={font.id}>{t(font.labelKey)}</option>)}</select></label>
+        <label>{t("projectSettings.fontSize")}<select value={appearancePreferences.fontSize} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, fontSize: Number(event.target.value) })}>{[12, 13, 14, 15, 16, 18, 20].map((size) => <option value={size} key={size}>{size} px</option>)}</select></label>
+        <label>{t("projectSettings.lineHeight")}<select value={appearancePreferences.lineHeight} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, lineHeight: Number(event.target.value) })}><option value={1.45}>{t("projectSettings.lineHeightCompact")}</option><option value={1.65}>{t("projectSettings.lineHeightNormal")}</option><option value={1.85}>{t("projectSettings.lineHeightRelaxed")}</option></select></label>
+        <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.lineWrapping} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, lineWrapping: event.target.checked })} /><WrapText size={15} /><span>{t("projectSettings.lineWrapping")}</span></label>
       </SettingsGroup>
       <SettingsGroup id="settings-group-editing" icon={<PencilLine size={15} aria-hidden />} title={t("projectSettings.groupEditing")}>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.openFilesInTabs} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, openFilesInTabs: event.target.checked })} /><PanelsTopLeft size={15} /><span>{t("projectSettings.openFilesInTabs")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.openFilesInTabs} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, openFilesInTabs: event.target.checked })} /><PanelsTopLeft size={15} /><span>{t("projectSettings.openFilesInTabs")}</span></label>
         </div>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.showTooltips} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, showTooltips: event.target.checked })} /><MessageCircleQuestion size={15} /><span>{t("projectSettings.showTooltips")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.showTooltips} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, showTooltips: event.target.checked })} /><MessageCircleQuestion size={15} /><span>{t("projectSettings.showTooltips")}</span></label>
         </div>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><Keyboard size={15} /><span>{t("projectSettings.vimMode")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><Keyboard size={15} /><span>{t("projectSettings.vimMode")}</span></label>
           <p className="field-hint">{t("projectSettings.vimModeDescription")} <a href="https://replit-codemirror-vim.mintlify.app/" target="_blank" rel="noreferrer">{t("projectSettings.vimHelp")}</a></p>
         </div>
       </SettingsGroup>
       <SettingsGroup id="settings-group-previews" icon={<Eye size={15} aria-hidden />} title={t("projectSettings.groupPreviews")}>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.mathPreviewOnHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, mathPreviewOnHover: event.target.checked })} /><Sigma size={15} /><span>{t("projectSettings.mathPreviewOnHover")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.mathPreviewOnHover} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, mathPreviewOnHover: event.target.checked })} /><Sigma size={15} /><span>{t("projectSettings.mathPreviewOnHover")}</span></label>
         </div>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.citationHover} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, citationHover: event.target.checked })} /><BookMarked size={15} /><span>{t("projectSettings.citationHover")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.citationHover} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, citationHover: event.target.checked })} /><BookMarked size={15} /><span>{t("projectSettings.citationHover")}</span></label>
         </div>
       </SettingsGroup>
       <SettingsGroup id="settings-group-writing" icon={<SpellCheck2 size={15} aria-hidden />} title={t("projectSettings.groupWriting")}>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><SpellCheck size={15} /><span>{t("projectSettings.spellCheck")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.spellCheck} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, spellCheck: event.target.checked })} /><SpellCheck size={15} /><span>{t("projectSettings.spellCheck")}</span></label>
           <p className="field-hint">{t("projectSettings.writingCheckDescription")} <a href="https://writewithharper.com/docs/integrations/language-server" target="_blank" rel="noreferrer">Harper</a></p>
           {spellCheckCount !== null && <div className={`spell-check-result${spellCheckCount ? " has-issues" : ""}`} role="status" aria-live="polite"><SpellCheck2 size={14} /><span>{spellCheckCount ? t("projectSettings.writingIssues", { count: spellCheckCount, uniqueCount: spellCheckUniqueCount ?? 0 }) : t("chktex.noIssues")}</span>{spellCheckCount > 0 && <span className="spell-check-controls"><button type="button" title={t("projectSettings.spellCheckFirst")} aria-label={t("projectSettings.spellCheckFirst")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(0)}><ChevronsLeft size={14} /></button><button type="button" title={t("projectSettings.spellCheckPrevious")} aria-label={t("projectSettings.spellCheckPrevious")} disabled={spellCheckIndex <= 0} onClick={() => onSpellCheckNavigate(spellCheckIndex - 1)}><ChevronLeft size={14} /></button><span className="spell-check-position">{t("projectSettings.spellCheckPosition", { current: Math.min(spellCheckIndex + 1, spellCheckCount), total: spellCheckCount })}</span><button type="button" title={t("projectSettings.spellCheckNext")} aria-label={t("projectSettings.spellCheckNext")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckIndex + 1)}><ChevronRight size={14} /></button><button type="button" title={t("projectSettings.spellCheckLast")} aria-label={t("projectSettings.spellCheckLast")} disabled={spellCheckIndex >= spellCheckCount - 1} onClick={() => onSpellCheckNavigate(spellCheckCount - 1)}><ChevronsRight size={14} /></button></span>}</div>}
         </div>
@@ -277,16 +280,15 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
       </SettingsGroup>
       <SettingsGroup id="settings-group-formatting" icon={<AlignLeft size={15} aria-hidden />} title={t("projectSettings.groupFormatting")}>
         <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" disabled={!canEdit} checked={appearancePreferences.formatOnCompile} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, formatOnCompile: event.target.checked })} /><AlignLeft size={15} /><span>{t("projectSettings.formatOnCompile")}</span></label>
+          <label className="editor-checkbox"><input type="checkbox" disabled={!canEdit} checked={appearancePreferences.formatOnCompile} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, formatOnCompile: event.target.checked })} /><AlignLeft size={15} /><span>{t("projectSettings.formatOnCompile")}</span></label>
           <p className="field-hint">{t("projectSettings.formatterDescription")} <a href="https://www.npmjs.com/package/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a> · <a href="https://github.com/FlamingTempura/bibtex-tidy" target="_blank" rel="noreferrer">{t("projectSettings.bibtexTidyInstall")}</a>{!canEdit && <> {t("projectSettings.formatRequiresWrite")}</>}</p>
         </div>
         <div className="editor-preference">
-          <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
+          <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
         </div>
       </SettingsGroup>
-      <div className="settings-actions"><SaveButton className="settings-save" feedback={saveFeedback} onClick={saveAppearanceSettings}>{t("projectSettings.saveAppearance")}</SaveButton></div>
     </section> : settingsTab === "terminal"
-      ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={setTerminalDraft} onSave={saveTerminalSettings} saveFeedback={saveFeedback} />
+      ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={applyTerminalPreferences} />
       : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
       <div className="settings-section-title"><Settings size={15} /><strong>{t("projectSettings.compilerTab")}</strong></div>
       <p className="settings-description compiler-description">{t("projectSettings.compilerDescription")}</p>

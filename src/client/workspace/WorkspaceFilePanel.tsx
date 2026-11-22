@@ -1,6 +1,6 @@
 import { formatBytes } from "../formatBytes";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FilePlus2, FolderOpen, Hash, ListTree, LoaderCircle, Move, Trash2, Upload, WandSparkles, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FilePlus2, FolderOpen, Hash, ListTree, LoaderCircle, Move, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type AnimationEvent, type ChangeEvent, type DragEvent, type RefObject } from "react";
 import { Panel, type PanelImperativeHandle } from "react-resizable-panels";
 import type { FileEntry, Project } from "../types";
@@ -43,10 +43,6 @@ export interface WorkspaceFilePanelProps {
   uploadingFiles: boolean;
   uploadFeedback: UploadFeedback | null;
   readOnly: boolean;
-  formatting: boolean;
-  canFormat: boolean;
-  activeFormatLease: boolean;
-  collaborationSynced: boolean;
   editorFontSize: number;
   outline: ProjectOutlineItem[];
   sourceCursorStore: SourceCursorStore;
@@ -54,7 +50,6 @@ export interface WorkspaceFilePanelProps {
   plainWordCount?: boolean;
   canCountFull?: boolean;
   hasSelection: boolean;
-  hasFormatSelection: boolean;
   uploadInput: RefObject<HTMLInputElement | null>;
   setSelectedFolder: (folder: string | null) => void;
   setExpandedFolders: (updater: (current: Set<string>) => Set<string>) => void;
@@ -82,8 +77,6 @@ export interface WorkspaceFilePanelProps {
   movePathToFolder: (entry: FileEntry, destinationDirectory: string) => Promise<void>;
   /** Duplicate a file beside itself as "name (copy).ext". */
   copyPath: (entry: FileEntry) => Promise<void>;
-  onFormatFile: () => void;
-  onFormatSelection: () => void;
   jumpToSource: (path: string, line: number, column: number) => void;
   syncSourceToPdf?: (path: string, line: number, column: number) => Promise<void>;
   onWordCount: (mode: WordCountMode) => void;
@@ -92,12 +85,12 @@ export interface WorkspaceFilePanelProps {
 export function WorkspaceFilePanel({
   phoneDrawer, drawioEditorUrl,
   project, filesPanel, visibleEntries, deletedPath = null, activeFile, activeMainFile, selectedFile, selectedFolder,
-  expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly, formatting, canFormat, activeFormatLease, collaborationSynced,
-  editorFontSize, outline, sourceCursorStore, wordCountBusy, plainWordCount, canCountFull, hasSelection, hasFormatSelection, uploadInput,
+  expandedFolders, fileDragActive, uploadingFiles, uploadFeedback, readOnly,
+  editorFontSize, outline, sourceCursorStore, wordCountBusy, plainWordCount, canCountFull, hasSelection, uploadInput,
   setSelectedFolder, setExpandedFolders, setMoveEntry, setMoveName, setMoveDestination,
   setDeleteEntry, setFileDialogError, setNewFolderName, setNewFolderOpen, setNewFilePath, setNewFileOpen, tikzGalleryEnabled, setTikzGalleryOpen,
   setQuickOpen, setFileDragActive, dismissUploadFeedback, setFilesCollapsed, uploadFiles, refreshFiles, upload, openFile, movePathToFolder, copyPath,
-  onError, onFormatFile, onFormatSelection, jumpToSource, syncSourceToPdf, onWordCount, onProjectSearch
+  onError, jumpToSource, syncSourceToPdf, onWordCount, onProjectSearch
 }: WorkspaceFilePanelProps) {
   const { t } = useTranslation();
   const prepareDiagram = () => prepareDrawioEditor(drawioEditorUrl);
@@ -119,15 +112,17 @@ export function WorkspaceFilePanel({
   const content = <WorkspaceSidebarLayout phone={Boolean(phoneDrawer)} files={
       <section className={`files-panel${fileDragActive ? " drop-active" : ""}`} onDragEnter={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); if (!readOnly && !uploadingFiles) setFileDragActive(true); }} onDragOver={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; } if (!event.dataTransfer.types.includes("Files")) return; event.preventDefault(); event.dataTransfer.dropEffect = readOnly || uploadingFiles ? "none" : "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileDragActive(false); }} onDrop={(event) => { if (isInternalPathDrag(event.dataTransfer)) { event.preventDefault(); event.stopPropagation(); return; } event.preventDefault(); setFileDragActive(false); if (readOnly || uploadingFiles) return; const files = Array.from(event.dataTransfer.files); if (containsDroppedFolder(event.dataTransfer) || files.length === 0) { onError(t("editor.dropFoldersUnsupported")); return; } void uploadFiles(files); }}>
         <div className="panel-title">
-          <button className="file-size-toggle" type="button" aria-pressed={showFileSizes} title={t(showFileSizes ? "editor.hideFileSizesAndRefresh" : "editor.showFileSizesAndRefresh")} onClick={() => { setShowFileSizes((current) => !current); refreshFiles(); }}>{t("common.files")}</button>
+          <span className="panel-title-label">{t("common.files")}</span>
           <span className="file-tools">
             {!readOnly && <>
               <button type="button" disabled={uploadingFiles} aria-label={t("editor.uploadAttachment")} title={t("editor.uploadTo", { folder: selectedFolder || t("editor.projectRoot") })} onClick={() => uploadInput.current?.click()}><Upload size={15} aria-hidden /></button>
               <button type="button" aria-label={t("editor.newFile")} title={t("editor.newFile")} onClick={() => { setNewFilePath(selectedFolder ? `${selectedFolder}/` : ""); setNewFileOpen(true); }}><FilePlus2 size={15} aria-hidden /></button>
               <input ref={uploadInput} type="file" multiple hidden onChange={(event) => void upload(event)} />
             </>}
+            <button type="button" aria-label={t("viewLinks.refresh")} title={t("viewLinks.refresh")} onClick={refreshFiles}><RefreshCw size={14} aria-hidden /></button>
             <FileTreeActionsMenu onQuickOpen={() => setQuickOpen(true)} onProjectSearch={onProjectSearch} onNewFolder={readOnly ? undefined : () => { setNewFolderName(""); setNewFolderOpen(true); }} onTikzGallery={readOnly || !tikzGalleryEnabled ? undefined : () => setTikzGalleryOpen(true)}
-              onPrepareDrawio={prepareDiagram} onNewDrawio={readOnly ? undefined : () => { setFileDialogError(""); setNewFilePath(`${selectedFolder ?? "figures"}/diagram.drawio`); setNewFileOpen(true); }} />
+              onPrepareDrawio={prepareDiagram} onNewDrawio={readOnly ? undefined : () => { setFileDialogError(""); setNewFilePath(`${selectedFolder ?? "figures"}/diagram.drawio`); setNewFileOpen(true); }}
+              showFileSizes={showFileSizes} onToggleFileSizes={() => setShowFileSizes((current) => !current)} />
           </span>
         </div>
         {uploadFeedback && <div className={`file-upload-feedback ${uploadFeedback.kind}`} role={uploadFeedback.kind === "error" ? "alert" : "status"} aria-live={uploadFeedback.kind === "error" ? "assertive" : "polite"} aria-busy={uploadFeedback.kind === "uploading"}>
@@ -196,13 +191,6 @@ export function WorkspaceFilePanel({
             </div>;
           })}
         </div>
-        {!readOnly && canFormat && <div className="file-format-footer" role="group" aria-label={t("editor.format")} aria-busy={formatting}>
-          <div className="file-format-label"><WandSparkles size={13} />{t("editor.format")}</div>
-          <div className="file-format-actions">
-            <button className={!hasFormatSelection ? "active" : ""} type="button" title={t("editor.formatFileHint")} onMouseDown={(event) => event.preventDefault()} onClick={onFormatFile} disabled={formatting || activeFormatLease || !collaborationSynced}>{t("editor.formatFile")}</button>
-            <button className={hasFormatSelection ? "active" : ""} type="button" title={hasFormatSelection ? t("editor.formatSelection") : t("editor.formatSelectionHint")} onMouseDown={(event) => event.preventDefault()} onClick={onFormatSelection} disabled={formatting || activeFormatLease || !collaborationSynced || !hasFormatSelection}>{t("editor.formatSelected")}</button>
-          </div>
-        </div>}
       </section>} outline={
       <WorkspaceOutlinePanel outline={outline} activeFile={activeFile} activeMainFile={activeMainFile} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy} plainWordCount={plainWordCount} canCountFull={canCountFull} hasSelection={hasSelection} jumpToSource={jumpToSource} syncSourceToPdf={syncSourceToPdf} onWordCount={onWordCount} />
     } />;

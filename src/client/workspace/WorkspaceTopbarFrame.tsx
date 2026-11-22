@@ -19,6 +19,8 @@ export function WorkspaceTopbarFrame({ siteName, projectName, subtitle, onBack, 
   usePhoneWorkspaceHeight(phone);
   const [moreOpen, setMoreOpen] = useState(false);
   const actions = Children.toArray(children);
+  const isDivider = (node: ReactNode) => isValidElement<{ className?: string }>(node)
+    && /(?:^| )topbar-divider(?: |$)/.test(node.props.className ?? "");
   const primary = (node: ReactNode) => isValidElement<{ className?: string; workspacePrimary?: boolean }>(node)
     && (node.props.workspacePrimary || /(?:^| )(?:compile|comments-action|files-action)(?: |$)/.test(node.props.className ?? ""));
   return <header className="editor-topbar">
@@ -37,7 +39,7 @@ export function WorkspaceTopbarFrame({ siteName, projectName, subtitle, onBack, 
     {phone && <Popover.Root open={moreOpen} onOpenChange={setMoreOpen}>
       <Popover.Trigger asChild><button type="button" className="workspace-more-trigger" aria-label={t("editor.moreActions")}><Ellipsis size={21} /></button></Popover.Trigger>
       <Popover.Portal><Popover.Content className="workspace-overflow-menu" align="end" sideOffset={8} collisionPadding={10} aria-label={t("editor.moreActions")}>
-        {actions.filter((node) => !primary(node)).map((node) => {
+        {actions.filter((node) => !primary(node) && !isDivider(node)).map((node) => {
           if (!isValidElement<{ onClick?: MouseEventHandler<HTMLButtonElement> }>(node) || node.type !== "button") return node;
           return cloneElement(node, { onClick: (event) => { node.props.onClick?.(event); setMoreOpen(false); } });
         })}

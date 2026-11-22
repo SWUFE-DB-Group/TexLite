@@ -67,12 +67,20 @@ export function WorkspaceTopbar({
     {collaborationStatus === "disconnected" && !protocolUpgradeRequired && <div className="collaboration-recovery" role="status"><span>{t("editor.collaboration.disconnected")}</span><button type="button" onClick={reconnectCollaboration}>{t("editor.collaboration.reconnect")}</button></div>}
     </>}>
       <WorkspaceLayoutMenu value={workspaceLayout} onChange={changeWorkspaceLayout} workspacePrimary previewLabel={isMarkdownPath(activeFile) ? t("editor.mobilePreview") : undefined} />
+      <span className="topbar-divider" aria-hidden="true" />
+      {showCitationLibrary && <button className={`citation-action${citationLibraryOpen ? " active" : ""}`} aria-label={t("citationProject.button")} title={t("citationProject.button")} onClick={onCitationLibrary}><BookMarked size={15} /><span className="workspace-action-label">{t("citationProject.button")}</span></button>}
+      <button type="button" className="snapshots-action" aria-label={t("history.projectSnapshots")} title={t("history.projectSnapshots")} onClick={onHistory}><FileClock size={15} /><span className="workspace-action-label">{t("history.projectSnapshotsButton")}</span></button>
+      <button className="git-action" aria-label={t("git.title")} title={canManageGit ? t("git.title") : t("git.ownerOnly")} disabled={!canManageGit} onClick={onGit}><GitBranch size={15} /><span className="workspace-action-label">Git</span></button>
+      {agentTerminal && <button type="button" className={agentTerminal.open ? "active" : ""} aria-expanded={agentTerminal.open}
+        aria-label={showExecutionReminder && agentTerminal.activeCount > 0 ? `${t("agents.terminal")}: ${t("agents.activeCount", { count: agentTerminal.activeCount })}` : t("agents.terminal")}
+        title={t("agents.terminal")} onClick={agentTerminal.toggle}><TerminalSquare size={15} /><span className="workspace-action-label">{t("agents.terminal")}</span>
+        {showExecutionReminder && agentTerminal.activeCount > 0 && <sup className="agent-active-count" aria-label={t("agents.activeCount", { count: agentTerminal.activeCount })}>{agentTerminal.activeCount}</sup>}
+      </button>}
+      <span className="topbar-divider" aria-hidden="true" />
       <button type="button" className="share-action" title={t("projectSettings.share")} aria-label={project.sharedMemberCount ? `${t("projectSettings.share")} (${project.sharedMemberCount})` : t("projectSettings.share")} onClick={onShare}>
         <Users size={15} /><span className="workspace-action-label">{t("projectSettings.share")}</span>
         {(project.sharedMemberCount ?? 0) > 0 && <sup className="share-action-count">{project.sharedMemberCount}</sup>}
       </button>
-      {showCitationLibrary && <button className={`citation-action${citationLibraryOpen ? " active" : ""}`} aria-label={t("citationProject.button")} title={t("citationProject.button")} onClick={onCitationLibrary}><BookMarked size={15} /><span className="workspace-action-label">{t("citationProject.button")}</span></button>}
-      <button type="button" className="snapshots-action" aria-label={t("history.projectSnapshots")} title={t("history.projectSnapshots")} onClick={onHistory}><FileClock size={15} /><span className="workspace-action-label">{t("history.projectSnapshotsButton")}</span></button>
       <button
         type="button"
         className={`comments-action${commentsOpen ? " active" : ""}`}
@@ -84,13 +92,8 @@ export function WorkspaceTopbar({
         <span className="workspace-action-label">{t("common.comments")}</span>
         {unresolvedCommentCount > 0 && <sup className="comments-action-count">{unresolvedCommentCount}</sup>}
       </button>
-      <button className="git-action" aria-label={t("git.title")} title={canManageGit ? t("git.title") : t("git.ownerOnly")} disabled={!canManageGit} onClick={onGit}><GitBranch size={15} /><span className="workspace-action-label">Git</span></button>
-      {agentTerminal && <button type="button" className={agentTerminal.open ? "active" : ""} aria-expanded={agentTerminal.open}
-        aria-label={showExecutionReminder && agentTerminal.activeCount > 0 ? `${t("agents.terminal")}: ${t("agents.activeCount", { count: agentTerminal.activeCount })}` : t("agents.terminal")}
-        title={t("agents.terminal")} onClick={agentTerminal.toggle}><TerminalSquare size={15} /><span className="workspace-action-label">{t("agents.terminal")}</span>
-        {showExecutionReminder && agentTerminal.activeCount > 0 && <sup className="agent-active-count" aria-label={t("agents.activeCount", { count: agentTerminal.activeCount })}>{agentTerminal.activeCount}</sup>}
-      </button>}
       <button className={settingsOpen ? "active" : ""} aria-label={t("common.settings")} title={t("common.settings")} onClick={onToggleSettings}><Settings size={15} /><span className="workspace-action-label workspace-action-label-persistent">{t("common.settings")}</span></button>
+      <span className="topbar-divider" aria-hidden="true" />
       {sharedCompiling || localCompiling
         ? <button className="compile cancel-compile" aria-label={cancelling ? t("compileControls.cancelling") : t("compileControls.cancel")} title={t("compileControls.cancel")} onClick={onCancelCompile} disabled={cancelling || formatting || readOnly || !collaborationSynced}>{cancelling ? <LoaderCircle className="spin" size={15} /> : <X size={15} />}<span className="workspace-action-label workspace-action-label-persistent">{cancelling ? t("compileControls.cancelling") : t("compileControls.cancel")}</span></button>
         : <button className="compile" aria-label={t("editor.compile", { engine: project.engine })} title={t("editor.compileShortcut")} onClick={onCompile} disabled={compileBusy || formatting || readOnly || !collaborationSynced}>{compileBusy ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}<span className="workspace-action-label workspace-action-label-persistent">{t("editor.compileShort")}<span className="compile-engine-label"> · {project.engine}</span></span></button>}

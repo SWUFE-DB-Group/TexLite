@@ -69,8 +69,7 @@ describe("application dark palette", () => {
         <div class="editor-actions">
           <button class="comments-action">Comments</button><button class="active">Files</button>
           <button class="compile">Compile</button><button class="compile cancel-compile">Cancel</button>
-          <div class="layout-menu"><button class="layout-trigger"><span>Editor &amp; PDF<small>Layout</small></span></button>
-            <div class="layout-popover"><button class="layout-option">Editor only</button></div></div>
+          <div class="layout-segmented"><button class="layout-segment active">Editor &amp; PDF</button><button class="layout-segment">Editor only</button></div>
         </div>
       </header>`;
     document.head.append(sheet); document.body.append(fixture);
@@ -79,16 +78,17 @@ describe("application dark palette", () => {
       const background = style(".topbar").backgroundColor;
       expect(style(".editor-topbar").backgroundColor).toBe(background);
       expect(style(".collaboration-avatar").borderTopColor).toBe(background);
-      for (const selector of [".topbar", ".editor-topbar", ".project-heading small", ".comments-action", ".layout-trigger small"]) {
+      for (const selector of [".topbar", ".editor-topbar", ".project-heading small", ".comments-action", ".layout-segment:not(.active)"]) {
         expect(contrast(style(selector).color, background), selector).toBeGreaterThanOrEqual(4.5);
       }
       expect(contrast(tokens["--ui-header-focus"], background)).toBeGreaterThanOrEqual(3);
       const active = style(".editor-actions .active");
       expect(contrast(active.color, active.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+      const activeSegment = style(".layout-segment.active");
+      expect(contrast(activeSegment.color, activeSegment.backgroundColor)).toBeGreaterThanOrEqual(4.5);
       const compile = style(".compile:not(.cancel-compile)");
       expect(contrast(compile.color, compile.backgroundColor)).toBeGreaterThanOrEqual(4.5);
       expect(style(".cancel-compile").backgroundColor).not.toBe(compile.backgroundColor);
-      expect(style(".layout-option").color).not.toBe(style(".editor-topbar").color);
     } finally {
       fixture.remove(); sheet.remove();
       window.innerWidth = originalWidth;

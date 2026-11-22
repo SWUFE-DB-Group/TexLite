@@ -1,15 +1,17 @@
 import { useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { FileSearch, FolderPlus, LayoutGrid, MoreHorizontal, Search, Workflow } from "lucide-react";
+import { Check, FileSearch, FolderPlus, HardDrive, LayoutGrid, MoreHorizontal, Search, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch, onTikzGallery, onNewDrawio, onPrepareDrawio }: {
+export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch, onTikzGallery, onNewDrawio, onPrepareDrawio, showFileSizes, onToggleFileSizes }: {
   onQuickOpen: () => void;
   onNewFolder?: () => void;
   onProjectSearch?: () => void;
   onTikzGallery?: () => void;
   onNewDrawio?: () => void;
   onPrepareDrawio?: () => void;
+  showFileSizes?: boolean;
+  onToggleFileSizes?: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -37,6 +39,14 @@ export function FileTreeActionsMenu({ onQuickOpen, onNewFolder, onProjectSearch,
         {onNewDrawio && <DropdownMenu.Item onFocus={onPrepareDrawio} onPointerEnter={onPrepareDrawio}
           onSelect={() => { onPrepareDrawio?.(); select(onNewDrawio); }}><Workflow size={14} aria-hidden />{t("drawio.new")}</DropdownMenu.Item>}
         {onTikzGallery && <DropdownMenu.Item onSelect={() => select(onTikzGallery)}><LayoutGrid size={14} aria-hidden />{t("gallery.title")}</DropdownMenu.Item>}
+        {onToggleFileSizes && <>
+          <DropdownMenu.Separator className="project-action-menu-separator" />
+          <DropdownMenu.CheckboxItem checked={Boolean(showFileSizes)} onSelect={() => onToggleFileSizes()}>
+            <HardDrive size={14} aria-hidden />
+            <span>{t(showFileSizes ? "editor.hideFileSizes" : "editor.showFileSizes")}</span>
+            {showFileSizes && <Check className="file-actions-menu-check" size={13} aria-hidden />}
+          </DropdownMenu.CheckboxItem>
+        </>}
       </DropdownMenu.Content>
     </DropdownMenu.Portal>
   </DropdownMenu.Root>;

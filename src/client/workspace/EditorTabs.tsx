@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { BookOpen, FileText, X } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { FileTypeIcon } from "../fileIcons";
 import { clampTabDrag, tabDropIndex, tabShift, type TabSlot } from "./editorTabOrder";
 
 const DRAG_THRESHOLD_PX = 4;
@@ -22,7 +23,7 @@ function measureSlots(strip: HTMLElement): TabSlot[] {
   });
 }
 
-export function EditorTabs({ openTabs, activeFile, projectMainFile, activateTab, closeTab, handleTabKeyDown, reorderTab }: {
+export function EditorTabs({ openTabs, activeFile, projectMainFile, activateTab, closeTab, handleTabKeyDown, reorderTab, actions }: {
   openTabs: string[];
   activeFile: string;
   projectMainFile: string;
@@ -30,6 +31,7 @@ export function EditorTabs({ openTabs, activeFile, projectMainFile, activateTab,
   closeTab: (path: string) => void;
   handleTabKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => void;
   reorderTab: (path: string, to: number) => void;
+  actions?: ReactNode;
 }) {
   const { t } = useTranslation();
   const strip = useRef<HTMLDivElement>(null);
@@ -148,7 +150,7 @@ export function EditorTabs({ openTabs, activeFile, projectMainFile, activateTab,
         return <div className={`editor-tab-item${isActive ? " active" : ""}${isDragged ? " dragging" : ""}`} role="presentation" key={tabPath}
           style={offset ? { transform: `translateX(${offset}px)` } : undefined} onPointerDown={(event) => startPress(event, tabPath, index)}>
           <button id={`editor-tab-${encodeURIComponent(tabPath)}`} type="button" role="tab" aria-selected={isActive} aria-controls="editor-source-content" tabIndex={isActive ? 0 : -1} className={`editor-tab${isActive ? " active" : ""}${isMain ? " main-tab" : ""}`} onClick={() => activateTab(tabPath)} onKeyDown={(event) => handleTabKeyDown(event, index)} title={tabPath}>
-            <span className="editor-tab-icon">{isMain ? <BookOpen size={13} /> : <FileText size={13} />}</span>
+            <span className="editor-tab-icon"><FileTypeIcon path={tabPath} size={13} /></span>
             <span className="editor-tab-title">{fileName}</span>
             {isMain && <small className="editor-tab-badge">{t("editor.currentMainShort")}</small>}
           </button>
@@ -156,5 +158,6 @@ export function EditorTabs({ openTabs, activeFile, projectMainFile, activateTab,
         </div>;
       })}
     </div>
+    {actions && <div className="editor-tabs-actions">{actions}</div>}
   </div>;
 }

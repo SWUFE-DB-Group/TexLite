@@ -86,7 +86,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   const [importPhase, setImportPhase] = useState<"uploading" | "processing" | null>(null);
   const [importProgress, setImportProgress] = useState<number | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
-  const tagFilterSidebar = useRef<HTMLElement>(null);
+  const tagFilterControl = useRef<HTMLDivElement>(null);
   const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState(() => initialData?.filters.search ?? "");
   const [tagFilter, setTagFilter] = useState(() => initialData?.filters.tag ?? "");
@@ -161,7 +161,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
   useEffect(() => {
     if (!tagFiltersOpen) return;
     const closeWhenOutside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !tagFilterSidebar.current?.contains(event.target)) setTagFiltersOpen(false);
+      if (event.target instanceof Node && !tagFilterControl.current?.contains(event.target)) setTagFiltersOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setTagFiltersOpen(false);
@@ -413,30 +413,35 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
       <div className="section-title project-catalog-heading"><div><h1><FolderKanban aria-hidden size={25} />{t("projects.title")}</h1><p className="muted">{user.canCreateProjects ? t("projects.subtitle") : t("projects.restricted")}</p></div><div className="section-actions"><button {...actionTooltipProps} aria-label={t("tags.manage")} data-tooltip={t("tags.manage")} onClick={() => setTagManagerOpen(true)}><Tags aria-hidden size={15} /><span className="project-action-label">{t("tags.manage")}</span></button>{user.canCreateProjects && <><button {...actionTooltipProps} aria-label={t("projects.upload")} data-tooltip={t("projects.upload")} onClick={() => { setImportError(""); setImportOpen(true); }}><Upload aria-hidden size={15} /><span className="project-action-label">{t("projects.upload")}</span></button><button {...actionTooltipProps} className="primary" aria-label={t("projects.new")} data-tooltip={t("projects.new")} onClick={() => setCreateOpen(true)}><FolderPlus aria-hidden size={15} /><span className="project-action-label">{t("projects.new")}</span></button></>}</div></div>
       <ProjectOwnershipTabs value={ownership} counts={counts} onChange={changeOwnership} />
       {error && <p className="error">{error}</p>}
-      <div className="project-catalog-layout">
-        <aside ref={tagFilterSidebar} className={`project-tag-sidebar${tagFilter ? " has-active-filter" : ""}`}>
-          <button
-            type="button"
-            className="project-tag-toggle"
-            title={t("projects.filterTags")}
-            aria-label={t("projects.filterTags")}
-            aria-expanded={tagFiltersOpen}
-            aria-controls="dashboard-tag-filters"
-            onClick={() => setTagFiltersOpen((current) => !current)}
-          >
-            <span className="project-tag-toggle-copy"><Tags aria-hidden size={15} /><span>{t("projects.filterTags")}</span></span>
-            <ChevronRight className="project-tag-toggle-chevron" aria-hidden size={15} />
-          </button>
-          {tagFiltersOpen && <div id="dashboard-tag-filters" className="project-tag-filters" role="group" aria-label={t("projects.filterTags")}>
-            <button type="button" className={!tagFilter ? "active" : ""} aria-pressed={!tagFilter} onClick={() => changeTagFilter("")}>{t("projects.allTags")}</button>
-            {tags.length > 0
-              ? tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} title={tag.name} aria-pressed={tagFilter === tag.id} onClick={() => changeTagFilter(tagFilter === tag.id ? "" : tag.id)}><TagDot color={tag.color} /><span>{tag.name}</span></button>)
-              : <p className="project-tag-empty">{t("tags.none")}</p>}
-          </div>}
-        </aside>
-        <div className="project-catalog-content">
-          <section id="project-catalog-panel" role="tabpanel" aria-labelledby={`project-tab-${ownership}`} aria-busy={!resultsCurrent && !error}>
+      <div className="project-catalog-content">
+        <section id="project-catalog-panel" role="tabpanel" aria-labelledby={`project-tab-${ownership}`} aria-busy={!resultsCurrent && !error}>
           <div className="project-toolbar"><input type="search" placeholder={t("projects.search")} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
+            <div ref={tagFilterControl} className={`project-tag-filter${tagFilter ? " has-active-filter" : ""}`}>
+              <button
+                type="button"
+                className="project-tag-toggle"
+                title={t("projects.filterTags")}
+                aria-label={t("projects.filterTags")}
+                aria-expanded={tagFiltersOpen}
+                aria-controls="dashboard-tag-filters"
+                onClick={() => setTagFiltersOpen((current) => !current)}
+              >
+                {(() => {
+                  const activeTag = tagFilter ? tags.find((item) => item.id === tagFilter) : null;
+                  return activeTag
+                    ? <span className="project-tag-toggle-copy"><TagDot color={activeTag.color} /><span>{activeTag.name}</span></span>
+                    : <span className="project-tag-toggle-copy"><Tags aria-hidden size={14} /><span>{t("projects.filterTags")}</span></span>;
+                })()}
+                <ChevronRight className="project-tag-toggle-chevron" aria-hidden size={13} />
+              </button>
+              {tagFilter && <button type="button" className="project-tag-clear" title={t("projects.allTags")} aria-label={t("projects.allTags")} onClick={() => { changeTagFilter(""); setTagFiltersOpen(false); }}><X size={13} aria-hidden="true" /></button>}
+              {tagFiltersOpen && <div id="dashboard-tag-filters" className="project-tag-filters" role="group" aria-label={t("projects.filterTags")}>
+                <button type="button" className={!tagFilter ? "active" : ""} aria-pressed={!tagFilter} onClick={() => { changeTagFilter(""); setTagFiltersOpen(false); }}>{t("projects.allTags")}</button>
+                {tags.length > 0
+                  ? tags.map((tag) => <button type="button" key={tag.id} className={tagFilter === tag.id ? "active" : ""} title={tag.name} aria-pressed={tagFilter === tag.id} onClick={() => { changeTagFilter(tagFilter === tag.id ? "" : tag.id); setTagFiltersOpen(false); }}><TagDot color={tag.color} /><span>{tag.name}</span></button>)
+                  : <p className="project-tag-empty">{t("tags.none")}</p>}
+              </div>}
+            </div>
             <div className="project-scope" role="group" aria-label={t("projects.scope")}>
               <button className={!showArchived ? "active" : ""} onClick={() => changeScope(false)} aria-pressed={!showArchived}><FolderOpen size={14} />{t("projects.active")}</button>
               <button className={showArchived ? "active" : ""} onClick={() => changeScope(true)} aria-pressed={showArchived}>
@@ -515,8 +520,7 @@ export function Dashboard({ site, user, initialData, onDataChange, onUser, onOpe
             : <div className="project-empty"><span className="project-empty-icon"><Sparkles size={28} /></span><h2>{t("projects.emptyTitle")}</h2><p>{user.canCreateProjects ? t("projects.emptyDescription") : t("projects.emptyRestricted")}</p></div>)}
       </div>
       {resultsCurrent && pagination.totalPages > 1 && <nav className="project-pagination" aria-label={t("projects.pagination")}><button disabled={pagination.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} title={t("projects.previousPage")}><ChevronLeft size={15} />{t("projects.previousPage")}</button><span>{t("projects.pageOf", { page: pagination.page, totalPages: pagination.totalPages, count: pagination.total })}</span><button disabled={pagination.page >= pagination.totalPages} onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} title={t("projects.nextPage")}><ChevronRight size={15} />{t("projects.nextPage")}</button></nav>}
-          </section>
-        </div>
+        </section>
       </div>
       <NewProjectDialog open={createOpen} maxUploadSizeMB={site.maxUploadSizeMB} onOpenChange={setCreateOpen} onCreated={onOpenProject} />
       <Modal className={`management-dialog project-import-modal${importing ? " is-importing" : ""}`} open={importOpen} title={t("projects.upload")} description={t("projects.uploadDescription", { size: site.maxUploadSizeMB })} onOpenChange={(open) => { if (!open && importing) return; setImportOpen(open); if (!open) setImportError(""); }} footer={<><button disabled={importing} onClick={() => { setImportOpen(false); setImportError(""); }}>{t("common.cancel")}</button><button className="primary" disabled={!importFile || importing} aria-busy={importing} onClick={() => void importProject()}>{importing && <LoaderCircle className="spin" size={14} aria-hidden />}{importing ? t(importPhase === "processing" ? "projects.processing" : "projects.uploading") : t("projects.import")}</button></>}>

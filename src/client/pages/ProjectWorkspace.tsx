@@ -1569,13 +1569,11 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         deletedPath={filesEvent?.kind === "delete" ? filesEvent.path : null}
         activeFile={activeFile} activeMainFile={activeMainFile} selectedFile={selectedFile}
         selectedFolder={selectedFolder} expandedFolders={expandedFolders} fileDragActive={fileDragActive}
-        uploadingFiles={uploadingFiles} uploadFeedback={uploadFeedback} readOnly={readOnly} formatting={formatting}
-        canFormat={!drawioPath && isFormattableLatexFile(activeFile)} activeFormatLease={Boolean(activeFormatLease)} collaborationSynced={collaborationSynced}
+        uploadingFiles={uploadingFiles} uploadFeedback={uploadFeedback} readOnly={readOnly}
         editorFontSize={editorPreferences.fontSize}
         outline={outline} sourceCursorStore={sourceCursorStore} wordCountBusy={wordCountBusy}
         plainWordCount={plainWordCount} canCountFull={!drawioPath && (plainWordCount ? loadedFile === activeFile : Boolean(activeMainFile))}
-        hasSelection={!drawioPath && Boolean(selection.selectedText.trim()) && (plainWordCount || /\.(?:tex|sty|cls)$/i.test(activeFile))}
-        hasFormatSelection={!drawioPath && Boolean(selection.selectedText.trim())} uploadInput={uploadInput}
+        hasSelection={!drawioPath && Boolean(selection.selectedText.trim()) && (plainWordCount || /\.(?:tex|sty|cls)$/i.test(activeFile))} uploadInput={uploadInput}
         setSelectedFolder={setSelectedFolder} setExpandedFolders={setExpandedFolders}
         setMoveEntry={setMoveEntry} setMoveName={setMoveName} setMoveDestination={setMoveDestination}
         setDeleteEntry={setDeleteEntry} setFileDialogError={setFileDialogError}
@@ -1586,12 +1584,18 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed}
         onError={setError}
         uploadFiles={uploadFiles} refreshFiles={() => { void loadFiles().catch((error) => setNotice(errorMessage(error))); }} upload={upload} openFile={(entry) => { openFile(entry); if (phone) setPhoneFilesOpen(false); }} movePathToFolder={movePathToFolder} copyPath={copyPath}
-        onFormatFile={() => void formatCurrentFile()} onFormatSelection={() => void formatSelectedSource()}
         jumpToSource={(...args) => { jumpToSource(...args); if (phone) setPhoneFilesOpen(false); }}
         syncSourceToPdf={phone || !pdfIdentity ? undefined : (path, line, column) => syncSourceToPdf(pdfIdentity, path, line, column)} onWordCount={(mode) => void requestWordCount(mode)}
       />}
       {showEditor && !phone && <Separator className="resize-handle"><GripVertical size={12} /></Separator>}
       {showEditor && <WorkspaceEditorPanel figurePdf={figurePdf}
+        formatControls={!readOnly && !drawioPath && isFormattableLatexFile(activeFile) ? {
+          busy: formatting,
+          disabled: formatting || Boolean(activeFormatLease) || !collaborationSynced,
+          hasSelection: Boolean(selection.selectedText.trim()),
+          onFormatFile: () => void formatCurrentFile(),
+          onFormatSelection: () => void formatSelectedSource()
+        } : null}
         alternativeEditor={drawioPath ? <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /></div>}><DrawioEditor ref={drawioEditor} key={`${projectId}:${drawioPath}`} projectId={projectId} path={drawioPath} editorUrl={site.drawioEditorUrl} readOnly={project.permission === "read"}
           onClose={() => {
             setDrawioPath(null);

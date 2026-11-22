@@ -1,14 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { BellDot, Terminal } from "lucide-react";
-import { SaveButton } from "../SaveButton";
 import { terminalFonts, terminalFontSizes, terminalLineHeight, terminalFontStack, type TerminalPreferences } from "../terminalPreferences";
 import { terminalThemes, terminalThemeStyle } from "../terminalTheme";
 
-export function TerminalAppearanceSettings({ preferences, onChange, onSave, saveFeedback = "" }: {
+export function TerminalAppearanceSettings({ preferences, onChange }: {
   preferences: TerminalPreferences;
   onChange: (preferences: TerminalPreferences) => void;
-  onSave: () => void;
-  saveFeedback?: string;
 }) {
   const { t } = useTranslation();
   return <section id="settings-panel-terminal" role="tabpanel" aria-labelledby="settings-tab-terminal">
@@ -28,6 +25,5 @@ export function TerminalAppearanceSettings({ preferences, onChange, onSave, save
       <span className="terminal-preview-directory">~/paper</span><span className="terminal-preview-muted"> on </span><span className="terminal-preview-branch">main</span>{"\n"}
       <span className="terminal-preview-prompt">❯</span>{" codex\nAa Bb  0 O  1 l I\n→ main.tex  [1/2]  ✓"}
     </pre>
-    <div className="settings-actions"><SaveButton className="settings-save" feedback={saveFeedback} onClick={onSave}>{t("projectSettings.saveTerminal")}</SaveButton></div>
   </section>;
 }

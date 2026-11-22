@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronDown, Code2, Columns2, FileText, PanelLeft, PanelRight } from "lucide-react";
+import { Code2, Columns2, FileText, PanelLeft, PanelRight } from "lucide-react";
 import { type ActiveSession, type CollaborationStatus } from "../collaboration";
 import { UserAvatar } from "../UserAvatar";
 import type { WorkspaceLayout } from "./types";
@@ -50,47 +50,24 @@ export function WorkspaceLayoutMenu({ value, onChange, previewLabel = "PDF" }: {
   previewLabel?: string }) {
   const { t } = useTranslation();
   const phone = usePhoneWorkspace();
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
   const layouts = [
     { value: "editor-pdf" as const, icon: Columns2 },
     { value: "editor-only" as const, icon: PanelLeft },
     { value: "pdf-only" as const, icon: PanelRight }
   ];
-  const LayoutIcon = layouts.find((layout) => layout.value === value)!.icon;
-  const currentLabel = t("editor.layout.current", { layout: t(`editor.layout.${value}.name`) });
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
   if (phone) return <div className="workspace-phone-views" role="group" aria-label={t("editor.layout.label")}>
     <button type="button" aria-pressed={value !== "pdf-only"} onClick={() => onChange("editor-only")}><Code2 size={15} /><span>{t("editor.mobileSource")}</span></button>
     <button type="button" aria-pressed={value === "pdf-only"} onClick={() => onChange("pdf-only")}><FileText size={15} /><span>{previewLabel}</span></button>
   </div>;
-  return <div className="layout-menu" ref={root}>
-    <button type="button" className={`layout-trigger${open ? " active" : ""}`} aria-label={currentLabel} aria-haspopup="menu" aria-expanded={open} title={currentLabel} onClick={() => setOpen((current) => !current)}>
-      <LayoutIcon size={15} /><span className="workspace-action-label"><small>{t("editor.layout.label")}</small><span className="layout-current-label">{t(`editor.layout.${value}.name`)}</span></span><ChevronDown className="layout-trigger-chevron" size={13} />
-    </button>
-    {open && <div className="layout-popover" role="menu" aria-label={t("editor.layout.label")}>
-      <div className="layout-popover-title">{t("editor.layout.choose")}</div>
-      {layouts.map((layout) => {
-        const Icon = layout.icon;
-        const selected = layout.value === value;
-        return <button type="button" role="menuitemradio" aria-checked={selected} className={`layout-option${selected ? " selected" : ""}`} key={layout.value} onClick={() => { onChange(layout.value); setOpen(false); }}>
-          <Icon size={19} /><span><strong>{t(`editor.layout.${layout.value}.name`)}</strong><small>{t(`editor.layout.${layout.value}.description`)}</small></span>{selected && <Check size={16} />}
-        </button>;
-      })}
-    </div>}
+  return <div className="layout-segmented" role="group" aria-label={t("editor.layout.label")}>
+    {layouts.map((layout) => {
+      const Icon = layout.icon;
+      const selected = layout.value === value;
+      const name = t(`editor.layout.${layout.value}.name`);
+      return <button type="button" key={layout.value} className={`layout-segment${selected ? " active" : ""}`}
+        aria-pressed={selected} aria-label={name} title={name} onClick={() => onChange(layout.value)}>
+        <Icon size={15} aria-hidden="true" />
+      </button>;
+    })}
   </div>;
 }

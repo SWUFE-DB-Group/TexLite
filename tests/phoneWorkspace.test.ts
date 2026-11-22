@@ -55,7 +55,8 @@ describe("phone workspace", () => {
     expect(localStorage.getItem("texlite.workspaceLayout:writer:paper")).toBe("editor-pdf");
     await resize(false);
     expect(host.firstElementChild?.getAttribute("data-layout")).toBe("editor-pdf");
-    expect(host.querySelector(".layout-trigger")).not.toBeNull();
+    expect(host.querySelector(".layout-segmented")).not.toBeNull();
+    expect(host.querySelectorAll(".layout-segmented button")).toHaveLength(3);
     await resize(true);
     expect(host.firstElementChild?.getAttribute("data-layout")).toBe("pdf-only");
   });

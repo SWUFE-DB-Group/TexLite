@@ -90,8 +90,7 @@ describe("isolated anonymous reader", () => {
     await render(); await settle();
     const before = vi.mocked(api).mock.calls.length;
     const layoutOption = async (name: string) => {
-      await click(host.querySelector<HTMLButtonElement>(".layout-trigger")!);
-      await click([...host.querySelectorAll<HTMLButtonElement>(".layout-option")].find((button) => button.querySelector("strong")?.textContent === name)!);
+      await click(host.querySelector<HTMLButtonElement>(`.layout-segmented button[aria-label="${name}"]`)!);
     };
     await layoutOption("Editor only");
     expect(host.querySelector(".source-panel")).not.toBeNull(); expect(host.querySelector(".shared-reader-pdf")).toBeNull();

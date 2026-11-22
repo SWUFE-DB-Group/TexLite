@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ChevronDown, ChevronRight, FileClock, FolderOpen, GitBranch, GripVertical, Languages, LoaderCircle, LockKeyhole, MessageSquare, Palette, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, Settings, TerminalSquare, Users, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FileClock, FolderOpen, GitBranch, GripVertical, HardDrive, Languages, LoaderCircle, LockKeyhole, MessageSquare, Palette, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, Settings, TerminalSquare, Users, X } from "lucide-react";
 import { Group, Panel, Separator, usePanelRef, type PanelImperativeHandle } from "react-resizable-panels";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -117,7 +117,7 @@ export function SharedWorkspace({ data, path, loading, error, onRefresh, onOpenF
       {showEditor && <>
         <ReaderFiles phone={phone} open={phoneFilesOpen} onClose={() => setPhoneFilesOpen(false)} filesPanel={filesPanel} onCollapsed={setFilesCollapsed}>
           <WorkspaceSidebarLayout phone={phone} files={<section className="files-panel">
-            <div className="panel-title"><button type="button" className="file-size-toggle" aria-pressed={showSizes} title={t(showSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowSizes((current) => !current)}>{t("common.files")}</button></div>
+            <div className="panel-title"><span className="panel-title-label">{t("common.files")}</span><span className="file-tools"><button type="button" className={`file-size-toggle${showSizes ? " active" : ""}`} aria-pressed={showSizes} aria-label={t(showSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} title={t(showSizes ? "editor.hideFileSizes" : "editor.showFileSizes")} onClick={() => setShowSizes((current) => !current)}><HardDrive size={14} aria-hidden="true" /></button></span></div>
             <div className={`file-list shared-reader-files${selectedFolder !== null ? " folder-selected" : ""}`} style={{ fontSize: defaultEditorPreferences.fontSize }}>
               {visible.map((file) => {
                 const directory = file.type === "directory", depth = file.path.split("/").length - 1, name = file.path.split("/").at(-1);

@@ -7,6 +7,7 @@ import { Separator } from "react-resizable-panels";
 export function WorkspaceSyncSeparator({ children, showControls = true }: { children: ReactNode; showControls?: boolean }) {
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const [revealed, setRevealed] = useState(false);
   useLayoutEffect(() => {
     if (!anchor || !showControls) return;
     const update = () => {
@@ -35,7 +36,14 @@ export function WorkspaceSyncSeparator({ children, showControls = true }: { chil
   }, [anchor, showControls]);
 
   return <>
-    <Separator className="resize-handle sync-resize-handle" elementRef={setAnchor}><GripVertical className="resize-grip" size={12} /></Separator>
-    {showControls && position && createPortal(<span className="sync-direction-buttons" style={{ position: "fixed", ...position }}>{children}</span>, document.body)}
+    <Separator className="resize-handle sync-resize-handle" elementRef={setAnchor}
+      onPointerEnter={() => setRevealed(true)} onPointerLeave={() => setRevealed(false)}>
+      <GripVertical className="resize-grip" size={12} />
+    </Separator>
+    {showControls && position && createPortal(
+      <span className="sync-direction-buttons" data-revealed={revealed ? "true" : undefined} style={{ position: "fixed", ...position }}
+        onPointerEnter={() => setRevealed(true)} onPointerLeave={() => setRevealed(false)}>{children}</span>,
+      document.body
+    )}
   </>;
 }

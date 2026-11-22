@@ -425,7 +425,7 @@
     "destinationFolder": "目标文件夹", "deletePath": "删除文件或文件夹", "deletePathTitle": "删除 {{name}}", "deletePathDescription": "确定删除 {{path}}？此操作不可撤销。",
     "deletePathActiveDescription_one": "确定删除 {{path}}？{{users}} 当前正在打开它，删除后这些会话将关闭该文件。", "deletePathActiveDescription_other": "确定删除 {{path}}？{{users}} 当前正在打开它，删除后这些会话将关闭该文件。", "deletePathWillClose": "系统会拒绝该路径上迟到的修改，避免内容被静默丢失。", "fileDeletedByCollaborator": "{{path}} 已在其他会话中删除，现已打开安全的备用文件。",
     "deleteOpenDrawio": "图表将关闭，未保存的修改将被丢弃。",
-    "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "format": "格式化", "formatFile": "文件", "formatFileHint": "格式化当前文件", "formatFileComplete": "当前文件已格式化。", "formatFileFailed": "无法格式化当前文件：{{message}}", "formatSelected": "选区", "commentsAll": "查看", "formatSelection": "格式化选区", "formatSelectionHint": "选择一段 LaTeX 源码后格式化", "formatSelectionRequired": "请先选择 LaTeX 源码，再进行格式化。", "formatSelectionComplete": "所选 LaTeX 源码已格式化。", "formatFailedContinue": "格式化失败，仍将继续编译：{{message}}", "formatFailed": "无法格式化选区：{{message}}", "formatSourceChanged": "格式化期间源码已发生变化，已跳过本次格式化。", "formatSelectionChanged": "格式化期间所选源码已发生变化，请重新选择后再试。", "writingSuggestions": "写作建议", "noWritingSuggestions": "没有可用的修改建议", "removeText": "删除文本", "replaceWith": "替换为 {{word}}", "spellCheckReadOnly": "当前为只读，需要编辑权限才能替换。", "spellCheckSourceChanged": "源码在应用写作修正前发生了变化。", "mathPreview": "公式预览", "mathPreviewLoading": "正在渲染公式…", "mathPreviewUnavailable": "该公式暂时无法预览。", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
+    "compileShortcut": "保存并编译（Ctrl+S / Cmd+S）", "compilingBy": "{{name}} 正在编译", "format": "格式化", "formatDocument": "格式化文档", "formatFile": "文件", "formatFileHint": "格式化当前文件", "formatFileComplete": "当前文件已格式化。", "formatFileFailed": "无法格式化当前文件：{{message}}", "formatSelected": "选区", "commentsAll": "查看", "formatSelection": "格式化选区", "formatSelectionHint": "选择一段 LaTeX 源码后格式化", "formatSelectionRequired": "请先选择 LaTeX 源码，再进行格式化。", "formatSelectionComplete": "所选 LaTeX 源码已格式化。", "formatFailedContinue": "格式化失败，仍将继续编译：{{message}}", "formatFailed": "无法格式化选区：{{message}}", "formatSourceChanged": "格式化期间源码已发生变化，已跳过本次格式化。", "formatSelectionChanged": "格式化期间所选源码已发生变化，请重新选择后再试。", "writingSuggestions": "写作建议", "noWritingSuggestions": "没有可用的修改建议", "removeText": "删除文本", "replaceWith": "替换为 {{word}}", "spellCheckReadOnly": "当前为只读，需要编辑权限才能替换。", "spellCheckSourceChanged": "源码在应用写作修正前发生了变化。", "mathPreview": "公式预览", "mathPreviewLoading": "正在渲染公式…", "mathPreviewUnavailable": "该公式暂时无法预览。", "vimOn": "Vim 已开启", "vimOnHint": "当前编辑器已启用 Vim 键位。", "reply": "回复",
     "replyPlaceholder": "输入回复内容…（⌘/Ctrl+Enter 发送）", "sendReply": "回复", "editComment": "编辑批注", "deleteComment": "删除批注",
     "replyPrompt": "回复…",
     "showEarlierReplies_one": "之前的 {{count}} 条回复", "showEarlierReplies_other": "之前的 {{count}} 条回复",
@@ -466,7 +466,7 @@
       "sessionTooltip": "{{name}}（@{{username}}）· {{file}} · {{activity}} · {{permission}}"
     },
     "search": {
-      "find": "查找", "replace": "替换为",
+      "find": "查找", "replace": "替换为", "findReplace": "查找替换", "findReplaceHint": "在当前文件中查找和替换（Ctrl+F / Cmd+F）", "findOnlyHint": "在当前文件中查找（Ctrl+F / Cmd+F）",
       "next": "下一个", "previous": "上一个", "matchCase": "区分大小写", "regexp": "正则表达式",
       "wholeWord": "全字匹配", "replaceNext": "替换", "replaceAll": "全部替换", "currentMatch": "当前匹配",
       "onLine": "位于行", "replacedMatchOnLine": "已替换第 $ 行的匹配项", "replacedMatches": "已替换 $ 个匹配项",
@@ -581,7 +581,7 @@
     "lastChangedBy": "最后修改者", "autosaveRun_one": "{{count}} 次自动保存", "autosaveRun_other": "{{count}} 次自动保存", "codingAgent": "Coding Agent", "withCodingAgent": "{{names}}、Coding Agent", "multipleAuthors": "多位作者",
     "saveWarning": "源码已保存，但部分历史未能保存。近期失败会自动重试，较早的历史可能不完整。请检查服务器日志及可用存储空间。",
     "storageBreakdown": "文件 {{objects}} · 元数据 {{metadata}} · 受保护 {{protected}}",
-    "title": "历史", "projectSnapshots": "项目快照", "projectSnapshotsButton": "项目快照", "description": "浏览快照、比较文件并恢复早期版本。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",
+    "title": "历史", "projectSnapshots": "项目快照", "projectSnapshotsButton": "快照", "description": "浏览快照、比较文件并恢复早期版本。", "empty": "尚无项目快照。", "loadOlder": "加载更早快照",
     "changedCount_one": "{{count}} 个文件有变化", "changedCount_other": "{{count}} 个文件有变化", "fileCount_one": "{{count}} 个文件", "fileCount_other": "{{count}} 个文件", "labelPlaceholder": "为此版本命名", "saveLabel": "保存标签",
     "comparingCurrent": "历史快照与当前文件的比较", "chooseFile": "选择文件后，可与当前源码进行比较。",
     "changedFilesHeading_one": "修改的文件 ({{count}})", "changedFilesHeading_other": "修改的文件 ({{count}})", "noChangedFiles": "此快照没有修改的文件。", "noDifferences": "文件在此快照与当前版本内容相同，没有差异。", "noDifferencesInCommit": "此文件在本次修改中无内容变动。", "currentVersion": "当前版本",
