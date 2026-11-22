@@ -5,6 +5,7 @@ import { AlertCircle, AlertTriangle, AlignLeft, BookMarked, BookOpen, CheckCircl
 import { api, isAbortError } from "../api";
 import { texFmtToolStatus, type ClientToolRuntimeState } from "../clientToolStatus";
 import { editorFonts, type EditorPreferences } from "../editorPreferences";
+import { DEFAULT_TEX_FMT_CONFIG, MAX_TEX_FMT_CONFIG_LENGTH } from "../../shared/texFmt";
 import { errorMessage } from "../errors";
 import { preloadTexFmt, reloadTexFmt } from "../latexFormatter";
 import type { FileEntry, Project, SiteConfig } from "../types";
@@ -46,16 +47,19 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   onProject: (project: Project) => void;
 }) {
   const { t } = useTranslation();
+  const initialTexFmtConfig = project.texFmtConfig ?? DEFAULT_TEX_FMT_CONFIG;
   const [engine, setEngine] = useState(project.engine);
   const [rcEnabled, setRcEnabled] = useState(Boolean(project.latexmkrc));
   const [mainFile, setMainFile] = useState(project.mainFile);
   const [chktexEnabled, setChktexEnabled] = useState(project.chktexEnabled);
+  const [texFmtConfig, setTexFmtConfig] = useState(initialTexFmtConfig);
   const [savingCompiler, setSavingCompiler] = useState(false);
   const compilerSaveRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const savedCompilerSettings = useRef({
     mainFile: project.mainFile, engine: project.engine,
-    latexmkrc: project.latexmkrc, chktexEnabled: project.chktexEnabled
+    latexmkrc: project.latexmkrc, chktexEnabled: project.chktexEnabled,
+    texFmtConfig: initialTexFmtConfig
   });
   const [mainFileOptions, setMainFileOptions] = useState<string[] | null>(null);
   const [error, setError] = useState("");
@@ -80,6 +84,12 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
   const canManageDictionary = project.permission !== "read";
   useEffect(() => setAppearancePreferences(editorPreferences), [editorPreferences]);
   useEffect(() => setTerminalDraft(terminalPreferences), [terminalPreferences]);
+  useEffect(() => {
+    const nextTexFmtConfig = project.texFmtConfig ?? DEFAULT_TEX_FMT_CONFIG;
+    if (savedCompilerSettings.current.texFmtConfig === nextTexFmtConfig) return;
+    setTexFmtConfig((current) => current === savedCompilerSettings.current.texFmtConfig ? nextTexFmtConfig : current);
+    savedCompilerSettings.current = { ...savedCompilerSettings.current, texFmtConfig: nextTexFmtConfig };
+  }, [project.texFmtConfig]);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
@@ -139,6 +149,7 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
     if (engine !== previous.engine) changes.engine = engine;
     if (latexmkrc !== previous.latexmkrc) changes.latexmkrc = latexmkrc;
     if (chktexEnabled !== previous.chktexEnabled) changes.chktexEnabled = chktexEnabled;
+    if (texFmtConfig !== previous.texFmtConfig) changes.texFmtConfig = texFmtConfig;
     if (Object.keys(changes).length === 0) {
       confirmSave("compiler", t("common.noChangesToSave"));
       return;
@@ -160,13 +171,16 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         onProject(result.project);
         return;
       }
+      const savedTexFmtConfig = result.project.texFmtConfig ?? DEFAULT_TEX_FMT_CONFIG;
       savedCompilerSettings.current = {
         mainFile: result.project.mainFile, engine: result.project.engine,
-        latexmkrc: result.project.latexmkrc, chktexEnabled: result.project.chktexEnabled
+        latexmkrc: result.project.latexmkrc, chktexEnabled: result.project.chktexEnabled,
+        texFmtConfig: savedTexFmtConfig
       };
       setMainFile(result.project.mainFile);
       setEngine(result.project.engine);
       setChktexEnabled(result.project.chktexEnabled);
+      setTexFmtConfig(savedTexFmtConfig);
       setRcEnabled(Boolean(result.project.latexmkrc));
       onProject(result.project);
       confirmSave("compiler");
@@ -253,6 +267,10 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
           <label className="editor-checkbox"><input type="checkbox" checked={appearancePreferences.vimMode} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, vimMode: event.target.checked })} /><Keyboard size={15} /><span>{t("projectSettings.vimMode")}</span></label>
           <p className="field-hint">{t("projectSettings.vimModeDescription")} <a href="https://replit-codemirror-vim.mintlify.app/" target="_blank" rel="noreferrer">{t("projectSettings.vimHelp")}</a></p>
         </div>
+        <div className="editor-preference">
+          <label className="editor-checkbox"><input type="checkbox" disabled={!canEdit} checked={appearancePreferences.formatOnCompile} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, formatOnCompile: event.target.checked })} /><AlignLeft size={15} /><span>{t("projectSettings.formatOnCompile")}</span></label>
+          {!canEdit && <p className="field-hint">{t("projectSettings.formatRequiresWrite")}</p>}
+        </div>
       </SettingsGroup>
       <SettingsGroup id="settings-group-previews" icon={<Eye size={15} aria-hidden />} title={t("projectSettings.groupPreviews")}>
         <div className="editor-preference">
@@ -278,15 +296,6 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         {canManageDictionary && <div className="dictionary-add"><input value={dictionaryValue} placeholder={t("projectSettings.dictionaryPlaceholder")} onChange={(event) => setDictionaryValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addDictionaryWord(); } }} /><button type="button" disabled={!dictionaryValue.trim()} onClick={() => void addDictionaryWord()}>{t("projectSettings.addWord")}</button></div>}
         <div className="dictionary-words">{dictionaryWords.map((word) => <span className="dictionary-word" key={word}><code>{word}</code>{canManageDictionary && <button type="button" title={t("common.delete")} aria-label={`${t("common.delete")} ${word}`} onClick={() => void removeDictionaryWord(word)}><X size={13} /></button>}</span>)}{dictionaryWords.length === 0 && <span className="dictionary-empty">{t("projectSettings.dictionaryEmpty")}</span>}</div>
       </SettingsGroup>
-      <SettingsGroup id="settings-group-formatting" icon={<AlignLeft size={15} aria-hidden />} title={t("projectSettings.groupFormatting")}>
-        <div className="editor-preference">
-          <label className="editor-checkbox"><input type="checkbox" disabled={!canEdit} checked={appearancePreferences.formatOnCompile} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, formatOnCompile: event.target.checked })} /><AlignLeft size={15} /><span>{t("projectSettings.formatOnCompile")}</span></label>
-          <p className="field-hint">{t("projectSettings.formatterDescription")} <a href="https://www.npmjs.com/package/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a> · <a href="https://github.com/FlamingTempura/bibtex-tidy" target="_blank" rel="noreferrer">{t("projectSettings.bibtexTidyInstall")}</a>{!canEdit && <> {t("projectSettings.formatRequiresWrite")}</>}</p>
-        </div>
-        <div className="editor-preference">
-          <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={16 * 1024} spellCheck={false} value={appearancePreferences.texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => applyAppearancePreferences({ ...appearancePreferences, texFmtConfig: event.target.value })} /></label>
-        </div>
-      </SettingsGroup>
     </section> : settingsTab === "terminal"
       ? <TerminalAppearanceSettings preferences={terminalDraft} onChange={applyTerminalPreferences} />
       : <section id="settings-panel-compiler" role="tabpanel" aria-labelledby="settings-tab-compiler">
@@ -306,6 +315,10 @@ export function ProjectSettings({ onClose, project, projectId, site, files, dict
         <p className="field-hint">{t("projectSettings.latexmkrcSource", { path: selectedRcPath })}</p>
         {site.allowProjectLatexmkrc === false ? <p className="field-hint">{t("projectSettings.latexmkrcUnavailable")}</p> : <p className="field-hint latexmkrc-warning"><AlertTriangle size={14} aria-hidden="true" /><span>{t("projectSettings.latexmkrcWarning")}</span></p>}
       </div>}
+      <div className="editor-preference">
+        <label className="tex-fmt-options-field"><span className="tex-fmt-options-heading"><span>{t("projectSettings.texFmtOptions")}</span><BrowserToolStatus compact name="tex-fmt" state={texFmtStatus} label={t(`projectSettings.toolStatus.${texFmtStatus.status}`)} reloadLabel={t("projectSettings.reloadTool")} onReload={reloadTexFmtRuntime} /></span><textarea className="tex-fmt-options-editor" rows={6} maxLength={MAX_TEX_FMT_CONFIG_LENGTH} spellCheck={false} disabled={!canManage || savingCompiler} value={texFmtConfig} placeholder={t("projectSettings.texFmtOptionsPlaceholder")} onChange={(event) => setTexFmtConfig(event.target.value)} /></label>
+        <p className="field-hint">{t("projectSettings.formatterDescription")} <a href="https://www.npmjs.com/package/tex-fmt" target="_blank" rel="noreferrer">{t("projectSettings.formatterInstall")}</a> · <a href="https://github.com/FlamingTempura/bibtex-tidy" target="_blank" rel="noreferrer">{t("projectSettings.bibtexTidyInstall")}</a></p>
+      </div>
       <div className="settings-actions">{canManage && <SaveButton className="settings-save" feedback={saveFeedback} saving={savingCompiler} onClick={() => void saveCompilerSettings()}>{t("projectSettings.saveCompiler")}</SaveButton>}</div>
       <CompilerVersions />
     </section>}

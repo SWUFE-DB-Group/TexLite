@@ -76,19 +76,44 @@ describe("settings save feedback", () => {
     expect(vi.mocked(api).mock.calls.every(([, options]) => !options?.method)).toBe(true);
   });
 
-  it("groups editor settings by topic under labelled groups", async () => {
+  it("groups editor settings by topic under labelled groups and keeps shared tex-fmt config in LaTeX settings", async () => {
     await settings();
     const groups = [...host.querySelectorAll<HTMLElement>('#settings-panel-appearance [role="group"]')];
     expect(groups.map((group) => host.querySelector(`#${group.getAttribute("aria-labelledby")}`)?.textContent)).toEqual([
       "projectSettings.groupAppearance", "projectSettings.groupEditing", "projectSettings.groupPreviews",
-      "projectSettings.groupWriting", "projectSettings.groupFormatting"
+      "projectSettings.groupWriting"
     ]);
     const groupOf = (text: string) => groups.findIndex((group) => group.textContent?.includes(text));
     expect(groupOf("projectSettings.fontSize")).toBe(0);
     expect(groupOf("projectSettings.vimMode")).toBe(1);
+    expect(groupOf("projectSettings.formatOnCompile")).toBe(1);
     expect(groupOf("projectSettings.citationHover")).toBe(2);
     expect(groupOf("projectSettings.dictionary")).toBe(3);
-    expect(groupOf("projectSettings.texFmtOptions")).toBe(4);
+    expect(host.querySelector("#settings-panel-appearance .tex-fmt-options-editor")).toBeNull();
+
+    await click("#settings-tab-compiler");
+    const textarea = host.querySelector<HTMLTextAreaElement>("#settings-panel-compiler .tex-fmt-options-editor")!;
+    expect(textarea).not.toBeNull();
+    expect(textarea.value).toBe("wrap = false");
+    expect(textarea.disabled).toBe(false);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "wrap = true\nwraplen = 90");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    vi.mocked(api).mockResolvedValueOnce({ project: { ...project, texFmtConfig: "wrap = true\nwraplen = 90" } });
+    await click(".drawer-settings-save");
+    const patchCall = vi.mocked(api).mock.calls.find(([, options]) => options?.method === "PATCH")!;
+    expect(JSON.parse(patchCall[1]!.body as string)).toEqual({
+      texFmtConfig: "wrap = true\nwraplen = 90",
+      expectedSettings: { texFmtConfig: "wrap = false" }
+    });
+
+    // Non-owner collaborators can inspect the shared tex-fmt config read-only.
+    await settings(vi.fn(), { ...project, permission: "edit", texFmtConfig: "wrap = true\nwraplen = 90" });
+    await click("#settings-tab-compiler");
+    const collabTextarea = host.querySelector<HTMLTextAreaElement>("#settings-panel-compiler .tex-fmt-options-editor")!;
+    expect(collabTextarea.value).toBe("wrap = true\nwraplen = 90");
+    expect(collabTextarea.disabled).toBe(true);
   });
 
   it("auto-applies local editor and terminal preferences immediately and keeps explicit save for compiler settings", async () => {

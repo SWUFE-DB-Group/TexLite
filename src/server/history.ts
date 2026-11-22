@@ -8,6 +8,7 @@ import { httpError } from "./http.js";
 import { MAX_TEXT_PREVIEW_BYTES } from "./limits.js";
 import { defaultHistoryTracking, historyTextCandidate, historyTrackingOverride, type HistoryTrackedFile, type HistoryTrackingPolicy } from "../shared/historyTracking.js";
 import type { HistoryPage, HistoryReason, HistoryStats, HistoryVersion } from "../shared/historyProtocol.js";
+import { DEFAULT_TEX_FMT_CONFIG } from "../shared/texFmt.js";
 export type { HistoryPage, HistoryReason, HistoryStats, HistoryVersion } from "../shared/historyProtocol.js";
 
 interface HistoryFile {
@@ -28,6 +29,8 @@ export interface HistoryManifest {
     latexmkrc: string | null;
     /** Optional for snapshots created before ChkTeX was introduced. */
     chktexEnabled?: boolean;
+    /** Optional for snapshots created before project-level tex-fmt config was introduced. */
+    texFmtConfig?: string;
   };
 }
 
@@ -929,8 +932,8 @@ export class ProjectHistoryService {
         gitMoved = true;
       }
       if (restoreSettings) {
-        this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ?, chktex_enabled = ? WHERE id = ?")
-          .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, manifest.settings.chktexEnabled ? 1 : 0, projectId);
+        this.db.prepare("UPDATE projects SET main_file = ?, engine = ?, latexmkrc = ?, chktex_enabled = ?, tex_fmt_config = ? WHERE id = ?")
+          .run(manifest.settings.mainFile, manifest.settings.engine, manifest.settings.latexmkrc, manifest.settings.chktexEnabled ? 1 : 0, manifest.settings.texFmtConfig ?? DEFAULT_TEX_FMT_CONFIG, projectId);
       }
     } catch (error) {
       // The backup is still intact. Swap the replacement out before deleting
@@ -961,12 +964,17 @@ export class ProjectHistoryService {
 }
 
 function settings(project: ProjectRow): HistoryManifest["settings"] {
-  return { mainFile: project.main_file, engine: project.engine, latexmkrc: project.latexmkrc, chktexEnabled: Boolean(project.chktex_enabled) };
+  return {
+    mainFile: project.main_file, engine: project.engine, latexmkrc: project.latexmkrc,
+    chktexEnabled: Boolean(project.chktex_enabled),
+    texFmtConfig: typeof project.tex_fmt_config === "string" ? project.tex_fmt_config : DEFAULT_TEX_FMT_CONFIG
+  };
 }
 
 function sameSettings(left: HistoryManifest["settings"], right: HistoryManifest["settings"]): boolean {
   return left.mainFile === right.mainFile && left.engine === right.engine && left.latexmkrc === right.latexmkrc
-    && Boolean(left.chktexEnabled) === Boolean(right.chktexEnabled);
+    && Boolean(left.chktexEnabled) === Boolean(right.chktexEnabled)
+    && (left.texFmtConfig ?? DEFAULT_TEX_FMT_CONFIG) === (right.texFmtConfig ?? DEFAULT_TEX_FMT_CONFIG);
 }
 
 function cloneManifest(manifest: HistoryManifest): HistoryManifest {
@@ -976,7 +984,14 @@ function cloneManifest(manifest: HistoryManifest): HistoryManifest {
 function parseManifest(value: string): HistoryManifest {
   const parsed = JSON.parse(value) as HistoryManifest;
   if (parsed.version !== 1 || !parsed.files || !parsed.settings) throw new Error("History manifest is invalid");
-  return { ...parsed, settings: { ...parsed.settings, chktexEnabled: parsed.settings.chktexEnabled === true } };
+  return {
+    ...parsed,
+    settings: {
+      ...parsed.settings,
+      chktexEnabled: parsed.settings.chktexEnabled === true,
+      texFmtConfig: typeof parsed.settings.texFmtConfig === "string" ? parsed.settings.texFmtConfig : DEFAULT_TEX_FMT_CONFIG
+    }
+  };
 }
 
 function parseStringArray(value: string): string[] {

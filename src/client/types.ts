@@ -55,6 +55,8 @@ export interface Project {
   icon: string | null;
   /** Shared project setting: run the optional host ChkTeX checker after edits. */
   chktexEnabled: boolean;
+  /** Shared project setting: TOML options for browser-side tex-fmt formatting. */
+  texFmtConfig?: string;
   permission: "read" | "edit" | "owner";
   /** Shared read/write members, excluding the owner; independent of online sessions. */
   sharedMemberCount?: number;
@@ -160,7 +162,7 @@ export interface CitationLibraryTag {
 export interface HistoryVersionDetail {
   version: HistoryVersion;
   scoped?: boolean;
-  settings: { mainFile: string; engine: Project["engine"]; latexmkrc: string | null; chktexEnabled?: boolean };
+  settings: { mainFile: string; engine: Project["engine"]; latexmkrc: string | null; chktexEnabled?: boolean; texFmtConfig?: string };
   files: Array<{ path: string; size: number; deleted?: boolean; textContent?: boolean }>;
 }
 

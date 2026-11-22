@@ -8,6 +8,7 @@ import { listProjectFiles, resolveSourcePath } from "../files.js";
 import { httpError, ValidationError } from "../http.js";
 import { accessibleProject, canEdit } from "../projects.js";
 import { isTextContent } from "../../shared/fileTypes.js";
+import { DEFAULT_TEX_FMT_CONFIG } from "../../shared/texFmt.js";
 import { sortProjectCommentsBySource } from "../commentSourceOrder.js";
 import { suggestionsForProject } from "../commentSuggestions.js";
 
@@ -125,6 +126,7 @@ export function projectJson(project: ProjectRow & {
     engine: project.engine,
     icon: project.icon,
     chktexEnabled: Boolean(project.chktex_enabled),
+    texFmtConfig: typeof project.tex_fmt_config === "string" ? project.tex_fmt_config : DEFAULT_TEX_FMT_CONFIG,
     permission: project.permission,
     sharedMemberCount: project.shared_member_count ?? 0,
     tags,

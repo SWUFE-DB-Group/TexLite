@@ -17,6 +17,7 @@ import {
 } from "../files.js";
 import type { HistoryReason } from "../history.js";
 import { apiError, contentDisposition, HttpError, httpError } from "../http.js";
+import { DEFAULT_TEX_FMT_CONFIG, MAX_TEX_FMT_CONFIG_LENGTH } from "../../shared/texFmt.js";
 import { isMainDocumentCandidate } from "../latexRoot.js";
 import { lucideIconSvg, resolveLucideIconName } from "../lucideIcons.js";
 import type { LatexCompletionService } from "../latexCompletion.js";
@@ -78,7 +79,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
   const importArchive = async (request: FastifyRequest, user: UserRow, name: string, archive: Buffer): Promise<ProjectRow> => {
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(name, 120),
-      main_file: "", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, created_at: now(), updated_at: now()
+      main_file: "", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, tex_fmt_config: DEFAULT_TEX_FMT_CONFIG, created_at: now(), updated_at: now()
     };
     try {
       fs.mkdirSync(sourceRoot(config, project.id), { recursive: true, mode: 0o700 });
@@ -86,9 +87,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
       const extracted = await extractProjectZip(archive, sourceRoot(config, project.id), config.maxUploadBytes);
       project.main_file = extracted.mainFile;
       requireProjectCreator(request);
-      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`)
-        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.engine, project.chktex_enabled, project.created_at, project.updated_at);
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, tex_fmt_config, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.engine, project.chktex_enabled, project.tex_fmt_config, project.created_at, project.updated_at);
     } catch (error) {
       removeProjectDirectory(config, project.id);
       throw error;
@@ -303,12 +304,12 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     }
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(body?.name, 120),
-      main_file: "main.tex", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, created_at: now(), updated_at: now()
+      main_file: "main.tex", latexmkrc: null, engine: config.defaultEngine, icon: null, chktex_enabled: 0, tex_fmt_config: DEFAULT_TEX_FMT_CONFIG, created_at: now(), updated_at: now()
     };
     createProjectFiles(config, project.id);
     try {
-      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.chktex_enabled, project.created_at, project.updated_at);
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, chktex_enabled, tex_fmt_config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.chktex_enabled, project.tex_fmt_config, project.created_at, project.updated_at);
     } catch (error) {
       removeProjectDirectory(config, project.id);
       throw error;
@@ -354,7 +355,7 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
     const requestedName = typeof body?.name === "string" && body.name.trim() ? body.name : `${source.name.slice(0, 115)} (1)`;
     const project: ProjectRow = {
       id: randomUUID(), owner_id: user.id, last_modified_by: user.id, name: text(requestedName, 120),
-      main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, icon: source.icon, chktex_enabled: source.chktex_enabled, created_at: now(), updated_at: now()
+      main_file: source.main_file, latexmkrc: source.latexmkrc, engine: source.engine, icon: source.icon, chktex_enabled: source.chktex_enabled, tex_fmt_config: source.tex_fmt_config, created_at: now(), updated_at: now()
     };
     const checkSource = () => {
       if (!accessibleProject(db, source.id, requireProjectCreator(request))) throw httpError(404, "PROJECT_NOT_FOUND");
@@ -368,9 +369,9 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
         preflight: checkSource
       });
       checkSource();
-      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, icon, chktex_enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.icon, project.chktex_enabled, project.created_at, project.updated_at);
+      db.prepare(`INSERT INTO projects (id, owner_id, last_modified_by, name, main_file, latexmkrc, engine, icon, chktex_enabled, tex_fmt_config, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(project.id, project.owner_id, project.last_modified_by, project.name, project.main_file, project.latexmkrc, project.engine, project.icon, project.chktex_enabled, project.tex_fmt_config, project.created_at, project.updated_at);
     } catch (error) {
       removeProjectDirectory(config, project.id);
       throw error;
@@ -601,7 +602,8 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
         const expected = body.expectedSettings as Record<string, unknown>;
         const currentSettings = {
           name: currentProject.name, mainFile: currentProject.main_file, engine: currentProject.engine,
-          latexmkrc: currentProject.latexmkrc, chktexEnabled: Boolean(currentProject.chktex_enabled)
+          latexmkrc: currentProject.latexmkrc, chktexEnabled: Boolean(currentProject.chktex_enabled),
+          texFmtConfig: currentProject.tex_fmt_config
         };
         for (const field of Object.keys(currentSettings) as Array<keyof typeof currentSettings>) {
           if (Object.hasOwn(body, field) && (!Object.hasOwn(expected, field) || expected[field] !== currentSettings[field])) {
@@ -624,6 +626,13 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
         engine = body.engine;
       }
       const chktexEnabled = typeof body.chktexEnabled === "boolean" ? body.chktexEnabled : Boolean(currentProject.chktex_enabled);
+      let texFmtConfig = currentProject.tex_fmt_config;
+      if (body.texFmtConfig !== undefined) {
+        if (typeof body.texFmtConfig !== "string" || body.texFmtConfig.length > MAX_TEX_FMT_CONFIG_LENGTH) {
+          return apiError(reply, 400, "REQUEST_INVALID");
+        }
+        texFmtConfig = body.texFmtConfig;
+      }
       const latexmkrc = body.latexmkrc === null || body.latexmkrc === ""
         ? null
         : typeof body.latexmkrc === "string" ? safeRelativePath(body.latexmkrc) : currentProject.latexmkrc;
@@ -663,9 +672,10 @@ export function registerProjectCatalogRoutes(app: FastifyInstance, context: Proj
         }
       }
       const chktexSettingChanged = Boolean(currentProject.chktex_enabled) !== chktexEnabled;
-      db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, chktex_enabled = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
-        .run(name, mainFile, latexmkrc, engine, chktexEnabled ? 1 : 0, now(), user.id, id);
-      if (chktexSettingChanged) collaboration.signalChktexSetting(id);
+      const texFmtConfigChanged = currentProject.tex_fmt_config !== texFmtConfig;
+      db.prepare("UPDATE projects SET name = ?, main_file = ?, latexmkrc = ?, engine = ?, chktex_enabled = ?, tex_fmt_config = ?, updated_at = ?, last_modified_by = ? WHERE id = ?")
+        .run(name, mainFile, latexmkrc, engine, chktexEnabled ? 1 : 0, texFmtConfig, now(), user.id, id);
+      if (chktexSettingChanged || texFmtConfigChanged) collaboration.signalChktexSetting(id);
       // Project-wide discussion order follows the configured document, even
       // for coauthors editing another file with the review drawer already open.
       if (mainFile !== currentProject.main_file) collaboration.signalComments(id);

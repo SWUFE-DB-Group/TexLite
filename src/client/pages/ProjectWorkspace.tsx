@@ -61,6 +61,7 @@ import { loadDrawioEditor } from "../workspace/drawioLoader";
 import type { QuickOpenCommand, QuickOpenMode } from "../QuickOpenDialog";
 import { formatShortcutKey, isApplePlatform } from "../shortcuts";
 import { setTheme, useTheme } from "../theme";
+import { DEFAULT_TEX_FMT_CONFIG } from "../../shared/texFmt";
 
 const WordCountDialog = lazy(() => import("../workspace/WordCountDialog").then((module) => ({ default: module.WordCountDialog })));
 const DrawioEditor = lazy(loadDrawioEditor);
@@ -620,7 +621,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       .then(({ project: currentProject }) => {
         if (controller.signal.aborted) return;
         setProject((current) => current
-          ? { ...current, chktexEnabled: currentProject.chktexEnabled }
+          ? { ...current, chktexEnabled: currentProject.chktexEnabled, texFmtConfig: currentProject.texFmtConfig }
           : currentProject);
       })
       .catch((error) => { if (!isAbortError(error)) setError(errorMessage(error)); });
@@ -810,7 +811,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       }
     }
   };
-  const formatSource = async (filePath: string, source: string, texFmtConfig = editorPreferences.texFmtConfig): Promise<FormattedSource> => {
+  const projectTexFmtConfig = project?.texFmtConfig ?? DEFAULT_TEX_FMT_CONFIG;
+  const formatSource = async (filePath: string, source: string, texFmtConfig = projectTexFmtConfig): Promise<FormattedSource> => {
     if (/\.bib$/i.test(filePath)) {
       try {
         return { formatted: await formatBibtexInWorker(source, site.maxCitationBibtexBytes) };
@@ -1320,7 +1322,14 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     if (!recovery) return;
     setFormatterRecovery(null);
     setError("");
-    if (resetOptions) updateEditorPreferences({ ...editorPreferences, texFmtConfig: "" });
+    if (resetOptions && project?.permission === "owner") {
+      void api<{ project: Project }>(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ texFmtConfig: "", expectedSettings: { texFmtConfig: projectTexFmtConfig } })
+      }).then(({ project: updated }) => applyProjectSettings(updated)).catch((saveError) => {
+        if (!isAbortError(saveError)) setError(errorMessage(saveError));
+      });
+    }
     const configOverride = resetOptions ? "" : undefined;
     if (recovery.action === "selection") void formatSelectedSource(configOverride);
     else void formatCurrentFile(configOverride);
@@ -1698,7 +1707,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     {(spellCheck.error || chktex.error || formatterRecovery || remoteFormatLease) && <div className="client-tool-recoveries">
       {spellCheck.error && <div className="client-tool-recovery" role="alert" title={spellCheck.error}><AlertTriangle size={15} /><span><strong>{t("editor.harperRecoveryTitle")}</strong>{t("editor.harperFallbackHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={spellCheck.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={spellCheck.dismissError}><X size={13} /></button></div>}
       {chktex.error && <div className="client-tool-recovery" role="alert" title={chktex.error}><AlertTriangle size={15} /><span><strong>{t("chktex.recoveryTitle")}</strong>{t("chktex.recoveryHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={chktex.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={chktex.dismissError}><X size={13} /></button></div>}
-      {formatterRecovery && <div className="client-tool-recovery" role="alert" title={formatterRecovery.detail}><AlertTriangle size={15} /><span><strong>{t(formatterRecovery.kind === "format" ? "editor.texFmtOptionsRecoveryTitle" : formatterRecovery.kind === "load" ? "editor.texFmtRecoveryTitle" : "editor.texFmtRuntimeRecoveryTitle")}</strong>{t("editor.clientToolRecoveryHint")}</span><div className="client-tool-recovery-actions"><button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter()}>{t("common.retry")}</button>{formatterRecovery.kind === "format" && editorPreferences.texFmtConfig.trim() && <button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter(true)}>{t("editor.resetFormatterOptions")}</button>}<button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={() => setFormatterRecovery(null)}><X size={13} /></button></div>}
+      {formatterRecovery && <div className="client-tool-recovery" role="alert" title={formatterRecovery.detail}><AlertTriangle size={15} /><span><strong>{t(formatterRecovery.kind === "format" ? "editor.texFmtOptionsRecoveryTitle" : formatterRecovery.kind === "load" ? "editor.texFmtRecoveryTitle" : "editor.texFmtRuntimeRecoveryTitle")}</strong>{t("editor.clientToolRecoveryHint")}</span><div className="client-tool-recovery-actions"><button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter()}>{t("common.retry")}</button>{formatterRecovery.kind === "format" && projectTexFmtConfig.trim() && <button type="button" disabled={formatting || readOnly} onClick={() => retryFormatter(true)}>{t("editor.resetFormatterOptions")}</button>}<button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={() => setFormatterRecovery(null)}><X size={13} /></button></div>}
       {remoteFormatLease && <div className="client-tool-recovery format-lease-status" role="status"><LoaderCircle className="spin" size={15} /><span>{t("editor.formattingBy", { name: remoteFormatLease.holderName })}</span></div>}
     </div>}
     {historyWarning && <div className="client-tool-recovery" role="status"><AlertTriangle size={15} /><span>{t("history.saveWarning")}</span></div>}

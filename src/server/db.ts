@@ -30,6 +30,7 @@ export interface ProjectRow {
   engine: "pdflatex" | "xelatex" | "lualatex";
   icon: string | null;
   chktex_enabled: number;
+  tex_fmt_config: string;
   created_at: string;
   updated_at: string;
 }
@@ -273,6 +274,10 @@ const databaseMigrations: readonly DatabaseMigration[] = [
   { version: 26, name: "add_pending_project_deletions", apply: (db) => {
     // These records must outlive the projects they refer to.
     db.exec("CREATE TABLE IF NOT EXISTS pending_project_deletions (project_id TEXT PRIMARY KEY NOT NULL) WITHOUT ROWID");
+  } },
+  { version: 27, name: "add_project_tex_fmt_config", apply: (db) => {
+    if (!missingColumn(db, "projects", "tex_fmt_config")) return;
+    db.exec("ALTER TABLE projects ADD COLUMN tex_fmt_config TEXT NOT NULL DEFAULT 'wrap = false'");
   } }
 ];
 

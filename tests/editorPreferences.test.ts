@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { defaultEditorPreferences, defaultTexFmtConfig, loadEditorPreferences, saveEditorPreferences } from "../src/client/editorPreferences";
+import { defaultEditorPreferences, loadEditorPreferences, saveEditorPreferences } from "../src/client/editorPreferences";
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -65,16 +65,13 @@ describe("editor preference scope", () => {
     expect(preferences).not.toHaveProperty("theme");
   });
 
-  it("keeps tex-fmt options scoped to the user and project", () => {
-    const preferences = { ...defaultEditorPreferences, texFmtConfig: "wrap = true\nwraplen = 90" };
-    saveEditorPreferences("alice", "paper", preferences);
-    expect(loadEditorPreferences("alice", "paper").texFmtConfig).toBe(preferences.texFmtConfig);
-    expect(loadEditorPreferences("bob", "paper").texFmtConfig).toBe(defaultTexFmtConfig);
-  });
-
-  it("treats an empty TOML string as an explicit choice without a migration marker", () => {
-    saveEditorPreferences("alice", "paper", { ...defaultEditorPreferences, texFmtConfig: "" });
-    expect(loadEditorPreferences("alice", "paper").texFmtConfig).toBe("");
-    expect(JSON.parse(storage.getItem("texlite-editor-preferences:alice:paper")!)).not.toHaveProperty("texFmtConfigInitialized");
+  it("ignores obsolete local texFmtConfig values now stored at the project level", () => {
+    storage.setItem("texlite-editor-preferences:alice:paper", JSON.stringify({
+      texFmtConfig: "wrap = true\nwraplen = 90",
+      formatOnCompile: true
+    }));
+    const preferences = loadEditorPreferences("alice", "paper");
+    expect(preferences.formatOnCompile).toBe(true);
+    expect(preferences).not.toHaveProperty("texFmtConfig");
   });
 });

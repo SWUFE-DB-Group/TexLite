@@ -1,5 +1,6 @@
 import { scopedStorageKey } from "./basePath";
 import { readStorageJson, writeStorageJson } from "./browserStorage";
+import { DEFAULT_TEX_FMT_CONFIG } from "../shared/texFmt";
 
 export type EditorFont = "jetbrains" | "source-code" | "ibm-plex" | "fira-code" | "iosevka";
 
@@ -15,12 +16,10 @@ export interface EditorPreferences {
   citationHover: boolean;
   vimMode: boolean;
   formatOnCompile: boolean;
-  /** TOML options passed to the browser-side tex-fmt WASM formatter. */
-  texFmtConfig: string;
   openFilesInTabs: boolean;
 }
 
-export const defaultTexFmtConfig = "wrap = false";
+export const defaultTexFmtConfig = DEFAULT_TEX_FMT_CONFIG;
 
 export const editorFonts: Array<{ id: EditorFont; labelKey: string; stack: string }> = [
   { id: "jetbrains", labelKey: "projectSettings.fontJetBrains", stack: '"JetBrains Mono", ui-monospace, monospace' },
@@ -41,7 +40,6 @@ export const defaultEditorPreferences: EditorPreferences = {
   citationHover: true,
   vimMode: false,
   formatOnCompile: false,
-  texFmtConfig: defaultTexFmtConfig,
   openFilesInTabs: false
 };
 
@@ -69,8 +67,6 @@ export function loadEditorPreferences(userId: string, projectId: string): Editor
       citationHover: typeof stored.citationHover === "boolean" ? stored.citationHover : defaultEditorPreferences.citationHover,
       vimMode: typeof stored.vimMode === "boolean" ? stored.vimMode : defaultEditorPreferences.vimMode,
       formatOnCompile: typeof stored.formatOnCompile === "boolean" ? stored.formatOnCompile : defaultEditorPreferences.formatOnCompile,
-      texFmtConfig: typeof stored.texFmtConfig === "string" && stored.texFmtConfig.length <= 16 * 1024
-        ? stored.texFmtConfig : defaultEditorPreferences.texFmtConfig,
       openFilesInTabs: typeof stored.openFilesInTabs === "boolean" ? stored.openFilesInTabs : defaultEditorPreferences.openFilesInTabs
   };
 }

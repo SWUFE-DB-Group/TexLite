@@ -517,7 +517,26 @@ describe("texLite application", () => {
       method: "PATCH", url, headers: { cookie },
       payload: { chktexEnabled: true, expectedSettings: { chktexEnabled: false } }
     });
-    expect(unrelated.json().project).toMatchObject({ name: "Settings final", chktexEnabled: true });
+    expect(unrelated.json().project).toMatchObject({ name: "Settings final", chktexEnabled: true, texFmtConfig: "wrap = false" });
+    const formatted = await app.inject({
+      method: "PATCH", url, headers: { cookie },
+      payload: { texFmtConfig: "wrap = true\nwraplen = 88", expectedSettings: { texFmtConfig: "wrap = false" } }
+    });
+    expect(formatted.statusCode).toBe(200);
+    expect(formatted.json().project).toMatchObject({ texFmtConfig: "wrap = true\nwraplen = 88" });
+    const staleFmt = await app.inject({
+      method: "PATCH", url, headers: { cookie },
+      payload: { texFmtConfig: "", expectedSettings: { texFmtConfig: "wrap = false" } }
+    });
+    expect(staleFmt.statusCode).toBe(409);
+    const oversizedFmt = await app.inject({
+      method: "PATCH", url, headers: { cookie },
+      payload: { texFmtConfig: "a".repeat(16 * 1024 + 1) }
+    });
+    expect(oversizedFmt.statusCode).toBe(400);
+    const duplicated = await app.inject({ method: "POST", url: `${url}/duplicate`, headers: { cookie }, payload: { name: "Settings copy" } });
+    expect(duplicated.statusCode).toBe(201);
+    expect(duplicated.json().project).toMatchObject({ chktexEnabled: true, texFmtConfig: "wrap = true\nwraplen = 88" });
     const stale = await app.inject({
       method: "PATCH", url, headers: { cookie },
       payload: { name: "Outdated title", expectedSettings: { name: "Settings draft" } }
@@ -525,7 +544,7 @@ describe("texLite application", () => {
     expect(stale.statusCode).toBe(409);
     expect(stale.json()).toMatchObject({ code: "PROJECT_SETTINGS_CONFLICT" });
     const current = await app.inject({ method: "GET", url, headers: { cookie } });
-    expect(current.json().project).toMatchObject({ name: "Settings final", chktexEnabled: true });
+    expect(current.json().project).toMatchObject({ name: "Settings final", chktexEnabled: true, texFmtConfig: "wrap = true\nwraplen = 88" });
   });
 
   it("creates, edits, compiles and comments on a project", async () => {
