@@ -158,34 +158,98 @@ it("shows the shared member count even when nobody is online, updates it and hid
   expect(onShare).toHaveBeenCalledOnce();
 });
 
-it("retains accessible toolbar names and full layout choices when toolbar labels are compacted", async () => {
+it("retains accessible toolbar names and segmented layout choices on desktop", async () => {
   const changeWorkspaceLayout = vi.fn();
   const render = (layout: WorkspaceTopbarProps["workspaceLayout"]) => act(async () => root.render(createElement(WorkspaceTopbar, {
     ...topbarProps, workspaceLayout: layout, changeWorkspaceLayout, showCitationLibrary: true,
     agentTerminal: { open: false, activeCount: 2, toggle: noop }
   })));
   await render("editor-pdf");
-  const actions = host.querySelectorAll<HTMLButtonElement>(".editor-actions > button, .layout-trigger");
-  expect(actions).toHaveLength(10);
+  const actions = host.querySelectorAll<HTMLButtonElement>(".editor-actions > button");
+  expect(actions).toHaveLength(9);
   for (const action of actions) expect(action.getAttribute("aria-label")).toBeTruthy();
   const compile = host.querySelector<HTMLButtonElement>("button.compile")!;
   expect(compile.getAttribute("aria-label")).toBe("Compile · pdflatex");
   expect(compile.querySelector(".compile-engine-label")?.textContent).toBe(" · pdflatex");
   expect(compile.querySelector(".workspace-action-label")?.firstChild?.textContent).toBe("Compile");
-  const trigger = host.querySelector<HTMLButtonElement>(".layout-trigger")!;
-  expect(trigger.querySelector(".lucide-columns-2")).not.toBeNull();
-  await act(async () => trigger.click());
-  const choices = host.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
-  expect(choices).toHaveLength(3);
-  for (const choice of choices) {
-    expect(choice.querySelector("strong")?.textContent).toBeTruthy();
-    expect(choice.querySelector("small")?.textContent).toBeTruthy();
-    expect(choice.querySelector(".workspace-action-label")).toBeNull();
-  }
-  await act(async () => choices[2].click());
+  const segments = [...host.querySelectorAll<HTMLButtonElement>(".layout-segmented .layout-segment")];
+  expect(segments).toHaveLength(3);
+  expect(segments.map((button) => button.getAttribute("aria-label"))).toEqual([
+    i18n.t("editor.layout.editor-pdf.name"),
+    i18n.t("editor.layout.editor-only.name"),
+    i18n.t("editor.layout.pdf-only.name")
+  ]);
+  expect(segments.map((button) => button.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"]);
+  await act(async () => segments[2].click());
   expect(changeWorkspaceLayout).toHaveBeenCalledWith("pdf-only");
-  expect(host.querySelector('[role="menu"]')).toBeNull();
   await render("pdf-only");
-  expect(trigger.querySelector(".lucide-panel-right")).not.toBeNull();
-  expect(trigger.getAttribute("aria-label")).toContain(i18n.t("editor.layout.pdf-only.name"));
+  const updated = [...host.querySelectorAll<HTMLButtonElement>(".layout-segmented .layout-segment")];
+  expect(updated.map((button) => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true"]);
+});
+
+it("uses a labeled layout menu on coarse-pointer tablets where hover tooltips are unavailable", async () => {
+  const originalMatchMedia = window.matchMedia;
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: query.includes("pointer: coarse"),
+    media: query,
+    onchange: null,
+    addEventListener: noop,
+    removeEventListener: noop,
+    addListener: noop,
+    removeListener: noop,
+    dispatchEvent: () => false
+  }));
+  try {
+    const changeWorkspaceLayout = vi.fn();
+    const render = (layout: WorkspaceTopbarProps["workspaceLayout"]) => act(async () => root.render(createElement(WorkspaceTopbar, {
+      ...topbarProps, workspaceLayout: layout, changeWorkspaceLayout, showCitationLibrary: true,
+      agentTerminal: { open: false, activeCount: 2, toggle: noop }
+    })));
+    await render("editor-pdf");
+    const trigger = host.querySelector<HTMLButtonElement>(".layout-trigger")!;
+    expect(trigger).not.toBeNull();
+    expect(trigger.querySelector(".layout-current-label")?.textContent).toBe(i18n.t("editor.layout.editor-pdf.name"));
+
+    // Open with keyboard to verify Radix focus management, arrow navigation and Escape focus restoration.
+    await act(async () => {
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    });
+    const menu = document.querySelector<HTMLElement>('.layout-popover[role="menu"]')!;
+    expect(menu).not.toBeNull();
+    const choices = [...menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+    expect(choices).toHaveLength(3);
+    for (const choice of choices) {
+      expect(choice.querySelector("strong")?.textContent).toBeTruthy();
+      expect(choice.querySelector("small")?.textContent).toBeTruthy();
+    }
+    expect(menu.contains(document.activeElement)).toBe(true);
+    const firstFocused = document.activeElement;
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(document.activeElement).not.toBe(firstFocused);
+    expect(document.activeElement).toBe(choices[1]);
+    expect(menu.contains(document.activeElement)).toBe(true);
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(document.querySelector('.layout-popover[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    // Re-open and choose the third layout option.
+    await act(async () => {
+      trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    });
+    const reopenedChoices = [...document.querySelectorAll<HTMLElement>('.layout-popover [role="menuitemradio"]')];
+    await act(async () => reopenedChoices[2].click());
+    expect(changeWorkspaceLayout).toHaveBeenCalledWith("pdf-only");
+    expect(document.querySelector('.layout-popover[role="menu"]')).toBeNull();
+    await render("pdf-only");
+    expect(trigger.querySelector(".layout-current-label")?.textContent).toBe(i18n.t("editor.layout.pdf-only.name"));
+  } finally {
+    window.matchMedia = originalMatchMedia;
+  }
 });

@@ -179,3 +179,12 @@ describe("editor tooltip layer", () => {
     root = createRoot(host);
   });
 });
+
+describe("pending search request on mount", () => {
+  it("opens the search panel and reports completion when a search request was queued before mount", async () => {
+    const onSearchRequestHandled = vi.fn();
+    await render({ filePath: "main.tex", searchRequest: 1, onSearchRequestHandled });
+    expect(host.querySelector(".cm-compact-search")).not.toBeNull();
+    expect(onSearchRequestHandled).toHaveBeenCalledWith(1);
+  });
+});

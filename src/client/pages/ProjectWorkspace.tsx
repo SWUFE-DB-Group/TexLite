@@ -203,7 +203,11 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const [citationLibraryOpen, setCitationLibraryOpen] = useState(false);
   const [cleanMode, setCleanMode] = useState<CompileCleanMode | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
-  const [quickOpenMode, setQuickOpenMode] = useState<QuickOpenMode>("files");
+  const [quickOpenRequest, setQuickOpenRequest] = useState<{ mode: QuickOpenMode; nonce: number }>({ mode: "files", nonce: 0 });
+  const openQuickOpenInMode = useCallback((mode: QuickOpenMode) => {
+    setQuickOpenRequest((current) => ({ mode, nonce: current.nonce + 1 }));
+    setQuickOpen(true);
+  }, []);
   const [tikzGalleryOpen, setTikzGalleryOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [wordCountOpen, setWordCountOpen] = useState(false);
@@ -1295,21 +1299,19 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       const key = event.key.toLocaleLowerCase();
       if ((event.ctrlKey || event.metaKey) && key === "p") {
         event.preventDefault();
-        setQuickOpenMode("files");
-        setQuickOpen(true);
+        openQuickOpenInMode("files");
         return;
       }
       const inTerminal = event.target instanceof Element && Boolean(event.target.closest(".agent-xterm"));
       const commandMod = isApplePlatform() ? (event.metaKey && !event.ctrlKey) : (event.ctrlKey || event.metaKey);
       if (commandMod && key === "k" && !(inTerminal && event.ctrlKey)) {
         event.preventDefault();
-        setQuickOpenMode("commands");
-        setQuickOpen(true);
+        openQuickOpenInMode("commands");
       }
     };
     window.addEventListener("keydown", openNavigation, true);
     return () => window.removeEventListener("keydown", openNavigation, true);
-  }, []);
+  }, [openQuickOpenInMode]);
   const updateEditorPreferences = (next: EditorPreferences) => {
     saveEditorPreferences(user.id, projectId, next); setEditorPreferences(next);
   };
@@ -1719,7 +1721,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
         setDeleteEntry={setDeleteEntry} setFileDialogError={setFileDialogError}
         setNewFolderName={setNewFolderName} setNewFolderOpen={setNewFolderOpen}
         setNewFilePath={setNewFilePath} setNewFileOpen={setNewFileOpen}
-        setQuickOpen={(open) => { if (open) setQuickOpenMode("files"); setQuickOpen(open); }}
+        setQuickOpen={(open) => { if (open) openQuickOpenInMode("files"); else setQuickOpen(false); }}
         onProjectSearch={() => setProjectSearchOpen(true)}
         setFileDragActive={setFileDragActive} dismissUploadFeedback={dismissUploadFeedback} setFilesCollapsed={setFilesCollapsed}
         onError={setError}
@@ -1843,7 +1845,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       shareOpen={shareOpen} setShareOpen={setShareOpen} onSharedMemberCountChange={updateSharedMemberCount} citationLibraryOpen={citationLibraryOpen}
       setCitationLibraryOpen={setCitationLibraryOpen} insertCitationAtCursor={insertCitationAtCursor}
       tikzGalleryOpen={tikzGalleryOpen} setTikzGalleryOpen={setTikzGalleryOpen} tikzGalleryFolder={selectedFolder} addFile={addFile}
-      quickOpen={quickOpen} setQuickOpen={setQuickOpen} quickOpenMode={quickOpenMode} quickOpenCommands={quickOpenCommands} openFile={openFile}
+      quickOpen={quickOpen} setQuickOpen={setQuickOpen} quickOpenMode={quickOpenRequest.mode} quickOpenRequestNonce={quickOpenRequest.nonce} quickOpenCommands={quickOpenCommands} openFile={openFile}
       selectionHistoryTarget={selectionHistoryTarget} closeSelectionHistory={() => setSelectionHistoryTarget(null)}
       historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} gitOpen={gitOpen} setGitOpen={setGitOpen}
       save={save} permissionDowngrade={permissionDowngrade} permissionDowngradeBusy={permissionDowngradeBusy}

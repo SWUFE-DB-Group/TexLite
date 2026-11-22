@@ -1,10 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTranslation } from "react-i18next";
-import { Code2, Columns2, FileText, PanelLeft, PanelRight } from "lucide-react";
+import { Check, ChevronDown, Code2, Columns2, FileText, PanelLeft, PanelRight } from "lucide-react";
 import { type ActiveSession, type CollaborationStatus } from "../collaboration";
 import { UserAvatar } from "../UserAvatar";
 import type { WorkspaceLayout } from "./types";
-import { usePhoneWorkspace } from "./usePhoneWorkspace";
+import { useCoarsePointer, usePhoneWorkspace } from "./usePhoneWorkspace";
 
 export function CollaborationPresence({ sessions, status }: { sessions: ActiveSession[]; status: CollaborationStatus }) {
   const { t } = useTranslation();
@@ -50,6 +51,7 @@ export function WorkspaceLayoutMenu({ value, onChange, previewLabel = "PDF" }: {
   previewLabel?: string }) {
   const { t } = useTranslation();
   const phone = usePhoneWorkspace();
+  const coarsePointer = useCoarsePointer();
   const layouts = [
     { value: "editor-pdf" as const, icon: Columns2 },
     { value: "editor-only" as const, icon: PanelLeft },
@@ -59,6 +61,46 @@ export function WorkspaceLayoutMenu({ value, onChange, previewLabel = "PDF" }: {
     <button type="button" aria-pressed={value !== "pdf-only"} onClick={() => onChange("editor-only")}><Code2 size={15} /><span>{t("editor.mobileSource")}</span></button>
     <button type="button" aria-pressed={value === "pdf-only"} onClick={() => onChange("pdf-only")}><FileText size={15} /><span>{previewLabel}</span></button>
   </div>;
+  if (coarsePointer) {
+    const LayoutIcon = layouts.find((layout) => layout.value === value)!.icon;
+    const currentLabel = t("editor.layout.current", { layout: t(`editor.layout.${value}.name`) });
+    return <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="layout-trigger" aria-label={currentLabel} title={currentLabel}>
+          <LayoutIcon size={15} aria-hidden="true" />
+          <span className="workspace-action-label">
+            <small>{t("editor.layout.label")}</small>
+            <span className="layout-current-label">{t(`editor.layout.${value}.name`)}</span>
+          </span>
+          <ChevronDown className="layout-trigger-chevron" size={13} aria-hidden="true" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="layout-popover" align="end" sideOffset={8} collisionPadding={8} aria-label={t("editor.layout.label")}>
+          <DropdownMenu.Label className="layout-popover-title">{t("editor.layout.choose")}</DropdownMenu.Label>
+          <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as WorkspaceLayout)}>
+            {layouts.map((layout) => {
+              const Icon = layout.icon;
+              const selected = layout.value === value;
+              return <DropdownMenu.RadioItem
+                key={layout.value}
+                value={layout.value}
+                textValue={t(`editor.layout.${layout.value}.name`)}
+                className={`layout-option${selected ? " selected" : ""}`}
+              >
+                <Icon size={19} aria-hidden="true" />
+                <span>
+                  <strong>{t(`editor.layout.${layout.value}.name`)}</strong>
+                  <small>{t(`editor.layout.${layout.value}.description`)}</small>
+                </span>
+                {selected && <Check size={16} aria-hidden="true" />}
+              </DropdownMenu.RadioItem>;
+            })}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>;
+  }
   return <div className="layout-segmented" role="group" aria-label={t("editor.layout.label")}>
     {layouts.map((layout) => {
       const Icon = layout.icon;

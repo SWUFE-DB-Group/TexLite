@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { AlignLeft, LoaderCircle, Search } from "lucide-react";
 import { EditorTabs } from "./EditorTabs";
 import { TikzCompileButton } from "./TikzCompileButton";
@@ -96,7 +96,9 @@ export function WorkspaceEditorPanel({
   alternativeEditor, figurePdf = null, formatControls = null, agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: WorkspaceEditorPanelProps) {
   const { t } = useTranslation();
-  const [searchRequest, setSearchRequest] = useState(0);
+  const searchNonceRef = useRef(0);
+  const [pendingSearch, setPendingSearch] = useState<{ path: string; nonce: number } | null>(null);
+  const activeSearchRequest = pendingSearch?.path === activeFile ? pendingSearch.nonce : 0;
   // Comment offsets are meaningful only for the source document which
   // produced them. Keep a late response or cross-file review selection from
   // decorating the newly mounted editor tab.
@@ -113,7 +115,7 @@ export function WorkspaceEditorPanel({
       data-shortcut={formatShortcutKey("F")}
       aria-label={t(readOnly ? "editor.search.find" : "editor.search.findReplace")}
       onMouseDown={(event) => event.preventDefault()}
-      onClick={() => setSearchRequest((value) => value + 1)}>
+      onClick={() => setPendingSearch({ path: activeFile, nonce: ++searchNonceRef.current })}>
       <Search size={12} aria-hidden="true" />
       <span className="editor-context-action-label">{t(readOnly ? "editor.search.find" : "editor.search.findReplace")}</span>
     </button>
@@ -146,7 +148,7 @@ export function WorkspaceEditorPanel({
         {showContextBar && <div className="figure-pdf-bar">{!showTabs && editorContextActions}{figurePdf && <TikzCompileButton {...figurePdf} />}</div>}
         <div className="editor-content-fill">
         <Suspense fallback={<div className="preview-empty"><LoaderCircle className="spin" size={22} /><span>{t("common.loading")}</span></div>}>
-          <LatexEditor key={editorKey} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={searchRequest} collaboration={collaboration} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
+          <LatexEditor key={editorKey} value={content} projectId={projectId} filePath={activeFile} mainFile={mainFile} readOnly={readOnly} comments={editorComments} focusComment={editorFocusComment} preferences={editorPreferences} nativeSpellCheck={nativeSpellCheck} completionIndex={completionIndex} spellCheckIssues={spellCheckIssues} spellCheckJump={spellCheckJump} jumpTo={loadedFile === activeFile && sourceJump?.path === activeFile ? sourceJump : null} searchRequest={activeSearchRequest} onSearchRequestHandled={(nonce) => setPendingSearch((current) => current?.nonce === nonce ? null : current)} collaboration={collaboration} onChange={updateEditorContent} onSelection={setSelection} onAddComment={onAddComment} onSelectionHistory={onSelectionHistory} onCommentClick={onCommentClick} onSpellCheckReplace={onSpellCheckReplace} onReferenceNavigate={onReferenceNavigate} onCursor={onCursor}
             onSourceJumpHandled={onSourceJumpHandled}
             agentChanges={agentChanges} activeAgentChangeId={activeAgentChangeId} agentChangeReveal={agentChangeReveal} onAgentChangesStale={onAgentChangesStale} onOpenAgentChange={onOpenAgentChange} />
         </Suspense>

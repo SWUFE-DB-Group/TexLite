@@ -114,4 +114,67 @@ describe("QuickOpenDialog command mode", () => {
     expect(filesButton.getAttribute("aria-pressed")).toBe("true");
     expect(document.querySelectorAll(".quick-open-results button")).toHaveLength(2);
   });
+
+  it("tracks selected command by id and clears selection instead of executing the next command when it disappears", async () => {
+    const onCompile = vi.fn();
+    const onFormat = vi.fn();
+    const onSearch = vi.fn();
+    const allCommands: QuickOpenCommand[] = [
+      { id: "compile", label: "Save and compile", onSelect: onCompile },
+      { id: "format", label: "Format document", onSelect: onFormat },
+      { id: "search", label: "Search project", onSelect: onSearch }
+    ];
+    const render = (commands: QuickOpenCommand[]) => act(async () => {
+      root.render(createElement(QuickOpenDialog, {
+        open: true, files, commands, initialMode: "commands", requestNonce: 1, onOpenChange: vi.fn(), onOpenFile: vi.fn()
+      }));
+    });
+
+    await render(allCommands);
+    const input = document.querySelector<HTMLInputElement>(".quick-open-dialog input")!;
+    expect(document.querySelector(".quick-open-results button.active")?.textContent).toContain("Save and compile");
+
+    // Collaborator starts compiling -> "compile" disappears while it was highlighted.
+    await render(allCommands.slice(1));
+    expect(document.querySelector(".quick-open-results button.active")).toBeNull();
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onFormat).not.toHaveBeenCalled();
+    expect(onCompile).not.toHaveBeenCalled();
+
+    // Navigating explicitly with ArrowDown selects "format", and it stays selected even if another item is removed.
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    });
+    expect(document.querySelector(".quick-open-results button.active")?.textContent).toContain("Format document");
+    await render([allCommands[0], allCommands[1]]);
+    expect(document.querySelector(".quick-open-results button.active")?.textContent).toContain("Format document");
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onFormat).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-enters command mode when requestNonce increments after clicking the Files button", async () => {
+    const commands: QuickOpenCommand[] = [
+      { id: "compile", label: "Save and compile", onSelect: vi.fn() }
+    ];
+    const render = (requestNonce: number) => act(async () => {
+      root.render(createElement(QuickOpenDialog, {
+        open: true, files, commands, initialMode: "commands", requestNonce, onOpenChange: vi.fn(), onOpenFile: vi.fn()
+      }));
+    });
+
+    await render(1);
+    const [filesButton, commandsButton] = [...document.querySelectorAll<HTMLButtonElement>(".quick-open-mode-switch button")];
+    expect(commandsButton.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => filesButton.click());
+    expect(filesButton.getAttribute("aria-pressed")).toBe("true");
+
+    // Pressing Ctrl/Cmd+K again increments requestNonce even though initialMode is still "commands".
+    await render(2);
+    expect(commandsButton.getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector<HTMLInputElement>(".quick-open-dialog input")!.value).toBe("> ");
+  });
 });

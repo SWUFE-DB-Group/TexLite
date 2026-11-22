@@ -1,15 +1,27 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 export const PHONE_WORKSPACE_QUERY = "(max-width: 600px)";
-const matches = () => typeof window.matchMedia === "function" && window.matchMedia(PHONE_WORKSPACE_QUERY).matches;
-const subscribe = (notify: () => void) => {
+export const COARSE_POINTER_QUERY = "(pointer: coarse), (hover: none)";
+const matchesPhone = () => typeof window.matchMedia === "function" && window.matchMedia(PHONE_WORKSPACE_QUERY).matches;
+const subscribePhone = (notify: () => void) => {
   const query = window.matchMedia?.(PHONE_WORKSPACE_QUERY);
+  query?.addEventListener("change", notify);
+  return () => query?.removeEventListener("change", notify);
+};
+const matchesCoarsePointer = () => typeof window.matchMedia === "function" && window.matchMedia(COARSE_POINTER_QUERY).matches;
+const subscribeCoarsePointer = (notify: () => void) => {
+  const query = window.matchMedia?.(COARSE_POINTER_QUERY);
   query?.addEventListener("change", notify);
   return () => query?.removeEventListener("change", notify);
 };
 
 export function usePhoneWorkspace(): boolean {
-  return useSyncExternalStore(subscribe, matches, () => false);
+  return useSyncExternalStore(subscribePhone, matchesPhone, () => false);
+}
+
+/** Touch-first viewports (such as iPad) cannot rely on hover tooltips to identify icon-only controls. */
+export function useCoarsePointer(): boolean {
+  return useSyncExternalStore(subscribeCoarsePointer, matchesCoarsePointer, () => false);
 }
 
 /** Safari's keyboard changes the visual viewport without resizing the page. */

@@ -63,6 +63,7 @@ interface Props {
   jumpTo: SourceJump | null;
   onSourceJumpHandled?: (nonce: number) => void;
   searchRequest: number;
+  onSearchRequestHandled?: (nonce: number) => void;
   collaboration?: { text: Y.Text; awareness: Awareness; undoManager?: Y.UndoManager };
   onChange: (value: string) => void;
   onSelection: (selectedText: string, startOffset: number, endOffset: number) => void;
@@ -160,7 +161,7 @@ function referenceFromElement(element: EventTarget | null): LatexReference | nul
 }
 
 export function LatexEditor({
-  value, projectId, filePath, mainFile, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, onSourceJumpHandled, searchRequest,
+  value, projectId, filePath, mainFile, readOnly, comments, focusComment, preferences, completionIndex, jumpTo, onSourceJumpHandled, searchRequest, onSearchRequestHandled,
   nativeSpellCheck, spellCheckIssues, spellCheckJump, collaboration, onChange, onSelection, onAddComment, onSelectionHistory, onCommentClick, onSpellCheckReplace, onReferenceNavigate, onCursor,
   agentChanges = null, activeAgentChangeId = null, agentChangeReveal = null, onAgentChangesStale, onOpenAgentChange
 }: Props) {
@@ -178,7 +179,9 @@ export function LatexEditor({
   const onReferenceNavigateRef = useRef(onReferenceNavigate);
   const onCursorRef = useRef(onCursor);
   const spellCheckIssuesRef = useRef(spellCheckIssues);
-  const handledSearchRequest = useRef(searchRequest);
+  const handledSearchRequest = useRef(0);
+  const onSearchRequestHandledRef = useRef(onSearchRequestHandled);
+  onSearchRequestHandledRef.current = onSearchRequestHandled;
   const completionIndexRef = useRef(completionIndex);
   const appearance = useRef(new Compartment());
   const referenceNavigation = useRef(new Compartment());
@@ -535,6 +538,7 @@ export function LatexEditor({
     if (!editor || searchRequest === 0 || searchRequest === handledSearchRequest.current) return;
     handledSearchRequest.current = searchRequest;
     openSearchPanel(editor);
+    onSearchRequestHandledRef.current?.(searchRequest);
   }, [searchRequest]);
 
   const appearanceStyle = useMemo(() => ({

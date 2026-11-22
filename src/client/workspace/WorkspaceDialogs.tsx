@@ -103,6 +103,7 @@ export interface WorkspaceDialogsProps {
   quickOpen: boolean;
   setQuickOpen: (open: boolean) => void;
   quickOpenMode?: QuickOpenMode;
+  quickOpenRequestNonce?: number;
   quickOpenCommands?: QuickOpenCommand[];
   openFile: (entry: FileEntry) => void;
   selectionHistoryTarget: SelectionHistoryTarget | null;
@@ -129,7 +130,7 @@ export function WorkspaceDialogs({
   setMoveEntry, moveName, setMoveName, moveDestination, setMoveDestination, movePath, deleteEntry,
   setDeleteEntry, deleteActiveSessions, deletingPath, deletingOpenDrawio, removePath, commentOpen, closeComment, commentSelection, commentText,
   setCommentText, commentSubmitting, commentError, addComment, cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection, shareOpen, setShareOpen, onSharedMemberCountChange, citationLibraryOpen, setCitationLibraryOpen,
-  insertCitationAtCursor, quickOpen, setQuickOpen, quickOpenMode = "files", quickOpenCommands, openFile,
+  insertCitationAtCursor, quickOpen, setQuickOpen, quickOpenMode = "files", quickOpenRequestNonce = 0, quickOpenCommands, openFile,
   selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
   permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
 }: WorkspaceDialogsProps) {
@@ -168,7 +169,7 @@ export function WorkspaceDialogs({
     <ShareDialog open={shareOpen} onOpenChange={setShareOpen} project={project} projectId={projectId} onMemberCountChange={onSharedMemberCountChange} />
     {citationLibraryOpen && <LazyModal title={t("citationLibrary.title")} onClose={() => setCitationLibraryOpen(false)}><CitationLibraryDialog open onOpenChange={setCitationLibraryOpen} currentFile={activeFile} currentSource={content} readOnly={readOnly} currentUserId={user.id} maxBibtexBytes={maxCitationBibtexBytes} onInsert={insertCitationAtCursor} /></LazyModal>}
     {tikzGalleryOpen && <LazyModal title={t("gallery.title")} onClose={() => setTikzGalleryOpen(false)}><TikzGalleryDialog folder={tikzGalleryFolder} onClose={() => setTikzGalleryOpen(false)} onImport={addFile} /></LazyModal>}
-    {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} commands={quickOpenCommands} initialMode={quickOpenMode} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
+    {quickOpen && <Suspense fallback={null}><QuickOpenDialog open files={files} commands={quickOpenCommands} initialMode={quickOpenMode} requestNonce={quickOpenRequestNonce} onOpenChange={setQuickOpen} onOpenFile={(filePath) => { const entry = files.find((file) => file.path === filePath); if (entry) openFile(entry); }} /></Suspense>}
     {projectSearchOpen && <LazyModal title={t("projectSearch.title")} onClose={() => setProjectSearchOpen(false)}><ProjectSearchDialog projectId={projectId} readOnly={readOnly} onClose={() => setProjectSearchOpen(false)} onNavigate={onSearchNavigate} /></LazyModal>}
     {selectionHistoryTarget && <Suspense fallback={null}><SelectionHistoryDialog open onOpenChange={(open) => { if (!open) closeSelectionHistory(); }} project={project} filePath={selectionHistoryTarget.filePath} selection={selectionHistoryTarget.selection} currentSource={selectionHistoryTarget.source} /></Suspense>}
     {historyOpen && <Suspense fallback={null}><HistoryDialog open onOpenChange={setHistoryOpen} project={project} onBeforeMutation={project.permission === "read" ? async () => true : save} /></Suspense>}
