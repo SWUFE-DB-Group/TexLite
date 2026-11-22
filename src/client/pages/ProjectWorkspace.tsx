@@ -221,6 +221,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   const [formatting, setFormatting] = useState(false);
   const [formatterRecovery, setFormatterRecovery] = useState<FormatterRecovery | null>(null);
   const [permissionDowngradeBusy, setPermissionDowngradeBusy] = useState(false);
+  const [permissionDowngradeError, setPermissionDowngradeError] = useState("");
   const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(() => loadEditorPreferences(user.id, projectId));
   useEffect(() => {
     const root = document.documentElement;
@@ -343,8 +344,9 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     permission: collaborationPermission,
     reconnect: reconnectCollaboration,
     protocolUpgradeRequired,
+    draftResetFailed,
     permissionDowngrade,
-    dismissPermissionDowngrade,
+    dismissPermissionDowngrade: dismissLocalDraftNotice,
     discardLocalDraft
   } = useProjectCollaboration(collaboration, activeMainFile, project?.permission ?? "read", project?.id === projectId);
 
@@ -728,8 +730,8 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
   };
 
   useEffect(() => {
-    if (!dirty || !activeFile) return;
-    if (!collaborationSynced) return;
+    if ((!dirty && !collaboration.hasRecoveredWritableDraft) || !activeFile) return;
+    if (!collaborationSynced || collaborationPermission === "read") return;
     setSaveState("editor.pending");
     const timer = window.setTimeout(() => {
       setSaveState("editor.saving");
@@ -738,7 +740,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       });
     }, 750);
     return () => window.clearTimeout(timer);
-  }, [content, dirty, activeFile, collaborationSynced]);
+  }, [content, dirty, activeFile, collaborationSynced, collaborationPermission, collaboration, localDraftReady]);
 
   const save = async (): Promise<boolean> => {
     if (!project || project.permission === "read" || !collaborationSynced || !activeFile) return false;
@@ -1334,16 +1336,21 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
     if (recovery.action === "selection") void formatSelectedSource(configOverride);
     else void formatCurrentFile(configOverride);
   };
+  const dismissPermissionDowngrade = () => {
+    setPermissionDowngradeError("");
+    dismissLocalDraftNotice();
+  };
   const discardPermissionDraft = async (): Promise<void> => {
     setPermissionDowngradeBusy(true);
+    setPermissionDowngradeError("");
     try {
       const discarded = await discardLocalDraft();
       if (!discarded) {
-        setError(t("editor.collaboration.permissionDowngradeOtherTabBlocked"));
+        setPermissionDowngradeError(t("editor.collaboration.permissionDowngradeOtherTabBlocked"));
         setPermissionDowngradeBusy(false);
       }
-    } catch (draftError) {
-      setError(errorMessage(draftError));
+    } catch {
+      setPermissionDowngradeError(t("editor.collaboration.draftCleanupFailed"));
       setPermissionDowngradeBusy(false);
     }
   };
@@ -1703,6 +1710,10 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       <span>{t("workspaceUpdates.protocolUpgrade")}</span>
       <button type="button" onClick={() => window.location.reload()}>{t("common.reload")}</button>
     </div>}
+    {draftResetFailed && <div className="workspace-update-banner" role="alert">
+      <AlertTriangle size={15} />
+      <span>{t("editor.collaboration.draftCleanupFailed")}</span>
+    </div>}
     {compileStatusMessage && <div className={`compile-status-strip${compileOutcome === "failed" ? " failed" : ""}`} role="status" aria-live="polite"><LoaderCircle className={compileBusy ? "spin" : ""} size={14} /><span>{compileStatusMessage}</span></div>}
     {(spellCheck.error || chktex.error || formatterRecovery || remoteFormatLease) && <div className="client-tool-recoveries">
       {spellCheck.error && <div className="client-tool-recovery" role="alert" title={spellCheck.error}><AlertTriangle size={15} /><span><strong>{t("editor.harperRecoveryTitle")}</strong>{t("editor.harperFallbackHint")}</span><div className="client-tool-recovery-actions"><button type="button" onClick={spellCheck.retry}>{t("common.retry")}</button></div><button type="button" className="formatter-diagnostics-dismiss" title={t("common.close")} aria-label={t("common.close")} onClick={spellCheck.dismissError}><X size={13} /></button></div>}
@@ -1858,6 +1869,7 @@ function ProjectWorkspaceController({ site, user, projectId, preload, mentionId 
       selectionHistoryTarget={selectionHistoryTarget} closeSelectionHistory={() => setSelectionHistoryTarget(null)}
       historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} gitOpen={gitOpen} setGitOpen={setGitOpen}
       save={save} permissionDowngrade={permissionDowngrade} permissionDowngradeBusy={permissionDowngradeBusy}
+      permissionDowngradeError={permissionDowngradeError}
       dismissPermissionDowngrade={dismissPermissionDowngrade} discardPermissionDraft={discardPermissionDraft}
     />
   </div>;

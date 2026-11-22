@@ -2,8 +2,9 @@
  * Wire-level constants and payload shapes shared by the browser and server.
  *
  * These values are part of the persisted collaboration contract. Do not
- * renumber a message or change a payload shape in place: make an intentional
- * protocol-version migration instead.
+ * renumber a message or change existing fields in place: make an intentional
+ * protocol-version migration instead. Trailing optional fields are compatible
+ * when older readers ignore them and newer readers handle their absence.
  */
 export const CollaborationMessageType = {
   Sync: 0,
@@ -17,6 +18,7 @@ export const CollaborationMessageType = {
   // Source text still uses the normal Yjs sync protocol.
   CompileStates: 8,
   // Ephemeral per-file formatter leases, intentionally outside Yjs state.
+  // State packets may append the remaining lease duration in milliseconds.
   FormatLease: 9
 } as const;
 

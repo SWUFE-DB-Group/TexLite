@@ -48,6 +48,7 @@ class ControlledCollaboration {
   readonly onFormatLeaseState = (listener: () => void) => subscribe(this.leaseListeners, listener);
   readonly onDraftReady = (listener: () => void) => subscribe(this.draftListeners, listener);
   readonly onProtocolUpgrade = (listener: () => void) => subscribe(this.protocolListeners, listener);
+  readonly onDraftResetFailure = () => () => {};
   readonly onPermissionChanged = (listener: Parameters<ProjectCollaboration["onPermissionChanged"]>[0]) => subscribe(this.permissionListeners, listener);
 
   transport(status: "connecting" | "connected" | "disconnected") {

@@ -42,6 +42,7 @@ export function useProjectCollaboration(
   const [permission, setPermission] = useState<Project["permission"]>(projectPermission);
   const [permissionDowngrade, setPermissionDowngrade] = useState<PermissionDowngradeNotice | null>(null);
   const [protocolUpgradeRequired, setProtocolUpgradeRequired] = useState(false);
+  const [draftResetFailed, setDraftResetFailed] = useState(false);
   const activeMainFileRef = useRef(activeMainFile);
   const readyRef = useRef(ready);
   activeMainFileRef.current = activeMainFile;
@@ -112,6 +113,10 @@ export function useProjectCollaboration(
       setTransportStatus("disconnected");
       clearConnectionState();
     });
+    const stopDraftResetFailureListener = collaboration.onDraftResetFailure((failed) => {
+      setDraftResetFailed(failed);
+      if (failed) handleConnectionFailure();
+    });
     const refreshFormatLeases = () => setFormatLeaseStates(collaboration.formatLeaseStates());
     const stopFormatLeaseListener = collaboration.onFormatLeaseState(refreshFormatLeases);
     const showStoredDraftNotice = () => {
@@ -162,6 +167,7 @@ export function useProjectCollaboration(
       collaboration.meta.unobserve(handleMeta);
       stopCompileStateListener();
       stopProtocolUpgradeListener();
+      stopDraftResetFailureListener();
       stopFormatLeaseListener();
       stopDraftListener();
       stopPermissionListener();
@@ -229,10 +235,7 @@ export function useProjectCollaboration(
   const dismissPermissionDowngrade = () => setPermissionDowngrade(null);
   const discardLocalDraft = async (): Promise<boolean> => {
     const discarded = await collaboration.discardLocalDraft();
-    if (!discarded) {
-      setPermissionDowngrade((current) => current ? { ...current, otherTabDraft: true } : current);
-      return false;
-    }
+    if (!discarded) return false;
     setPermissionDowngrade(null);
     window.location.reload();
     return true;
@@ -255,6 +258,7 @@ export function useProjectCollaboration(
     localDraftReady,
     permission,
     protocolUpgradeRequired,
+    draftResetFailed,
     reconnect,
     permissionDowngrade,
     dismissPermissionDowngrade,

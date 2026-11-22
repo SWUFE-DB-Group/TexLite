@@ -2097,6 +2097,9 @@ function formatLeaseStateMessage(lease: FormatLease | null, filePath: string): U
   encoding.writeVarString(encoder, "");
   encoding.writeVarString(encoder, lease?.connection.user.id ?? "");
   encoding.writeVarString(encoder, lease?.connection.user.display_name ?? "");
+  // Keep the legacy timestamp above so cached clients can still read the
+  // packet. New clients time the indicator without comparing wall clocks.
+  encoding.writeVarUint(encoder, lease ? Math.max(0, lease.expiresAt - Date.now()) : 0);
   return encoding.toUint8Array(encoder);
 }
 

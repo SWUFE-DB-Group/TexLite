@@ -460,7 +460,8 @@
       "permissionDowngradeNoDraft": "您的权限已变为只读。您可以继续查看当前标签页，或重新加载服务器上的最新版本。",
       "permissionDowngradeOtherTab": "您的权限已变为只读。另一个浏览器标签页中仍有尚未保存的草稿，请返回该标签页处理。为避免误删，该页面不能清理共享的本地草稿。",
       "permissionDowngradeMultipleDrafts": "您的权限已变为只读。当前标签页和其他浏览器标签页都存在尚未保存的草稿。请先在其他标签页中处理草稿；当前页面不会清理共享数据。",
-      "permissionDowngradeOtherTabBlocked": "另一个浏览器标签页刚刚产生了尚未保存的草稿，已取消清理以保护该草稿。",
+      "permissionDowngradeOtherTabBlocked": "请先关闭其他标签页中的此项目，再清理本地草稿。",
+      "draftCleanupFailed": "无法清理本地草稿。草稿仍保留在此浏览器中，请重试。",
       "activeSessions_one": "{{count}} 个活跃会话", "activeSessions_other": "{{count}} 个活跃会话",
       "showMoreSessions_one": "展开另外 {{count}} 个会话", "showMoreSessions_other": "展开另外 {{count}} 个会话", "showFewerSessions": "收起会话列表",
       "sessionTooltip": "{{name}}（@{{username}}）· {{file}} · {{activity}} · {{permission}}"

@@ -51,6 +51,7 @@ vi.mock("../src/client/collaboration", async () => {
       setPermission = (permission: Project["permission"]) => { this.currentPermission = permission; };
       onCompileStates = (listener: () => void) => this.subscribe(listener);
       onProtocolUpgrade = (listener: () => void) => this.subscribe(listener);
+      onDraftResetFailure = (listener: () => void) => this.subscribe(listener);
       onFormatLeaseState = (listener: () => void) => this.subscribe(listener);
       onDraftReady = (listener: () => void) => this.subscribe(listener);
       onPermissionChanged = (listener: () => void) => this.subscribe(listener);

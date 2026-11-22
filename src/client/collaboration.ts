@@ -5,7 +5,8 @@ import { encodeAwarenessUpdate, type Awareness } from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import * as syncProtocol from "y-protocols/sync";
-import { IndexeddbPersistence } from "y-indexeddb";
+import { clearDocument, IndexeddbPersistence } from "y-indexeddb";
+import { clearCollaborationDraftCache } from "./collaborationDraftCache";
 import type { Project, User } from "./types";
 import { appPath, scopedStorageKey } from "./basePath";
 import { readStorage, removeStorage, storageKeys, writeStorage } from "./browserStorage";
@@ -145,7 +146,8 @@ export class ProjectCollaboration {
   readonly doc = new Y.Doc();
   readonly provider: WebsocketProvider;
   readonly awareness: Awareness;
-  readonly persistence: IndexeddbPersistence;
+  private draftPersistence: IndexeddbPersistence;
+  get persistence(): IndexeddbPersistence { return this.draftPersistence; }
   private permission: Project["permission"] = "read";
   private activeFile = "";
   private epoch: string | null = null;
@@ -163,17 +165,24 @@ export class ProjectCollaboration {
     reject: (error: Error) => void;
     timer: number;
     draftGeneration: number;
+    recoveredMarkers: ReadonlyMap<string, string>;
   }>();
   private readonly formatLeaseRequests = new Map<string, { resolve: (value: FormatLeaseResponse) => void; reject: (error: Error) => void; timer: number }>();
   private readonly formatLeaseListeners = new Set<(state: FormatLeaseState | null) => void>();
-  private readonly formatLeaseStatesByPath = new Map<string, FormatLeaseState>();
+  private readonly formatLeaseStatesByPath = new Map<string, { state: FormatLeaseState; deadline: number }>();
   private readonly formatLeaseExpiryTimers = new Map<string, number>();
-  private readonly draftTabId: string;
+  // sessionStorage can be copied when a browser duplicates a tab.
+  private readonly draftTabId = clientUuid();
+  private readonly recoveredDraftMarkers = new Map<string, string>();
+  private draftCleanup: Promise<boolean> | null = null;
+  private resetToEpoch: string | null = null;
+  private readonly draftResetFailureListeners = new Set<(failed: boolean) => void>();
   private draftGeneration = 0;
   private draftUpdatedAt = 0;
   private draftMarkerPresent = false;
-  private draftHeartbeatTimer: number | null = null;
-  private readonly markDraftTabInactive: () => void;
+  private draftSessionRefreshedAt = 0;
+  private readonly draftHeartbeatTimer: number;
+  private readonly markDraftTabInactive: (event: PageTransitionEvent) => void;
   private readonly markDraftTabActive: () => void;
   /**
    * CodeMirror remounts when the active file changes (for example when tabs
@@ -189,20 +198,31 @@ export class ProjectCollaboration {
 
   constructor(readonly projectId: string, private readonly user: User) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    this.draftTabId = getOrCreateDraftTabId(scopedStorageKey(`texlite:collaboration-tab:${user.id}:${projectId}`));
-    const storedDraft = this.readOwnWritableDraftMarker();
-    this.draftGeneration = storedDraft?.generation ?? 0;
-    this.draftUpdatedAt = storedDraft?.updatedAt ?? 0;
-    this.draftMarkerPresent = storedDraft !== null;
-    this.markDraftTabInactive = () => this.setOwnDraftActivity(false);
-    this.markDraftTabActive = () => this.resumeOwnDraftActivity();
+    // Capture abandoned markers before opening the shared IndexedDB. Once it
+    // hydrates, a flush can acknowledge those drafts too, but never an active
+    // tab's draft or a draft that has changed since this snapshot.
+    for (const { key, marker, raw } of this.readWritableDraftMarkers()) {
+      if (marker.activeAt === 0) this.recoveredDraftMarkers.set(key, raw);
+    }
+    this.markDraftTabInactive = (event) => {
+      this.setOwnDraftActivity(false);
+      if (!event.persisted) removeStorage(this.ownDraftSessionKey());
+    };
+    this.markDraftTabActive = () => {
+      this.refreshDraftSession();
+      this.resumeOwnDraftActivity();
+    };
+    this.refreshDraftSession();
+    this.draftHeartbeatTimer = window.setInterval(() => {
+      this.refreshDraftSession();
+      if (this.draftMarkerPresent && !this.draftCleanup) {
+        if (this.readOwnWritableDraftMarker()) this.writeOwnWritableDraftMarker(true);
+        else this.draftMarkerPresent = false;
+      }
+    }, WRITABLE_DRAFT_HEARTBEAT_MS);
     window.addEventListener("pagehide", this.markDraftTabInactive);
     window.addEventListener("pageshow", this.markDraftTabActive);
-    if (storedDraft) {
-      this.setOwnDraftActivity(true);
-      this.startDraftHeartbeat();
-    }
-    this.persistence = new IndexeddbPersistence(scopedStorageKey(`texlite:${user.id}:${projectId}`), this.doc);
+    this.draftPersistence = this.openDraftPersistence();
     this.localDraftTransactionObserver = (transaction) => {
       if (!transaction.local) return;
       // CodeMirror's yCollab binding writes directly to Y.Text. Keep the
@@ -217,10 +237,6 @@ export class ProjectCollaboration {
       }
     };
     this.doc.on("afterTransaction", this.localDraftTransactionObserver);
-    this.persistence.on("synced", () => {
-      this.localDraftReady = true;
-      for (const listener of this.draftListeners) listener();
-    });
     this.provider = new WebsocketProvider(
       `${protocol}//${window.location.host}${appPath("/api/collaboration")}`,
       projectId,
@@ -263,6 +279,10 @@ export class ProjectCollaboration {
         pending.reject(error);
       } else {
         this.clearOwnWritableDraftMarker(pending.draftGeneration);
+        for (const [key, raw] of pending.recoveredMarkers) {
+          if (readStorage(key) === raw) removeStorage(key);
+          this.recoveredDraftMarkers.delete(key);
+        }
         pending.resolve({ revision, persistedAt, ok: true, failedPaths: [] });
       }
     };
@@ -300,17 +320,12 @@ export class ProjectCollaboration {
         const protocolMigration = epoch.endsWith(":reload")
           || (incomingProtocolVersion !== null
             && incomingProtocolVersion !== String(COLLABORATION_PROTOCOL_VERSION));
-        const reload = () => {
-          writeStorage(epochKey, epoch.replace(/:reload$/, ""));
-          window.location.reload();
-        };
         if (protocolMigration) {
           for (const listener of this.protocolUpgradeListeners) listener();
+        } else {
+          this.resetToEpoch = epoch;
+          this.resetDraftForEpoch();
         }
-        else void this.persistence.clearData().then(() => {
-          this.clearWritableDraftMarkers();
-          reload();
-        });
         return;
       }
       this.epoch = epoch;
@@ -382,20 +397,23 @@ export class ProjectCollaboration {
         const holderUserId = decoding.hasContent(decoder) ? decoding.readVarString(decoder) : "";
         const holderName = decoding.hasContent(decoder) ? decoding.readVarString(decoder) : "";
         const expiresAt = Number(expiresAtText);
-        if (!holderUserId || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        // The optional trailing field is ignored by older clients. Fall back
+        // to the absolute server time only when connected to an older server.
+        const remainingMs = decoding.hasContent(decoder) ? decoding.readVarUint(decoder) : expiresAt - Date.now();
+        if (!holderUserId || !Number.isFinite(remainingMs) || remainingMs <= 0) {
           this.removeFormatLeaseState(filePath);
           this.notifyFormatLeaseListeners(null);
         } else {
           const state = { path: filePath, holderUserId, holderName, expiresAt };
-          this.formatLeaseStatesByPath.set(filePath, state);
+          const lease = { state, deadline: performance.now() + remainingMs };
+          this.formatLeaseStatesByPath.set(filePath, lease);
           const previousTimer = this.formatLeaseExpiryTimers.get(filePath);
           if (previousTimer !== undefined) window.clearTimeout(previousTimer);
           const timer = window.setTimeout(() => {
-            const current = this.formatLeaseStatesByPath.get(filePath);
-            if (!current || current.expiresAt > Date.now()) return;
+            if (this.formatLeaseStatesByPath.get(filePath) !== lease) return;
             this.removeFormatLeaseState(filePath);
             this.notifyFormatLeaseListeners(null);
-          }, Math.max(0, expiresAt - Date.now()) + 25);
+          }, remainingMs);
           this.formatLeaseExpiryTimers.set(filePath, timer);
           this.notifyFormatLeaseListeners(state);
         }
@@ -421,7 +439,7 @@ export class ProjectCollaboration {
   }
 
   connect(): void {
-    if (this.destroyed) return;
+    if (this.destroyed || this.draftCleanup || this.resetToEpoch) return;
     this.provider.connect();
     this.updateLocalAwareness();
   }
@@ -506,15 +524,102 @@ export class ProjectCollaboration {
     return () => this.protocolUpgradeListeners.delete(listener);
   }
 
+  onDraftResetFailure(listener: (failed: boolean) => void): () => void {
+    this.draftResetFailureListeners.add(listener);
+    return () => this.draftResetFailureListeners.delete(listener);
+  }
+
+  private openDraftPersistence(): IndexeddbPersistence {
+    const persistence = new IndexeddbPersistence(scopedStorageKey(`texlite:${this.user.id}:${this.projectId}`), this.doc);
+    persistence.on("synced", () => {
+      this.localDraftReady = true;
+      for (const listener of this.draftListeners) listener();
+    });
+    return persistence;
+  }
+
+  private resetDraftForEpoch(): void {
+    const epoch = this.resetToEpoch;
+    if (!epoch || this.draftCleanup || this.destroyed) return;
+    for (const listener of this.draftResetFailureListeners) listener(false);
+    void this.deleteLocalDraft(epoch).then((discarded) => {
+      if (!discarded) return;
+      writeStorage(this.epochStorageKey(), epoch);
+      if (!this.destroyed) window.location.reload();
+    }, () => {
+      for (const listener of this.draftResetFailureListeners) listener(true);
+    });
+  }
+
+  private deleteLocalDraft(epoch?: string): Promise<boolean> {
+    if (this.draftCleanup) return this.draftCleanup;
+    let detached: Promise<void> | undefined;
+    let resumeConnection = false;
+    let success = false;
+    let markers: Array<{ key: string; raw: string }> = [];
+    const prepare = () => {
+      if (this.destroyed) return false;
+      if (!epoch && (this.hasOtherWritableDraft || this.hasOtherDraftSession())) return false;
+      markers = this.readWritableDraftMarkers();
+      resumeConnection = !epoch && this.provider.shouldConnect;
+      this.provider.disconnect();
+      // Closing the connection lets the ongoing transaction finish but
+      // prevents this document from writing the discarded content back.
+      detached = this.persistence.destroy();
+      return true;
+    };
+    const clear = async () => {
+      if (!epoch) return clearCollaborationDraftCache(this.persistence, prepare);
+      // A server epoch change invalidates every old copy, unlike a manual
+      // discard. Deleting the database closes peers' old cache connections.
+      if (!prepare()) return false;
+      await detached;
+      if (readStorage(this.epochStorageKey()) === epoch) {
+        markers = [];
+        return true;
+      }
+      await clearDocument(this.persistence.name);
+      return true;
+    };
+    const cleanup = clear().then(async (cleared) => {
+      if (!cleared) return false;
+      await detached;
+      this.clearWritableDraftMarkers(markers);
+      this.localDraftReady = false;
+      success = true;
+      return true;
+    }).catch(async (error: unknown) => {
+      if (detached && !this.destroyed) {
+        await detached.catch(() => {});
+        if (!this.destroyed) this.draftPersistence = this.openDraftPersistence();
+      }
+      throw error;
+    }).finally(() => {
+      this.draftCleanup = null;
+      if (resumeConnection && !success) this.connect();
+    });
+    this.draftCleanup = cleanup;
+    return cleanup;
+  }
+
   /** Explicitly discard the local IndexedDB draft after a permission change. */
   async discardLocalDraft(): Promise<boolean> {
     // IndexedDB is shared by every tab for this user/project. Never let one
     // tab erase a draft that another live browser tab still owns.
-    if (this.hasOtherWritableDraft) return false;
-    await this.persistence.clearData();
-    this.localDraftReady = false;
-    this.clearWritableDraftMarkers();
-    return true;
+    if (this.hasOtherWritableDraft || this.hasOtherDraftSession()) return false;
+    const epoch = this.resetToEpoch ?? undefined;
+    const discarded = await this.deleteLocalDraft(epoch);
+    if (discarded && epoch) writeStorage(this.epochStorageKey(), epoch);
+    return discarded;
+  }
+
+  /** Only drafts loaded before sending a flush can be acknowledged by it. */
+  get hasRecoveredWritableDraft(): boolean {
+    if (!this.localDraftReady) return false;
+    for (const [key, raw] of this.recoveredDraftMarkers) {
+      if (readStorage(key) === raw) return true;
+    }
+    return false;
   }
 
   /** Whether IndexedDB contains a draft that this tab may recover or discard. */
@@ -585,6 +690,7 @@ export class ProjectCollaboration {
     }
     const requestId = clientUuid();
     const draftGeneration = this.draftGeneration;
+    const recoveredMarkers = this.localDraftReady ? new Map(this.recoveredDraftMarkers) : new Map<string, string>();
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_FLUSH);
     encoding.writeVarString(encoder, requestId);
@@ -593,23 +699,23 @@ export class ProjectCollaboration {
         this.flushRequests.delete(requestId);
         reject(new Error("Collaboration save timed out"));
       }, 5000);
-      this.flushRequests.set(requestId, { resolve, reject, timer, draftGeneration });
+      this.flushRequests.set(requestId, { resolve, reject, timer, draftGeneration, recoveredMarkers });
       socket.send(encoding.toUint8Array(encoder));
     });
   }
 
   onFormatLeaseState(listener: (state: FormatLeaseState | null) => void): () => void {
     this.formatLeaseListeners.add(listener);
-    for (const state of this.formatLeaseStatesByPath.values()) listener(state);
+    for (const state of this.formatLeaseStates()) listener(state);
     return () => this.formatLeaseListeners.delete(listener);
   }
 
   formatLeaseStates(): FormatLeaseState[] {
-    const now = Date.now();
-    for (const [filePath, state] of this.formatLeaseStatesByPath) {
-      if (state.expiresAt <= now) this.removeFormatLeaseState(filePath);
+    const now = performance.now();
+    for (const [filePath, lease] of this.formatLeaseStatesByPath) {
+      if (lease.deadline <= now) this.removeFormatLeaseState(filePath);
     }
-    return [...this.formatLeaseStatesByPath.values()];
+    return [...this.formatLeaseStatesByPath.values()].map(({ state }) => state);
   }
 
   async acquireFormatLease(filePath: string): Promise<FormatLease> {
@@ -649,6 +755,11 @@ export class ProjectCollaboration {
   /** Retry a failed websocket handshake without discarding the local Yjs doc. */
   reconnect(): void {
     if (this.destroyed) return;
+    if (this.resetToEpoch) {
+      this.resetDraftForEpoch();
+      return;
+    }
+    if (this.draftCleanup) return;
     this.rejectFlushes(new Error("Collaboration connection reset"));
     this.provider.disconnect();
     this.provider.connect();
@@ -656,15 +767,18 @@ export class ProjectCollaboration {
   }
 
   destroy(): void {
+    if (this.destroyed) return;
     this.destroyed = true;
     this.setOwnDraftActivity(false);
-    this.stopDraftHeartbeat();
+    window.clearInterval(this.draftHeartbeatTimer);
+    removeStorage(this.ownDraftSessionKey());
     window.removeEventListener("pagehide", this.markDraftTabInactive);
     window.removeEventListener("pageshow", this.markDraftTabActive);
     this.rejectFlushes(new Error("Collaboration connection closed"));
     this.provider.destroy();
     this.persistence.destroy();
     this.draftListeners.clear();
+    this.draftResetFailureListeners.clear();
     this.protocolUpgradeListeners.clear();
     this.compileStateListeners.clear();
     this.rejectFormatLeaseRequests(new Error("Collaboration connection closed"));
@@ -789,19 +903,50 @@ export class ProjectCollaboration {
     return `${this.writableDraftStoragePrefix()}${this.draftTabId}`;
   }
 
+  private draftSessionPrefix(): string {
+    return `${scopedStorageKey(`texlite:collaboration-draft-session:${this.user.id}:${this.projectId}`)}:`;
+  }
+
+  private ownDraftSessionKey(): string {
+    return `${this.draftSessionPrefix()}${this.draftTabId}`;
+  }
+
+  private refreshDraftSession(): void {
+    const now = Date.now();
+    if (writeStorage(this.ownDraftSessionKey(), String(now))) this.draftSessionRefreshedAt = now;
+  }
+
+  private hasOtherDraftSession(): boolean {
+    const now = Date.now();
+    const prefix = this.draftSessionPrefix();
+    const ownKey = this.ownDraftSessionKey();
+    if (!readStorage(ownKey)) throw new Error("Local draft ownership is unavailable");
+    return storageKeys().some((key) => {
+      if (key === ownKey || !key.startsWith(prefix)) return false;
+      const lastSeen = Number(readStorage(key));
+      if (lastSeen > 0 && now - lastSeen <= WRITABLE_DRAFT_ACTIVE_MAX_AGE_MS) return true;
+      removeStorage(key);
+      return false;
+    });
+  }
+
   private markWritableDraft(): void {
     this.draftGeneration += 1;
     this.draftUpdatedAt = Date.now();
-    // Persist immediately for the first edit, then let the heartbeat coalesce
-    // subsequent keystrokes into one small localStorage write every 15s.
-    if (!this.draftMarkerPresent) this.writeOwnWritableDraftMarker(true);
-    this.startDraftHeartbeat();
+    // A suspended tab may edit before its next heartbeat. Republish its
+    // presence and draft immediately when it wakes, as for the first edit.
+    if (!this.draftMarkerPresent || this.draftUpdatedAt - this.draftSessionRefreshedAt >= WRITABLE_DRAFT_HEARTBEAT_MS) {
+      this.refreshDraftSession();
+      this.writeOwnWritableDraftMarker(true);
+    }
   }
 
-  private clearWritableDraftMarkers(): void {
-    for (const { key } of this.readWritableDraftMarkers()) removeStorage(key);
+  private clearWritableDraftMarkers(markers: ReadonlyArray<{ key: string; raw: string }>): void {
+    for (const { key, raw } of markers) {
+      if (readStorage(key) === raw) removeStorage(key);
+    }
     this.draftMarkerPresent = false;
-    this.stopDraftHeartbeat();
+    this.recoveredDraftMarkers.clear();
     // Clean up the short-lived map format used by the initial implementation.
     removeStorage(this.writableDraftStoragePrefix().slice(0, -1));
   }
@@ -811,26 +956,25 @@ export class ProjectCollaboration {
     if (!marker || !writableDraftCoveredByFlush(marker.generation, this.draftGeneration, flushedGeneration)) return;
     removeStorage(this.ownWritableDraftStorageKey());
     this.draftMarkerPresent = false;
-    this.stopDraftHeartbeat();
   }
 
   private readOwnWritableDraftMarker(): WritableDraftMarker | null {
     return this.readWritableDraftMarker(this.ownWritableDraftStorageKey());
   }
 
-  private readWritableDraftMarkers(): Array<{ key: string; tabId: string; marker: WritableDraftMarker }> {
+  private readWritableDraftMarkers(): Array<{ key: string; tabId: string; marker: WritableDraftMarker; raw: string }> {
     const prefix = this.writableDraftStoragePrefix();
-    const markers: Array<{ key: string; tabId: string; marker: WritableDraftMarker }> = [];
+    const markers: Array<{ key: string; tabId: string; marker: WritableDraftMarker; raw: string }> = [];
     for (const key of storageKeys()) {
       if (!key.startsWith(prefix)) continue;
-      const marker = this.readWritableDraftMarker(key);
-      if (marker) markers.push({ key, tabId: key.slice(prefix.length), marker });
+      const raw = readStorage(key);
+      const marker = this.readWritableDraftMarker(key, raw);
+      if (marker && raw !== null) markers.push({ key, tabId: key.slice(prefix.length), marker, raw });
     }
     return markers;
   }
 
-  private readWritableDraftMarker(key: string): WritableDraftMarker | null {
-    const raw = readStorage(key);
+  private readWritableDraftMarker(key: string, raw = readStorage(key)): WritableDraftMarker | null {
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as unknown;
@@ -867,9 +1011,11 @@ export class ProjectCollaboration {
 
   private setOwnDraftActivity(active: boolean): void {
     if (!this.draftMarkerPresent) return;
+    if (!this.readOwnWritableDraftMarker()) {
+      this.draftMarkerPresent = false;
+      return;
+    }
     this.writeOwnWritableDraftMarker(active);
-    if (active) this.startDraftHeartbeat();
-    else this.stopDraftHeartbeat();
   }
 
   private resumeOwnDraftActivity(): void {
@@ -879,7 +1025,6 @@ export class ProjectCollaboration {
     const marker = this.readOwnWritableDraftMarker();
     if (!marker) {
       this.draftMarkerPresent = false;
-      this.stopDraftHeartbeat();
       return;
     }
     this.draftGeneration = Math.max(this.draftGeneration, marker.generation);
@@ -887,34 +1032,4 @@ export class ProjectCollaboration {
     this.draftMarkerPresent = true;
     this.setOwnDraftActivity(true);
   }
-
-  private startDraftHeartbeat(): void {
-    if (this.draftHeartbeatTimer !== null || !this.draftMarkerPresent) return;
-    this.draftHeartbeatTimer = window.setInterval(() => {
-      this.writeOwnWritableDraftMarker(true);
-    }, WRITABLE_DRAFT_HEARTBEAT_MS);
-  }
-
-  private stopDraftHeartbeat(): void {
-    if (this.draftHeartbeatTimer === null) return;
-    window.clearInterval(this.draftHeartbeatTimer);
-    this.draftHeartbeatTimer = null;
-  }
-}
-
-
-function safeSessionStorageGet(key: string): string | null {
-  try { return window.sessionStorage.getItem(key); } catch { return null; }
-}
-
-function safeSessionStorageSet(key: string, value: string): void {
-  try { window.sessionStorage.setItem(key, value); } catch { /* IndexedDB still retains the draft. */ }
-}
-
-function getOrCreateDraftTabId(key: string): string {
-  const existing = safeSessionStorageGet(key);
-  if (existing) return existing;
-  const created = clientUuid();
-  safeSessionStorageSet(key, created);
-  return created;
 }

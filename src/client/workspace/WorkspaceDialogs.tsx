@@ -115,6 +115,7 @@ export interface WorkspaceDialogsProps {
   save: () => Promise<boolean>;
   permissionDowngrade: PermissionDowngradeNotice | null;
   permissionDowngradeBusy: boolean;
+  permissionDowngradeError: string;
   dismissPermissionDowngrade: () => void;
   discardPermissionDraft: () => Promise<void>;
 }
@@ -132,7 +133,7 @@ export function WorkspaceDialogs({
   setCommentText, commentSubmitting, commentError, addComment, cancelComment, commentDraftRestored, commentDraftCanRetarget, useCurrentCommentSelection, shareOpen, setShareOpen, onSharedMemberCountChange, citationLibraryOpen, setCitationLibraryOpen,
   insertCitationAtCursor, quickOpen, setQuickOpen, quickOpenMode = "files", quickOpenRequestNonce = 0, quickOpenCommands, openFile,
   selectionHistoryTarget, closeSelectionHistory, historyOpen, setHistoryOpen, gitOpen, setGitOpen, save, permissionDowngrade,
-  permissionDowngradeBusy, dismissPermissionDowngrade, discardPermissionDraft
+  permissionDowngradeBusy, permissionDowngradeError, dismissPermissionDowngrade, discardPermissionDraft
 }: WorkspaceDialogsProps) {
   const { t } = useTranslation();
   return <>
@@ -142,7 +143,9 @@ export function WorkspaceDialogs({
         ? t("editor.collaboration.permissionDowngradeOtherTab")
       : permissionDowngrade.localDraftReady
           ? t("editor.collaboration.permissionDowngradeDescription", { previous: t("common.readWrite") })
-          : t("editor.collaboration.permissionDowngradeNoDraft")} onOpenChange={(open) => { if (!open && !permissionDowngradeBusy) dismissPermissionDowngrade(); }} footer={<><button type="button" disabled={permissionDowngradeBusy} onClick={dismissPermissionDowngrade}>{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeKeep") : t("common.close")}</button>{!permissionDowngrade.otherTabDraft && <button type="button" className="danger" disabled={permissionDowngradeBusy} onClick={() => void discardPermissionDraft()}>{permissionDowngradeBusy ? <LoaderCircle className="spin" size={14} /> : permissionDowngrade.localDraftReady ? <Trash2 size={14} /> : <RefreshCw size={14} />}{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeDiscard") : t("editor.collaboration.permissionDowngradeReload")}</button>}</>}><div /></Modal>}
+          : t("editor.collaboration.permissionDowngradeNoDraft")} onOpenChange={(open) => { if (!open && !permissionDowngradeBusy) dismissPermissionDowngrade(); }} footer={<><button type="button" disabled={permissionDowngradeBusy} onClick={dismissPermissionDowngrade}>{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeKeep") : t("common.close")}</button>{!permissionDowngrade.otherTabDraft && <button type="button" className="danger" disabled={permissionDowngradeBusy} onClick={() => void discardPermissionDraft()}>{permissionDowngradeBusy ? <LoaderCircle className="spin" size={14} /> : permissionDowngrade.localDraftReady ? <Trash2 size={14} /> : <RefreshCw size={14} />}{permissionDowngrade.localDraftReady ? t("editor.collaboration.permissionDowngradeDiscard") : t("editor.collaboration.permissionDowngradeReload")}</button>}</>}>
+      {permissionDowngradeError ? <p className="error dialog-error" role="alert">{permissionDowngradeError}</p> : <div />}
+    </Modal>}
     <Modal open={Boolean(resourcePreview)} extraWide={resourcePreview?.kind === "image" || resourcePreview?.kind === "pdf" || resourcePreview?.kind === "text"} title={resourcePreview?.path ?? ""} description={resourcePreview?.kind === "large" ? t("editor.resourceTooLarge", { size: formatBytes(resourcePreview.size, { maximumUnit: "MB" }), limit: formatBytes(resourcePreview.limitBytes ?? MAX_DIRECT_RESOURCE_PREVIEW_BYTES, { maximumUnit: "MB" }) }) : t(`editor.resourcePreview.${resourcePreview?.kind ?? "text"}`)} onOpenChange={(open) => { if (!open) { setResourcePreview(null); setResourcePreviewLoading(false); } }} footer={resourcePreview && <a className="primary resource-download" href={`${resourcePreview.url}&download=1`} download><Download size={14} />{t("editor.downloadResource")}</a>}>
       {resourcePreview?.kind === "large" && <div className="resource-preview-message"><FileArchive size={34} /><strong>{t("editor.resourceTooLargeTitle")}</strong><span>{t("editor.resourceTooLargeDescription")}</span></div>}
       {resourcePreview?.kind === "unsupported" && <div className="resource-preview-message"><File size={34} /><strong>{t("editor.resourceUnsupportedTitle")}</strong><span>{t("editor.resourceUnsupportedDescription")}</span></div>}

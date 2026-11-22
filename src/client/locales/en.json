@@ -469,7 +469,8 @@
       "permissionDowngradeNoDraft": "Your access changed to read-only. Reload to use the latest server version, or continue viewing this tab.",
       "permissionDowngradeOtherTab": "Your access changed to read-only. Another browser tab still has an unsaved draft; return to that tab to handle it. This page cannot clear the shared local draft safely.",
       "permissionDowngradeMultipleDrafts": "Your access changed to read-only. This tab and another browser tab both have unsaved drafts. Handle the other tab first; this page will not clear shared local data.",
-      "permissionDowngradeOtherTabBlocked": "Another browser tab just created an unsaved draft, so cleanup was cancelled to protect it.",
+      "permissionDowngradeOtherTabBlocked": "Close this project in other tabs before clearing the local draft.",
+      "draftCleanupFailed": "Could not clear the local draft. It was kept in this browser. Please retry.",
       "activeSessions_one": "{{count}} active session", "activeSessions_other": "{{count}} active sessions",
       "showMoreSessions_one": "Show {{count}} more session", "showMoreSessions_other": "Show {{count}} more sessions", "showFewerSessions": "Collapse session list",
       "sessionTooltip": "{{name}} (@{{username}}) · {{file}} · {{activity}} · {{permission}}"

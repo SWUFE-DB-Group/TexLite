@@ -705,6 +705,9 @@ describe("project collaboration", () => {
     const second = await TestPeer.connect(app, projectId, adminCookie, { id: adminId, username: "admin", name: "Administrator" });
     try {
       const firstLease = await first.acquireFormatLease("main.tex");
+      await waitFor(() => second.formatLeaseDurations.has("main.tex"));
+      expect(second.formatLeaseDurations.get("main.tex")).toBeGreaterThan(0);
+      expect(second.formatLeaseDurations.get("main.tex")).toBeLessThanOrEqual(45_000);
       const secondLeasePromise = second.acquireFormatLease("main.tex");
       first.destroy();
       const secondLease = await secondLeasePromise;
@@ -1294,6 +1297,7 @@ class TestPeer {
   authoritativeCompileStates: Record<string, unknown> | null = null;
   pauseUpdates = false;
   readonly permissionChanges: string[] = [];
+  readonly formatLeaseDurations = new Map<string, number>();
   private socket: WebSocket | null = null;
   private readonly queuedUpdates: Uint8Array[] = [];
   private syncResolve: (() => void) | null = null;
@@ -1460,11 +1464,18 @@ class TestPeer {
     } else if (messageType === MESSAGE_FORMAT_LEASE) {
       const status = decoding.readVarString(decoder);
       const requestId = decoding.readVarString(decoder);
-      decoding.readVarString(decoder); // path
+      const filePath = decoding.readVarString(decoder);
       const token = decoding.readVarString(decoder);
       const expiresAt = Number(decoding.readVarString(decoder));
       const reason = decoding.readVarString(decoder);
-      if (status === "state") return;
+      if (status === "state") {
+        decoding.readVarString(decoder); // holder ID
+        decoding.readVarString(decoder); // holder name
+        const remainingMs = decoding.readVarUint(decoder);
+        if (remainingMs > 0) this.formatLeaseDurations.set(filePath, remainingMs);
+        else this.formatLeaseDurations.delete(filePath);
+        return;
+      }
       const pending = this.formatLeaseRequests.get(requestId);
       if (!pending) return;
       this.formatLeaseRequests.delete(requestId);
