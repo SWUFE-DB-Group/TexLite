@@ -54,8 +54,9 @@ export function WorkspaceLayoutMenu({ value, onChange, previewLabel = "PDF" }: {
   const coarsePointer = useCoarsePointer();
   const layouts = [
     { value: "editor-pdf" as const, icon: Columns2 },
-    { value: "editor-only" as const, icon: PanelLeft },
-    { value: "pdf-only" as const, icon: PanelRight }
+    // Lucide names the narrow side; the wider pane is the one we keep.
+    { value: "editor-only" as const, icon: PanelRight },
+    { value: "pdf-only" as const, icon: PanelLeft }
   ];
   if (phone) return <div className="workspace-phone-views" role="group" aria-label={t("editor.layout.label")}>
     <button type="button" aria-pressed={value !== "pdf-only"} onClick={() => onChange("editor-only")}><Code2 size={15} /><span>{t("editor.mobileSource")}</span></button>
