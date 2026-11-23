@@ -107,6 +107,38 @@ describe("Markdown preview", () => {
     expect(scroller.scrollTop).toBe(tops.get(item)! - 100 - 16);
   });
 
+  it("renders five GitHub alerts without losing Markdown or source navigation", async () => {
+    const { onJumpToLine } = await render({ source: [
+      "> [!NOTE]", "> See **this** [file](setup.md).", ">", "> - One item", "",
+      "> [!TIP]  ", "> **Tip body**", "",
+      "> [!IMPORTANT]", "> Important body", "",
+      "> [!WARNING]", "> Warning body", "",
+      "> [!CAUTION]", ">", "> Caution body"
+    ].join("\r\n") });
+    const alerts = [...host.querySelectorAll(".markdown-alert")];
+    expect(alerts.map((alert) => alert.querySelector(".markdown-alert-title")?.textContent))
+      .toEqual(["Note", "Tip", "Important", "Warning", "Caution"]);
+    expect(alerts.map((alert) => alert.getAttribute("data-source-line"))).toEqual(["1", "6", "9", "12", "15"]);
+    expect(alerts[0].querySelector("a")?.getAttribute("href")).toBe("/api/projects/paper/file/raw?path=docs%2Fsetup.md");
+    expect(alerts[0].querySelector("li")?.textContent).toBe("One item");
+    expect(alerts[1].querySelector("br")).toBeNull();
+    expect(alerts[4].querySelector("p[data-source-line='17']")?.textContent).toBe("Caution body");
+    expect(host.textContent).not.toContain("[!NOTE]");
+    await act(async () => alerts[0].querySelector("strong")!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(onJumpToLine).toHaveBeenCalledWith(2);
+  });
+
+  it("leaves unknown, inline, escaped and nested markers as plain Markdown", async () => {
+    await render({ source: [
+      "> [!OTHER]", "> Plain quote", "", "> [!NOTE] Not a marker line", "",
+      "> \\[!TIP]", "> Escaped marker", "", "> &#91;!CAUTION]", "> Encoded marker", "",
+      "> > [!WARNING]", "> > Nested quote", "", "```md", "> [!IMPORTANT]", "```"
+    ].join("\n") });
+    expect(host.querySelector(".markdown-alert")).toBeNull();
+    expect(host.querySelectorAll("blockquote")).toHaveLength(6);
+    expect(host.querySelector("pre code")?.textContent).toBe("> [!IMPORTANT]\n");
+  });
+
   it("shows an empty state for a blank file", async () => {
     await render({ source: "  \n" });
     expect(host.textContent).toContain("This Markdown file is empty.");

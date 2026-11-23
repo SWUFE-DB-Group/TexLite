@@ -2,6 +2,13 @@
   "lazyLoad": {
     "recoveryHint": "此功能未能加载。请尽可能保存修改，然后刷新页面。"
   },
+  "markdownAlerts": {
+    "note": "说明",
+    "tip": "提示",
+    "important": "重要",
+    "warning": "警告",
+    "caution": "谨慎"
+  },
   "citationNotes": {
     "tab": "笔记",
     "preview": "笔记预览",

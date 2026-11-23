@@ -2,6 +2,13 @@
   "lazyLoad": {
     "recoveryHint": "此功能未能載入。請盡可能儲存變更，然後重新載入頁面。"
   },
+  "markdownAlerts": {
+    "note": "說明",
+    "tip": "提示",
+    "important": "重要",
+    "warning": "警告",
+    "caution": "謹慎"
+  },
   "citationNotes": {
     "tab": "筆記",
     "preview": "筆記預覽",

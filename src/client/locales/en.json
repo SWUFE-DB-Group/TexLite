@@ -2,6 +2,13 @@
   "lazyLoad": {
     "recoveryHint": "This part of TexLite couldn’t load. Save any changes you can, then reload the page."
   },
+  "markdownAlerts": {
+    "note": "Note",
+    "tip": "Tip",
+    "important": "Important",
+    "warning": "Warning",
+    "caution": "Caution"
+  },
   "citationNotes": {
     "tab": "Notes",
     "preview": "Notes preview",

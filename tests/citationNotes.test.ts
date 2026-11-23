@@ -10,7 +10,7 @@ it("renders Markdown lists, code, tables and links without executing embedded HT
   await i18n.changeLanguage("en");
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    const notes = "# Notes\n\n- **Important** result\n- `\\alpha`\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n[Source](https://example.org)\n\n[Unsafe](javascript:alert%281%29)\n\n<script>window.compromised=true</script>\n\n<img src=x onerror=alert(1)>";
+    const notes = "# Notes\n\n- **Important** result\n- `\\alpha`\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n[Source](https://example.org)\n\n> [!CAUTION]\n> [Unsafe](javascript:alert%281%29)\n> <img src=x onerror=alert(1)>\n\n<script>window.compromised=true</script>";
     await act(async () => root.render(createElement(CitationNotesPreview, { notes })));
     const rendered = host.querySelector(".citation-notes-markdown")!;
     expect(rendered.querySelector("h1")?.textContent).toBe("Notes");
@@ -18,6 +18,7 @@ it("renders Markdown lists, code, tables and links without executing embedded HT
     expect(rendered.querySelector("code")?.textContent).toBe("\\alpha");
     expect(rendered.querySelectorAll("table tbody td").length).toBe(2);
     expect(rendered.querySelector('a[href="https://example.org"]')?.getAttribute("rel")).toContain("noopener");
+    expect(rendered.querySelector(".markdown-alert-caution .markdown-alert-title")?.textContent).toBe("Caution");
     expect(rendered.querySelector('a[href^="javascript:"], script, [onerror]')).toBeNull();
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

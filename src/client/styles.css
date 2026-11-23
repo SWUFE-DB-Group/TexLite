@@ -2102,6 +2102,15 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 .markdown-math .katex-error { color: var(--ui-danger, #b3261e) !important; }
 .markdown-content a { color: var(--ui-info, #2563b4); text-decoration: underline; text-underline-offset: 2px; }
 .markdown-content blockquote { margin-inline: 0; padding-left: 12px; border-left: 3px solid var(--ui-border, #cbd5ce); color: var(--ui-muted, #78857c); }
+.markdown-alert { margin: .8em 0; padding: .4em 12px; border-inline-start: 4px solid var(--markdown-alert-accent); }
+.markdown-alert-note { --markdown-alert-accent: var(--ui-info); }
+.markdown-alert-tip { --markdown-alert-accent: var(--ui-accent); }
+.markdown-alert-important { --markdown-alert-accent: var(--ui-markdown-important); }
+.markdown-alert-warning { --markdown-alert-accent: var(--ui-warning); }
+.markdown-alert-caution { --markdown-alert-accent: var(--ui-danger); }
+.markdown-alert > .markdown-alert-title { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--markdown-alert-accent); font-weight: 650; }
+.markdown-alert-title > svg { flex: none; }
+.markdown-alert > :last-child { margin-bottom: 0; }
 .markdown-content img { max-width: 100%; height: auto; }
 .markdown-content table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .markdown-content :is(th, td) { padding: 6px 10px; border: 1px solid var(--ui-border, #cbd5ce); text-align: left; }

@@ -3,10 +3,29 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import type { ReactNode } from "react";
+import { CircleAlert, Info, Lightbulb, OctagonAlert, TriangleAlert } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { remarkMarkdownAlerts } from "./markdownAlerts";
 
 type HastNode = { type: string; tagName?: string; properties?: Record<string, unknown>; position?: { start?: { line?: number } }; children?: HastNode[] };
 
 const SOURCE_LINE_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre", "table", "tr", "hr"]);
+const alertIcons = { note: Info, tip: Lightbulb, important: CircleAlert, warning: TriangleAlert, caution: OctagonAlert };
+type AlertKind = keyof typeof alertIcons;
+
+function isAlertKind(value: unknown): value is AlertKind {
+  return typeof value === "string" && Object.hasOwn(alertIcons, value);
+}
+
+function MarkdownAlert({ kind, line, children }: { kind: AlertKind; line?: number; children: ReactNode }) {
+  const { t } = useTranslation();
+  const Icon = alertIcons[kind];
+  return <div className={`markdown-alert markdown-alert-${kind}`} data-source-line={line}>
+    <p className="markdown-alert-title"><Icon size={16} aria-hidden />{t(`markdownAlerts.${kind}`)}</p>
+    {children}
+  </div>;
+}
 
 /** Record each block's first source line so a preview can be aligned with its editor. */
 function rehypeSourceLines() {
@@ -22,6 +41,12 @@ function rehypeSourceLines() {
 
 const baseComponents: Components = {
   a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+  blockquote: ({ node, children, ...props }) => {
+    const kind = node?.properties.dataMarkdownAlert;
+    const line = node?.properties.dataSourceLine;
+    return isAlertKind(kind) ? <MarkdownAlert kind={kind} line={typeof line === "number" ? line : undefined}>{children}</MarkdownAlert>
+      : <blockquote {...props}>{children}</blockquote>;
+  },
   code: ({ node: _node, className, children, ...props }) => {
     const classes = className?.split(/\s+/) ?? [];
     if (!classes.includes("language-math")) return <code className={className} {...props}>{children}</code>;
@@ -57,7 +82,7 @@ export interface MarkdownContentProps {
  */
 export default function MarkdownContent({ source, className, components, urlTransform, sourceLines = false }: MarkdownContentProps) {
   return <div className={`markdown-content ${className}`}>
-    <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={sourceLines ? [rehypeSourceLines] : []} skipHtml
+    <Markdown remarkPlugins={[remarkGfm, remarkMath, remarkMarkdownAlerts]} rehypePlugins={sourceLines ? [rehypeSourceLines] : []} skipHtml
       components={components ? { ...baseComponents, ...components } : baseComponents}
       urlTransform={(url, key, node) => {
         const safe = defaultUrlTransform(url);
