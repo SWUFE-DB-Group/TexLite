@@ -21,10 +21,14 @@ https://github.com/user-attachments/assets/c2b277ab-7cab-4f2b-8684-358fd9fefe8f
 
 ## 为什么选择 TexLite
 
-- **掌控写作环境。** 直接使用宿主机 TeX 环境和 Coding Agents，并将源码、历史版本和编译产物保存在
-  一个本地数据目录中。
-- **无需庞大服务栈即可协作。** 默认部署只有一个 Node.js 进程、SQLite 和本地文件，
-  同时提供实时编辑和源码级批注，适合少量可信协作者。
+- **用自己的 TeX 和 Coding Agents。** 编译直接使用宿主机上的宏包和字体。需要 Agent 时，
+  CLI 和模型由你选择，改动可在项目里逐项审阅。
+- **从初稿到 PDF，都在同一个工作区。** 在浏览器中实时协作，对具体段落提出修改建议；文献、
+  draw.io 图表和可编辑的 TikZ 图都能随稿件一起管理。
+- **一台机器就能自托管。** 默认部署只需一个 Node.js 服务、SQLite 和本地文件，无需另起数据库
+  或缓存服务。
+- **稿件随时可以带走。** 源码、历史和编译产物存放在自己的宿主机上。可将标准 LaTeX 项目文件
+  下载为 ZIP，也可备份到自己的 GitHub 仓库。
 
 ## 快速开始
 
@@ -113,21 +117,33 @@ TeX 更新、数据位置与协作工作流的掌控。
 [VS Code + LaTeX Workshop](https://github.com/James-Yu/LaTeX-Workshop) 或
 [TeXstudio](https://texstudio.org/)。TexLite 的目标是浏览器中的共同写作，而不是取代个人 IDE。
 
-## 核心写作工作流
+## LaTeX 写作与研究亮点
 
-- 项目支持文件夹、ZIP 导入/导出、标签、分享、所有权转让、归档和私有的个人引用库；引用库支持主题文件夹、标签、Markdown 笔记及整文件夹 BibTeX 导出，也可携带笔记导出并分享给其他用户。
-  支持导入 `.bib` 文件或 TexLite JSON 导出文件。
-- 所有者可创建免登录的只读链接，设置有效期、轮换或撤销；访客可查看源码和已有 PDF，
-  不加入协作列表。
-- 基于 CodeMirror 的编辑器提供 LaTeX/BibTeX 高亮、折叠、补全、可选 Vim 模式、格式化、
-  拼写/语法/ChkTeX 辅助、搜索替换及源码/PDF SyncTeX 跳转。
-- 基于 Yjs 的协同源码编辑支持活动会话、源码锚定批注、回复、解决状态，以及让审阅者
-  可批注但不能修改源码的权限模型。
-- 使用 `latexmk` 和可选择引擎进行编译，提供项目设置、结构化诊断、缓存的成功 PDF、
-  可下载产物以及可选的项目级 `latexmkrc`。
-- 每个项目拥有历史版本和仅所有者可用的 Git/GitHub 备份；Git 是可选依赖，仅在使用
-  集成时才检查。
-- 可选的网页终端可调用服务器上安装的代码 agent，由管理员启用。参见[外部 agent 终端](OPERATIONS.md#external-agent-terminals)。
+- **在项目里用 draw.io 画图。** 用[内嵌的 diagrams.net 编辑器](OPERATIONS.md#drawio-diagrams)
+  （支持官方版或自托管版）编辑 `.drawio` 文件。可将当前页或选中内容按边界裁切后导出为 PDF，保存在源文件旁，
+  便于正文用 `\includegraphics` 引入。导出使用 TexLite 宿主机上安装的浏览器。
+- **从可编辑的 TikZ 图例起步。** 通过可选的 [TikZ 图库扩展](addon.md)（Beta）浏览并导入
+  TikZ / pgfplots 模板、示例、图标和数据图。即使不安装图库，也能将独立 TikZ 图编译成
+  PDF，不必重新编译正文。
+- **使用自己的 Coding Agents。** 管理员启用后，可在项目终端中运行宿主机安装的 Claude Code、
+  Codex、OpenCode 或 Antigravity（Linux）。任务可恢复，Agent 的跨文件改动可通过差异和
+  源码高亮逐项审阅。参见[外部 Agent 终端](OPERATIONS.md#external-agent-terminals)。
+- **编写和浏览 LaTeX / BibTeX。** 支持补全、引文预览、折叠、大纲和可选 Vim 模式；跨文件
+  查找替换可先预览。TeX 和 BibTeX 可在浏览器中格式化，也可选用 TeXcount、ChkTeX 和 Harper
+  进行字数统计、LaTeX 检查及拼写和语法检查。
+- **使用自己的 TeX 环境编译。** 通过 `latexmk` 选择编译引擎，也可启用项目级 `latexmkrc`。
+  使用 SyncTeX 在源码和 PDF 间双向跳转，查看结构化编译诊断；编译失败时仍可查看上一次成功的
+  PDF。安装 `pdffonts` 后，还能检查编译产物或上传的 PDF 中是否包含 Type 3 或未嵌入的字体。
+- **建立个人文献库。** 在项目 `.bib` 文件与私有文献库之间复用条目，按主题文件夹和标签整理。
+  可用 BibTeX 或保留笔记的 TexLite JSON 导入、导出整个文件夹。文献笔记和 Markdown 文件的
+  实时预览都支持公式与 GitHub 风格提示框。
+- **在源码旁协作和审阅。** 实时共同编辑、查看在线协作者，并通过锚定批注与 `@` 提及讨论
+  具体段落。协作者可提出替换建议而不直接改动源码，由指定的有写权限审阅者查看差异后接受或拒绝。
+- **对比与恢复早期版本。** 查看选区的编辑历史、比较项目快照，或恢复单个文件和整个项目。
+  项目所有者也可通过内置 Git 面板提交更改并备份到 GitHub。
+- **创建、整理与分享项目。** 从空白项目起步，或上传 ZIP、通过 ZIP 链接导入模板。使用私有标签
+  和归档整理项目，下载项目 ZIP 或转移所有权。可邀请有读写或只读权限的协作者，也可分享可过期、
+  可撤销的免登录只读链接，让访客查看源码和已有 PDF。
 
 <a id="docker-deployment"></a>
 

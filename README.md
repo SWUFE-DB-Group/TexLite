@@ -21,10 +21,17 @@ https://github.com/user-attachments/assets/c2b277ab-7cab-4f2b-8684-358fd9fefe8f
 
 ## Why TexLite
 
-- **Own the writing environment.** Use the host's TeX installation and coding agents; keep sources, history, and compiled output in one local data directory.
-- **Collaborate without a large stack.** The default deployment is one Node.js
-  process, SQLite, and local files—plus real-time editing and source-level
-  comments for a small trusted team.
+- **Bring your own TeX and coding agents.** Compile with the packages and fonts
+  installed on your host. If you use a coding agent, choose the CLI and model
+  yourself and review its changes in the project.
+- **Take a paper from draft to PDF in one workspace.** Co-edit in the browser,
+  suggest changes at the exact passage, and keep references, draw.io diagrams,
+  and editable TikZ figures alongside the manuscript.
+- **Self-host without a separate database or cache service.** The default setup
+  runs on one machine with a Node.js service, SQLite, and local files.
+- **Keep your work portable.** TexLite stores sources, history, and compiled
+  output on your host. Take the manuscript elsewhere as a ZIP of ordinary LaTeX
+  project files, or back it up to your own GitHub repository.
 
 ## Quick start
 
@@ -119,27 +126,47 @@ For a desktop-first, individual workflow, start with
 [TeXstudio](https://texstudio.org/) instead. TexLite is purpose-built for
 shared browser writing, not a replacement for a personal IDE.
 
-## What the writing workflow includes
+## LaTeX writing and research highlights
 
-- Projects with folders, ZIP import/export, tags, sharing, ownership transfer,
-  archiving, and a private per-user citation library with topic folders, tags,
-  Markdown notes, and folder-wide BibTeX export with optional notes for sharing.
-  Import `.bib` files or TexLite JSON exports.
-- Owner-managed read-only links for anonymous readers, with expiry, rotation
-  and revocation. Readers can view source and existing PDFs without joining collaboration.
-- CodeMirror editing with LaTeX/BibTeX highlighting, folding, completion,
-  optional Vim mode, formatting, spelling/grammar/ChkTeX assistance, search/replace,
-  and source/PDF SyncTeX navigation.
-- Yjs-based collaborative source editing, active-session presence, comments
-  anchored to source text, replies, resolution, and permissions that let
-  reviewers comment without changing source.
-- `latexmk` compilation with selectable engines, project settings, structured
-  diagnostics, cached successful PDFs, downloadable artifacts, and optional
-  project-level `latexmkrc`.
-- Per-project history and owner-only Git/GitHub backup. Git is optional and is
-  checked only when its integration is used.
-- Optional browser terminals for host-installed coding agents, enabled by an
-  administrator. See [external agent terminals](OPERATIONS.md#external-agent-terminals).
+- **Draw diagrams with draw.io.** Edit `.drawio` files in the
+  [embedded diagrams.net editor](OPERATIONS.md#drawio-diagrams) (official or
+  self-hosted). Export the current page or just the selection as a cropped PDF
+  beside the source, ready for `\includegraphics`. PDF export uses a browser
+  installed on the TexLite host.
+- **Start from editable TikZ figures.** Browse and import TikZ and pgfplots
+  templates, examples, icons, and plots with the optional
+  [TikZ gallery add-on](addon.md) (beta). Compile any standalone TikZ figure to
+  its own PDF without rebuilding the manuscript, even without the add-on.
+- **Run your own coding agents.** With administrator approval, use host-installed
+  Claude Code, Codex, OpenCode, or Antigravity (Linux) in a project terminal.
+  Resume managed tasks and review agent edits across files with diffs and source
+  highlights. See [external agent terminals](OPERATIONS.md#external-agent-terminals).
+- **Write and navigate LaTeX and BibTeX.** Get completion, citation previews,
+  folding, an outline, optional Vim mode, and project-wide find and replace with
+  a preview. Format TeX and BibTeX in the browser; optionally use TeXcount,
+  ChkTeX, and Harper for word counts, LaTeX checks, and spelling and grammar.
+- **Compile on your own TeX toolchain.** Use `latexmk` with selectable engines
+  and an optional project `latexmkrc`. Jump between source and PDF with SyncTeX,
+  inspect structured diagnostics, and keep the last successful PDF visible if a
+  build fails. With `pdffonts`, check for Type 3 or non-embedded fonts in compiled
+  or uploaded PDFs.
+- **Build a private reference library.** Reuse references directly from project
+  `.bib` files and organize them with topic folders and tags. Import and export
+  whole folders in BibTeX or in TexLite JSON, which preserves notes. Reference
+  notes and the live Markdown file preview support math and GitHub-style callouts.
+- **Co-write and review at the source.** Edit together in real time, see who is
+  present, and discuss specific passages with anchored comments and mentions.
+  Collaborators can suggest replacements without changing the source; an assigned
+  reviewer with write access can inspect the diff and accept or reject each edit.
+- **Compare and recover earlier work.** Inspect the edit history of a selected
+  passage, compare project snapshots, and restore individual files or a project
+  state. Owners can also commit and back up their work to GitHub from the built-in
+  Git panel.
+- **Start, organize, and share projects.** Start from a blank project, upload a
+  ZIP, or import a template by ZIP URL. Organize projects with private tags and
+  archives, download project ZIPs, and transfer ownership. Invite collaborators
+  with read or write access, or send an expiring, revocable read-only link that
+  lets guests view source and existing PDFs without signing in.
 
 <a id="docker-deployment"></a>
 
