@@ -43,6 +43,43 @@ texlite start
 texlite status
 ```
 
+<details>
+<summary>Example <code>texlite requirements</code> output</summary>
+
+Example from my Manjaro Linux. Installed tools, versions, and paths vary by host.
+
+```text
+$ texlite requirements
+● TexLite requirements — all host requirements passed
+
+Host software (automatic discovery)
+┌──────────────────────────────────┬──────────┬───────────┬──────────────────────────────────────────────────────────┐
+│ Tool / command                   │ Need     │ Status    │ Version / diagnostic                                     │
+├──────────────────────────────────┼──────────┼───────────┼──────────────────────────────────────────────────────────┤
+│ Node.js 24+ (node)               │ Required │ Installed │ v24.22.1                                                 │
+│ latexmk                          │ Required │ Installed │ Latexmk, John Collins, 15 June 2025. Version 4.87        │
+│ pdflatex                         │ One of   │ Installed │ pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linu… │
+│ xelatex                          │ One of   │ Installed │ XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026/Arch Linu… │
+│ lualatex                         │ One of   │ Installed │ This is LuaHBTeX, Version 1.24.0 (TeX Live 2026/Arch Li… │
+│ Git (git)                        │ Optional │ Installed │ git version 2.56.0                                       │
+│ TeXcount (texcount)              │ Optional │ Installed │ TeXcount version 3.1.1, 2018 Oct 28.                     │
+│ pdffonts                         │ Optional │ Installed │ pdffonts version 26.08.0                                 │
+│ BibTeX (bibtex)                  │ Optional │ Installed │ BibTeX 0.99e (TeX Live 2026/Arch Linux)                  │
+│ Biber (biber)                    │ Optional │ Installed │ biber version: 2.22                                      │
+│ MakeIndex (makeindex)            │ Optional │ Installed │ This is makeindex, version 2.18 [TeX Live 2026] (kpaths… │
+│ ChkTeX (chktex)                  │ Optional │ Installed │ ChkTeX v1.7.9 - Copyright 1995-96 Jens T. Berger Thiele… │
+│ Harper CLI (harper-cli)          │ Optional │ Installed │ harper-cli 2.12.0                                        │
+│ Harper language server (harper-… │ Optional │ Installed │ harper-ls 2.12.0                                         │
+│ Draw.io PDF browser              │ Optional │ Installed │ /usr/bin/google-chrome-stable                            │
+└──────────────────────────────────┴──────────┴───────────┴──────────────────────────────────────────────────────────┘
+
+Required tools and at least one tool in every “One of” group must be installed to compile with TexLite. Optional tools enable their named feature without blocking the editor.
+This command does not read a TexLite configuration, data directory, database, or administrator state.
+Harper CLI is used by TexLite; harper-ls is reported for host diagnostics and external editor integrations.
+```
+
+</details>
+
 Open <http://127.0.0.1:3000>. `texlite init` creates the configuration and the
 first administrator; public registration is deliberately unavailable.
 To mount TexLite below an existing domain path such as `/texlite`, configure
