@@ -35,6 +35,10 @@ https://github.com/user-attachments/assets/c2b277ab-7cab-4f2b-8684-358fd9fefe8f
 安装 Node.js 24 或更高版本、`latexmk`，以及至少一个 TeX 引擎，例如 `pdflatex`、
 `xelatex` 或 `lualatex`。只有使用可选 Git/GitHub 集成时才需要 Git。
 
+> [!NOTE]
+> TexLite 主要在 Linux 上开发和测试，在 macOS 和 Windows 上的测试不充分。如果遇到问题，
+> 欢迎通过 [GitHub Issues](https://github.com/SWUFE-DB-Group/TexLite/issues) 反馈。
+
 安装后可先执行 `texlite requirements`，检查相关宿主机软件及版本。
 
 ```bash

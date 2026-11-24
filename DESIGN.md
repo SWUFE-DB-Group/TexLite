@@ -1899,13 +1899,26 @@ dropping the task and leaving an unmanaged conversation. After successful native
 cleanup, `agent_tasks.native_cleanup_done` is committed before local file removal;
 retries (including after restart) then need neither the binding nor CLI discovery.
 The successful deletion audit and final task-row deletion commit together.
-Antigravity uses the original TUI on Linux and macOS, with a task-private `HOME` and XDG
-directories. It uses AGY's native Google OAuth sign-in through the service
-user's system keyring, without copying credentials into task state. Its
-`SessionStart` hook writes the first native conversation ID
-outside AGY's store but inside task state; exact-ID inspection is confined to
-that private store. If the hook did not finish, only a unique native database
-can identify the conversation. A normal exit before the first turn can leave a
+Antigravity uses the original TUI on Linux, macOS, and Windows, with a task-private
+home directory (`HOME`/XDG directories, plus `USERPROFILE` and `TEMP`/`TMP` on
+Windows) and a platform-appropriate `SessionStart` hook command (`sh -c` on Unix,
+a local `.cmd` wrapper via `cmd /c` on Windows). Windows `.cmd`/`.bat` entrypoints receive `--settings` as a task-private JSON file
+path (relative to the project working directory when the data directory contains
+`%`) so the generic Windows batch launcher keeps rejecting quoted and `%`-bearing
+arguments. It uses AGY's native Google OAuth sign-in through the service user's
+system keyring, without copying credentials into task state. Its `SessionStart`
+hook writes the first valid native conversation ID outside AGY's store but inside
+task state via atomic publish (hard link, or a lock-directory serialized rename
+where hard links are unsupported; lock acquisition failure without a valid binding
+marks the binding ambiguous and exits non-zero so a later session cannot backfill);
+exact-ID inspection is confined to that private store. If the hook did not finish
+or left an incomplete regular binding without an `.ambiguous` marker, only a unique
+native database matching any valid UUID prefix in that binding can identify the
+conversation (a conflicting prefix returns `unknown` instead of rebinding); when
+`.ambiguous` is present without a trusted ID, any non-empty conversation store
+stays `unknown` instead of guessing, while an empty store or an already-recorded ID
+can safely clear the stale markers. A normal exit before the
+first turn can leave a
 summary database but no conversation. Stop preserves state; delete uses the
 shared task directory cleanup after process reaping and removes any local
 forks too. This is a workaround for the lack of supported native noninteractive

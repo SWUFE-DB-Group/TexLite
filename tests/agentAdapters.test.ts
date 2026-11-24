@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { codexAdapter } from "../src/server/agents/adapters/codex.js";
 import { claudeAdapter } from "../src/server/agents/adapters/claude.js";
 import { opencodeAdapter } from "../src/server/agents/adapters/opencode.js";
-import { agyAdapter } from "../src/server/agents/adapters/agy.js";
 import type { AgentAdapterContext } from "../src/server/agents/adapters/types.js";
 import { AgentRegistry } from "../src/server/agents/registry.js";
 import { windowsAgentCommand } from "../src/server/agents/terminal.js";
@@ -420,82 +419,5 @@ describe("native agent adapters", () => {
     expect(catalog.find((agent) => agent.id === "codex")).toMatchObject({ installed: false, version: null });
     const allowed = await registry.catalog({ allowed: ["claude"] });
     expect(allowed.find((agent) => agent.id === "claude")).toMatchObject({ installed: true, enabled: true });
-  });
-
-  it("enables Antigravity on Linux and macOS only", () => {
-    const originalPlatform = process.platform;
-    try {
-      for (const [platform, supported] of [["linux", true], ["darwin", true], ["win32", false]] as const) {
-        Object.defineProperty(process, "platform", { value: platform, configurable: true });
-        expect(agyAdapter.isSupported?.()).toBe(supported);
-      }
-    } finally {
-      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
-    }
-  });
-
-  it("detects Antigravity's session flags when help is printed to stderr", async () => {
-    const execute = vi.spyOn(agentCommands, "executeAgentCommand").mockResolvedValue({ stdout: "", stderr: "Usage:\n  --conversation UUID\n  --settings JSON\n" });
-    expect(await agyAdapter.discoverFeatures("agy")).toEqual(new Set(["isolated-conversations"]));
-    execute.mockResolvedValueOnce({ stdout: "", stderr: "Usage:\n  --conversation UUID\n" });
-    expect(await agyAdapter.discoverFeatures("agy")).toEqual(new Set());
-  });
-
-  it.runIf(process.platform === "linux" || process.platform === "darwin")("seeds only Antigravity preferences and preserves changes made in a task", async () => {
-    const host = path.join(root, "host");
-    vi.stubEnv("HOME", host);
-    const source = path.join(host, ".gemini", "antigravity-cli");
-    fs.mkdirSync(path.join(source, "cache"), { recursive: true });
-    fs.mkdirSync(path.join(source, "conversations"));
-    const settings = { colorScheme: "dark", trustedWorkspaces: ["/already-trusted"] };
-    const seeds = {
-      "settings.json": JSON.stringify(settings),
-      "keybindings.json": '{"cli.someAction":["ctrl+t"]}',
-      "cache/nux_state.json": '{"dismissed":[51]}',
-      "cache/onboarding.json": '{"onboardingComplete":false,"consumerOnboardingComplete":true}'
-    };
-    for (const [name, contents] of Object.entries(seeds)) fs.writeFileSync(path.join(source, name), contents);
-    fs.writeFileSync(path.join(source, "cache", "last_conversations.json"), "{}");
-    fs.writeFileSync(path.join(source, "conversations", "host.db"), "private conversation");
-    fs.writeFileSync(path.join(source, "auth.json"), "private credentials");
-
-    const ctx = { ...context, features: new Set(["isolated-conversations"]) };
-    await agyAdapter.prepare(ctx);
-    const target = path.join(agyAdapter.start(ctx).env.HOME, ".gemini", "antigravity-cli");
-    for (const [name, contents] of Object.entries(seeds)) expect(fs.readFileSync(path.join(target, name), "utf8")).toBe(contents);
-    for (const name of ["cache/last_conversations.json", "conversations", "auth.json"]) {
-      expect(fs.existsSync(path.join(target, name))).toBe(false);
-    }
-
-    const taskSettings = { colorScheme: "light", trustedWorkspaces: [ctx.workingDirectory] };
-    fs.writeFileSync(path.join(target, "settings.json"), JSON.stringify(taskSettings));
-    fs.writeFileSync(path.join(target, "cache", "nux_state.json"), '{"dismissed":[51,52]}');
-    fs.writeFileSync(path.join(target, "cache", "onboarding.json"), '{"onboardingComplete":false}');
-    await agyAdapter.prepare(ctx);
-    expect(JSON.parse(fs.readFileSync(path.join(target, "settings.json"), "utf8"))).toEqual(taskSettings);
-    expect(fs.readFileSync(path.join(target, "cache", "nux_state.json"), "utf8")).toBe('{"dismissed":[51,52]}');
-    expect(fs.readFileSync(path.join(target, "cache", "onboarding.json"), "utf8")).toBe('{"onboardingComplete":false}');
-    expect(JSON.parse(fs.readFileSync(path.join(source, "settings.json"), "utf8"))).toEqual(settings);
-  });
-
-  it.runIf(process.platform === "linux" || process.platform === "darwin").each([
-    ['{"onboardingComplete":true}', true],
-    ['{"enterpriseOnboardingComplete":true}', true],
-    ['{"onboardingComplete":"true","consumerOnboardingComplete":false}', false],
-    ["{broken", false],
-    [null, false]
-  ] as const)("seeds only completed, valid Antigravity onboarding state (%s)", async (contents, seeded) => {
-    const host = path.join(root, "host");
-    vi.stubEnv("HOME", host);
-    const relative = path.join(".gemini", "antigravity-cli", "cache", "onboarding.json");
-    if (contents !== null) {
-      const source = path.join(host, relative);
-      fs.mkdirSync(path.dirname(source), { recursive: true });
-      fs.writeFileSync(source, contents);
-    }
-    const ctx = { ...context, features: new Set(["isolated-conversations"]) };
-    await agyAdapter.prepare(ctx);
-    const target = path.join(agyAdapter.start(ctx).env.HOME, relative);
-    expect(fs.existsSync(target)).toBe(seeded);
   });
 });

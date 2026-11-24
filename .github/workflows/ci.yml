@@ -92,6 +92,7 @@ jobs:
           tests/agentTerminalLifecycle.test.ts
           tests/agentProcessIdentity.test.ts
           tests/claudeAdapter.test.ts
+          tests/agyAdapter.test.ts
           tests/projectPaths.test.ts
           tests/compileDiagnostics.test.ts
           tests/synctex.test.ts

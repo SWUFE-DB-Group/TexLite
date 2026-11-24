@@ -39,6 +39,11 @@ Install Node.js 24 or newer, `latexmk`, and at least one TeX engine such as
 `pdflatex`, `xelatex`, or `lualatex`. Git is needed only for the optional
 Git/GitHub integration.
 
+> [!NOTE]
+> TexLite is developed and tested primarily on Linux. Testing on macOS and
+> Windows is limited; if you encounter platform-specific issues, please report
+> them via [GitHub Issues](https://github.com/SWUFE-DB-Group/TexLite/issues).
+
 After installation, `texlite requirements` checks the relevant host software
 and versions before initialization.
 

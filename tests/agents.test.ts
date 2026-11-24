@@ -138,7 +138,7 @@ async function liveRoom(): Promise<{ doc: Y.Doc }> {
 const workingFile = (task: AgentTask, file = "main.tex") => path.join(sourceRoot(config, task.projectId), file);
 
 describe("external agent tasks", () => {
-  it.runIf(process.platform === "linux" || process.platform === "darwin")("resumes the bound Antigravity conversation and removes its entire private store", async () => {
+  it("resumes the bound Antigravity conversation and removes its entire private store", async () => {
     const host = path.join(root, "host's home");
     const hostData = path.join(host, ".gemini", "antigravity-cli");
     fs.mkdirSync(path.join(hostData, "conversations"), { recursive: true });
@@ -147,6 +147,7 @@ describe("external agent tasks", () => {
     const hostSettings = '{"colorScheme":"dark","modelProvider":"gemini"}';
     fs.writeFileSync(path.join(hostData, "settings.json"), hostSettings);
     vi.stubEnv("HOME", host);
+    vi.stubEnv("USERPROFILE", host);
     vi.stubEnv("GEMINI_API_KEY", undefined);
     vi.stubEnv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/texlite-fake-bus");
     vi.spyOn(registry, "adapter").mockImplementation((id) => id === "agy" ? agyAdapter : adapters.find((entry) => entry.id === id)!);
@@ -160,19 +161,33 @@ describe("external agent tasks", () => {
 
     const taskRoot = agentTaskRoot(config, task.id);
     const home = path.join(taskRoot, "state", "agy-home");
+    const expectedEnv: Record<string, string> = {
+      HOME: home, XDG_DATA_HOME: path.join(home, ".local", "share"),
+      ...(process.platform === "linux" ? { DBUS_SESSION_BUS_ADDRESS: "unix:path=/tmp/texlite-fake-bus" } : {}),
+      ...(process.platform === "win32" ? { USERPROFILE: home, TEMP: path.join(home, "tmp"), TMP: path.join(home, "tmp"), TEXLITE_NODE_EXEC: process.execPath } : {})
+    };
     expect(spawn.mock.calls.at(-1)).toMatchObject(["agy", ["--settings", '{"modelProvider":""}'], {
-      cwd: sourceRoot(config, projectId), env: {
-        HOME: home, XDG_DATA_HOME: path.join(home, ".local", "share"),
-        DBUS_SESSION_BUS_ADDRESS: "unix:path=/tmp/texlite-fake-bus"
-      }
+      cwd: sourceRoot(config, projectId), env: expectedEnv
     }]);
     const taskData = path.join(home, ".gemini", "antigravity-cli");
     expect(fs.readFileSync(path.join(taskData, "settings.json"), "utf8")).toBe(hostSettings);
-    const hooks = JSON.parse(fs.readFileSync(path.join(home, ".gemini", "config", "hooks.json"), "utf8"));
+    const configDir = path.join(home, ".gemini", "config");
+    const hooks = JSON.parse(fs.readFileSync(path.join(configDir, "hooks.json"), "utf8"));
     const command = hooks["texlite-session"].SessionStart[0].command;
+    const launchEnv = spawn.mock.calls.at(-1)?.[2].env;
+    const runHook = (conversationId: string) => {
+      const input = JSON.stringify({ conversationId });
+      if (process.platform === "win32") {
+        execFileSync(process.env.COMSPEC ?? "cmd.exe", ["/d", "/c", command], {
+          cwd: configDir, env: { ...process.env, ...launchEnv }, input, windowsHide: true
+        });
+      } else {
+        execFileSync("/bin/sh", ["-c", command], { cwd: configDir, input });
+      }
+    };
     const provisional = randomUUID();
     const binding = path.join(taskRoot, "state", "agy-conversation-id");
-    execFileSync("/bin/sh", ["-c", command], { input: JSON.stringify({ conversationId: provisional }) });
+    runHook(provisional);
     await service.stop(task.id, owner);
     expect(service.task(task.id, owner)).toMatchObject({ state: "stopped", nativeSessionId: null, canResume: false });
     expect(fs.readFileSync(binding, "utf8")).toBe(provisional);
@@ -193,9 +208,7 @@ describe("external agent tasks", () => {
     for (const id of [first, fork]) fs.writeFileSync(path.join(store, `${id}.db`), "native database");
     expect(await agyAdapter.findNativeSession(await registry.context("agy", task.id, taskRoot, null, sourceRoot(config, projectId))))
       .toEqual({ status: "unknown" });
-    for (const id of [first, fork]) {
-      execFileSync("/bin/sh", ["-c", command], { input: JSON.stringify({ conversationId: id }) });
-    }
+    for (const id of [first, fork]) runHook(id);
     await service.stop(task.id, owner);
     expect(service.task(task.id, owner)).toMatchObject({ nativeSessionId: first, canResume: true });
     vi.stubEnv("GEMINI_API_KEY", "unrelated-service-key");
