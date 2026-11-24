@@ -25,7 +25,7 @@
     "items": [
       { "anchor": "features", "title": "真实 LaTeX", "body": "使用你实际的 TeX 环境、宏包、字体与工具链。" },
       { "anchor": "why", "title": "私有协作", "body": "将源码、PDF、批注与历史记录保留在你完全掌控的基础设施上。" },
-      { "anchor": "workflow", "title": "你的 Agent，你来掌控", "body": "在项目终端中使用 Codex、Claude Code 或 OpenCode。模型与工作流，由你的团队决定。" }
+      { "anchor": "workflow", "title": "你的 Agent，你来掌控", "body": "在项目终端中使用 Codex、Claude Code、OpenCode 或 Antigravity（agy）。模型与工作流，由你的团队决定。" }
     ],
     "table": {
       "headers": {
