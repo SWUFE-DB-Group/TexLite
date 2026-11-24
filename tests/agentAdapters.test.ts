@@ -422,6 +422,18 @@ describe("native agent adapters", () => {
     expect(allowed.find((agent) => agent.id === "claude")).toMatchObject({ installed: true, enabled: true });
   });
 
+  it("enables Antigravity on Linux and macOS only", () => {
+    const originalPlatform = process.platform;
+    try {
+      for (const [platform, supported] of [["linux", true], ["darwin", true], ["win32", false]] as const) {
+        Object.defineProperty(process, "platform", { value: platform, configurable: true });
+        expect(agyAdapter.isSupported?.()).toBe(supported);
+      }
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    }
+  });
+
   it("detects Antigravity's session flags when help is printed to stderr", async () => {
     const execute = vi.spyOn(agentCommands, "executeAgentCommand").mockResolvedValue({ stdout: "", stderr: "Usage:\n  --conversation UUID\n  --settings JSON\n" });
     expect(await agyAdapter.discoverFeatures("agy")).toEqual(new Set(["isolated-conversations"]));
@@ -429,7 +441,7 @@ describe("native agent adapters", () => {
     expect(await agyAdapter.discoverFeatures("agy")).toEqual(new Set());
   });
 
-  it.runIf(process.platform === "linux")("seeds only Antigravity preferences and preserves changes made in a task", async () => {
+  it.runIf(process.platform === "linux" || process.platform === "darwin")("seeds only Antigravity preferences and preserves changes made in a task", async () => {
     const host = path.join(root, "host");
     vi.stubEnv("HOME", host);
     const source = path.join(host, ".gemini", "antigravity-cli");
@@ -466,7 +478,7 @@ describe("native agent adapters", () => {
     expect(JSON.parse(fs.readFileSync(path.join(source, "settings.json"), "utf8"))).toEqual(settings);
   });
 
-  it.runIf(process.platform === "linux").each([
+  it.runIf(process.platform === "linux" || process.platform === "darwin").each([
     ['{"onboardingComplete":true}', true],
     ['{"enterpriseOnboardingComplete":true}', true],
     ['{"onboardingComplete":"true","consumerOnboardingComplete":false}', false],

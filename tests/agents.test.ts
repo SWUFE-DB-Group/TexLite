@@ -138,7 +138,7 @@ async function liveRoom(): Promise<{ doc: Y.Doc }> {
 const workingFile = (task: AgentTask, file = "main.tex") => path.join(sourceRoot(config, task.projectId), file);
 
 describe("external agent tasks", () => {
-  it.runIf(process.platform === "linux")("resumes the bound Antigravity conversation and removes its entire private store", async () => {
+  it.runIf(process.platform === "linux" || process.platform === "darwin")("resumes the bound Antigravity conversation and removes its entire private store", async () => {
     const host = path.join(root, "host's home");
     const hostData = path.join(host, ".gemini", "antigravity-cli");
     fs.mkdirSync(path.join(hostData, "conversations"), { recursive: true });

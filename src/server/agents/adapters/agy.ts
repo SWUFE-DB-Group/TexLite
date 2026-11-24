@@ -60,7 +60,8 @@ async function seedPreferences(targetDirectory: string): Promise<void> {
 }
 
 export const agyAdapter: AgentAdapter = {
-  id: "agy", label: "Antigravity", supportsResume: true, isSupported: () => process.platform === "linux",
+  id: "agy", label: "Antigravity", supportsResume: true,
+  isSupported: () => process.platform === "linux" || process.platform === "darwin",
   async discoverFeatures(executable) {
     const { stdout, stderr } = await executeAgentCommand(executable, ["--help"], { timeout: 5_000, maxBuffer: 128 * 1024, windowsHide: true });
     const help = stdout + stderr;

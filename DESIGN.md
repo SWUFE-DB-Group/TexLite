@@ -1899,7 +1899,7 @@ dropping the task and leaving an unmanaged conversation. After successful native
 cleanup, `agent_tasks.native_cleanup_done` is committed before local file removal;
 retries (including after restart) then need neither the binding nor CLI discovery.
 The successful deletion audit and final task-row deletion commit together.
-Antigravity uses the original TUI on Linux, with a task-private `HOME` and XDG
+Antigravity uses the original TUI on Linux and macOS, with a task-private `HOME` and XDG
 directories. It uses AGY's native Google OAuth sign-in through the service
 user's system keyring, without copying credentials into task state. Its
 `SessionStart` hook writes the first native conversation ID

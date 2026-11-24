@@ -534,7 +534,7 @@ dashboard to select allowed agents and refresh executable detection. There is no
 separate global switch. Deselecting an agent stops its active executions while
 preserving task context and cleanup access; other allowed agents are unaffected.
 Supported launch commands are `codex`, `opencode`, `claude`, and
-`agy` (Antigravity, currently Linux only) on the TexLite service account's
+`agy` (Antigravity, currently Linux and macOS) on the TexLite service account's
 `PATH`. Detection reports installation/version, not
 authentication or provider quota. A PM2/systemd service may have a different
 `PATH` from an interactive login shell.
@@ -718,7 +718,7 @@ update its parent service's environment. Alternatively, put persistent Claude
 variables in the host's `~/.claude/settings.json` under `env`, as described in
 the [Claude environment-variable reference](https://code.claude.com/docs/en/env-vars).
 
-Antigravity support is for the native Linux `agy` CLI (tested with 1.5.11).
+Antigravity support is for the native Linux and macOS `agy` CLI (tested on Linux with 1.5.11).
 Sign in to Antigravity on the host as the operating-system user that runs
 TexLite. AGY can reuse that user's
 [Google OAuth login](https://antigravity.google/docs/install?tab=cli#local-silent-keyring-sign-in)
