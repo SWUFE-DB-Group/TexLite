@@ -52,8 +52,8 @@ const lastParams = () => new URL(String(projectCalls().at(-1)![0]), "http://loca
 const tab = (scope: ProjectOwnershipScope) => host.querySelector<HTMLButtonElement>(`#project-tab-${scope}`)!;
 const names = () => Array.from(host.querySelectorAll(".project-card-title, .project-list-title"), (node) => node.textContent);
 const click = (selector: string) => act(async () => host.querySelector<HTMLButtonElement>(selector)!.click());
-const render = (initialData: DashboardData | null = null) => act(async () => root.render(createElement(Fragment, null,
-  createElement(Dashboard, { site, user, initialData, onDataChange, onUser: vi.fn(), onOpenProject }), createElement(GlobalTooltip))));
+const render = (initialData: DashboardData | null = null, currentUser: User = user) => act(async () => root.render(createElement(Fragment, null,
+  createElement(Dashboard, { site, user: currentUser, initialData, onDataChange, onUser: vi.fn(), onOpenProject }), createElement(GlobalTooltip))));
 const changeSearch = (value: string) => act(async () => {
   const field = host.querySelector<HTMLInputElement>('.project-toolbar input[type="search"]')!;
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
@@ -323,5 +323,23 @@ describe("project ownership tabs", () => {
     await click('.project-scope button:first-child');
     expect(names()).toEqual([]);
     expect(badges()).toEqual(["2", "1", "1"]);
+  });
+
+  it("shows an accurate empty state on Owned by me for users without project creation permission", async () => {
+    projects = [];
+    const restrictedUser: User = { ...user, canCreateProjects: false };
+    await render(null, restrictedUser);
+    expect(host.querySelector(".project-empty h2")?.textContent).toBe(i18n.t("projects.emptyTitle"));
+    expect(host.querySelector(".project-empty p")?.textContent).toBe(i18n.t("projects.emptyRestricted"));
+
+    await click("#project-tab-owned");
+    expect(host.querySelector(".project-empty h2")?.textContent).toBe(i18n.t("projects.noOwned"));
+    expect(host.querySelector(".project-empty p")?.textContent).toBe(i18n.t("projects.emptyOwnedRestricted"));
+    expect(host.querySelector(".project-empty-action")?.textContent).toContain(i18n.t("projects.viewShared"));
+
+    await click(".project-empty-action");
+    expect(tab("shared").getAttribute("aria-selected")).toBe("true");
+    expect(host.querySelector(".project-empty h2")?.textContent).toBe(i18n.t("projects.noShared"));
+    expect(host.querySelector(".project-empty p")?.textContent).toBe(i18n.t("projects.emptyRestricted"));
   });
 });
