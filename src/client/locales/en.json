@@ -9,6 +9,9 @@
     "warning": "Warning",
     "caution": "Caution"
   },
+  "markdownMermaid": {
+    "renderFailed": "Couldn’t render this Mermaid diagram."
+  },
   "citationNotes": {
     "tab": "Notes",
     "preview": "Notes preview",

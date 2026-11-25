@@ -139,6 +139,16 @@ describe("Markdown preview", () => {
     expect(host.querySelector("pre code")?.textContent).toBe("> [!IMPORTANT]\n");
   });
 
+  it("renders Mermaid diagrams and keeps the fence's source navigation", async () => {
+    const { onJumpToLine } = await render({ source: "# Workflow\n\n```mermaid\nflowchart LR\n  A[Draft] --> B[Review]\n```" });
+    await act(async () => vi.dynamicImportSettled());
+    const svg = host.querySelector(".markdown-mermaid svg")!;
+    expect(svg.textContent).toContain("Draft");
+    expect(svg.closest("[data-source-line]")?.getAttribute("data-source-line")).toBe("3");
+    await act(async () => svg.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(onJumpToLine).toHaveBeenCalledWith(3);
+  });
+
   it("shows an empty state for a blank file", async () => {
     await render({ source: "  \n" });
     expect(host.textContent).toContain("This Markdown file is empty.");

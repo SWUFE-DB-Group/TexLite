@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { CircleAlert, Info, Lightbulb, OctagonAlert, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { remarkMarkdownAlerts } from "./markdownAlerts";
+import MarkdownMermaid from "./MarkdownMermaid";
 
 type HastNode = { type: string; tagName?: string; properties?: Record<string, unknown>; position?: { start?: { line?: number } }; children?: HastNode[] };
 
@@ -59,10 +60,17 @@ const baseComponents: Components = {
     return <span className="markdown-math" dangerouslySetInnerHTML={{ __html: html }} />;
   },
   pre: ({ node, children, ...props }) => {
-    const math = node?.children.some((child) => child.type === "element" && child.tagName === "code"
-      && Array.isArray(child.properties.className) && child.properties.className.includes("language-math"));
-    const line = (props as Record<string, unknown>)["data-source-line"] as number | undefined;
-    return math ? <div className="markdown-equation" data-source-line={line}>{children}</div> : <pre {...props}>{children}</pre>;
+    const code = node?.children.find((child) => child.type === "element" && child.tagName === "code");
+    const { "data-source-line": line, ...preProps } = props as typeof props & { "data-source-line"?: number };
+    if (code?.type === "element" && Array.isArray(code.properties.className)) {
+      const classes = code.properties.className;
+      if (classes.includes("language-math")) return <div className="markdown-equation" data-source-line={line}>{children}</div>;
+      if (classes.includes("language-mermaid")) {
+        const source = code.children.map((child) => child.type === "text" ? child.value : "").join("");
+        return <MarkdownMermaid source={source} line={line} fallback={<pre {...preProps}>{children}</pre>} />;
+      }
+    }
+    return <pre {...props}>{children}</pre>;
   }
 };
 
@@ -77,7 +85,7 @@ export interface MarkdownContentProps {
 }
 
 /**
- * GitHub-flavoured Markdown with KaTeX math. Raw HTML is never interpreted,
+ * GitHub-flavoured Markdown with KaTeX math and Mermaid diagrams. Authored HTML is never interpreted,
  * and URLs go through react-markdown's safe-protocol filter first.
  */
 export default function MarkdownContent({ source, className, components, urlTransform, sourceLines = false }: MarkdownContentProps) {

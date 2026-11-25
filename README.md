@@ -158,7 +158,7 @@ shared browser writing, not a replacement for a personal IDE.
 - **Build a private reference library.** Reuse references directly from project
   `.bib` files and organize them with topic folders and tags. Import and export
   whole folders in BibTeX or in TexLite JSON, which preserves notes. Reference
-  notes and the live Markdown file preview support math and GitHub-style callouts.
+  notes and the live Markdown file preview support math, GitHub-style callouts, and Mermaid diagrams.
 - **Co-write and review at the source.** Edit together in real time, see who is
   present, and discuss specific passages with anchored comments and mentions.
   Collaborators can suggest replacements without changing the source; an assigned

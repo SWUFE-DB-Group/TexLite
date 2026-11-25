@@ -9,6 +9,9 @@
     "warning": "警告",
     "caution": "谨慎"
   },
+  "markdownMermaid": {
+    "renderFailed": "无法渲染此 Mermaid 图表。"
+  },
   "citationNotes": {
     "tab": "笔记",
     "preview": "笔记预览",

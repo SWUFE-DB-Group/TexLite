@@ -38,6 +38,27 @@ it("renders inline and block math while leaving escaped dollars, inline code and
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
+it("renders diagrams in citation notes with no diagram links or remote images and preserves invalid source", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  await i18n.changeLanguage("en");
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    const notes = [
+      "```mermaid", "flowchart LR", "  A[Study] --> B[Findings]",
+      '  click A href "https://example.org/read"', '  C@{ img: "https://example.org/track.png", label: "Figure" }',
+      "```", "", "```mermaid", "not a diagram", "```", "", "Still readable."
+    ].join("\n");
+    await act(async () => root.render(createElement(CitationNotesPreview, { notes })));
+    await act(async () => vi.dynamicImportSettled());
+    const svg = host.querySelector(".markdown-mermaid svg")!;
+    expect(svg.textContent).toContain("Findings");
+    expect(svg.querySelector("a, image, script, foreignObject")).toBeNull();
+    expect(host.querySelector(".markdown-mermaid [role='status']")?.textContent).toContain("Couldn’t render");
+    expect(host.querySelector(".markdown-mermaid pre code")?.textContent).toBe("not a diagram\n");
+    expect(host.textContent).toContain("Still readable.");
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
 it("keeps malformed or recursive math local to the formula and refuses trusted HTML and resource-loading commands", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);

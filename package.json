@@ -125,6 +125,7 @@
     "katex": "^0.18.4",
     "lucide-react": "^1.60.0",
     "pdfjs-dist": "^6.2.108",
+    "pele": "^1.13.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-i18next": "^17.1.0",

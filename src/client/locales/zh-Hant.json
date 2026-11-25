@@ -9,6 +9,9 @@
     "warning": "警告",
     "caution": "謹慎"
   },
+  "markdownMermaid": {
+    "renderFailed": "無法轉譯此 Mermaid 圖表。"
+  },
   "citationNotes": {
     "tab": "筆記",
     "preview": "筆記預覽",
