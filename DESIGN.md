@@ -1013,9 +1013,10 @@ replacing bytes. Known images (including SVG) and PDFs retain their resource
 previews up to 10 MiB. Larger files and unsupported types show a download prompt
 rather than opening in the editor.
 
-Generic text uses CodeMirror language support for JSON, YAML, Shell, TOML,
-JavaScript/TypeScript, Python, HTML/CSS/XML, Markdown, INI, Perl/latexmkrc,
-Dockerfile and CMake where recognized, otherwise plain text. LaTeX semantic
+Generic text uses CodeMirror language support for JSON, YAML, JavaScript/TypeScript,
+Python, HTML/CSS/XML and Markdown. A lightweight highlighter for `latexmkrc` and
+`.latexmkrc` recognizes scalar variables, quoted strings and line comments;
+other auxiliary text stays plain. LaTeX semantic
 highlighting, auto-pairs, completion and reference navigation stay scoped to
 LaTeX source; BibTeX and BST retain their dedicated languages.
 Auxiliary text languages load together on the first recognized non-LaTeX file,

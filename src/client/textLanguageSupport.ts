@@ -8,20 +8,31 @@ import { css } from "@codemirror/lang-css";
 import { xml } from "@codemirror/lang-xml";
 import { python } from "@codemirror/lang-python";
 import { markdown } from "@codemirror/lang-markdown";
-import { shell } from "@codemirror/legacy-modes/mode/shell";
-import { toml } from "@codemirror/legacy-modes/mode/toml";
-import { perl } from "@codemirror/legacy-modes/mode/perl";
-import { properties } from "@codemirror/legacy-modes/mode/properties";
-import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
-import { cmake } from "@codemirror/legacy-modes/mode/cmake";
 import type { TextLanguageKind } from "./textLanguages";
 
-const shellLanguage = StreamLanguage.define(shell);
-const tomlLanguage = StreamLanguage.define(toml);
-const perlLanguage = StreamLanguage.define(perl);
-const iniLanguage = StreamLanguage.define(properties);
-const dockerLanguage = StreamLanguage.define(dockerFile);
-const cmakeLanguage = StreamLanguage.define(cmake);
+// Highlight common latexmk settings, not arbitrary Perl.
+const latexmkrc = StreamLanguage.define({
+  startState: () => ({ quote: "" }),
+  token(stream, state) {
+    if (!state.quote) {
+      if (stream.match(/^\$[A-Za-z_]\w*/)) return "variableName";
+      if (stream.eat("#")) { stream.skipToEnd(); return "lineComment"; }
+      const quote = stream.eat(/['"]/);
+      if (!quote) {
+        stream.next();
+        stream.eatWhile(/[^$#'"]/);
+        return null;
+      }
+      state.quote = quote;
+    }
+    while (!stream.eol()) {
+      const ch = stream.next();
+      if (ch === "\\") stream.next();
+      else if (ch === state.quote) { state.quote = ""; break; }
+    }
+    return "string";
+  }
+});
 
 /** Loaded together only when a recognized auxiliary text language is opened. */
 const languages: Record<TextLanguageKind, () => Extension> = {
@@ -29,12 +40,7 @@ const languages: Record<TextLanguageKind, () => Extension> = {
   jsx: () => javascript({ jsx: true }),
   typescript: () => javascript({ typescript: true }),
   tsx: () => javascript({ typescript: true, jsx: true }),
-  shell: () => shellLanguage,
-  toml: () => tomlLanguage,
-  perl: () => perlLanguage,
-  ini: () => iniLanguage,
-  docker: () => dockerLanguage,
-  cmake: () => cmakeLanguage
+  latexmkrc: () => latexmkrc
 };
 
 export function textLanguageSupport(kind: TextLanguageKind): Extension {

@@ -1,7 +1,7 @@
 import type { Extension } from "@codemirror/state";
 
 export type TextLanguageKind = "json" | "yaml" | "javascript" | "jsx" | "typescript" | "tsx"
-  | "html" | "css" | "xml" | "markdown" | "toml" | "perl" | "docker" | "cmake" | "ini" | "shell" | "python";
+  | "html" | "css" | "xml" | "markdown" | "latexmkrc" | "python";
 
 export function isLatexEditorFile(filePath: string): boolean {
   return /\.(?:tex|sty|cls|ltx|dtx|ins|def)$/i.test(filePath);
@@ -21,14 +21,7 @@ export function textLanguageKind(filePath: string, firstLine = ""): TextLanguage
   if (extension === "css") return "css";
   if (/^(?:xml|xsl|xslt|xsd)$/.test(extension)) return "xml";
   if (/^(?:md|markdown|mdown)$/.test(extension) || name === "readme") return "markdown";
-  if (extension === "toml" || name === "cargo.lock") return "toml";
-  if (extension === "pl" || extension === "pm" || /^\.?latexmkrc$/.test(name)) return "perl";
-  if (name === "dockerfile" || name.startsWith("dockerfile.")) return "docker";
-  if (extension === "cmake" || name === "cmakelists.txt") return "cmake";
-  if (/^(?:ini|properties|cfg)$/.test(extension) || name === ".env" || name.startsWith(".env.")) return "ini";
-  if (/^(?:sh|bash|zsh|ksh|bashrc|zshrc|profile)$/.test(extension)
-    || /^(?:\.bashrc|\.zshrc|\.profile|\.bash_profile|pkgbuild)$/.test(name)
-    || /^#!.*\b(?:bash|sh|zsh|ksh)\b/.test(firstLine)) return "shell";
+  if (name === "latexmkrc" || name === ".latexmkrc") return "latexmkrc";
   if (extension === "py" || extension === "pyw" || /^#!.*\bpython[\d.]*\b/.test(firstLine)) return "python";
   return null;
 }

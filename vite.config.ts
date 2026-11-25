@@ -66,7 +66,7 @@ export default defineConfig(({ command }) => {
               // Do not pull their shared core dependencies into this group.
               {
                 name: "editor-languages",
-                test: /[\\/]node_modules[\\/](?:@codemirror[\\/](?:lang-[^\\/]+|legacy-modes)|@lezer[\\/](?:css|html|javascript|json|markdown|python|xml|yaml))[\\/]/,
+                test: /[\\/]node_modules[\\/](?:@codemirror[\\/]lang-[^\\/]+|@lezer[\\/](?:css|html|javascript|json|markdown|python|xml|yaml))[\\/]/,
                 priority: 5,
                 includeDependenciesRecursively: false
               },
