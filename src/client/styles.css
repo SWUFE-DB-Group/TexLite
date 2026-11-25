@@ -222,7 +222,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .project-tag-filters > button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-tag-empty { grid-column: 1 / -1; margin: 1px 0; padding: 12px 6px; color: var(--ui-muted, #7b857e); font-size: 11px; text-align: center; }
 .project-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; padding: 10px; background: var(--ui-subtle, #e9ece8); border-radius: 10px; }
-.project-toolbar > input { width: 220px; border: 1px solid var(--ui-border, #cbd2cc); border-radius: 7px; padding: 8px 10px; background: var(--ui-surface, white); font-size: 14px; }
+.project-toolbar > input { flex: 1 1 160px; min-width: 0; max-width: 300px; border: 1px solid var(--ui-border, #cbd2cc); border-radius: 7px; padding: 8px 10px; background: var(--ui-surface, white); font-size: 14px; }
 .project-scope { display: flex; flex: none; gap: 2px; }
 .project-scope button { display: flex; align-items: center; gap: 5px; flex: none; border: 1px solid transparent; border-radius: 7px; padding: 7px 9px; background: transparent; color: var(--ui-text, #536059); font-size: 12px; transition: background-color var(--motion-fast, 120ms) ease, border-color var(--motion-fast, 120ms) ease, color var(--motion-fast, 120ms) ease; }
 .project-scope button.active { border-color: var(--ui-border, #b8c4ba); background: var(--ui-accent-bg, white); color: var(--ui-accent, #174b33); }
@@ -2777,7 +2777,7 @@ td button { margin-right: 8px; border: 1px solid var(--ui-border, #cdd2ce); back
 
 @media (max-width: 860px) {
   .project-toolbar { padding: 0; background: transparent; }
-  .project-toolbar > input { flex: 0 0 100%; width: 100%; min-width: 0; }
+  .project-toolbar > input { flex: 0 0 100%; width: 100%; max-width: none; }
   .project-tag-filter { max-width: 100%; }
   .project-tag-filters { width: min(320px, calc(100vw - 36px)); grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
