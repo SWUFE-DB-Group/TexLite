@@ -254,6 +254,19 @@ it("uses a labeled layout menu on coarse-pointer tablets where hover tooltips ar
   }
 });
 
+it("keeps the connection indicator while syncing and removes it once connected", async () => {
+  const render = (collaborationStatus: WorkspaceTopbarProps["collaborationStatus"], saveStateLabel: string) =>
+    act(async () => root.render(createElement(WorkspaceTopbar, { ...topbarProps, collaborationStatus, saveStateLabel })));
+  const status = () => host.querySelector('.project-heading [role="status"]');
+  await render("connecting", "Connecting...");
+  expect(status()?.textContent).toBe("Connecting...");
+  await render("syncing", "Sync...");
+  expect(status()?.textContent).toBe("Sync...");
+  await render("connected", "Saved");
+  expect(status()).toBeNull();
+  expect(host.querySelector(".project-heading small")?.textContent).toBe("main.tex · Saved");
+});
+
 it("shows a read-only badge beside the workspace title only for read-only projects", async () => {
   await act(async () => root.render(createElement(WorkspaceTopbar, { ...topbarProps, project: { ...project, permission: "owner" } })));
   expect(host.querySelector(".workspace-readonly-badge")).toBeNull();

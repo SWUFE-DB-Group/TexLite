@@ -60,7 +60,17 @@ export function WorkspaceTopbar({
 }: WorkspaceTopbarProps) {
   const { t } = useTranslation();
   const { showExecutionReminder } = useTerminalPreferences();
-  return <WorkspaceTopbarFrame siteName={site.siteName} projectName={project.name} subtitle={<>{activeFile}{saveStateLabel && <> · {saveStateLabel}</>}</>} onBack={onBack}
+  const connectionPending = saveStateLabel && (collaborationStatus === "connecting" || collaborationStatus === "syncing");
+  const subtitle = connectionPending
+    ? <span className="workspace-connection-subtitle">
+      <span className="workspace-connection-file">{activeFile}</span>
+      <span className="workspace-connection-pending" role="status">
+        <span className="workspace-connection-pulse" aria-hidden="true" />
+        {saveStateLabel}
+      </span>
+    </span>
+    : <>{activeFile}{saveStateLabel && <> · {saveStateLabel}</>}</>;
+  return <WorkspaceTopbarFrame siteName={site.siteName} projectName={project.name} subtitle={subtitle} onBack={onBack}
     titleAccessory={project.permission === "read" && <span className="workspace-readonly-badge" title={`${t("common.permission")}: ${t("common.readOnly")}`}><Eye size={12} aria-hidden="true" /><span>{t("common.readOnly")}</span></span>}
     leading={showEditor && <button className={`files-action${!filesCollapsed ? " active" : ""}`} aria-label={t("common.files")} title={t("common.files")} aria-expanded={!filesCollapsed} onClick={toggleFilesPanel}>{filesCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}<span className="workspace-action-label">{t("common.files")}</span></button>}
     accessory={<>
