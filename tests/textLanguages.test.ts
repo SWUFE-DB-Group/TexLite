@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { classHighlighter, highlightTree } from "@lezer/highlight";
+import { editorGenericHighlightStyle } from "../src/client/editorThemeExtension";
 import { isLatexEditorFile, loadTextFileLanguage, textLanguageKind } from "../src/client/textLanguages";
 
 describe("generic text editor languages", () => {
@@ -18,7 +19,6 @@ describe("generic text editor languages", () => {
     ["data.xml", '<root name="value">Example</root>'],
     ["script.py", 'def hello():\n  return "hello"'],
     ["README.md", '# Title\n**hello**'],
-    ["latexmkrc", '$pdf_mode = 1; # Settings'],
     ["program", '#!/usr/bin/env python3\nprint("hello")']
   ])("parses and highlights %s using CodeMirror language support", async (file, source) => {
     const state = EditorState.create({ doc: source, extensions: await loadTextFileLanguage(file, source.split("\n")[0]) });
@@ -28,6 +28,14 @@ describe("generic text editor languages", () => {
     highlightTree(tree!, classHighlighter, (from, to) => marks.push(source.slice(from, to)));
     expect(marks.length).toBeGreaterThan(0);
     expect(isLatexEditorFile(file)).toBe(false);
+  });
+
+  it.each(["latexmkrc", ".latexmkrc"])("colors a setting name in %s with the editor theme", async (file) => {
+    const doc = "$pdf_mode = 1;";
+    const state = EditorState.create({ doc, extensions: await loadTextFileLanguage(file) });
+    const marks: string[] = [];
+    highlightTree(ensureSyntaxTree(state, doc.length, 1000)!, editorGenericHighlightStyle, (from, to) => marks.push(doc.slice(from, to)));
+    expect(marks).toEqual(["$pdf_mode"]);
   });
 
   it("keeps hashes inside quoted latexmk settings and retokenizes after a quote edit", async () => {

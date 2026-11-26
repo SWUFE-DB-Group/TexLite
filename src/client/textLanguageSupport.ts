@@ -15,7 +15,7 @@ const latexmkrc = StreamLanguage.define({
   startState: () => ({ quote: "" }),
   token(stream, state) {
     if (!state.quote) {
-      if (stream.match(/^\$[A-Za-z_]\w*/)) return "variableName";
+      if (stream.match(/^\$[A-Za-z_]\w*/)) return "variableName.definition";
       if (stream.eat("#")) { stream.skipToEnd(); return "lineComment"; }
       const quote = stream.eat(/['"]/);
       if (!quote) {
