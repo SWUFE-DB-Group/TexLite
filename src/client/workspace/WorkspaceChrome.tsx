@@ -69,7 +69,7 @@ export function WorkspaceLayoutMenu({ value, onChange, previewLabel = "PDF" }: {
       <DropdownMenu.Trigger asChild>
         <button type="button" className="layout-trigger" aria-label={currentLabel} title={currentLabel}>
           <LayoutIcon size={15} aria-hidden="true" />
-          <span className="workspace-action-label">
+          <span className="workspace-action-label workspace-action-label-persistent">
             <small>{t("editor.layout.label")}</small>
             <span className="layout-current-label">{t(`editor.layout.${value}.name`)}</span>
           </span>
