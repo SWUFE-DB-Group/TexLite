@@ -17,7 +17,7 @@
 
 </div>
 
-[![观看 TexLite 演示](https://img.youtube.com/vi/6O4B6mV-GYE/maxresdefault.jpg)](https://www.youtube.com/watch?v=6O4B6mV-GYE)
+[![观看 TexLite 演示](https://img.youtube.com/vi/uJ0-2N8-dck/maxresdefault.jpg)](https://www.youtube.com/watch?v=uJ0-2N8-dck)
 
 ## 为什么选择 TexLite
 
