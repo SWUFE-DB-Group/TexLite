@@ -17,7 +17,7 @@ teams. Use your existing LaTeX distribution and coding agents, with no heavyweig
 
 </div>
 
-https://github.com/user-attachments/assets/c2b277ab-7cab-4f2b-8684-358fd9fefe8f
+[![Watch the demo](https://img.youtube.com/vi/6O4B6mV-GYE/maxresdefault.jpg)](https://www.youtube.com/watch?v=6O4B6mV-GYE)
 
 ## Why TexLite
 

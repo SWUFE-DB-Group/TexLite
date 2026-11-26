@@ -17,7 +17,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/c2b277ab-7cab-4f2b-8684-358fd9fefe8f
+[![观看 TexLite 演示](https://img.youtube.com/vi/6O4B6mV-GYE/maxresdefault.jpg)](https://www.youtube.com/watch?v=6O4B6mV-GYE)
 
 ## 为什么选择 TexLite
 
