@@ -15,6 +15,12 @@
     "chipCompile": "compiled in 2.4s",
     "chipCollab": "3 collaborators"
   },
+  "demo": {
+    "kicker": "Demo",
+    "title": "See TexLite in action",
+    "playerTitle": "TexLite demo video",
+    "watch": "Watch on YouTube"
+  },
   "highlights": {
     "kicker": "Core highlights",
     "compare": "Compare writing environments",

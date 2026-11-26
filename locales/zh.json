@@ -15,6 +15,12 @@
     "chipCompile": "编译耗时 2.4 秒",
     "chipCollab": "3 位协作者"
   },
+  "demo": {
+    "kicker": "演示",
+    "title": "看看 TexLite 如何工作",
+    "playerTitle": "TexLite 演示视频",
+    "watch": "在 YouTube 上观看"
+  },
   "highlights": {
     "kicker": "核心亮点",
     "compare": "查看写作环境对比",

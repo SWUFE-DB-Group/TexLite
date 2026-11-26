@@ -93,6 +93,10 @@ h1 { margin: 0; font: 400 clamp(52px, 5.6vw, 78px)/1.09 var(--serif); letter-spa
 .section-kicker { margin-bottom: 20px; }
 .section-heading .section-kicker { margin: 0; }
 h2 { margin: 0; font: 400 clamp(30px, 3vw, 43px)/1.25 var(--serif); letter-spacing: -.025em; text-wrap: balance; }
+.demo-video { max-width: 960px; margin: 0 auto; }
+.demo-video iframe { display: block; width: 100%; height: auto; min-height: 200px; aspect-ratio: 16 / 9; border: 0; border-radius: 3px; background: #17261f; }
+.demo-video a { display: table; margin: 12px 0 0 auto; padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--green); font-size: 12px; text-decoration: none; }
+.demo-video a:hover { border-color: var(--accent); color: var(--accent); }
 :root[lang="zh-CN"] h2 { line-height: 1.5; }
 .highlight-list { list-style: none; padding: 0; margin: 0 0 36px; }
 .highlight-item { display: grid; grid-template-columns: 38px 1fr 2fr; align-items: baseline; gap: 20px; padding: 23px 0; border-top: 1px solid var(--line); }

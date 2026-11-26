@@ -4,6 +4,7 @@ const defaultLocale = "en";
 const localeDirectory = new URL("./locales/", import.meta.url);
 const feedbackRibbon = document.querySelector(".feedback-ribbon");
 const feedbackPopover = document.querySelector("#feedback-popover");
+const demoPlayer = document.querySelector(".demo-video iframe");
 
 const comparisonTable = document.querySelector("#writing-comparison");
 const comparisonSwitcher = document.querySelector(".comparison-switcher");
@@ -98,6 +99,7 @@ async function loadLocale(locale) {
   document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
   document.title = valueAt(messages, "meta.title") ?? "TexLite";
   feedbackPopover?.querySelector(".feedback-close")?.setAttribute("aria-label", messages.feedback.close);
+  if (messages.demo?.playerTitle) demoPlayer?.setAttribute("title", messages.demo.playerTitle);
   for (const element of document.querySelectorAll("[data-i18n]")) {
     const value = valueAt(messages, element.dataset.i18n ?? "");
     if (typeof value === "string") element.textContent = value;
